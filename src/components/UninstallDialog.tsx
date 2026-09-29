@@ -13,7 +13,7 @@ import {
   uninstallBlockedCopy,
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
-import { deletesForGood, warningLines, type WarningLine } from "../lib/warnings";
+import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
@@ -37,7 +37,9 @@ export interface UninstallDialogProps {
  * The uninstall confirmation, as a macOS alert (spec §3.6): the tool's 48
  * icon, 「要卸载“Claude Code”吗？」, its source and version under that,
  * then as its text the one sentence its source's uninstall has about what
- * goes and what stays (`Warning.UninstallScope`) -- ending 「此操作无法撤销。」
+ * goes and what stays (`Warning.UninstallScope`) -- going on with
+ * 「删除的文件不会进入废纸篓。」 where the source's own command deletes
+ * everything in place (`skipsTrash`), and ending 「此操作无法撤销。」
  * where a line says the uninstall deletes something for good
  * (`deletesForGood`): rustup's own, and a cask whose recorded uninstall
  * deletes paths -- and Cancel and Uninstall as the default button, the
@@ -244,16 +246,29 @@ export function UninstallDialog({
   }
 
   // What goes and what stays, as the alert's text: the sentence the plan's
-  // source has for it, ending, where a line says something is deleted for
-  // good, with that this cannot be undone -- the one place it is said.
+  // source has for it; then, where that sentence holds it (`skipsTrash`),
+  // that none of what goes is in the Trash afterwards -- the path-list
+  // uninstalls say what they move there, and this one moves nothing; and,
+  // where a line says something is deleted for good, that this cannot be
+  // undone -- the one place it is said. As Finder's Delete Immediately
+  // alert says both, in one paragraph.
   const scope = lines.scope.map((line) => line.text);
   const textId = useId();
+  const said =
+    plan !== undefined && scope.length > 0 && skipsTrash(plan.warnings)
+      ? endWith(scope, "uninstall.endsSkipsTrash")
+      : scope;
   const text =
     !permanent
-      ? scope
-      : scope.length === 0
+      ? said
+      : said.length === 0
         ? [t("uninstall.cannotUndo")]
-        : [...scope.slice(0, -1), t("uninstall.endsCannotUndo", { sentence: scope[scope.length - 1] })];
+        : endWith(said, "uninstall.endsCannotUndo");
+
+  /** `sentences`, the last one carrying on with `key`'s sentence. */
+  function endWith(sentences: string[], key: "uninstall.endsSkipsTrash" | "uninstall.endsCannotUndo"): string[] {
+    return [...sentences.slice(0, -1), t(key, { sentence: sentences[sentences.length - 1] })];
+  }
 
   return (
     <Dialog

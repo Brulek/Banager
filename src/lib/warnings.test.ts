@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deletesForGood,
   isCaution,
+  skipsTrash,
   warningArgs,
   warningDetailKey,
   warningGroup,
@@ -785,6 +786,55 @@ describe("deletesForGood", () => {
   it("is false of a variant this build does not know", () => {
     expect(deletesForGood("SomeFutureVariant" as unknown as Warning)).toBe(false);
     expect(deletesForGood({ SomeFutureVariant: {} } as unknown as Warning)).toBe(false);
+  });
+});
+
+describe("skipsTrash", () => {
+  it("is true of every sentence whose command deletes in place, and not of those that cannot see or read it all", () => {
+    const skips = EVERY_SCOPE.filter((what) => skipsTrash([{ UninstallScope: { what } }]));
+    expect(skips).toEqual([
+      "HomebrewFormulaOnly",
+      "HomebrewFormula",
+      "HomebrewCaskPlain",
+      "HomebrewCaskSteps",
+      "HomebrewCaskStepsAutoremoves",
+      "HomebrewCaskStepsOnly",
+      "Npm",
+      "Pipx",
+      "Uv",
+      "Cargo",
+      "Ollama",
+    ]);
+  });
+
+  it("is false beside a cask step that moves paths to the Trash, wherever it comes in the plan", () => {
+    const trashes: Warning = { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } };
+    for (const what of ["HomebrewCaskSteps", "HomebrewCaskStepsAutoremoves", "HomebrewCaskStepsOnly"] as const) {
+      expect(skipsTrash([{ UninstallScope: { what } }, trashes])).toBe(false);
+      expect(skipsTrash([trashes, { UninstallScope: { what } }])).toBe(false);
+    }
+    // Every other step deletes in place, or deletes nothing.
+    for (const step of EVERY_STEP.filter((step) => step !== "Trashes")) {
+      expect(
+        skipsTrash([{ UninstallScope: { what: "HomebrewCaskSteps" } }, { CaskUninstallStep: { step, items: ["x"] } }]),
+        step,
+      ).toBe(true);
+    }
+  });
+
+  it("is false with no sentence: a path-list uninstall, rustup's, npm 6's", () => {
+    expect(skipsTrash([])).toBe(false);
+    expect(skipsTrash([{ WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } }])).toBe(false);
+    expect(skipsTrash([{ RemovesToolchains: { path: "~/.rustup", names: [] } }, { DeletesCargoHome: { path: "~/.cargo" } }])).toBe(
+      false,
+    );
+    // A sentence this build does not know.
+    expect(skipsTrash([{ UninstallScope: { what: "SomeFutureScope" as UninstallScope } }])).toBe(false);
+  });
+
+  it("has its sentence in both languages, carrying on from the scope's", () => {
+    expect(en.uninstall.endsSkipsTrash).toBe("{{sentence}} Removed files don't go to the Trash.");
+    expect(zhCN.uninstall.endsSkipsTrash).toBe("{{sentence}}删除的文件不会进入废纸篓。");
   });
 });
 

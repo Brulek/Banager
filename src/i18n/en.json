@@ -587,7 +587,8 @@
     "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
     "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out.",
     "cannotUndo": "You can't undo this action.",
-    "endsCannotUndo": "{{sentence}} You can't undo this action."
+    "endsCannotUndo": "{{sentence}} You can't undo this action.",
+    "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
   },
   "settings": {
     "groups": {

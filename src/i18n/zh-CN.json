@@ -536,7 +536,8 @@
     "affectedBlocksConfirm": "要卸载“{{name}}”，请先卸载上面这些软件。",
     "trashPreview_other": "这{{count}}项会移到废纸篓，可以从那里拖回来。",
     "cannotUndo": "此操作无法撤销。",
-    "endsCannotUndo": "{{sentence}}此操作无法撤销。"
+    "endsCannotUndo": "{{sentence}}此操作无法撤销。",
+    "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
   },
   "settings": {
     "groups": {

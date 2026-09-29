@@ -457,8 +457,9 @@ export function warningGroup(warning: Warning): WarningGroup {
  * The uninstall confirmation's button then says so
  * too (`uninstall.confirmPermanent`). Only what a line says counts: a plan
  * with no such line may well delete files -- `brew uninstall` does, and so
- * does the autoremove Homebrew's two lines speak of -- but says nothing
- * about the Trash, and neither does its button.
+ * does the autoremove Homebrew's two lines speak of -- and its button says
+ * plain Uninstall; where its source's sentence holds it, its text says
+ * that nothing it deletes goes to the Trash (`skipsTrash`).
  *
  * Every variant is named, so one added to `Warning` fails `tsc` here; at
  * run time, a variant this build does not know is not one, and its line
@@ -505,6 +506,71 @@ export function deletesForGood(warning: Warning): boolean {
   const unhandled: never = warning;
   void unhandled;
   return false;
+}
+
+/**
+ * Whether what an uninstall with each source's sentence (`UninstallScope`)
+ * deletes is deleted outright, none of it moved to the Trash. Each runs
+ * the source's own uninstall command, and each command deletes files in
+ * place. Homebrew (7.0.7-9, this Mac's): a formula's keg
+ * (`Keg#uninstall`, `keg.rb:325-339`), and the formulae its autoremove
+ * takes the same way; a cask's app and the other artifacts it moved into
+ * place are copied back into the Caskroom and deleted from their target
+ * (`Moved#uninstall_phase`, `#move_back`, `#delete`,
+ * `cask/artifact/moved.rb:45-48`, `:200-255`, through
+ * `Utils.gain_permissions_remove`, `cask/utils.rb:59-85`), then that copy
+ * is deleted the same way (`purge_versioned_files` from
+ * `Installer#uninstall`, `cask/installer.rb:627-642`, `:826-835`), its
+ * links are unlinked, and every recorded step but `trash:` deletes in
+ * place -- `trash:` alone moves paths to the Trash (`uninstall_trash`,
+ * `abstract_uninstall.rb:663-686`), and says so on its own line
+ * (`CaskStep` `Trashes`), so a plan with one says nothing of the kind
+ * (`skipsTrash`). `npm uninstall -g` (7 or later), `pipx uninstall`,
+ * `uv tool uninstall`, `cargo uninstall` and `ollama rm` delete a folder,
+ * its commands, a program's files, a model's manifest and unused layers.
+ *
+ * Not the three cask sentences that cannot see or read everything the
+ * uninstall does: a program the cask names or Ruby around the uninstall
+ * may move something to the Trash for all Canager knows
+ * (`HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`), and a record
+ * Canager could not read may hold a `trash:` step (`HomebrewCask`). A plan
+ * with no sentence -- npm 6, and the tools with their own installer, whose
+ * confirmation lists what goes to the Trash or says that rustup's
+ * deletions cannot be undone -- says nothing either. A `Record`, so a
+ * sentence added without an answer here fails `tsc`.
+ */
+const SCOPE_SKIPS_TRASH: Record<UninstallScope, boolean> = {
+  HomebrewFormulaOnly: true,
+  HomebrewFormula: true,
+  HomebrewCaskPlain: true,
+  HomebrewCaskSteps: true,
+  HomebrewCaskStepsAutoremoves: true,
+  HomebrewCaskStepsUnseen: false,
+  HomebrewCaskStepsOnly: true,
+  HomebrewCaskStepsOnlyUnseen: false,
+  HomebrewCask: false,
+  Npm: true,
+  Pipx: true,
+  Uv: true,
+  Cargo: true,
+  Ollama: true,
+};
+
+/**
+ * Whether an uninstall's confirmation says that what it deletes does not
+ * go to the Trash (`uninstall.endsSkipsTrash`), so no one goes looking for
+ * it there afterwards: its plan has a sentence that holds it
+ * (`SCOPE_SKIPS_TRASH`) and no cask step that moves anything to the Trash.
+ * At run time, a sentence this build does not know says nothing.
+ */
+export function skipsTrash(warnings: readonly Warning[]): boolean {
+  let scope = false;
+  for (const warning of warnings) {
+    if (typeof warning === "string") continue;
+    if ("UninstallScope" in warning) scope = SCOPE_SKIPS_TRASH[warning.UninstallScope.what] === true;
+    if ("CaskUninstallStep" in warning && warning.CaskUninstallStep.step === "Trashes") return false;
+  }
+  return scope;
 }
 
 /**

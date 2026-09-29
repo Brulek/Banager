@@ -156,7 +156,7 @@ describe("UninstallDialog", () => {
     // what goes and what stays.
     await within(dialog).findByText(/^Removes only /, { selector: "[data-sheet-text]" });
     expect(dialog).toHaveAccessibleDescription(
-      "Homebrew · 1.8.1 Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept.",
+      "Homebrew · 1.8.1 Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept. Removed files don't go to the Trash.",
     );
     const icon = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
     expect(icon.compareDocumentPosition(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }))).toBe(
@@ -418,6 +418,8 @@ describe("UninstallDialog", () => {
     // Nothing to show behind "Show Command": no command runs.
     expect(screen.queryByRole("button", { name: /^Show Command/ })).toBeNull();
     expect(container.ownerDocument.body.textContent).not.toMatch(/Put Back/);
+    // Everything it removes goes to the Trash: no sentence says otherwise.
+    expect(container.ownerDocument.body.textContent).not.toMatch(/don't go to the Trash/);
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
   });
 
@@ -526,15 +528,17 @@ describe("UninstallDialog", () => {
 
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
+    // `brew uninstall` deletes the keg in place: the paragraph ends saying
+    // none of it is in the Trash afterwards.
     const sentence = await screen.findByText(
-      "Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept.",
+      "Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept. Removed files don't go to the Trash.",
     );
     // The alert's own text, in the label colour, under the question that
     // names the tool.
     expect(sentence).toHaveAttribute("data-sheet-text");
     expect(sentence.className).toMatch(/\btext-foreground\b/);
     expect(screen.getByRole("dialog", { name: "Uninstall “jq”?" })).toContainElement(sentence);
-    // Nothing is deleted for good: no "can't undo".
+    // No line says it deletes for good: no "can't undo", and plain Uninstall.
     expect(screen.queryByText(/can't undo/)).toBeNull();
     // Not a note: with nothing else to say there is no "Before you
     // continue", and nothing is behind an ⓘ.
@@ -543,32 +547,53 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
   });
 
-  it("says each source's sentence with the name the row has, in either language", async () => {
+  it("says each source's sentence with the name the row has, in either language, and where it holds, that nothing goes to the Trash", async () => {
+    // Each of these runs the source's own uninstall command, which deletes
+    // in place (`skipsTrash` in src/lib/warnings.ts): the paragraph ends
+    // saying so, where the sentence can -- not beside a step Canager cannot
+    // see into, nor for a record it could not read.
+    const EN_SKIPS = " Removed files don't go to the Trash.";
+    const ZH_SKIPS = "删除的文件不会进入废纸篓。";
     const cases: [Plan["warnings"][number], string, string, string][] = [
+      // With a brew.env that brings the autoremove back, whose own line
+      // says what else goes -- deleted the same way.
+      [
+        { UninstallScope: { what: "HomebrewFormula" } },
+        "jq",
+        "Removes the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept." +
+          EN_SKIPS,
+        "删除Homebrew安装的这一版“jq”和指向它的链接；别处的配置和数据不删除。" + ZH_SKIPS,
+      ],
+      // `brew uninstall --cask` copies the app back into the Caskroom and
+      // deletes both: not to the Trash either.
       [
         { UninstallScope: { what: "HomebrewCaskPlain" } },
         "Claudebar",
-        "Deletes what Homebrew installed for Claudebar; its settings and data stay.",
-        "删除Homebrew为“Claudebar”安装的文件；它的设置和数据保留不动。",
+        "Deletes what Homebrew installed for Claudebar; its settings and data stay." + EN_SKIPS,
+        "删除Homebrew为“Claudebar”安装的文件；它的设置和数据保留不动。" + ZH_SKIPS,
       ],
       // Placed files and recorded steps: not every file an installer put
       // down, and nothing else while Homebrew's autoremove is off...
       [
         { UninstallScope: { what: "HomebrewCaskSteps" } },
         "Charles",
-        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; nothing else is deleted.",
-        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；其他文件不删除。",
+        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; nothing else is deleted." +
+          EN_SKIPS,
+        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；其他文件不删除。" + ZH_SKIPS,
       ],
       // ...and, with a brew.env that brings the autoremove back, whose own
       // line says what else goes, only the cask's other files stay.
       [
         { UninstallScope: { what: "HomebrewCaskStepsAutoremoves" } },
         "Charles",
-        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; Charles's other files stay.",
-        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；“Charles”的其他文件不删除。",
+        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; Charles's other files stay." +
+          EN_SKIPS,
+        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；“Charles”的其他文件不删除。" + ZH_SKIPS,
       ],
       // A step that runs a program or code -- Ruby around the uninstall,
-      // here -- whose deletions Canager cannot see: nothing is said to stay.
+      // here -- whose deletions Canager cannot see: nothing is said to
+      // stay, and nothing about the Trash, where that program may put
+      // something for all Canager knows.
       [
         { UninstallScope: { what: "HomebrewCaskStepsUnseen" } },
         "Uninstall Flight Block",
@@ -580,8 +605,9 @@ describe("UninstallDialog", () => {
       [
         { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
         "Little Snitch",
-        "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay.",
-        "执行Homebrew为“Little Snitch”记下的卸载步骤；安装器安装的其他文件不删除。",
+        "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay." +
+          EN_SKIPS,
+        "执行Homebrew为“Little Snitch”记下的卸载步骤；安装器安装的其他文件不删除。" + ZH_SKIPS,
       ],
       // ...unless a step runs a program -- wireshark-chmodbpf's vendor
       // uninstaller -- whose deletions Canager cannot see.
@@ -592,7 +618,8 @@ describe("UninstallDialog", () => {
         "执行Homebrew为“Wireshark-ChmodBPF”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       ],
       // A record Canager could not read, or one that lists nothing to go
-      // by -- an empty list, for one: no deletion claimed.
+      // by -- an empty list, for one: no deletion claimed, and a `trash:`
+      // step may be in it.
       [
         { UninstallScope: { what: "HomebrewCask" } },
         "Docker",
@@ -602,20 +629,37 @@ describe("UninstallDialog", () => {
       [
         { UninstallScope: { what: "Npm" } },
         "typescript",
-        "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
-        "删除npm全局目录中的“typescript”文件夹和命令，不运行它的代码；它在别处的设置和数据不删除。",
+        "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted." +
+          EN_SKIPS,
+        "删除npm全局目录中的“typescript”文件夹和命令，不运行它的代码；它在别处的设置和数据不删除。" + ZH_SKIPS,
+      ],
+      [
+        { UninstallScope: { what: "Pipx" } },
+        "httpie",
+        "Deletes the Python environment pipx made just for httpie and the commands that point into it; its settings and data outside that environment are not deleted." +
+          EN_SKIPS,
+        "删除pipx为“httpie”单独建立的Python环境和指向该环境的命令；它在环境以外的设置和数据不删除。" + ZH_SKIPS,
       ],
       [
         { UninstallScope: { what: "Uv" } },
         "ruff",
-        "Deletes the Python environment uv made just for ruff and the commands it recorded; its settings and data outside that environment are not deleted.",
-        "删除uv为“ruff”单独建立的Python环境和uv记下的命令；它在环境以外的设置和数据不删除。",
+        "Deletes the Python environment uv made just for ruff and the commands it recorded; its settings and data outside that environment are not deleted." +
+          EN_SKIPS,
+        "删除uv为“ruff”单独建立的Python环境和uv记下的命令；它在环境以外的设置和数据不删除。" + ZH_SKIPS,
+      ],
+      [
+        { UninstallScope: { what: "Cargo" } },
+        "tokei",
+        "Deletes the program files cargo installed for tokei; the download cache, Cargo's settings and the program's own settings stay." +
+          EN_SKIPS,
+        "删除cargo为“tokei”安装的程序文件；下载缓存、Cargo的设置和此程序自己的设置都保留不动。" + ZH_SKIPS,
       ],
       [
         { UninstallScope: { what: "Ollama" } },
         "qwen3:8b",
-        "Deletes the model qwen3:8b; data other models still use is kept, and Ollama itself and your other models stay.",
-        "删除模型“qwen3:8b”；其他模型还在用的数据会保留，Ollama本身和其他模型保留不动。",
+        "Deletes the model qwen3:8b; data other models still use is kept, and Ollama itself and your other models stay." +
+          EN_SKIPS,
+        "删除模型“qwen3:8b”；其他模型还在用的数据会保留，Ollama本身和其他模型保留不动。" + ZH_SKIPS,
       ],
     ];
     for (const [warning, name, english, chinese] of cases) {
@@ -623,7 +667,11 @@ describe("UninstallDialog", () => {
       const en = renderWithProviders(
         <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
       );
+      // One paragraph, the whole of the alert's text.
       expect((await screen.findByText(english)).closest("[data-sheet-text]")).not.toBeNull();
+      expect(document.querySelectorAll("[data-sheet-text]")).toHaveLength(1);
+      // Nothing it says is deleted for good.
+      expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
       en.unmount();
 
       await i18n.changeLanguage("zh-CN");
@@ -632,10 +680,64 @@ describe("UninstallDialog", () => {
           <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
         );
         expect((await screen.findByText(chinese)).closest("[data-sheet-text]")).not.toBeNull();
+        expect(document.querySelectorAll("[data-sheet-text]")).toHaveLength(1);
         zh.unmount();
       } finally {
         await i18n.changeLanguage("en");
       }
+    }
+  });
+
+  it("says nothing of the Trash beside a cask step that moves paths there, and says it before can't undo where a step deletes for good", async () => {
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "nvs" };
+    const planWith = (warnings: Warning[]) => issuedPlanFor({ request: cask, warnings });
+    // nvs's `trash:` (cask_receipt.rs's fixture): its own line says what
+    // goes there, so no sentence says nothing does.
+    vi.mocked(invoke).mockResolvedValue(
+      planWith([
+        { UninstallScope: { what: "HomebrewCaskSteps" } },
+        { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
+      ]),
+    );
+    const trashed = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="nvs" />,
+    );
+    expect(
+      await screen.findByText(
+        "Deletes the files Homebrew placed for nvs and runs the uninstall steps it recorded; nothing else is deleted.",
+      ),
+    ).toHaveAttribute("data-sheet-text");
+    expect(linesOf("Notes")).toEqual(["Also moves ~/.nvs to the Trash."]);
+    expect(screen.queryByText(/don't go to the Trash/)).toBeNull();
+    trashed.unmount();
+
+    // A `delete:` step and nothing moved to the Trash: both, in the one
+    // paragraph, as Finder's Delete Immediately alert says them.
+    vi.mocked(invoke).mockResolvedValue(
+      planWith([
+        { UninstallScope: { what: "HomebrewCaskSteps" } },
+        { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/nvs"] } },
+      ]),
+    );
+    const en = renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="nvs" />);
+    expect(await screen.findByRole("button", { name: "Uninstall Permanently" })).toBeEnabled();
+    expect(
+      screen.getByText(
+        "Deletes the files Homebrew placed for nvs and runs the uninstall steps it recorded; nothing else is deleted. Removed files don't go to the Trash. You can't undo this action.",
+      ),
+    ).toHaveAttribute("data-sheet-text");
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="nvs" />);
+      expect(
+        await screen.findByText(
+          "删除Homebrew为“nvs”放置的文件，并执行它记下的卸载步骤；其他文件不删除。删除的文件不会进入废纸篓。此操作无法撤销。",
+        ),
+      ).toHaveAttribute("data-sheet-text");
+    } finally {
+      await i18n.changeLanguage("en");
     }
   });
 
@@ -1112,8 +1214,9 @@ describe("UninstallDialog", () => {
 
   it("says Uninstall permanently where a line says something is deleted for good, and Uninstall everywhere else", async () => {
     // rustup's own uninstall deletes its folders outright; a path-list
-    // uninstall moves what it lists to the Trash, and a Homebrew one says
-    // nothing about the Trash either way.
+    // uninstall moves what it lists to the Trash, and a Homebrew one's
+    // button says nothing about the Trash either way -- its text does,
+    // where its sentence holds it (`skipsTrash`).
     const rustup = issuedPlanFor({
       action: { Command: { program: "/Users/someone/.cargo/bin/rustup", args: ["self", "uninstall", "-y"], env: [] } },
       cancel_policy: "NoCancel",
@@ -1135,6 +1238,10 @@ describe("UninstallDialog", () => {
 
     const permanent = await screen.findByRole("button", { name: "Uninstall Permanently" });
     expect(screen.queryByRole("button", { name: "Uninstall" })).toBeNull();
+    // rustup has no source sentence: its lines say "permanently", and its
+    // text only that this can't be undone.
+    expect(screen.getByText("You can't undo this action.")).toHaveAttribute("data-sheet-text");
+    expect(screen.queryByText(/don't go to the Trash/)).toBeNull();
     fireEvent.click(permanent);
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
     first.unmount();
