@@ -259,7 +259,7 @@ describe("UninstallDialog", () => {
 
     expect(
       await screen.findByText(
-        "Couldn't check what else needs this. Make sure nothing does before you uninstall.",
+        "Couldn't check what else needs this. Check yourself before you uninstall.",
       ),
     ).toBeInTheDocument();
     // No `affected` list on this plan, so the sentence is where the name is said.
@@ -275,7 +275,7 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(await screen.findByText("2 others still need this: a, b.")).toBeInTheDocument();
+    expect(await screen.findByText("2 other tools still need this: a, b.")).toBeInTheDocument();
   });
 
   it("groups what a path-list uninstall moves and keeps, and says only what is sure of the Trash", async () => {
@@ -512,8 +512,8 @@ describe("UninstallDialog", () => {
       [
         { UninstallScope: { what: "HomebrewCask" } },
         "Docker",
-        "Canager could not read from Homebrew's records what uninstalling Docker deletes.",
-        "Canager 没能从 Homebrew 的记录里读出卸载 Docker 会删除什么。",
+        "Canager couldn't tell from Homebrew's records what uninstalling Docker deletes.",
+        "没能从 Homebrew 的记录里读出卸载 Docker 会删除什么。",
       ],
       [
         { UninstallScope: { what: "Npm" } },

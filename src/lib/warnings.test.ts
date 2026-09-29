@@ -342,7 +342,7 @@ describe("warningMessage", () => {
 describe("warningText", () => {
   it("looks a fixed warning up through t(), with its args, a list joined in the window's language", () => {
     expect(warningText(fakeT, "DependentsUnknown")).toBe("warnings.dependentsUnknown");
-    // 「还有 2 个软件要用它：a、b。」, never "a, b" inside a Chinese sentence.
+    // 「还有 2 个工具要用它：a、b。」, never "a, b" inside a Chinese sentence.
     const chineseT = (key: string, options?: Record<string, unknown>) =>
       key === "common.listSeparator" ? "、" : fakeT(key, options);
     expect(warningText(chineseT, { WouldBreak: { names: ["a", "b"] } })).toBe(

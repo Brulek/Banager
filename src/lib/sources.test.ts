@@ -1588,7 +1588,7 @@ describe("uninstallBlockedCopy", () => {
     // refuses when only a part is elsewhere -- a link at the top of either
     // folder -- and the variables' names are not this audience's words.
     expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. rustup's documentation explains rustup self uninstall.",
+      "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. Follow rustup's official documentation and run rustup self uninstall.",
     );
     expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
       "这台 Mac 上的 Rust 不全在 ~/.cargo 和 ~/.rustup 里，Canager 只卸载这两个位置的 Rust。请按 rustup 官方文档运行 rustup self uninstall。",

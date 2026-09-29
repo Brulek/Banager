@@ -216,7 +216,7 @@
   },
   "warnings": {
     "dependentsUnknown": "没能查到哪些软件还要用它，卸载前请自己确认。",
-    "wouldBreak_other": "还有 {{count}} 个软件要用它：{{names}}。",
+    "wouldBreak_other": "还有 {{count}} 个工具要用它：{{names}}。",
     "compilesLocally": "需要在这台 Mac 上编译，会花一些时间。",
     "nonRegistrySource": "它不是从 crates.io 安装的。",
     "thirdPartyRegistry": "这个模型从 {{host}} 下载，不是 Ollama 官方库。信任它再继续。",
@@ -268,7 +268,7 @@
       "HomebrewCaskStepsUnseen": "删除 Homebrew 为 {{name}} 放置的文件，并执行它记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
       "HomebrewCaskStepsOnly": "执行 Homebrew 为 {{name}} 记下的卸载步骤；安装器装的其他文件不删。",
       "HomebrewCaskStepsOnlyUnseen": "执行 Homebrew 为 {{name}} 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
-      "HomebrewCask": "Canager 没能从 Homebrew 的记录里读出卸载 {{name}} 会删除什么。",
+      "HomebrewCask": "没能从 Homebrew 的记录里读出卸载 {{name}} 会删除什么。",
       "Npm": "删除 npm 全局目录里的 {{name}} 文件夹和命令，不运行它的代码；它在别处的设置和数据不删。",
       "Pipx": "删除 pipx 为 {{name}} 单独建的 Python 环境和指向它的命令；它在环境以外的设置和数据不删。",
       "Uv": "删除 uv 为 {{name}} 单独建的 Python 环境和它记下的命令；它在环境以外的设置和数据不删。",

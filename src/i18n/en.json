@@ -136,7 +136,7 @@
         "description": "{{source}} has no uninstall command, and Canager can't yet remove its files safely. Follow {{source}}'s official documentation to uninstall it.",
         "refused": "Canager can't uninstall {{source}} yet. Nothing changed.",
         "standalone-rustup": {
-          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. rustup's documentation explains rustup self uninstall.",
+          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. Follow rustup's official documentation and run rustup self uninstall.",
           "refused": "Rust isn't entirely in ~/.cargo and ~/.rustup, so Canager didn't uninstall or change anything."
         }
       },
@@ -237,9 +237,9 @@
     "needsPassword": "Some apps ask for your Mac password at this step."
   },
   "warnings": {
-    "dependentsUnknown": "Couldn't check what else needs this. Make sure nothing does before you uninstall.",
+    "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
     "wouldBreak_one": "{{names}} still needs this.",
-    "wouldBreak_other": "{{count}} others still need this: {{names}}.",
+    "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
     "compilesLocally": "This compiles on your Mac and takes a while.",
     "nonRegistrySource": "It wasn't installed from crates.io.",
     "thirdPartyRegistry": "This model downloads from {{host}}, not Ollama's own library. Continue only if you trust it.",
@@ -258,7 +258,7 @@
       "ShellConfigLinesDetail": "Canager never edits this file; lines the installer added are harmless.",
       "OutsideHome": "Link that will stop working: {{path}}",
       "OutsideHomeDetail": "It's outside your home folder, so Canager leaves it. You can delete it after uninstalling.",
-      "NotOurs": "Couldn't confirm: {{path}}",
+      "NotOurs": "Not confirmed as this tool's: {{path}}",
       "NotOursDetail": "Canager couldn't confirm it belongs to this tool, so it stays.",
       "InstallerCache": "Installer's staging folder: {{path}}",
       "InstallerCacheDetail": "It's in ~/.cache, which many tools share, so Canager leaves it. You can delete it yourself."
@@ -292,7 +292,7 @@
       "HomebrewCaskStepsUnseen": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; Canager can't see what else some of those steps delete.",
       "HomebrewCaskStepsOnly": "Runs the uninstall steps Homebrew recorded for {{name}}; other files its installer put on this Mac stay.",
       "HomebrewCaskStepsOnlyUnseen": "Runs the uninstall steps Homebrew recorded for {{name}}; Canager can't see what else some of those steps delete.",
-      "HomebrewCask": "Canager could not read from Homebrew's records what uninstalling {{name}} deletes.",
+      "HomebrewCask": "Canager couldn't tell from Homebrew's records what uninstalling {{name}} deletes.",
       "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
       "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",
       "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded; its settings and data outside that environment are not deleted.",
