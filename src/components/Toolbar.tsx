@@ -3,9 +3,9 @@ import { createPortal } from "react-dom";
 
 /**
  * Where a page's own actions go: a box at the right of the window's
- * toolbar (`PageHeader`), after its Check again -- Update all on the
- * Updates page, the sort and the search on the Installed page, as a Mac
- * app's toolbar holds them (spec §3.2). `App` hands the box, once it is
+ * toolbar (`PageHeader`), before its Check again, which stays at the
+ * right end -- Update all on the Updates page, the sort and the search on
+ * the Installed page, as a Mac app's toolbar holds them (spec §3.2). `App` hands the box, once it is
  * drawn, to the page below the toolbar; null until then, and wherever no
  * toolbar is.
  */
@@ -22,29 +22,6 @@ export const ToolbarSlotProvider = ToolbarSlotContext.Provider;
 export function ToolbarItems({ children }: { children: ReactNode }) {
   const slot = useContext(ToolbarSlotContext);
   return slot === null ? null : createPortal(children, slot);
-}
-
-/**
- * A toolbar button's words, as wide as the widest it ever says: the words
- * it says now, over the others it can say laid in the same place unseen
- * (and unheard), so the button keeps one width as its words change --
- * Update All turning into Update Selected (3) -- and nothing beside it
- * moves, as the ⟳ before it did by 16. Digits of one width, so no count
- * of as many digits as the widest is wider.
- */
-export function SteadyLabel({ label, widest }: { label: string; widest: string[] }) {
-  return (
-    <span className="grid justify-items-center tabular-nums">
-      <span data-button-label="" className="col-start-1 row-start-1">
-        {label}
-      </span>
-      {widest.map((text) => (
-        <span key={text} aria-hidden="true" data-button-sizer="" className="invisible col-start-1 row-start-1">
-          {text}
-        </span>
-      ))}
-    </span>
-  );
 }
 
 /**

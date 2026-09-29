@@ -1843,7 +1843,7 @@ describe("UpdatesPage", () => {
       const labels = () =>
         within(toolbar)
           .getAllByRole("button")
-          .map((button) => button.querySelector("[data-button-label]")?.textContent);
+          .map((button) => button.textContent);
       expect(labels()).toEqual(["Update All"]);
       expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
       // Nor does the page say how many again: the toolbar's subtitle does.
@@ -1863,31 +1863,26 @@ describe("UpdatesPage", () => {
       expect(labels()).toEqual(["Update All"]);
     });
 
-    it("keeps its one button as wide as it is at its widest, so nothing beside it moves as its words change", async () => {
+    it("sizes its one button to the words it says now, with nothing laid under them to hold it wider", async () => {
       updates = [...snapshot.updates, brewCandidate("jq")];
       const { findByText, getByRole, getAllByRole, container } = renderPage();
 
       await findByText("3 updates available");
       const toolbar = container.querySelector("[data-toolbar-slot]") as HTMLElement;
-      // Laid under its words, unseen and unheard: everything it can say,
-      // the count at every row ticked.
-      const sizers = () =>
-        [...toolbar.querySelectorAll("[data-button-sizer]")].map((sizer) => {
-          expect(sizer).toHaveAttribute("aria-hidden", "true");
-          expect(sizer).toHaveClass("invisible", "col-start-1", "row-start-1");
-          return sizer.textContent;
-        });
-      expect(sizers()).toEqual(["Update All", "Update Selected (3)"]);
+      // Its words and nothing else: no unseen widest label to size it by,
+      // which drew Update All as wide as Update Selected (3), a web page's
+      // call to action. The ⟳ after it keeps the toolbar's end still instead.
       const all = getByRole("button", { name: "Update All" });
-      // In the one grid cell with its words, digits of one width.
-      const grid = all.querySelector("[data-button-label]")?.parentElement as HTMLElement;
-      expect(grid).toHaveClass("grid", "justify-items-center", "tabular-nums");
-      expect(all.querySelector("[data-button-label]")).toHaveClass("col-start-1", "row-start-1");
+      expect(all.childElementCount).toBe(0);
+      expect(all.textContent).toBe("Update All");
+      expect(all.className).toBe(BUTTON.regular.default);
+      expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
 
-      // Ticked, the same under other words: the same width.
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
-      expect(getByRole("button", { name: "Update Selected (1)" })).toBeInTheDocument();
-      expect(sizers()).toEqual(["Update All", "Update Selected (3)"]);
+      const selected = getByRole("button", { name: "Update Selected (1)" });
+      expect(selected.childElementCount).toBe(0);
+      expect(selected.textContent).toBe("Update Selected (1)");
+      expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
     });
 
     it("says how many in the toolbar as Latest does in English, one or several", async () => {

@@ -21,7 +21,7 @@ function Window({ actions, children }: { actions?: ReactNode; children: ReactNod
 }
 
 describe("the toolbar's slot", () => {
-  it("draws a page's actions in the toolbar, on the right after Check again", () => {
+  it("draws a page's actions in the toolbar, on the right before Check again", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     const onPress = vi.fn();
     const { getByRole } = renderWithProviders(
@@ -39,10 +39,11 @@ describe("the toolbar's slot", () => {
     const updateAll = within(header).getByRole("button", { name: "Update all" });
     // In the toolbar, not in the page it came from...
     expect(within(getByRole("main")).queryByRole("button", { name: "Update all" })).toBeNull();
-    // ...after Check again, as a Mac toolbar's items run to its edge.
+    // ...before Check again, which keeps the toolbar's right end: a
+    // button whose words change grows to its left, and the ⟳ stays put.
     expect(within(header).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
-      "Check Again",
       "Update all",
+      "Check Again",
     ]);
     // Still the page's own button, and a button of the toolbar: pressing
     // it runs the page's handler and drags nothing.
@@ -59,7 +60,7 @@ describe("the toolbar's slot", () => {
     );
     const slot = container.querySelector("[data-toolbar-slot]") as HTMLElement;
     expect(slot.childElementCount).toBe(0);
-    // `:empty` hides it: no gap after Check again for nothing.
+    // `:empty` hides it: no gap before Check again for nothing.
     expect(slot.className).toContain("empty:hidden");
   });
 

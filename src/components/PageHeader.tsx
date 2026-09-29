@@ -132,14 +132,14 @@ export interface PageHeaderProps {
    */
   subtitle?: PageSubtitle | null;
   /**
-   * The page's own way to look again, on the right: left out, the
-   * sources' (`CheckAgain`); the Unknown page's scan, for that page; null
-   * for a page with nothing to look again at, such as Settings. One
-   * control, never two side by side.
+   * The page's own way to look again, at the toolbar's right end: left
+   * out, the sources' (`CheckAgain`); the Unknown page's scan, for that
+   * page; null for a page with nothing to look again at, such as
+   * Settings. One control, never two side by side.
    */
   actions?: ReactNode;
   /**
-   * Handed the box after it, where the page below puts its own actions
+   * Handed the box before it, where the page below puts its own actions
    * (`ToolbarItems` in ./Toolbar.tsx). Empty, it takes no room.
    */
   slotRef?: Ref<HTMLDivElement>;
@@ -149,8 +149,8 @@ export interface PageHeaderProps {
 
 /**
  * The window's toolbar, over every page: its title, with a line under it
- * where the page has one, and on the right the page's way to look again,
- * then the page's own actions. 52 high whatever it holds, as a Mac
+ * where the page has one, and on the right the page's own actions, then
+ * the page's way to look again, rightmost. 52 high whatever it holds, as a Mac
  * window's toolbar is, on the window's own background, and its title 20
  * in from the sidebar, as AppKit places a toolbar's title (measured on
  * macOS 27: docs/superpowers/2026-09-29-aesthetics-spec.md §3.2): 13/16
@@ -188,9 +188,14 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
           </p>
         ) : null}
       </div>
+      {/* The page's own actions, then its way to look again, last: the ⟳
+          stands at the toolbar's right end on every page, and a button
+          before it whose words change -- Update All turning into Update
+          Selected (3) -- grows to its left at its own width, moving
+          nothing but its own left edge. */}
       <div className="flex shrink-0 items-center gap-2">
-        {actions === undefined ? <CheckAgain /> : actions}
         <div ref={slotRef} data-toolbar-slot="" className="flex items-center gap-2 empty:hidden" />
+        {actions === undefined ? <CheckAgain /> : actions}
       </div>
       {scrolled ? (
         <span aria-hidden="true" data-scroll-edge="" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-separator" />

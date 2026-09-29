@@ -263,6 +263,45 @@ describe("App", () => {
     }
   });
 
+  it("keeps each page's way to look again at the toolbar's right end, after the page's own controls", async () => {
+    const brew = snapshot.instances[0];
+    mockBackend({
+      ...snapshot,
+      updates: [
+        {
+          key: { instance_id: brew.id, kind: "Formula", name: "jq" },
+          current: "1.8.1",
+          target: "1.8.2",
+          channel: "Native",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ],
+    });
+    const { getByRole, findByRole } = renderWithProviders(<App />);
+    await findByRole("button", { name: "Review Updates" });
+
+    // Every control in the toolbar, in order, by its name.
+    const controls = () =>
+      [...getByRole("banner").querySelectorAll<HTMLElement>("button, input, select")].map(
+        (control) => control.getAttribute("aria-label") ?? control.textContent,
+      );
+    // The page's own controls first -- Update All, the sort and the
+    // search -- and the ⟳ last: a button before it whose words change
+    // grows to its left, and the ⟳ never moves.
+    const pages: Array<[string, string[], string]> = [
+      ["Overview", [], "Check Again"],
+      ["Updates", ["Update All"], "Check Again"],
+      ["Installed", ["Sort Order", "Search installed tools"], "Check Again"],
+      ["Unknown", [], "Scan Again"],
+    ];
+    for (const [page, own, again] of pages) {
+      fireEvent.click(getByRole("button", { name: page }));
+      await waitFor(() => expect(controls()).toEqual([...own, again]));
+    }
+  });
+
   it("says in the Unknown page's toolbar when its scan answered, and never when the sources were checked", async () => {
     const { getByRole, findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
