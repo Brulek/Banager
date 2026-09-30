@@ -24,8 +24,8 @@ interface SidebarProps {
 
 /**
  * Each page's name: its row here, and the title over it (`PageHeader`).
- * Other Programs' is `nav.unknown`, as the page is `UnknownPage` in the
- * code: only its words changed when it was renamed.
+ * Other Programs' is `nav.unknown`: the key keeps the name the code
+ * gives the page (`UnknownPage`), and only the words are the user's.
  */
 export const PAGE_LABEL_KEYS: Record<Page, string> = {
   overview: "nav.overview",
@@ -49,9 +49,9 @@ const PAGE_ICONS: Record<ListedPage, ComponentType<{ size?: number; className?: 
  * The entries, in order: the Overview, the pages about the Mac, and
  * Settings fourth, in the same group (spec §3.1) -- until it has a window
  * of its own, opened with ⌘, as a Mac app's settings are. Not Other
- * Programs: what no source installed is the last row under 「来源」
- * (`OtherProgramsRow`), after every source, as CleanMyMac lists the apps
- * it cannot place last, as "Other", under where the rest came from.
+ * Programs: what no source installed is the last row under 「来源」,
+ * after every source (`OtherProgramsMark`'s row), as CleanMyMac lists the
+ * apps it cannot place last, as "Other", under where the rest came from.
  */
 const PAGES: ListedPage[] = ["overview", "updates", "installed", "settings"];
 
