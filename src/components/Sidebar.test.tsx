@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
@@ -791,6 +791,60 @@ describe("Sidebar", () => {
         expect(getByRole("button", { name: "pip" }).className).toBe(selected);
         expect(other).not.toHaveAttribute("aria-current");
         expect(other.className).not.toContain("bg-sidebar-active");
+      });
+
+      describe("brought into view when it is the row selected", () => {
+        // jsdom lays nothing out and has no `scrollIntoView`: each element
+        // scrolled into view is noted, with how.
+        let scrolledIntoView: Array<{ element: Element; options: boolean | ScrollIntoViewOptions | undefined }>;
+        beforeEach(() => {
+          scrolledIntoView = [];
+          Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+            scrolledIntoView.push({ element: this, options });
+          };
+        });
+        afterEach(() => {
+          delete (Element.prototype as Partial<Element>).scrollIntoView;
+        });
+
+        it("when its page opens -- from ⌘4, below the fold of a short window -- and not again until the row selected changes", async () => {
+          const onSelectPage = vi.fn();
+          const { findByRole, getByRole, rerender } = renderWithProviders(
+            <Sidebar page="installed" source={pip.id} onSelectPage={onSelectPage} />,
+          );
+          await listedSources(findByRole);
+          // pip's row, the one selected, once the snapshot brought it.
+          const pipRow = getByRole("button", { name: "pip" });
+          await waitFor(() => expect(scrolledIntoView).toEqual([{ element: pipRow, options: { block: "nearest" } }]));
+
+          rerender(<Sidebar page="unknown" source={pip.id} onSelectPage={onSelectPage} />);
+          const other = getByRole("button", { name: "Other Programs" });
+          expect(scrolledIntoView.slice(1)).toEqual([{ element: other, options: { block: "nearest" } }]);
+          // Rendered again with nothing changed: where the sidebar was
+          // scrolled to stays.
+          rerender(<Sidebar page="unknown" source={pip.id} onSelectPage={onSelectPage} />);
+          expect(scrolledIntoView).toHaveLength(2);
+          // 8 kept above it and 12 below, as the lists keep around their
+          // first and last rows.
+          expect(other.className.split(" ")).toEqual(expect.arrayContaining(["scroll-mt-2", "scroll-mb-3"]));
+        });
+
+        it("again when the first snapshot's sources arrive above it, open before they did", async () => {
+          let answer: (snapshot: Snapshot) => void = () => {};
+          mockInvoke.mockImplementation((cmd: string) =>
+            cmd === "get_snapshot" ? new Promise<Snapshot>((resolve) => (answer = resolve)) : Promise.resolve(undefined),
+          );
+          const { findByRole, getByRole } = renderWithProviders(<Sidebar page="unknown" onSelectPage={vi.fn()} />);
+          const other = getByRole("button", { name: "Other Programs" });
+          expect(scrolledIntoView).toEqual([{ element: other, options: { block: "nearest" } }]);
+
+          await act(async () => answer(snapshot));
+          await listedSources(findByRole);
+          expect(scrolledIntoView).toEqual([
+            { element: other, options: { block: "nearest" } },
+            { element: other, options: { block: "nearest" } },
+          ]);
+        });
       });
 
       it("stays under 「来源」 on a Mac with no source at all, where every program is one of its", async () => {

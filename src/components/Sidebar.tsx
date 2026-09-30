@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ComponentType, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
@@ -151,7 +151,10 @@ function useSourceRows(): SourceRow[] {
  * count, a source's ⚠︎ -- ends 20 from the sidebar's edge. Nothing under
  * the pointer; selected, the system fill behind it and its words as they
  * were. `description` is what a screen reader says after its name: what a
- * page's number means, or a source's warning.
+ * page's number means, or a source's warning. Brought into view as the
+ * row selected (`Sidebar`), it keeps the room the lists keep around their
+ * rows: 8 above, as over the first row, and 12 below, as under the last --
+ * not flush with the lights' row or the window's foot.
  */
 function SidebarRow({
   glyph,
@@ -210,7 +213,7 @@ function SidebarRow({
       title={place === null ? undefined : place.whole}
       aria-describedby={description !== null ? descriptionId : undefined}
       onClick={onPress}
-      className={`flex ${place === null ? "h-8" : "h-10"} w-full items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
+      className={`flex ${place === null ? "h-8" : "h-10"} w-full scroll-mt-2 scroll-mb-3 items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
         active ? "bg-sidebar-active" : ""
       }`}
     >
@@ -330,6 +333,21 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedKey(null);
   };
 
+  // The row selected, brought into view when it changes: Other Programs,
+  // the last row, opened from the View menu (⌘4) in a short window on a
+  // Mac with many sources, is otherwise below the fold, the page open and
+  // no row seen selected. And when rows come or go above it -- the first
+  // snapshot's sources, arriving over a row already selected. `nearest`:
+  // nothing moves when it is in view already, as after a click; else as
+  // little as shows it, and the margin it has (`SidebarRow`). Not on every
+  // render: scrolled by hand, the sidebar stays where it was left. jsdom
+  // has no `scrollIntoView`.
+  const scroller = useRef<HTMLDivElement>(null);
+  const rowCount = rowKeys.length;
+  useEffect(() => {
+    scroller.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [currentKey, rowCount]);
+
   const entry = (p: ListedPage) => {
     const active = page === p && !(p === "installed" && sourceShown !== null);
     const Icon = PAGE_ICONS[p];
@@ -395,7 +413,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
           under the last row, inside what scrolls -- an engine that leaves a
           scroller's own bottom padding out of what it scrolls to would
           leave the last row flush with the window's edge. */}
-      <div data-sidebar-scroller="" onKeyDown={onKeyDown} onBlur={onBlur} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scroller} data-sidebar-scroller="" onKeyDown={onKeyDown} onBlur={onBlur} className="min-h-0 flex-1 overflow-y-auto">
         <div className="pb-3">
           {/* The first row 8 below the lights' row, 60 from the window's top. */}
           <ul className="flex flex-col px-2.5 pt-2">

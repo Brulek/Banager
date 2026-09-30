@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
@@ -612,7 +612,12 @@ describe("App", () => {
       const skipped = getByRole("region", { name: "Skipped versions" });
       const never = getByRole("region", { name: "Tools with reminders off" });
       await waitFor(() => expect(getByRole("heading", { level: 2, name: "Skipped versions" })).toHaveFocus());
-      expect(scrolled).toEqual([skipped.parentElement]);
+      // On the page, those groups alone; in the sidebar, the row selected
+      // (`Sidebar`), last of all Settings'.
+      const sidebar = getByRole("navigation");
+      expect(scrolled.filter((element) => !sidebar.contains(element))).toEqual([skipped.parentElement]);
+      const rows = scrolled.filter((element) => sidebar.contains(element));
+      expect(rows[rows.length - 1]).toBe(getByRole("button", { name: "Settings" }));
       expect(skipped.parentElement?.contains(never)).toBe(true);
       expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
     } finally {
@@ -859,8 +864,17 @@ describe("the menu bar's items that act in the page", () => {
     }
   });
 
-  it("open Other Programs on ⌘4 from a source's tools: its own page, and its row under 「来源」 selected in the source's place", async () => {
+  it("open Other Programs on ⌘4 from a source's tools: its own page, and its row under 「来源」 selected in the source's place, in view", async () => {
     const menu = fakeMenuBar();
+    // jsdom lays nothing out and has no `scrollIntoView`: what is scrolled
+    // into view is noted, with how.
+    const scrolled: Array<{ element: Element; options: boolean | ScrollIntoViewOptions | undefined }> = [];
+    Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+      scrolled.push({ element: this, options });
+    };
+    onTestFinished(() => {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
     const { findByRole, findByText, getByRole, queryByRole } = renderWithProviders(<App />);
     const sources = await findByRole("list", { name: "Sources" });
     const homebrew = await within(sources).findByRole("button", { name: "Homebrew" });
@@ -883,6 +897,9 @@ describe("the menu bar's items that act in the page", () => {
     expect(rows[rows.length - 1]).toBe(other);
     expect([...document.querySelectorAll('[aria-current="page"]')]).toEqual([other]);
     expect(homebrew).not.toHaveAttribute("aria-current");
+    // Brought into view: the last row, below the fold of a short window
+    // on a Mac with many sources.
+    expect(scrolled[scrolled.length - 1]).toEqual({ element: other, options: { block: "nearest" } });
   });
 
   it("open Installed on everything on Installed (⌘3), from one source's tools and a search, as the sidebar's Installed does", async () => {
