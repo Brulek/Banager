@@ -70,7 +70,7 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 | D7 | 「敲名字跑哪份」= 四个无载荷 `InstanceNote` 变体，在 `detect()` 里按 `resolve_exe` 的解析路径分类。「装了 2 份」的合并计数推迟，形状记 §十一。 | `InstanceNote` 是现成的实例级通道，两页都渲染（`sourceNoticesFor`，`sources.ts:123`）；四句各自可行动的话对小白比一句带路径的话有用。 |
 | D8 | 无官方卸载命令的卸载 = 一个 `Plan`，其 `action` 是 `PlanAction::TrashPaths { paths }`：`execute()` 对每条路径**依次**调一次 macOS 的 `NSFileManager trashItemAtURL:`（访达用的那个调用：同卷 rename、瞬间完成、访达「放回原处」可用、不需要完全磁盘访问权限），程序目录在前、**启动器最后**。五条包含性检查在 `plan()` 跑一遍、`execute()` 再跑一遍，且每移一条前核对 `(st_dev, st_ino)`，有差异 → `Fault::PathChanged`。设置、登录、历史默认保留并逐条列出。 | 一条 `mv` 命令装不下两条基名相同的路径（claude 的两条都叫 `claude`），无 FDA 的进程进不了 `~/.Trash`（都在 §0.1）；`/usr/bin/trash` 只在 15.0+ 存在。`Plan` 因此多一个两臂枚举（Q16），`CommandPreview` 多一支「Canager 自己移、不运行命令」，其余执行合同（`execute()` 签名、`run_operation` 的前后核对、锁、取消令牌）不变。 |
 | D9 | rustup 卸载 = 官方 `rustup self uninstall -y`，`NoCancel`，四条固定警告（工具链、Cargo 缓存与记录、失管的 cargo 二进制、改 shell 配置）+ 一条条件警告（rustup 不管的 rc 文件里残留的 `.cargo/env` 行，本机 `~/.zshrc:17` 就是），`Plan.locks` 同时持有 `standalone-rustup` 与 `cargo:<cargo_home>`。 | 它会删 `~/.cargo/.crates2.json`——cargo 适配器 inventory 读的正是这个文件（`cargo.rs:187`），刷新在实例锁下读（`refresh.rs:275-277`）；`run_operation` 一次性取齐 `plan.locks`（`ops/mod.rs:437-450`）。 |
-| D10 | 来源不明扫描 = `crates/canager-core/src/scan/` 里一个纯函数 + `Session::scan_unknown` + 一个 IPC 命令 + 一个新页面；**不是** `Adapter`，不进 `Snapshot`，不进 refresh。 | 归属需要所有其它适配器的实例，`inventory(&self, inst)` 看不到（`adapters/mod.rs:428-431`）；注册成 Adapter 会撞 fixture 集合相等测试、ops 注册与闸门；进 `Snapshot` 会进 `same_content`（`session/mod.rs:122`）或被它忽略。 |
+| D10 | 来源不明扫描 = `crates/banager-core/src/scan/` 里一个纯函数 + `Session::scan_unknown` + 一个 IPC 命令 + 一个新页面；**不是** `Adapter`，不进 `Snapshot`，不进 refresh。 | 归属需要所有其它适配器的实例，`inventory(&self, inst)` 看不到（`adapters/mod.rs:428-431`）；注册成 Adapter 会撞 fixture 集合相等测试、ops 注册与闸门；进 `Snapshot` 会进 `same_content`（`session/mod.rs:122`）或被它忽略。 |
 | D11 | 首批 claude、agy、grok、rustup；其余六个是第二批，每个都等一份真机（CI runner）录制才注册。 | fixture 只收真机录制，且 `fixtures_layout_test.rs` 要求注册 id 与目录集合**完全相等**。 |
 | D12 | `docs/what-we-run.md` 先为六个阶段 3 来源补齐，作为独立一步先合；本阶段每步各加自己那一节。 | 它是 spec §12 的信任文件，今天标题就是「Phase 0–1: Homebrew only」（78 行，只写 brew）。 |
 
@@ -139,21 +139,21 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 ```
 adapters/meta/standalone-{claude,agy,grok,rustup}.toml     AdapterMeta 七个字段，不多一个键
 adapters/fixtures/standalone-<tool>/<version>/              真机录制 + README（§9.3）
-crates/canager-core/src/adapters/standalone/
+crates/banager-core/src/adapters/standalone/
     mod.rs        StandaloneAdapter：Adapter 实现、Detected 座、all()
     recipe.rs     Recipe 与它的枚举（§三）
     recipes.rs    四个 `pub static`（CLAUDE、AGY、GROK、RUSTUP）；RECIPES: &[&Recipe]
     route.rs      路径展开、共享排除、指纹（含悬空链接的词法归一）、PATH 遮蔽分类
     latest.rs     三种最新版本来源、点分整数比较、claude 通道
     removal.rs    路径清单卸载：五条检查、TrashPaths 计划、execute 复核与逐条移入废纸篓
-crates/canager-core/src/trash/{mod.rs,real.rs,mock.rs}       Trasher trait、RealTrasher（NSFileManager）、MockTrasher（§6.2）
-crates/canager-core/src/model.rs                             PlanAction（§6.2）、新 Warning/Fault/InstanceNote 变体、UninstallUnsafeReason
-crates/canager-core/src/adapters/cargo.rs                    parse_crates2_bins、instance_id_for（步骤 E）
-crates/canager-core/src/scan/mod.rs                          来源不明扫描（§八）
-crates/canager-core/src/session/scan.rs                      Session::scan_unknown
-crates/canager-core/tests/standalone_uninstall_test.rs       临时 HOME 上的端到端（MockTrasher）+ #[ignore] 的 RealTrasher 冒烟
-crates/canager-core/tests/unknown_scan_test.rs               合成目录树
-crates/canager-core/Cargo.toml                               objc2 + objc2-foundation（仅 macOS target，Q16）
+crates/banager-core/src/trash/{mod.rs,real.rs,mock.rs}       Trasher trait、RealTrasher（NSFileManager）、MockTrasher（§6.2）
+crates/banager-core/src/model.rs                             PlanAction（§6.2）、新 Warning/Fault/InstanceNote 变体、UninstallUnsafeReason
+crates/banager-core/src/adapters/cargo.rs                    parse_crates2_bins、instance_id_for（步骤 E）
+crates/banager-core/src/scan/mod.rs                          来源不明扫描（§八）
+crates/banager-core/src/session/scan.rs                      Session::scan_unknown
+crates/banager-core/tests/standalone_uninstall_test.rs       临时 HOME 上的端到端（MockTrasher）+ #[ignore] 的 RealTrasher 冒烟
+crates/banager-core/tests/unknown_scan_test.rs               合成目录树
+crates/banager-core/Cargo.toml                               objc2 + objc2-foundation（仅 macOS target，Q16）
 src-tauri/src/ipc.rs, lib.rs                                 scan_unknown 命令 + 注册；uninstall_unsafe 错误 kind
 src/lib/{types,api,queries,queryKeys,sources,warnings,format,updateState}.ts
 src/components/CommandPreview.tsx                            TrashPaths 支
@@ -162,7 +162,7 @@ src/i18n/{en,zh-CN}.json, src/i18n/completeness.test.ts      （INTERPOLATED_SUB
 docs/what-we-run.md
 ```
 
-`crates/canager-core/src/lib.rs` 加 `pub mod scan;`。spec §3 把扫描画在 `adapters/unknown.rs`，本稿改到 `scan/`，
+`crates/banager-core/src/lib.rs` 加 `pub mod scan;`。spec §3 把扫描画在 `adapters/unknown.rs`，本稿改到 `scan/`，
 理由是它不是 Adapter，读代码的人不该在 `adapters/` 里找到一个没有 `impl Adapter` 的模块（附录 C 记为有意偏离）。
 
 ---
@@ -176,7 +176,7 @@ spec §4.1：「适配器是有类型的 Rust 实现；TOML 只承载元数据�
 ### 3.1 `Recipe`
 
 ```rust
-// crates/canager-core/src/adapters/standalone/recipe.rs
+// crates/banager-core/src/adapters/standalone/recipe.rs
 /// 一个工具。全部 `'static` 数据，没有 trait 对象，一张表看完。每个字段的注释点名它的读取方；
 /// 没有读取方的字段不得加入。
 pub struct Recipe {
@@ -448,7 +448,7 @@ pub struct Plan { pub request: OpRequest, pub action: PlanAction, pub needs_pass
 3. 逐条：先看 `cancel` 令牌（已取消 → 停，返回 `Ok(Outcome::Unconfirmed)`，`run_operation` 的 stopped 臂（`ops/mod.rs:787-799`）reconcile 后如实报 `Cancelled` 或 `StillInstalledAfterUninstall`）；再 `symlink_metadata` 取一次 `(st_dev, st_ino)`，与第 2 步不同 → `PathChanged`；然后 `trasher.trash(&path)`。成功 → `sink.emit(OperationEvent::Log { stream: Stdout, line: "Moved <path> to the Trash (<新位置>)" })`（`events.rs:50-54`，与 `run_plan` 给命令输出用的同一条通道）；失败 → 一行 NSError 文本进日志，返回 `Ok(Outcome::Failed { exit_code: None, summary })`（`model.rs:407-410`）——前面移走的留在废纸篓，启动器（最后一条）还在，下次刷新行还在，可以重来。
 4. 全部成功 → `Ok(Outcome::Succeeded)`，`run_operation` 再 `reconcile`（`ops/mod.rs:688-691`）。
 
-**`Trasher`**（`crates/canager-core/src/trash/`）：与 `CommandRunner`/`HttpClient` 同一套路。`pub trait Trasher: Send + Sync { fn trash(&self, path: &Path) -> Result<PathBuf, TrashError>; }`（返回项目在废纸篓里的新位置，日志用）；`RealTrasher`（`#[cfg(target_os = "macos")]`，`objc2-foundation` 的 `NSFileManager::trashItemAtURL_resultingItemURL_error`——对符号链接移链接本身、不解析目标，e2e 测试断言这一点）；`MockTrasher`（rename 进一个临时目录，记录调用序列，可注入「第 N 条失败」）。`StandaloneAdapter` 多一个 `trasher: Arc<dyn Trasher>`，`Session::new`（`session/mod.rs:259-271`）注入 `RealTrasher`。这是本稿唯一新增的依赖（`objc2` + `objc2-foundation`，只在 macOS target 下；Q16 列了 `trash` crate 的替代——它的 `DeleteMethod::NsFileManager` 是同一个调用，而它默认的 `Finder` 方法走 AppleScript、会弹「自动化」授权，不可用）。
+**`Trasher`**（`crates/banager-core/src/trash/`）：与 `CommandRunner`/`HttpClient` 同一套路。`pub trait Trasher: Send + Sync { fn trash(&self, path: &Path) -> Result<PathBuf, TrashError>; }`（返回项目在废纸篓里的新位置，日志用）；`RealTrasher`（`#[cfg(target_os = "macos")]`，`objc2-foundation` 的 `NSFileManager::trashItemAtURL_resultingItemURL_error`——对符号链接移链接本身、不解析目标，e2e 测试断言这一点）；`MockTrasher`（rename 进一个临时目录，记录调用序列，可注入「第 N 条失败」）。`StandaloneAdapter` 多一个 `trasher: Arc<dyn Trasher>`，`Session::new`（`session/mod.rs:259-271`）注入 `RealTrasher`。这是本稿唯一新增的依赖（`objc2` + `objc2-foundation`，只在 macOS target 下；Q16 列了 `trash` crate 的替代——它的 `DeleteMethod::NsFileManager` 是同一个调用，而它默认的 `Finder` 方法走 AppleScript、会弹「自动化」授权，不可用）。
 
 **顺序**：配方 `remove` 的顺序 = 执行顺序：程序目录、缓存、备份在前，**启动器最后**。中途停下（取消、某条失败、Canager 被杀）的唯一残留形态是「程序目录已进废纸篓、启动器成了悬空链接」——它在下次刷新里仍是一行（§3.3 `LauncherOnly`），再点一次卸载把链接移走（已不在的程序目录列为 `AlreadyGone`，§6.3 检查 2）。反过来（启动器先）会让 626 MB 隐形：detect 找不到启动器，行消失，而 `~/.local/share/claude` 不是 bin 目录，来源不明页也看不到（§十三 #7/#21）。
 
@@ -605,9 +605,9 @@ Homebrew 组里的 `claude-code` cask 行**不会**说「还有一份原生的�
 没有 `plan`/`execute`/`reconcile`，没有实例，没有命令输出可录制。注册成 `Adapter` 会撞三件事：`fixtures_layout_test` 要求一个 fixture 目录（放什么？）、`Session::build` 把它当读写来源注册进 ops、`issue_plan` 闸门要为它答「可操作吗」。决定性的一条：归属需要**所有其它适配器**的实例，而 `detect()` 并发独立运行（`refresh.rs:154-168`），`inventory(&self, inst)` 只看到自己。
 
 ```
-crates/canager-core/src/scan/mod.rs     pub fn scan_unknown(env: &HostEnv, instances: &[ManagerInstance], artifacts: &[InstalledArtifact], globs: &[(String, &'static [Glob])], budget: ScanBudget) -> UnknownScan   同步、纯文件系统
+crates/banager-core/src/scan/mod.rs     pub fn scan_unknown(env: &HostEnv, instances: &[ManagerInstance], artifacts: &[InstalledArtifact], globs: &[(String, &'static [Glob])], budget: ScanBudget) -> UnknownScan   同步、纯文件系统
                                         （`globs` 与 `Glob` 类型在步骤 D 才出现：F 先合时签名没有这个参数、规则只有 0–3；D 加参数与规则 4）
-crates/canager-core/src/session/scan.rs impl Session { pub fn scan_unknown(&self, env: &HostEnv) -> UnknownScan }   克隆当前 Snapshot 的 instances/artifacts 做归属；D 起从 standalone::RECIPES 填 globs（adapter id → backup_globs）；不取锁
+crates/banager-core/src/session/scan.rs impl Session { pub fn scan_unknown(&self, env: &HostEnv) -> UnknownScan }   克隆当前 Snapshot 的 instances/artifacts 做归属；D 起从 standalone::RECIPES 填 globs（adapter id → backup_globs）；不取锁
 src-tauri/src/ipc.rs                    #[tauri::command] async fn scan_unknown(state) -> Result<UnknownScan, String>   tauri::async_runtime::spawn_blocking（同 open_ollama_app，ipc.rs:550-559）；lib.rs:37-48 注册
 src/lib/api.ts                          scanUnknown(): Promise<UnknownScan>
 src/lib/queries.ts, queryKeys.ts        useUnknownScan()，enabled: false，页面打开与「重新扫描」时 refetch；queryKeys.unknown
@@ -1002,7 +1002,7 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 | Q9 | 首批只做 claude、agy、grok、rustup？ | **是。** | 只有这四个能从本机录真 fixture；合起来覆盖了阶段 4 的每种机制（自更新、路径清单卸载、官方卸载、`NoCancel`、共享配置、PATH 遮蔽、`--zap` 危害）。 |
 | Q10 | 第二批 fixture 用手动触发的 CI 工作流录，作者审核后提交？ | **是。** | 本机没有那六个的独立安装；在作者机器上装它们会改动作者自己的环境。 |
 | Q11 | 来源不明页打开时扫描 + 「重新扫描」按钮，不并入刷新？ | **是。** | 刷新保持快；`Snapshot` 只关于受管来源；大 `~/bin` 的 10 s 不拖慢已安装页。 |
-| Q12 | 扫描放 `crates/canager-core/src/scan/`，不是 spec §3 画的 `adapters/unknown.rs`？ | **是。** | 它不是 Adapter；读代码的人不该在 `adapters/` 里找到一个没有 `impl Adapter` 的模块。附录 C 记为有意偏离，像阶段 3 记 Ollama 那样。 |
+| Q12 | 扫描放 `crates/banager-core/src/scan/`，不是 spec §3 画的 `adapters/unknown.rs`？ | **是。** | 它不是 Adapter；读代码的人不该在 `adapters/` 里找到一个没有 `impl Adapter` 的模块。附录 C 记为有意偏离，像阶段 3 记 Ollama 那样。 |
 | Q13 | 「有更新」的一对版本用内联字符串测比较逻辑，不为录制而把本机 claude 降到 `versions/2.1.277`？ | **内联。** | 阶段 3 计划允许内联测试数据；端到端的「显示更新→跑 `claude update`→版本移动」录制以后在 CI runner 上做。 |
 | Q14 | 注册形状为 `standalone-<tool>` 每工具一个 adapter id（D1），而不是单一 `standalone` + `standalone:<tool>` 实例？ | **每工具一个。** | 前端标签、`unverified_version`、fixture 目录、并发探测零改动；不撞 `uv`/`ollama`。逻辑仍只有一份 `StandaloneAdapter`。 |
 | Q15 | 两条空状态文案（`emptyStates.noSources` / `nothingInstalled`）改写为提到自带安装器的工具？ | **改。** | 一句话，两种语言，让「Claude Code 去哪了」有答案。 |

@@ -52,7 +52,7 @@ synthetic unit tests.
 ## Uninstall list
 
 Nothing here was recorded for the uninstall: Canager runs no command for it.
-The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`AGY.uninstall`, `AGY.backup_globs`) is not a vendor document — Google
 publishes none and there is no `agy uninstall` (agy.md §5). It is the install
 script's own path (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`,

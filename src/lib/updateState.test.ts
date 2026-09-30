@@ -186,7 +186,7 @@ describe("hidingRule", () => {
 
   it("never lets a skip hide a row Canager could not check", () => {
     // An uncheckable candidate's `target` is its installed version
-    // (`uncheckable_candidate` in crates/canager-core/src/adapters/mod.rs),
+    // (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs),
     // not one the source offered. glib 2.90.0 was skipped, glib was later
     // brought to 2.90.0 some other way, and now its lookup fails: that row
     // says Canager could not check it, and a skip of an offered 2.90.0 must

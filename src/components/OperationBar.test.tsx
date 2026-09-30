@@ -595,7 +595,7 @@ describe("OperationBar", () => {
     // `OperationManager::cancel` (ops/mod.rs) refuses such an op once it
     // is Running, so a button here would promise something the backend
     // will not do. rustup's `self update` and `self uninstall` are the
-    // plans that say NoCancel (crates/canager-core/src/adapters/
+    // plans that say NoCancel (crates/banager-core/src/adapters/
     // standalone/recipes.rs): the first unlinks and re-copies the binary
     // every Rust proxy runs, the second removes Rust directory by
     // directory.

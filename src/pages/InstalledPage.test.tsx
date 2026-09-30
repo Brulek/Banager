@@ -783,7 +783,7 @@ describe("InstalledPage", () => {
   it("offers no Uninstall on a pinned package, keeps its description, and says how to release the pin behind its chip", async () => {
     // `brew uninstall jq` refuses a pinned formula without `--force` and
     // still exits 0 (`UninstallBlocked::Pinned` in
-    // crates/canager-core/src/model.rs), so the row must not offer it. jq
+    // crates/banager-core/src/model.rs), so the row must not offer it. jq
     // is up to date: the pin comes from the inventory, not from an update.
     // The cask shows the `--cask` form; the unpinned formula keeps its button.
     served = {
@@ -1868,7 +1868,7 @@ describe("InstalledPage", () => {
   it("keeps Homebrew's Uninstall disabled while it updates its list, says why behind a chip, and gives it back after", async () => {
     // Homebrew's uninstall preview is refused while its list is being
     // rewritten (`AdapterError::IndexUpdating` in
-    // crates/canager-core/src/adapters/brew/mod.rs), so the button stays,
+    // crates/banager-core/src/adapters/brew/mod.rs), so the button stays,
     // disabled, rather than open a dialog that could only refuse. Another
     // source's Uninstall is untouched, and the core's own refresh clears
     // the note when the update ends.

@@ -1,13 +1,13 @@
 use crate::events::UiEvent;
 use crate::state::AppState;
-use canager_core::adapters::CheckOptions;
-use canager_core::auto_check::RoundTrigger;
-use canager_core::model::{OpKind, OpRequest};
-use canager_core::ops::{CancelRefused, OpSummary};
-use canager_core::runner::HostEnv;
-use canager_core::scan::UnknownScan;
-use canager_core::session::{IssuedPlan, Session, Snapshot};
-use canager_core::settings::Settings;
+use banager_core::adapters::CheckOptions;
+use banager_core::auto_check::RoundTrigger;
+use banager_core::model::{OpKind, OpRequest};
+use banager_core::ops::{CancelRefused, OpSummary};
+use banager_core::runner::HostEnv;
+use banager_core::scan::UnknownScan;
+use banager_core::session::{IssuedPlan, Session, Snapshot};
+use banager_core::settings::Settings;
 use std::sync::atomic::Ordering;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -66,7 +66,7 @@ enum Asker {
 /// already announced (M9 in the design review; see `claim_broadcast` below
 /// for exactly what that means under concurrent callers), and after every
 /// round asked for as `RoundTrigger::Automatic` whatever its generation
-/// (`announce`). `canager-core` must never depend on `tauri`, so
+/// (`announce`). `banager-core` must never depend on `tauri`, so
 /// `Session::refresh` itself cannot send this — the shell is the only
 /// layer that can, and `announce` below is the only place that does so
 /// outside a test.
@@ -270,9 +270,9 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// `plan_operation` still returns `Result<IssuedPlan, String>`, identical to
 /// every other command, so `src/lib/api.ts`'s single `call()` choke point
 /// needs no special case. Only the *content* of the string is structured.
-fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
-    use canager_core::adapters::AdapterError;
-    use canager_core::runner::RunnerError;
+fn plan_operation_error(e: banager_core::adapters::AdapterError) -> String {
+    use banager_core::adapters::AdapterError;
+    use banager_core::runner::RunnerError;
     match e {
         AdapterError::NotActionable {
             read_only,
@@ -285,7 +285,7 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         // spelled by hand -- the one producer of these strings, which
         // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes by.
         AdapterError::UninstallUnsafe { path, reason } => {
-            use canager_core::model::UninstallUnsafeReason;
+            use banager_core::model::UninstallUnsafeReason;
             let reason = match reason {
                 UninstallUnsafeReason::OutsideHome => "outside_home",
                 UninstallUnsafeReason::SharedFolder => "shared_folder",
@@ -329,8 +329,8 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
 /// it (`parseNotActionable` in `src/lib/sources.ts`) and both must feed it
 /// the same thing.
 fn not_actionable_json(
-    read_only: Option<canager_core::model::ReadOnlyReason>,
-    unavailable: Option<canager_core::model::Unavailable>,
+    read_only: Option<banager_core::model::ReadOnlyReason>,
+    unavailable: Option<banager_core::model::Unavailable>,
 ) -> String {
     serde_json::json!({
         "kind": "not_actionable",
@@ -344,7 +344,7 @@ fn not_actionable_json(
 /// from `issue_plan` or `submit` alike: the reason as its bare serde
 /// spelling (`"Pinned"`), which `parseUpdateBlocked` in
 /// `src/lib/sources.ts` reads back into its own copy.
-fn update_blocked_json(reason: canager_core::model::UpdateBlocked) -> String {
+fn update_blocked_json(reason: banager_core::model::UpdateBlocked) -> String {
     serde_json::json!({ "kind": "update_blocked", "reason": reason }).to_string()
 }
 
@@ -353,7 +353,7 @@ fn update_blocked_json(reason: canager_core::model::UpdateBlocked) -> String {
 /// alike. A kind of its own, not `update_blocked` with a flag, because the
 /// front end words the two differently: `parseUninstallBlocked` in
 /// `src/lib/sources.ts` reads this one, for the uninstall dialog.
-fn uninstall_blocked_json(reason: canager_core::model::UninstallBlocked) -> String {
+fn uninstall_blocked_json(reason: banager_core::model::UninstallBlocked) -> String {
     serde_json::json!({ "kind": "uninstall_blocked", "reason": reason }).to_string()
 }
 
@@ -375,23 +375,23 @@ fn uninstall_blocked_json(reason: canager_core::model::UninstallBlocked) -> Stri
 /// extra fields, so each gets its own bare `kind` rather than a
 /// `not_actionable` with two nulls, which would decode to an empty
 /// message.
-fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
+fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
     match e {
-        canager_core::session::SubmitError::NotActionable {
+        banager_core::session::SubmitError::NotActionable {
             read_only,
             unavailable,
         } => not_actionable_json(read_only, unavailable),
-        canager_core::session::SubmitError::UpdateBlocked { reason } => update_blocked_json(reason),
-        canager_core::session::SubmitError::UninstallBlocked { reason } => {
+        banager_core::session::SubmitError::UpdateBlocked { reason } => update_blocked_json(reason),
+        banager_core::session::SubmitError::UninstallBlocked { reason } => {
             uninstall_blocked_json(reason)
         }
-        canager_core::session::SubmitError::SourceGone => {
+        banager_core::session::SubmitError::SourceGone => {
             serde_json::json!({ "kind": "source_gone" }).to_string()
         }
-        canager_core::session::SubmitError::Expired => {
+        banager_core::session::SubmitError::Expired => {
             serde_json::json!({ "kind": "expired" }).to_string()
         }
-        canager_core::session::SubmitError::Unknown => {
+        banager_core::session::SubmitError::Unknown => {
             serde_json::json!({ "kind": "unknown" }).to_string()
         }
     }
@@ -415,7 +415,7 @@ pub(crate) async fn plan_operation_impl(
 ) -> Result<IssuedPlan, String> {
     if !window_may_plan(request.kind) {
         return Err(plan_operation_error(
-            canager_core::adapters::AdapterError::Refused(format!(
+            banager_core::adapters::AdapterError::Refused(format!(
                 "the window may not plan this kind of operation: {:?}",
                 request.kind
             )),
@@ -678,7 +678,7 @@ pub(crate) fn open_ollama_app_impl() -> Result<(), String> {
     // start". `detect` asks the same question and withholds the button
     // entirely when the answer is no, so reaching this is either a TOCTOU
     // (the app was removed since the last refresh) or a stale snapshot.
-    if canager_core::adapters::ollama::ollama_app_path(&HostEnv::discover().home).is_none() {
+    if banager_core::adapters::ollama::ollama_app_path(&HostEnv::discover().home).is_none() {
         return Err(open_ollama_failed_json("not_installed"));
     }
     let (program, _args) = open_ollama_app_argv();
@@ -738,8 +738,8 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
 /// draws with a mock.
 pub(crate) fn artifact_icon_impl(
     session: &Session,
-    icons: &canager_core::icon::AppIcons,
-    key: &canager_core::model::ArtifactKey,
+    icons: &banager_core::icon::AppIcons,
+    key: &banager_core::model::ArtifactKey,
 ) -> Option<String> {
     session.artifact_icon(icons, key)
 }
@@ -747,8 +747,8 @@ pub(crate) fn artifact_icon_impl(
 #[tauri::command]
 pub async fn artifact_icon(
     state: State<'_, AppState>,
-    icons: State<'_, std::sync::Arc<canager_core::icon::AppIcons>>,
-    key: canager_core::model::ArtifactKey,
+    icons: State<'_, std::sync::Arc<banager_core::icon::AppIcons>>,
+    key: banager_core::model::ArtifactKey,
 ) -> Result<Option<String>, String> {
     // On the blocking pool, as `scan_unknown` is: an `lstat`, and on a
     // folder's first request an AppKit drawing (`icon::RealIconRenderer`,
@@ -768,9 +768,9 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use async_trait::async_trait;
-    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
-    use canager_core::events::{EventSink, OpId, OperationEvent};
-    use canager_core::model::{
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use banager_core::events::{EventSink, OpId, OperationEvent};
+    use banager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
         OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
     };
@@ -989,7 +989,7 @@ mod tests {
         cancel_policy: CancelPolicy,
         execute_delay: std::time::Duration,
     ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
-        let instance = canager_core::testing::manager_instance("fake", "fake:1");
+        let instance = banager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
@@ -1013,7 +1013,7 @@ mod tests {
         });
         let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
         let state = AppState {
             session,
             settings_path: temp_settings_path("appstate"),
@@ -1033,7 +1033,7 @@ mod tests {
     /// `session::tests::test_concurrent_refresh_calls_are_coalesced`'s own
     /// use of an artificial delay for the same reason.
     fn state_with_slow_fake_adapter(detect_delay: std::time::Duration) -> Arc<AppState> {
-        let instance = canager_core::testing::manager_instance("fake", "fake:1");
+        let instance = banager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
@@ -1055,7 +1055,7 @@ mod tests {
         });
         let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
         Arc::new(AppState {
             session,
             settings_path: temp_settings_path("ipc-slow"),
@@ -1070,7 +1070,7 @@ mod tests {
     /// Like `state_with_fake_adapter_and_now`, but the `Session`'s own
     /// `background_change` -- the one `ipc::refresh_on_background_change`
     /// loops on -- is wired to `background_change` itself, via
-    /// `canager_core::testing::session_with_background_change`
+    /// `banager_core::testing::session_with_background_change`
     /// (`Session::with_adapters` wires it to a `Notify` nobody outside the
     /// session ever gets a handle to). A test can then wake it directly
     /// with `background_change.notify_one()`, standing in for a real
@@ -1083,7 +1083,7 @@ mod tests {
         background_change: Arc<tokio::sync::Notify>,
         detect_delay: std::time::Duration,
     ) -> (Arc<AppState>, Arc<Mutex<Vec<CheckOptions>>>) {
-        let instance = canager_core::testing::manager_instance("fake", "fake:1");
+        let instance = banager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
@@ -1105,7 +1105,7 @@ mod tests {
             cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
-        let session = canager_core::testing::session_with_background_change(
+        let session = banager_core::testing::session_with_background_change(
             sink.clone(),
             vec![adapter],
             background_change,
@@ -1626,7 +1626,7 @@ mod tests {
             .await
             .expect("plan_operation_impl");
         assert_eq!(
-            canager_core::testing::command_args(&issued.plan),
+            banager_core::testing::command_args(&issued.plan),
             vec!["do".to_string(), "jq".to_string()]
         );
     }
@@ -1660,7 +1660,7 @@ mod tests {
         // install it, and for one that is not there at all, which would
         // otherwise have said `source_gone`.
         let (state, plan_calls) = state_with_instance_counting_plans(
-            canager_core::testing::manager_instance("fake", "fake:1"),
+            banager_core::testing::manager_instance("fake", "fake:1"),
         );
         refresh_impl(&state).await.expect("refresh_impl");
         for instance_id in ["fake:1", "does-not-exist"] {
@@ -1712,7 +1712,7 @@ mod tests {
         // The two kinds the pages offer go through as before: to the gate,
         // then to the adapter, once each.
         let (state, plan_calls) = state_with_instance_counting_plans(
-            canager_core::testing::manager_instance("fake", "fake:1"),
+            banager_core::testing::manager_instance("fake", "fake:1"),
         );
         refresh_impl(&state).await.expect("refresh_impl");
         for (asked, kind) in [OpKind::Upgrade, OpKind::Uninstall].into_iter().enumerate() {
@@ -1732,7 +1732,7 @@ mod tests {
 
     #[test]
     fn test_plan_operation_error_never_sends_canagers_own_english() {
-        use canager_core::runner::RunnerError;
+        use banager_core::runner::RunnerError;
         let parse = |e: AdapterError| -> serde_json::Value {
             let raw = plan_operation_error(e);
             serde_json::from_str(&raw).unwrap_or_else(|_| panic!("not JSON: {raw}"))
@@ -1772,7 +1772,7 @@ mod tests {
         // A pinned package on a stale Updates page: the reason as data,
         // for `parseUpdateBlocked` in src/lib/sources.ts to word.
         let v = parse(AdapterError::UpdateBlocked {
-            reason: canager_core::model::UpdateBlocked::Pinned,
+            reason: banager_core::model::UpdateBlocked::Pinned,
         });
         assert_eq!(
             v,
@@ -1781,7 +1781,7 @@ mod tests {
         // A pinned package on a stale Installed page: a kind of its own,
         // for `parseUninstallBlocked` in src/lib/sources.ts to word.
         let v = parse(AdapterError::UninstallBlocked {
-            reason: canager_core::model::UninstallBlocked::Pinned,
+            reason: banager_core::model::UninstallBlocked::Pinned,
         });
         assert_eq!(
             v,
@@ -1792,7 +1792,7 @@ mod tests {
         // snake_case data for `parseUninstallUnsafe` in src/lib/sources.ts.
         let v = parse(AdapterError::UninstallUnsafe {
             path: "~/.local/bin/claude".to_string(),
-            reason: canager_core::model::UninstallUnsafeReason::NotWhatInstructionsExpect,
+            reason: banager_core::model::UninstallUnsafeReason::NotWhatInstructionsExpect,
         });
         assert_eq!(
             v,
@@ -1829,7 +1829,7 @@ mod tests {
 
     #[test]
     fn test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case() {
-        use canager_core::model::UninstallUnsafeReason;
+        use banager_core::model::UninstallUnsafeReason;
         // Written out by hand in `plan_operation_error`, not derived:
         // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes its copy by
         // these exact strings, and the `match` is exhaustive, so a reason
@@ -1938,7 +1938,7 @@ mod tests {
         });
         let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
         let state = AppState {
             session,
             settings_path: temp_settings_path("not-actionable"),
@@ -1962,10 +1962,10 @@ mod tests {
         // widened IPC type); what changes is *what the string holds* for
         // this one case: JSON the front end can localise, not English
         // prose it can only show verbatim.
-        let instance = canager_core::testing::read_only_instance(
+        let instance = banager_core::testing::read_only_instance(
             "fake",
             "fake:1",
-            canager_core::model::ReadOnlyReason::PrefixNotWritable,
+            banager_core::model::ReadOnlyReason::PrefixNotWritable,
         );
         let state = state_with_instance(instance);
         refresh_impl(&state).await.expect("refresh_impl");
@@ -1993,7 +1993,7 @@ mod tests {
 
     #[test]
     fn test_submit_operation_error_sends_structured_json_for_every_variant() {
-        use canager_core::session::SubmitError;
+        use banager_core::session::SubmitError;
 
         // The refusal a real person is most likely to meet: they were
         // looking at a preview when the source stopped answering. What
@@ -2001,7 +2001,7 @@ mod tests {
         // sends, because the front end has one decoder for it.
         let err = submit_operation_error(SubmitError::NotActionable {
             read_only: None,
-            unavailable: Some(canager_core::model::Unavailable::NotRunning),
+            unavailable: Some(banager_core::model::Unavailable::NotRunning),
         });
         assert!(
             !err.contains("Some(") && !err.contains("None"),
@@ -2016,7 +2016,7 @@ mod tests {
         // The per-package half: the package was pinned after the preview.
         // Same payload as the plan-time refusal, for the same one decoder.
         let blocked = submit_operation_error(SubmitError::UpdateBlocked {
-            reason: canager_core::model::UpdateBlocked::Pinned,
+            reason: banager_core::model::UpdateBlocked::Pinned,
         });
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&blocked)
@@ -2024,7 +2024,7 @@ mod tests {
             serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
         );
         let blocked = submit_operation_error(SubmitError::UninstallBlocked {
-            reason: canager_core::model::UninstallBlocked::Pinned,
+            reason: banager_core::model::UninstallBlocked::Pinned,
         });
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&blocked)
@@ -2346,7 +2346,7 @@ mod tests {
             .await
             .expect("plan_operation_impl");
 
-        canager_core::testing::expire_issued_plans(&state.session);
+        banager_core::testing::expire_issued_plans(&state.session);
 
         let err = submit_operation_impl(&state, issued.id)
             .expect_err("a plan older than its lifetime must be rejected");
@@ -2574,7 +2574,7 @@ mod tests {
     /// fails to compile here.
     #[test]
     fn test_artifact_icon_takes_only_a_key_from_the_window() {
-        use canager_core::icon::AppIcons;
+        use banager_core::icon::AppIcons;
 
         fn command_inputs<F, Fut>(_command: F)
         where
@@ -2591,7 +2591,7 @@ mod tests {
     /// `session::icon`'s tests draw what a cask's own row holds.
     #[tokio::test]
     async fn test_artifact_icon_impl_never_draws_a_path_the_key_names() {
-        use canager_core::icon::{AppIcons, MockIconRenderer};
+        use banager_core::icon::{AppIcons, MockIconRenderer};
 
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh");

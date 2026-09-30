@@ -39,7 +39,7 @@ function commandText(action: Extract<PlanAction, { Command: unknown }>): string 
  * The sentence a `TrashPaths` plan has in place of a command: its items go
  * to the Trash, and can be dragged back out of it -- nothing more. Not
  * Finder's Put Back, which works as often as not and is promised nowhere
- * (crates/canager-core/src/trash/mod.rs; the copy table's T4).
+ * (crates/banager-core/src/trash/mod.rs; the copy table's T4).
  */
 function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unknown }>): string {
   return t("uninstall.trashPreview", { count: action.TrashPaths.paths.length });

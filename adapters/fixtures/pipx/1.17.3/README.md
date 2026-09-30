@@ -31,7 +31,7 @@ after `cowsay`**:
 
 Everything else, the versions and the trailing newline included, is byte-for-byte `list-outdated.txt`. The
 test `test_pinned_fixture_differs_from_the_recording_only_by_the_marker` in
-`crates/canager-core/src/adapters/pipx.rs` checks exactly that, so this table cannot silently stop being
+`crates/banager-core/src/adapters/pipx.rs` checks exactly that, so this table cannot silently stop being
 true.
 
 Where the edited shape comes from, in pipx 1.17.3's own source
@@ -50,5 +50,5 @@ Where the edited shape comes from, in pipx 1.17.3's own source
   github.com/pypa/pipx on 2026-09-24.
 
 A really pinned `cowsay` would also say `"pinned": true` in `list.json`. That file was not edited, because
-Canager does not read `pinned` from it: `PipxMainPackage` in `crates/canager-core/src/adapters/pipx.rs` has
+Canager does not read `pinned` from it: `PipxMainPackage` in `crates/banager-core/src/adapters/pipx.rs` has
 only `package` and `package_version`.

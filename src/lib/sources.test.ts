@@ -1943,7 +1943,7 @@ describe("toolDescription, with a line in the window's language", () => {
 describe("uninstallBlockedCopy", () => {
   it("gives rustup's row its own reason for NoSafeMethod, and every other row B's", () => {
     // The rustup recipe's gate puts `NoSafeMethod` on the artifact when
-    // Rust is not in its standard folders (crates/canager-core/src/
+    // Rust is not in its standard folders (crates/banager-core/src/
     // adapters/standalone/rustup.rs, `uninstall_blocked`); B's sentence
     // for that variant says the tool has no uninstall command, which is
     // false for rustup. The badge stays; the two sentences are rustup's.

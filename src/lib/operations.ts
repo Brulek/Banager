@@ -71,7 +71,7 @@ export function runsToItsEnd(op: OpSummary): boolean {
  * the backend accepts the cancel, so the button stays: without it the user
  * could not drop a NoCancel op waiting behind another op's lock. rustup's
  * `self update` and `self uninstall` produce `NoCancel`
- * (crates/canager-core/src/adapters/standalone/recipes.rs); the
+ * (crates/banager-core/src/adapters/standalone/recipes.rs); the
  * confirmation said so before the click.
  *
  * Offered but not pressable while a cancel is already on its way, and

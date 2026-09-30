@@ -39,7 +39,7 @@
 ```
 canager/
 ├── crates/
-│   ├── canager-core/        纯 Rust 库，不依赖 Tauri
+│   ├── banager-core/        纯 Rust 库，不依赖 Tauri
 │   │   ├── adapter/          TOML 适配器加载、命令模板、解析器（json/lines/table/native）
 │   │   ├── runner/           子进程执行（tokio::process）、流式输出、超时、取消、提权策略
 │   │   ├── scanner/          独立安装器识别、来源不明扫描

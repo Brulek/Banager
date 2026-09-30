@@ -203,7 +203,7 @@ let holdSaves: boolean;
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
 // Names whose plan comes back `NoCancel`, mirroring the rustup recipe's
-// `self update` (crates/canager-core/src/adapters/standalone/recipes.rs).
+// `self update` (crates/banager-core/src/adapters/standalone/recipes.rs).
 let noCancel: Set<string>;
 let planWarnings: Record<string, Warning[]>;
 let releasePlan: Record<string, () => void>;
@@ -213,7 +213,7 @@ let releaseSave: Array<() => void>;
 // `id` stays a number here purely so the tests can order plans ("the first
 // issued", "the second issued"); the wire type is a string (a random
 // 128-bit token, not a sequential counter -- see PlanId in
-// crates/canager-core/src/session/mod.rs), so it is stringified going out.
+// crates/banager-core/src/session/mod.rs), so it is stringified going out.
 function issuedPlanFor(request: OpRequest, id: number) {
   return {
     id: String(id),
@@ -631,7 +631,7 @@ describe("UpdatesPage", () => {
 
   it("warns per item, before the sudo prompt, about the one update that needs a password", async () => {
     // A batch can mix Casks and formulae, and the brew adapter only sets
-    // `needs_password` for Casks (crates/canager-core/src/adapters/brew/
+    // `needs_password` for Casks (crates/banager-core/src/adapters/brew/
     // mod.rs). Spec §6: whatever will ask for a password says so in the
     // preview, next to the command it belongs to.
     needsPassword.add("onyx");
@@ -667,7 +667,7 @@ describe("UpdatesPage", () => {
   it("says an update ends in Homebrew's clean-up when brew.env turns it back on, with the why behind its ⓘ", async () => {
     // `Warning::HomebrewPeriodicCleanup`, once a brew.env takes back
     // Canager's HOMEBREW_NO_INSTALL_CLEANUP=1
-    // (crates/canager-core/src/adapters/brew/brew_env.rs): after every
+    // (crates/banager-core/src/adapters/brew/brew_env.rs): after every
     // `brew upgrade`, Homebrew deletes the older versions and old downloads
     // of the package it upgrades (`Cleanup.install_clean!`), and, when its
     // periodic clean-up is due, those of all its software (`Cleanup#clean!`).
@@ -1573,7 +1573,7 @@ describe("UpdatesPage", () => {
     // `current` is the local manifest digest /api/tags reported; `target` is
     // the registry manifest's config digest. They are different hash spaces,
     // not two readings of one identifier -- the adapter's own comment
-    // (crates/canager-core/src/adapters/ollama/mod.rs) forbids rendering
+    // (crates/banager-core/src/adapters/ollama/mod.rs) forbids rendering
     // them as a version jump, and neither is anything to show a person who
     // does not write code. `channel: "Digest"` is the discriminator, with
     // technical details on as well.
@@ -1637,7 +1637,7 @@ describe("UpdatesPage", () => {
   it("says under an Ollama model's row that its update downloads what changed, after where the model is from, in either language", async () => {
     // `Warning::DownloadsModelChanges`, the model's note as
     // `CompilesLocally` is a crate's, after the registry's caution
-    // (crates/canager-core/src/adapters/ollama/mod.rs).
+    // (crates/banager-core/src/adapters/ollama/mod.rs).
     const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
     updates = [
@@ -3268,7 +3268,7 @@ describe("UpdatesPage", () => {
     // Nothing has failed, so the notice is information rather than a
     // warning -- but this refresh did not check Homebrew for updates: its
     // candidates are the previous refresh's (`InstanceNote::IndexUpdating`
-    // in crates/canager-core/src/model.rs), so none from it is not news
+    // in crates/banager-core/src/model.rs), so none from it is not news
     // that there are none.
     updates = [];
     instances = [

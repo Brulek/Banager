@@ -663,7 +663,7 @@ export type WarningLines = Record<WarningGroup, WarningLine[]>;
  * the uninstall confirmation shows once, as its own list -- a `WouldBreak`
  * naming the same packages is left out rather than said a second time:
  * Homebrew's preview fills both from one `brew uses`
- * (crates/canager-core/src/adapters/brew/mod.rs). With `subject`, the
+ * (crates/banager-core/src/adapters/brew/mod.rs). With `subject`, the
  * tool's name as its row shows it, an uninstall's scope sentence says it;
  * without, there is no scope line (`warningText`).
  */

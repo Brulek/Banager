@@ -1,8 +1,8 @@
 use crate::events::ChannelSink;
-use canager_core::auto_check::RoundLog;
-use canager_core::notify_updates::Notified;
-use canager_core::session::Session;
-use canager_core::settings::{self, Settings};
+use banager_core::auto_check::RoundLog;
+use banager_core::notify_updates::Notified;
+use banager_core::session::Session;
+use banager_core::settings::{self, Settings};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -42,7 +42,7 @@ pub struct AppState {
 
 impl AppState {
     /// Loads settings from `settings_path` (falling back to defaults per
-    /// `canager_core::settings::load`'s contract) and builds a `Session`
+    /// `banager_core::settings::load`'s contract) and builds a `Session`
     /// wired to `channel_sink` as its event sink.
     pub fn new(settings_path: PathBuf, channel_sink: std::sync::Arc<ChannelSink>) -> AppState {
         let loaded = settings::load(&settings_path);
@@ -86,7 +86,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::model::{ArtifactKey, ArtifactKind};
+    use banager_core::model::{ArtifactKey, ArtifactKind};
     use std::sync::Arc;
 
     fn temp_settings_path(tag: &str) -> PathBuf {

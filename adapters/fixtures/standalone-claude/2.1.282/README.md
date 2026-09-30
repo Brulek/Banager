@@ -35,7 +35,7 @@ The dotted comparison decides whether either pointer is newer; no channel orderi
 ## Uninstall list (phase 4 step C)
 
 Nothing here was recorded for the uninstall: Canager runs no command for
-it. The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+it. The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`CLAUDE.uninstall`) comes from Anthropic's "Uninstall Claude Code →
 Native" instructions at <https://code.claude.com/docs/en/setup>, read on
 2026-09-24: `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`

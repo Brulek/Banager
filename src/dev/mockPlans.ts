@@ -1,6 +1,6 @@
 /**
  * What the browser preview's backend plans and prints for one operation:
- * the argv each adapter builds (crates/canager-core/src/adapters), the
+ * the argv each adapter builds (crates/banager-core/src/adapters), the
  * warnings its preview carries, the lines its tool writes while it runs,
  * and how it ends under `?outcome=`. Dev-only, like everything in src/dev.
  */

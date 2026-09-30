@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce a signed, notarized macOS Tauri app shell built by CI, plus a Tauri-independent `canager-core` crate that can detect Homebrew, inventory formulae and casks with install reasons, check for updates, search, and run install/uninstall/upgrade operations with streaming events, cancellation and post-execution reconciliation, all verified by fixture-driven tests recorded on a real Mac.
+**Goal:** Produce a signed, notarized macOS Tauri app shell built by CI, plus a Tauri-independent `banager-core` crate that can detect Homebrew, inventory formulae and casks with install reasons, check for updates, search, and run install/uninstall/upgrade operations with streaming events, cancellation and post-execution reconciliation, all verified by fixture-driven tests recorded on a real Mac.
 
-**Architecture:** Cargo workspace with two crates: `crates/canager-core` (pure Rust: model, event sink, command runner, adapter trait, Homebrew adapter, operation manager) and `src-tauri` (Tauri 2 shell, for now only a hello window that hydrates PATH at startup). Frontend is a Vite + React 19 + TypeScript + Tailwind v4 app scaffolded by `create-tauri-app`. Adapters are typed Rust implementations; TOML carries metadata only and is compiled in with `include_str!`.
+**Architecture:** Cargo workspace with two crates: `crates/banager-core` (pure Rust: model, event sink, command runner, adapter trait, Homebrew adapter, operation manager) and `src-tauri` (Tauri 2 shell, for now only a hello window that hydrates PATH at startup). Frontend is a Vite + React 19 + TypeScript + Tailwind v4 app scaffolded by `create-tauri-app`. Adapters are typed Rust implementations; TOML carries metadata only and is compiled in with `include_str!`.
 
 **Tech Stack:** Rust stable (edition 2021), Tauri 2 (≥ 2.11.1), tokio, tokio-util (CancellationToken), async-trait, serde / serde_json / toml, thiserror, insta (snapshot tests), fix-path-env, libc; pnpm, Vite, React 19, TypeScript, Tailwind v4; GitHub Actions with `tauri-apps/tauri-action`.
 
@@ -29,16 +29,16 @@
 
 ```
 Canager/
-├── Cargo.toml                          workspace: members = ["src-tauri", "crates/canager-core"]
+├── Cargo.toml                          workspace: members = ["src-tauri", "crates/banager-core"]
 ├── package.json / pnpm-lock.yaml / vite.config.ts / index.html / tsconfig.json
 ├── src/                                React shell (hello window only in this plan)
 │   ├── main.tsx  App.tsx  index.css (Tailwind v4 import)
 ├── src-tauri/
-│   ├── Cargo.toml                      crate "canager" (bin), depends on canager-core, fix-path-env
+│   ├── Cargo.toml                      crate "canager" (bin), depends on banager-core, fix-path-env
 │   ├── tauri.conf.json                 identifier com.brulek.canager, macOS minimumSystemVersion 13.3, updater + bundle config
 │   ├── capabilities/default.json
 │   └── src/main.rs, src/lib.rs         run(): fix_path_env::fix() then tauri::Builder
-├── crates/canager-core/
+├── crates/banager-core/
 │   ├── Cargo.toml
 │   ├── src/lib.rs                      pub mod model, events, runner, adapters, ops; pub use of common types
 │   ├── src/model.rs                    ManagerInstance, ArtifactKey, InstalledArtifact, UpdateCandidate, SearchHit, OpRequest, Plan, Outcome, OpStatus, Reconciled …
@@ -65,7 +65,7 @@ Canager/
 ## Core Interfaces (authoritative; later tasks must use these exact names)
 
 ```rust
-// crates/canager-core/src/model.rs
+// crates/banager-core/src/model.rs
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 
@@ -169,7 +169,7 @@ pub struct Reconciled { pub present: bool, pub version: Option<String> }
 ```
 
 ```rust
-// crates/canager-core/src/events.rs
+// crates/banager-core/src/events.rs
 pub type OpId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,7 +190,7 @@ pub struct VecSink { pub events: std::sync::Mutex<Vec<OperationEvent>> }   // im
 ```
 
 ```rust
-// crates/canager-core/src/runner/mod.rs
+// crates/banager-core/src/runner/mod.rs
 pub struct CommandSpec {
     pub program: PathBuf,
     pub args: Vec<String>,
@@ -222,7 +222,7 @@ pub trait CommandRunner: Send + Sync {
 ```
 
 ```rust
-// crates/canager-core/src/adapters/mod.rs
+// crates/banager-core/src/adapters/mod.rs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities { pub search: bool, pub per_item_upgrade: bool, pub upgrade_all: bool, pub uninstall: bool, pub background_check: bool, pub cancel_safe: bool }
 
@@ -257,7 +257,7 @@ pub trait Adapter: Send + Sync {
 ```
 
 ```rust
-// crates/canager-core/src/adapters/brew/mod.rs
+// crates/banager-core/src/adapters/brew/mod.rs
 pub struct BrewAdapter { /* runner: Arc<dyn CommandRunner>, meta: AdapterMeta, last_update: Mutex<Option<Instant>>, update_ttl: Duration */ }
 impl BrewAdapter {
     pub fn new(runner: Arc<dyn CommandRunner>) -> BrewAdapter;           // update_ttl = 6h
@@ -274,7 +274,7 @@ pub fn parse_version(text: &str) -> Option<String>;                       // "Ho
 ```
 
 ```rust
-// crates/canager-core/src/ops/mod.rs
+// crates/banager-core/src/ops/mod.rs
 pub struct OperationManager { /* adapters: HashMap<AdapterId, Arc<dyn Adapter>>, instances: Mutex<HashMap<InstanceId, ManagerInstance>>, sink: Arc<dyn EventSink>, held: Arc<Mutex<HashSet<ResourceLock>>>, records: Arc<Mutex<HashMap<OpId, OpRecord>>>, next_id: AtomicU64 */ }
 pub struct OpRecord { pub id: OpId, pub plan: Plan, pub status: OpStatus, pub outcome: Option<Outcome>, pub cancel: CancellationToken }
 impl OperationManager {
@@ -295,7 +295,7 @@ impl OperationManager {
 | 1 | Scaffold Tauri app + Cargo workspace + Tailwind | `pnpm tauri build` produces `Canager.app` locally (unsigned) |
 | 2 | CI workflow | `ci.yml` green on macOS runner: fmt, clippy, cargo test, pnpm build, tauri build |
 | 3 | Release workflow with signing, notarization, updater | tag `v0.0.1` → notarized universal `.dmg` + `latest.json` (needs user-provided secrets) |
-| 4 | `canager-core` crate: model + events | types compile, serde round-trip tests, `VecSink` |
+| 4 | `banager-core` crate: model + events | types compile, serde round-trip tests, `VecSink` |
 | 5 | Runner: trait, `MockRunner`, `RealRunner` | streaming lines, exit codes, timeout kills process group, cancel works |
 | 6 | PATH hydration + `HostEnv` + `resolve_exe`; call `fix_path_env::fix()` in Tauri startup | `resolve_exe("sh")` finds `/bin/sh`; shell logs the discovered PATH |
 | 7 | Adapter trait, `Capabilities`, `AdapterMeta` from `adapters/meta/brew.toml`, `validate_package_name` | meta parses; name validation rejects `-rf`, `a;b` |
@@ -314,8 +314,8 @@ impl OperationManager {
 
 **Files:**
 - Create: `Cargo.toml` (workspace root)
-- Create: `crates/canager-core/Cargo.toml`
-- Create: `crates/canager-core/src/lib.rs`
+- Create: `crates/banager-core/Cargo.toml`
+- Create: `crates/banager-core/src/lib.rs`
 - Create: `package.json`, `index.html`, `tsconfig.json`, `tsconfig.node.json`, `vite.config.ts`
 - Create: `src/main.tsx`, `src/App.tsx`, `src/App.css`, `src/index.css`, `src/vite-env.d.ts`, `src/assets/react.svg`
 - Create: `public/tauri.svg`, `public/vite.svg`
@@ -326,7 +326,7 @@ impl OperationManager {
 
 **Interfaces:**
 - Consumes: nothing (first task).
-- Produces: a Cargo workspace with members `["src-tauri", "crates/canager-core"]`; an empty `canager-core` library crate that later tasks fill in; a `canager` Tauri binary crate that depends on `canager-core` (path dependency) and `fix-path-env` (git dependency); a working `pnpm build` / `pnpm tauri build` pipeline that later CI and release tasks reuse verbatim.
+- Produces: a Cargo workspace with members `["src-tauri", "crates/banager-core"]`; an empty `banager-core` library crate that later tasks fill in; a `canager` Tauri binary crate that depends on `banager-core` (path dependency) and `fix-path-env` (git dependency); a working `pnpm build` / `pnpm tauri build` pipeline that later CI and release tasks reuse verbatim.
 
 This task is environment setup and scaffolding, not TDD — there is no behavior to test-drive yet. Its "test" is the build itself succeeding at the end.
 
@@ -346,11 +346,11 @@ corepack prepare pnpm@latest --activate
 Run: `rustc --version && cargo --version && pnpm --version`
 Expected: three version banners (any current stable Rust works; edition 2021 needs ≥ 1.56; pnpm 10.x). Add `source "$HOME/.cargo/env"` to your shell profile (`~/.zshrc`) so future shells pick up `cargo`/`rustc` without re-sourcing. If `corepack enable` fails with a permissions error on `/opt/homebrew/bin`, run `npm install -g pnpm` instead.
 
-Portability note for the whole plan: `crates/canager-core/src/runner/real.rs` uses `process_group(0)` and `libc::killpg`, which are Unix-only. That is acceptable for this macOS-only plan; the Windows Job Object variant and the weekly `canary.yml` cross-platform compile check from spec §10 are deferred to the Windows plan, and `real.rs` must carry a `#![cfg(unix)]`-style note in its header comment so nobody expects it to build on Windows.
+Portability note for the whole plan: `crates/banager-core/src/runner/real.rs` uses `process_group(0)` and `libc::killpg`, which are Unix-only. That is acceptable for this macOS-only plan; the Windows Job Object variant and the weekly `canary.yml` cross-platform compile check from spec §10 are deferred to the Windows plan, and `real.rs` must carry a `#![cfg(unix)]`-style note in its header comment so nobody expects it to build on Windows.
 
 - [ ] **Step 2: Scaffold a fresh Tauri + React + TypeScript app in a scratch directory**
 
-The repo root (`/Users/brulek/dev/Canager`) already has `.git`, `README.md`, `.gitignore` and `docs/` committed, so `create-tauri-app` cannot target it directly (it refuses non-empty directories, and `--force` silently overwrites `README.md`). Scaffold into `/tmp` instead, using project name `canager` so the generated `package.json` name, `Cargo.toml` package name, and lib name (`canager_lib`) all come out clean:
+The repo root (`/Users/brulek/dev/Canager`) already has `.git`, `README.md`, `.gitignore` and `docs/` committed, so `create-tauri-app` cannot target it directly (it refuses non-empty directories, and `--force` silently overwrites `README.md`). Scaffold into `/tmp` instead, using project name `canager` so the generated `package.json` name, `Cargo.toml` package name, and lib name (`banager_lib`) all come out clean:
 
 Run:
 ```bash
@@ -399,21 +399,21 @@ The existing root `.gitignore` already covers `node_modules/`, `target/`, `dist/
 
 `src-tauri/.gitignore` (copied in Step 3) already ignores `/target/` and `/gen/schemas` for the Rust crate, so it needs no edit.
 
-- [ ] **Step 5: Set up the Cargo workspace and the `canager-core` stub crate**
+- [ ] **Step 5: Set up the Cargo workspace and the `banager-core` stub crate**
 
 Create `Cargo.toml` at the repo root:
 
 ```toml
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/canager-core"]
+members = ["src-tauri", "crates/banager-core"]
 ```
 
-Create `crates/canager-core/Cargo.toml`:
+Create `crates/banager-core/Cargo.toml`:
 
 ```toml
 [package]
-name = "canager-core"
+name = "banager-core"
 version = "0.1.0"
 edition = "2021"
 description = "Pure-Rust core library for Canager: model, adapters, runner, operation engine. Must never depend on tauri."
@@ -423,15 +423,15 @@ description = "Pure-Rust core library for Canager: model, adapters, runner, oper
 [dev-dependencies]
 ```
 
-Create `crates/canager-core/src/lib.rs`:
+Create `crates/banager-core/src/lib.rs`:
 
 ```rust
-//! canager-core: pure Rust library with the Homebrew adapter and operation
+//! banager-core: pure Rust library with the Homebrew adapter and operation
 //! engine. This crate must never depend on `tauri` — see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3.
 ```
 
-- [ ] **Step 6: Wire `src-tauri` to depend on `canager-core` and `fix-path-env`, and pin the Tauri version floor**
+- [ ] **Step 6: Wire `src-tauri` to depend on `banager-core` and `fix-path-env`, and pin the Tauri version floor**
 
 Edit `src-tauri/Cargo.toml` (as generated by Step 2/3, then edited):
 
@@ -449,7 +449,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "canager_lib"
+name = "banager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -460,7 +460,7 @@ tauri = { version = "2.11.1", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-canager-core = { path = "../crates/canager-core" }
+banager-core = { path = "../crates/banager-core" }
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 
 
@@ -631,7 +631,7 @@ Expected: `tsc` reports no type errors, `vite build` exits 0 and writes `dist/in
 - [ ] **Step 9: Verify the full unsigned Tauri build**
 
 Run: `pnpm tauri build`
-Expected: cargo compiles `canager-core` and `canager` in release mode (first run takes several minutes), then bundles; final lines mention `Canager.app` and `Canager_0.1.0_aarch64.dmg` (or `universal`, depending on your Mac's default target) under `src-tauri/target/release/bundle/macos/` and `.../dmg/`. The app is ad-hoc signed (no `APPLE_SIGNING_IDENTITY` set), which is expected and fine for local verification — Task 3 adds real signing in CI.
+Expected: cargo compiles `banager-core` and `canager` in release mode (first run takes several minutes), then bundles; final lines mention `Canager.app` and `Canager_0.1.0_aarch64.dmg` (or `universal`, depending on your Mac's default target) under `src-tauri/target/release/bundle/macos/` and `.../dmg/`. The app is ad-hoc signed (no `APPLE_SIGNING_IDENTITY` set), which is expected and fine for local verification — Task 3 adds real signing in CI.
 
 Run: `open src-tauri/target/release/bundle/macos/Canager.app`
 Expected: a window titled "Canager" opens showing the (still-default) greet demo styled with the Tailwind heading.
@@ -639,9 +639,9 @@ Expected: a window titled "Canager" opens showing the (still-default) greet demo
 - [ ] **Step 10: Commit**
 
 ```bash
-git add Cargo.toml .gitignore package.json index.html tsconfig.json tsconfig.node.json vite.config.ts .vscode src public src-tauri crates/canager-core
+git add Cargo.toml .gitignore package.json index.html tsconfig.json tsconfig.node.json vite.config.ts .vscode src public src-tauri crates/banager-core
 git commit -m "$(cat <<'EOF'
-feat: scaffold Tauri + React + Tailwind shell and canager-core stub crate
+feat: scaffold Tauri + React + Tailwind shell and banager-core stub crate
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
@@ -771,7 +771,7 @@ Expected: the `CI` workflow appears in `gh run watch` and finishes with a green 
 
 **Interfaces:**
 - Consumes: `src-tauri/tauri.conf.json`'s `bundle` block from Task 1; `tauri::Builder` chain from Task 1's `src-tauri/src/lib.rs`.
-- Produces: `tauri_plugin_updater::Builder` registered in the app, and a `plugins.updater` config block that a future UI phase reads to check for updates. Nothing later in *this* plan consumes the release workflow directly — it's the deployment path for whatever `canager-core` accumulates.
+- Produces: `tauri_plugin_updater::Builder` registered in the app, and a `plugins.updater` config block that a future UI phase reads to check for updates. Nothing later in *this* plan consumes the release workflow directly — it's the deployment path for whatever `banager-core` accumulates.
 
 This task is also configuration, not TDD. The very first two steps are **credentials the agent must never handle** — they are the user's own one-time setup, done in their own terminal/GUI, not something to run on their behalf.
 
@@ -810,7 +810,7 @@ Edit `src-tauri/Cargo.toml`, adding one line under `[dependencies]`:
 +tauri-plugin-updater = "2.11.0"
  serde = { version = "1", features = ["derive"] }
  serde_json = "1"
- canager-core = { path = "../crates/canager-core" }
+ banager-core = { path = "../crates/banager-core" }
  fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 ```
 
@@ -957,24 +957,24 @@ Expected: `accepted` and `source=Notarized Developer ID`.
 
 Run: `xcrun stapler validate /Volumes/Canager/Canager.app`
 Expected: "The validate action worked!" (the notarization ticket is stapled, so the app opens offline without a Gatekeeper network check).
-### Task 4: `canager-core` crate: model + events
+### Task 4: `banager-core` crate: model + events
 
 **Files:**
-- Modify: `crates/canager-core/src/lib.rs`
-- Create: `crates/canager-core/src/model.rs`
-- Create: `crates/canager-core/src/events.rs`
-- Modify: `crates/canager-core/Cargo.toml`
+- Modify: `crates/banager-core/src/lib.rs`
+- Create: `crates/banager-core/src/model.rs`
+- Create: `crates/banager-core/src/events.rs`
+- Modify: `crates/banager-core/Cargo.toml`
 
 **Interfaces:**
 - Consumes: nothing beyond the empty crate from Task 1.
-- Produces: every type in the skeleton's "Core Interfaces" `model.rs` and `events.rs` blocks, exactly as named there — `InstanceId`, `AdapterId`, `Scope`, `ManagerInstance`, `ArtifactKind`, `InstallReason`, `ArtifactKey`, `InstalledArtifact`, `UpdateChannel`, `UpdateCandidate`, `SearchHit`, `OpKind`, `OpRequest`, `CancelPolicy`, `ResourceLock`, `Plan`, `Outcome`, `OpStatus`, `Reconciled`, `OpId`, `Stream`, `OperationEvent`, `EventSink`, `VecSink`. Every later task imports these from `canager_core::model` / `canager_core::events` (re-exported at the crate root too).
+- Produces: every type in the skeleton's "Core Interfaces" `model.rs` and `events.rs` blocks, exactly as named there — `InstanceId`, `AdapterId`, `Scope`, `ManagerInstance`, `ArtifactKind`, `InstallReason`, `ArtifactKey`, `InstalledArtifact`, `UpdateChannel`, `UpdateCandidate`, `SearchHit`, `OpKind`, `OpRequest`, `CancelPolicy`, `ResourceLock`, `Plan`, `Outcome`, `OpStatus`, `Reconciled`, `OpId`, `Stream`, `OperationEvent`, `EventSink`, `VecSink`. Every later task imports these from `banager_core::model` / `banager_core::events` (re-exported at the crate root too).
 
 - [ ] **Step 1: Declare the new modules (red)**
 
-Edit `crates/canager-core/src/lib.rs`:
+Edit `crates/banager-core/src/lib.rs`:
 
 ```rust
-//! canager-core: pure Rust library with the Homebrew adapter and operation
+//! banager-core: pure Rust library with the Homebrew adapter and operation
 //! engine. This crate must never depend on `tauri` — see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3.
 
@@ -987,7 +987,7 @@ pub use events::*;
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: FAIL — `error[E0583]: file not found for module \`model\`` (and the same for `events`).
 
 - [ ] **Step 3: Write `model.rs`**
@@ -1317,13 +1317,13 @@ mod tests {
 
 - [ ] **Step 6: Run to see it pass**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — 5 tests (`model::tests::test_manager_instance_round_trips_through_json`, `model::tests::test_outcome_failed_round_trips_through_json`, `model::tests::test_plan_round_trips_through_json`, `events::tests::test_operation_event_round_trips_through_json`, `events::tests::test_vec_sink_records_events_in_order`).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/canager-core/Cargo.toml crates/canager-core/src/lib.rs crates/canager-core/src/model.rs crates/canager-core/src/events.rs
+git add crates/banager-core/Cargo.toml crates/banager-core/src/lib.rs crates/banager-core/src/model.rs crates/banager-core/src/events.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add model and events modules with serde round-trip tests
 
@@ -1337,11 +1337,11 @@ EOF
 ### Task 5: Runner: trait, `MockRunner`, `RealRunner`
 
 **Files:**
-- Modify: `crates/canager-core/src/lib.rs`
-- Create: `crates/canager-core/src/runner/mod.rs`
-- Create: `crates/canager-core/src/runner/real.rs`
-- Create: `crates/canager-core/src/runner/mock.rs`
-- Modify: `crates/canager-core/Cargo.toml`
+- Modify: `crates/banager-core/src/lib.rs`
+- Create: `crates/banager-core/src/runner/mod.rs`
+- Create: `crates/banager-core/src/runner/real.rs`
+- Create: `crates/banager-core/src/runner/mock.rs`
+- Modify: `crates/banager-core/Cargo.toml`
 
 **Interfaces:**
 - Consumes: `crate::events::Stream` (Task 4).
@@ -1349,7 +1349,7 @@ EOF
 
 - [ ] **Step 1: Declare the module (red)**
 
-Edit `crates/canager-core/src/lib.rs`:
+Edit `crates/banager-core/src/lib.rs`:
 
 ```diff
  pub mod model;
@@ -1360,7 +1360,7 @@ Edit `crates/canager-core/src/lib.rs`:
  pub use events::*;
 ```
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: FAIL — `error[E0583]: file not found for module \`runner\``.
 
 - [ ] **Step 2: Write `runner/mod.rs`**
@@ -1827,13 +1827,13 @@ mod tests {
 
 - [ ] **Step 6: Run to see it pass**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — the 5 tests from Task 4 plus 2 `MockRunner` tests and 4 `RealRunner` tests (11 total). The timeout and cancel tests each take a little over 100–200 ms, not the full 5 s `sleep`, since the process is killed early.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/canager-core/Cargo.toml crates/canager-core/src/lib.rs crates/canager-core/src/runner
+git add crates/banager-core/Cargo.toml crates/banager-core/src/lib.rs crates/banager-core/src/runner
 git commit -m "$(cat <<'EOF'
 feat(core): add CommandRunner trait with RealRunner and MockRunner
 
@@ -1847,8 +1847,8 @@ EOF
 ### Task 6: PATH hydration + `HostEnv` + `resolve_exe`; call `fix_path_env::fix()` in Tauri startup
 
 **Files:**
-- Modify: `crates/canager-core/src/runner/mod.rs`
-- Create: `crates/canager-core/src/runner/path_env.rs`
+- Modify: `crates/banager-core/src/runner/mod.rs`
+- Create: `crates/banager-core/src/runner/path_env.rs`
 - Modify: `src-tauri/src/lib.rs`
 
 **Interfaces:**
@@ -1857,7 +1857,7 @@ EOF
 
 - [ ] **Step 1: Declare the module (red)**
 
-Edit `crates/canager-core/src/runner/mod.rs`:
+Edit `crates/banager-core/src/runner/mod.rs`:
 
 ```diff
  pub mod mock;
@@ -1869,7 +1869,7 @@ Edit `crates/canager-core/src/runner/mod.rs`:
  pub use real::RealRunner;
 ```
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: FAIL — `error[E0583]: file not found for module \`path_env\``.
 
 - [ ] **Step 2: Write `runner/path_env.rs`**
@@ -1952,7 +1952,7 @@ mod tests {
 
 - [ ] **Step 3: Run to see it pass**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — 14 tests total (11 from Task 5 plus 3 new `path_env` tests).
 
 - [ ] **Step 4: Wire `fix_path_env::fix()` and log the discovered PATH from the Tauri shell**
@@ -1971,7 +1971,7 @@ pub fn run() {
     if fix_path_env::fix().is_err() {
         eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
     }
-    let host_env = canager_core::runner::HostEnv::discover();
+    let host_env = banager_core::runner::HostEnv::discover();
     println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
@@ -1991,7 +1991,7 @@ Expected: a line like `[canager] discovered PATH dirs: ["/opt/homebrew/bin", "/u
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/runner/mod.rs crates/canager-core/src/runner/path_env.rs src-tauri/src/lib.rs
+git add crates/banager-core/src/runner/mod.rs crates/banager-core/src/runner/path_env.rs src-tauri/src/lib.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add HostEnv PATH discovery and wire fix-path-env into Tauri startup
 
@@ -2005,10 +2005,10 @@ EOF
 ### Task 7: Adapter trait, `Capabilities`, `AdapterMeta` from `adapters/meta/brew.toml`, `validate_package_name`
 
 **Files:**
-- Modify: `crates/canager-core/src/lib.rs`
-- Create: `crates/canager-core/src/adapters/mod.rs`
+- Modify: `crates/banager-core/src/lib.rs`
+- Create: `crates/banager-core/src/adapters/mod.rs`
 - Create: `adapters/meta/brew.toml`
-- Modify: `crates/canager-core/Cargo.toml`
+- Modify: `crates/banager-core/Cargo.toml`
 
 **Interfaces:**
 - Consumes: `crate::events::{EventSink, OpId}`, `crate::model::{ArtifactKey, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, Reconciled, SearchHit, UpdateCandidate}` (Task 4), `crate::runner::HostEnv` (Task 6).
@@ -2016,7 +2016,7 @@ EOF
 
 - [ ] **Step 1: Declare the module (red)**
 
-Edit `crates/canager-core/src/lib.rs`:
+Edit `crates/banager-core/src/lib.rs`:
 
 ```diff
  pub mod model;
@@ -2028,7 +2028,7 @@ Edit `crates/canager-core/src/lib.rs`:
  pub use events::*;
 ```
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: FAIL — `error[E0583]: file not found for module \`adapters\``.
 
 - [ ] **Step 2: Write `adapters/mod.rs`**
@@ -2130,7 +2130,7 @@ mod tests {
     #[test]
     fn test_from_toml_parses_the_committed_brew_meta_file() {
         // cargo runs tests with cwd = the package manifest directory
-        // (crates/canager-core), so this reaches the repo-root file.
+        // (crates/banager-core), so this reaches the repo-root file.
         let s = std::fs::read_to_string("../../adapters/meta/brew.toml")
             .expect("read adapters/meta/brew.toml");
         let meta = AdapterMeta::from_toml(&s).expect("parse brew.toml");
@@ -2179,13 +2179,13 @@ verified_versions = ["7.0.3"]
 
 - [ ] **Step 5: Run to see it pass**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — 17 tests total (14 from Task 6 plus 3 new `adapters::tests`).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/Cargo.toml crates/canager-core/src/lib.rs crates/canager-core/src/adapters/mod.rs adapters/meta/brew.toml
+git add crates/banager-core/Cargo.toml crates/banager-core/src/lib.rs crates/banager-core/src/adapters/mod.rs adapters/meta/brew.toml
 git commit -m "$(cat <<'EOF'
 feat(core): add Adapter trait, AdapterMeta TOML loading, and package-name validation
 
@@ -2291,19 +2291,19 @@ EOF
 ### Task 9: Brew parsers with insta snapshot tests over fixtures
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/mod.rs`
-- Create: `crates/canager-core/src/adapters/brew/mod.rs`
-- Create: `crates/canager-core/src/adapters/brew/parse.rs`
-- Create: `crates/canager-core/tests/brew_fixtures.rs`
-- Modify: `crates/canager-core/Cargo.toml`
+- Modify: `crates/banager-core/src/adapters/mod.rs`
+- Create: `crates/banager-core/src/adapters/brew/mod.rs`
+- Create: `crates/banager-core/src/adapters/brew/parse.rs`
+- Create: `crates/banager-core/tests/brew_fixtures.rs`
+- Modify: `crates/banager-core/Cargo.toml`
 
 **Interfaces:**
 - Consumes: `crate::model::{ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateCandidate, UpdateChannel}` (Task 4), `crate::adapters::AdapterError` (Task 7), the fixture files from Task 8.
-- Produces: `parse_info_installed`, `parse_outdated`, `parse_search`, `parse_uses`, `parse_version` at `canager_core::adapters::brew::parse::*` — consumed by `BrewAdapter` starting Task 10.
+- Produces: `parse_info_installed`, `parse_outdated`, `parse_search`, `parse_uses`, `parse_version` at `banager_core::adapters::brew::parse::*` — consumed by `BrewAdapter` starting Task 10.
 
 - [ ] **Step 1: Declare the module (red)**
 
-Edit `crates/canager-core/src/adapters/mod.rs`, adding the submodule declaration near the top (after the `use` block, before `Capabilities`):
+Edit `crates/banager-core/src/adapters/mod.rs`, adding the submodule declaration near the top (after the `use` block, before `Capabilities`):
 
 ```diff
  use tokio_util::sync::CancellationToken;
@@ -2314,10 +2314,10 @@ Edit `crates/canager-core/src/adapters/mod.rs`, adding the submodule declaration
  pub struct Capabilities {
 ```
 
-Create `crates/canager-core/tests/brew_fixtures.rs` (the full test file, referencing functions that don't exist yet):
+Create `crates/banager-core/tests/brew_fixtures.rs` (the full test file, referencing functions that don't exist yet):
 
 ```rust
-use canager_core::adapters::brew::parse::{
+use banager_core::adapters::brew::parse::{
     parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version,
 };
 
@@ -2374,7 +2374,7 @@ fn test_parse_version_reads_the_recorded_version() {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `cargo test -p canager-core --test brew_fixtures`
+Run: `cargo test -p banager-core --test brew_fixtures`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: could not find \`brew\` in \`adapters\`` (the `pub mod brew;` line was added, but `src/adapters/brew/mod.rs` doesn't exist yet).
 
 - [ ] **Step 3: Write `adapters/brew/parse.rs`**
@@ -2646,23 +2646,23 @@ pub mod parse;
 
 - [ ] **Step 6: Run with `INSTA_UPDATE=always` to create the snapshots**
 
-Run: `INSTA_UPDATE=always cargo test -p canager-core --test brew_fixtures`
-Expected: PASS — all 6 tests pass, and insta writes new files under `crates/canager-core/tests/snapshots/` (one per `assert_json_snapshot!` call: `brew_fixtures__parse_info_installed_snapshot.snap`, `brew_fixtures__parse_outdated_snapshot.snap`, `brew_fixtures__parse_search_snapshot.snap`, `brew_fixtures__parse_search_desc_snapshot.snap`, `brew_fixtures__parse_uses_snapshot.snap`).
+Run: `INSTA_UPDATE=always cargo test -p banager-core --test brew_fixtures`
+Expected: PASS — all 6 tests pass, and insta writes new files under `crates/banager-core/tests/snapshots/` (one per `assert_json_snapshot!` call: `brew_fixtures__parse_info_installed_snapshot.snap`, `brew_fixtures__parse_outdated_snapshot.snap`, `brew_fixtures__parse_search_snapshot.snap`, `brew_fixtures__parse_search_desc_snapshot.snap`, `brew_fixtures__parse_uses_snapshot.snap`).
 
 - [ ] **Step 7: Review the snapshots**
 
-Run: `cat crates/canager-core/tests/snapshots/brew_fixtures__parse_info_installed_snapshot.snap`
+Run: `cat crates/banager-core/tests/snapshots/brew_fixtures__parse_info_installed_snapshot.snap`
 Expected: a YAML-fronted snapshot file whose body is the JSON array of `InstalledArtifact` values — read through it and confirm formula entries have plausible `reason` values (`Requested`/`Dependency`) and cask entries have `"kind": "Cask"`. If anything looks wrong, fix `parse.rs` and re-run Step 6 (`INSTA_UPDATE=always`) rather than hand-editing the `.snap` file.
 
 - [ ] **Step 8: Run again without `INSTA_UPDATE` to confirm stability**
 
-Run: `cargo test -p canager-core --test brew_fixtures`
+Run: `cargo test -p banager-core --test brew_fixtures`
 Expected: PASS — the freshly generated snapshots now match on a normal run.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/canager-core/Cargo.toml crates/canager-core/src/adapters/mod.rs crates/canager-core/src/adapters/brew crates/canager-core/tests/brew_fixtures.rs crates/canager-core/tests/snapshots
+git add crates/banager-core/Cargo.toml crates/banager-core/src/adapters/mod.rs crates/banager-core/src/adapters/brew crates/banager-core/tests/brew_fixtures.rs crates/banager-core/tests/snapshots
 git commit -m "$(cat <<'EOF'
 feat(core): add Homebrew JSON/text parsers with fixture-driven snapshot tests
 
@@ -2673,7 +2673,7 @@ EOF
 ### Task 10: `BrewAdapter`: detect / inventory / check_updates / search, tested with `MockRunner`
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`
 
 **Interfaces:**
 - Consumes: `crate::adapters::{AdapterError, AdapterMeta, validate_package_name}` (Task 7), `crate::model::{InstalledArtifact, ManagerInstance, Scope, SearchHit, UpdateCandidate}` (Task 4), `crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, MockRunner}` (Tasks 5–6), `parse::{parse_info_installed, parse_outdated, parse_search, parse_version}` (Task 9).
@@ -2681,7 +2681,7 @@ EOF
 
 - [ ] **Step 1: Write the failing test (red)**
 
-Append to the end of `crates/canager-core/src/adapters/brew/mod.rs` (which currently contains only `pub mod parse;`):
+Append to the end of `crates/banager-core/src/adapters/brew/mod.rs` (which currently contains only `pub mod parse;`):
 
 ```rust
 #[cfg(test)]
@@ -2861,7 +2861,7 @@ mod tests {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `cargo test -p canager-core --lib adapters::brew`
+Run: `cargo test -p banager-core --lib adapters::brew`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type \`BrewAdapter\`` (and similar for `HostEnv`, `CommandOutput` not yet imported at the top of the file).
 
 - [ ] **Step 3: Write the implementation**
@@ -3103,20 +3103,20 @@ impl BrewAdapter {
 }
 ```
 
-`include_str!("../../../../../adapters/meta/brew.toml")` has five `../` because `include_str!` resolves relative to this source file's own directory (`crates/canager-core/src/adapters/brew/`), not the crate root — verified with `python3 -c "import os; print(os.path.relpath('adapters/meta/brew.toml', 'crates/canager-core/src/adapters/brew'))"`, which prints exactly that path.
+`include_str!("../../../../../adapters/meta/brew.toml")` has five `../` because `include_str!` resolves relative to this source file's own directory (`crates/banager-core/src/adapters/brew/`), not the crate root — verified with `python3 -c "import os; print(os.path.relpath('adapters/meta/brew.toml', 'crates/banager-core/src/adapters/brew'))"`, which prints exactly that path.
 
 - [ ] **Step 4: Run to see it pass**
 
-Run: `cargo test -p canager-core --lib adapters::brew`
+Run: `cargo test -p banager-core --lib adapters::brew`
 Expected: PASS — 5 tests (`test_detect_refuses_root`, `test_detect_finds_opt_homebrew_on_this_apple_silicon_mac`, `test_inventory_parses_formula_and_cask`, `test_check_updates_respects_ttl`, `test_search_calls_both_search_variants`).
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — all tests across the crate (28 total: 3 model + 2 events + 2+4 runner + 3 path_env + 3 adapters + 6 brew_fixtures (integration test) + 5 new brew tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs
+git add crates/banager-core/src/adapters/brew/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(core): implement BrewAdapter detect/inventory/check_updates/search
 
@@ -3130,7 +3130,7 @@ EOF
 ### Task 11: `BrewAdapter`: plan / execute / reconcile for install, uninstall, upgrade; `SUDO_ASKPASS` passthrough
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`
 
 **Interfaces:**
 - Consumes: `crate::adapters::Adapter` trait, `crate::model::{ArtifactKind, CancelPolicy, OpKind, OpRequest, ResourceLock, Plan, ArtifactKey, Outcome, Reconciled}` (Task 4/7), `crate::events::{EventSink, OpId, OperationEvent}` (Task 4), `crate::runner::LineCallback` (Task 5), `parse::parse_uses` (Task 9), and `BrewAdapter`'s private helpers `run_brew`/`env_vec` from Task 10.
@@ -3138,7 +3138,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests (red)**
 
-Append a new test module to the end of `crates/canager-core/src/adapters/brew/mod.rs` (after the existing `mod tests` block from Task 10):
+Append a new test module to the end of `crates/banager-core/src/adapters/brew/mod.rs` (after the existing `mod tests` block from Task 10):
 
 ```rust
 #[cfg(test)]
@@ -3401,12 +3401,12 @@ mod plan_execute_tests {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `cargo test -p canager-core --lib adapters::brew::plan_execute_tests`
+Run: `cargo test -p banager-core --lib adapters::brew::plan_execute_tests`
 Expected: FAIL to compile — `error[E0599]: no method named \`plan\` found for struct \`BrewAdapter\`` (it only has `detect`/`inventory`/`check_updates`/`search` so far).
 
 - [ ] **Step 3: Add the missing imports and write `plan`/`execute`/`reconcile`**
 
-Edit the `use` block at the top of `crates/canager-core/src/adapters/brew/mod.rs`:
+Edit the `use` block at the top of `crates/banager-core/src/adapters/brew/mod.rs`:
 
 ```diff
  pub mod parse;
@@ -3650,16 +3650,16 @@ impl Adapter for BrewAdapter {
 
 - [ ] **Step 5: Run to see it pass**
 
-Run: `cargo test -p canager-core --lib adapters::brew`
+Run: `cargo test -p banager-core --lib adapters::brew`
 Expected: PASS — 13 tests (5 from Task 10's `mod tests` plus 8 new `mod plan_execute_tests`).
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: exits 0, confirming `BrewAdapter` satisfies the full `Adapter` trait (this is the first type to implement it, so any signature mismatch against Task 7's trait definition would fail here).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs
+git add crates/banager-core/src/adapters/brew/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(core): implement BrewAdapter plan/execute/reconcile and the Adapter trait
 
@@ -3673,9 +3673,9 @@ EOF
 ### Task 12: `OperationManager` with resource locks, state machine, cancel, verifying
 
 **Files:**
-- Modify: `crates/canager-core/src/lib.rs`
-- Create: `crates/canager-core/src/ops/mod.rs`
-- Create: `crates/canager-core/tests/ops_lock_test.rs`
+- Modify: `crates/banager-core/src/lib.rs`
+- Create: `crates/banager-core/src/ops/mod.rs`
+- Create: `crates/banager-core/tests/ops_lock_test.rs`
 
 **Interfaces:**
 - Consumes: `crate::adapters::Adapter` (Task 7), `crate::events::{EventSink, OpId, OperationEvent}` (Task 4), `crate::model::{AdapterId, ArtifactKey, InstanceId, ManagerInstance, OpKind, OpStatus, Outcome, Plan, ResourceLock}` (Task 4).
@@ -3683,7 +3683,7 @@ EOF
 
 - [ ] **Step 1: Declare the module (red)**
 
-Edit `crates/canager-core/src/lib.rs`:
+Edit `crates/banager-core/src/lib.rs`:
 
 ```diff
  pub mod model;
@@ -3696,7 +3696,7 @@ Edit `crates/canager-core/src/lib.rs`:
  pub use events::*;
 ```
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: FAIL — `error[E0583]: file not found for module \`ops\``.
 
 - [ ] **Step 2: Write `ops/mod.rs`**
@@ -3948,23 +3948,23 @@ impl OperationManager {
 
 - [ ] **Step 3: Run to see it compiles**
 
-Run: `cargo build -p canager-core`
+Run: `cargo build -p banager-core`
 Expected: exits 0 (no tests exercise `ops` yet — that's Step 4).
 
 - [ ] **Step 4: Write the lock-serialization integration test with a `FakeAdapter`**
 
-Create `crates/canager-core/tests/ops_lock_test.rs`:
+Create `crates/banager-core/tests/ops_lock_test.rs`:
 
 ```rust
 use async_trait::async_trait;
-use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
-use canager_core::events::{EventSink, OpId, VecSink};
-use canager_core::model::{
+use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
     OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
 };
-use canager_core::ops::OperationManager;
-use canager_core::runner::HostEnv;
+use banager_core::ops::OperationManager;
+use banager_core::runner::HostEnv;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -4193,13 +4193,13 @@ async fn test_different_locks_run_concurrently() {
 
 - [ ] **Step 5: Run to see it pass**
 
-Run: `cargo test -p canager-core --test ops_lock_test -- --nocapture`
+Run: `cargo test -p banager-core --test ops_lock_test -- --nocapture`
 Expected: PASS — 2 tests. `test_same_lock_runs_serially` takes a little over 400 ms (200 ms + up to ~50 ms poll latency, twice); `test_different_locks_run_concurrently` takes a little over 200 ms (both run at once).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/lib.rs crates/canager-core/src/ops crates/canager-core/tests/ops_lock_test.rs
+git add crates/banager-core/src/lib.rs crates/banager-core/src/ops crates/banager-core/tests/ops_lock_test.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add OperationManager with resource locks, cancellation, and reconcile-on-verify
 
@@ -4298,7 +4298,7 @@ EOF
 ### Task 14: `examples/brew_smoke.rs` + `docs/what-we-run.md`
 
 **Files:**
-- Create: `crates/canager-core/examples/brew_smoke.rs`
+- Create: `crates/banager-core/examples/brew_smoke.rs`
 - Create: `docs/what-we-run.md`
 
 **Interfaces:**
@@ -4307,11 +4307,11 @@ EOF
 
 - [ ] **Step 1: Write the example**
 
-Create `crates/canager-core/examples/brew_smoke.rs`:
+Create `crates/banager-core/examples/brew_smoke.rs`:
 
 ```rust
-use canager_core::adapters::brew::BrewAdapter;
-use canager_core::runner::{HostEnv, RealRunner};
+use banager_core::adapters::brew::BrewAdapter;
+use banager_core::runner::{HostEnv, RealRunner};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -4322,7 +4322,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() {
     let env = HostEnv::discover();
-    let runner: Arc<dyn canager_core::runner::CommandRunner> = Arc::new(RealRunner::new());
+    let runner: Arc<dyn banager_core::runner::CommandRunner> = Arc::new(RealRunner::new());
     let adapter = BrewAdapter::new(runner).with_update_ttl(Duration::from_secs(0));
 
     let instances = adapter.detect(&env).await;
@@ -4355,7 +4355,7 @@ async fn main() {
 
 - [ ] **Step 2: Run it**
 
-Run: `cargo run -p canager-core --example brew_smoke`
+Run: `cargo run -p banager-core --example brew_smoke`
 Expected: on a Mac with Homebrew at `/opt/homebrew`, prints `Found instance: brew:/opt/homebrew (brew 7.0.3)` (or your installed version), then the installed-artifact count, the outdated count, and up to 10 `name current -> target` lines; exits 0. On a machine without Homebrew, prints `No Homebrew instance detected on this machine.` and exits 0. This genuinely runs `brew update` against your real Homebrew installation (read-only — it only refreshes brew's local package index, it does not install or upgrade anything) — expect it to take several seconds.
 
 - [ ] **Step 3: Write `docs/what-we-run.md`**
@@ -4419,13 +4419,13 @@ through a shell `PATH` lookup.
 
 - [ ] **Step 4: Cross-check the doc against the actual code**
 
-Run: `grep -n '"install"\|"uninstall"\|"upgrade"\|"search"\|"uses"\|"outdated"\|"info"\|"update"\|"--version"' crates/canager-core/src/adapters/brew/mod.rs`
+Run: `grep -n '"install"\|"uninstall"\|"upgrade"\|"search"\|"uses"\|"outdated"\|"info"\|"update"\|"--version"' crates/banager-core/src/adapters/brew/mod.rs`
 Expected: every argv literal this prints (from `run_brew`, `detect`, `plan`) has a corresponding row in the tables you just wrote in `docs/what-we-run.md` — there should be exactly seven distinct commands in total (7 read-only + 4 write, per the tables), and no argv in the code that the doc doesn't mention, or vice versa. If you find a mismatch, fix `docs/what-we-run.md` (not the code — Tasks 10–11 already have their own passing tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/examples/brew_smoke.rs docs/what-we-run.md
+git add crates/banager-core/examples/brew_smoke.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 docs: add read-only brew smoke example and the what-we-run command inventory
 
@@ -4439,7 +4439,7 @@ EOF
 ### Task 15: CI live Homebrew smoke test (spec §10 / §11.3)
 
 **Files:**
-- Create: `crates/canager-core/tests/brew_live.rs`
+- Create: `crates/banager-core/tests/brew_live.rs`
 - Modify: `.github/workflows/ci.yml` (add one step after `cargo test`)
 
 **Interfaces:**
@@ -4450,7 +4450,7 @@ The test is `#[ignore]` and additionally gated on `CANAGER_LIVE=1`, so `cargo te
 
 - [ ] **Step 1: Write the live test**
 
-Create `crates/canager-core/tests/brew_live.rs`:
+Create `crates/banager-core/tests/brew_live.rs`:
 
 ```rust
 //! Live Homebrew smoke test: installs, inventories and removes the tiny GNU
@@ -4458,17 +4458,17 @@ Create `crates/canager-core/tests/brew_live.rs`:
 //! `CANAGER_LIVE=1` is set AND the test is invoked with `--ignored`, so a
 //! plain `cargo test` never touches the machine.
 
-use canager_core::adapters::brew::BrewAdapter;
-use canager_core::adapters::Adapter;
-use canager_core::events::VecSink;
-use canager_core::model::{ArtifactKey, ArtifactKind, OpKind, OpRequest, Outcome};
-use canager_core::runner::{HostEnv, RealRunner};
+use banager_core::adapters::brew::BrewAdapter;
+use banager_core::adapters::Adapter;
+use banager_core::events::VecSink;
+use banager_core::model::{ArtifactKey, ArtifactKind, OpKind, OpRequest, Outcome};
+use banager_core::runner::{HostEnv, RealRunner};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
-#[ignore = "installs and removes the `hello` formula; run with CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored"]
+#[ignore = "installs and removes the `hello` formula; run with CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored"]
 async fn live_install_inventory_uninstall_hello() {
     if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
         eprintln!("CANAGER_LIVE is not 1; skipping live smoke test");
@@ -4543,14 +4543,14 @@ async fn live_install_inventory_uninstall_hello() {
 
 - [ ] **Step 2: Confirm the plain test run skips it**
 
-Run: `cargo test -p canager-core --test brew_live`
+Run: `cargo test -p banager-core --test brew_live`
 Expected: `test live_install_inventory_uninstall_hello ... ignored` and `test result: ok. 0 passed; 0 failed; 1 ignored`.
 
 - [ ] **Step 3: Run it for real on this Mac once**
 
 This installs and then removes GNU `hello` via your own Homebrew (about 2 MB, no dependencies). It is the same thing CI will do on every push.
 
-Run: `CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored --nocapture`
+Run: `CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored --nocapture`
 Expected: brew's own install/uninstall output streams through (`==> Fetching hello`, `🍺  /opt/homebrew/Cellar/hello/...`, `Uninstalling /opt/homebrew/Cellar/hello/...`) and finally `test result: ok. 1 passed`. Afterwards `brew list --formula | grep -x hello` prints nothing (exit 1), proving cleanup.
 
 - [ ] **Step 4: Add the CI step**
@@ -4561,7 +4561,7 @@ Edit `.github/workflows/ci.yml`: insert the following step directly after the ex
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
           CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test brew_live -- --ignored --nocapture
+        run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 ```
 
 Run: `python3 -c "import yaml; d=yaml.safe_load(open('.github/workflows/ci.yml')); steps=[s['name'] for s in d['jobs'][list(d['jobs'])[0]]['steps'] if 'name' in s]; print(steps)"`
@@ -4570,7 +4570,7 @@ Expected: the printed list contains `'cargo test'` immediately followed by `'liv
 - [ ] **Step 5: Commit and watch CI**
 
 ```bash
-git add crates/canager-core/tests/brew_live.rs .github/workflows/ci.yml
+git add crates/banager-core/tests/brew_live.rs .github/workflows/ci.yml
 git commit -m "$(cat <<'EOF'
 test(core): live Homebrew smoke test (install/inventory/uninstall hello) wired into CI
 

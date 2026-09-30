@@ -6,7 +6,7 @@
 
 **Architecture:** One Rust type, `StandaloneAdapter`, driven by a `&'static Recipe`, registered once per tool under the adapter id `standalone-<tool>` (spec D1); the instance *is* the native install (`exe_path` = the launcher symlink, `prefix` = the tool root, one `ArtifactKind::Binary` artifact, spec D2). Detection checks the installer's fixed path, never `PATH` (D3); the newest version comes from a VERIFIED endpoint and a candidate exists only when remote > local by dotted-integer comparison (D4); a self-updating tool is badged as usual and its row says it usually updates itself (D5); upgrade is the tool's own `claude update` through the unchanged `run_plan` (D6); "which copy runs" is four payload-free `InstanceNote`s plus `LauncherOnly` (D7). No uninstall in this step: the artifact carries `UninstallBlocked::NoSafeMethod`, which the gate in `Session::issue_plan` refuses and both pages hide (spec §6.1, §十 row B).
 
-**Tech Stack:** Rust (canager-core: `std::fs` symlink/canonicalize, `serde_json` for one settings key, the existing `CommandRunner`/`HttpClient` seams, no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
+**Tech Stack:** Rust (banager-core: `std::fs` symlink/canonicalize, `serde_json` for one settings key, the existing `CommandRunner`/`HttpClient` seams, no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
 **Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row B and argues from §一 D1–D7, §二, §三 (3.1–3.6), §四 (4.1, 4.3, 4.4), §五, §6.1, §七, §9.1–9.5 and 附录 A. Raw research it cites: `~/dev/Canager/.superpowers/phase4/claude.md` (tool facts, VERIFIED/UNVERIFIED per line) and `architecture.md` (code map). This plan will live at `docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`.
 
@@ -14,10 +14,10 @@
 
 Branch `feat/phase-4-standalone`. Originally written at `f574d9f`, 2026-09-24. Astra re-verified the findings on 2026-09-25 against `/Users/brulek/dev/Canager-phase4` at HEAD `d3890f4` plus uncommitted edits that were later abandoned (a pip-only `ManagerInstance.user_scripts_dir`; the controller removed every reference to it from this plan — the field does not exist). The worktree and spec were read only; this revision changes only this plan. Symbol anchors take precedence over historical line numbers. **Steps A and F land before this step executes**, so this plan treats their output as existing:
 
-- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`) adds `ALLOWED_HTTPS_HOSTS` and `host_allowed` to `crates/canager-core/src/http/real.rs`, makes `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive, and rewrites `docs/what-we-run.md` as one section per source with `crates/canager-core/tests/what_we_run_test.rs` holding it to the code (a `## <meta.name>` section per registered adapter; every host in `ALLOWED_HTTPS_HOSTS` named).
-- **F** (`docs/superpowers/plans/2026-09-24-phase-4-step-f-unknown-scan.md`) adds `crates/canager-core/src/scan/mod.rs` with `pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf>` whose standalone rows were explicitly deferred to this step, the Unknown page, `nav.unknown`, and pipx's `InstalledArtifact.path`.
+- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`) adds `ALLOWED_HTTPS_HOSTS` and `host_allowed` to `crates/banager-core/src/http/real.rs`, makes `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive, and rewrites `docs/what-we-run.md` as one section per source with `crates/banager-core/tests/what_we_run_test.rs` holding it to the code (a `## <meta.name>` section per registered adapter; every host in `ALLOWED_HTTPS_HOSTS` named).
+- **F** (`docs/superpowers/plans/2026-09-24-phase-4-step-f-unknown-scan.md`) adds `crates/banager-core/src/scan/mod.rs` with `pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf>` whose standalone rows were explicitly deferred to this step, the Unknown page, `nav.unknown`, and pipx's `InstalledArtifact.path`.
 
-In files A or F modify (`http/real.rs`, `scan/mod.rs`, `docs/what-we-run.md`, `src/i18n/*.json`, `src/lib/types.ts`, `README.md`, `crates/canager-core/src/lib.rs`), **every edit below is anchored by a symbol, function, type or quoted line, never by a line number alone; line numbers in those files may have moved.** In files neither touches, `file:line` is cited at `f574d9f`.
+In files A or F modify (`http/real.rs`, `scan/mod.rs`, `docs/what-we-run.md`, `src/i18n/*.json`, `src/lib/types.ts`, `README.md`, `crates/banager-core/src/lib.rs`), **every edit below is anchored by a symbol, function, type or quoted line, never by a line number alone; line numbers in those files may have moved.** In files neither touches, `file:line` is cited at `f574d9f`.
 
 ## Global Constraints
 
@@ -72,34 +72,34 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 
 ## What already exists (do not rebuild)
 
-- `Adapter` trait (`crates/canager-core/src/adapters/mod.rs:424-455`), `AdapterMeta::{from_toml, unverified_version}` (`:82-112`), `run_plan` (`:469-514`), `reconcile_from` (`:385-399`), `ensure_instance_match` (`:414-422`), `validate_package_name` (`:348-365`), `uncheckable_candidate` (`:269-284`), `CheckOptions`/`CheckOutcome` with `From<Vec<UpdateCandidate>>` (`:26-80`). `AdapterError::{UninstallBlocked, Unsupported, InvalidName, Refused}` (`:114-205`); `plan_operation_error` in `src-tauri/src/ipc.rs:183-216` already serialises `UninstallBlocked { reason }` as `{"kind":"uninstall_blocked","reason":<serde spelling>}`, so a new reason needs no IPC change.
+- `Adapter` trait (`crates/banager-core/src/adapters/mod.rs:424-455`), `AdapterMeta::{from_toml, unverified_version}` (`:82-112`), `run_plan` (`:469-514`), `reconcile_from` (`:385-399`), `ensure_instance_match` (`:414-422`), `validate_package_name` (`:348-365`), `uncheckable_candidate` (`:269-284`), `CheckOptions`/`CheckOutcome` with `From<Vec<UpdateCandidate>>` (`:26-80`). `AdapterError::{UninstallBlocked, Unsupported, InvalidName, Refused}` (`:114-205`); `plan_operation_error` in `src-tauri/src/ipc.rs:183-216` already serialises `UninstallBlocked { reason }` as `{"kind":"uninstall_blocked","reason":<serde spelling>}`, so a new reason needs no IPC change.
 - The single-instance adapter shape: `UvAdapter` (`adapters/uv.rs:101-161` detect with `instance_id(&self.meta.id, None)`, `:249-278` plan, `:300-354` the delegating `impl Adapter`). The detect-writes/plan-reads seat: `CargoAdapter.binstall: Mutex<Option<PathBuf>>` (`adapters/cargo.rs:98-106`, `:137`, `:318`). `include_str!` meta loading (`uv.rs:108-109`, four `../` from `src/adapters/`; five from `src/adapters/standalone/`).
 - `HostEnv { path_dirs, home, euid, cargo_home, ollama_host }` and `resolve_exe` (`runner/path_env.rs:5-21`, `:87-95`); `CommandSpec`/`CommandOutput`/`OutputUse` (`runner/mod.rs:31-73`); `MockRunner::{new, respond, calls}` (`runner/mock.rs:16-49`); `HttpRequest`/`HttpResponse`/`HttpError` (`http/mod.rs:18-41`); `MockHttpClient::{new, respond, fail, calls}` (`http/mock.rs:16-41`); `crate::testing::manager_instance` (`testing.rs:44-56`).
 - `Session::new`'s registration `vec![...]` (`session/mod.rs:257-273`) and `test_new_registers_all_seven_adapters` (`:499-515`); `Session::build`'s two `assert!`s (`:314-323`) that hold for `standalone-claude` (no `:`, not a duplicate).
 - The gate: `blocked_uninstall` (`session/plans.rs:103-115`) refusing at `:186-188`; its test `test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package` (`:865-923`) with the helpers `FakeAdapter::new`, `set_artifacts`, `installed_on` (`:832-855`), `uninstall_on` (`:857-862`), `upgrade_on`.
 - `merge_instance_notes` is `extend` (`session/refresh.rs:589-600`), so detect's notes survive `check_updates`'s `CheckOutcome.notes`.
 - Front end: `ADAPTER_LABEL_KEYS` (`src/lib/sources.ts:18-26`) read at `InstalledPage.tsx:166`, `UpdatesPage.tsx:207`, `UpdatesPage.tsx:521`, `UninstallDialog.tsx:50`; `sourceNoticesFor`'s notes loop with its `never` (`sources.ts:198-225`); `UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCopy>` (`sources.ts:451-475`) read at `InstalledPage.tsx:144-146`, `:329-345` and `UninstallDialog.tsx:102-114`; `rowDescription` in `UpdatesPage.tsx:444-475` with `artifactsById` (`:335-341`), `isActionable` (`:287-288`), `sourceLabelFor` (`:518-523`); the description fallback `item.artifact.description ?? t("installed.noDescription")` at `InstalledPage.tsx:343`; `withCommand`/`COMMAND_SLOT` (`src/components/withCommand.tsx`: a sentence without the slot is returned unchanged, so a copy with no `{{command}}` renders as plain text); `updateStateOf` (`src/lib/updateState.ts:43-52`).
-- Test harnesses: `src/lib/sources.test.ts` (`fakeT`, `instance()`), `src/pages/InstalledPage.test.tsx` (`snapshot`, `settings`, the virtualizer stubs in `beforeEach`), `src/pages/UpdatesPage.test.tsx` (`snapshot`, the `updates`/`instances`/`artifacts` knobs in `beforeEach`, `wholeSentence`), `crates/canager-core/tests/ops_upgrade_version_test.rs` (`ScriptedRunner::script`, `exited_0`, `upgrade(&runner, adapter, inst, kind, name) -> Outcome`).
-- From A: `canager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}`; `docs/what-we-run.md` with `## Homebrew` … `## Ollama`, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`. From F: `owned_roots` in `scan/mod.rs` with `test_owned_roots_table` in its `mod tests`; `Known::index` reading `InstalledArtifact.path` (rule 2) and `ManagerInstance.exe_path` (rules 0/1).
+- Test harnesses: `src/lib/sources.test.ts` (`fakeT`, `instance()`), `src/pages/InstalledPage.test.tsx` (`snapshot`, `settings`, the virtualizer stubs in `beforeEach`), `src/pages/UpdatesPage.test.tsx` (`snapshot`, the `updates`/`instances`/`artifacts` knobs in `beforeEach`, `wholeSentence`), `crates/banager-core/tests/ops_upgrade_version_test.rs` (`ScriptedRunner::script`, `exited_0`, `upgrade(&runner, adapter, inst, kind, name) -> Outcome`).
+- From A: `banager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}`; `docs/what-we-run.md` with `## Homebrew` … `## Ollama`, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`. From F: `owned_roots` in `scan/mod.rs` with `test_owned_roots_table` in its `mod tests`; `Known::index` reading `InstalledArtifact.path` (rule 2) and `ManagerInstance.exe_path` (rules 0/1).
 
 ## File Structure
 
 ```
 adapters/meta/standalone-claude.toml                              NEW   AdapterMeta, seven fields, kind = "standalone" (Task 3, stage 4)
 adapters/fixtures/standalone-claude/2.1.281/                      NEW   README.md, version.txt, latest.txt, stable.txt, layout.txt — recorded (Task 3, stage 9)
-crates/canager-core/src/adapters/mod.rs                            MOD   `pub mod standalone;` (Task 3, stage 3)
-crates/canager-core/src/adapters/standalone/mod.rs                 NEW   StandaloneAdapter, Detected, all(), impl Adapter, test support (Task 3, stages 3–9)
-crates/canager-core/src/adapters/standalone/recipe.rs              NEW   Recipe, Route, RouteKind, VersionCmd, VersionParse, Latest, UpgradeCmd (Task 3, stage 3)
-crates/canager-core/src/adapters/standalone/latest.rs              NEW   parse_version, is_dotted_version, compare_dotted, claude channel + body parsing (Task 3, stage 3)
-crates/canager-core/src/adapters/standalone/recipes.rs             NEW   CLAUDE, RECIPES, the invariants tests (Task 3, stage 4)
-crates/canager-core/src/adapters/standalone/route.rs               NEW   expand (Task 3, stage 4); probe, lexical_join, shadow_note (Task 3, stage 5)
-crates/canager-core/src/model.rs                                   MOD   InstanceNote ×5 (Task 1), UninstallBlocked::NoSafeMethod (Task 2), shape tests
-crates/canager-core/src/session/plans.rs                           MOD   one gate test (Task 2)
-crates/canager-core/src/session/mod.rs                             MOD   Session::new registers standalone::all; the eight-adapter test (Task 3, stage 9)
-crates/canager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += "downloads.claude.ai"; doc; one test (Task 3, stage 7)   [A's file]
-crates/canager-core/src/scan/mod.rs                                MOD   owned_roots: standalone-claude row; test (Task 3, stage 9)                      [F's file]
-crates/canager-core/src/lib.rs                                     MOD   one clause in the crate doc (Task 3, stage 9)                                    [F's file]
-crates/canager-core/tests/ops_upgrade_version_test.rs              MOD   two Claude Code cases (Task 3, stage 8)
+crates/banager-core/src/adapters/mod.rs                            MOD   `pub mod standalone;` (Task 3, stage 3)
+crates/banager-core/src/adapters/standalone/mod.rs                 NEW   StandaloneAdapter, Detected, all(), impl Adapter, test support (Task 3, stages 3–9)
+crates/banager-core/src/adapters/standalone/recipe.rs              NEW   Recipe, Route, RouteKind, VersionCmd, VersionParse, Latest, UpgradeCmd (Task 3, stage 3)
+crates/banager-core/src/adapters/standalone/latest.rs              NEW   parse_version, is_dotted_version, compare_dotted, claude channel + body parsing (Task 3, stage 3)
+crates/banager-core/src/adapters/standalone/recipes.rs             NEW   CLAUDE, RECIPES, the invariants tests (Task 3, stage 4)
+crates/banager-core/src/adapters/standalone/route.rs               NEW   expand (Task 3, stage 4); probe, lexical_join, shadow_note (Task 3, stage 5)
+crates/banager-core/src/model.rs                                   MOD   InstanceNote ×5 (Task 1), UninstallBlocked::NoSafeMethod (Task 2), shape tests
+crates/banager-core/src/session/plans.rs                           MOD   one gate test (Task 2)
+crates/banager-core/src/session/mod.rs                             MOD   Session::new registers standalone::all; the eight-adapter test (Task 3, stage 9)
+crates/banager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += "downloads.claude.ai"; doc; one test (Task 3, stage 7)   [A's file]
+crates/banager-core/src/scan/mod.rs                                MOD   owned_roots: standalone-claude row; test (Task 3, stage 9)                      [F's file]
+crates/banager-core/src/lib.rs                                     MOD   one clause in the crate doc (Task 3, stage 9)                                    [F's file]
+crates/banager-core/tests/ops_upgrade_version_test.rs              MOD   two Claude Code cases (Task 3, stage 8)
 src/lib/types.ts, types.test.ts                                    MOD   InstanceNote (Task 1), UninstallBlocked (Task 2)                        [A's file]
 src/lib/sources.ts, sources.test.ts                                MOD   five notice branches (1); label + NoSafeMethod copy (2); STANDALONE_SUMMARY_KEYS (10)
 src/pages/InstalledPage.tsx, InstalledPage.test.tsx                MOD   NoSafeMethod row test (2); summary fallback (10)
@@ -152,7 +152,7 @@ Five inputs the spec implies but no test would otherwise exercise, most likely t
 ### Task 1: Five `InstanceNote` variants, their notices and copy
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs:92-105` (`InstanceNote`), `:843-887` (`test_instance_status_is_default_empty_and_bare_strings_on_the_wire`)
+- Modify: `crates/banager-core/src/model.rs:92-105` (`InstanceNote`), `:843-887` (`test_instance_status_is_default_empty_and_bare_strings_on_the_wire`)
 - Modify: `src/lib/types.ts` — the `InstanceNote` union (today `export type InstanceNote = "IndexMayBeStale" | "IndexUpdating";` under the comment `/** Mirrors \`InstanceNote\`; payload-free on purpose, so a bare string. */`)
 - Modify: `src/lib/types.test.ts:138-163` (`spells InstanceStatus as an always-present object with bare-string variants`)
 - Modify: `src/lib/sources.ts:198-225` (the notes loop of `sourceNoticesFor`)
@@ -166,7 +166,7 @@ Five inputs the spec implies but no test would otherwise exercise, most likely t
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_instance_status_is_default_empty_and_bare_strings_on_the_wire`, after the block that ends
+In `crates/banager-core/src/model.rs`, inside `test_instance_status_is_default_empty_and_bare_strings_on_the_wire`, after the block that ends
 
 ```rust
         assert_eq!(
@@ -344,7 +344,7 @@ and, after that `it` (before the `});` closing `describe("sourceNoticesFor", …
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_instance_status_is_default_empty_and_bare_strings_on_the_wire`
+Run: `cargo test -p banager-core --lib model::tests::test_instance_status_is_default_empty_and_bare_strings_on_the_wire`
 Expected: FAIL to compile — `error[E0599]: no variant or associated item named \`NotOnPath\` found for enum \`InstanceNote\`` (and the four others).
 
 Run: `pnpm typecheck`
@@ -352,7 +352,7 @@ Expected: FAIL — in `src/lib/types.test.ts`, `Type '"NotOnPath"' is not assign
 
 - [ ] **Step 3: Add the variants, the mirror, the branches and the copy**
 
-In `crates/canager-core/src/model.rs`, replace the `InstanceNote` enum (`:92-105`) with:
+In `crates/banager-core/src/model.rs`, replace the `InstanceNote` enum (`:92-105`) with:
 
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -404,7 +404,7 @@ In `src/lib/types.ts`, replace the `InstanceNote` line and its comment with:
 
 ```ts
 /**
- * Mirrors `InstanceNote` in crates/canager-core/src/model.rs; payload-free
+ * Mirrors `InstanceNote` in crates/banager-core/src/model.rs; payload-free
  * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts
  * ends its loop over these in a `never`, so a variant added here without
  * a branch there fails `tsc`. The last five are a standalone tool's
@@ -583,7 +583,7 @@ In `src/i18n/zh-CN.json`, the same position:
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/types.test.ts src/lib/sources.test.ts src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/types.test.ts src/lib/sources.test.ts src/i18n`
 Expected: PASS. `completeness.test.ts` passes because every new `sourceNotice.*` key is a string literal in `sources.ts` and both locales carry it.
 
 - [ ] **Step 5: Run the gates**
@@ -593,7 +593,7 @@ Run all five from Global Constraints. Expected: all clean. (The Rust variants ha
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add the five notes a standalone tool's instance can carry, with their notices
 
@@ -616,8 +616,8 @@ EOF
 ### Task 2: `UninstallBlocked::NoSafeMethod`, its gate test, its copy record, the `standalone-claude` label
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs:220-233` (`UninstallBlocked`), `:655-700` (`test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`)
-- Modify: `crates/canager-core/src/session/plans.rs` — one test appended after `test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package` (ends `:923`), before `test_submit_is_refused_once_the_package_became_uninstall_blocked` (`:924-925`)
+- Modify: `crates/banager-core/src/model.rs:220-233` (`UninstallBlocked`), `:655-700` (`test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`)
+- Modify: `crates/banager-core/src/session/plans.rs` — one test appended after `test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package` (ends `:923`), before `test_submit_is_refused_once_the_package_became_uninstall_blocked` (`:924-925`)
 - Modify: `src/lib/types.ts` — `export type UninstallBlocked = "Pinned";` and its doc comment
 - Modify: `src/lib/types.test.ts:127-136` (`spells UninstallBlocked as a bare string, and a removable artifact as null`)
 - Modify: `src/lib/sources.ts:18-26` (`ADAPTER_LABEL_KEYS`), `:451-475` (`UNINSTALL_BLOCKED_KEYS`)
@@ -632,7 +632,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`, after the final `assert_eq!(serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"), pinned);` and before the test's closing `}`, insert:
+In `crates/banager-core/src/model.rs`, inside `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`, after the final `assert_eq!(serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"), pinned);` and before the test's closing `}`, insert:
 
 ```rust
 
@@ -655,7 +655,7 @@ In `crates/canager-core/src/model.rs`, inside `test_uninstall_blocked_is_a_bare_
         );
 ```
 
-In `crates/canager-core/src/session/plans.rs`, after the closing `}` of `test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package` (`:923`), insert:
+In `crates/banager-core/src/session/plans.rs`, after the closing `}` of `test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package` (`:923`), insert:
 
 ```rust
 
@@ -705,7 +705,7 @@ In `src/lib/types.test.ts`, replace the body of `it("spells UninstallBlocked as 
 
 ```ts
     // `Option<UninstallBlocked>` on `InstalledArtifact.uninstall_blocked`
-    // in crates/canager-core/src/model.rs, whose
+    // in crates/banager-core/src/model.rs, whose
     // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
     const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod"];
@@ -828,7 +828,7 @@ In `src/pages/InstalledPage.test.tsx`, after the closing `});` of `it("promises 
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
+Run: `cargo test -p banager-core --lib model::tests::test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
 Expected: FAIL to compile — `no variant or associated item named \`NoSafeMethod\` found for enum \`UninstallBlocked\`` (here and in `plans.rs`).
 
 Run: `pnpm typecheck`
@@ -836,7 +836,7 @@ Expected: FAIL — `Type '"NoSafeMethod"' is not assignable to type 'UninstallBl
 
 - [ ] **Step 3: Add the variant, the mirror, the copy record and the label**
 
-In `crates/canager-core/src/model.rs`, replace the `UninstallBlocked` enum (`:220-233`) with:
+In `crates/banager-core/src/model.rs`, replace the `UninstallBlocked` enum (`:220-233`) with:
 
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -874,7 +874,7 @@ In `src/lib/types.ts`, replace the `UninstallBlocked` doc comment and line with:
 ```ts
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
- * `UninstallBlocked` in crates/canager-core/src/model.rs: bare-string unit
+ * `UninstallBlocked` in crates/banager-core/src/model.rs: bare-string unit
  * variants. `Pinned` is produced by brew's `parse_info_installed` (from
  * `brew info --installed --json=v2`'s `pinned: true`); `NoSafeMethod` by
  * the standalone adapter's inventory for a tool with no uninstall command
@@ -891,7 +891,7 @@ In `src/lib/sources.ts`, replace `ADAPTER_LABEL_KEYS` (`:17-26`) with:
 ```ts
 /** i18n key holding each adapter's human name. The `standalone-*` ids are
  *  the tools with their own installer (`standalone::all` in
- *  crates/canager-core/src/adapters/standalone/mod.rs), one per recipe. */
+ *  crates/banager-core/src/adapters/standalone/mod.rs), one per recipe. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   brew: "adapters.brew",
   npm: "adapters.npm",
@@ -955,7 +955,7 @@ In `src/i18n/zh-CN.json`, the same two positions:
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `cargo test -p canager-core --lib session::plans::tests::test_issue_plan_refuses_an_uninstall_with_no_safe_method_but_plans_its_upgrade` and `pnpm typecheck && pnpm exec vitest run src/lib src/pages/InstalledPage.test.tsx src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `cargo test -p banager-core --lib session::plans::tests::test_issue_plan_refuses_an_uninstall_with_no_safe_method_but_plans_its_upgrade` and `pnpm typecheck && pnpm exec vitest run src/lib src/pages/InstalledPage.test.tsx src/i18n`
 Expected: PASS. (`src-tauri`'s `plan_operation_error` needs no change: `uninstall_blocked_json` serialises the reason with serde, so the wire carries `"NoSafeMethod"`, which `parseUninstallBlocked` now recognises through the record.)
 
 - [ ] **Step 5: Run the gates**
@@ -965,7 +965,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/src/session/plans.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs crates/banager-core/src/session/plans.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add NoSafeMethod, the uninstall refusal for a tool with no verified way out
 
@@ -991,10 +991,10 @@ Stages 3–9 below replace the former independently committed Tasks 3–9. They 
 #### Stage 3: `recipe.rs` types and `latest.rs` pure functions
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/standalone/mod.rs` (module doc and the two `pub mod` lines only; the adapter itself is Task 3, stage 6)
-- Create: `crates/canager-core/src/adapters/standalone/recipe.rs`
-- Create: `crates/canager-core/src/adapters/standalone/latest.rs`
-- Modify: `crates/canager-core/src/adapters/mod.rs:15-21` (the `pub mod` list)
+- Create: `crates/banager-core/src/adapters/standalone/mod.rs` (module doc and the two `pub mod` lines only; the adapter itself is Task 3, stage 6)
+- Create: `crates/banager-core/src/adapters/standalone/recipe.rs`
+- Create: `crates/banager-core/src/adapters/standalone/latest.rs`
+- Modify: `crates/banager-core/src/adapters/mod.rs:15-21` (the `pub mod` list)
 - Test: `latest.rs`'s `#[cfg(test)] mod tests`.
 
 **Interfaces:**
@@ -1005,7 +1005,7 @@ The submodules are public for the integration test's imports. All fields acquire
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `crates/canager-core/src/adapters/standalone/latest.rs` with only the test module for now (Step 3 adds the functions above it):
+Create `crates/banager-core/src/adapters/standalone/latest.rs` with only the test module for now (Step 3 adds the functions above it):
 
 ```rust
 #[cfg(test)]
@@ -1188,7 +1188,7 @@ mod tests {
 }
 ```
 
-Create `crates/canager-core/src/adapters/standalone/mod.rs`:
+Create `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 ```rust
 //! Tools installed by their own installer rather than by a package
@@ -1213,7 +1213,7 @@ pub mod latest;
 pub mod recipe;
 ```
 
-In `crates/canager-core/src/adapters/mod.rs`, change the module list
+In `crates/banager-core/src/adapters/mod.rs`, change the module list
 
 ```rust
 pub mod pip;
@@ -1230,7 +1230,7 @@ pub mod standalone;
 pub mod uv;
 ```
 
-Create `crates/canager-core/src/adapters/standalone/recipe.rs` (the types are needed for the tests to compile at all, so they are written in this step; there is nothing to test in a type with no behaviour):
+Create `crates/banager-core/src/adapters/standalone/recipe.rs` (the types are needed for the tests to compile at all, so they are written in this step; there is nothing to test in a type with no behaviour):
 
 ```rust
 //! One tool = one `Recipe`: all `'static` data, no trait objects, one
@@ -1363,12 +1363,12 @@ pub struct UpgradeCmd {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::latest`
+Run: `cargo test -p banager-core --lib adapters::standalone::latest`
 Expected: FAIL to compile — `error[E0425]: cannot find function \`is_dotted_version\` in this scope` (and `parse_version`, `compare_dotted`, `claude_channel_from_json`, `claude_channel`, `parse_channel_body`; `error[E0425]: cannot find value \`CHANNEL_STABLE\``, `CHANNEL_LATEST`; `error[E0433]` for `VersionParse` until `use super::recipe::VersionParse;` exists).
 
 - [ ] **Step 3: Write the functions**
 
-Prepend to `crates/canager-core/src/adapters/standalone/latest.rs` (above `#[cfg(test)]`):
+Prepend to `crates/banager-core/src/adapters/standalone/latest.rs` (above `#[cfg(test)]`):
 
 ```rust
 //! Versions: the installed one out of a `--version` line, the published
@@ -1478,7 +1478,7 @@ pub fn parse_channel_body(body: &str) -> Result<String, String> {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::latest`
+Run: `cargo test -p banager-core --lib adapters::standalone::latest`
 Expected: PASS — all parser, comparison and channel tests, including intact unsupported tokens.
 
 - [ ] **Step 5: Continue the core task**
@@ -1491,9 +1491,9 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 
 **Files:**
 - Create: `adapters/meta/standalone-claude.toml`
-- Create: `crates/canager-core/src/adapters/standalone/recipes.rs`
-- Create: `crates/canager-core/src/adapters/standalone/route.rs` (`expand` only; `probe`/`shadow_note` are Task 3, stage 5)
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (add `pub mod recipes;` and `pub mod route;`)
+- Create: `crates/banager-core/src/adapters/standalone/recipes.rs`
+- Create: `crates/banager-core/src/adapters/standalone/route.rs` (`expand` only; `probe`/`shadow_note` are Task 3, stage 5)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (add `pub mod recipes;` and `pub mod route;`)
 - Test: `recipes.rs`'s `#[cfg(test)] mod tests`, `route.rs`'s.
 
 **Interfaces:**
@@ -1504,7 +1504,7 @@ The recipe's every value and its source (claude.md, VERIFIED unless said): launc
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `crates/canager-core/src/adapters/standalone/recipes.rs` with the test module only (Step 3 adds the data above it):
+Create `crates/banager-core/src/adapters/standalone/recipes.rs` with the test module only (Step 3 adds the data above it):
 
 ```rust
 #[cfg(test)]
@@ -1605,7 +1605,7 @@ mod tests {
 }
 ```
 
-Create `crates/canager-core/src/adapters/standalone/route.rs` with its test module only:
+Create `crates/banager-core/src/adapters/standalone/route.rs` with its test module only:
 
 ```rust
 #[cfg(test)]
@@ -1657,7 +1657,7 @@ mod tests {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: FAIL to compile — `error[E0425]: cannot find value \`RECIPES\`` / `\`CLAUDE\`` in `recipes.rs`; `cannot find function \`expand\`` in `route.rs`; and, until Step 3 adds the two `pub mod` lines, the two files are not compiled at all (so first the `mod.rs` edit, then the errors above).
 
 - [ ] **Step 3: Write the recipe, the meta file and `expand`**
@@ -1676,7 +1676,7 @@ verified_versions = ["2.1.281"]
 
 (`kind = "standalone"` is documentary: nothing branches on `kind` today, per spec §3.1; it tells a reader of `adapters/meta/` that this one is not a package manager. `verified_versions` is what Task 3, stage 9 records; if the recording day's `claude --version` differs, Task 3, stage 9 changes this line to match.)
 
-Prepend to `crates/canager-core/src/adapters/standalone/recipes.rs`:
+Prepend to `crates/banager-core/src/adapters/standalone/recipes.rs`:
 
 ```rust
 //! The tools, as data. One `pub static` per tool, `RECIPES` listing them
@@ -1754,7 +1754,7 @@ pub static CLAUDE: Recipe = Recipe {
 pub static RECIPES: &[&Recipe] = &[&CLAUDE];
 ```
 
-Prepend to `crates/canager-core/src/adapters/standalone/route.rs`:
+Prepend to `crates/banager-core/src/adapters/standalone/route.rs`:
 
 ```rust
 //! Where a tool's own installer put it, and whether what is there is that
@@ -1781,7 +1781,7 @@ pub fn expand(home: &Path, spec: &str) -> PathBuf {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, replace
+In `crates/banager-core/src/adapters/standalone/mod.rs`, replace
 
 ```rust
 pub mod latest;
@@ -1799,7 +1799,7 @@ pub mod route;
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: PASS — the `latest`, `recipes` and `route::expand` tests.
 
 - [ ] **Step 5: Continue the core task**
@@ -1811,8 +1811,8 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 #### Stage 5: `route::probe`, `lexical_join`, `shadow_note` on synthetic trees
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/route.rs` (the three functions after `expand`; tests appended to `mod tests`)
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (a `#[cfg(test)] mod testing` with the temp-home builder every later task's tests use)
+- Modify: `crates/banager-core/src/adapters/standalone/route.rs` (the three functions after `expand`; tests appended to `mod tests`)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (a `#[cfg(test)] mod testing` with the temp-home builder every later task's tests use)
 - Test: `route.rs`'s `mod tests`.
 
 **Interfaces:**
@@ -1823,7 +1823,7 @@ Rules, from spec §3.3 and §七, with the deviations below: `lstat` identifies 
 
 - [ ] **Step 1: Write the test support and the failing tests**
 
-Append to `crates/canager-core/src/adapters/standalone/mod.rs` (after the `pub mod` lines):
+Append to `crates/banager-core/src/adapters/standalone/mod.rs` (after the `pub mod` lines):
 
 ```rust
 
@@ -1933,7 +1933,7 @@ pub(super) mod testing {
 }
 ```
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/route.rs` (after `test_expand_refuses_a_path_that_is_not_under_home`):
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/route.rs` (after `test_expand_refuses_a_path_that_is_not_under_home`):
 
 ```rust
 
@@ -2231,12 +2231,12 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/route.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::route`
+Run: `cargo test -p banager-core --lib adapters::standalone::route`
 Expected: FAIL to compile — `cannot find function \`probe\``, `\`lexical_join\``, `\`shadow_note\``; `cannot find type \`Probe\``.
 
 - [ ] **Step 3: Write the three functions**
 
-Append to `crates/canager-core/src/adapters/standalone/route.rs` after `expand` (before `#[cfg(test)]`), and add `use crate::model::InstanceNote; use crate::runner::HostEnv; use super::recipe::RouteKind; use std::path::Component; use std::os::unix::fs::PermissionsExt;` to the file's imports:
+Append to `crates/banager-core/src/adapters/standalone/route.rs` after `expand` (before `#[cfg(test)]`), and add `use crate::model::InstanceNote; use crate::runner::HostEnv; use super::recipe::RouteKind; use std::path::Component; use std::os::unix::fs::PermissionsExt;` to the file's imports:
 
 ```rust
 
@@ -2431,7 +2431,7 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::route`
+Run: `cargo test -p banager-core --lib adapters::standalone::route`
 Expected: PASS — all `expand` and route tests, including linked-bin, loop, in-root markers, and non-executable PATH regressions.
 
 - [ ] **Step 5: Continue the core task**
@@ -2443,7 +2443,7 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 #### Stage 6: `StandaloneAdapter::{new, detect, inventory, reconcile, search}`
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (the struct, `Detected`, the inherent methods, a `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (the struct, `Detected`, the inherent methods, a `#[cfg(test)] mod tests`)
 - Test: that `mod tests`.
 
 **Interfaces:**
@@ -2452,7 +2452,7 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `crates/canager-core/src/adapters/standalone/mod.rs`:
+Append to `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 ```rust
 
@@ -2860,12 +2860,12 @@ mod tests {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::tests`
+Run: `cargo test -p banager-core --lib adapters::standalone::tests`
 Expected: FAIL to compile — `cannot find type \`StandaloneAdapter\` in this scope` (and `Detected`, `CommandSpec`, `OutputUse`, `Scope`, `ArtifactKey`, `ManagerInstance`, `AdapterError`, `CommandRunner`, `CancellationToken`, `Arc`, `Duration` — all brought in by Step 3's imports; `async_trait` the test module imports itself).
 
 - [ ] **Step 3: Write the adapter**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, after the `pub mod` lines and before `#[cfg(test)] pub(super) mod testing`, insert:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, after the `pub mod` lines and before `#[cfg(test)] pub(super) mod testing`, insert:
 
 ```rust
 
@@ -3111,7 +3111,7 @@ impl StandaloneAdapter {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: the focused adapter tests pass. The completed task's clippy gate runs after stage 9, when `http`, `Detected.home`, all recipe fields and `all()` have production readers.
 
 - [ ] **Step 5: Continue the core task**
@@ -3123,21 +3123,21 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 #### Stage 7: `check_updates`, the channel fetch, `downloads.claude.ai` on the allowlist
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (`check_updates`, `latest_version`; tests)]` line on `http`, now that this task reads the field)
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` (one test)
-- Modify: `crates/canager-core/src/http/real.rs` — A's `ALLOWED_HTTPS_HOSTS` constant, its doc comment, and one new test in `mod tests`  [A's file: anchor by the constant and the test names]
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (`check_updates`, `latest_version`; tests)]` line on `http`, now that this task reads the field)
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` (one test)
+- Modify: `crates/banager-core/src/http/real.rs` — A's `ALLOWED_HTTPS_HOSTS` constant, its doc comment, and one new test in `mod tests`  [A's file: anchor by the constant and the test names]
 - Modify: `docs/what-we-run.md` — the table under `## Network: Canager only connects to these hosts`  [A's file: anchor by the heading and the `registry.ollama.ai` row]
 - Test: `mod tests` in `standalone/mod.rs`, `recipes.rs`, `real.rs`; A's `tests/what_we_run_test.rs` (`test_what_we_run_names_every_allowed_https_host`) keeps passing.
 
 **Interfaces:**
-- Consumes: `Latest::ClaudeChannel`, `latest::{claude_channel, CHANNEL_LATEST, parse_channel_body, compare_dotted}` (Task 3, stage 3), `Detected.home` (Task 3, stage 6), `HttpClient::send`/`HttpRequest` (`http/mod.rs:18-46`), `uncheckable_candidate` (`adapters/mod.rs:269-284`), `UpdateCandidate`/`UpdateChannel::Registry` (`model.rs:313-327`, `:235-240`), `CheckOptions`/`CheckOutcome` (`adapters/mod.rs:26-80`), A's `host_allowed` (`canager_core::http::real::host_allowed`).
+- Consumes: `Latest::ClaudeChannel`, `latest::{claude_channel, CHANNEL_LATEST, parse_channel_body, compare_dotted}` (Task 3, stage 3), `Detected.home` (Task 3, stage 6), `HttpClient::send`/`HttpRequest` (`http/mod.rs:18-46`), `uncheckable_candidate` (`adapters/mod.rs:269-284`), `UpdateCandidate`/`UpdateChannel::Registry` (`model.rs:313-327`, `:235-240`), `CheckOptions`/`CheckOutcome` (`adapters/mod.rs:26-80`), A's `host_allowed` (`banager_core::http::real::host_allowed`).
 - Produces (verbatim): `pub async fn check_updates(&self, inst: &ManagerInstance, opts: &CheckOptions) -> Result<CheckOutcome, AdapterError>` (reader: `impl Adapter`, Task 3, stage 8 → `Session::refresh`); `"downloads.claude.ai"` in `ALLOWED_HTTPS_HOSTS` (readers: A's `host_allowed` in `send`, the doc table, A's `what_we_run_test`, and `recipes::tests::test_every_recipe_latest_url_is_an_allowed_https_host` here).
 
 Rules (spec §4.1, §4.3, §4.4, D4, D5): the request goes to `{base}/{channel}`, 30 s, `GET`, no headers of Canager's own; a candidate only when `compare_dotted(current, remote) == Less`, with `channel: Registry`, `checkable: true`, `warnings: []`, `blocked: None`, `key` equal to the artifact's; equal or older remote → no candidate (never "everything is up to date" from a `stable` pointer that is behind); a network failure, a non-200, a body that is not a version, or an incomparable pair → one `uncheckable_candidate` naming the reason (never an `Err`, which would mark the whole source stale); `CheckOptions.include_self_updating` is not read (that switch is Homebrew's `--greedy`; the badge here is read from the launcher's live version and is true either way); `notes` empty.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs` (before its closing `}`); also add `use crate::adapters::CheckOptions; use crate::http::HttpResponse; use crate::model::{UpdateChannel, Warning};` to that module's `use` lines:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs` (before its closing `}`); also add `use crate::adapters::CheckOptions; use crate::http::HttpResponse; use crate::model::{UpdateChannel, Warning};` to that module's `use` lines:
 
 ```rust
 
@@ -3441,7 +3441,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs
     }
 ```
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/recipes.rs`:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/recipes.rs`:
 
 ```rust
 
@@ -3466,7 +3466,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/recipe
     }
 ```
 
-In `crates/canager-core/src/http/real.rs`, append inside `mod tests`, after A's `test_real_http_client_refuses_an_https_host_off_the_list_before_connecting` (the last test A added, ending with `other => panic!("expected a host-not-allowed error, got {other:?}"), } }`) and before the module's closing `}`:
+In `crates/banager-core/src/http/real.rs`, append inside `mod tests`, after A's `test_real_http_client_refuses_an_https_host_off_the_list_before_connecting` (the last test A added, ending with `other => panic!("expected a host-not-allowed error, got {other:?}"), } }`) and before the module's closing `}`:
 
 ```rust
 
@@ -3483,12 +3483,12 @@ In `crates/canager-core/src/http/real.rs`, append inside `mod tests`, after A's 
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
-Expected: FAIL to compile — `no method named \`check_updates\` found for struct \`StandaloneAdapter\``. And `cargo test -p canager-core --lib http::real::tests::test_host_allowed_accepts_claude_codes_channel_pointers` FAILS: `host not allowed: "downloads.claude.ai" is not one of ["crates.io", "pypi.org", "registry.ollama.ai"]`. (`test_every_recipe_latest_url_is_an_allowed_https_host` fails the same way once the standalone module compiles.)
+Run: `cargo test -p banager-core --lib adapters::standalone`
+Expected: FAIL to compile — `no method named \`check_updates\` found for struct \`StandaloneAdapter\``. And `cargo test -p banager-core --lib http::real::tests::test_host_allowed_accepts_claude_codes_channel_pointers` FAILS: `host not allowed: "downloads.claude.ai" is not one of ["crates.io", "pypi.org", "registry.ollama.ai"]`. (`test_every_recipe_latest_url_is_an_allowed_https_host` fails the same way once the standalone module compiles.)
 
 - [ ] **Step 3: Write `check_updates`, add the host, fix the comment, add the doc row**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, add to the imports `use self::recipe::Latest; use crate::adapters::{uncheckable_candidate, CheckOptions, CheckOutcome}; use crate::http::HttpRequest; use crate::model::{UpdateCandidate, UpdateChannel}; use std::cmp::Ordering;` (merge into the existing `use` lines), and insert after `search` (before `reconcile`):
+In `crates/banager-core/src/adapters/standalone/mod.rs`, add to the imports `use self::recipe::Latest; use crate::adapters::{uncheckable_candidate, CheckOptions, CheckOutcome}; use crate::http::HttpRequest; use crate::model::{UpdateCandidate, UpdateChannel}; use std::cmp::Ordering;` (merge into the existing `use` lines), and insert after `search` (before `reconcile`):
 
 ```rust
 
@@ -3603,7 +3603,7 @@ In `crates/canager-core/src/adapters/standalone/mod.rs`, add to the imports `use
     }
 ```
 
-In `crates/canager-core/src/http/real.rs`, change A's constant
+In `crates/banager-core/src/http/real.rs`, change A's constant
 
 ```rust
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai"];
@@ -3650,7 +3650,7 @@ In `docs/what-we-run.md`, under `## Network: Canager only connects to these host
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone` and `cargo test -p canager-core --lib http::real` and `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --lib adapters::standalone` and `cargo test -p banager-core --lib http::real` and `cargo test -p banager-core --test what_we_run_test`
 Expected: PASS — all `check_updates` tests, including fresh reads and incomparable versions, the recipes host test, the `real.rs` test; A's four document tests still green (the host is now named in the doc).
 
 - [ ] **Step 5: Continue the core task**
@@ -3662,8 +3662,8 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 #### Stage 8: `plan`/`execute`, `impl Adapter`, `all()`, the end-to-end `UnchangedAfterUpgrade` case
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (`plan`, `execute`, `impl Adapter for StandaloneAdapter`, `pub fn all`; tests)
-- Modify: `crates/canager-core/tests/ops_upgrade_version_test.rs` (imports at `:21-35`; two tests and one helper appended at the end of the file)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (`plan`, `execute`, `impl Adapter for StandaloneAdapter`, `pub fn all`; tests)
+- Modify: `crates/banager-core/tests/ops_upgrade_version_test.rs` (imports at `:21-35`; two tests and one helper appended at the end of the file)
 - Test: both.
 
 **Interfaces:**
@@ -3672,7 +3672,7 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs`; add `use crate::adapters::Adapter; use crate::events::VecSink; use crate::model::{CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock};` to its `use` lines:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs`; add `use crate::adapters::Adapter; use crate::events::VecSink; use crate::model::{CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock};` to its `use` lines:
 
 ```rust
 
@@ -3837,7 +3837,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs
     }
 ```
 
-Append to `crates/canager-core/tests/ops_upgrade_version_test.rs` (at the end of the file), and add `use canager_core::adapters::standalone::recipes::CLAUDE; use canager_core::adapters::standalone::StandaloneAdapter;` to its imports (`:21-35`, alphabetical among the `canager_core::adapters::…` lines):
+Append to `crates/banager-core/tests/ops_upgrade_version_test.rs` (at the end of the file), and add `use banager_core::adapters::standalone::recipes::CLAUDE; use banager_core::adapters::standalone::StandaloneAdapter;` to its imports (`:21-35`, alphabetical among the `banager_core::adapters::…` lines):
 
 ```rust
 
@@ -3869,7 +3869,7 @@ fn claude_home(version: &str) -> (PathBuf, ManagerInstance) {
         exe_path: launcher,
         prefix: root,
         version: Some(version.to_string()),
-        ..canager_core::testing::manager_instance("standalone-claude", "standalone-claude")
+        ..banager_core::testing::manager_instance("standalone-claude", "standalone-claude")
     };
     (home, inst)
 }
@@ -3926,8 +3926,8 @@ async fn claude_upgrade_outputs(
     )
     .await;
     if dangling_after_update {
-        use canager_core::adapters::standalone::recipe::RouteKind;
-        use canager_core::adapters::standalone::route::{probe, Probe};
+        use banager_core::adapters::standalone::recipe::RouteKind;
+        use banager_core::adapters::standalone::route::{probe, Probe};
         assert_eq!(probe(RouteKind::SymlinkIntoRoot, &inst.exe_path, &inst.prefix), Probe::LauncherOnly);
         let adapter = StandaloneAdapter::new(&CLAUDE, runner.clone(), Arc::new(MockHttpClient::new()));
         let artifacts = adapter.inventory(&inst).await.unwrap();
@@ -4016,12 +4016,12 @@ async fn test_a_claude_update_that_moved_the_version_succeeded() {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::tests`
-Expected: FAIL to compile — `no method named \`plan\`` / `\`execute\`` found for `StandaloneAdapter`; `cannot find function \`all\``; `the trait bound \`StandaloneAdapter: Adapter\` is not satisfied` at the `Arc<dyn Adapter>` coercion. `cargo test -p canager-core --test ops_upgrade_version_test` fails to compile for the same trait bound.
+Run: `cargo test -p banager-core --lib adapters::standalone::tests`
+Expected: FAIL to compile — `no method named \`plan\`` / `\`execute\`` found for `StandaloneAdapter`; `cannot find function \`all\``; `the trait bound \`StandaloneAdapter: Adapter\` is not satisfied` at the `Arc<dyn Adapter>` coercion. `cargo test -p banager-core --test ops_upgrade_version_test` fails to compile for the same trait bound.
 
 - [ ] **Step 3: Write `plan`, `execute`, the trait impl and `all()`**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, add to the imports `use crate::adapters::{ensure_instance_match, run_plan, validate_package_name, Adapter}; use crate::events::{EventSink, OpId}; use crate::model::{OpKind, OpRequest, Outcome, Plan, ResourceLock}; use async_trait::async_trait;` (merged into the existing `use` lines; the test module already imports `async_trait` for itself, and an explicit import beside the parent's is not a warning). `CancelPolicy` is *not* imported here: `plan()` copies `upgrade.cancel` without naming the type, and the test module has its own `use crate::model::{CancelPolicy, …}`, so a non-test import would be unused and fail `-D warnings`. Then insert after `search` (before `reconcile`):
+In `crates/banager-core/src/adapters/standalone/mod.rs`, add to the imports `use crate::adapters::{ensure_instance_match, run_plan, validate_package_name, Adapter}; use crate::events::{EventSink, OpId}; use crate::model::{OpKind, OpRequest, Outcome, Plan, ResourceLock}; use async_trait::async_trait;` (merged into the existing `use` lines; the test module already imports `async_trait` for itself, and an explicit import beside the parent's is not a warning). `CancelPolicy` is *not* imported here: `plan()` copies `upgrade.cancel` without naming the type, and the test module has its own `use crate::model::{CancelPolicy, …}`, so a non-test import would be unused and fail `-D warnings`. Then insert after `search` (before `reconcile`):
 
 ```rust
 
@@ -4158,7 +4158,7 @@ impl Adapter for StandaloneAdapter {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone` and `cargo test -p canager-core --test ops_upgrade_version_test`
+Run: `cargo test -p banager-core --lib adapters::standalone` and `cargo test -p banager-core --test ops_upgrade_version_test`
 Expected: PASS — plan/execute unit tests and all Claude end-to-end cases: unchanged, changed, failed/empty version read, dangling after update, cancellation and timeout; existing integration cases remain green.
 
 - [ ] **Step 5: Continue the core task**
@@ -4172,10 +4172,10 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 **Files:**
 - Create: `adapters/fixtures/standalone-claude/2.1.281/{README.md, version.txt, latest.txt, stable.txt, layout.txt}` — recorded, never typed (the directory is named after the recorded version; see Step 1)
 - Modify: `adapters/meta/standalone-claude.toml` only if the recorded version is not `2.1.281`
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` (three fixture-backed tests in `mod tests`)
-- Modify: `crates/canager-core/src/session/mod.rs:30-36` (imports), `:253-273` (`Session::new`), `:499-515` (`test_new_registers_all_seven_adapters`)
-- Modify: `crates/canager-core/src/scan/mod.rs` — `owned_roots` and `test_owned_roots_table`  [F's file]
-- Modify: `crates/canager-core/src/lib.rs` — the crate doc's list of sources  [F's file]
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (three fixture-backed tests in `mod tests`)
+- Modify: `crates/banager-core/src/session/mod.rs:30-36` (imports), `:253-273` (`Session::new`), `:499-515` (`test_new_registers_all_seven_adapters`)
+- Modify: `crates/banager-core/src/scan/mod.rs` — `owned_roots` and `test_owned_roots_table`  [F's file]
+- Modify: `crates/banager-core/src/lib.rs` — the crate doc's list of sources  [F's file]
 - Modify: `docs/what-we-run.md` — intro, "Where the program comes from", a `## Claude Code` section, "Files Canager reads"  [A's and F's file]
 - Test: `fixtures_layout_test.rs`, `what_we_run_test.rs` (both existing), the session test, the three fixture tests, `scan::tests::test_owned_roots_table`.
 
@@ -4286,7 +4286,7 @@ Use the metadata version in the trust section's “Verified against Claude Code�
 
 - [ ] **Step 2: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs`:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 ```rust
 
@@ -4384,7 +4384,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs
     }
 ```
 
-In `crates/canager-core/src/session/mod.rs`, replace `test_new_registers_all_seven_adapters` (`:499-515`) with:
+In `crates/banager-core/src/session/mod.rs`, replace `test_new_registers_all_seven_adapters` (`:499-515`) with:
 
 ```rust
     #[test]
@@ -4407,7 +4407,7 @@ In `crates/canager-core/src/session/mod.rs`, replace `test_new_registers_all_sev
     }
 ```
 
-In `crates/canager-core/src/scan/mod.rs`, inside F's `test_owned_roots_table`, after the `assert_eq!(owned_roots(&npm), vec![PathBuf::from("/usr/local/lib/node_modules")]);` line and before the comment `// A \`parent()\`-derived prefix, or \`$CARGO_HOME\`, is never a root.`, insert:
+In `crates/banager-core/src/scan/mod.rs`, inside F's `test_owned_roots_table`, after the `assert_eq!(owned_roots(&npm), vec![PathBuf::from("/usr/local/lib/node_modules")]);` line and before the comment `// A \`parent()\`-derived prefix, or \`$CARGO_HOME\`, is never a root.`, insert:
 
 ```rust
         // A standalone tool owns its root: the launcher is the instance's
@@ -4434,12 +4434,12 @@ and add to that test's "never a root" array (the `for (adapter, id, prefix) in [
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: FAIL — `test_new_registers_all_eight_adapters` (left has seven ids, no `standalone-claude`); `fixtures_layout_test::test_every_registered_adapter_has_a_documented_fixture_directory` (`adapters/fixtures/*` now has a `standalone-claude` directory that no registered adapter matches: left `[…, "standalone-claude", …]`, right the seven ids); `scan::tests::test_owned_roots_table` (`owned_roots(&claude)` is `[]`). The three fixture tests PASS already (they read the recording through the adapter, which exists since Task 3, stage 8) — they are here because the recording is.
 
 - [ ] **Step 4: Register, add the row, write the section**
 
-In `crates/canager-core/src/session/mod.rs`, add to the imports, after `use crate::adapters::pipx::PipxAdapter;`:
+In `crates/banager-core/src/session/mod.rs`, add to the imports, after `use crate::adapters::pipx::PipxAdapter;`:
 
 ```rust
 use crate::adapters::standalone;
@@ -4477,7 +4477,7 @@ and replace `Session::new` (`:253-273`) with:
     }
 ```
 
-In `crates/canager-core/src/scan/mod.rs`, inside F's `owned_roots`, replace the arm
+In `crates/banager-core/src/scan/mod.rs`, inside F's `owned_roots`, replace the arm
 
 ```rust
         "npm" => vec![inst.prefix.join("lib").join("node_modules")],
@@ -4507,7 +4507,7 @@ and everything from there to the `_ => Vec::new(),` arm inclusive with:
 
 (keep F's comment text for the `_` arm as it is in the tree if it differs in wording; only the `standalone-claude` arm and its comment are new). Also, in F's doc comment on `owned_roots`, the paragraph beginning `/// The standalone adapters (phase 4 step B) add their tool roots --` describes what this change does; rewrite its first sentence to `/// The standalone adapters add their tool roots as their recipes land --` so the comment no longer says the rows are missing.
 
-In `crates/canager-core/src/lib.rs`, in the crate doc, change the clause
+In `crates/banager-core/src/lib.rs`, in the crate doc, change the clause
 
 ```rust
 //! after the things they installed from a terminal — Homebrew, npm, pipx,
@@ -4539,7 +4539,7 @@ The two sentences below are quoted on one line each, but in the file A hard-wrap
 ## Claude Code
 
 Adapter: `StandaloneAdapter` over the `CLAUDE` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `mod.rs` the behaviour, `route.rs` the recognition). Verified against
 Claude Code 2.1.281 (the version in `adapters/meta/standalone-claude.toml`
 and the name of the recorded fixture directory; write the recording day's
@@ -4638,7 +4638,7 @@ well.
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — `test_new_registers_all_eight_adapters`, `fixtures_layout_test` (eight directories, eight ids, one README each), `what_we_run_test` (a `## Claude Code` section, the host named), `test_owned_roots_table`, the three fixture tests, and everything before.
 
 - [ ] **Step 6: Run the gates**
@@ -4648,7 +4648,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/mod.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/latest.rs adapters/meta/standalone-claude.toml crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/route.rs crates/canager-core/src/http/real.rs docs/what-we-run.md crates/canager-core/tests/ops_upgrade_version_test.rs adapters/fixtures/standalone-claude crates/canager-core/src/session/mod.rs crates/canager-core/src/scan/mod.rs crates/canager-core/src/lib.rs
+git add crates/banager-core/src/adapters/mod.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/latest.rs adapters/meta/standalone-claude.toml crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/http/real.rs docs/what-we-run.md crates/banager-core/tests/ops_upgrade_version_test.rs adapters/fixtures/standalone-claude crates/banager-core/src/session/mod.rs crates/banager-core/src/scan/mod.rs crates/banager-core/src/lib.rs
 git commit -m "$(cat <<'EOF'
 Add and register the complete Claude Code standalone adapter
 
@@ -4917,7 +4917,7 @@ In `src/lib/sources.ts`, after `ADAPTER_LABEL_KEYS` (before the `READ_ONLY_NOTIC
 ```ts
 
 /** The adapter ids of the tools with their own installer, one per recipe
- *  in `standalone::RECIPES` (crates/canager-core/src/adapters/standalone/
+ *  in `standalone::RECIPES` (crates/banager-core/src/adapters/standalone/
  *  recipes.rs). A union so `STANDALONE_SUMMARY_KEYS` is a `Record` over
  *  it: a tool added here without a sentence fails `tsc`. */
 export type StandaloneAdapterId = "standalone-claude";

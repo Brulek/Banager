@@ -242,7 +242,7 @@ export function SettingsPage() {
   // An entry's name and source. Where the snapshot no longer lists the
   // package, a tool with its own installer is still named by its product
   // name, which is its source's too (its `display_name` is that name, from
-  // its recipe in crates/canager-core/src/adapters/standalone/), and
+  // its recipe in crates/banager-core/src/adapters/standalone/), and
   // anything else by the package's own name. The source is left out where
   // it would only say the name again, as on the Updates page's rows. It is
   // named as the sidebar names it, or -- for a source the snapshot does

@@ -21,7 +21,7 @@ import type { Snapshot, UiEvent } from "./types";
  * `round` is what says which is newer. Each snapshot carries the number
  * of the refresh round that committed it (`Snapshot::round`), and rounds
  * commit one at a time in the order they are numbered:
- * `Session::refresh_round` (crates/canager-core/src/session/refresh.rs)
+ * `Session::refresh_round` (crates/banager-core/src/session/refresh.rs)
  * numbers a round and commits it under one hold of the refresh gate. So
  * the higher round is the later answer, whether or not it moved
  * `generation` -- which a refresh that found nothing new deliberately
@@ -64,7 +64,7 @@ export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined
  * never "still loading" no matter what the timestamp says.
  *
  * `generation === 0` and `refreshed_at === null` are both needed.
- * `commit()` (crates/canager-core/src/session/refresh.rs) bumps
+ * `commit()` (crates/banager-core/src/session/refresh.rs) bumps
  * `generation` only when the refresh's *content* differs from the
  * previous snapshot, so a Mac with no package manager at all refreshes
  * successfully and stays at generation 0 forever -- only the stamped

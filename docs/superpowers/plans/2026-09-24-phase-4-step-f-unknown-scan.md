@@ -4,9 +4,9 @@
 
 **Goal:** Give Canager a fourth page, *Unknown*, that lists the command-line programs on this Mac that none of the registered sources installed — a tool's own installer dropped a binary into `~/.local/bin`, a GUI app put a helper into `/usr/local/bin`, a link whose target has since been deleted — with what each one is, where it points, its size and date, and who put it there. The list is honest about what it did not see (which directories it read, how many programs known sources accounted for, whether it stopped early and at which limit) and it never runs, moves or deletes anything.
 
-**Architecture:** A read-only pure function in a new `canager-core` module, `scan/`, over a clone of the current `Snapshot`'s instances and artifacts; a one-method `Session::scan_unknown`; one IPC command on Tauri's blocking pool; one TanStack query that only runs when asked; one React page. It is deliberately **not** an `Adapter` (phase 4 spec §8.1): it has no plan, execute, reconcile, instance or recorded fixture, and — decisively — attribution needs every *other* source's instances, which `inventory(&self, inst)` never sees. It does not enter the `Snapshot` and is not part of `refresh`: a ten-second directory walk is not something every refresh should pay, and snapshot data is about the managed sources.
+**Architecture:** A read-only pure function in a new `banager-core` module, `scan/`, over a clone of the current `Snapshot`'s instances and artifacts; a one-method `Session::scan_unknown`; one IPC command on Tauri's blocking pool; one TanStack query that only runs when asked; one React page. It is deliberately **not** an `Adapter` (phase 4 spec §8.1): it has no plan, execute, reconcile, instance or recorded fixture, and — decisively — attribution needs every *other* source's instances, which `inventory(&self, inst)` never sees. It does not enter the `Snapshot` and is not part of `refresh`: a ten-second directory walk is not something every refresh should pay, and snapshot data is about the managed sources.
 
-**Tech Stack:** Rust (canager-core, tauri 2.11.x; `std::fs` + `std::os::unix::fs::MetadataExt` only — no new crate); React 19, TanStack Query v5, Zustand, i18next, vitest.
+**Tech Stack:** Rust (banager-core, tauri 2.11.x; `std::fs` + `std::os::unix::fs::MetadataExt` only — no new crate); React 19, TanStack Query v5, Zustand, i18next, vitest.
 
 ## Global Constraints
 
@@ -61,12 +61,12 @@ The spec leaves these to the step; each is decided here so no task has to.
 ## File Structure
 
 ```
-crates/canager-core/src/scan/mod.rs          NEW  wire types, ScanBudget, the walk, attribution rules 0–3, owned_roots table
-crates/canager-core/src/lib.rs               MOD  `pub mod scan;` + one clause in the crate doc
-crates/canager-core/src/session/scan.rs      NEW  Session::scan_unknown (clone snapshot, call scan::scan_unknown)
-crates/canager-core/src/session/mod.rs       MOD  `mod scan;`
-crates/canager-core/tests/unknown_scan_test.rs NEW synthetic directory trees: kinds, skips, budget, dedupe, rules 0–3
-crates/canager-core/src/adapters/pipx.rs     MOD  InstalledArtifact.path from `app_paths` (rule 2's second producer, Task 3b)
+crates/banager-core/src/scan/mod.rs          NEW  wire types, ScanBudget, the walk, attribution rules 0–3, owned_roots table
+crates/banager-core/src/lib.rs               MOD  `pub mod scan;` + one clause in the crate doc
+crates/banager-core/src/session/scan.rs      NEW  Session::scan_unknown (clone snapshot, call scan::scan_unknown)
+crates/banager-core/src/session/mod.rs       MOD  `mod scan;`
+crates/banager-core/tests/unknown_scan_test.rs NEW synthetic directory trees: kinds, skips, budget, dedupe, rules 0–3
+crates/banager-core/src/adapters/pipx.rs     MOD  InstalledArtifact.path from `app_paths` (rule 2's second producer, Task 3b)
 src-tauri/src/ipc.rs                         MOD  scan_unknown_impl(session, env) + #[tauri::command] scan_unknown (spawn_blocking) + test
 src-tauri/src/lib.rs                         MOD  register ipc::scan_unknown
 src/lib/types.ts                             MOD  EntryKind, ScanStop, ScannedDir, UnknownEntry, UnknownScan
@@ -90,7 +90,7 @@ docs/superpowers/backlog.md                  MOD  one sentence under 「整个�
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
 ```rust
-// crates/canager-core/src/scan/mod.rs
+// crates/banager-core/src/scan/mod.rs
 pub struct ScanBudget { pub max_entries: usize, pub max_duration: std::time::Duration }   // Default: 2000, 10 s
 pub enum ScanStop { FileLimit { max_entries: u32 }, TimeLimit { max_secs: u32 } }
 pub struct ScannedDir { pub path: PathBuf, pub entries: u32 }
@@ -105,7 +105,7 @@ pub fn scan_unknown(env: &HostEnv, instances: &[ManagerInstance], artifacts: &[I
 pub fn scan_dirs(dirs: &[PathBuf], env: &HostEnv, instances: &[ManagerInstance], artifacts: &[InstalledArtifact], budget: ScanBudget) -> UnknownScan;
 pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf>;
 
-// crates/canager-core/src/session/scan.rs
+// crates/banager-core/src/session/scan.rs
 impl Session { pub fn scan_unknown(&self, env: &HostEnv) -> UnknownScan; }
 
 // src-tauri/src/ipc.rs
@@ -149,8 +149,8 @@ export interface UnknownScan { scanned: ScannedDir[]; entries: UnknownEntry[]; a
 ### Task 1: Wire types and `ScanBudget`
 
 **Files:**
-- Create: `crates/canager-core/src/scan/mod.rs`
-- Modify: `crates/canager-core/src/lib.rs:3-10` (crate doc), `:46-53` (module list)
+- Create: `crates/banager-core/src/scan/mod.rs`
+- Modify: `crates/banager-core/src/lib.rs:3-10` (crate doc), `:46-53` (module list)
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -158,7 +158,7 @@ export interface UnknownScan { scanned: ScannedDir[]; entries: UnknownEntry[]; a
 
 - [ ] **Step 1: Write the failing shape tests**
 
-Create `crates/canager-core/src/scan/mod.rs` with only the module doc, the imports, and the test module (the types come in Step 3):
+Create `crates/banager-core/src/scan/mod.rs` with only the module doc, the imports, and the test module (the types come in Step 3):
 
 ```rust
 //! The unknown-source scan: the command-line programs on this Mac that
@@ -275,7 +275,7 @@ mod tests {
 }
 ```
 
-Modify `crates/canager-core/src/lib.rs` — add the module between `pub mod runner;` and `pub mod session;` (`:51-52`):
+Modify `crates/banager-core/src/lib.rs` — add the module between `pub mod runner;` and `pub mod session;` (`:51-52`):
 
 ```rust
 pub mod runner;
@@ -294,12 +294,12 @@ and extend the crate doc's first paragraph (`:3-10`) so the module list there st
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core scan::`
+Run: `cargo test -p banager-core scan::`
 Expected: FAIL to compile — `error[E0422]: cannot find struct, variant or union type \`UnknownScan\` in this scope` (and the same for `ScannedDir`, `UnknownEntry`, at the struct literals) and `error[E0433]: failed to resolve: use of undeclared type \`ScanBudget\`` (and the same for `EntryKind`, `ScanStop`, at the path uses `ScanBudget::default()`, `EntryKind::File`, `ScanStop::FileLimit { … }`).
 
 - [ ] **Step 3: Add the types**
 
-Insert into `crates/canager-core/src/scan/mod.rs`, between the `use` lines and `#[cfg(test)]`:
+Insert into `crates/banager-core/src/scan/mod.rs`, between the `use` lines and `#[cfg(test)]`:
 
 ```rust
 /// How much of the file system one scan may look at before it stops and
@@ -433,7 +433,7 @@ pub struct UnknownScan {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core scan::`
+Run: `cargo test -p banager-core scan::`
 Expected: `test scan::tests::test_scan_budget_default_is_the_spec_numbers ... ok`, `test scan::tests::test_scan_wire_shapes_match_the_hand_written_ts_mirror ... ok`.
 
 - [ ] **Step 5: Run the gates**
@@ -443,7 +443,7 @@ Run all five from Global Constraints. Expected: all clean. (`ScanBudget` has no 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/scan/mod.rs crates/canager-core/src/lib.rs
+git add crates/banager-core/src/scan/mod.rs crates/banager-core/src/lib.rs
 git commit -m "Add the unknown-source scan's wire types and budget
 
 The scan that lists programs none of the registered sources installed
@@ -462,8 +462,8 @@ Co-Authored-By: <the executing session's attribution line>"
 ### Task 2: The walk — `scan_dirs`, kinds, skips, budget, dedupe, `~`, `.app`, and rules 0–2
 
 **Files:**
-- Modify: `crates/canager-core/src/scan/mod.rs` (add the functions between the types and `#[cfg(test)]`; add unit tests to `mod tests`)
-- Create: `crates/canager-core/tests/unknown_scan_test.rs`
+- Modify: `crates/banager-core/src/scan/mod.rs` (add the functions between the types and `#[cfg(test)]`; add unit tests to `mod tests`)
+- Create: `crates/banager-core/tests/unknown_scan_test.rs`
 
 **Interfaces:**
 - Consumes: `HostEnv` (`runner/path_env.rs:5-21`), `ManagerInstance.exe_path` / `.id`, `InstalledArtifact.path` / `.key.instance_id` (`model.rs:126`, `:201`, `:186`), `crate::testing::manager_instance` (`testing.rs:44`).
@@ -476,7 +476,7 @@ Co-Authored-By: <the executing session's attribution line>"
 
 - [ ] **Step 1: Write the failing synthetic-tree tests**
 
-Create `crates/canager-core/tests/unknown_scan_test.rs`:
+Create `crates/banager-core/tests/unknown_scan_test.rs`:
 
 ```rust
 //! The unknown-source scan over directory trees each test builds itself
@@ -492,12 +492,12 @@ Create `crates/canager-core/tests/unknown_scan_test.rs`:
 //! Every name here is invented. The research file with the real ones is
 //! deliberately not in the repository (phase 4 spec §十三 #30).
 
-use canager_core::model::{
+use banager_core::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance,
 };
-use canager_core::runner::HostEnv;
-use canager_core::scan::{scan_dirs, EntryKind, ScanBudget, ScanStop, ScannedDir};
-use canager_core::testing::manager_instance;
+use banager_core::runner::HostEnv;
+use banager_core::scan::{scan_dirs, EntryKind, ScanBudget, ScanStop, ScannedDir};
+use banager_core::testing::manager_instance;
 use std::fs;
 use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -930,7 +930,7 @@ fn test_rule_2_claims_a_shim_that_resolves_under_an_artifacts_path() {
 }
 ```
 
-Add to `mod tests` in `crates/canager-core/src/scan/mod.rs` (after `test_scan_wire_shapes_match_the_hand_written_ts_mirror`):
+Add to `mod tests` in `crates/banager-core/src/scan/mod.rs` (after `test_scan_wire_shapes_match_the_hand_written_ts_mirror`):
 
 ```rust
     fn env(home: &str, path_dirs: &[&str], cargo_home: Option<&str>) -> HostEnv {
@@ -1024,12 +1024,12 @@ and extend the test module's imports (`use super::*;` already brings the private
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --test unknown_scan_test` and `cargo test -p canager-core scan::`
-Expected: FAIL to compile — `error[E0432]: unresolved import \`canager_core::scan::scan_dirs\`` in the integration test; `error[E0425]: cannot find function \`candidate_dirs\`` (and `display_path`, `app_bundle`) in the unit tests.
+Run: `cargo test -p banager-core --test unknown_scan_test` and `cargo test -p banager-core scan::`
+Expected: FAIL to compile — `error[E0432]: unresolved import \`banager_core::scan::scan_dirs\`` in the integration test; `error[E0425]: cannot find function \`candidate_dirs\`` (and `display_path`, `app_bundle`) in the unit tests.
 
 - [ ] **Step 3: Implement the walk and rules 0–2**
 
-Extend the imports at the top of `crates/canager-core/src/scan/mod.rs`:
+Extend the imports at the top of `crates/banager-core/src/scan/mod.rs`:
 
 ```rust
 use crate::model::{InstalledArtifact, InstanceId, ManagerInstance};
@@ -1371,7 +1371,7 @@ pub fn scan_unknown(
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test unknown_scan_test` and `cargo test -p canager-core scan::`
+Run: `cargo test -p banager-core --test unknown_scan_test` and `cargo test -p banager-core scan::`
 Expected: all 13 integration tests and 6 unit tests `ok`. If `test_stops_at_the_file_limit_and_says_which_limit` reports `entries: 2001`, the budget check ran after `examined += 1` instead of before — the order in the loop above is the contract.
 
 - [ ] **Step 5: Run the gates**
@@ -1381,7 +1381,7 @@ Run all five from Global Constraints. Expected: all clean. Two things clippy is 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/scan/mod.rs crates/canager-core/tests/unknown_scan_test.rs
+git add crates/banager-core/src/scan/mod.rs crates/banager-core/tests/unknown_scan_test.rs
 git commit -m "Scan the usual bin directories for programs no source accounts for
 
 One level deep over the design spec's seven directories, CARGO_HOME's
@@ -1401,8 +1401,8 @@ Co-Authored-By: <the executing session's attribution line>"
 ### Task 3: Rule 3 — the `owned_roots` table, longest root wins
 
 **Files:**
-- Modify: `crates/canager-core/src/scan/mod.rs` (`Known` gains `owned`; new `pub fn owned_roots`; unit tests)
-- Modify: `crates/canager-core/tests/unknown_scan_test.rs` (four tests appended)
+- Modify: `crates/banager-core/src/scan/mod.rs` (`Known` gains `owned`; new `pub fn owned_roots`; unit tests)
+- Modify: `crates/banager-core/tests/unknown_scan_test.rs` (four tests appended)
 
 **Interfaces:**
 - Consumes: `ManagerInstance.adapter_id` / `.prefix` (`model.rs:125`, `:127`); the prefix each adapter really sets: brew `prefix_for` = two levels above the executable (`adapters/brew/mod.rs:289-295`), ollama `env.home.join(".ollama")` (`adapters/ollama/mod.rs:289`), uv/pipx/pip = `exe_path.parent()` (`uv.rs:138-141`, `pipx.rs:213-216`, `pip.rs:125-128`), npm = the global prefix root `npm prefix -g` reports (`npm.rs:157-158`, `:240`) and `exe_path.parent()` only in its `NotResponding` arm (`:194-197`), cargo = `$CARGO_HOME` (`cargo.rs:133-136`).
@@ -1412,7 +1412,7 @@ Co-Authored-By: <the executing session's attribution line>"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `crates/canager-core/tests/unknown_scan_test.rs`:
+Append to `crates/banager-core/tests/unknown_scan_test.rs`:
 
 ```rust
 #[test]
@@ -1516,7 +1516,7 @@ fn test_rule_3_never_treats_a_parent_derived_prefix_as_owned() {
 }
 ```
 
-Append to `mod tests` in `crates/canager-core/src/scan/mod.rs`:
+Append to `mod tests` in `crates/banager-core/src/scan/mod.rs`:
 
 ```rust
     #[test]
@@ -1607,12 +1607,12 @@ The unit-test module's imports need `ManagerInstance` (`use super::*;` already r
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --test unknown_scan_test rule_3` and `cargo test -p canager-core scan::`
+Run: `cargo test -p banager-core --test unknown_scan_test rule_3` and `cargo test -p banager-core scan::`
 Expected: of the four new integration tests, three FAIL because rule 3 does not exist yet — `test_rule_3_claims_a_link_into_homebrews_cellar_but_not_into_the_rest_of_its_prefix` on `assert_eq!(scan.attributed, 1)` (left `0`: `jq` is listed), `test_rule_3_claims_what_resolves_into_a_root_an_instance_owns_outright` and `test_rule_3_claims_an_npm_global_cli_under_a_home_prefix` on `assert!(scan.entries.is_empty())` (`model-tool` and `some-tool` are listed) — and `test_rule_3_never_treats_a_parent_derived_prefix_as_owned` already passes (there is nothing to claim with, which is the point of that test). The unit-test target FAILS to compile as a whole: `error[E0425]: cannot find function \`owned_roots\` in this scope` from `test_owned_roots_table`, so no unit test runs until Step 3 adds the function and the `owned` field together.
 
 - [ ] **Step 3: Add the table and rule 3**
 
-Insert into `crates/canager-core/src/scan/mod.rs`, directly above `Known`'s doc comment (the `/// What the registered sources have said is theirs` block from Task 2 — not between that block and `struct Known`, or the block would attach to `owned_roots` and `Known` would lose its documentation):
+Insert into `crates/banager-core/src/scan/mod.rs`, directly above `Known`'s doc comment (the `/// What the registered sources have said is theirs` block from Task 2 — not between that block and `struct Known`, or the block would attach to `owned_roots` and `Known` would lose its documentation):
 
 ```rust
 /// The directories a source *owns*: whatever resolves to a path under one
@@ -1747,7 +1747,7 @@ impl Known {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test unknown_scan_test` and `cargo test -p canager-core scan::`
+Run: `cargo test -p banager-core --test unknown_scan_test` and `cargo test -p banager-core scan::`
 Expected: all 17 integration tests and 8 unit tests `ok` — including `test_rule_0_claims_an_instances_launcher_and_nothing_else_in_its_directory` from Task 2, which is now the spec's counter-example proper (a pip instance with prefix `~/.local/bin` claims its interpreter by rule 0 and nothing else).
 
 - [ ] **Step 5: Run the gates**
@@ -1757,7 +1757,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/scan/mod.rs crates/canager-core/tests/unknown_scan_test.rs
+git add crates/banager-core/src/scan/mod.rs crates/banager-core/tests/unknown_scan_test.rs
 git commit -m "Claim programs that resolve into a directory a source owns
 
 Homebrew owns Cellar, Caskroom and opt under its prefix; Ollama owns
@@ -1778,7 +1778,7 @@ Co-Authored-By: <the executing session's attribution line>"
 ### Task 3b: pipx fills `InstalledArtifact.path` — rule 2's second producer
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/pipx.rs:17` (import), `:60-64` (`PipxMainPackage`), `:71-95` (`parse_list`), `:510-522` (the fixture test) and `mod tests` (one inline case appended after it)
+- Modify: `crates/banager-core/src/adapters/pipx.rs:17` (import), `:60-64` (`PipxMainPackage`), `:71-95` (`parse_list`), `:510-522` (the fixture test) and `mod tests` (one inline case appended after it)
 
 **Interfaces:**
 - Consumes: `main_package.app_paths[].__Path__` in `pipx list --json` (recorded: `adapters/fixtures/pipx/1.17.3/list.json:11-16`, the app at `<venv>/bin/<app>`); `InstalledArtifact.path` (`model.rs:201`).
@@ -1788,7 +1788,7 @@ Why this is F's and not a step of its own: the field already exists and rule 2 i
 
 - [ ] **Step 1: Write the failing test**
 
-Extend `test_parse_list_from_the_recorded_fixture` in `crates/canager-core/src/adapters/pipx.rs` (`:511-522`) — append after `assert_eq!(artifacts[0].reason, InstallReason::Requested);`:
+Extend `test_parse_list_from_the_recorded_fixture` in `crates/banager-core/src/adapters/pipx.rs` (`:511-522`) — append after `assert_eq!(artifacts[0].reason, InstallReason::Requested);`:
 
 ```rust
         // The tool's venv directory, two levels above its exposed app:
@@ -1831,12 +1831,12 @@ and append a new test directly after that function (before the next `#[test]`, `
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core pipx::tests::test_parse_list`
+Run: `cargo test -p banager-core pipx::tests::test_parse_list`
 Expected: `test_parse_list_from_the_recorded_fixture` FAILS — `panicked at … pipx fills path from app_paths` (the artifact's `path` is `None`, pipx.rs:90). `test_parse_list_leaves_path_none_for_a_venv_that_exposes_no_app` already passes: it pins the `None` arm so Step 3 cannot turn an empty `app_paths` into a panic or a `Some("/")`.
 
 - [ ] **Step 3: Parse `app_paths` and fill `path`**
 
-Modify the import at `crates/canager-core/src/adapters/pipx.rs:17`:
+Modify the import at `crates/banager-core/src/adapters/pipx.rs:17`:
 
 ```rust
 use std::path::{Path, PathBuf};
@@ -1909,7 +1909,7 @@ Everything else in the function — the `PipxListRoot` parse, the `sort_by`, the
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core pipx::`
+Run: `cargo test -p banager-core pipx::`
 Expected: both `test_parse_list_*` cases `ok`, and every other pipx test still `ok` — none of them asserts a whole `InstalledArtifact` literal (`path: None` appears in pipx.rs only in production code, `:90`), so filling the field breaks no existing expectation.
 
 - [ ] **Step 5: Run the gates**
@@ -1919,7 +1919,7 @@ Run all five from Global Constraints. Expected: all clean. `Snapshot::same_conte
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/pipx.rs
+git add crates/banager-core/src/adapters/pipx.rs
 git commit -m "Report each pipx tool's venv directory as its installed path
 
 pipx list --json names every app it exposed, at <venv>/bin/<app>; the
@@ -1936,8 +1936,8 @@ Co-Authored-By: <the executing session's attribution line>"
 ### Task 4: `Session::scan_unknown`
 
 **Files:**
-- Create: `crates/canager-core/src/session/scan.rs`
-- Modify: `crates/canager-core/src/session/mod.rs:9-10` (module list)
+- Create: `crates/banager-core/src/session/scan.rs`
+- Modify: `crates/banager-core/src/session/mod.rs:9-10` (module list)
 
 **Interfaces:**
 - Consumes: `Session.snapshot: Mutex<Snapshot>` (`session/mod.rs:215`; a child module reads the private field, as `refresh.rs` and `plans.rs` do), `scan::scan_unknown`, `ScanBudget::default()`, `HostEnv`.
@@ -1945,7 +1945,7 @@ Co-Authored-By: <the executing session's attribution line>"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/canager-core/src/session/scan.rs`:
+Create `crates/banager-core/src/session/scan.rs`:
 
 ```rust
 //! `Session::scan_unknown`: the unknown-source scan over this session's
@@ -2123,7 +2123,7 @@ mod tests {
 }
 ```
 
-Modify `crates/canager-core/src/session/mod.rs:9-10`:
+Modify `crates/banager-core/src/session/mod.rs:9-10`:
 
 ```rust
 mod plans;
@@ -2133,12 +2133,12 @@ mod scan;
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core session::scan::`
+Run: `cargo test -p banager-core session::scan::`
 Expected: FAIL to compile — `error[E0599]: no method named \`scan_unknown\` found for struct \`Arc<Session>\``.
 
 - [ ] **Step 3: Implement**
 
-Insert into `crates/canager-core/src/session/scan.rs`, between the `use` lines and `#[cfg(test)]`:
+Insert into `crates/banager-core/src/session/scan.rs`, between the `use` lines and `#[cfg(test)]`:
 
 ```rust
 impl Session {
@@ -2169,7 +2169,7 @@ impl Session {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core session::scan::`
+Run: `cargo test -p banager-core session::scan::`
 Expected: `test session::scan::tests::test_scan_unknown_judges_against_the_committed_snapshot_and_never_commits_one ... ok`. (The scan also reads the real `/usr/local/bin` of the machine — a read; the assertions use `any`/`find` and never assume the list is only the temp home's.)
 
 - [ ] **Step 5: Run the gates**
@@ -2179,7 +2179,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/session/scan.rs crates/canager-core/src/session/mod.rs
+git add crates/banager-core/src/session/scan.rs crates/banager-core/src/session/mod.rs
 git commit -m "Let a Session run the unknown-source scan over its snapshot
 
 A clone of the committed instances and artifacts, taken under the
@@ -2261,9 +2261,9 @@ Expected: FAIL to compile — `error[E0425]: cannot find function \`scan_unknown
 Modify the imports at `src-tauri/src/ipc.rs:6-7`:
 
 ```rust
-use canager_core::runner::HostEnv;
-use canager_core::scan::UnknownScan;
-use canager_core::session::{IssuedPlan, Session, Snapshot};
+use banager_core::runner::HostEnv;
+use banager_core::scan::UnknownScan;
+use banager_core::session::{IssuedPlan, Session, Snapshot};
 ```
 
 Insert after `open_ollama_app` (after its closing brace at `:561`, before `#[cfg(test)]` at `:563`):
@@ -2386,7 +2386,7 @@ and append inside the `describe("types", …)` block, before its closing `});` (
 
 ```ts
   it("spells the unknown-source scan's shapes as Rust sends them", () => {
-    // Mirrors `crates/canager-core/src/scan/mod.rs`, whose
+    // Mirrors `crates/banager-core/src/scan/mod.rs`, whose
     // `test_scan_wire_shapes_match_the_hand_written_ts_mirror` asserts
     // these exact spellings from the Rust side: `EntryKind` bare strings,
     // `ScanStop` externally tagged with the limit the scan enforced, and
@@ -2510,7 +2510,7 @@ Insert into `src/lib/types.ts` after the `Snapshot` interface (after `:218`, bef
 
 ```ts
 /**
- * Rust `EntryKind` (crates/canager-core/src/scan/mod.rs): what one entry
+ * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry
  * of a scanned bin directory is. Bare-string unit variants. Read through
  * `KIND_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
  * a variant added here without a badge fails `tsc`.
@@ -3576,7 +3576,7 @@ If step A has already merged and rewritten the file per source, the section goes
 
 The *Unknown* page lists command-line programs that none of the sources
 above installed. Producing that list runs no command at all.
-`scan_unknown` (`crates/canager-core/src/scan/mod.rs`) reads directory
+`scan_unknown` (`crates/banager-core/src/scan/mod.rs`) reads directory
 entries and file metadata and nothing else:
 
 | It looks at | How |

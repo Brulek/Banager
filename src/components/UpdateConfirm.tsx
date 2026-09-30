@@ -370,7 +370,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * The version jump for the confirmation, or null when there is no honest
  * one to show: a `Digest` candidate says a new version of the model is
  * available, never two digests -- they are from different hash spaces
- * (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
+ * (crates/banager-core/src/adapters/ollama/mod.rs) -- and nothing,
  * rather than a dangling arrow, when a source could name only one side.
  * Not behind "Show technical details": spec §6 asks this screen to show
  * the version jump, and a confirmation that names the command but not
@@ -569,7 +569,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       ...lines.keep,
       ...lines.note,
       // Once Running, `OperationBar` offers no Cancel for a NoCancel
-      // operation (`OperationManager::cancel`, crates/canager-core/src/ops).
+      // operation (`OperationManager::cancel`, crates/banager-core/src/ops).
       ...(plan.cancel_policy === "NoCancel"
         ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]
         : []),

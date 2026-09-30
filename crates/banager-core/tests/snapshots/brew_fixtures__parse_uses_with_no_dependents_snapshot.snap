@@ -1,0 +1,5 @@
+---
+source: crates/banager-core/tests/brew_fixtures.rs
+expression: result
+---
+[]

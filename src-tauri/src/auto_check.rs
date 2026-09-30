@@ -1,6 +1,6 @@
 //! The daily check's task (`Settings::auto_check`, off by default). For the
-//! life of the app, at every `canager_core::auto_check::TICK` it asks
-//! `canager_core::auto_check::tick` whether to check, and when the answer
+//! life of the app, at every `banager_core::auto_check::TICK` it asks
+//! `banager_core::auto_check::tick` whether to check, and when the answer
 //! is `Tick::Check` runs the refresh the window's Check again runs,
 //! through the same function (`ipc::refresh_for`, by way of
 //! `ipc::refresh_daily`), recorded as `RoundTrigger::Automatic` with the
@@ -13,7 +13,7 @@
 
 use crate::ipc;
 use crate::state::AppState;
-use canager_core::auto_check::{self, Tick};
+use banager_core::auto_check::{self, Tick};
 use std::time::Duration;
 
 /// Spawned once at startup (`run()` in lib.rs).
@@ -67,16 +67,16 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use async_trait::async_trait;
-    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
-    use canager_core::auto_check::{FailedChecks, RoundTrigger};
-    use canager_core::events::{EventSink, OpId};
-    use canager_core::model::{
+    use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+    use banager_core::auto_check::{FailedChecks, RoundTrigger};
+    use banager_core::events::{EventSink, OpId};
+    use banager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceNote, ManagerInstance,
         OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
     };
-    use canager_core::runner::HostEnv;
-    use canager_core::session::{Session, Snapshot};
-    use canager_core::settings::Settings;
+    use banager_core::runner::HostEnv;
+    use banager_core::session::{Session, Snapshot};
+    use banager_core::settings::Settings;
     use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
@@ -155,7 +155,7 @@ mod tests {
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
             self.rounds.fetch_add(1, Ordering::SeqCst);
             let id = &self.meta.id;
-            vec![canager_core::testing::manager_instance(
+            vec![banager_core::testing::manager_instance(
                 id,
                 &format!("{id}:1"),
             )]
@@ -576,7 +576,7 @@ mod tests {
         let background_change = Arc::new(tokio::sync::Notify::new());
         let sink = ChannelSink::new();
         let adapter: Arc<dyn Adapter> = fake.clone();
-        let session = canager_core::testing::session_with_background_change(
+        let session = banager_core::testing::session_with_background_change(
             sink.clone(),
             vec![adapter],
             background_change.clone(),
@@ -616,13 +616,13 @@ mod tests {
         // has committed -- so before it is recorded. The follow-up is
         // still the daily check's, and its report posts the notification
         // the daily round's own report leaves to it.
-        use canager_core::notify_updates::{Focus, Notice, UpdatePair};
+        use banager_core::notify_updates::{Focus, Notice, UpdatePair};
         let brew = Fake::named("fake");
         let slow = Fake::named("slow");
         let background_change = Arc::new(tokio::sync::Notify::new());
         let sink = ChannelSink::new();
         let adapters: Vec<Arc<dyn Adapter>> = vec![brew.clone(), slow.clone()];
-        let session = canager_core::testing::session_with_background_change(
+        let session = banager_core::testing::session_with_background_change(
             sink.clone(),
             adapters,
             background_change.clone(),

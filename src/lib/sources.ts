@@ -20,7 +20,7 @@ import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
 
 /** i18n key holding each adapter's human name. The `standalone-*` ids are
  *  the tools with their own installer (`standalone::all` in
- *  crates/canager-core/src/adapters/standalone/mod.rs), one per recipe. */
+ *  crates/banager-core/src/adapters/standalone/mod.rs), one per recipe. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   brew: "adapters.brew",
   npm: "adapters.npm",
@@ -36,7 +36,7 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
 };
 
 /** The adapter ids of the tools with their own installer, one per recipe
- *  in `recipes::RECIPES` (crates/canager-core/src/adapters/standalone/
+ *  in `recipes::RECIPES` (crates/banager-core/src/adapters/standalone/
  *  recipes.rs). A union so `STANDALONE_SUMMARY_KEYS` is a `Record` over
  *  it: a tool added here without a summary key there fails `tsc`. */
 export type StandaloneAdapterId =
@@ -124,7 +124,7 @@ export interface DescribedTool {
   kind: ArtifactKind;
   /**
    * For a Homebrew cask, where its app is: set only for a cask with an
-   * app (`parse_info_installed` in crates/canager-core/src/adapters/brew/
+   * app (`parse_info_installed` in crates/banager-core/src/adapters/brew/
    * parse.rs).
    */
   path: string | null | undefined;
@@ -205,7 +205,7 @@ export function isAvailable(instance: ManagerInstance): boolean {
  * note that refuses nothing. Homebrew is rewriting the list `brew uses`
  * reads (`IndexUpdating`), so its uninstall preview is refused rather than
  * shown with dependents it may have missed (`AdapterError::IndexUpdating`
- * in `plan`, crates/canager-core/src/adapters/brew/mod.rs). A list that
+ * in `plan`, crates/banager-core/src/adapters/brew/mod.rs). A list that
  * could not be downloaded is still read, and a launcher left without its
  * program is what Uninstall finishes. A `Record`, so a note added to
  * `InstanceNote` without an answer here fails `tsc`.
@@ -491,12 +491,12 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
  * operation. Both `UPDATE_BLOCKED_KEYS.Pinned` and
  * `UNINSTALL_BLOCKED_KEYS.Pinned` build their command with this. Their
  * producers are brew's `parse_outdated` and `parse_info_installed`
- * (crates/canager-core/src/adapters/brew/parse.rs) and pipx's
+ * (crates/banager-core/src/adapters/brew/parse.rs) and pipx's
  * `parse_outdated` (adapters/pipx.rs), so the command is built for
  * whichever tool owns the key. The tool is the instance's `adapter_id`; for an instance
  * the snapshot lacks, the part of the key's `instance_id` before any
  * `:`, which is the adapter id (`instance_id` in
- * crates/canager-core/src/model.rs writes it first and asserts it has
+ * crates/banager-core/src/model.rs writes it first and asserts it has
  * no `:` of its own).
  *
  * pipx: `pipx unpin <name>`. That is how pipx itself spells it when it
@@ -517,7 +517,7 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
  * The program is the instance's `exe_path`, the absolute path of the
  * brew that owns this package, not a bare `brew`: Canager finds brew
  * by absolute path (`CANDIDATE_PATHS` in
- * crates/canager-core/src/adapters/brew/mod.rs) and lists
+ * crates/banager-core/src/adapters/brew/mod.rs) and lists
  * /opt/homebrew and /usr/local side by side, while Terminal's `brew`
  * is whichever one PATH finds first, or none. On a Mac migrated from
  * Intel, a formula pinned in /usr/local would get "not pinned" from
@@ -743,7 +743,7 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
  * One source's own words for a reason, where B's sentence would be false
  * of it. rustup's row carries `NoSafeMethod` when Rust is not in its
  * standard folders (`rustup::uninstall_blocked` in
- * crates/canager-core/src/adapters/standalone/rustup.rs) -- not because it
+ * crates/banager-core/src/adapters/standalone/rustup.rs) -- not because it
  * has no uninstall command, which is what `UNINSTALL_BLOCKED_KEYS`'s
  * sentence says. Keyed by adapter id, then reason; a missing entry means
  * B's copy. Literal keys, so `completeness.test.ts` finds each one.
@@ -788,7 +788,7 @@ export function uninstallBlockedCopy(
  *
  * Only the uninstall dialog (src/components/UninstallDialog.tsx) can
  * receive this payload, because `blocked_uninstall` in
- * crates/canager-core/src/session/plans.rs refuses nothing but an
+ * crates/banager-core/src/session/plans.rs refuses nothing but an
  * `Uninstall`. It reads it before `planErrorMessage`, because its sentence
  * carries the unpin command as code, and a plain string cannot.
  */
@@ -803,7 +803,7 @@ export function parseUninstallBlocked(message: string): UninstallBlocked | null 
 /**
  * The reasons a path-list uninstall preview can be refused by one of its
  * checks (`removal::plan_removal` in
- * crates/canager-core/src/adapters/standalone/removal.rs), as
+ * crates/banager-core/src/adapters/standalone/removal.rs), as
  * `plan_operation_error` in src-tauri/src/ipc.rs spells them -- by hand,
  * in snake_case, one `match` arm each. Mirrored here as a union so the
  * copy table below is a `Record` over it: a reason without a sentence
@@ -891,7 +891,7 @@ type Translate = (key: string, options?: Record<string, string>) => string;
 /**
  * The adapter an instance id names: its adapter's id, alone or before a
  * `:` and where the instance is (`instance_id` in
- * crates/canager-core/src/model.rs). For naming a source the snapshot has
+ * crates/banager-core/src/model.rs). For naming a source the snapshot has
  * lost.
  */
 export function adapterIdOf(instanceId: string): string {
@@ -960,7 +960,7 @@ function placeName(t: Translate, instance: ManagerInstance): string {
  * 「Intel」, `homebrew`); should two share one, its whole prefix
  * (`/opt/homebrew`, `~/homebrew`); should two share that, the program's
  * own path; or else the rest of its id, which is unique (`instance_id` in
- * crates/canager-core/src/model.rs).
+ * crates/banager-core/src/model.rs).
  */
 function placesOf(t: Translate, group: readonly ManagerInstance[]): string[] {
   const distinct = (places: string[]) => new Set(places).size === places.length;
@@ -1165,7 +1165,7 @@ export function planErrorDetail(t: Translate, raw: string): string | null {
  * for logs and is dropped before it reaches the wire. `index_updating` is
  * brew's uninstall preview declining to read Homebrew's catalogue while
  * `brew update` rewrites it (`catalogue_stamp` in
- * crates/canager-core/src/adapters/brew/mod.rs).
+ * crates/banager-core/src/adapters/brew/mod.rs).
  */
 const PLAN_FAILURE_KEYS: Record<string, string> = {
   output_too_large: "planRefused.outputTooLarge",
@@ -1480,7 +1480,7 @@ export function namesInSentence(t: Translate, names: string[]): string {
  * refusing to run as root -- already says so in its own notice, with its
  * own button, and naming it here too would say it twice: its errors are
  * left out. `refresh()` carries none for such a source unless an
- * operation held it (crates/canager-core/src/session/refresh.rs).
+ * operation held it (crates/banager-core/src/session/refresh.rs).
  *
  * `inView`: the sources a page shows -- the Installed page on one source
  * -- whose errors alone it names: an error against an instance in view,

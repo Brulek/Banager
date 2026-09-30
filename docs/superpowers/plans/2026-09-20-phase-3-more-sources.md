@@ -6,7 +6,7 @@
 
 **Architecture:** Six new adapters behind the existing `Adapter` trait. Two of them need the network, so this phase adds an `HttpClient` trait with a real and a mock implementation, mirroring how `CommandRunner` already makes subprocess work testable. The trait gains a `CheckOptions` parameter so a setting can reach `check_updates` (the change `greedy_casks` needed). Everything destructive still flows through a subprocess `Plan`, including Ollama — see the ruling below.
 
-**Tech Stack:** Rust (canager-core, tauri 2.11.x), reqwest with rustls, tokio; React 19, TanStack Query v5, Zustand, i18next, vitest.
+**Tech Stack:** Rust (banager-core, tauri 2.11.x), reqwest with rustls, tokio; React 19, TanStack Query v5, Zustand, i18next, vitest.
 
 ## Ruling: Ollama writes go through the CLI, not the HTTP API
 
@@ -20,7 +20,7 @@ Recorded as a deliberate deviation. If a later phase needs byte-level progress b
 
 - Spec: `docs/superpowers/specs/2026-09-17-canager-design.md`. §3 (data flow), §4.1–4.2 (adapters, per-source commands), §5 (data model), §6 (execution and safety), §7 (UI), §11 (testing) bind this phase.
 - Backlog: `docs/superpowers/backlog.md`. Everything under "阶段 3（其余来源）/ 存储与刷新层" is implemented here and must not be deferred again. The phase-2 deferrals named in Task 13 are also in scope.
-- macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1. `canager-core` never depends on `tauri` and never creates a tokio runtime.
+- macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1. `banager-core` never depends on `tauri` and never creates a tokio runtime.
 - Commands are argv arrays with an absolute program path, never a shell string. Package names pass `validate_package_name` before they reach any argv.
 - Every destructive action previews its exact command before running. Operations that need a password say so first. The front end never builds an argv, never decides what is safe to remove, and never guesses an outcome.
 - Network access is confined to the `HttpClient` trait. No adapter calls reqwest directly, so every network path has a mock in tests. Requests carry a `canager/{version}` User-Agent and a 30-second timeout.
@@ -34,7 +34,7 @@ Recorded as a deliberate deviation. If a later phase needs byte-level progress b
 
 ## What already exists (do not rebuild)
 
-`canager-core` has: `model.rs` (ManagerInstance, InstalledArtifact, UpdateCandidate, ArtifactKey, Plan, OpRequest, Outcome, …), `events.rs` (EventSink, OperationEvent), `runner/` (CommandRunner with RealRunner and MockRunner, HostEnv PATH hydration, process-group kill, timeouts), `adapters/` (the Adapter trait, AdapterMeta from TOML, validate_package_name, and the Homebrew adapter), `ops/` (OperationManager with resource locks, a 3-permit semaphore, cancel semantics and post-execution reconcile), `session/` (Session facade, generation-numbered Snapshot, refresh coalescing, server-issued single-use IssuedPlan), `settings.rs`.
+`banager-core` has: `model.rs` (ManagerInstance, InstalledArtifact, UpdateCandidate, ArtifactKey, Plan, OpRequest, Outcome, …), `events.rs` (EventSink, OperationEvent), `runner/` (CommandRunner with RealRunner and MockRunner, HostEnv PATH hydration, process-group kill, timeouts), `adapters/` (the Adapter trait, AdapterMeta from TOML, validate_package_name, and the Homebrew adapter), `ops/` (OperationManager with resource locks, a 3-permit semaphore, cancel semantics and post-execution reconcile), `session/` (Session facade, generation-numbered Snapshot, refresh coalescing, server-issued single-use IssuedPlan), `settings.rs`.
 
 `src-tauri` has nine IPC commands and a Channel event bridge. The React app has the installed, updates and settings pages, an operation bar, a log drawer, an uninstall dialog, empty and error states, and en + zh-CN.
 
@@ -45,7 +45,7 @@ Recorded as a deliberate deviation. If a later phase needs byte-level progress b
 ## File Structure
 
 ```
-crates/canager-core/src/
+crates/banager-core/src/
 ├── http/mod.rs             NEW  HttpClient trait, HttpRequest/HttpResponse, HttpError
 ├── http/real.rs            NEW  RealHttpClient (reqwest, rustls, 30s timeout, canager UA)
 ├── http/mock.rs            NEW  MockHttpClient (url -> canned response, records calls)
@@ -78,7 +78,7 @@ src/
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
 ```rust
-// crates/canager-core/src/http/mod.rs
+// crates/banager-core/src/http/mod.rs
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpRequest {
     pub method: &'static str,        // "GET" only in this phase
@@ -115,7 +115,7 @@ impl MockHttpClient {
 ```
 
 ```rust
-// crates/canager-core/src/adapters/mod.rs  (changed)
+// crates/banager-core/src/adapters/mod.rs  (changed)
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
 /// that do not apply to them; a new field must never change behaviour for an
 /// adapter that does not read it.
@@ -154,7 +154,7 @@ pub trait Adapter: Send + Sync {
 ```
 
 ```rust
-// crates/canager-core/src/model.rs  (added field, additive only)
+// crates/banager-core/src/model.rs  (added field, additive only)
 pub struct ManagerInstance {
     // … existing fields …
     /// None when the adapter's metadata lists no verified versions, or when
@@ -165,7 +165,7 @@ pub struct ManagerInstance {
 ```
 
 ```rust
-// crates/canager-core/src/settings.rs  (added field)
+// crates/banager-core/src/settings.rs  (added field)
 pub struct Settings {
     pub language: Language,
     pub show_technical_details: bool,
@@ -225,12 +225,12 @@ The Ollama update check was also verified end to end against real data before be
 ### Task 1: `HttpClient` trait, real and mock
 
 **Files:**
-- Create: `crates/canager-core/src/http/mod.rs`
-- Create: `crates/canager-core/src/http/mock.rs`
-- Create: `crates/canager-core/src/http/real.rs`
-- Modify: `crates/canager-core/src/lib.rs`
-- Modify: `crates/canager-core/Cargo.toml`
-- Test: inline `#[cfg(test)]` modules in `crates/canager-core/src/http/mod.rs`, `mock.rs`, `real.rs`
+- Create: `crates/banager-core/src/http/mod.rs`
+- Create: `crates/banager-core/src/http/mock.rs`
+- Create: `crates/banager-core/src/http/real.rs`
+- Modify: `crates/banager-core/src/lib.rs`
+- Modify: `crates/banager-core/Cargo.toml`
+- Test: inline `#[cfg(test)]` modules in `crates/banager-core/src/http/mod.rs`, `mock.rs`, `real.rs`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks (this is the first task).
@@ -254,7 +254,7 @@ The Ollama update check was also verified end to end against real data before be
 
 - [ ] **Step 1: Write the HttpClient contract types and a Display-format test**
 
-Create `crates/canager-core/src/http/mod.rs`:
+Create `crates/banager-core/src/http/mod.rs`:
 
 ```rust
 //! `HttpClient`: the network seam every adapter that needs the internet
@@ -319,7 +319,7 @@ mod tests {
 }
 ```
 
-Modify `crates/canager-core/src/lib.rs` — insert `pub mod http;` alphabetically between the existing `pub mod events;` and `pub mod model;` lines, so the module list reads:
+Modify `crates/banager-core/src/lib.rs` — insert `pub mod http;` alphabetically between the existing `pub mod events;` and `pub mod model;` lines, so the module list reads:
 
 ```rust
 pub mod adapters;
@@ -334,14 +334,14 @@ pub mod settings;
 
 - [ ] **Step 2: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib http::`
+Run: `cargo test -p banager-core --lib http::`
 Expected: PASS — `test http::tests::test_http_error_display_messages_match_the_documented_wording ... ok` (1 test; `HttpRequest`/`HttpResponse`/`HttpClient` have no behaviour of their own yet, so this is the only test at this point).
 
 - [ ] **Step 3: Write the failing test for `MockHttpClient`**
 
-Modify `crates/canager-core/src/http/mod.rs` — add `pub mod mock;` right after the `use async_trait::async_trait;` line (do not add a `pub use` yet — `MockHttpClient` does not exist until Step 5, and re-exporting a name that does not exist yet would just trade one compile error for another, less informative one).
+Modify `crates/banager-core/src/http/mod.rs` — add `pub mod mock;` right after the `use async_trait::async_trait;` line (do not add a `pub use` yet — `MockHttpClient` does not exist until Step 5, and re-exporting a name that does not exist yet would just trade one compile error for another, less informative one).
 
-Create `crates/canager-core/src/http/mock.rs`:
+Create `crates/banager-core/src/http/mock.rs`:
 
 ```rust
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
@@ -409,12 +409,12 @@ mod tests {
 
 - [ ] **Step 4: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib http::mock`
+Run: `cargo test -p banager-core --lib http::mock`
 Expected: FAIL to compile — `error[E0433]`/`error[E0412]`: cannot find type/function `MockHttpClient` in this scope (referenced three times in the test module; nothing in `mock.rs` defines it yet).
 
 - [ ] **Step 5: Implement `MockHttpClient`**
 
-Rewrite `crates/canager-core/src/http/mock.rs` (keeping the `tests` module from Step 3 unchanged, appended below):
+Rewrite `crates/banager-core/src/http/mock.rs` (keeping the `tests` module from Step 3 unchanged, appended below):
 
 ```rust
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
@@ -552,17 +552,17 @@ mod tests {
 }
 ```
 
-Modify `crates/canager-core/src/http/mod.rs` — add `pub use mock::MockHttpClient;` right after `pub mod mock;`.
+Modify `crates/banager-core/src/http/mod.rs` — add `pub use mock::MockHttpClient;` right after `pub mod mock;`.
 
 - [ ] **Step 6: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib http::`
+Run: `cargo test -p banager-core --lib http::`
 Expected: PASS — 4 tests ok (the `HttpError` Display test plus the 3 new `MockHttpClient` tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/canager-core/src/http/mod.rs crates/canager-core/src/http/mock.rs crates/canager-core/src/lib.rs
+git add crates/banager-core/src/http/mod.rs crates/banager-core/src/http/mock.rs crates/banager-core/src/lib.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add the HttpClient contract and MockHttpClient
 
@@ -573,15 +573,15 @@ EOF
 
 - [ ] **Step 8: Write the failing test for `RealHttpClient`**
 
-Modify `crates/canager-core/Cargo.toml` — add the `net` feature to the existing `tokio` line (needed by the loopback test fixture below), so it reads:
+Modify `crates/banager-core/Cargo.toml` — add the `net` feature to the existing `tokio` line (needed by the loopback test fixture below), so it reads:
 
 ```toml
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "net"] }
 ```
 
-Modify `crates/canager-core/src/http/mod.rs` — add `pub mod real;` right after `pub use mock::MockHttpClient;` (no re-export yet, same reasoning as Step 3).
+Modify `crates/banager-core/src/http/mod.rs` — add `pub mod real;` right after `pub use mock::MockHttpClient;` (no re-export yet, same reasoning as Step 3).
 
-Create `crates/canager-core/src/http/real.rs`:
+Create `crates/banager-core/src/http/real.rs`:
 
 ```rust
 #[cfg(test)]
@@ -717,12 +717,12 @@ mod tests {
 
 - [ ] **Step 9: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib http::real`
+Run: `cargo test -p banager-core --lib http::real`
 Expected: FAIL to compile — `error[E0433]`/`error[E0412]`: cannot find struct `RealHttpClient` in this scope (`real.rs` currently has only a test module; nothing defines it).
 
 - [ ] **Step 10: Implement `RealHttpClient`**
 
-Modify `crates/canager-core/Cargo.toml` — add the `reqwest` dependency right after the `tokio-util` line. Note: `reqwest` 0.13.5 is already present in `Cargo.lock` (pulled in transitively by `tauri-plugin-updater`) resolved against rustls, not native-tls or OpenSSL (its lock entry lists `rustls`, `hyper-rustls`, `tokio-rustls`, `rustls-platform-verifier` — no `native-tls`/`openssl`); pinning `default-features = false, features = ["rustls"]` here keeps this crate's own dependency on the same TLS backend and never opts into `native-tls`:
+Modify `crates/banager-core/Cargo.toml` — add the `reqwest` dependency right after the `tokio-util` line. Note: `reqwest` 0.13.5 is already present in `Cargo.lock` (pulled in transitively by `tauri-plugin-updater`) resolved against rustls, not native-tls or OpenSSL (its lock entry lists `rustls`, `hyper-rustls`, `tokio-rustls`, `rustls-platform-verifier` — no `native-tls`/`openssl`); pinning `default-features = false, features = ["rustls"]` here keeps this crate's own dependency on the same TLS backend and never opts into `native-tls`:
 
 ```toml
 [dependencies]
@@ -737,7 +737,7 @@ libc = "0.2"
 toml = "1"
 ```
 
-Rewrite `crates/canager-core/src/http/real.rs` (keeping the `tests` module from Step 8 unchanged, appended below):
+Rewrite `crates/banager-core/src/http/real.rs` (keeping the `tests` module from Step 8 unchanged, appended below):
 
 ```rust
 //! `RealHttpClient` wraps a `reqwest::Client` pinned to the rustls TLS
@@ -924,17 +924,17 @@ mod tests {
 }
 ```
 
-Modify `crates/canager-core/src/http/mod.rs` — add `pub use real::RealHttpClient;` right after `pub mod real;`.
+Modify `crates/banager-core/src/http/mod.rs` — add `pub use real::RealHttpClient;` right after `pub mod real;`.
 
 - [ ] **Step 11: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib http::`
-Expected: PASS — 7 tests ok (1 `HttpError` test + 3 `MockHttpClient` tests + 3 `RealHttpClient` tests). Also run `cargo clippy -p canager-core --all-targets -- -D warnings` — Expected: clean (no warnings) to confirm the new `reqwest`/`tokio::net` code introduces none.
+Run: `cargo test -p banager-core --lib http::`
+Expected: PASS — 7 tests ok (1 `HttpError` test + 3 `MockHttpClient` tests + 3 `RealHttpClient` tests). Also run `cargo clippy -p banager-core --all-targets -- -D warnings` — Expected: clean (no warnings) to confirm the new `reqwest`/`tokio::net` code introduces none.
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add Cargo.lock crates/canager-core/Cargo.toml crates/canager-core/src/http/mod.rs crates/canager-core/src/http/real.rs
+git add Cargo.lock crates/banager-core/Cargo.toml crates/banager-core/src/http/mod.rs crates/banager-core/src/http/real.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add RealHttpClient backed by reqwest with the rustls TLS backend
 
@@ -948,17 +948,17 @@ EOF
 ### Task 2: `CheckOptions` + trait change + brew honours `--greedy` + the setting
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/mod.rs`
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`
-- Modify: `crates/canager-core/src/session/mod.rs`
-- Modify: `crates/canager-core/src/settings.rs`
-- Modify: `crates/canager-core/examples/brew_smoke.rs`
-- Modify: `crates/canager-core/tests/ops_semaphore_test.rs`
-- Modify: `crates/canager-core/tests/ops_cancel_test.rs`
-- Modify: `crates/canager-core/tests/ops_lock_test.rs`
-- Modify: `crates/canager-core/tests/ops_panic_test.rs`
-- Modify: `crates/canager-core/tests/ops_outcome_test.rs`
-- Modify: `crates/canager-core/tests/ops_summaries_test.rs`
+- Modify: `crates/banager-core/src/adapters/mod.rs`
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`
+- Modify: `crates/banager-core/src/session/mod.rs`
+- Modify: `crates/banager-core/src/settings.rs`
+- Modify: `crates/banager-core/examples/brew_smoke.rs`
+- Modify: `crates/banager-core/tests/ops_semaphore_test.rs`
+- Modify: `crates/banager-core/tests/ops_cancel_test.rs`
+- Modify: `crates/banager-core/tests/ops_lock_test.rs`
+- Modify: `crates/banager-core/tests/ops_panic_test.rs`
+- Modify: `crates/banager-core/tests/ops_outcome_test.rs`
+- Modify: `crates/banager-core/tests/ops_summaries_test.rs`
 - Modify: `src-tauri/src/ipc.rs`
 
 **Interfaces:**
@@ -980,7 +980,7 @@ EOF
 
 - [ ] **Step 1: Add `CheckOptions` and change the trait signature**
 
-Modify `crates/canager-core/src/adapters/mod.rs` — add `CheckOptions` right before the `Capabilities` struct and change `Adapter::check_updates`'s signature. `Capabilities` itself is left exactly as it is (see this task's Interfaces block for why it gains no new field):
+Modify `crates/banager-core/src/adapters/mod.rs` — add `CheckOptions` right before the `Capabilities` struct and change `Adapter::check_updates`'s signature. `Capabilities` itself is left exactly as it is (see this task's Interfaces block for why it gains no new field):
 
 ```rust
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
@@ -1010,7 +1010,7 @@ Expected: FAIL to compile with many errors of two shapes: `error[E0050]: method 
 
 - [ ] **Step 3: Fix every implementor and call site so the workspace compiles**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs`:
+Modify `crates/banager-core/src/adapters/brew/mod.rs`:
 - Change the `use` line to `use crate::adapters::{validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};`.
 - Change the inherent `check_updates` method's signature to accept the new parameter, ignored for now:
   ```rust
@@ -1035,11 +1035,11 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs`:
 - Fix the six existing test call sites of `check_updates` in the `mod tests` block:
   Run:
   ```bash
-  sed -i '' -E 's/\.check_updates\((&inst[a-z_]*)\)/.check_updates(\1, \&CheckOptions::default())/g' crates/canager-core/src/adapters/brew/mod.rs
+  sed -i '' -E 's/\.check_updates\((&inst[a-z_]*)\)/.check_updates(\1, \&CheckOptions::default())/g' crates/banager-core/src/adapters/brew/mod.rs
   ```
-  Expected effect (verify with `grep -n "check_updates(&inst" crates/canager-core/src/adapters/brew/mod.rs`): every `.check_updates(&inst)`, `.check_updates(&inst_opt)`, `.check_updates(&inst_local)` becomes e.g. `.check_updates(&inst, &CheckOptions::default())`.
+  Expected effect (verify with `grep -n "check_updates(&inst" crates/banager-core/src/adapters/brew/mod.rs`): every `.check_updates(&inst)`, `.check_updates(&inst_opt)`, `.check_updates(&inst_local)` becomes e.g. `.check_updates(&inst, &CheckOptions::default())`.
 
-Modify `crates/canager-core/src/session/mod.rs`:
+Modify `crates/banager-core/src/session/mod.rs`:
 - Change `use crate::adapters::{Adapter, AdapterError};` to `use crate::adapters::{Adapter, AdapterError, CheckOptions};`.
 - Change `Session::refresh`'s signature and thread `opts` down to the per-instance `check_updates` call. This is the complete function — the only changes from the current version are the new `opts: &CheckOptions` parameter, the new `let opts: CheckOptions = *opts;` line, and `&opts` added to the `check_updates` call inside the spawned task; everything else is byte-for-byte identical to today's `refresh`:
   ```rust
@@ -1220,12 +1220,12 @@ Modify `crates/canager-core/src/session/mod.rs`:
 - Fix every test call to `session.refresh(...)`/`session_a.refresh(...)`/`session_b.refresh(...)`/`session_for_refresh.refresh(...)`:
   Run:
   ```bash
-  sed -i '' -E 's/\.refresh\(&(non_root_env|root_env)\(\)\)/.refresh(\&\1(), \&CheckOptions::default())/g' crates/canager-core/src/session/mod.rs
+  sed -i '' -E 's/\.refresh\(&(non_root_env|root_env)\(\)\)/.refresh(\&\1(), \&CheckOptions::default())/g' crates/banager-core/src/session/mod.rs
   ```
-  Expected effect (verify with `grep -c '&CheckOptions::default()' crates/canager-core/src/session/mod.rs`): 22 occurrences (one per pre-existing `.refresh(&non_root_env())` / `.refresh(&root_env())` call).
+  Expected effect (verify with `grep -c '&CheckOptions::default()' crates/banager-core/src/session/mod.rs`): 22 occurrences (one per pre-existing `.refresh(&non_root_env())` / `.refresh(&root_env())` call).
 
 Modify `src-tauri/src/ipc.rs`:
-- Add `use canager_core::adapters::CheckOptions;` to the top-level imports.
+- Add `use banager_core::adapters::CheckOptions;` to the top-level imports.
 - In `refresh_impl`, thread a placeholder `CheckOptions` through for now (Step 9 below replaces this with the real one built from `Settings`):
   ```rust
   pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
@@ -1242,7 +1242,7 @@ Modify `src-tauri/src/ipc.rs`:
       Ok(snapshot)
   }
   ```
-- In the test module, change the import to `use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};` and change `FakeAdapter`'s `check_updates`:
+- In the test module, change the import to `use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};` and change `FakeAdapter`'s `check_updates`:
   ```rust
           async fn check_updates(
               &self,
@@ -1253,8 +1253,8 @@ Modify `src-tauri/src/ipc.rs`:
           }
   ```
 
-Modify `crates/canager-core/examples/brew_smoke.rs`:
-- Add `use canager_core::adapters::CheckOptions;`.
+Modify `crates/banager-core/examples/brew_smoke.rs`:
+- Add `use banager_core::adapters::CheckOptions;`.
 - Change the call to:
   ```rust
           let outdated = adapter
@@ -1263,28 +1263,28 @@ Modify `crates/canager-core/examples/brew_smoke.rs`:
               .expect("check_updates failed");
   ```
 
-Modify each of the six `crates/canager-core/tests/ops_*_test.rs` files:
-- Change their `use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};` line to add `CheckOptions`.
+Modify each of the six `crates/banager-core/tests/ops_*_test.rs` files:
+- Change their `use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};` line to add `CheckOptions`.
 - Add `_opts: &CheckOptions` as the third parameter of every `check_updates` implementation (`ops_semaphore_test.rs` has two `FakeAdapter`-shaped structs and needs both fixed).
 
-Run for the `CheckOptions` import and signature edits across all six (each file has exactly one `use canager_core::adapters::{...};` line and one or two `check_updates` impls; do these edits directly since the six files are not identical enough for one safe blanket `sed`):
+Run for the `CheckOptions` import and signature edits across all six (each file has exactly one `use banager_core::adapters::{...};` line and one or two `check_updates` impls; do these edits directly since the six files are not identical enough for one safe blanket `sed`):
 ```bash
-sed -i '' -E 's/use canager_core::adapters::\{Adapter, AdapterError, AdapterMeta, Capabilities\};/use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};/' \
-  crates/canager-core/tests/ops_semaphore_test.rs \
-  crates/canager-core/tests/ops_cancel_test.rs \
-  crates/canager-core/tests/ops_lock_test.rs \
-  crates/canager-core/tests/ops_panic_test.rs \
-  crates/canager-core/tests/ops_outcome_test.rs \
-  crates/canager-core/tests/ops_summaries_test.rs
+sed -i '' -E 's/use banager_core::adapters::\{Adapter, AdapterError, AdapterMeta, Capabilities\};/use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};/' \
+  crates/banager-core/tests/ops_semaphore_test.rs \
+  crates/banager-core/tests/ops_cancel_test.rs \
+  crates/banager-core/tests/ops_lock_test.rs \
+  crates/banager-core/tests/ops_panic_test.rs \
+  crates/banager-core/tests/ops_outcome_test.rs \
+  crates/banager-core/tests/ops_summaries_test.rs
 sed -i '' -E '/async fn check_updates\(/,/-> Result<Vec<UpdateCandidate>, AdapterError> \{/ s/_inst: &ManagerInstance,$/_inst: \&ManagerInstance,\n        _opts: \&CheckOptions,/' \
-  crates/canager-core/tests/ops_semaphore_test.rs \
-  crates/canager-core/tests/ops_cancel_test.rs \
-  crates/canager-core/tests/ops_lock_test.rs \
-  crates/canager-core/tests/ops_panic_test.rs \
-  crates/canager-core/tests/ops_outcome_test.rs \
-  crates/canager-core/tests/ops_summaries_test.rs
+  crates/banager-core/tests/ops_semaphore_test.rs \
+  crates/banager-core/tests/ops_cancel_test.rs \
+  crates/banager-core/tests/ops_lock_test.rs \
+  crates/banager-core/tests/ops_panic_test.rs \
+  crates/banager-core/tests/ops_outcome_test.rs \
+  crates/banager-core/tests/ops_summaries_test.rs
 ```
-After running these, verify each `check_updates` in the six files reads `&self, _inst: &ManagerInstance, _opts: &CheckOptions,`; fix by hand any signature whose indentation does not match `_inst: &ManagerInstance,$` exactly (verify with `rg -n "_opts: &CheckOptions" crates/canager-core/tests/` — expected 7 matches, one per `check_updates` impl across the six files, `ops_semaphore_test.rs` contributing two).
+After running these, verify each `check_updates` in the six files reads `&self, _inst: &ManagerInstance, _opts: &CheckOptions,`; fix by hand any signature whose indentation does not match `_inst: &ManagerInstance,$` exactly (verify with `rg -n "_opts: &CheckOptions" crates/banager-core/tests/` — expected 7 matches, one per `check_updates` impl across the six files, `ops_semaphore_test.rs` contributing two).
 
 Finally, run `cargo fmt --all` to normalize the sed-inserted lines' indentation.
 
@@ -1296,7 +1296,7 @@ Expected: PASS — every pre-existing test still green (125+ Rust tests), no beh
 - [ ] **Step 5: Commit the mechanical refactor**
 
 ```bash
-git add crates/canager-core/src/adapters/mod.rs crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/session/mod.rs crates/canager-core/examples/brew_smoke.rs crates/canager-core/tests/ops_semaphore_test.rs crates/canager-core/tests/ops_cancel_test.rs crates/canager-core/tests/ops_lock_test.rs crates/canager-core/tests/ops_panic_test.rs crates/canager-core/tests/ops_outcome_test.rs crates/canager-core/tests/ops_summaries_test.rs src-tauri/src/ipc.rs
+git add crates/banager-core/src/adapters/mod.rs crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/session/mod.rs crates/banager-core/examples/brew_smoke.rs crates/banager-core/tests/ops_semaphore_test.rs crates/banager-core/tests/ops_cancel_test.rs crates/banager-core/tests/ops_lock_test.rs crates/banager-core/tests/ops_panic_test.rs crates/banager-core/tests/ops_outcome_test.rs crates/banager-core/tests/ops_summaries_test.rs src-tauri/src/ipc.rs
 git commit -m "$(cat <<'EOF'
 refactor(core): thread CheckOptions through Adapter::check_updates
 
@@ -1311,7 +1311,7 @@ EOF
 
 - [ ] **Step 6: Write the failing tests for `--greedy`, the `Settings` field, and end-to-end wiring**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside the existing `mod tests` block (after `test_check_updates_ttl_is_tracked_per_instance`):
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — add this test inside the existing `mod tests` block (after `test_check_updates_ttl_is_tracked_per_instance`):
 
 ```rust
     #[tokio::test]
@@ -1350,7 +1350,7 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside t
     }
 ```
 
-Modify `crates/canager-core/src/settings.rs`:
+Modify `crates/banager-core/src/settings.rs`:
 - Add the field to `Settings` and to its `Default` impl:
   ```rust
   #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1486,7 +1486,7 @@ Modify `src-tauri/src/ipc.rs`'s test module to prove the setting reaches `check_
           });
           let sink = ChannelSink::new();
           let session =
-              canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
+              banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
           let state = AppState {
               session,
               settings_path: temp_settings_path("appstate"),
@@ -1547,7 +1547,7 @@ Expected: FAIL — `test_check_updates_passes_greedy_flag_when_include_self_upda
 
 - [ ] **Step 8: Implement `--greedy`, the `Settings` field, and end-to-end wiring**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — rewrite `check_updates` to honour the flag:
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — rewrite `check_updates` to honour the flag:
 
 ```rust
     pub async fn check_updates(
@@ -1589,7 +1589,7 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
 }
 ```
 
-`crates/canager-core/src/settings.rs`'s field/tests are already complete from Step 6 (no further code change needed there — Step 6's writes are the implementation, since the field addition itself IS the fix for the compile errors and the backward-compat test already exercises the real `#[serde(default)]` behaviour).
+`crates/banager-core/src/settings.rs`'s field/tests are already complete from Step 6 (no further code change needed there — Step 6's writes are the implementation, since the field addition itself IS the fix for the compile errors and the backward-compat test already exercises the real `#[serde(default)]` behaviour).
 
 - [ ] **Step 9: Run to verify it passes**
 
@@ -1599,7 +1599,7 @@ Expected: PASS — every test green, including `test_check_updates_passes_greedy
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/settings.rs src-tauri/src/ipc.rs
+git add crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/settings.rs src-tauri/src/ipc.rs
 git commit -m "$(cat <<'EOF'
 feat(brew): honour include_self_updating via --greedy, wired end to end
 
@@ -1617,15 +1617,15 @@ EOF
 ### Task 3: brew `maybe_update` degrades and serialises
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`
-- Modify: `crates/canager-core/src/runner/mock.rs`
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`
+- Modify: `crates/banager-core/src/runner/mock.rs`
 - Test: inline `#[cfg(test)]` modules in both files above
 
 **Interfaces:**
 - Consumes: `BrewAdapter::check_updates(&self, inst: &ManagerInstance, opts: &CheckOptions)` and `UpdateCandidate.warnings: Vec<String>` (both from Task 2 / pre-existing `model.rs`).
 - Produces:
   ```rust
-  // crates/canager-core/src/runner/mock.rs (new, additive method)
+  // crates/banager-core/src/runner/mock.rs (new, additive method)
   impl MockRunner {
       pub fn delay(&self, argv: Vec<&str>, delay: std::time::Duration);
   }
@@ -1634,7 +1634,7 @@ EOF
 
 - [ ] **Step 1: Write the failing test for degrading a failed `brew update` to a warning**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside the existing `mod tests` block (after `test_check_updates_passes_greedy_flag_when_include_self_updating_is_true`):
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — add this test inside the existing `mod tests` block (after `test_check_updates_passes_greedy_flag_when_include_self_updating_is_true`):
 
 ```rust
     #[tokio::test]
@@ -1680,12 +1680,12 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside t
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::brew::tests::test_check_updates_degrades_a_failed_brew_update_to_a_warning`
+Run: `cargo test -p banager-core --lib adapters::brew::tests::test_check_updates_degrades_a_failed_brew_update_to_a_warning`
 Expected: FAIL — the test panics on `.expect("a failed \`brew update\` must not fail check_updates")` because `check_updates` currently propagates `maybe_update`'s error via `self.maybe_update(inst).await?;`, so the whole call returns `Err(AdapterError::CommandFailed { .. })`.
 
 - [ ] **Step 3: Degrade the failure to a per-candidate warning**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — rewrite `check_updates`:
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — rewrite `check_updates`:
 
 ```rust
     pub async fn check_updates(
@@ -1722,12 +1722,12 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs` — rewrite `check_updates
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::brew::`
+Run: `cargo test -p banager-core --lib adapters::brew::`
 Expected: PASS — the new test passes, and every pre-existing `check_updates`/TTL test still passes (they all mock a *successful* `brew update`, so `update_warning` stays `None` and their output is unchanged).
 
 - [ ] **Step 5: Write the failing test for serialising `maybe_update` per instance**
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside `mod tests` (after the test from Step 1):
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — add this test inside `mod tests` (after the test from Step 1):
 
 ```rust
     #[tokio::test]
@@ -1800,12 +1800,12 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs` — add this test inside `
 
 - [ ] **Step 6: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::brew::tests::test_check_updates_serialises_maybe_update_across_concurrent_callers`
+Run: `cargo test -p banager-core --lib adapters::brew::tests::test_check_updates_serialises_maybe_update_across_concurrent_callers`
 Expected: FAIL to compile — `error[E0599]: no method named \`delay\` found for struct \`MockRunner\`` (`MockRunner` has no such method yet).
 
 - [ ] **Step 7: Add `MockRunner::delay` and serialise `maybe_update` per instance**
 
-Modify `crates/canager-core/src/runner/mock.rs` — add a `delays` map and the `delay` method, and apply the delay in `run`:
+Modify `crates/banager-core/src/runner/mock.rs` — add a `delays` map and the `delay` method, and apply the delay in `run`:
 
 ```rust
 use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
@@ -1904,7 +1904,7 @@ impl CommandRunner for MockRunner {
 ```
 (the existing `#[cfg(test)] mod tests` block in this file is unchanged — leave it exactly as is, appended below the code above).
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs`:
+Modify `crates/banager-core/src/adapters/brew/mod.rs`:
 - Add the per-instance lock map to `BrewAdapter`'s fields and constructor:
   ```rust
   pub struct BrewAdapter {
@@ -1979,13 +1979,13 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs`:
 
 - [ ] **Step 8: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib`
+Run: `cargo test -p banager-core --lib`
 Expected: PASS — all brew adapter tests pass, including both new ones from Steps 1 and 5, and `runner::mock`'s existing tests are unaffected (the `delays` map defaults empty, so no pre-existing `MockRunner` behaviour changes).
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/runner/mock.rs
+git add crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/runner/mock.rs
 git commit -m "$(cat <<'EOF'
 fix(brew): degrade a failed brew update to a warning and serialise it
 
@@ -2004,16 +2004,16 @@ EOF
 ### Task 4: `unverified_version` on ManagerInstance + the UI badge
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs`
-- Modify: `crates/canager-core/src/adapters/mod.rs`
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`
-- Modify: `crates/canager-core/src/session/mod.rs`
-- Modify: `crates/canager-core/tests/ops_semaphore_test.rs`
-- Modify: `crates/canager-core/tests/ops_cancel_test.rs`
-- Modify: `crates/canager-core/tests/ops_lock_test.rs`
-- Modify: `crates/canager-core/tests/ops_panic_test.rs`
-- Modify: `crates/canager-core/tests/ops_outcome_test.rs`
-- Modify: `crates/canager-core/tests/ops_summaries_test.rs`
+- Modify: `crates/banager-core/src/model.rs`
+- Modify: `crates/banager-core/src/adapters/mod.rs`
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`
+- Modify: `crates/banager-core/src/session/mod.rs`
+- Modify: `crates/banager-core/tests/ops_semaphore_test.rs`
+- Modify: `crates/banager-core/tests/ops_cancel_test.rs`
+- Modify: `crates/banager-core/tests/ops_lock_test.rs`
+- Modify: `crates/banager-core/tests/ops_panic_test.rs`
+- Modify: `crates/banager-core/tests/ops_outcome_test.rs`
+- Modify: `crates/banager-core/tests/ops_summaries_test.rs`
 - Modify: `src-tauri/src/ipc.rs`
 - Modify: `src/lib/types.ts`
 - Modify: `src/pages/InstalledPage.tsx`
@@ -2035,7 +2035,7 @@ EOF
   Plus the single implementation of the rule itself, so the next six adapters
   do not each write their own copy:
   ```rust
-  // crates/canager-core/src/adapters/mod.rs
+  // crates/banager-core/src/adapters/mod.rs
   impl AdapterMeta {
       pub fn unverified_version(&self, detected: &Option<String>) -> Option<String>;
   }
@@ -2044,7 +2044,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests for the new field**
 
-Modify `crates/canager-core/src/model.rs` — update the existing round-trip test's literal and add a second one for the `Some` case (place both after the struct/enum definitions, inside the existing `mod tests` block):
+Modify `crates/banager-core/src/model.rs` — update the existing round-trip test's literal and add a second one for the `Some` case (place both after the struct/enum definitions, inside the existing `mod tests` block):
 
 ```rust
     #[test]
@@ -2090,7 +2090,7 @@ Expected: FAIL to compile — `error[E0560]: struct \`ManagerInstance\` has no f
 
 - [ ] **Step 3: Add the field, the shared rule on `AdapterMeta`, real `detect()` logic, and fix every other Rust literal**
 
-Modify `crates/canager-core/src/model.rs`:
+Modify `crates/banager-core/src/model.rs`:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2110,7 +2110,7 @@ pub struct ManagerInstance {
 }
 ```
 
-Modify `crates/canager-core/src/adapters/mod.rs` — add the rule once, as an inherent method on `AdapterMeta`, right after its `from_toml` constructor:
+Modify `crates/banager-core/src/adapters/mod.rs` — add the rule once, as an inherent method on `AdapterMeta`, right after its `from_toml` constructor:
 
 ```rust
 impl AdapterMeta {
@@ -2162,7 +2162,7 @@ and its test, inside that file's existing `#[cfg(test)] mod tests` block (after 
     }
 ```
 
-Modify `crates/canager-core/src/adapters/brew/mod.rs` — compute the real value in `detect()` by calling that method:
+Modify `crates/banager-core/src/adapters/brew/mod.rs` — compute the real value in `detect()` by calling that method:
 
 ```rust
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -2206,7 +2206,7 @@ Modify `crates/canager-core/src/adapters/brew/mod.rs` — compute the real value
 
 Fix the four pre-existing `ManagerInstance` test literals in this same file and add two new `detect()` tests. Run:
 ```bash
-sed -i '' -E 's/^([[:space:]]*)healthy: true,$/\1healthy: true,\n\1unverified_version: None,/' crates/canager-core/src/adapters/brew/mod.rs
+sed -i '' -E 's/^([[:space:]]*)healthy: true,$/\1healthy: true,\n\1unverified_version: None,/' crates/banager-core/src/adapters/brew/mod.rs
 ```
 Then add, in `mod tests` right after `test_detect_finds_opt_homebrew_on_this_apple_silicon_mac`:
 
@@ -2270,14 +2270,14 @@ Then add, in `mod tests` right after `test_detect_finds_opt_homebrew_on_this_app
 Fix every other Rust `ManagerInstance` literal in the workspace (`session/mod.rs`'s `make_instance` helper, `ipc.rs`'s `FakeAdapter` instance literal, and the six `ops_*_test.rs` files). Run:
 ```bash
 sed -i '' -E 's/^([[:space:]]*)healthy: true,$/\1healthy: true,\n\1unverified_version: None,/' \
-  crates/canager-core/src/session/mod.rs \
+  crates/banager-core/src/session/mod.rs \
   src-tauri/src/ipc.rs \
-  crates/canager-core/tests/ops_semaphore_test.rs \
-  crates/canager-core/tests/ops_cancel_test.rs \
-  crates/canager-core/tests/ops_lock_test.rs \
-  crates/canager-core/tests/ops_panic_test.rs \
-  crates/canager-core/tests/ops_outcome_test.rs \
-  crates/canager-core/tests/ops_summaries_test.rs
+  crates/banager-core/tests/ops_semaphore_test.rs \
+  crates/banager-core/tests/ops_cancel_test.rs \
+  crates/banager-core/tests/ops_lock_test.rs \
+  crates/banager-core/tests/ops_panic_test.rs \
+  crates/banager-core/tests/ops_outcome_test.rs \
+  crates/banager-core/tests/ops_summaries_test.rs
 ```
 Then run `cargo fmt --all` to normalize indentation from all the sed edits in this step.
 
@@ -2289,7 +2289,7 @@ Expected: PASS — every Rust test green, including the five new/updated ones in
 - [ ] **Step 5: Commit the Rust side**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/session/mod.rs src-tauri/src/ipc.rs crates/canager-core/tests/ops_semaphore_test.rs crates/canager-core/tests/ops_cancel_test.rs crates/canager-core/tests/ops_lock_test.rs crates/canager-core/tests/ops_panic_test.rs crates/canager-core/tests/ops_outcome_test.rs crates/canager-core/tests/ops_summaries_test.rs
+git add crates/banager-core/src/model.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/session/mod.rs src-tauri/src/ipc.rs crates/banager-core/tests/ops_semaphore_test.rs crates/banager-core/tests/ops_cancel_test.rs crates/banager-core/tests/ops_lock_test.rs crates/banager-core/tests/ops_panic_test.rs crates/banager-core/tests/ops_outcome_test.rs crates/banager-core/tests/ops_summaries_test.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add ManagerInstance.unverified_version
 
@@ -2433,16 +2433,16 @@ EOF
 ### Task 5: npm adapter
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/npm.rs`
+- Create: `crates/banager-core/src/adapters/npm.rs`
 - Create: `adapters/meta/npm.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (`pub mod npm;`, plus the shared `run_plan`/`second_token` helpers)
-- Test: inline `#[cfg(test)]` modules in `crates/canager-core/src/adapters/npm.rs` (driven by the committed fixtures in `adapters/fixtures/npm/12.0.2/`) and `crates/canager-core/src/adapters/mod.rs`
+- Modify: `crates/banager-core/src/adapters/mod.rs` (`pub mod npm;`, plus the shared `run_plan`/`second_token` helpers)
+- Test: inline `#[cfg(test)]` modules in `crates/banager-core/src/adapters/npm.rs` (driven by the committed fixtures in `adapters/fixtures/npm/12.0.2/`) and `crates/banager-core/src/adapters/mod.rs`
 
 **Interfaces:**
 - Consumes: `Adapter` trait, `CheckOptions`, `Capabilities` (Task 2); `ManagerInstance.unverified_version` (Task 4); `crate::adapters::validate_package_name`, `crate::runner::{CommandRunner, CommandSpec, HostEnv, resolve_exe}` (pre-existing).
 - Produces:
   ```rust
-  // crates/canager-core/src/adapters/npm.rs (new; not the skeleton's own
+  // crates/banager-core/src/adapters/npm.rs (new; not the skeleton's own
   // names, introduced here to set the pattern the next five adapters copy)
   pub struct NpmAdapter { /* private */ }
   impl NpmAdapter {
@@ -2453,7 +2453,7 @@ EOF
       // capabilities: same shapes as the Adapter trait.
   }
   ```
-  Plus two shared helpers in `crates/canager-core/src/adapters/mod.rs`, introduced here because npm is the first of six adapters that would otherwise each carry a byte-identical copy of them (Tasks 6-10 call these and write neither):
+  Plus two shared helpers in `crates/banager-core/src/adapters/mod.rs`, introduced here because npm is the first of six adapters that would otherwise each carry a byte-identical copy of them (Tasks 6-10 call these and write neither):
   ```rust
   /// Runs a plan through the runner, streaming each line to the sink, and maps
   /// the result the way every adapter must: a clean exit is `Succeeded`, a
@@ -2474,13 +2474,13 @@ EOF
   ```
   No task in this slice consumes `NpmAdapter` yet — Task 11 (out of this slice) registers it with `Session`.
 
-  `NpmAdapter::search` (and `parse_search`, and `adapters/fixtures/npm/12.0.2/search-jq.json`) has **no production caller in this phase**: `Adapter::search` is never invoked in `canager-core` or `src-tauri`, and `src-tauri/src/lib.rs` registers no `search` IPC command. It is built here because the phase's task list names search as this adapter's deliverable and because brew already carries the same unused method; the IPC command that will call it belongs to the discovery page, a later phase. This is a recorded decision, not an oversight.
+  `NpmAdapter::search` (and `parse_search`, and `adapters/fixtures/npm/12.0.2/search-jq.json`) has **no production caller in this phase**: `Adapter::search` is never invoked in `banager-core` or `src-tauri`, and `src-tauri/src/lib.rs` registers no `search` IPC command. It is built here because the phase's task list names search as this adapter's deliverable and because brew already carries the same unused method; the IPC command that will call it belongs to the discovery page, a later phase. This is a recorded decision, not an oversight.
 
 - [ ] **Step 1: Write the failing fixture-driven parser tests**
 
-Modify `crates/canager-core/src/adapters/mod.rs` — add `pub mod npm;` on its own line after `pub mod brew;`, so Step 2's run really compiles this file and really fails. (Not "alphabetically": Tasks 6-10 append `pipx`, `uv`, `pip`, `cargo`, `ollama` in that order, which is the order the phase introduces them, not alphabetical order. Whoever adds the eighth adapter should append it the same way.)
+Modify `crates/banager-core/src/adapters/mod.rs` — add `pub mod npm;` on its own line after `pub mod brew;`, so Step 2's run really compiles this file and really fails. (Not "alphabetically": Tasks 6-10 append `pipx`, `uv`, `pip`, `cargo`, `ollama` in that order, which is the order the phase introduces them, not alphabetical order. Whoever adds the eighth adapter should append it the same way.)
 
-Create `crates/canager-core/src/adapters/npm.rs`:
+Create `crates/banager-core/src/adapters/npm.rs`:
 
 ```rust
 #[cfg(test)]
@@ -2557,12 +2557,12 @@ mod tests {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::npm`
+Run: `cargo test -p banager-core --lib adapters::npm`
 Expected: FAIL to compile — `error[E0425]`/`error[E0433]`: cannot find function `parse_ls_global` (and `parse_outdated_global`, `parse_search`) in this scope, and cannot find `ArtifactKind`/`UpdateChannel`, since `npm.rs` holds only its test module so far. This is a real red state, not "0 tests matched": Step 1 already declared `pub mod npm;`.
 
 - [ ] **Step 3: Implement the three parsers**
 
-Rewrite `crates/canager-core/src/adapters/npm.rs` (keeping the `tests` module from Step 1 unchanged, appended below):
+Rewrite `crates/banager-core/src/adapters/npm.rs` (keeping the `tests` module from Step 1 unchanged, appended below):
 
 ```rust
 use crate::model::{
@@ -2686,13 +2686,13 @@ fn parse_search(
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::npm`
+Run: `cargo test -p banager-core --lib adapters::npm`
 Expected: PASS — 4 tests ok (`parse_ls_global_matches_the_recorded_fixture`, `parse_outdated_global_matches_the_recorded_fixture`, `parse_outdated_global_of_empty_stdout_is_no_updates`, `parse_search_matches_the_recorded_fixture`).
 
 - [ ] **Step 5: Commit the parsers**
 
 ```bash
-git add crates/canager-core/src/adapters/mod.rs crates/canager-core/src/adapters/npm.rs
+git add crates/banager-core/src/adapters/mod.rs crates/banager-core/src/adapters/npm.rs
 git commit -m "$(cat <<'EOF'
 feat(npm): add fixture-driven parsers for ls/outdated/search
 
@@ -2715,7 +2715,7 @@ homepage = "https://www.npmjs.com"
 verified_versions = ["12.0.2"]
 ```
 
-Modify `crates/canager-core/src/adapters/npm.rs` — add these tests inside the existing `mod tests` block (after `parse_search_matches_the_recorded_fixture`):
+Modify `crates/banager-core/src/adapters/npm.rs` — add these tests inside the existing `mod tests` block (after `parse_search_matches_the_recorded_fixture`):
 
 ```rust
     use crate::adapters::{Adapter, AdapterError, Capabilities, CheckOptions};
@@ -3091,7 +3091,7 @@ Modify `crates/canager-core/src/adapters/npm.rs` — add these tests inside the 
     }
 ```
 
-Also add, to `crates/canager-core/src/adapters/mod.rs`'s existing `#[cfg(test)] mod tests` block, one test each for the two shared helpers this task introduces (they do not exist yet either, so these fail to compile alongside the npm ones):
+Also add, to `crates/banager-core/src/adapters/mod.rs`'s existing `#[cfg(test)] mod tests` block, one test each for the two shared helpers this task introduces (they do not exist yet either, so these fail to compile alongside the npm ones):
 
 ```rust
     #[test]
@@ -3190,12 +3190,12 @@ Also add, to `crates/canager-core/src/adapters/mod.rs`'s existing `#[cfg(test)] 
 
 - [ ] **Step 7: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::`
+Run: `cargo test -p banager-core --lib adapters::`
 Expected: FAIL to compile — `error[E0433]`/`error[E0412]`: cannot find struct/function `NpmAdapter` in this scope (referenced throughout the new npm tests; nothing outside the parser functions and their structs exists in `npm.rs` yet), and `error[E0425]`: cannot find function `second_token` / `run_plan` in `adapters/mod.rs`.
 
 - [ ] **Step 8: Implement the two shared helpers, then `NpmAdapter`**
 
-Modify `crates/canager-core/src/adapters/mod.rs` — add the two helpers Tasks 6-10 will reuse, after the `Adapter` trait definition. Their imports go in that file's existing `use` block: `use crate::events::{EventSink, OpId};`, `use crate::model::{Outcome, Plan};`, `use crate::runner::{CommandRunner, CommandSpec, LineCallback};`, `use std::sync::Arc;`, `use std::time::Duration;`, `use tokio_util::sync::CancellationToken;` (add only the ones not already there):
+Modify `crates/banager-core/src/adapters/mod.rs` — add the two helpers Tasks 6-10 will reuse, after the `Adapter` trait definition. Their imports go in that file's existing `use` block: `use crate::events::{EventSink, OpId};`, `use crate::model::{Outcome, Plan};`, `use crate::runner::{CommandRunner, CommandSpec, LineCallback};`, `use std::sync::Arc;`, `use std::time::Duration;`, `use tokio_util::sync::CancellationToken;` (add only the ones not already there):
 
 ```rust
 /// Runs a plan through the runner, streaming each line to the sink, and maps
@@ -3255,7 +3255,7 @@ pub fn second_token(text: &str) -> Option<String> {
 }
 ```
 
-Modify `crates/canager-core/src/adapters/npm.rs` — add the adapter above the existing parser functions (keep `parse_ls_global`, `parse_outdated_global`, `parse_search`, and the `tests` module unchanged):
+Modify `crates/banager-core/src/adapters/npm.rs` — add the adapter above the existing parser functions (keep `parse_ls_global`, `parse_outdated_global`, `parse_search`, and the `tests` module unchanged):
 
 ```rust
 use crate::adapters::{
@@ -3634,13 +3634,13 @@ impl Adapter for NpmAdapter {
 
 - [ ] **Step 9: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::`
+Run: `cargo test -p banager-core --lib adapters::`
 Expected: PASS — all 17 tests in `adapters::npm` (4 parser tests + 13 adapter tests), plus the 2 new `adapters::tests` tests for `second_token` and `run_plan`, plus `adapters::tests`' pre-existing tests. Also run `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check` — Expected: both clean.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add adapters/meta/npm.toml crates/canager-core/src/adapters/npm.rs crates/canager-core/src/adapters/mod.rs
+git add adapters/meta/npm.toml crates/banager-core/src/adapters/npm.rs crates/banager-core/src/adapters/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(npm): add the npm global-package adapter and two shared helpers
 
@@ -3661,20 +3661,20 @@ EOF
 ### Task 6: pipx adapter
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/pipx.rs`
+- Create: `crates/banager-core/src/adapters/pipx.rs`
 - Create: `adapters/meta/pipx.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (add `pub mod pipx;` after the existing adapter module declarations — after Task 5 this file reads `pub mod brew;` then `pub mod npm;`; add `pub mod pipx;` as the next line)
-- Test: `crates/canager-core/src/adapters/pipx.rs` (inline `#[cfg(test)] mod tests`, matching `adapters/brew/mod.rs`'s convention of tests living beside the code they test)
+- Modify: `crates/banager-core/src/adapters/mod.rs` (add `pub mod pipx;` after the existing adapter module declarations — after Task 5 this file reads `pub mod brew;` then `pub mod npm;`; add `pub mod pipx;` as the next line)
+- Test: `crates/banager-core/src/adapters/pipx.rs` (inline `#[cfg(test)] mod tests`, matching `adapters/brew/mod.rs`'s convention of tests living beside the code they test)
 
 **Interfaces:**
 - Consumes: `crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions, validate_package_name}` (Task 1–2, authoritative); `crate::http::{HttpClient, HttpRequest, HttpResponse, MockHttpClient}` (Task 1, authoritative); `crate::model::{ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance (with `unverified_version: Option<String>`, Task 4), OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate, UpdateChannel}`; `crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner}`.
 - Produces: `pub struct PipxAdapter`; `impl PipxAdapter { pub fn new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> PipxAdapter }`; `impl Adapter for PipxAdapter`. Free functions (private to this module): `fn parse_version(text: &str) -> Option<String>`, `fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, AdapterError>`, `fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate>`, `fn supports_native_outdated(version: &str) -> bool`. Later tasks (Task 11) consume `PipxAdapter::new` to register this adapter in `Session`.
 - Reuses, never reimplements: `crate::adapters::run_plan` is this adapter's whole `execute()`, and `AdapterMeta::unverified_version` is its whole unverified-version rule (both from Task 5 / Task 4). `pipx --version` prints a bare version string, not a labelled one, so `parse_version` here is genuinely pipx-specific and does **not** use `crate::adapters::second_token`.
-- Deferred, deliberately: `capabilities().upgrade_all` is `false`. `OpKind` is `Install | Uninstall | Upgrade` (`crates/canager-core/src/model.rs`) and has no upgrade-all variant, so there is no request `plan()` could ever receive for it; reporting `true` would advertise a capability nothing can exercise. `pipx upgrade-all` is out of scope for this phase — the per-adapter contract table's mention of it is a deliverable for whichever phase adds an upgrade-all `OpKind`.
+- Deferred, deliberately: `capabilities().upgrade_all` is `false`. `OpKind` is `Install | Uninstall | Upgrade` (`crates/banager-core/src/model.rs`) and has no upgrade-all variant, so there is no request `plan()` could ever receive for it; reporting `true` would advertise a capability nothing can exercise. `pipx upgrade-all` is out of scope for this phase — the per-adapter contract table's mention of it is a deliverable for whichever phase adds an upgrade-all `OpKind`.
 
 - [ ] **Step 1: Write the failing tests for pipx's parsers**
 
-Create `crates/canager-core/src/adapters/pipx.rs` with only its test module for now (the non-test code below does not exist yet, so every test that calls it will fail to compile):
+Create `crates/banager-core/src/adapters/pipx.rs` with only its test module for now (the non-test code below does not exist yet, so every test that calls it will fail to compile):
 
 ```rust
 #[cfg(test)]
@@ -3705,7 +3705,7 @@ mod tests {
 
     #[test]
     fn test_parse_list_from_the_recorded_fixture() {
-        // cargo runs tests with cwd = crates/canager-core (see
+        // cargo runs tests with cwd = crates/banager-core (see
         // adapters/mod.rs's own `test_from_toml_parses_the_committed_brew_meta_file`).
         let json = std::fs::read_to_string("../../adapters/fixtures/pipx/1.17.3/list.json")
             .expect("read pipx list.json fixture");
@@ -3751,16 +3751,16 @@ mod tests {
 }
 ```
 
-Add `pub mod pipx;` to `crates/canager-core/src/adapters/mod.rs` right after the existing adapter module declarations (`pub mod brew;` and, after Task 5, `pub mod npm;`).
+Add `pub mod pipx;` to `crates/banager-core/src/adapters/mod.rs` right after the existing adapter module declarations (`pub mod brew;` and, after Task 5, `pub mod npm;`).
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::pipx::`
+Run: `cargo test -p banager-core adapters::pipx::`
 Expected: FAIL to compile — `cannot find function `parse_version` in module `adapters::pipx`` (and the same for `parse_list`, `parse_outdated`, `supports_native_outdated`, and `ArtifactKind`/`InstallReason`/`UpdateChannel` not yet imported), since only the test module exists so far.
 
 - [ ] **Step 3: Implement pipx's parsers, `PipxAdapter` struct, `detect`, `inventory` and `check_updates`**
 
-Prepend the following to `crates/canager-core/src/adapters/pipx.rs`, above the `#[cfg(test)] mod tests` block already there:
+Prepend the following to `crates/banager-core/src/adapters/pipx.rs`, above the `#[cfg(test)] mod tests` block already there:
 
 ```rust
 use crate::adapters::{
@@ -4081,12 +4081,12 @@ impl PipxAdapter {
 
 - [ ] **Step 4: Run the tests and confirm the parser tests pass**
 
-Run: `cargo test -p canager-core adapters::pipx::`
+Run: `cargo test -p banager-core adapters::pipx::`
 Expected: PASS — all 7 tests in `adapters::pipx::tests` pass (the two `HostEnv`/`Adapter`-trait pieces are not exercised yet since `plan`/`execute`/`reconcile`/`Adapter for PipxAdapter` do not exist yet, but nothing calls them from this test module).
 
 - [ ] **Step 5: Write the failing tests for `plan`, `execute`, `reconcile` and the PyPI fallback**
 
-Append to the `#[cfg(test)] mod tests` block in `crates/canager-core/src/adapters/pipx.rs` (inside the existing `mod tests { use super::*; ... }`, after the tests already there):
+Append to the `#[cfg(test)] mod tests` block in `crates/banager-core/src/adapters/pipx.rs` (inside the existing `mod tests { use super::*; ... }`, after the tests already there):
 
 ```rust
     use crate::events::VecSink;
@@ -4361,12 +4361,12 @@ Append to the `#[cfg(test)] mod tests` block in `crates/canager-core/src/adapter
 
 - [ ] **Step 6: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::pipx::`
+Run: `cargo test -p banager-core adapters::pipx::`
 Expected: FAIL to compile — `no function or associated item named `plan` found for struct `PipxAdapter`` (and the same for `execute`, `reconcile`, and `<PipxAdapter as Adapter>::search`), since `plan`/`execute`/`reconcile`/`impl Adapter for PipxAdapter` do not exist yet.
 
 - [ ] **Step 7: Implement `plan`, `execute`, `reconcile`, `capabilities`/`search`, the meta file, and the `Adapter` impl**
 
-Append to `crates/canager-core/src/adapters/pipx.rs`, directly below the `check_updates` method inside `impl PipxAdapter { ... }` (before its closing brace):
+Append to `crates/banager-core/src/adapters/pipx.rs`, directly below the `check_updates` method inside `impl PipxAdapter { ... }` (before its closing brace):
 
 ```rust
     pub async fn search(
@@ -4521,7 +4521,7 @@ verified_versions = ["1.17.3"]
 
 - [ ] **Step 8: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core adapters::pipx::`
+Run: `cargo test -p banager-core adapters::pipx::`
 Expected: PASS — all tests in `adapters::pipx::tests` pass (17 tests total across steps 1 and 5).
 
 - [ ] **Step 9: Run the full workspace gate**
@@ -4532,7 +4532,7 @@ Expected: all three commands exit 0 — no formatting diffs, no clippy warnings,
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/pipx.rs crates/canager-core/src/adapters/mod.rs adapters/meta/pipx.toml
+git add crates/banager-core/src/adapters/pipx.rs crates/banager-core/src/adapters/mod.rs adapters/meta/pipx.toml
 git commit -m "$(cat <<'EOF'
 feat(adapters): add pipx adapter with pre-1.16 PyPI fallback
 
@@ -4551,10 +4551,10 @@ EOF
 ### Task 7: uv adapter
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/uv.rs`
+- Create: `crates/banager-core/src/adapters/uv.rs`
 - Create: `adapters/meta/uv.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (add `pub mod uv;` after `pub mod pipx;`)
-- Test: `crates/canager-core/src/adapters/uv.rs` (inline `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/mod.rs` (add `pub mod uv;` after `pub mod pipx;`)
+- Test: `crates/banager-core/src/adapters/uv.rs` (inline `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions, validate_package_name}`; `crate::model::{ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate, UpdateChannel}`; `crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner}`. No `HttpClient` — uv's own subprocess is the only network path this adapter touches.
@@ -4564,7 +4564,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests for uv's text parsers**
 
-Create `crates/canager-core/src/adapters/uv.rs`:
+Create `crates/banager-core/src/adapters/uv.rs`:
 
 ```rust
 #[cfg(test)]
@@ -4631,16 +4631,16 @@ mod tests {
 }
 ```
 
-Add `pub mod uv;` to `crates/canager-core/src/adapters/mod.rs` right after `pub mod pipx;`.
+Add `pub mod uv;` to `crates/banager-core/src/adapters/mod.rs` right after `pub mod pipx;`.
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::uv::`
+Run: `cargo test -p banager-core adapters::uv::`
 Expected: FAIL to compile — `cannot find function `parse_tool_list_show_paths` in module `adapters::uv`` (and the same for `parse_tool_list_outdated`, plus `second_token`/`PathBuf`/`ArtifactKind`/`UpdateChannel` not yet imported).
 
 - [ ] **Step 3: Implement uv's parsers, `UvAdapter` struct, `detect`, `inventory` and `check_updates`**
 
-Prepend to `crates/canager-core/src/adapters/uv.rs`:
+Prepend to `crates/banager-core/src/adapters/uv.rs`:
 
 ```rust
 use crate::adapters::{
@@ -4864,12 +4864,12 @@ impl UvAdapter {
 
 - [ ] **Step 4: Run the tests and confirm the parser tests pass**
 
-Run: `cargo test -p canager-core adapters::uv::`
+Run: `cargo test -p banager-core adapters::uv::`
 Expected: PASS — all 5 tests in `adapters::uv::tests` pass.
 
 - [ ] **Step 5: Write the failing tests for `plan`, `execute`, `reconcile`**
 
-Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/canager-core/src/adapters/uv.rs`:
+Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/banager-core/src/adapters/uv.rs`:
 
 ```rust
     use crate::events::VecSink;
@@ -5027,12 +5027,12 @@ Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crate
 
 - [ ] **Step 6: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::uv::`
+Run: `cargo test -p banager-core adapters::uv::`
 Expected: FAIL to compile — `no function or associated item named `plan` found for struct `UvAdapter`` (and the same for `execute`/`reconcile`/`<UvAdapter as Adapter>::search`).
 
 - [ ] **Step 7: Implement `plan`, `execute`, `reconcile`, `capabilities`/`search`, the meta file, and the `Adapter` impl**
 
-Append to `impl UvAdapter { ... }` in `crates/canager-core/src/adapters/uv.rs`, below `check_updates`:
+Append to `impl UvAdapter { ... }` in `crates/banager-core/src/adapters/uv.rs`, below `check_updates`:
 
 ```rust
     pub async fn search(
@@ -5186,7 +5186,7 @@ verified_versions = ["0.12.17"]
 
 - [ ] **Step 8: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core adapters::uv::`
+Run: `cargo test -p banager-core adapters::uv::`
 Expected: PASS — all tests in `adapters::uv::tests` pass (11 tests total across steps 1 and 5).
 
 - [ ] **Step 9: Run the full workspace gate**
@@ -5197,7 +5197,7 @@ Expected: all three commands exit 0.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/uv.rs crates/canager-core/src/adapters/mod.rs adapters/meta/uv.toml
+git add crates/banager-core/src/adapters/uv.rs crates/banager-core/src/adapters/mod.rs adapters/meta/uv.toml
 git commit -m "$(cat <<'EOF'
 feat(adapters): add uv adapter with text-based tool-list parsing
 
@@ -5215,10 +5215,10 @@ EOF
 ### Task 8: pip adapter, read-only
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/pip.rs`
+- Create: `crates/banager-core/src/adapters/pip.rs`
 - Create: `adapters/meta/pip.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (add `pub mod pip;` after `pub mod uv;`)
-- Test: `crates/canager-core/src/adapters/pip.rs` (inline `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/mod.rs` (add `pub mod pip;` after `pub mod uv;`)
+- Test: `crates/banager-core/src/adapters/pip.rs` (inline `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions}` (no `validate_package_name` — pip never builds a write argv); `crate::model::{ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, Reconciled, Scope, SearchHit, UpdateCandidate, UpdateChannel}`; `crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner}`.
@@ -5227,7 +5227,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests for pip's parsers**
 
-Create `crates/canager-core/src/adapters/pip.rs`:
+Create `crates/banager-core/src/adapters/pip.rs`:
 
 ```rust
 #[cfg(test)]
@@ -5277,16 +5277,16 @@ mod tests {
 }
 ```
 
-Add `pub mod pip;` to `crates/canager-core/src/adapters/mod.rs` right after `pub mod uv;`.
+Add `pub mod pip;` to `crates/banager-core/src/adapters/mod.rs` right after `pub mod uv;`.
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::pip::`
+Run: `cargo test -p banager-core adapters::pip::`
 Expected: FAIL to compile — `cannot find function `parse_pip_list` in module `adapters::pip`` (and the same for `parse_pip_outdated`, plus `second_token`/`UpdateChannel` not yet imported).
 
 - [ ] **Step 3: Implement pip's parsers, `PipAdapter` struct, `detect`, `inventory` and `check_updates`**
 
-Prepend to `crates/canager-core/src/adapters/pip.rs`:
+Prepend to `crates/banager-core/src/adapters/pip.rs`:
 
 ```rust
 use crate::adapters::{second_token, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
@@ -5542,12 +5542,12 @@ impl PipAdapter {
 
 - [ ] **Step 4: Run the tests and confirm the parser tests pass**
 
-Run: `cargo test -p canager-core adapters::pip::`
+Run: `cargo test -p banager-core adapters::pip::`
 Expected: PASS — all 3 tests in `adapters::pip::tests` pass.
 
 - [ ] **Step 5: Write the failing tests for the read-only refusal, `inventory`'s reason mapping, and `reconcile`**
 
-Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/canager-core/src/adapters/pip.rs`:
+Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/banager-core/src/adapters/pip.rs`:
 
 ```rust
     use crate::model::OpKind;
@@ -5794,12 +5794,12 @@ Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crate
 
 - [ ] **Step 6: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::pip::`
+Run: `cargo test -p banager-core adapters::pip::`
 Expected: FAIL to compile — `no function or associated item named `plan` found for struct `PipAdapter`` (and the same for `execute` and `reconcile`, and `<PipAdapter as Adapter>::capabilities` since `impl Adapter for PipAdapter` does not exist yet).
 
 - [ ] **Step 7: Implement `plan`, `execute`, `reconcile`, `capabilities`/`search`, the meta file, and the `Adapter` impl**
 
-Append to `impl PipAdapter { ... }` in `crates/canager-core/src/adapters/pip.rs`, below `check_updates`:
+Append to `impl PipAdapter { ... }` in `crates/banager-core/src/adapters/pip.rs`, below `check_updates`:
 
 ```rust
     pub async fn search(
@@ -5944,7 +5944,7 @@ verified_versions = ["26.2.1"]
 
 - [ ] **Step 8: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core adapters::pip::`
+Run: `cargo test -p banager-core adapters::pip::`
 Expected: PASS — all tests in `adapters::pip::tests` pass (10 tests total across steps 1 and 5).
 
 - [ ] **Step 9: Run the full workspace gate**
@@ -5955,7 +5955,7 @@ Expected: all three commands exit 0.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/pip.rs crates/canager-core/src/adapters/mod.rs adapters/meta/pip.toml
+git add crates/banager-core/src/adapters/pip.rs crates/banager-core/src/adapters/mod.rs adapters/meta/pip.toml
 git commit -m "$(cat <<'EOF'
 feat(adapters): add read-only pip adapter
 
@@ -5977,22 +5977,22 @@ EOF
 ### Task 9: cargo adapter
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/cargo.rs`
+- Create: `crates/banager-core/src/adapters/cargo.rs`
 - Create: `adapters/meta/cargo.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (add `pub mod cargo;` after `pub mod pip;`)
-- Modify: `crates/canager-core/src/runner/path_env.rs` (`HostEnv` gains `cargo_home` and `ollama_host`; see Step 3)
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs`, `crates/canager-core/src/adapters/npm.rs`, `crates/canager-core/src/adapters/pipx.rs`, `crates/canager-core/src/session/mod.rs` (mechanical: the `HostEnv` literals in their test helpers gain the two new fields)
-- Test: `crates/canager-core/src/adapters/cargo.rs` (inline `#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/adapters/mod.rs` (add `pub mod cargo;` after `pub mod pip;`)
+- Modify: `crates/banager-core/src/runner/path_env.rs` (`HostEnv` gains `cargo_home` and `ollama_host`; see Step 3)
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs`, `crates/banager-core/src/adapters/npm.rs`, `crates/banager-core/src/adapters/pipx.rs`, `crates/banager-core/src/session/mod.rs` (mechanical: the `HostEnv` literals in their test helpers gain the two new fields)
+- Test: `crates/banager-core/src/adapters/cargo.rs` (inline `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions, validate_package_name}`; `crate::http::{HttpClient, HttpRequest, HttpResponse, MockHttpClient}`; `crate::model::{ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate, UpdateChannel}`; `crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner}`.
 - Produces: `pub struct CargoAdapter`; `impl CargoAdapter { pub fn new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> CargoAdapter }`; `impl Adapter for CargoAdapter`. Private free functions: `fn parse_install_key(key: &str) -> Option<(String, String, String)>`, `fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, AdapterError>`, `fn parse_crates2(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, AdapterError>`, `fn default_binstall_check(env: &HostEnv) -> Option<PathBuf>`.
-- Also produces, in `crates/canager-core/src/runner/path_env.rs`: `HostEnv` gains `pub cargo_home: Option<PathBuf>` and `pub ollama_host: Option<String>`, both filled by `HostEnv::discover()`. This is where every other host fact already lives; reading `CARGO_HOME`/`OLLAMA_HOST` from `std::env` inside an adapter would bypass the very indirection `HostEnv` exists for — a Finder-launched app starts with a minimal environment (`crates/canager-core/src/runner/path_env.rs`) — and would make both values untestable. Task 10 consumes `ollama_host`.
+- Also produces, in `crates/banager-core/src/runner/path_env.rs`: `HostEnv` gains `pub cargo_home: Option<PathBuf>` and `pub ollama_host: Option<String>`, both filled by `HostEnv::discover()`. This is where every other host fact already lives; reading `CARGO_HOME`/`OLLAMA_HOST` from `std::env` inside an adapter would bypass the very indirection `HostEnv` exists for — a Finder-launched app starts with a minimal environment (`crates/banager-core/src/runner/path_env.rs`) — and would make both values untestable. Task 10 consumes `ollama_host`.
 - Reuses, never reimplements: `crate::adapters::second_token` parses `cargo --version` (this adapter defines no `parse_version` of its own), `crate::adapters::run_plan` is its whole `execute()`, and `AdapterMeta::unverified_version` is its whole unverified-version rule.
 
 - [ ] **Step 1: Write the failing tests for cargo's `.crates2.json` parsers**
 
-Create `crates/canager-core/src/adapters/cargo.rs`:
+Create `crates/banager-core/src/adapters/cargo.rs`:
 
 ```rust
 #[cfg(test)]
@@ -6080,16 +6080,16 @@ mod tests {
 }
 ```
 
-Add `pub mod cargo;` to `crates/canager-core/src/adapters/mod.rs` right after `pub mod pip;`.
+Add `pub mod cargo;` to `crates/banager-core/src/adapters/mod.rs` right after `pub mod pip;`.
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::cargo::`
+Run: `cargo test -p banager-core adapters::cargo::`
 Expected: FAIL to compile — `cannot find function `parse_install_key` in module `adapters::cargo`` (and the same for `parse_crates2`/`default_binstall_check`, plus `second_token`/`HostEnv`/`PathBuf`/`ArtifactKind` not yet imported).
 
 - [ ] **Step 3: Widen `HostEnv`, then implement cargo's parsers, `CargoAdapter` struct, `detect`, `inventory` and `check_updates`**
 
-First, modify `crates/canager-core/src/runner/path_env.rs` so the two host facts this adapter and Task 10's need travel through `HostEnv` like every other one:
+First, modify `crates/banager-core/src/runner/path_env.rs` so the two host facts this adapter and Task 10's need travel through `HostEnv` like every other one:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -6137,17 +6137,17 @@ Every existing `HostEnv { … }` literal is in a test helper and needs the two n
 
 ```bash
 sed -i '' -E 's/^([[:space:]]*)euid: (501|0),$/\1euid: \2,\n\1cargo_home: None,\n\1ollama_host: None,/' \
-  crates/canager-core/src/runner/path_env.rs \
-  crates/canager-core/src/adapters/brew/mod.rs \
-  crates/canager-core/src/adapters/npm.rs \
-  crates/canager-core/src/adapters/pipx.rs \
-  crates/canager-core/src/session/mod.rs
+  crates/banager-core/src/runner/path_env.rs \
+  crates/banager-core/src/adapters/brew/mod.rs \
+  crates/banager-core/src/adapters/npm.rs \
+  crates/banager-core/src/adapters/pipx.rs \
+  crates/banager-core/src/session/mod.rs
 cargo fmt --all
 ```
 
-Verify with `rg -c 'cargo_home: None,' crates/canager-core/src` — expected 14 (2 in `path_env.rs`'s own tests, 6 in `brew/mod.rs` — 4 pre-existing plus Task 4's 2, 3 in `npm.rs`, 1 in `pipx.rs`, 2 in `session/mod.rs`). The Step 1 test written above already spells both fields out, so it is not matched by this sed and must not be double-edited. If `rg -n 'HostEnv \{' crates src-tauri` shows any literal the sed missed, add the two fields to it by hand.
+Verify with `rg -c 'cargo_home: None,' crates/banager-core/src` — expected 14 (2 in `path_env.rs`'s own tests, 6 in `brew/mod.rs` — 4 pre-existing plus Task 4's 2, 3 in `npm.rs`, 1 in `pipx.rs`, 2 in `session/mod.rs`). The Step 1 test written above already spells both fields out, so it is not matched by this sed and must not be double-edited. If `rg -n 'HostEnv \{' crates src-tauri` shows any literal the sed missed, add the two fields to it by hand.
 
-Then prepend to `crates/canager-core/src/adapters/cargo.rs`:
+Then prepend to `crates/banager-core/src/adapters/cargo.rs`:
 
 ```rust
 use crate::adapters::{
@@ -6431,12 +6431,12 @@ impl CargoAdapter {
 
 - [ ] **Step 4: Run the tests and confirm the parser tests pass**
 
-Run: `cargo test -p canager-core adapters::cargo::`
+Run: `cargo test -p banager-core adapters::cargo::`
 Expected: PASS — all 5 tests in `adapters::cargo::tests` pass.
 
 - [ ] **Step 5: Write the failing tests for `check_updates`'s network paths, `plan`'s binstall branch, `execute` and `reconcile`**
 
-Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/canager-core/src/adapters/cargo.rs`:
+Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/banager-core/src/adapters/cargo.rs`:
 
 ```rust
     use crate::events::VecSink;
@@ -6712,12 +6712,12 @@ Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crate
 
 - [ ] **Step 6: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::cargo::`
+Run: `cargo test -p banager-core adapters::cargo::`
 Expected: FAIL to compile — `no function or associated item named `plan` found for struct `CargoAdapter`` (and the same for `with_binstall`/`execute`/`reconcile`/`<CargoAdapter as Adapter>::search`).
 
 - [ ] **Step 7: Implement `plan`, `execute`, `reconcile`, `capabilities`/`search`, the meta file, and the `Adapter` impl**
 
-Append to `impl CargoAdapter { ... }` in `crates/canager-core/src/adapters/cargo.rs`, below `check_updates`:
+Append to `impl CargoAdapter { ... }` in `crates/banager-core/src/adapters/cargo.rs`, below `check_updates`:
 
 ```rust
     pub async fn search(
@@ -6896,7 +6896,7 @@ verified_versions = ["1.98.1"]
 
 - [ ] **Step 8: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core adapters::cargo::`
+Run: `cargo test -p banager-core adapters::cargo::`
 Expected: PASS — all tests in `adapters::cargo::tests` pass (16 tests total across steps 1 and 5). Then run `cargo test --workspace` once here too: Step 3 widened `HostEnv`, so this is where a missed literal in another crate's test helper shows up.
 
 - [ ] **Step 9: Run the full workspace gate**
@@ -6907,7 +6907,7 @@ Expected: all three commands exit 0.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/cargo.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/runner/path_env.rs crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/adapters/npm.rs crates/canager-core/src/adapters/pipx.rs crates/canager-core/src/session/mod.rs adapters/meta/cargo.toml
+git add crates/banager-core/src/adapters/cargo.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/runner/path_env.rs crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/adapters/npm.rs crates/banager-core/src/adapters/pipx.rs crates/banager-core/src/session/mod.rs adapters/meta/cargo.toml
 git commit -m "$(cat <<'EOF'
 feat(adapters): add cargo adapter over .crates2.json and crates.io
 
@@ -6932,11 +6932,11 @@ EOF
 ### Task 10: ollama adapter
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/ollama/mod.rs`
-- Create: `crates/canager-core/src/adapters/ollama/parse.rs`
+- Create: `crates/banager-core/src/adapters/ollama/mod.rs`
+- Create: `crates/banager-core/src/adapters/ollama/parse.rs`
 - Create: `adapters/meta/ollama.toml`
-- Modify: `crates/canager-core/src/adapters/mod.rs` (add `pub mod ollama;` after `pub mod cargo;`)
-- Test: `crates/canager-core/src/adapters/ollama/parse.rs` and `crates/canager-core/src/adapters/ollama/mod.rs` (inline `#[cfg(test)] mod tests` in each, matching `adapters/brew/parse.rs` + `adapters/brew/mod.rs`'s split)
+- Modify: `crates/banager-core/src/adapters/mod.rs` (add `pub mod ollama;` after `pub mod cargo;`)
+- Test: `crates/banager-core/src/adapters/ollama/parse.rs` and `crates/banager-core/src/adapters/ollama/mod.rs` (inline `#[cfg(test)] mod tests` in each, matching `adapters/brew/parse.rs` + `adapters/brew/mod.rs`'s split)
 
 **Interfaces:**
 - Consumes: `crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions}`; `crate::http::{HttpClient, HttpRequest, HttpResponse, MockHttpClient}`; `crate::model::{ArtifactKey, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate, UpdateChannel}` (`ArtifactKind::Model`, `InstallReason::Requested` via `parse::parse_tags`); `crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner}`.
@@ -6946,7 +6946,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests for ollama's response and manifest parsers**
 
-Create `crates/canager-core/src/adapters/ollama/parse.rs`:
+Create `crates/banager-core/src/adapters/ollama/parse.rs`:
 
 ```rust
 use crate::adapters::AdapterError;
@@ -7146,14 +7146,14 @@ mod tests {
 }
 ```
 
-Add `pub mod ollama;` to `crates/canager-core/src/adapters/mod.rs` right after `pub mod cargo;`.
+Add `pub mod ollama;` to `crates/banager-core/src/adapters/mod.rs` right after `pub mod cargo;`.
 
 - [ ] **Step 2: Run the tests and confirm they compile and pass**
 
-Run: `cargo test -p canager-core adapters::ollama::parse::`
-Expected: PASS — `parse.rs` is fully self-contained (only depends on `AdapterError`/`ArtifactKey`/`ArtifactKind`/`InstallReason`/`InstalledArtifact`, all of which already exist), so this file compiles and all 5 tests pass on the first run. (`crates/canager-core/src/adapters/ollama/mod.rs` does not exist yet — create it now as an empty file with `pub mod parse;` so `pub mod ollama;` in `adapters/mod.rs` resolves; without it this step's `cargo test` invocation fails with `file not found for module `ollama``.)
+Run: `cargo test -p banager-core adapters::ollama::parse::`
+Expected: PASS — `parse.rs` is fully self-contained (only depends on `AdapterError`/`ArtifactKey`/`ArtifactKind`/`InstallReason`/`InstalledArtifact`, all of which already exist), so this file compiles and all 5 tests pass on the first run. (`crates/banager-core/src/adapters/ollama/mod.rs` does not exist yet — create it now as an empty file with `pub mod parse;` so `pub mod ollama;` in `adapters/mod.rs` resolves; without it this step's `cargo test` invocation fails with `file not found for module `ollama``.)
 
-Create `crates/canager-core/src/adapters/ollama/mod.rs` with just:
+Create `crates/banager-core/src/adapters/ollama/mod.rs` with just:
 
 ```rust
 pub mod parse;
@@ -7161,7 +7161,7 @@ pub mod parse;
 
 - [ ] **Step 3: Write the failing tests for `OllamaAdapter`'s `detect`, `inventory` and `check_updates`**
 
-Append to `crates/canager-core/src/adapters/ollama/mod.rs`:
+Append to `crates/banager-core/src/adapters/ollama/mod.rs`:
 
 ```rust
 #[cfg(test)]
@@ -7350,12 +7350,12 @@ mod tests {
 
 - [ ] **Step 4: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::ollama::`
+Run: `cargo test -p banager-core adapters::ollama::`
 Expected: FAIL to compile — `cannot find type `OllamaAdapter` in module `adapters::ollama`` (and the same for `ManagerInstance`/`PathBuf`/`Arc`/`MockHttpClient`/`MockRunner`/`HttpResponse`/`CheckOptions`/`AdapterError`/`HostEnv` not yet imported into `mod.rs`, and `compare_digests`/`host_for`/`host_of`/`DEFAULT_HOST` not yet defined).
 
 - [ ] **Step 5: Implement `OllamaAdapter`'s struct, `detect`, `inventory`, `check_updates` and `compare_digests`**
 
-`crates/canager-core/src/adapters/ollama/mod.rs` currently contains only the `pub mod parse;` line from Step 2 (plus the `#[cfg(test)] mod tests { ... }` block from Step 3, further down). Replace just that `pub mod parse;` line with:
+`crates/banager-core/src/adapters/ollama/mod.rs` currently contains only the `pub mod parse;` line from Step 2 (plus the `#[cfg(test)] mod tests { ... }` block from Step 3, further down). Replace just that `pub mod parse;` line with:
 
 ```rust
 pub mod parse;
@@ -7623,12 +7623,12 @@ impl OllamaAdapter {
 
 - [ ] **Step 6: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager-core adapters::ollama::`
+Run: `cargo test -p banager-core adapters::ollama::`
 Expected: PASS — the `parse` module's 5 tests and `mod.rs`'s 5 tests all pass (`plan`/`execute`/`reconcile`/`impl Adapter` are not exercised by these tests yet since they do not exist yet, but nothing here calls them).
 
 - [ ] **Step 7: Write the failing tests for `plan`, `execute`, `reconcile` and the write-path validation**
 
-Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/canager-core/src/adapters/ollama/mod.rs`, after the tests from Step 3:
+Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crates/banager-core/src/adapters/ollama/mod.rs`, after the tests from Step 3:
 
 ```rust
     use crate::events::VecSink;
@@ -7808,12 +7808,12 @@ Also add, to the top of the `use super::*;`-scoped test module (alongside `crate
 
 - [ ] **Step 8: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager-core adapters::ollama::`
+Run: `cargo test -p banager-core adapters::ollama::`
 Expected: FAIL to compile — `no function or associated item named `plan` found for struct `OllamaAdapter`` (and the same for `execute`/`reconcile`/`<OllamaAdapter as Adapter>::search`, and `validate_model_reference` not defined).
 
 - [ ] **Step 9: Implement `plan`, `execute`, `reconcile`, `capabilities`/`search`, the meta file, and the `Adapter` impl**
 
-Append to `impl OllamaAdapter { ... }` in `crates/canager-core/src/adapters/ollama/mod.rs`, below `check_updates`:
+Append to `impl OllamaAdapter { ... }` in `crates/banager-core/src/adapters/ollama/mod.rs`, below `check_updates`:
 
 ```rust
     pub async fn search(
@@ -7968,14 +7968,14 @@ verified_versions = ["0.34.1"]
 
 - [ ] **Step 10: Run the tests, then the full workspace gate, then commit**
 
-Run: `cargo test -p canager-core adapters::ollama::`
+Run: `cargo test -p banager-core adapters::ollama::`
 Expected: PASS — all tests in `adapters::ollama::parse::tests` and `adapters::ollama::tests` pass (5 + 12 = 17 tests total).
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 Expected: all three commands exit 0.
 
 ```bash
-git add crates/canager-core/src/adapters/ollama/mod.rs crates/canager-core/src/adapters/ollama/parse.rs crates/canager-core/src/adapters/mod.rs adapters/meta/ollama.toml
+git add crates/banager-core/src/adapters/ollama/mod.rs crates/banager-core/src/adapters/ollama/parse.rs crates/banager-core/src/adapters/mod.rs adapters/meta/ollama.toml
 git commit -m "$(cat <<'EOF'
 feat(adapters): add ollama adapter with HTTP reads and CLI writes
 
@@ -8003,8 +8003,8 @@ EOF
 ### Task 11: Session registers all seven adapters
 
 **Files:**
-- Modify: `crates/canager-core/src/session/mod.rs`
-- Test: `crates/canager-core/src/session/mod.rs` (`#[cfg(test)] mod tests`)
+- Modify: `crates/banager-core/src/session/mod.rs`
+- Test: `crates/banager-core/src/session/mod.rs` (`#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Consumes: `BrewAdapter::new(runner: Arc<dyn CommandRunner>) -> BrewAdapter` (existing). Assumed, matching that shape and the per-adapter contract table's network column (Tasks 5–10, not fixed by the skeleton's Core Interfaces — see `unverified`): `NpmAdapter::new(runner: Arc<dyn CommandRunner>) -> NpmAdapter`, `UvAdapter::new(runner: Arc<dyn CommandRunner>) -> UvAdapter`, `PipAdapter::new(runner: Arc<dyn CommandRunner>) -> PipAdapter`, `PipxAdapter::new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> PipxAdapter`, `CargoAdapter::new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> CargoAdapter`, `OllamaAdapter::new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> OllamaAdapter`. `RealHttpClient::new() -> RealHttpClient`, `HttpClient` trait (Task 1). `RealRunner::new() -> RealRunner`, `CommandRunner` trait (existing).
@@ -8013,7 +8013,7 @@ EOF
 
 - [ ] **Step 1: Write the failing test for full registration**
 
-Add to `crates/canager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, right after the existing `root_env()` helper:
+Add to `crates/banager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, right after the existing `root_env()` helper:
 
 ```rust
     #[test]
@@ -8037,7 +8037,7 @@ Add to `crates/canager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, righ
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cargo test -p canager-core session::tests::test_new_registers_all_seven_adapters`
+Run: `cargo test -p banager-core session::tests::test_new_registers_all_seven_adapters`
 Expected: FAIL to compile — `no method named 'adapter_ids' found for struct 'Session'`.
 
 - [ ] **Step 3: Register all seven adapters and add `adapter_ids()`**
@@ -8107,7 +8107,7 @@ Add a new method right after `operations()`:
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `cargo test -p canager-core session::tests::test_new_registers_all_seven_adapters`
+Run: `cargo test -p banager-core session::tests::test_new_registers_all_seven_adapters`
 Expected: PASS (1 passed).
 
 - [ ] **Step 5: Write the failing test for concurrent cross-adapter detect**
@@ -8147,7 +8147,7 @@ Add to the same `mod tests`:
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `cargo test -p canager-core session::tests::test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others`
+Run: `cargo test -p banager-core session::tests::test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others`
 Expected: FAIL — `two 200ms detects must overlap, not run back to back (took ~400ms)`, since `refresh()`'s detect loop is still sequential.
 
 - [ ] **Step 7: Make detect() run per adapter, concurrently**
@@ -8233,7 +8233,7 @@ with:
 
 - [ ] **Step 8: Run it to verify it passes**
 
-Run: `cargo test -p canager-core session::tests::test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others`
+Run: `cargo test -p banager-core session::tests::test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others`
 Expected: PASS (elapsed comfortably under 350ms).
 
 - [ ] **Step 9: Write the failing test for an unhealthy instance**
@@ -8295,7 +8295,7 @@ Add to the same `mod tests`:
     }
 ```
 
-Run: `cargo test -p canager-core session::tests::test_an_unhealthy_instance_is_a_reported_state_not_a_failed_refresh`
+Run: `cargo test -p banager-core session::tests::test_an_unhealthy_instance_is_a_reported_state_not_a_failed_refresh`
 Expected: FAIL — `snapshot.errors` has one entry for `fake:down`, `stale` is true, and `refreshed_at` is `None`, because `refresh()` still fans out to every detected instance regardless of `healthy`.
 
 - [ ] **Step 10: Skip the fan-out for an unhealthy instance**
@@ -8332,18 +8332,18 @@ with:
             };
 ```
 
-Run: `cargo test -p canager-core session::`
+Run: `cargo test -p banager-core session::`
 Expected: PASS — the new test, plus every pre-existing `session::tests::*` test unchanged (they all build instances with `healthy: true`).
 
 - [ ] **Step 11: Run the full gate**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: all clean; the full `canager-core` and `canager` test suites pass, including every pre-existing `session::tests::*` test unchanged.
+Expected: all clean; the full `banager-core` and `canager` test suites pass, including every pre-existing `session::tests::*` test unchanged.
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs
+git add crates/banager-core/src/session/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(session): register all seven adapters and detect concurrently
 
@@ -9435,9 +9435,9 @@ EOF
 ### Task 13: Phase-2 deferrals
 
 **Files:**
-- Modify: `crates/canager-core/src/session/mod.rs`
-- Modify: `crates/canager-core/src/ops/mod.rs`
-- Test: `crates/canager-core/tests/ops_summaries_test.rs`
+- Modify: `crates/banager-core/src/session/mod.rs`
+- Modify: `crates/banager-core/src/ops/mod.rs`
+- Test: `crates/banager-core/tests/ops_summaries_test.rs`
 - Create: `src/lib/queryKeys.ts`
 - Modify: `src/lib/queries.ts`
 - Modify: `src/lib/events.ts`
@@ -9453,7 +9453,7 @@ Each of the four deferrals below is its own red/green pair; each pair's "write +
 
 - [ ] **Step 1: `issued_plans` sweep — write the test and confirm it fails**
 
-Add to `crates/canager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, after `test_submit_rejects_a_plan_issued_more_than_600s_ago`:
+Add to `crates/banager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, after `test_submit_rejects_a_plan_issued_more_than_600s_ago`:
 
 ```rust
     static SWEEP_TEST_NOW: AtomicI64 = AtomicI64::new(2_000_000_000);
@@ -9498,7 +9498,7 @@ Add to `crates/canager-core/src/session/mod.rs`'s `#[cfg(test)] mod tests`, afte
     }
 ```
 
-Run: `cargo test -p canager-core session::tests::test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded`
+Run: `cargo test -p banager-core session::tests::test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded`
 Expected: FAIL — `assertion 'left == right' failed ... left: Expired, right: Unknown` (the stale entry is still in the map when `submit` runs, so it is rejected as `Expired`, not `Unknown`).
 
 - [ ] **Step 2: `issued_plans` sweep — implement and confirm it passes**
@@ -9555,12 +9555,12 @@ with:
         Ok(issued)
 ```
 
-Run: `cargo test -p canager-core session::tests::`
+Run: `cargo test -p banager-core session::tests::`
 Expected: PASS — every `session::tests::*` test, including all pre-existing ones and both new ones from Task 11.
 
 - [ ] **Step 3: `records` cap — write the test and confirm it fails**
 
-Add to `crates/canager-core/tests/ops_summaries_test.rs`, after `test_summaries_are_ordered_newest_first`:
+Add to `crates/banager-core/tests/ops_summaries_test.rs`, after `test_summaries_are_ordered_newest_first`:
 
 ```rust
 #[tokio::test]
@@ -9597,12 +9597,12 @@ async fn test_records_are_capped_so_old_finished_operations_do_not_accumulate_fo
 }
 ```
 
-Run: `cargo test -p canager-core --test ops_summaries_test test_records_are_capped_so_old_finished_operations_do_not_accumulate_forever`
+Run: `cargo test -p banager-core --test ops_summaries_test test_records_are_capped_so_old_finished_operations_do_not_accumulate_forever`
 Expected: FAIL to compile — `no method named 'with_max_records' found for struct 'OperationManager'`.
 
 - [ ] **Step 4: `records` cap — implement and confirm it passes**
 
-In `crates/canager-core/src/ops/mod.rs`, add a constant right after the `use` block:
+In `crates/banager-core/src/ops/mod.rs`, add a constant right after the `use` block:
 
 ```rust
 /// Default cap on how many finished (`Done`) operations `records` keeps at
@@ -9692,7 +9692,7 @@ Add a free associated function right after `submit`'s closing brace (still insid
     }
 ```
 
-Run: `cargo test -p canager-core --test ops_summaries_test`
+Run: `cargo test -p banager-core --test ops_summaries_test`
 Expected: PASS — every test in that file, including the new one.
 
 - [ ] **Step 5: `useRefresh` routing — write the test and confirm it fails**
@@ -9999,7 +9999,7 @@ Expected: PASS — every test in both files, including the new coalescing test a
         });
         let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
         Arc::new(AppState {
             session,
             settings_path: temp_settings_path("ipc-slow"),
@@ -10226,7 +10226,7 @@ Expected: all clean.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs crates/canager-core/src/ops/mod.rs crates/canager-core/tests/ops_summaries_test.rs src/lib/queryKeys.ts src/lib/queries.ts src/lib/events.ts src/lib/queries.test.ts src-tauri/src/state.rs src-tauri/src/ipc.rs
+git add crates/banager-core/src/session/mod.rs crates/banager-core/src/ops/mod.rs crates/banager-core/tests/ops_summaries_test.rs src/lib/queryKeys.ts src/lib/queries.ts src/lib/events.ts src/lib/queries.test.ts src-tauri/src/state.rs src-tauri/src/ipc.rs
 git commit -m "$(cat <<'EOF'
 fix: clear four phase-2 deferrals in refresh, ops and settings plumbing
 
@@ -10251,22 +10251,22 @@ EOF
 ### Task 14: Split `session/mod.rs`, record fixtures, CI
 
 **Files:**
-- Modify: `crates/canager-core/src/session/mod.rs`
-- Create: `crates/canager-core/src/session/refresh.rs`
-- Create: `crates/canager-core/src/session/plans.rs`
-- Create: `crates/canager-core/tests/fixtures_layout_test.rs`
+- Modify: `crates/banager-core/src/session/mod.rs`
+- Create: `crates/banager-core/src/session/refresh.rs`
+- Create: `crates/banager-core/src/session/plans.rs`
+- Create: `crates/banager-core/tests/fixtures_layout_test.rs`
 - Modify: `adapters/fixtures/npm/12.0.2/README.md`
 - Modify: `adapters/fixtures/cargo/1.98.1/README.md`
 
 **Interfaces:**
 - Consumes: everything `Session` exposed before this task (its split is required to be behaviour-preserving); `Session::adapter_ids()` (Task 11).
-- Produces: no new public API — `Session::refresh`/`commit` move into `session::refresh` (a child module, so they keep access to `Session`'s private fields), `Session::issue_plan`/`submit` move into `session::plans`. `crates/canager-core/tests/fixtures_layout_test.rs` — a new regression guard, not a production interface.
+- Produces: no new public API — `Session::refresh`/`commit` move into `session::refresh` (a child module, so they keep access to `Session`'s private fields), `Session::issue_plan`/`submit` move into `session::plans`. `crates/banager-core/tests/fixtures_layout_test.rs` — a new regression guard, not a production interface.
 
 This task is a pure refactor: no behaviour change, proven by every pre-existing test (Tasks 1–13's) passing unchanged after the split.
 
 - [ ] **Step 1: Record the pre-split baseline**
 
-Run: `cargo test -p canager-core session:: 2>&1 | tail -5`
+Run: `cargo test -p banager-core session:: 2>&1 | tail -5`
 Expected: PASS. Write down whatever count that run reports — this task adds and removes no tests, so Step 5 must report the identical number. Do not compare it against a number written here; the run itself is the baseline.
 
 - [ ] **Step 2: Create `session/plans.rs`**
@@ -11423,7 +11423,7 @@ mod tests {
 Replace the entire file with:
 
 ```rust
-//! `Session`: the facade `canager-core` exposes to a host shell (the Tauri
+//! `Session`: the facade `banager-core` exposes to a host shell (the Tauri
 //! app in this repo, or a test harness). It owns the registered adapters,
 //! the last known set of instances, and an in-memory, generation-numbered
 //! `Snapshot`; it forwards operation lifecycle calls to an internal
@@ -11868,7 +11868,7 @@ mod tests {
 
 - [ ] **Step 5: Run the split's own proof**
 
-Run: `cargo test -p canager-core session:: 2>&1 | tail -5`
+Run: `cargo test -p banager-core session:: 2>&1 | tail -5`
 Expected: PASS, with the exact same test count as Step 1's baseline (every test now lives in `session::tests`, `session::refresh::tests` or `session::plans::tests`, but none was added, removed or changed).
 
 - [ ] **Step 6: Fix up formatting and lints**
@@ -11903,11 +11903,11 @@ corroboration that the `.crates2.json` parse agrees with what cargo itself
 reports, not as a parser input.
 ```
 
-Then `crates/canager-core/tests/fixtures_layout_test.rs` (new file):
+Then `crates/banager-core/tests/fixtures_layout_test.rs` (new file):
 
 ```rust
-use canager_core::events::VecSink;
-use canager_core::session::Session;
+use banager_core::events::VecSink;
+use banager_core::session::Session;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11924,7 +11924,7 @@ fn test_every_registered_adapter_has_a_documented_fixture_directory() {
     let adapter_ids = session.adapter_ids();
 
     // cargo runs tests with cwd = the package manifest directory
-    // (crates/canager-core), matching every other fixture/meta path in this
+    // (crates/banager-core), matching every other fixture/meta path in this
     // crate.
     let fixtures_root = Path::new("../../adapters/fixtures");
     let mut fixture_ids: Vec<String> = std::fs::read_dir(fixtures_root)
@@ -11967,7 +11967,7 @@ fn test_every_registered_adapter_has_a_documented_fixture_directory() {
 
 - [ ] **Step 8: Run it to verify it passes**
 
-Run: `cargo test -p canager-core --test fixtures_layout_test`
+Run: `cargo test -p banager-core --test fixtures_layout_test`
 Expected: PASS. This is a verification of already-recorded, already-correct static data plus Task 11's already-correct `adapter_ids()` (both landed in earlier tasks), so there is no red state to drive through here — its value is as a permanent guard against a future fixture directory silently going stale or a new source shipping undocumented, not as a red/green cycle.
 
 - [ ] **Step 9: Run the full gate**
@@ -11978,7 +11978,7 @@ Expected: all clean.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs crates/canager-core/src/session/refresh.rs crates/canager-core/src/session/plans.rs crates/canager-core/tests/fixtures_layout_test.rs adapters/fixtures/npm/12.0.2/README.md adapters/fixtures/cargo/1.98.1/README.md
+git add crates/banager-core/src/session/mod.rs crates/banager-core/src/session/refresh.rs crates/banager-core/src/session/plans.rs crates/banager-core/tests/fixtures_layout_test.rs adapters/fixtures/npm/12.0.2/README.md adapters/fixtures/cargo/1.98.1/README.md
 git commit -m "$(cat <<'EOF'
 refactor(session): split mod.rs into facade, refresh and plans
 

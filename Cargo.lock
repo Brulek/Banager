@@ -246,6 +246,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "banager"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "banager-core",
+ "block2",
+ "fix-path-env",
+ "muda",
+ "notify-rust",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tauri-runtime-wry",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "banager-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "banager-core",
+ "base64 0.22.1",
+ "getrandom 0.4.3",
+ "insta",
+ "libc",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "percent-encoding",
+ "plist",
+ "png 0.18.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "toml 1.1.6+spec-1.1.0",
+ "url",
+]
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,58 +465,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591"
 dependencies = [
  "serde_core",
-]
-
-[[package]]
-name = "canager"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "block2",
- "canager-core",
- "fix-path-env",
- "muda",
- "notify-rust",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "tauri-runtime-wry",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "canager-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "canager-core",
- "getrandom 0.4.3",
- "insta",
- "libc",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "percent-encoding",
- "plist",
- "png 0.18.1",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "toml 1.1.6+spec-1.1.0",
- "url",
 ]
 
 [[package]]

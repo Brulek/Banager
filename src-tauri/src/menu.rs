@@ -18,7 +18,7 @@
 //! every change of language. Until it has, the menu bar is built in the
 //! one the page is about to choose (`initial_language`).
 
-use canager_core::settings::Language;
+use banager_core::settings::Language;
 use serde::Deserialize;
 use std::sync::Mutex;
 use tauri::menu::{

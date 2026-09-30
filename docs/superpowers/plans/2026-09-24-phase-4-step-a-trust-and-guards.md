@@ -4,9 +4,9 @@
 
 **Goal:** Make the three promises phase 4 builds on true *before* any standalone-installer code lands, and make the one trust document honest about the seven sources Canager already manages. Concretely: (1) a test that Homebrew plans never carry `--zap`, `--force` or `--ignore-dependencies`; (2) a compile-time https host allowlist that `RealHttpClient::send` enforces fail-closed, with the stale "four endpoints" comment replaced; (3) `warningKey` in `src/lib/warnings.ts` made exhaustive with a `never` default, so a `Warning` variant added without copy fails `tsc` instead of vanishing from the uninstall dialog; (4) `docs/what-we-run.md` rewritten from its "Phase 0–1: Homebrew only" state to cover Homebrew, npm, pipx, uv, pip, Cargo and Ollama — every command, environment variable, file, host, and what is never done — with a test that pins the parts a test can pin.
 
-**Architecture:** No new production concept. Task 1 is a test in an existing module. Task 2 adds one `pub const` and one `pub fn` to `crates/canager-core/src/http/real.rs` and calls the function at the top of `send`. Task 3 rewrites two functions in `src/lib/warnings.ts` in the shape `faultKey`/`faultArgs` in `src/lib/format.ts` already have. Task 4 is a document plus an integration test (`crates/canager-core/tests/what_we_run_test.rs`, the same shape as `fixtures_layout_test.rs`) that reads the document and checks it against the registered adapters, `ALLOWED_HTTPS_HOSTS`, `BrewAdapter::ENV`, `NpmAdapter::ENV` and the three flags. This is spec §十 row A: "无，可最先合" — nothing else in phase 4 depends on the order of these four, but steps B–F all depend on A having merged (B reads `ALLOWED_HTTPS_HOSTS`; C adds `Warning` variants that must fail `tsc` when unhandled; every step appends its own section to `what-we-run.md`).
+**Architecture:** No new production concept. Task 1 is a test in an existing module. Task 2 adds one `pub const` and one `pub fn` to `crates/banager-core/src/http/real.rs` and calls the function at the top of `send`. Task 3 rewrites two functions in `src/lib/warnings.ts` in the shape `faultKey`/`faultArgs` in `src/lib/format.ts` already have. Task 4 is a document plus an integration test (`crates/banager-core/tests/what_we_run_test.rs`, the same shape as `fixtures_layout_test.rs`) that reads the document and checks it against the registered adapters, `ALLOWED_HTTPS_HOSTS`, `BrewAdapter::ENV`, `NpmAdapter::ENV` and the three flags. This is spec §十 row A: "无，可最先合" — nothing else in phase 4 depends on the order of these four, but steps B–F all depend on A having merged (B reads `ALLOWED_HTTPS_HOSTS`; C adds `Warning` variants that must fail `tsc` when unhandled; every step appends its own section to `what-we-run.md`).
 
-**Tech Stack:** Rust (canager-core, `url` 2 already a dependency, tokio for tests), TypeScript 5 with `strict` (`tsconfig.json`), vitest.
+**Tech Stack:** Rust (banager-core, `url` 2 already a dependency, tokio for tests), TypeScript 5 with `strict` (`tsconfig.json`), vitest.
 
 **Baseline:** branch `feat/phase-4-standalone` at `26bc640` (= `8ba6f52` + the spec commit). Every line number below was read at that HEAD on 2026-09-24. The spec is `docs/superpowers/2026-09-24-phase-4-standalone-spec.md`; the sections this step implements are §十 row A, §4.2 (allowlist), §6.5 "必须一起改" (warningKey), §6.7 (`--zap`), §9.5 (what-we-run.md), and the `http/real.rs` / `brew/mod.rs` lines of §9.4.
 
@@ -41,20 +41,20 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段") 
 
 ## What already exists (do not rebuild)
 
-- `crates/canager-core/src/http/real.rs`: `RealHttpClient` with rustls (`:40`), `canager/{version}` UA (`:38`), no redirects (`:50`, `:87-97`), 30 s default timeout (`:51`), 8 MiB body cap (`:22`, `:115-119`), a test module with loopback servers (`:130-441`). The comment at `:42-49` says "the four endpoints this client talks to (a local Ollama daemon, registry.ollama.ai, crates.io, PyPI)" — a sentence, not a check, and the "four" counts the http Ollama daemon; the https hosts are three. The test comment at `:294-301` repeats the same list.
-- Three https callers, all `GET`: `CargoAdapter::latest_stable_version` (`adapters/cargo.rs:218-231`, `https://crates.io/api/v1/crates/{name}`), `PipxAdapter::latest_pypi_version` (`adapters/pipx.rs:279-299`, `https://pypi.org/pypi/{name}/json`), `OllamaAdapter::compare_digests` (`adapters/ollama/mod.rs:389-407`, `https://registry.ollama.ai/v2/{ns}/{name}/manifests/{tag}`). One http caller: the Ollama daemon (`adapters/ollama/mod.rs:135`, `:141-145`, `:273-283`, `:331-339`) at `HostEnv::ollama_host` or `http://127.0.0.1:11434`. `url = "2"` is already in `crates/canager-core/Cargo.toml:35` and used at `adapters/ollama/mod.rs:196` and `runner/path_env.rs:2`.
-- `BrewAdapter::plan` (`adapters/brew/mod.rs:1189-1311`): Install argv `["install", flag, name]` (`:1211`), Uninstall `["uninstall", flag, name]` (`:1277`), Upgrade `["upgrade", flag, name]` (`:1300`). `grep -n -- '--zap\|--force' crates/canager-core/src/adapters/brew/mod.rs` is empty; `--ignore-dependencies` appears once, in a doc comment (`:567`). The test module `plan_execute_tests` (`:2239-`) has `test_instance()` (`:2245-2252`) and per-kind plan tests (`:2289-2543`); `MockRunner::respond` (`runner/mock.rs:32-35`) is keyed by the full argv including the program.
+- `crates/banager-core/src/http/real.rs`: `RealHttpClient` with rustls (`:40`), `canager/{version}` UA (`:38`), no redirects (`:50`, `:87-97`), 30 s default timeout (`:51`), 8 MiB body cap (`:22`, `:115-119`), a test module with loopback servers (`:130-441`). The comment at `:42-49` says "the four endpoints this client talks to (a local Ollama daemon, registry.ollama.ai, crates.io, PyPI)" — a sentence, not a check, and the "four" counts the http Ollama daemon; the https hosts are three. The test comment at `:294-301` repeats the same list.
+- Three https callers, all `GET`: `CargoAdapter::latest_stable_version` (`adapters/cargo.rs:218-231`, `https://crates.io/api/v1/crates/{name}`), `PipxAdapter::latest_pypi_version` (`adapters/pipx.rs:279-299`, `https://pypi.org/pypi/{name}/json`), `OllamaAdapter::compare_digests` (`adapters/ollama/mod.rs:389-407`, `https://registry.ollama.ai/v2/{ns}/{name}/manifests/{tag}`). One http caller: the Ollama daemon (`adapters/ollama/mod.rs:135`, `:141-145`, `:273-283`, `:331-339`) at `HostEnv::ollama_host` or `http://127.0.0.1:11434`. `url = "2"` is already in `crates/banager-core/Cargo.toml:35` and used at `adapters/ollama/mod.rs:196` and `runner/path_env.rs:2`.
+- `BrewAdapter::plan` (`adapters/brew/mod.rs:1189-1311`): Install argv `["install", flag, name]` (`:1211`), Uninstall `["uninstall", flag, name]` (`:1277`), Upgrade `["upgrade", flag, name]` (`:1300`). `grep -n -- '--zap\|--force' crates/banager-core/src/adapters/brew/mod.rs` is empty; `--ignore-dependencies` appears once, in a doc comment (`:567`). The test module `plan_execute_tests` (`:2239-`) has `test_instance()` (`:2245-2252`) and per-kind plan tests (`:2289-2543`); `MockRunner::respond` (`runner/mock.rs:32-35`) is keyed by the full argv including the program.
 - `src/lib/warnings.ts`: `warningKey` (`:19-35`) with `default: return null` for bare strings and `return null` for unknown objects; `warningArgs` (`:38-47`); `warningText`/`warningTexts` (`:74-84`), the latter dropping `null`. `src/lib/format.ts:77-94` `faultKey` and `:98-105` `faultArgs` are the exhaustive model. `src/lib/types.ts:66-85` documents that a new variant "lands in `warningText`'s default branch rather than failing at compile time"; `src/lib/types.test.ts:197-224` is the wire-shape test; `src/lib/warnings.test.ts` has three tests built on `"SomeFutureVariant" as unknown as Warning` (`:27-32`, `:92-94`, `:97-105`), and `src/components/UninstallDialog.test.tsx:140-155` is a fourth, through the rendered dialog (`"SomeFutureVariant" as unknown as Plan["warnings"][number]`, asserting the "Before you continue:" heading is absent) — four in all; `grep -rn SomeFutureVariant src` finds no fifth. Consumers: `src/components/UninstallDialog.tsx:93` (`warningTexts`, comment at `:88-92`), `src/pages/UpdatesPage.tsx:412-416` and `:947`.
 - `docs/what-we-run.md`: 78 lines, title "What Canager Runs (Phase 0–1: Homebrew only)", Homebrew only. Last touched by `adc8bdb`.
-- `crates/canager-core/tests/fixtures_layout_test.rs:13-27`: the pattern for an integration test that builds `Session::new(Arc::new(VecSink::new()), None)`, calls `session.adapter_ids()`, and reads repo files relative to the crate directory (`../../adapters/...`).
+- `crates/banager-core/tests/fixtures_layout_test.rs:13-27`: the pattern for an integration test that builds `Session::new(Arc::new(VecSink::new()), None)`, calls `session.adapter_ids()`, and reads repo files relative to the crate directory (`../../adapters/...`).
 
 ---
 
 ## File Structure
 
 ```
-crates/canager-core/src/adapters/brew/mod.rs   MOD  one test in `plan_execute_tests` (Task 1): the three-flag promise
-crates/canager-core/src/http/real.rs           MOD  ALLOWED_HTTPS_HOSTS, host_allowed, the check in send, two comment fixes, six tests (Task 2)
+crates/banager-core/src/adapters/brew/mod.rs   MOD  one test in `plan_execute_tests` (Task 1): the three-flag promise
+crates/banager-core/src/http/real.rs           MOD  ALLOWED_HTTPS_HOSTS, host_allowed, the check in send, two comment fixes, six tests (Task 2)
 src/lib/warnings.ts                            MOD  warningKey/warningArgs exhaustive with `never` defaults; comments (Task 3)
 src/lib/warnings.test.ts                       MOD  drop the three "unrecognised variant" unit tests; assert every variant has a key (Task 3)
 src/lib/types.ts                               MOD  the `Warning` doc comment no longer claims drift is silent (Task 3)
@@ -62,7 +62,7 @@ src/lib/types.test.ts                          MOD  the comment on the Warning s
 src/components/UninstallDialog.tsx             MOD  one comment (Task 3)
 src/components/UninstallDialog.test.tsx        MOD  the fourth "unrecognised variant" test now expects the raw key rendered, not dropped (Task 3)
 docs/what-we-run.md                            REWRITE  seven sources, files, hosts, never-list (Task 4)
-crates/canager-core/tests/what_we_run_test.rs  NEW  the document's checkable claims, checked (Task 4)
+crates/banager-core/tests/what_we_run_test.rs  NEW  the document's checkable claims, checked (Task 4)
 ```
 
 Single responsibility of each: `real.rs` owns *which hosts may be contacted*; `warnings.ts` owns *how a Warning becomes text*; `what-we-run.md` owns *what a person is told Canager does*; `what_we_run_test.rs` owns *that the document and the code agree on the parts a test can compare*.
@@ -83,7 +83,7 @@ Order: 1 → 2 → 3 → 4. Task 4's test reads `ALLOWED_HTTPS_HOSTS` (Task 2) a
 ### Task 1: brew never passes `--zap`, `--force` or `--ignore-dependencies`
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/brew/mod.rs` — insert one test after `test_plan_upgrade_cask_passes_cask_flag` (which ends at `:2543`), inside `mod plan_execute_tests` (`:2239-`).
+- Modify: `crates/banager-core/src/adapters/brew/mod.rs` — insert one test after `test_plan_upgrade_cask_passes_cask_flag` (which ends at `:2543`), inside `mod plan_execute_tests` (`:2239-`).
 - Test: the same file.
 
 **Interfaces:**
@@ -92,7 +92,7 @@ Order: 1 → 2 → 3 → 4. Task 4's test reads `ALLOWED_HTTPS_HOSTS` (Task 2) a
 
 - [ ] **Step 1: Write the test**
 
-Insert into `crates/canager-core/src/adapters/brew/mod.rs` immediately after the closing `}` of `test_plan_upgrade_cask_passes_cask_flag` (line 2543), before the doc comment of `test_execute_refuses_as_root` (`:2545`):
+Insert into `crates/banager-core/src/adapters/brew/mod.rs` immediately after the closing `}` of `test_plan_upgrade_cask_passes_cask_flag` (line 2543), before the doc comment of `test_execute_refuses_as_root` (`:2545`):
 
 ```rust
     /// Homebrew's `--zap` removes everything a cask's zap stanza names --
@@ -163,12 +163,12 @@ Insert into `crates/canager-core/src/adapters/brew/mod.rs` immediately after the
 
 - [ ] **Step 2: Run it — it passes, because the property already holds**
 
-Run: `cargo test -p canager-core --lib adapters::brew::plan_execute_tests::test_plan_never_passes_zap_force_or_ignore_dependencies`
+Run: `cargo test -p banager-core --lib adapters::brew::plan_execute_tests::test_plan_never_passes_zap_force_or_ignore_dependencies`
 Expected: PASS (1 passed). This is a regression guard for a property the code already has (`brew/mod.rs:1211`, `:1277`, `:1300`); there is nothing to implement. Step 3 proves the guard is live.
 
 - [ ] **Step 3: Prove the assertion bites (mutation check), then revert**
 
-Temporarily edit `crates/canager-core/src/adapters/brew/mod.rs` at the Upgrade arm: change line 1300 from
+Temporarily edit `crates/banager-core/src/adapters/brew/mod.rs` at the Upgrade arm: change line 1300 from
 
 ```rust
                     args: vec!["upgrade".to_string(), flag.to_string(), req.name.clone()],
@@ -180,10 +180,10 @@ to
                     args: vec!["upgrade".to_string(), "--force".to_string(), flag.to_string(), req.name.clone()],
 ```
 
-Run: `cargo test -p canager-core --lib adapters::brew::plan_execute_tests::test_plan_never_passes_zap_force_or_ignore_dependencies`
+Run: `cargo test -p banager-core --lib adapters::brew::plan_execute_tests::test_plan_never_passes_zap_force_or_ignore_dependencies`
 Expected: FAIL — `brew upgrade --formula jq must never carry --force, got ["upgrade", "--force", "--formula", "jq"]`.
 
-Revert the edit (`git checkout -- crates/canager-core/src/adapters/brew/mod.rs` would also discard the new test, so revert the one line by hand or with `git diff` as a guide). Run the test again.
+Revert the edit (`git checkout -- crates/banager-core/src/adapters/brew/mod.rs` would also discard the new test, so revert the one line by hand or with `git diff` as a guide). Run the test again.
 Expected: PASS. `git diff --stat` shows only the added test (about 60 lines, no other hunk).
 
 - [ ] **Step 4: Run the gates**
@@ -194,7 +194,7 @@ Expected: all clean. (`cargo fmt` may want the long `assert!` message on its own
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/brew/mod.rs
+git add crates/banager-core/src/adapters/brew/mod.rs
 git commit -m "$(cat <<'EOF'
 Promise in a test that brew plans never carry --zap, --force or --ignore-dependencies
 
@@ -216,7 +216,7 @@ EOF
 ### Task 2: `ALLOWED_HTTPS_HOSTS`, fail-closed in `RealHttpClient::send`
 
 **Files:**
-- Modify: `crates/canager-core/src/http/real.rs`
+- Modify: `crates/banager-core/src/http/real.rs`
   - `:1-7` module doc: add the allowlist sentence.
   - after `:22` (`MAX_RESPONSE_BYTES`): add `ALLOWED_HTTPS_HOSTS` and `host_allowed`.
   - `:42-49` the redirect-policy comment: replace the "four endpoints" sentence.
@@ -229,20 +229,20 @@ EOF
 - Consumes: `HttpError::Network(String)` (`http/mod.rs:33-34`), `HttpRequest { method, url, headers, timeout }` (`http/mod.rs:18-23`), `url::Url` (`Cargo.toml:35`).
 - Produces (authoritative; step B's recipe test and Task 4's document test use these names verbatim):
   ```rust
-  // crates/canager-core/src/http/real.rs
+  // crates/banager-core/src/http/real.rs
   pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai"];
   pub fn host_allowed(url: &str) -> Result<(), HttpError>;
   ```
-  Reachable as `canager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}` (`http/mod.rs:11` is `pub mod real;`). No re-export is added to `http/mod.rs`: the two existing `pub use` lines re-export types only, and step B's test can name the module.
+  Reachable as `banager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}` (`http/mod.rs:11` is `pub mod real;`). No re-export is added to `http/mod.rs`: the two existing `pub use` lines re-export types only, and step B's test can name the module.
   Production readers: `RealHttpClient::send` (this task); `docs/what-we-run.md` and `tests/what_we_run_test.rs` (Task 4); step B's `RECIPES` test (spec §4.2, §9.4) later.
 
-Why exactly these three hosts: they are the only https hosts the crate contacts today — `adapters/cargo.rs:225-228`, `adapters/pipx.rs:287`, `adapters/ollama/mod.rs:389-394`. `grep -rn 'https://' crates/canager-core/src --include='*.rs'` outside comments and fixture paths finds nothing else. The spec's list (§4.2) already includes three phase-4 hosts; per the step-A brief those are added by the steps that add their producers (B: `downloads.claude.ai`; D: the antigravity Cloud Run host; E: `static.rust-lang.org`), so that a host never sits on the list without a caller.
+Why exactly these three hosts: they are the only https hosts the crate contacts today — `adapters/cargo.rs:225-228`, `adapters/pipx.rs:287`, `adapters/ollama/mod.rs:389-394`. `grep -rn 'https://' crates/banager-core/src --include='*.rs'` outside comments and fixture paths finds nothing else. The spec's list (§4.2) already includes three phase-4 hosts; per the step-A brief those are added by the steps that add their producers (B: `downloads.claude.ai`; D: the antigravity Cloud Run host; E: `static.rust-lang.org`), so that a host never sits on the list without a caller.
 
 Why `http://` is exempt: the crate's one http caller is the Ollama daemon at `HostEnv::ollama_host` (`runner/path_env.rs:15-20`, normalised at `:40-57`), which may point at another machine; and every loopback test in `real.rs` uses `http://{addr}`. The known gap (`OLLAMA_HOST=https://…` to a remote machine is refused) is recorded in spec §十一 and §十二 Q8; it is not handled here.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/http/real.rs`, after `test_real_http_client_refuses_a_body_one_byte_past_the_limit` (`:424-440`), before the module's closing `}` (`:441`):
+Append inside `mod tests` in `crates/banager-core/src/http/real.rs`, after `test_real_http_client_refuses_a_body_one_byte_past_the_limit` (`:424-440`), before the module's closing `}` (`:441`):
 
 ```rust
     #[test]
@@ -337,12 +337,12 @@ Append inside `mod tests` in `crates/canager-core/src/http/real.rs`, after `test
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib http::real::tests`
+Run: `cargo test -p banager-core --lib http::real::tests`
 Expected: FAIL to compile — `error[E0425]: cannot find function `host_allowed` in this scope`, once per call site: ten of them, every `host_allowed(` in the five unit tests (3 + 3 + 1 + 1 + 2). The last test would also fail at runtime once it compiled: today `send` hands the URL to reqwest, whose DNS error does not contain "host not allowed".
 
 - [ ] **Step 3: Add the constant, the function, the check, and fix the three comments**
 
-Modify `crates/canager-core/src/http/real.rs`.
+Modify `crates/banager-core/src/http/real.rs`.
 
 Replace the module doc (`:1-7`) with:
 
@@ -455,8 +455,8 @@ Replace the comment at `:294-301` (the first lines of `test_real_http_client_doe
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib http::real::tests`
-Expected: PASS — 13 tests (the 7 existing loopback tests, all over `http://`, plus the 6 new ones). Then `cargo test -p canager-core` in full: the adapter tests use `MockHttpClient`, which does not go through `send`, so nothing else changes.
+Run: `cargo test -p banager-core --lib http::real::tests`
+Expected: PASS — 13 tests (the 7 existing loopback tests, all over `http://`, plus the 6 new ones). Then `cargo test -p banager-core` in full: the adapter tests use `MockHttpClient`, which does not go through `send`, so nothing else changes.
 
 - [ ] **Step 5: Run the gates**
 
@@ -466,7 +466,7 @@ Expected: all clean. (The multi-line `assert!` blocks in Step 1 and the 100-colu
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/http/real.rs
+git add crates/banager-core/src/http/real.rs
 git commit -m "$(cat <<'EOF'
 Refuse an https request to any host but crates.io, pypi.org and registry.ollama.ai
 
@@ -717,7 +717,7 @@ Replace the `Warning` doc comment in `src/lib/types.ts:66-78` with:
 ```ts
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
- * in crates/canager-core/src/model.rs: bare-string unit variants,
+ * in crates/banager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
  * and pluralise the copy in `src/lib/warnings.ts`, and
  * `ThirdPartyRegistry`, whose `host` interpolates it), and a `Message`
@@ -733,7 +733,7 @@ Replace the `Warning` doc comment in `src/lib/types.ts:66-78` with:
 Replace the comment in `src/lib/types.test.ts:198-201` (inside the `Warning` shape test, above `const dependentsUnknown`) with:
 
 ```ts
-    // Mirrors `Warning` in crates/canager-core/src/model.rs -- every
+    // Mirrors `Warning` in crates/banager-core/src/model.rs -- every
     // spelling below has to match it exactly. `warningKey` is exhaustive
     // over this union, so a variant it lacks fails `tsc`; but a spelling
     // here that differs from Rust's compiles fine and lands the real wire
@@ -795,19 +795,19 @@ EOF
 ### Task 4: `docs/what-we-run.md` for seven sources, checked by a test
 
 **Files:**
-- Create: `crates/canager-core/tests/what_we_run_test.rs`
+- Create: `crates/banager-core/tests/what_we_run_test.rs`
 - Rewrite: `docs/what-we-run.md` (all 78 lines replaced)
 - Test: the new integration test.
 
 **Interfaces:**
-- Consumes: `canager_core::session::Session::{new, adapter_ids}` (as `tests/fixtures_layout_test.rs:13-16` does), `canager_core::events::VecSink`, `canager_core::adapters::AdapterMeta::from_toml` and `.name` (`adapters/mod.rs:83-96`), `canager_core::adapters::brew::BrewAdapter::ENV` (`brew/mod.rs:127-132`, `pub const`), `canager_core::adapters::npm::NpmAdapter::ENV` (`npm.rs:87-91`, `pub const`), `canager_core::http::real::ALLOWED_HTTPS_HOSTS` (Task 2).
+- Consumes: `banager_core::session::Session::{new, adapter_ids}` (as `tests/fixtures_layout_test.rs:13-16` does), `banager_core::events::VecSink`, `banager_core::adapters::AdapterMeta::from_toml` and `.name` (`adapters/mod.rs:83-96`), `banager_core::adapters::brew::BrewAdapter::ENV` (`brew/mod.rs:127-132`, `pub const`), `banager_core::adapters::npm::NpmAdapter::ENV` (`npm.rs:87-91`, `pub const`), `banager_core::http::real::ALLOWED_HTTPS_HOSTS` (Task 2).
 - Produces: the document, and four tests that hold it to the code: a `## <meta.name>` section per registered adapter and the title line exactly `# What Canager Runs` (not a substring check for "Homebrew only", which the never-list's "passed through to Homebrew only when it was already set" would trip); every host in `ALLOWED_HTTPS_HOSTS` named; every `NAME=value` of `BrewAdapter::ENV` and `NpmAdapter::ENV` shown; the promise that Homebrew is never passed `--zap`, `--force` or `--ignore-dependencies`, on one line that names all three flags, "never" and Homebrew — a plain `doc.contains("--force")` would be satisfied by the Cargo section's `cargo install --force` rows with the Homebrew sentence gone. Production readers of the document: the person spec §12 wrote it for; of the test: `cargo test --workspace`.
 
 **How the document was checked.** Every sentence in Step 3's text was written from a line of code read at `26bc640`. The table in Step 5 maps each claim to its `file:line`, so a reviewer can re-verify without re-reading seven adapters; the document itself cites files and function names rather than line numbers, which drift with every commit.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/canager-core/tests/what_we_run_test.rs`:
+Create `crates/banager-core/tests/what_we_run_test.rs`:
 
 ```rust
 //! `docs/what-we-run.md` is spec §12's trust file: the one place a person
@@ -818,18 +818,18 @@ Create `crates/canager-core/tests/what_we_run_test.rs`:
 //! the three Homebrew flags the file promises are never passed. A source,
 //! host or variable added without its line in the document fails here.
 
-use canager_core::adapters::brew::BrewAdapter;
-use canager_core::adapters::npm::NpmAdapter;
-use canager_core::adapters::AdapterMeta;
-use canager_core::events::VecSink;
-use canager_core::http::real::ALLOWED_HTTPS_HOSTS;
-use canager_core::session::Session;
+use banager_core::adapters::brew::BrewAdapter;
+use banager_core::adapters::npm::NpmAdapter;
+use banager_core::adapters::AdapterMeta;
+use banager_core::events::VecSink;
+use banager_core::http::real::ALLOWED_HTTPS_HOSTS;
+use banager_core::session::Session;
 use std::path::Path;
 use std::sync::Arc;
 
 /// The document, read the way every other repo path in this crate's tests
 /// is: cargo runs tests with cwd = the package manifest directory
-/// (crates/canager-core).
+/// (crates/banager-core).
 fn read_doc() -> String {
     let path = Path::new("../../docs/what-we-run.md");
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
@@ -925,7 +925,7 @@ The `//!` block is first in the file because an inner doc comment must precede e
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --test what_we_run_test`
 Expected: FAIL — 4 failed, each on the first thing the current 78-line document lacks:
 - `test_what_we_run_has_a_section_for_every_registered_source`: `adapter_ids()` is sorted, so `brew` is checked first, and the current file's `## ` headings are "Environment applied to every invocation", "Read-only commands (…)" and "Write commands (…)" — no `## Homebrew`. Message: ``docs/what-we-run.md has no `## Homebrew` section for the registered source "brew"``.
 - `test_what_we_run_names_every_allowed_https_host`: fails on `"crates.io"` (the current file names no host at all).
@@ -944,8 +944,8 @@ connects to and every environment variable it sets, for the seven sources
 it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo and
 Ollama. Each sentence describes what the code does now and names the
 function it describes, so it can be checked against
-`crates/canager-core/src/adapters/` rather than believed.
-`crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
+`crates/banager-core/src/adapters/` rather than believed.
+`crates/banager-core/tests/what_we_run_test.rs` checks the parts a test
 can: a section per registered source, every host on the https allowlist,
 every environment variable Homebrew's and npm's commands are given, and
 the three Homebrew flags this file promises are never passed.
@@ -958,7 +958,7 @@ command can carry.
 
 **Never through a shell.** Every package-manager command is a fixed argv
 array run directly against an absolute program path by `RealRunner::run`
-(`crates/canager-core/src/runner/real.rs`): `Command::new(program)` with
+(`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
 nothing Canager downloads is ever piped into one.
 
@@ -987,7 +987,7 @@ a grace period, and then `SIGKILL` for whatever is left.
 **Where the program comes from.** At launch (`run()` in
 `src-tauri/src/lib.rs`), at the start of every refresh, and when the Open
 Ollama button is pressed, `HostEnv::discover`
-(`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
+(`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME` and `OLLAMA_HOST` from Canager's environment and the
 effective user id from the process. Every source
 but Homebrew finds its executable with `resolve_exe`: the first directory
@@ -997,7 +997,7 @@ is the one previewed and the one run.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
-(`crates/canager-core/src/adapters/mod.rs`): `^[A-Za-z0-9@._+/-]+$`, not
+(`crates/banager-core/src/adapters/mod.rs`): `^[A-Za-z0-9@._+/-]+$`, not
 starting with `-`, `/` or `.`, no `..` segment, no `.rb` suffix. Two
 sources have their own rule for their own shape of input: npm's search
 box (`validate_search_query`: once surrounding whitespace is trimmed,
@@ -1027,7 +1027,7 @@ after every operation finishes, when the "include self-updating apps"
 setting changes, after Ollama is opened from its notice, and whenever a
 `brew update` a refresh left running in the background ends
 (`refresh_on_background_change` in `src-tauri/src/ipc.rs`). Within a
-refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
+refresh (`refresh_round` in `crates/banager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,
 under that instance's lock, its inventory is read and then its update
 check runs. Everything a refresh runs is in the read-only tables below:
@@ -1038,12 +1038,12 @@ password.
 front end shows it (`plan_operation` in `src-tauri/src/ipc.rs`; the front
 end never builds an argv and sends back only the id of a plan Rust
 issued). The plan can be confirmed for ten minutes (`PLAN_LIFETIME` in
-`crates/canager-core/src/session/plans.rs`), after which it has to be
+`crates/banager-core/src/session/plans.rs`), after which it has to be
 previewed again. Before a plan is built, `Session::issue_plan` refuses an
 operation on a source that is read-only or not answering, and an upgrade
 or uninstall the tool itself reports it will refuse (a pinned package) —
 the buttons the pages hide are backed by that refusal, not only by the
-page. On confirmation `run_operation` (`crates/canager-core/src/ops/mod.rs`)
+page. On confirmation `run_operation` (`crates/banager-core/src/ops/mod.rs`)
 takes the plan's locks, runs the command, and then re-reads the inventory
 to check what actually happened; an upgrade is also preceded by a reading,
 so the version before can be compared with the version after. An install
@@ -1056,12 +1056,12 @@ section) — there is nothing to compare, and an upgrade that exits 0 is
 reported as a success whenever the package is still present afterwards,
 whether or not its version moved. A command that was
 cancelled or timed out is reported as unconfirmed unless the reading after
-settles it (`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
+settles it (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
 ## Homebrew
 
-Adapter: `BrewAdapter` in `crates/canager-core/src/adapters/brew/mod.rs`.
+Adapter: `BrewAdapter` in `crates/banager-core/src/adapters/brew/mod.rs`.
 Verified against Homebrew 7.0.3 (`adapters/meta/brew.toml`).
 
 **Detect.** Canager checks whether `/opt/homebrew/bin/brew`,
@@ -1147,7 +1147,7 @@ lock is held without taking it.
 
 ## npm
 
-Adapter: `NpmAdapter` in `crates/canager-core/src/adapters/npm.rs`.
+Adapter: `NpmAdapter` in `crates/banager-core/src/adapters/npm.rs`.
 Verified against npm 12.0.2 (`adapters/meta/npm.toml`).
 
 **Detect.** `npm` is the first `npm` on `PATH`. Canager runs `<npm>
@@ -1197,7 +1197,7 @@ since the refresh that listed it.
 
 ## pipx
 
-Adapter: `PipxAdapter` in `crates/canager-core/src/adapters/pipx.rs`.
+Adapter: `PipxAdapter` in `crates/banager-core/src/adapters/pipx.rs`.
 Verified against pipx 1.17.3 (`adapters/meta/pipx.toml`).
 
 **Detect.** `pipx` is the first `pipx` on `PATH`; `<pipx> --version`
@@ -1231,7 +1231,7 @@ an error for the whole source. pipx has no search command Canager uses.
 
 ## uv
 
-Adapter: `UvAdapter` in `crates/canager-core/src/adapters/uv.rs`.
+Adapter: `UvAdapter` in `crates/banager-core/src/adapters/uv.rs`.
 Verified against uv 0.12.17 (`adapters/meta/uv.toml`).
 
 **Detect.** `uv` is the first `uv` on `PATH`; `<uv> --version` (30 s). No
@@ -1262,7 +1262,7 @@ path only. uv has no tool-search command Canager uses.
 
 ## pip (read-only)
 
-Adapter: `PipAdapter` in `crates/canager-core/src/adapters/pip.rs`.
+Adapter: `PipAdapter` in `crates/banager-core/src/adapters/pip.rs`.
 Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 
 **Detect.** For each of `python3.14`, `python3.13`, `python3.12`,
@@ -1289,7 +1289,7 @@ package. pip has no search command Canager uses.
 
 ## Cargo
 
-Adapter: `CargoAdapter` in `crates/canager-core/src/adapters/cargo.rs`.
+Adapter: `CargoAdapter` in `crates/banager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
@@ -1324,7 +1324,7 @@ goes to Homebrew.
 
 ## Ollama
 
-Adapter: `OllamaAdapter` in `crates/canager-core/src/adapters/ollama/mod.rs`.
+Adapter: `OllamaAdapter` in `crates/banager-core/src/adapters/ollama/mod.rs`.
 Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 
 **Detect.** `ollama` is the first `ollama` on `PATH`; `<ollama> --version`
@@ -1412,7 +1412,7 @@ shown there.
 ## Network: Canager only connects to these hosts
 
 Every request goes through `RealHttpClient`
-(`crates/canager-core/src/http/real.rs`), and it refuses, before opening a
+(`crates/banager-core/src/http/real.rs`), and it refuses, before opening a
 connection, any `https` request whose host is not on this list
 (`ALLOWED_HTTPS_HOSTS`, checked by `host_allowed` at the top of `send`):
 
@@ -1486,7 +1486,7 @@ chooses nor sees them.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --test what_we_run_test`
 Expected: PASS — 4 passed.
 
 - [ ] **Step 5: Verify every claim against the code (reviewer's table)**
@@ -1501,7 +1501,7 @@ Each row is a sentence or table cell in Step 3's text and the line(s) at `26bc64
 | stdin `/dev/null`, stdout/stderr piped, own process group | `runner/real.rs:670-673` |
 | write commands streamed line by line; read-only pass `None` | `adapters/mod.rs:478-486`, `:499`; every `run_*` helper passes `None` (`brew/mod.rs:321`, `npm.rs:137`, `pipx.rs:255`, `uv.rs:180`, `pip.rs:192`, `cargo.rs:150`, `ollama/mod.rs:264`) |
 | timeout capped at 24 h; SIGTERM, grace, SIGKILL on the group | `runner/real.rs:417`, `:707`; `:3-4` (module doc) |
-| `HostEnv::discover` reads PATH, HOME, CARGO_HOME, OLLAMA_HOST and the effective uid; runs at launch, at every refresh, and on Open Ollama | `runner/path_env.rs:64-84` (`libc::geteuid()` at `:71`); `src-tauri/src/lib.rs:21`, `src-tauri/src/ipc.rs:34`, `:544` (`grep -rn 'HostEnv::discover' src-tauri/src crates/canager-core/src` finds no other production call) |
+| `HostEnv::discover` reads PATH, HOME, CARGO_HOME, OLLAMA_HOST and the effective uid; runs at launch, at every refresh, and on Open Ollama | `runner/path_env.rs:64-84` (`libc::geteuid()` at `:71`); `src-tauri/src/lib.rs:21`, `src-tauri/src/ipc.rs:34`, `:544` (`grep -rn 'HostEnv::discover' src-tauri/src crates/banager-core/src` finds no other production call) |
 | `resolve_exe`: first `is_file` on PATH | `runner/path_env.rs:87-95` |
 | `validate_package_name` rule | `adapters/mod.rs:348-365` (the doc comment at `:338-347` states the regex) |
 | npm `validate_search_query`: trimmed, non-empty, not `-`, ≤ 200 bytes; npm receives the untrimmed query | `adapters/npm.rs:27-33` (`trimmed.len() > 200` at `:29` — bytes, not chars), `:338` (`query.to_string()`, untrimmed) |
@@ -1562,12 +1562,12 @@ Each row is a sentence or table cell in Step 3's text and the line(s) at `26bc64
 | registry URL, `Accept` header, 30 s, percent-encoded, always registry.ollama.ai | `adapters/ollama/mod.rs:389-407` |
 | Ollama write table 3600 s; pull for both; third-party warning never blocks; `hf.co` | `adapters/ollama/mod.rs:518-542`, `:108`, `:124-131` |
 | Open Ollama: `/usr/bin/open -a Ollama`, streams null, only on the button, only when app found, 20 s | `src-tauri/src/ipc.rs:423-428`, `:440`, `:484-490`, `:499`, `:544-548`; `adapters/ollama/mod.rs:292-296` |
-| settings.json read; missing/unreadable → defaults | `crates/canager-core/src/settings.rs:44-49`; path `src-tauri/src/lib.rs:28` |
-| settings.json the only write; tmp + rename; dir created | `crates/canager-core/src/settings.rs:60-72`; `grep -rn 'fs::write\|fs::rename\|remove_file\|remove_dir\|create_dir' crates/canager-core/src src-tauri/src` hits only `settings.rs:62,70,71` outside `#[cfg(test)]` |
+| settings.json read; missing/unreadable → defaults | `crates/banager-core/src/settings.rs:44-49`; path `src-tauri/src/lib.rs:28` |
+| settings.json the only write; tmp + rename; dir created | `crates/banager-core/src/settings.rs:60-72`; `grep -rn 'fs::write\|fs::rename\|remove_file\|remove_dir\|create_dir' crates/banager-core/src src-tauri/src` hits only `settings.rs:62,70,71` outside `#[cfg(test)]` |
 | allowlist, `host_allowed` first in `send`, http exempt | `http/real.rs` (Task 2) |
 | rustls, UA, 8 MiB, no redirects; 30 s is the client-wide default and every request overrides it with its own | `http/real.rs:38-53` (`:51` the default), `:75` (`.timeout(req.timeout)`), `:22`, `:87-97`, `:115-119`; per-request values `adapters/cargo.rs:230`, `pipx.rs:289`, `ollama/mod.rs:279` (10 s, detect), `:338`, `:404` |
 | Canager's own headers: none but UA, except Ollama `Accept`; `GET` only | `adapters/cargo.rs:221,229`; `adapters/pipx.rs:283,288`; `adapters/ollama/mod.rs:276,278`, `:335,337`, `:398,400-403`; `http/mod.rs:14-16` |
-| the library adds `Host` and `Accept: */*`, nothing else | reqwest 0.13 (`crates/canager-core/Cargo.toml:25`): `ClientBuilder::new` seeds `Accept: */*` (`~/.cargo/registry/src/*/reqwest-0.13.5/src/async_impl/client.rs:285`); `Host` is HTTP/1.1's own; `real.rs:39-52` sets only the UA, the redirect policy and the timeout on top, and `send` (`:72-78`) adds only `req.headers` |
+| the library adds `Host` and `Accept: */*`, nothing else | reqwest 0.13 (`crates/banager-core/Cargo.toml:25`): `ClientBuilder::new` seeds `Accept: */*` (`~/.cargo/registry/src/*/reqwest-0.13.5/src/async_impl/client.rs:285`); `Host` is HTTP/1.1's own; `real.rs:39-52` sets only the UA, the redirect policy and the timeout on top, and `send` (`:72-78`) adds only `req.headers` |
 | CSP `connect-src 'self'` | `src-tauri/tauri.conf.json` `app.security.csp` |
 | updater plugin registered, endpoint, never called | `src-tauri/src/lib.rs:26`; `src-tauri/tauri.conf.json` `plugins.updater.endpoints`; `grep -rn updater src src-tauri/src` finds only the registration and an unrelated comment in `src/lib/events.ts:40` |
 | opener plugin registered and permitted, never called from the front end | `src-tauri/src/lib.rs:25` (`tauri_plugin_opener::init()`); `src-tauri/capabilities/default.json` (`opener:default`); `package.json:22` (`@tauri-apps/plugin-opener`, installed but unimported); `grep -rn 'plugin-opener\|openUrl\|openPath' src` is empty — the `opener` in `src/components/LogDrawer.tsx:70` is a local variable for the element that opened the drawer |
@@ -1581,7 +1581,7 @@ Expected: all clean. (`cargo test --workspace` now includes `what_we_run_test`. 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/what-we-run.md crates/canager-core/tests/what_we_run_test.rs
+git add docs/what-we-run.md crates/banager-core/tests/what_we_run_test.rs
 git commit -m "$(cat <<'EOF'
 Rewrite what-we-run.md for all seven sources, and test the parts a test can
 

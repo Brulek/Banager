@@ -381,7 +381,7 @@ export function UpdatesPage() {
   // as below; neither may disagree with the page.
   // `Session::issue_plan` applies the same conditions in Rust (spec §2.5
   // for the source, `blocked_upgrade` in
-  // crates/canager-core/src/session/plans.rs for the package), so a stale
+  // crates/banager-core/src/session/plans.rs for the package), so a stale
   // snapshot costs an error message, not a wrong command.
   const actionableUpdates = useMemo(
     () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : []),
@@ -491,7 +491,7 @@ export function UpdatesPage() {
   //
   // Iterates `snapshot.instances`, which is every source any candidate can
   // come from: `refresh` builds `updates` only from instances it also puts
-  // in `instances` (crates/canager-core/src/session/refresh.rs).
+  // in `instances` (crates/banager-core/src/session/refresh.rs).
   //
   // First, the checks that did not finish this round, if any
   // (`unfinishedChecksNotice`): a line like the others, once a band of
@@ -520,7 +520,7 @@ export function UpdatesPage() {
   // `NonRegistrySource` row already says its own reason. It claims no
   // diagnosis: the first line of the tool's stderr is the only thing that
   // tells "this Mac is offline" from "that index is refusing you"
-  // (`lookup_failure_reason`, crates/canager-core/src/adapters/mod.rs),
+  // (`lookup_failure_reason`, crates/banager-core/src/adapters/mod.rs),
   // and it is precisely what is hidden.
   const hiddenReasonCount = settings?.show_technical_details
     ? 0

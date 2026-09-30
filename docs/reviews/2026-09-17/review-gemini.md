@@ -43,7 +43,7 @@
     - `cargo`、`uv`、`bun`、`nvm`、`fnm`、`pipx` 安装的工具在 `~/.cargo/bin`、`~/.local/bin`，全军覆没；
     - 执行 `version = ["brew", "--version"]` 会直接抛出 `No such file or directory` (ENOENT)。
 - **建议改法**：
-  - 架构必须在 `canager-core` 初始化最顶层加入**环境变量注水（Env Hydration）机制**。
+  - 架构必须在 `banager-core` 初始化最顶层加入**环境变量注水（Env Hydration）机制**。
   - 在 Unix 平台启动时，探测用户的 `$SHELL`，先在后台非交互执行一次 `$SHELL -l -c 'printenv PATH'`（或使用 Rust 的 `shell-words` / 类似 `fix-path-env` 机制），将解析出的真实用户 PATH 更新注入到当前 Tauri 进程的全局上下文中，否则后续所有适配器一律失效。
 
 ---

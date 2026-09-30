@@ -48,7 +48,7 @@ export type UpdateState =
  * (`undefined` when the snapshot lacks it).
  *
  * `Session::issue_plan` applies the same conditions in Rust (spec §2.5 for
- * the source, `blocked_upgrade` in crates/canager-core/src/session/plans.rs
+ * the source, `blocked_upgrade` in crates/banager-core/src/session/plans.rs
  * for the package), so a stale snapshot costs an error message, not a
  * wrong command.
  */
@@ -98,7 +98,7 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  * row have a `target` that does not:
  *
  * - One Canager could not check: its `target` is its installed version
- *   (`uncheckable_candidate` in crates/canager-core/src/adapters/mod.rs),
+ *   (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs),
  *   not a version any source offered.
  * - A Homebrew cask declared `version :latest`. The `brew outdated
  *   --json=v2` Canager runs lists one only when it is greedy about that
@@ -111,7 +111,7 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  *   "latest" would hide each later release as well and never end: Never
  *   remind me, behind a hint that promises a reminder. Homebrew tells such
  *   a version by this same string (`Cask::DSL::Version#latest?`), and so
- *   does `reconcile` in crates/canager-core/src/adapters/brew/mod.rs. This
+ *   does `reconcile` in crates/banager-core/src/adapters/brew/mod.rs. This
  *   goes by the version offered, not the one installed: a copy installed
  *   while its cask still had numbered versions is named by that version,
  *   and is offered "latest" all the same.
@@ -122,7 +122,7 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  * opt-linked, with the two alike (`Formula#outdated_kegs`), and its next
  * release has another number, so a skip of it ends as promised. An Ollama
  * model's two are digests from different hash spaces, never to be compared
- * (`check_one_model` in crates/canager-core/src/adapters/ollama/mod.rs).
+ * (`check_one_model` in crates/banager-core/src/adapters/ollama/mod.rs).
  */
 export function canSkipVersion(candidate: UpdateCandidate): boolean {
   if (!candidate.checkable) return false;
@@ -245,7 +245,7 @@ function checkedInFull(instance: ManagerInstance): boolean {
  *
  * Any `SourceError` of this round is enough to fail it, whatever it
  * names. A source whose inventory or update check failed keeps last
- * round's rows and candidates (crates/canager-core/src/session/refresh.rs)
+ * round's rows and candidates (crates/banager-core/src/session/refresh.rs)
  * while its instance still reads as answering -- so `checkedInFull` alone
  * would call it checked -- and an error that names a bare adapter id
  * (its `detect` failed) or an instance dropped as a duplicate is about a
@@ -262,7 +262,7 @@ export function everySourceChecked(instances: ManagerInstance[], errors: SourceE
  * source in full (`checkedInFull`) and none of its calls failed this
  * round -- `errors` names the instance when its inventory or its update
  * check failed, and `refresh` then carries the last round's rows and
- * candidates forward (crates/canager-core/src/session/refresh.rs), so no
+ * candidates forward (crates/banager-core/src/session/refresh.rs), so no
  * update listed is no news. Where this is false the row says nothing
  * about updates, and the source's own notice, or the page's "some checks
  * didn't finish", says why.
@@ -278,7 +278,7 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * `auto_updates: true`) or one declared `version :latest`, which Homebrew
  * installs as "latest". Canager passes `--greedy` to `brew outdated
  * --json=v2` only while that switch is on
- * (crates/canager-core/src/adapters/brew/mod.rs), and without it Homebrew
+ * (crates/banager-core/src/adapters/brew/mod.rs), and without it Homebrew
  * lists neither kind whatever version it has, so no update listed is no
  * news: the Installed page's row says nothing about updates rather than
  * 「已是最新」. With the switch on, `--greedy` checks both.
@@ -385,7 +385,7 @@ export function withSkippedVersion(
  * shown. An Ollama model's skipped version is a registry manifest's config
  * digest -- the `target` of the `UpdateChannel::Digest` candidate it was
  * skipped from (`check_one_model` in
- * crates/canager-core/src/adapters/ollama/mod.rs, the only producer of
+ * crates/banager-core/src/adapters/ollama/mod.rs, the only producer of
  * `Model` rows) -- and no hash goes in front of this audience. A skip
  * carries no channel, so this goes by the key's kind, as the Installed
  * page does when it leaves a model's digest out of the row's name.

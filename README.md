@@ -181,18 +181,18 @@ WebView is a type error; `tsconfig.test.json` checks the vitest files with `@typ
 through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
 
 `cargo test --workspace` has four `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
-in `crates/canager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
+in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
 running it, the other installs and removes the `hello` formula. The third, in
-`crates/canager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
+`crates/banager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
 (named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
-The fourth, in `crates/canager-core/src/icon/real.rs`, has AppKit draw Calculator's icon and
+The fourth, in `crates/banager-core/src/icon/real.rs`, has AppKit draw Calculator's icon and
 only reads. The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI
 runs the first three; run them yourself with:
 
 ```bash
-CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
-CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored
-cargo test -p canager-core --lib icon::real -- --ignored
+CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
+CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
+cargo test -p banager-core --lib icon::real -- --ignored
 ```
 
 ## Language

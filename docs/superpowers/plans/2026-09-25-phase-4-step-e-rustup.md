@@ -6,7 +6,7 @@
 
 **Architecture:** One more data row for the `StandaloneAdapter` step B built — the `RUSTUP` recipe — with the three shapes rustup is the first to need: a `FlatFile` route under `$CARGO_HOME`, a `SecondToken` version read, a `HttpTomlVersion` endpoint. Its uninstall is the new `Uninstall::Command` arm: a gate (`blocked`) that refuses any layout but the standard one, and a warnings function that reads `~/.rustup/toolchains/`, `~/.cargo/bin`, `.crates2.json`, Homebrew's Cellar and eight shell startup files — read-only, no command — and answers six `Warning` variants the uninstall dialog lists; the command itself runs through `run_plan` unchanged. Both of rustup's plans carry a second lock, built by the one function that spells the cargo instance's id (`cargo::instance_id_for`), because `self update` unlinks and re-copies the binary all thirteen `~/.cargo/bin` proxies exec and `self uninstall` deletes the file cargo's inventory reads. Every version read of rustup — its own and the cargo proxy's — carries `RUSTUP_AUTO_INSTALL=0`, and `refresh_round` skips the detection of any adapter whose instance an operation is holding, so no read of Canager's ever runs the rustup binary while an operation replaces or removes it. `HostEnv` learns `RUSTUP_HOME` and `ZDOTDIR`, the two variables rustup's own uninstall reads that Canager did not. `NoCancel` gets its first producer, and `operations.noCancelHint` its two readers.
 
-**Tech Stack:** Rust (canager-core: `std::fs`, `toml` (already a dependency) for the release file, the existing `CommandRunner`/`HttpClient` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
+**Tech Stack:** Rust (banager-core: `std::fs`, `toml` (already a dependency) for the release file, the existing `CommandRunner`/`HttpClient` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
 **Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row E and argues from §0.1 (the four "No adapter produces `NoCancel` yet" sites), §一 D6/D9, §2.2–2.4, §3.1–3.5 (rustup's column), §4.1–4.3, §五 (rustup's row), §6.1, §6.4–6.6, §9.1–9.5 and 附录 A/B. Raw research: `~/dev/Canager/.superpowers/phase4/rustup.md` (tool facts) and `unknown-scan.md` (the thirteen proxies are relative symlinks). rustup's source was read at tag `1.29.1` and the `home` crate's at `home-0.5.12` (the version rustup 1.29.1 and cargo pin), both with `curl -sS https://raw.githubusercontent.com/…`, read-only. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-e-rustup.md`.
 
@@ -14,10 +14,10 @@
 
 Branch `feat/phase-4-standalone`, worktree `~/dev/Canager-phase4`. First written at HEAD `f7e2917`, re-baselined at `3b5117a`, and **revised at HEAD `ea30cfb`** (2026-09-25: A and F landed; **all of B landed** — `71eacd0` the adapter, `f61cd94`, `dcf0e7c` and the follow-up wording fixes through `306dd57`; C's plan committed as `ea30cfb`, C's code not yet landed; working tree clean). Every `file:line` below is `ea30cfb`'s unless a table row says otherwise; C will move lines in the files it touches, which is why edits in those files are anchored by symbol or quoted text, never by number alone. **At execution time**, before Task 1, re-run `git log --oneline | head` and the confirm-grep in the table below, and treat a line number as a hint next to its textual anchor, not as the anchor. The chosen order is **A → F → B → C → E → D**, so when this plan executes:
 
-- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`, landed): `ALLOWED_HTTPS_HOSTS` and `host_allowed` in `crates/canager-core/src/http/real.rs`; `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive over `Warning` with `never` defaults; `docs/what-we-run.md` rewritten with one `## <meta.name>` section per registered source, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`; `crates/canager-core/tests/what_we_run_test.rs` holding it to the code.
-- **F** (`…-step-f-unknown-scan.md`, landed): `crates/canager-core/src/scan/mod.rs` with `owned_roots` and `Known::index` (rules 0–3; rule 2 reads `InstalledArtifact.path`, "starts with"); `crates/canager-core/tests/unknown_scan_test.rs` whose `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher` says in its comment that `hexyl` is listed "until step E fills `InstalledArtifact.path` for cargo binaries" (`:409`); the Unknown page.
-- **B** (`docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`, landed in full): everything under "What already exists" below, **as it stands in the tree at `ea30cfb`** — `crates/canager-core/src/adapters/standalone/{mod,recipe,recipes,route,latest}.rs`, `adapters/meta/standalone-claude.toml`, `adapters/fixtures/standalone-claude/`, the `## Claude Code` section of `docs/what-we-run.md`, the README row. Where this plan modifies a B file it quotes the tree's text (rustfmt'd) and says what it becomes.
-- **C** (path-list uninstall; plan `~/dev/Canager/.superpowers/phase4/plan-step-c-trash-uninstall.md`, committed as `ea30cfb` at `docs/superpowers/plans/…step-c…`; **being revised by another agent as this plan is revised**): lands before this step. This plan takes C's shapes from C's plan's Core Interfaces (which spell them in Rust) and, where those disagree with the spec, from C: `PlanAction::{Command { program, args, env }, TrashPaths { paths, previewed }}` and `Plan.action`; `Recipe.uninstall: Option<Uninstall>` with `Uninstall::Paths { remove, keep }`; `Detected { home, euid }` with `#[derive(Clone, Debug)]`; `Warning::{WillTrash, WillKeep, AlreadyGone}`; `Adapter::reconcile_after_uninstall` with `StandaloneAdapter`'s override over `route::probe_strict`; `route::probe_strict` with `probe = probe_strict(..).unwrap_or(Absent)`; `StandaloneAdapter::new(recipe, runner, http, trasher: Arc<dyn Trasher>)` with `standalone::all(runner, http, trasher)` and `canager_core::trash::MockTrasher`; `scan::display_path` made `pub(crate)`; `crate::testing::{command_program, command_args, command_env}`; `removal.rs` calling B's two-argument `route::expand`; a test-only `Recipe` literal with `uninstall: None` (C's ruling 2); `CommandPreview` taking `action={plan.action}`. **Every place this plan touches one of those is listed in "C dependency checklist" below, which the executor re-verifies against the landed C before Task 1 and again before Task 4.** The confirm-grep: `git log --oneline | head`, then `grep -n "enum PlanAction\|pub action:\|pub uninstall:\|pub euid\|WillTrash\|pub fn new(\|trasher\|fn probe_strict\|fn reconcile_after_uninstall\|fn display_path" crates/canager-core/src/model.rs crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/route.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/scan/mod.rs` and `grep -rn "Recipe {$\|route::expand(\|Detected {" crates/canager-core/src/adapters/standalone/`.
+- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`, landed): `ALLOWED_HTTPS_HOSTS` and `host_allowed` in `crates/banager-core/src/http/real.rs`; `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive over `Warning` with `never` defaults; `docs/what-we-run.md` rewritten with one `## <meta.name>` section per registered source, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`; `crates/banager-core/tests/what_we_run_test.rs` holding it to the code.
+- **F** (`…-step-f-unknown-scan.md`, landed): `crates/banager-core/src/scan/mod.rs` with `owned_roots` and `Known::index` (rules 0–3; rule 2 reads `InstalledArtifact.path`, "starts with"); `crates/banager-core/tests/unknown_scan_test.rs` whose `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher` says in its comment that `hexyl` is listed "until step E fills `InstalledArtifact.path` for cargo binaries" (`:409`); the Unknown page.
+- **B** (`docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`, landed in full): everything under "What already exists" below, **as it stands in the tree at `ea30cfb`** — `crates/banager-core/src/adapters/standalone/{mod,recipe,recipes,route,latest}.rs`, `adapters/meta/standalone-claude.toml`, `adapters/fixtures/standalone-claude/`, the `## Claude Code` section of `docs/what-we-run.md`, the README row. Where this plan modifies a B file it quotes the tree's text (rustfmt'd) and says what it becomes.
+- **C** (path-list uninstall; plan `~/dev/Canager/.superpowers/phase4/plan-step-c-trash-uninstall.md`, committed as `ea30cfb` at `docs/superpowers/plans/…step-c…`; **being revised by another agent as this plan is revised**): lands before this step. This plan takes C's shapes from C's plan's Core Interfaces (which spell them in Rust) and, where those disagree with the spec, from C: `PlanAction::{Command { program, args, env }, TrashPaths { paths, previewed }}` and `Plan.action`; `Recipe.uninstall: Option<Uninstall>` with `Uninstall::Paths { remove, keep }`; `Detected { home, euid }` with `#[derive(Clone, Debug)]`; `Warning::{WillTrash, WillKeep, AlreadyGone}`; `Adapter::reconcile_after_uninstall` with `StandaloneAdapter`'s override over `route::probe_strict`; `route::probe_strict` with `probe = probe_strict(..).unwrap_or(Absent)`; `StandaloneAdapter::new(recipe, runner, http, trasher: Arc<dyn Trasher>)` with `standalone::all(runner, http, trasher)` and `banager_core::trash::MockTrasher`; `scan::display_path` made `pub(crate)`; `crate::testing::{command_program, command_args, command_env}`; `removal.rs` calling B's two-argument `route::expand`; a test-only `Recipe` literal with `uninstall: None` (C's ruling 2); `CommandPreview` taking `action={plan.action}`. **Every place this plan touches one of those is listed in "C dependency checklist" below, which the executor re-verifies against the landed C before Task 1 and again before Task 4.** The confirm-grep: `git log --oneline | head`, then `grep -n "enum PlanAction\|pub action:\|pub uninstall:\|pub euid\|WillTrash\|pub fn new(\|trasher\|fn probe_strict\|fn reconcile_after_uninstall\|fn display_path" crates/banager-core/src/model.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/scan/mod.rs` and `grep -rn "Recipe {$\|route::expand(\|Detected {" crates/banager-core/src/adapters/standalone/`.
 
 In files A, F, B or C touch, **every edit below is anchored by a symbol, function, type or quoted line, never by a line number alone**. In files none of them touch (`session/refresh.rs`, `ops/mod.rs`'s lock set, `runner/path_env.rs`, `adapters/cargo.rs`, `tests/ops_cancel_test.rs`, `tests/ops_upgrade_version_test.rs`), `file:line` is cited at `ea30cfb`.
 
@@ -28,10 +28,10 @@ Every point where this plan meets C. The executor re-verifies each row when C ha
 | # | C shape | Where E touches it | What E does if C spelled it differently |
 |---|---|---|---|
 | 1 | `Plan { action: PlanAction::Command { program, args, env }, … }` (C Task 1) | Task 4 (Upgrade plan), Task 6 (Uninstall plan), Task 8 (ops tests read `plan.locks`, `plan.action`), Task 9 (`plan.cancel_policy` only) | Use C's field names; nothing else changes |
-| 2 | `Detected { home, euid }`, `#[derive(Clone, Debug)]` (C stage 6c) — written in `detect`; C's test helper `fn detected(home: &Path) -> Detected` in `removal.rs`'s tests; C's `Detected { euid: …, ..detected(home.path()) }` | Task 4 adds `cargo_home: Option<PathBuf>`, `rustup_home: Option<PathBuf>`, `zdotdir: Option<PathBuf>`; `detect`'s literal gains the three; **C's `removal.rs` test helper `detected(home)` must gain `cargo_home: Some(home.join(".cargo")), rustup_home: Some(home.join(".rustup")), zdotdir: None`** (the struct-update literal needs nothing) | If C did not add `euid`, drop `euid: 501,` from `testing::detected`; if C's helper has another name, edit that one — `grep -rn "Detected {" crates/canager-core/src/adapters/standalone/` lists every literal, and `missing field` stops the build at any the grep missed |
+| 2 | `Detected { home, euid }`, `#[derive(Clone, Debug)]` (C stage 6c) — written in `detect`; C's test helper `fn detected(home: &Path) -> Detected` in `removal.rs`'s tests; C's `Detected { euid: …, ..detected(home.path()) }` | Task 4 adds `cargo_home: Option<PathBuf>`, `rustup_home: Option<PathBuf>`, `zdotdir: Option<PathBuf>`; `detect`'s literal gains the three; **C's `removal.rs` test helper `detected(home)` must gain `cargo_home: Some(home.join(".cargo")), rustup_home: Some(home.join(".rustup")), zdotdir: None`** (the struct-update literal needs nothing) | If C did not add `euid`, drop `euid: 501,` from `testing::detected`; if C's helper has another name, edit that one — `grep -rn "Detected {" crates/banager-core/src/adapters/standalone/` lists every literal, and `missing field` stops the build at any the grep missed |
 | 3 | `route::expand(home, spec)` (B's two-argument function, unchanged by C) called from `removal.rs` at `Look::new` (`launcher`/`root`), `kept_places`, `plan_removal`'s remove loop and `take_turn` — five sites in C's plan | **Untouched.** E does not change `expand`'s signature; Task 4 adds `route::expand_route(home, cargo_home, spec)` for `detect`, and `recipes::tests::test_a_paths_recipe_names_only_home_paths` pins that every `Uninstall::Paths` recipe's route and spec paths start with `~/`, so `removal.rs` can never meet `$CARGO_HOME` | If C changed `expand`'s signature after all, make `expand_route` call C's `expand` for the `~/` case and re-run the grep |
-| 4 | `StandaloneAdapter::new(recipe, runner, http, trasher)`; `standalone::all(runner, http, trasher)`; `canager_core::trash::MockTrasher` (behind `test-support`/`cfg(test)`) | Task 6's `rustup_adapter`, Task 7's and Task 8's adapters, Task 10's fixture tests: every direct constructor call passes `Arc::new(MockTrasher::new())` as the fourth argument | If `new` kept three arguments, drop the argument and the import |
-| 5 | `Recipe.uninstall: Option<Uninstall>`, `Uninstall::Paths { remove, keep }`; C's `inventory` rule for `uninstall_blocked` (C ruling 2: `None` is the only producer of `NoSafeMethod`); C's `execute` dispatch; C's `plan` `Uninstall` arm; C's RECIPES-wide tests destructuring `Paths`; C's test-only `Recipe { …, uninstall: None }` | Task 4 adds `extra_locks: no_extra_locks` to every `Recipe {` literal; Task 6 adds `Uninstall::Command(CommandUninstall)` and settles every `match`/`if let` over `Uninstall` (the four-case list in Task 6 Step 3); Task 10 gives each RECIPES-wide `Paths` test its skip | `grep -rn "Uninstall::Paths\|recipe.uninstall\|\.uninstall\b" crates/canager-core/src/adapters/standalone/` before Task 6; the compiler names any non-exhaustive match |
+| 4 | `StandaloneAdapter::new(recipe, runner, http, trasher)`; `standalone::all(runner, http, trasher)`; `banager_core::trash::MockTrasher` (behind `test-support`/`cfg(test)`) | Task 6's `rustup_adapter`, Task 7's and Task 8's adapters, Task 10's fixture tests: every direct constructor call passes `Arc::new(MockTrasher::new())` as the fourth argument | If `new` kept three arguments, drop the argument and the import |
+| 5 | `Recipe.uninstall: Option<Uninstall>`, `Uninstall::Paths { remove, keep }`; C's `inventory` rule for `uninstall_blocked` (C ruling 2: `None` is the only producer of `NoSafeMethod`); C's `execute` dispatch; C's `plan` `Uninstall` arm; C's RECIPES-wide tests destructuring `Paths`; C's test-only `Recipe { …, uninstall: None }` | Task 4 adds `extra_locks: no_extra_locks` to every `Recipe {` literal; Task 6 adds `Uninstall::Command(CommandUninstall)` and settles every `match`/`if let` over `Uninstall` (the four-case list in Task 6 Step 3); Task 10 gives each RECIPES-wide `Paths` test its skip | `grep -rn "Uninstall::Paths\|recipe.uninstall\|\.uninstall\b" crates/banager-core/src/adapters/standalone/` before Task 6; the compiler names any non-exhaustive match |
 | 6 | `Adapter::reconcile_after_uninstall` (C Task 2) and `StandaloneAdapter::reconcile_after_uninstall` answering presence through `route::probe_strict` (C stage 6e) | Task 8's end-to-end uninstall tests depend on it: after `rustup self uninstall -y`, presence of `$CARGO_HOME/bin/rustup` decides `Succeeded` / `StillInstalledAfterUninstall` / `Unconfirmed` | If C's override reads something other than `probe_strict`, Task 8's expectations still hold as long as it answers presence of the launcher; re-read it and say so in the handover |
 | 7 | `route::probe_strict(kind, launcher, root) -> io::Result<Probe>` with `probe` as its `unwrap_or(Absent)` wrapper (C stage 6c) | Task 4's `FlatFile` arms go into **`probe_strict`** (the function that holds the `match kind`), not into the wrapper | If C did not split `probe`, the arms go into `probe` as B wrote it |
 | 8 | `scan::display_path(path, home) -> PathBuf` made `pub(crate)` (C stage 6c) | Task 5's `rustup.rs` spells `~/.cargo` and `~/.rustup` with it | If still private, E makes it `pub(crate)` in Task 5 (F's file; one keyword) |
@@ -119,27 +119,27 @@ Facts were checked against rustup's source at the tag the installed binary was b
 ```
 adapters/meta/standalone-rustup.toml                              NEW   AdapterMeta, seven fields (Task 6)
 adapters/fixtures/standalone-rustup/1.29.1/                       NEW   README.md, version.txt, version-stderr.txt, release-stable.toml, toolchains.txt, layout.txt — recorded (Task 10)
-crates/canager-core/src/runner/path_env.rs                         MOD   HostEnv.rustup_home, HostEnv.zdotdir, discover, tool_home (1)
-crates/canager-core/src/adapters/cargo.rs                          MOD   cargo_home_of (Option), instance_id_for, RUSTUP_AUTO_INSTALL_OFF on detect, parse_crates2_bins, inventory fills path (1)
-crates/canager-core/src/adapters/{brew/mod,npm,ollama/mod,pip,pipx}.rs, scan/mod.rs, session/scan.rs, session/test_support.rs, tests/unknown_scan_test.rs, src-tauri/src/ipc.rs   MOD   HostEnv literals gain two lines (1)
-crates/canager-core/src/model.rs                                   MOD   six Warning variants + shape test (2); CancelPolicy doc (9)
-crates/canager-core/src/adapters/standalone/recipe.rs              MOD   FlatFile (4), SecondToken + HttpTomlVersion (3), extra_locks + no_extra_locks (4), CommandUninstall + Uninstall::Command (6)
-crates/canager-core/src/adapters/standalone/latest.rs              MOD   SecondToken arm, parse_release_stable_toml (3)
-crates/canager-core/src/adapters/standalone/route.rs               MOD   expand_route, FlatFile arms in probe_strict's two branches (4)
-crates/canager-core/src/adapters/standalone/rustup.rs              NEW   roots gate, toolchains, RUSTUP_PROXIES, bin/ programs, Homebrew signal, the rc visit model, uninstall_blocked, uninstall_warnings, extra_locks (5)
-crates/canager-core/src/adapters/standalone/recipes.rs             NEW ROW RUSTUP (6), RECIPES gains it (10); invariants tests updated (4, 6, 10)
-crates/canager-core/src/adapters/standalone/mod.rs                 MOD   Detected +3 fields, seated_detected_for, locks, Upgrade plan (4); HttpTomlVersion arm (3); Uninstall Command arm, inventory's gate, C's other Uninstall branches if needed (6); pub mod rustup, RUSTUP_PROXIES leaves testing (5); tests
-crates/canager-core/src/adapters/standalone/removal.rs             MOD   C's test helper `detected(home)` gains three fields (4)                 [C's file]
-crates/canager-core/src/ops/mod.rs                                 MOD   locks_held (7)
-crates/canager-core/src/session/refresh.rs                         MOD   the detection skip and the carry-forward; one test renamed and re-asserted; two new tests (7)
-crates/canager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += "static.rust-lang.org"; doc; test (6)   [A's file]
-crates/canager-core/src/scan/mod.rs                                MOD   two comments (1, 10); display_path pub(crate) if C did not (5)    [F's file]
-crates/canager-core/src/session/mod.rs                             MOD   the nine-adapter test (10)                                         [B's file]
-crates/canager-core/src/lib.rs                                     MOD   crate doc clause (10)                                               [F's/B's file]
-crates/canager-core/tests/unknown_scan_test.rs                     MOD   rule-2 companion test for cargo (1)                                [F's file]
-crates/canager-core/tests/ops_cancel_test.rs                       MOD   the policy-matrix comment (9)
-crates/canager-core/tests/ops_upgrade_version_test.rs              MOD   rustup self update unchanged → UnchangedAfterUpgrade; moved version (8)   [B's file]
-crates/canager-core/tests/ops_rustup_uninstall_test.rs             NEW   the uninstall outcomes and the lock cases through OperationManager (8)
+crates/banager-core/src/runner/path_env.rs                         MOD   HostEnv.rustup_home, HostEnv.zdotdir, discover, tool_home (1)
+crates/banager-core/src/adapters/cargo.rs                          MOD   cargo_home_of (Option), instance_id_for, RUSTUP_AUTO_INSTALL_OFF on detect, parse_crates2_bins, inventory fills path (1)
+crates/banager-core/src/adapters/{brew/mod,npm,ollama/mod,pip,pipx}.rs, scan/mod.rs, session/scan.rs, session/test_support.rs, tests/unknown_scan_test.rs, src-tauri/src/ipc.rs   MOD   HostEnv literals gain two lines (1)
+crates/banager-core/src/model.rs                                   MOD   six Warning variants + shape test (2); CancelPolicy doc (9)
+crates/banager-core/src/adapters/standalone/recipe.rs              MOD   FlatFile (4), SecondToken + HttpTomlVersion (3), extra_locks + no_extra_locks (4), CommandUninstall + Uninstall::Command (6)
+crates/banager-core/src/adapters/standalone/latest.rs              MOD   SecondToken arm, parse_release_stable_toml (3)
+crates/banager-core/src/adapters/standalone/route.rs               MOD   expand_route, FlatFile arms in probe_strict's two branches (4)
+crates/banager-core/src/adapters/standalone/rustup.rs              NEW   roots gate, toolchains, RUSTUP_PROXIES, bin/ programs, Homebrew signal, the rc visit model, uninstall_blocked, uninstall_warnings, extra_locks (5)
+crates/banager-core/src/adapters/standalone/recipes.rs             NEW ROW RUSTUP (6), RECIPES gains it (10); invariants tests updated (4, 6, 10)
+crates/banager-core/src/adapters/standalone/mod.rs                 MOD   Detected +3 fields, seated_detected_for, locks, Upgrade plan (4); HttpTomlVersion arm (3); Uninstall Command arm, inventory's gate, C's other Uninstall branches if needed (6); pub mod rustup, RUSTUP_PROXIES leaves testing (5); tests
+crates/banager-core/src/adapters/standalone/removal.rs             MOD   C's test helper `detected(home)` gains three fields (4)                 [C's file]
+crates/banager-core/src/ops/mod.rs                                 MOD   locks_held (7)
+crates/banager-core/src/session/refresh.rs                         MOD   the detection skip and the carry-forward; one test renamed and re-asserted; two new tests (7)
+crates/banager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += "static.rust-lang.org"; doc; test (6)   [A's file]
+crates/banager-core/src/scan/mod.rs                                MOD   two comments (1, 10); display_path pub(crate) if C did not (5)    [F's file]
+crates/banager-core/src/session/mod.rs                             MOD   the nine-adapter test (10)                                         [B's file]
+crates/banager-core/src/lib.rs                                     MOD   crate doc clause (10)                                               [F's/B's file]
+crates/banager-core/tests/unknown_scan_test.rs                     MOD   rule-2 companion test for cargo (1)                                [F's file]
+crates/banager-core/tests/ops_cancel_test.rs                       MOD   the policy-matrix comment (9)
+crates/banager-core/tests/ops_upgrade_version_test.rs              MOD   rustup self update unchanged → UnchangedAfterUpgrade; moved version (8)   [B's file]
+crates/banager-core/tests/ops_rustup_uninstall_test.rs             NEW   the uninstall outcomes and the lock cases through OperationManager (8)
 src-tauri/src/ipc.rs                                               MOD   two NoCancel tests renamed; the field doc naming them (9); one HostEnv literal (1)
 src/lib/types.ts, types.test.ts                                    MOD   six Warning variants (2); CancelPolicy doc (9)                     [A's/C's file]
 src/lib/warnings.ts, warnings.test.ts                              MOD   six branches (2)                                                   [A's/C's file]
@@ -159,20 +159,20 @@ Single responsibility: `rustup.rs` owns *what rustup's uninstall does, when Cana
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
 ```rust
-// crates/canager-core/src/runner/path_env.rs
+// crates/banager-core/src/runner/path_env.rs
 pub struct HostEnv { pub path_dirs: Vec<PathBuf>, pub home: PathBuf, pub euid: u32, pub cargo_home: Option<PathBuf>, pub rustup_home: Option<PathBuf>, pub zdotdir: Option<PathBuf>, pub ollama_host: Option<String> }
 pub(crate) fn tool_home(setting: Option<&Path>, home: &Path, default_dir: &str) -> Option<PathBuf>;   // home 0.5.12's rule; None = relative, unsupported
 
-// crates/canager-core/src/adapters/cargo.rs
+// crates/banager-core/src/adapters/cargo.rs
 pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL", "0");
 pub(crate) fn cargo_home_of(env: &HostEnv) -> Option<PathBuf>;
 pub(crate) fn instance_id_for(cargo_home: &Path) -> String;
 pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)>, AdapterError>;
 
-// crates/canager-core/src/model.rs
+// crates/banager-core/src/model.rs
 pub enum Warning { …existing…, RemovesToolchains { path: String, names: Vec<String> }, DeletesCargoHome { path: String }, RemovesCargoInstalled { names: Vec<String> }, HomebrewRustupLosesToolchains, EditsShellConfig, LeavesShellConfigLine { path: String, certain: bool } }
 
-// crates/canager-core/src/adapters/standalone/recipe.rs
+// crates/banager-core/src/adapters/standalone/recipe.rs
 pub enum RouteKind { SymlinkIntoRoot, FlatFile }
 pub enum VersionParse { FirstToken, SecondToken }
 pub enum Latest { ClaudeChannel { base: &'static str }, HttpTomlVersion { url: &'static str } }
@@ -181,14 +181,14 @@ pub enum Uninstall { Paths { … } /* C */, Command(CommandUninstall) }
 pub struct Recipe { …B's fields…, pub uninstall: Option<Uninstall> /* C */, pub extra_locks: fn(&Detected) -> Vec<ResourceLock> }
 pub fn no_extra_locks(_: &Detected) -> Vec<ResourceLock>;
 
-// crates/canager-core/src/adapters/standalone/latest.rs
+// crates/banager-core/src/adapters/standalone/latest.rs
 pub fn parse_release_stable_toml(body: &str) -> Result<String, String>;
 
-// crates/canager-core/src/adapters/standalone/route.rs
+// crates/banager-core/src/adapters/standalone/route.rs
 pub fn expand(home: &Path, spec: &str) -> PathBuf;                                           // B's, unchanged
 pub fn expand_route(home: &Path, cargo_home: Option<&Path>, spec: &str) -> Option<PathBuf>;   // `~/` always Some; `$CARGO_HOME…` Some iff cargo_home is Some
 
-// crates/canager-core/src/adapters/standalone/rustup.rs
+// crates/banager-core/src/adapters/standalone/rustup.rs
 pub const SHELL_RC_CANDIDATES: [&str; 8];
 pub const RUSTUP_PROXIES: [&str; 13];   // defined in `testing` by Task 4, moved here by Task 5
 pub const HOMEBREW_PREFIXES: [&str; 2];
@@ -211,11 +211,11 @@ pub fn warnings_with(d: &Detected, homebrew_prefixes: &[PathBuf]) -> Vec<Warning
 pub fn uninstall_warnings(d: &Detected) -> Vec<Warning>;
 pub fn extra_locks(d: &Detected) -> Vec<ResourceLock>;
 
-// crates/canager-core/src/adapters/standalone/recipes.rs
+// crates/banager-core/src/adapters/standalone/recipes.rs
 pub static RUSTUP: Recipe;
 pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
 
-// crates/canager-core/src/adapters/standalone/mod.rs
+// crates/banager-core/src/adapters/standalone/mod.rs
 #[derive(Clone, Debug)] pub struct Detected { pub home: PathBuf, pub euid: u32 /* C */, pub cargo_home: Option<PathBuf>, pub rustup_home: Option<PathBuf>, pub zdotdir: Option<PathBuf> }
 impl StandaloneAdapter {
     fn seated_detected_for(&self, inst: &ManagerInstance) -> Result<Detected, AdapterError>;
@@ -224,10 +224,10 @@ impl StandaloneAdapter {
 }
 pub(super) mod testing { pub struct RustupLayout { pub cargo_home: PathBuf, pub launcher: PathBuf } pub fn rustup_layout(cargo_home: &Path) -> RustupLayout; pub fn detected(home: &Path, cargo_home: &Path) -> Detected; }
 
-// crates/canager-core/src/ops/mod.rs
+// crates/banager-core/src/ops/mod.rs
 impl OperationManager { pub fn locks_held(&self) -> HashSet<ResourceLock>; }
 
-// crates/canager-core/src/http/real.rs
+// crates/banager-core/src/http/real.rs
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai", "downloads.claude.ai", "static.rust-lang.org"];
 ```
 
@@ -278,11 +278,11 @@ Seven inputs the spec implies but no test would otherwise exercise, most likely 
 ### Task 1: The host environment rustup reads — `HostEnv.{rustup_home, zdotdir}`, `tool_home`, cargo's home rule and id producer, `RUSTUP_AUTO_INSTALL=0` on cargo's read, `.crates2.json`'s binaries, `path` on every cargo artifact
 
 **Files:**
-- Modify: `crates/canager-core/src/runner/path_env.rs:5-24` (`HostEnv`), `:70-93` (`discover`), new `tool_home`, `mod tests` (its five `HostEnv {` literals and two new tests)
-- Modify: every other `HostEnv {` literal in the tree — at `ea30cfb`: `crates/canager-core/src/adapters/brew/mod.rs` (4), `adapters/cargo.rs` (4), `adapters/npm.rs` (4), `adapters/ollama/mod.rs` (6), `adapters/pip.rs` (2), `adapters/pipx.rs` (2), `adapters/standalone/mod.rs` (2: `TempHome::env` and one test), `scan/mod.rs` (2), `session/scan.rs` (1), `session/test_support.rs` (4), `tests/unknown_scan_test.rs` (2), `src-tauri/src/ipc.rs` (1) — a mechanical two-line addition each
-- Modify: `crates/canager-core/src/adapters/cargo.rs:39-79` (`Crates2Root`, `parse_crates2_entries`, `parse_crates2`), `:129-176` (`detect`: the home, the `--version` environment, the id), `:200-206` (`inventory`), `mod tests`  [untouched by A, F, B, C]
-- Modify: `crates/canager-core/tests/unknown_scan_test.rs` — the comment of `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher` (`:405-410`) and one companion test after it  [F's file]
-- Modify: `crates/canager-core/src/scan/mod.rs` — two comments: `owned_roots`'s `_` arm, which reads `rule 1 places the proxies and, from step E, rule 2` (`:295`), and the rule 2 paragraph of `struct Known`'s doc comment, hard-wrapped as `gives Homebrew, in a directory every scan reads. cargo fills \`path\`` / `from step E, the standalone adapters from step B; for those, rules` (`:330-331`)  [F's file]
+- Modify: `crates/banager-core/src/runner/path_env.rs:5-24` (`HostEnv`), `:70-93` (`discover`), new `tool_home`, `mod tests` (its five `HostEnv {` literals and two new tests)
+- Modify: every other `HostEnv {` literal in the tree — at `ea30cfb`: `crates/banager-core/src/adapters/brew/mod.rs` (4), `adapters/cargo.rs` (4), `adapters/npm.rs` (4), `adapters/ollama/mod.rs` (6), `adapters/pip.rs` (2), `adapters/pipx.rs` (2), `adapters/standalone/mod.rs` (2: `TempHome::env` and one test), `scan/mod.rs` (2), `session/scan.rs` (1), `session/test_support.rs` (4), `tests/unknown_scan_test.rs` (2), `src-tauri/src/ipc.rs` (1) — a mechanical two-line addition each
+- Modify: `crates/banager-core/src/adapters/cargo.rs:39-79` (`Crates2Root`, `parse_crates2_entries`, `parse_crates2`), `:129-176` (`detect`: the home, the `--version` environment, the id), `:200-206` (`inventory`), `mod tests`  [untouched by A, F, B, C]
+- Modify: `crates/banager-core/tests/unknown_scan_test.rs` — the comment of `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher` (`:405-410`) and one companion test after it  [F's file]
+- Modify: `crates/banager-core/src/scan/mod.rs` — two comments: `owned_roots`'s `_` arm, which reads `rule 1 places the proxies and, from step E, rule 2` (`:295`), and the rule 2 paragraph of `struct Known`'s doc comment, hard-wrapped as `gives Homebrew, in a directory every scan reads. cargo fills \`path\`` / `from step E, the standalone adapters from step B; for those, rules` (`:330-331`)  [F's file]
 - Modify: `docs/what-we-run.md` — the `## Cargo` section's "Read-only reads" paragraph and its version-read sentence  [A's file]
 - Test: `path_env.rs`'s and `cargo.rs`'s `mod tests`; `tests/unknown_scan_test.rs`.
 
@@ -294,7 +294,7 @@ Which binary: the one named after the crate when the record lists one, else the 
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/runner/path_env.rs`, inside `mod tests`, append after `test_resolve_exe_returns_none_for_a_missing_binary`:
+In `crates/banager-core/src/runner/path_env.rs`, inside `mod tests`, append after `test_resolve_exe_returns_none_for_a_missing_binary`:
 
 ```rust
 
@@ -354,7 +354,7 @@ In `crates/canager-core/src/runner/path_env.rs`, inside `mod tests`, append afte
 
 and add `use std::path::Path;` to that test module's `use` lines (after `use super::*;`; the file itself imports only `PathBuf`).
 
-In `crates/canager-core/src/adapters/cargo.rs`, inside `mod tests`, replace `test_parse_crates2_from_the_recorded_fixture` with:
+In `crates/banager-core/src/adapters/cargo.rs`, inside `mod tests`, replace `test_parse_crates2_from_the_recorded_fixture` with:
 
 ```rust
     #[test]
@@ -605,7 +605,7 @@ In `crates/canager-core/src/adapters/cargo.rs`, inside `mod tests`, replace `tes
 
 and add to the test module's `use` lines (it has `use super::*;` at `:441` and a second block at `:536-538` importing `VecSink`, `HttpResponse, MockHttpClient`, `CommandOutput, MockRunner`): `use std::path::Path;`, `use std::sync::Mutex;` and `use crate::runner::{CommandRunner, CommandSpec};` — skipping any the module already has (`Path` is not imported by the file, which uses only `PathBuf`; `CommandSpec` and `CommandRunner` reach the module through `use super::*` if the file imports them by name — it does, `use crate::runner::{…, CommandRunner, CommandSpec, …}`, so leave those two out and keep `Path` and `Mutex`).
 
-In `crates/canager-core/tests/unknown_scan_test.rs`, replace the comment lines (`:405-410`) of `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher`
+In `crates/banager-core/tests/unknown_scan_test.rs`, replace the comment lines (`:405-410`) of `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher`
 
 ```rust
     // `~/.cargo/bin`: rustup itself, thirteen proxies that are relative
@@ -675,12 +675,12 @@ fn test_rule_2_claims_a_cargo_installed_program_through_its_artifacts_path() {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib runner::path_env` and `cargo test -p canager-core --lib adapters::cargo`
-Expected: FAIL to compile — `cannot find function \`tool_home\``; `struct \`HostEnv\` has no field named \`rustup_home\`` (and `zdotdir`); `this function takes 2 arguments but 3 arguments were supplied` at the `parse_crates2` calls; `cannot find function \`parse_crates2_bins\``, `\`cargo_home_of\``, `\`instance_id_for\``. (`cargo test -p canager-core --test unknown_scan_test test_rule_2_claims_a_cargo_installed_program` compiles and PASSES already: the scan reads whatever `path` an artifact carries — it is here because the inventory that will carry it is.)
+Run: `cargo test -p banager-core --lib runner::path_env` and `cargo test -p banager-core --lib adapters::cargo`
+Expected: FAIL to compile — `cannot find function \`tool_home\``; `struct \`HostEnv\` has no field named \`rustup_home\`` (and `zdotdir`); `this function takes 2 arguments but 3 arguments were supplied` at the `parse_crates2` calls; `cannot find function \`parse_crates2_bins\``, `\`cargo_home_of\``, `\`instance_id_for\``. (`cargo test -p banager-core --test unknown_scan_test test_rule_2_claims_a_cargo_installed_program` compiles and PASSES already: the scan reads whatever `path` an artifact carries — it is here because the inventory that will carry it is.)
 
 - [ ] **Step 3: Write the fields, the rule, the functions, and fill `path`**
 
-In `crates/canager-core/src/runner/path_env.rs`, change the import line `use std::path::PathBuf;` to `use std::path::{Path, PathBuf};`. In `pub struct HostEnv`, after the `cargo_home` field (its doc ends `cannot be tested.`), add:
+In `crates/banager-core/src/runner/path_env.rs`, change the import line `use std::path::PathBuf;` to `use std::path::{Path, PathBuf};`. In `pub struct HostEnv`, after the `cargo_home` field (its doc ends `cannot be tested.`), add:
 
 ```rust
     /// `RUSTUP_HOME` when the host environment sets it, raw; `None` means
@@ -735,9 +735,9 @@ pub(crate) fn tool_home(setting: Option<&Path>, home: &Path, default_dir: &str) 
 }
 ```
 
-**Every other `HostEnv {` literal in the tree gains two lines**, `rustup_home: None,` and `zdotdir: None,`, directly after its `cargo_home: …,` line. Run `grep -rn --include='*.rs' "HostEnv {" crates src-tauri | grep -v "pub struct HostEnv"` and edit each hit; at `ea30cfb` they are: `crates/canager-core/src/runner/path_env.rs` (the `discover` literal, done above, and the test module's four); `crates/canager-core/src/adapters/brew/mod.rs` (4), `adapters/cargo.rs` (4, in `mod tests`), `adapters/npm.rs` (4), `adapters/ollama/mod.rs` (6), `adapters/pip.rs` (2), `adapters/pipx.rs` (2), `adapters/standalone/mod.rs` (2: `testing::TempHome::env` and the test that builds an env with `cargo_home: Some(…)`, if any — B's has none; Task 4 adds one), `scan/mod.rs` (2), `session/scan.rs` (1, `HostEnv::discover` is not a literal — check the hit is a literal before editing), `session/test_support.rs` (4: `non_root_env`, `root_env` and two more), `crates/canager-core/tests/unknown_scan_test.rs` (2, F's `Home::env`), `src-tauri/src/ipc.rs` (1). None of them uses struct-update syntax. The build stops with `missing field \`rustup_home\`` at any literal the grep missed, so the compiler is the checklist.
+**Every other `HostEnv {` literal in the tree gains two lines**, `rustup_home: None,` and `zdotdir: None,`, directly after its `cargo_home: …,` line. Run `grep -rn --include='*.rs' "HostEnv {" crates src-tauri | grep -v "pub struct HostEnv"` and edit each hit; at `ea30cfb` they are: `crates/banager-core/src/runner/path_env.rs` (the `discover` literal, done above, and the test module's four); `crates/banager-core/src/adapters/brew/mod.rs` (4), `adapters/cargo.rs` (4, in `mod tests`), `adapters/npm.rs` (4), `adapters/ollama/mod.rs` (6), `adapters/pip.rs` (2), `adapters/pipx.rs` (2), `adapters/standalone/mod.rs` (2: `testing::TempHome::env` and the test that builds an env with `cargo_home: Some(…)`, if any — B's has none; Task 4 adds one), `scan/mod.rs` (2), `session/scan.rs` (1, `HostEnv::discover` is not a literal — check the hit is a literal before editing), `session/test_support.rs` (4: `non_root_env`, `root_env` and two more), `crates/banager-core/tests/unknown_scan_test.rs` (2, F's `Home::env`), `src-tauri/src/ipc.rs` (1). None of them uses struct-update syntax. The build stops with `missing field \`rustup_home\`` at any literal the grep missed, so the compiler is the checklist.
 
-In `crates/canager-core/src/adapters/cargo.rs`, change the import line `use std::path::PathBuf;` to `use std::path::{Path, PathBuf};`. Replace `Crates2Root` through `parse_crates2` (`:39-79`) with:
+In `crates/banager-core/src/adapters/cargo.rs`, change the import line `use std::path::PathBuf;` to `use std::path::{Path, PathBuf};`. Replace `Crates2Root` through `parse_crates2` (`:39-79`) with:
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -925,7 +925,7 @@ with
 
 In `inventory`, replace `parse_crates2(&json, &inst.id)` with `parse_crates2(&json, &inst.id, &inst.prefix)` (a cargo instance's `prefix` is its Cargo home, set in `detect`).
 
-In `crates/canager-core/src/scan/mod.rs`, in `owned_roots`'s `_` arm comment, change `rule 1 places the proxies and, from step E, rule 2` to `rule 1 places the proxies and rule 2` (the sentence continues `places \`cargo install\`ed binaries`); in `struct Known`'s doc comment (the rules list), the rule 2 paragraph is hard-wrapped across two lines that read (at `ea30cfb`, `:330-331`) `gives Homebrew, in a directory every scan reads. cargo fills \`path\`` and `from step E, the standalone adapters from step B; for those, rules` — change the sentence `cargo fills \`path\` from step E, the standalone adapters from step B; for those, rules 1 and 2 compare the same file and rule 2 decides nothing new.` (which spans three lines) to `cargo fills \`path\` with the program each crate installed, which only this rule places (\`hexyl\` resolves to no instance's \`exe_path\`); the standalone adapters fill it from step B, and for those rules 1 and 2 compare the same file and rule 2 decides nothing new.` — "for those" must not take cargo in, since for cargo rule 2 is the only rule that places the program — and re-wrap the paragraph at the file's width. Match by those words, not by line number; change only the "from step E" sentence wherever it stands.
+In `crates/banager-core/src/scan/mod.rs`, in `owned_roots`'s `_` arm comment, change `rule 1 places the proxies and, from step E, rule 2` to `rule 1 places the proxies and rule 2` (the sentence continues `places \`cargo install\`ed binaries`); in `struct Known`'s doc comment (the rules list), the rule 2 paragraph is hard-wrapped across two lines that read (at `ea30cfb`, `:330-331`) `gives Homebrew, in a directory every scan reads. cargo fills \`path\`` and `from step E, the standalone adapters from step B; for those, rules` — change the sentence `cargo fills \`path\` from step E, the standalone adapters from step B; for those, rules 1 and 2 compare the same file and rule 2 decides nothing new.` (which spans three lines) to `cargo fills \`path\` with the program each crate installed, which only this rule places (\`hexyl\` resolves to no instance's \`exe_path\`); the standalone adapters fill it from step B, and for those rules 1 and 2 compare the same file and rule 2 decides nothing new.` — "for those" must not take cargo in, since for cargo rule 2 is the only rule that places the program — and re-wrap the paragraph at the file's width. Match by those words, not by line number; change only the "from step E" sentence wherever it stands.
 
 In `docs/what-we-run.md`, under `## Cargo`, in the paragraph beginning `**Read-only reads.** \`inventory\` runs no command: it reads`, after the sentence ending `(a missing file means nothing is installed).` insert the sentence:
 
@@ -940,7 +940,7 @@ and in the same section's description of `cargo --version` (the detect row or se
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib runner::path_env`, `cargo test -p canager-core --lib adapters::cargo` and `cargo test -p canager-core --test unknown_scan_test`
+Run: `cargo test -p banager-core --lib runner::path_env`, `cargo test -p banager-core --lib adapters::cargo` and `cargo test -p banager-core --test unknown_scan_test`
 Expected: PASS — the 2 new `path_env` tests, the 9 new/changed cargo tests and every earlier one; both rule tests. `cargo build --workspace --all-targets` compiles every `HostEnv {` literal (the two new fields on each).
 
 - [ ] **Step 5: Run the gates**
@@ -950,7 +950,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/runner/path_env.rs crates/canager-core/src/adapters/cargo.rs crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/adapters/npm.rs crates/canager-core/src/adapters/ollama/mod.rs crates/canager-core/src/adapters/pip.rs crates/canager-core/src/adapters/pipx.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/scan/mod.rs crates/canager-core/src/session/scan.rs crates/canager-core/src/session/test_support.rs crates/canager-core/tests/unknown_scan_test.rs src-tauri/src/ipc.rs docs/what-we-run.md
+git add crates/banager-core/src/runner/path_env.rs crates/banager-core/src/adapters/cargo.rs crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/adapters/npm.rs crates/banager-core/src/adapters/ollama/mod.rs crates/banager-core/src/adapters/pip.rs crates/banager-core/src/adapters/pipx.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/scan/mod.rs crates/banager-core/src/session/scan.rs crates/banager-core/src/session/test_support.rs crates/banager-core/tests/unknown_scan_test.rs src-tauri/src/ipc.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Read the Rust host the way rustup does, and record which program each cargo crate installed
 
@@ -978,7 +978,7 @@ EOF
 ### Task 2: Six `Warning` variants, their mirror, keys and copy
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — `enum Warning` (`pub enum Warning` at `:314` at `ea30cfb`; C adds three variants) and `test_warning_wire_shapes_match_the_hand_written_ts_mirror`
+- Modify: `crates/banager-core/src/model.rs` — `enum Warning` (`pub enum Warning` at `:314` at `ea30cfb`; C adds three variants) and `test_warning_wire_shapes_match_the_hand_written_ts_mirror`
 - Modify: `src/lib/types.ts` — `export type Warning` (C adds three arms)  [A's/C's file]
 - Modify: `src/lib/types.test.ts` — `it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", …)`  [A's/C's file]
 - Modify: `src/lib/warnings.ts` — `warningKey`, `warningArgs`  [A's/C's file]
@@ -994,7 +994,7 @@ Copy follows rulings 1, 2, 16, 21 and 22: the two folder sentences name the fold
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, before the line `let round_tripped: Warning =`, insert:
+In `crates/banager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, before the line `let round_tripped: Warning =`, insert:
 
 ```rust
         // Phase 4 step E: what rustup's own uninstall does (adapters/
@@ -1046,7 +1046,7 @@ In `src/lib/types.test.ts`, inside the `it("spells Warning's bare-string variant
 
     // Phase 4 step E: what rustup's own uninstall does. Pinned against
     // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
-    // crates/canager-core/src/model.rs.
+    // crates/banager-core/src/model.rs.
     const removesToolchains: Warning = {
       RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] },
     };
@@ -1150,12 +1150,12 @@ Inside `describe("warningArgs", …)`, after the `it("interpolates the registry 
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror` and `pnpm typecheck`
+Run: `cargo test -p banager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror` and `pnpm typecheck`
 Expected: FAIL — Rust: `no variant named \`RemovesToolchains\` found for enum \`Warning\`` (and the other five); TS: `Type '{ RemovesToolchains: { path: string; names: string[]; }; }' is not assignable to type 'Warning'` in both test files.
 
 - [ ] **Step 3: Add the variants, the mirror, the branches, the copy**
 
-In `crates/canager-core/src/model.rs`, inside `enum Warning`, before `/// Not yet localised -- see this type's doc comment.` (the `Message(String)` variant's doc), insert:
+In `crates/banager-core/src/model.rs`, inside `enum Warning`, before `/// Not yet localised -- see this type's doc comment.` (the `Message(String)` variant's doc), insert:
 
 ```rust
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
@@ -1297,7 +1297,7 @@ In `src/i18n/zh-CN.json`, the same position:
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/types.test.ts src/lib/warnings.test.ts src/i18n/completeness.test.ts`
+Run: `cargo test -p banager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/types.test.ts src/lib/warnings.test.ts src/i18n/completeness.test.ts`
 Expected: PASS — `completeness.test.ts` finds every new key as a literal in `warnings.ts` (`warningKey` returns them as literal strings) and the same key set in both locales.
 
 - [ ] **Step 5: Run the gates**
@@ -1307,7 +1307,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add the six warnings rustup's own uninstall needs, in both locales
 
@@ -1333,10 +1333,10 @@ EOF
 ### Task 3: `SecondToken`, `HttpTomlVersion`, `parse_release_stable_toml`
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `enum VersionParse`, `enum Latest`
-- Modify: `crates/canager-core/src/adapters/standalone/latest.rs` — `parse_version`, new `parse_release_stable_toml`, tests
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — `latest_version`'s `match self.recipe.latest`
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `test_every_recipe_latest_url_is_an_allowed_https_host`'s `match recipe.latest`
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `enum VersionParse`, `enum Latest`
+- Modify: `crates/banager-core/src/adapters/standalone/latest.rs` — `parse_version`, new `parse_release_stable_toml`, tests
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `latest_version`'s `match self.recipe.latest`
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `test_every_recipe_latest_url_is_an_allowed_https_host`'s `match recipe.latest`
 - Test: `latest.rs`'s `mod tests`.
 
 **Interfaces:**
@@ -1347,7 +1347,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/latest.rs` (before its closing `}`):
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/latest.rs` (before its closing `}`):
 
 ```rust
 
@@ -1409,12 +1409,12 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/latest
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::latest`
+Run: `cargo test -p banager-core --lib adapters::standalone::latest`
 Expected: FAIL to compile — `no variant or associated item named \`SecondToken\` found for enum \`VersionParse\``; `cannot find function \`parse_release_stable_toml\``.
 
 - [ ] **Step 3: Add the variants and the parser**
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`, replace
+In `crates/banager-core/src/adapters/standalone/recipe.rs`, replace
 
 ```rust
 pub enum VersionParse {
@@ -1451,7 +1451,7 @@ and replace the `Latest` enum's closing (after the `ClaudeChannel { base: &'stat
     HttpTomlVersion { url: &'static str },
 ```
 
-In `crates/canager-core/src/adapters/standalone/latest.rs`, in `parse_version`, replace
+In `crates/banager-core/src/adapters/standalone/latest.rs`, in `parse_version`, replace
 
 ```rust
     let token = match parse {
@@ -1498,7 +1498,7 @@ pub fn parse_release_stable_toml(body: &str) -> Result<String, String> {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, in `latest_version`'s `match self.recipe.latest { … }`, after the `Latest::ClaudeChannel { base } => { … }` arm, add:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, in `latest_version`'s `match self.recipe.latest { … }`, after the `Latest::ClaudeChannel { base } => { … }` arm, add:
 
 ```rust
             Latest::HttpTomlVersion { url } => {
@@ -1519,7 +1519,7 @@ In `crates/canager-core/src/adapters/standalone/mod.rs`, in `latest_version`'s `
             }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, in `test_every_recipe_latest_url_is_an_allowed_https_host`, replace
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, in `test_every_recipe_latest_url_is_an_allowed_https_host`, replace
 
 ```rust
             let urls: Vec<String> = match recipe.latest {
@@ -1546,7 +1546,7 @@ with
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: PASS — 3 new `latest` tests; every earlier one. The `HttpTomlVersion` arm of `latest_version` is exercised end to end in Task 6, once a recipe produces it.
 
 - [ ] **Step 5: Run the gates**
@@ -1556,7 +1556,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/latest.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/recipes.rs
+git add crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/latest.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/recipes.rs
 git commit -m "$(cat <<'EOF'
 Read a version from the second token, and from a TOML release file
 
@@ -1577,11 +1577,11 @@ EOF
 ### Task 4: `FlatFile`, `expand_route`, the seat bound to its instance, `Recipe.extra_locks`, the Upgrade plan's locks
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `enum RouteKind`, `struct Recipe` (+ `no_extra_locks`)
-- Modify: `crates/canager-core/src/adapters/standalone/route.rs` — new `expand_route` beside B's `expand`; `probe_strict`'s two branches (C's; `probe` if C did not split it); tests
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `CLAUDE` (one field), `test_every_recipe_path_is_under_home`, two new tests
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — `Detected`, `detect`, new `seated_detected_for`/`locks`, the `OpKind::Upgrade` arm of `plan`; `testing` (two helpers, one constant); B's two Upgrade tests rewritten, three new tests
-- Modify: `crates/canager-core/src/adapters/standalone/removal.rs` — C's test helper `fn detected(home: &Path) -> Detected` gains three fields (C checklist row 2)  [C's file]
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `enum RouteKind`, `struct Recipe` (+ `no_extra_locks`)
+- Modify: `crates/banager-core/src/adapters/standalone/route.rs` — new `expand_route` beside B's `expand`; `probe_strict`'s two branches (C's; `probe` if C did not split it); tests
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `CLAUDE` (one field), `test_every_recipe_path_is_under_home`, two new tests
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `Detected`, `detect`, new `seated_detected_for`/`locks`, the `OpKind::Upgrade` arm of `plan`; `testing` (two helpers, one constant); B's two Upgrade tests rewritten, three new tests
+- Modify: `crates/banager-core/src/adapters/standalone/removal.rs` — C's test helper `fn detected(home: &Path) -> Detected` gains three fields (C checklist row 2)  [C's file]
 - Test: `route.rs`, `recipes.rs`, `mod.rs` test modules; C's `removal.rs` tests keep passing.
 
 **Interfaces:**
@@ -1592,7 +1592,7 @@ Rules: `FlatFile` (spec §3.3 step 3) — the launcher must be a regular file (`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/route.rs`, inside `mod tests`, after B's `test_expand_refuses_a_path_that_is_not_under_home` (B's three `expand` tests stay exactly as they are), append:
+In `crates/banager-core/src/adapters/standalone/route.rs`, inside `mod tests`, after B's `test_expand_refuses_a_path_that_is_not_under_home` (B's three `expand` tests stay exactly as they are), append:
 
 ```rust
 
@@ -1708,7 +1708,7 @@ In `crates/canager-core/src/adapters/standalone/route.rs`, inside `mod tests`, a
     }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, replace `test_every_recipe_path_is_under_home` (B's, asserting `path.starts_with("~/")`) with:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, replace `test_every_recipe_path_is_under_home` (B's, asserting `path.starts_with("~/")`) with:
 
 ```rust
     #[test]
@@ -1775,7 +1775,7 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`,
 
 (`Uninstall` reaches the test module through `use super::*;` once the file imports it for `CLAUDE.uninstall` — C's; if C's `RemoveSpec`/`KeepSpec` field for the path is not `path`, use C's name.)
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, inside `mod tests`, replace B's `test_plan_upgrade_is_the_tools_own_update_command_without_the_version_env` and `test_execute_runs_the_plan_and_streams_its_output` (both build an adapter and call `plan` with no detect; the Upgrade arm now reads the seat) with:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, inside `mod tests`, replace B's `test_plan_upgrade_is_the_tools_own_update_command_without_the_version_env` and `test_execute_runs_the_plan_and_streams_its_output` (both build an adapter and call `plan` with no detect; the Upgrade arm now reads the seat) with:
 
 ```rust
     #[tokio::test]
@@ -1967,12 +1967,12 @@ and add `use crate::model::PlanAction;` to that test module's `use` lines unless
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: FAIL to compile — `cannot find function \`expand_route\``; `no variant or associated item named \`FlatFile\``; `cannot find function \`rustup_layout\``/`\`detected\`` in `testing`; `no field \`extra_locks\` on type \`Recipe\``; `no method named \`seated_detected_for\``; `no field \`cargo_home\` on type \`Detected\`` (and `rustup_home`, `zdotdir`).
 
 - [ ] **Step 3: Write the shapes, the helpers, the plan's locks**
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`, change `use crate::model::CancelPolicy;` to
+In `crates/banager-core/src/adapters/standalone/recipe.rs`, change `use crate::model::CancelPolicy;` to
 
 ```rust
 use super::Detected;
@@ -2016,15 +2016,15 @@ pub fn no_extra_locks(_: &Detected) -> Vec<ResourceLock> {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, add `no_extra_locks` to the `use super::recipe::{…}` list, and in `pub static CLAUDE: Recipe = Recipe { … }` add, as its last field (after C's `uninstall: …,`):
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `no_extra_locks` to the `use super::recipe::{…}` list, and in `pub static CLAUDE: Recipe = Recipe { … }` add, as its last field (after C's `uninstall: …,`):
 
 ```rust
     extra_locks: no_extra_locks,
 ```
 
-Add the same line to every other `Recipe { … }` literal the baseline's `grep -rn "Recipe {$" crates/canager-core/src/adapters/standalone/` found — C's ruling 2 promises a test-only recipe with `uninstall: None` to keep the `NoSafeMethod` arm exercised — importing `no_extra_locks` (`super::recipe::no_extra_locks`, or the path that module uses for `Recipe`) where it sits. A literal without the field stops the build with `missing field \`extra_locks\``, so the compiler lists any the grep missed.
+Add the same line to every other `Recipe { … }` literal the baseline's `grep -rn "Recipe {$" crates/banager-core/src/adapters/standalone/` found — C's ruling 2 promises a test-only recipe with `uninstall: None` to keep the `NoSafeMethod` arm exercised — importing `no_extra_locks` (`super::recipe::no_extra_locks`, or the path that module uses for `Recipe`) where it sits. A literal without the field stops the build with `missing field \`extra_locks\``, so the compiler lists any the grep missed.
 
-In `crates/canager-core/src/adapters/standalone/route.rs`, leave B's `expand` exactly as it is and insert after it:
+In `crates/banager-core/src/adapters/standalone/route.rs`, leave B's `expand` exactly as it is and insert after it:
 
 ```rust
 
@@ -2103,7 +2103,7 @@ with
 
 (again `Ok(Probe::Absent)` in C's `probe_strict`; the rest of the branch — `read_link`, the canonical parent, `canonicalize_existing_prefix`, C's `one_hop`, the marker check — is B's/C's, unchanged).
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`:
+In `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 (a) Replace `Detected` (B's one field, C's `euid` and doc) with:
 
@@ -2329,11 +2329,11 @@ and replace the `Detected { … }` literal it writes (`*self.detected.lock().unw
 
 (`euid: 501,` is C's field per spec §3.2; drop that line if C did not add the field.)
 
-In `crates/canager-core/src/adapters/standalone/removal.rs` (C's), in its test module's helper `fn detected(home: &Path) -> Detected { Detected { home: …, euid: … } }`, add the three fields `cargo_home: Some(home.join(".cargo")), rustup_home: Some(home.join(".rustup")), zdotdir: None,` (C checklist row 2). Every other `Detected {` literal the grep finds outside `mod.rs` gets the same three lines; a struct-update literal (`Detected { euid: …, ..detected(home.path()) }`) needs nothing.
+In `crates/banager-core/src/adapters/standalone/removal.rs` (C's), in its test module's helper `fn detected(home: &Path) -> Detected { Detected { home: …, euid: … } }`, add the three fields `cargo_home: Some(home.join(".cargo")), rustup_home: Some(home.join(".rustup")), zdotdir: None,` (C checklist row 2). Every other `Detected {` literal the grep finds outside `mod.rs` gets the same three lines; a struct-update literal (`Detected { euid: …, ..detected(home.path()) }`) needs nothing.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: PASS — in `route`, two new `expand_route` tests, four new `FlatFile` tests (present, a link or a directory, missing, dangling), B's three `expand` tests untouched; 3 in `recipes`; 5 in `mod.rs`; every earlier one, C's `removal` tests among them (B's `test_expand_refuses_a_path_that_is_not_under_home` still panics with `must start with ~/`; B's dangling-link tests still answer `LauncherOnly` for `SymlinkIntoRoot`).
 
 - [ ] **Step 5: Run the gates**
@@ -2345,7 +2345,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 If the `Recipe { … }` literal C wrote for its `uninstall: None` test (Step 3) lives in a file other than these five, append that file's exact path to the `git add` below.
 
 ```bash
-git add crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/route.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/removal.rs
+git add crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/removal.rs
 git commit -m "$(cat <<'EOF'
 Recognise a flat-file launcher under the Cargo home, bind the seat to its instance, and let a recipe hold extra locks
 
@@ -2371,9 +2371,9 @@ EOF
 ### Task 5: `rustup.rs` — the roots gate, toolchains, cargo-installed programs, the Homebrew signal, the startup-file visit model, the warnings, the lock
 
 **Files:**
-- Create: `crates/canager-core/src/adapters/standalone/rustup.rs`
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — the `pub mod` list (add `pub mod rustup;`); `testing` (`RUSTUP_PROXIES` moves out of it)
-- Modify: `crates/canager-core/src/scan/mod.rs` — `fn display_path` → `pub(crate) fn display_path`, only if C did not already (C checklist row 8)  [F's file]
+- Create: `crates/banager-core/src/adapters/standalone/rustup.rs`
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — the `pub mod` list (add `pub mod rustup;`); `testing` (`RUSTUP_PROXIES` moves out of it)
+- Modify: `crates/banager-core/src/scan/mod.rs` — `fn display_path` → `pub(crate) fn display_path`, only if C did not already (C checklist row 8)  [F's file]
 - Test: `rustup.rs`'s `mod tests`.
 
 **Interfaces:**
@@ -2385,7 +2385,7 @@ Every fact this file encodes is Rulings 1, 2, 4, 15, 16, 18, 21 and 22's, with r
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `crates/canager-core/src/adapters/standalone/rustup.rs` with only the test module for now (Step 3 adds the functions above it):
+Create `crates/banager-core/src/adapters/standalone/rustup.rs` with only the test module for now (Step 3 adds the functions above it):
 
 ```rust
 #[cfg(test)]
@@ -3066,16 +3066,16 @@ mod tests {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, in the `pub mod` list, add `pub mod rustup;` (alphabetically, after `pub mod route;`; C's `pub mod removal;` sits before it).
+In `crates/banager-core/src/adapters/standalone/mod.rs`, in the `pub mod` list, add `pub mod rustup;` (alphabetically, after `pub mod route;`; C's `pub mod removal;` sits before it).
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::rustup`
+Run: `cargo test -p banager-core --lib adapters::standalone::rustup`
 Expected: FAIL to compile — `cannot find function \`standard_roots\`` (and the other functions), `cannot find value \`SHELL_RC_CANDIDATES\``, `\`RUSTUP_PROXIES\`` (the one in `testing` is not `rustup.rs`'s) and `\`HOMEBREW_PREFIXES\``; `cannot find type \`Leftover\``, `\`Detected\``; `Warning`, `ResourceLock`, `Path` unresolved until Step 3's imports exist.
 
 - [ ] **Step 3: Write the module**
 
-Prepend to `crates/canager-core/src/adapters/standalone/rustup.rs` (above `#[cfg(test)]`):
+Prepend to `crates/banager-core/src/adapters/standalone/rustup.rs` (above `#[cfg(test)]`):
 
 ```rust
 //! What `rustup self uninstall` does, when Canager may offer it, and what
@@ -3573,9 +3573,9 @@ pub fn extra_locks(d: &Detected) -> Vec<ResourceLock> {
 }
 ```
 
-If C did not make `scan::display_path` `pub(crate)` (C checklist row 8), change `fn display_path(path: &Path, home: &Path) -> PathBuf {` in `crates/canager-core/src/scan/mod.rs` to `pub(crate) fn display_path(…)`, with a doc sentence: `/// Also the one \`~\` rule for the rustup recipe's preview (\`adapters::standalone::rustup\`).`
+If C did not make `scan::display_path` `pub(crate)` (C checklist row 8), change `fn display_path(path: &Path, home: &Path) -> PathBuf {` in `crates/banager-core/src/scan/mod.rs` to `pub(crate) fn display_path(…)`, with a doc sentence: `/// Also the one \`~\` rule for the rustup recipe's preview (\`adapters::standalone::rustup\`).`
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, in `#[cfg(test)] pub(super) mod testing`, delete Task 4's `pub const RUSTUP_PROXIES: [&str; 13] = [ … ];` together with the two doc lines above it (`/// Here until Task 5 moves it to \`rustup.rs\`, …`), and in `rustup_layout` change `for proxy in RUSTUP_PROXIES {` to
+In `crates/banager-core/src/adapters/standalone/mod.rs`, in `#[cfg(test)] pub(super) mod testing`, delete Task 4's `pub const RUSTUP_PROXIES: [&str; 13] = [ … ];` together with the two doc lines above it (`/// Here until Task 5 moves it to \`rustup.rs\`, …`), and in `rustup_layout` change `for proxy in RUSTUP_PROXIES {` to
 
 ```rust
         for proxy in super::rustup::RUSTUP_PROXIES {
@@ -3585,7 +3585,7 @@ In `crates/canager-core/src/adapters/standalone/mod.rs`, in `#[cfg(test)] pub(su
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: PASS — 24 tests in `rustup` (two gate, one toolchains, one `RUSTUP_PROXIES`, four `bin_programs_rustup_removes`, one Homebrew, two `cargo_home_str`, two `rustup_rc_visits`, one `remove_first_exact_line`, one `leftover_patterns`, one `classify_leftover`, five `shell_config_leftovers`, two `warnings_with`, one `extra_locks`), and every earlier `standalone` test, whose layouts `rustup_layout` now builds from `rustup::RUSTUP_PROXIES`.
 
 - [ ] **Step 5: Run the gates**
@@ -3594,10 +3594,10 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 
 - [ ] **Step 6: Commit**
 
-If Step 3 changed `display_path`'s visibility, append `crates/canager-core/src/scan/mod.rs` to the `git add` below.
+If Step 3 changed `display_path`'s visibility, append `crates/banager-core/src/scan/mod.rs` to the `git add` below.
 
 ```bash
-git add crates/canager-core/src/adapters/standalone/rustup.rs crates/canager-core/src/adapters/standalone/mod.rs
+git add crates/banager-core/src/adapters/standalone/rustup.rs crates/banager-core/src/adapters/standalone/mod.rs
 git commit -m "$(cat <<'EOF'
 Say what rustup 1.29.1's self uninstall removes, and when Canager may offer it, from its source
 
@@ -3628,10 +3628,10 @@ EOF
 
 **Files:**
 - Create: `adapters/meta/standalone-rustup.toml`
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `enum Uninstall` (C's; one arm), new `CommandUninstall`
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `pub static RUSTUP` (not yet in `RECIPES`: Task 10 registers it with its recording); tests
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — `inventory`'s `uninstall_blocked`, `plan`'s `OpKind::Uninstall` arm (one arm in C's match), new `command_uninstall_plan`; C's other branches on `recipe.uninstall` only where Step 3's list says so (`execute`'s dispatch); tests
-- Modify: `crates/canager-core/src/http/real.rs` — `ALLOWED_HTTPS_HOSTS`, its doc comment, one test  [A's file: anchor by the constant and the test names]
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `enum Uninstall` (C's; one arm), new `CommandUninstall`
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `pub static RUSTUP` (not yet in `RECIPES`: Task 10 registers it with its recording); tests
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `inventory`'s `uninstall_blocked`, `plan`'s `OpKind::Uninstall` arm (one arm in C's match), new `command_uninstall_plan`; C's other branches on `recipe.uninstall` only where Step 3's list says so (`execute`'s dispatch); tests
+- Modify: `crates/banager-core/src/http/real.rs` — `ALLOWED_HTTPS_HOSTS`, its doc comment, one test  [A's file: anchor by the constant and the test names]
 - Modify: `docs/what-we-run.md` — the table under `## Network: Canager only connects to these hosts`  [A's file: anchor by the heading and B's `downloads.claude.ai` row, `:652` at `ea30cfb`]
 - Test: `recipes.rs`'s, `mod.rs`'s and `real.rs`'s test modules; A's `what_we_run_test` keeps passing.
 
@@ -3643,7 +3643,7 @@ The recipe's every value and its source (rustup.md, VERIFIED unless said, and th
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/recipes.rs`:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/recipes.rs`:
 
 ```rust
 
@@ -3727,7 +3727,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/recipe
 
 (`std::ptr::fn_addr_eq` is stable since Rust 1.85; the toolchain here is 1.98. If clippy objects to the `as fn(…)` casts, the intent is a comparison of the two function pointers' addresses, and `cmd.warnings as usize == uninstall_warnings as usize` is the fallback.) `Uninstall` must already be imported by the recipe file for `CLAUDE`'s `Paths`.
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs`; add `use super::recipes::RUSTUP; use super::testing::rustup_layout; use crate::adapters::cargo::CargoAdapter; use crate::trash::MockTrasher;` to its `use` lines, skipping any the module already imports — C's tests build adapters with a trasher and likely import `MockTrasher` already, and a second identical `use` in one module is error E0252. No test here names `RUSTUP_PROXIES`, which `rustup_layout` reads for itself:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs`; add `use super::recipes::RUSTUP; use super::testing::rustup_layout; use crate::adapters::cargo::CargoAdapter; use crate::trash::MockTrasher;` to its `use` lines, skipping any the module already imports — C's tests build adapters with a trasher and likely import `MockTrasher` already, and a second identical `use` in one module is error E0252. No test here names `RUSTUP_PROXIES`, which `rustup_layout` reads for itself:
 
 ```rust
 
@@ -4266,7 +4266,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs
     }
 ```
 
-In `crates/canager-core/src/http/real.rs`, append inside `mod tests` after B's `test_host_allowed_accepts_claude_codes_channel_pointers`:
+In `crates/banager-core/src/http/real.rs`, append inside `mod tests` after B's `test_host_allowed_accepts_claude_codes_channel_pointers`:
 
 ```rust
 
@@ -4281,7 +4281,7 @@ In `crates/canager-core/src/http/real.rs`, append inside `mod tests` after B's `
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone` and `cargo test -p canager-core --lib http::real`
+Run: `cargo test -p banager-core --lib adapters::standalone` and `cargo test -p banager-core --lib http::real`
 Expected: FAIL to compile — `cannot find value \`RUSTUP\``, `no variant named \`Command\` found for enum \`Uninstall\``, `cannot find type \`CommandUninstall\``; `real.rs`'s new test FAILS with `host not allowed: "static.rust-lang.org" is not one of […]`.
 
 - [ ] **Step 3: Write the types, the recipe, the plan arm, the gate, the host, the doc row**
@@ -4300,7 +4300,7 @@ verified_versions = ["1.29.1"]
 
 (`kind = "standalone"` is documentary, as for claude. `verified_versions` is what Task 10 records; if the recording day's `rustup --version` differs, Task 10 changes this line to match.)
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`, make the model import `use crate::model::{CancelPolicy, ResourceLock, UninstallBlocked, Warning};` (keeping whatever C imports), and after C's `enum Uninstall`'s `Paths { … }` arm add:
+In `crates/banager-core/src/adapters/standalone/recipe.rs`, make the model import `use crate::model::{CancelPolicy, ResourceLock, UninstallBlocked, Warning};` (keeping whatever C imports), and after C's `enum Uninstall`'s `Paths { … }` arm add:
 
 ```rust
     /// The tool's own official uninstall command (rustup: `self uninstall
@@ -4337,7 +4337,7 @@ pub struct CommandUninstall {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, add `CommandUninstall`, `Uninstall` (if not yet), and `super::rustup` to the imports (`use super::recipe::{…}; use super::rustup;`), and `use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;`, and after `CLAUDE` (before `RECIPES`) add:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `CommandUninstall`, `Uninstall` (if not yet), and `super::rustup` to the imports (`use super::recipe::{…}; use super::rustup;`), and `use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;`, and after `CLAUDE` (before `RECIPES`) add:
 
 ```rust
 
@@ -4442,7 +4442,7 @@ pub static RUSTUP: Recipe = Recipe {
 
 (`RECIPES` stays `&[&CLAUDE]` until Task 10: adding `RUSTUP` registers it through `all()`, and `fixtures_layout_test`/`what_we_run_test` then demand the recording and the trust-file section, which Task 10 brings in the same commit. If step D landed first, `RUSTUP` also needs D's `backup_globs: &[],`.)
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, add `CommandUninstall` and `Uninstall` to the `use self::recipe::{…}` line, and after `locks` (before `inventory`) insert:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, add `CommandUninstall` and `Uninstall` to the `use self::recipe::{…}` line, and after `locks` (before `inventory`) insert:
 
 ```rust
 
@@ -4508,14 +4508,14 @@ In `inventory`, replace the `uninstall_blocked:` field of the one artifact (C's 
             },
 ```
 
-Then settle every other place that branches on the recipe's uninstall — the ones the C checklist's row 5 names. Run `grep -rn "Uninstall::Paths\|recipe.uninstall\|\.uninstall\b" crates/canager-core/src/adapters/standalone/` and, for each hit outside the two arms just written:
+Then settle every other place that branches on the recipe's uninstall — the ones the C checklist's row 5 names. Run `grep -rn "Uninstall::Paths\|recipe.uninstall\|\.uninstall\b" crates/banager-core/src/adapters/standalone/` and, for each hit outside the two arms just written:
 
 - **`execute`'s dispatch.** A `Command` uninstall plan must reach `run_plan` unchanged (spec §6.1; `test_execute_runs_rustups_uninstall_through_run_plan`). If C's `execute` dispatches on `plan.action` (`PlanAction::Command { .. }` → `run_plan`, `PlanAction::TrashPaths { .. }` → `removal::execute_removal`), nothing changes. If it matches `self.recipe.uninstall` to find the `remove`/`keep` lists, keep that lookup inside the `TrashPaths` arm and let the `Command` action go to `run_plan` whatever the recipe says.
 - **`reconcile_after_uninstall`** (C's override): it answers presence of the launcher through `probe_strict`, which Task 4 taught `FlatFile`; nothing to change, and Task 8 proves it.
 - **Any other `match` / `if let` / `let … else` over `Uninstall` in non-test code**: a `Command` arm that does what the surrounding function does for "the recipe has its own command", or, where the function is about paths only, `Some(Uninstall::Command(_)) => <the same as None>` with a one-line comment saying why.
 - **RECIPES-wide tests that destructure `Uninstall::Paths { .. }`** (launcher last, every `remove` path under home, `keep` copy, …): nothing to do here — `RUSTUP` is not in `RECIPES` until Task 10, which gives each of them its skip (Task 10, Step 4). `test_a_paths_recipe_names_only_home_paths` (Task 4) already skips a `Command` recipe.
 
-In `crates/canager-core/src/http/real.rs`, change B's constant to
+In `crates/banager-core/src/http/real.rs`, change B's constant to
 
 ```rust
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
@@ -4537,7 +4537,7 @@ In `docs/what-we-run.md`, under `## Network: Canager only connects to these host
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run, as three commands (`cargo test` takes one test-name filter; a second positional is `unexpected argument`): `cargo test -p canager-core --lib adapters::standalone`, `cargo test -p canager-core --lib http::real` and `cargo test -p canager-core --test what_we_run_test`
+Run, as three commands (`cargo test` takes one test-name filter; a second positional is `unexpected argument`): `cargo test -p banager-core --lib adapters::standalone`, `cargo test -p banager-core --lib http::real` and `cargo test -p banager-core --test what_we_run_test`
 Expected: PASS — 3 new `recipes` tests, 12 new `mod.rs` tests, the `real.rs` test; A's document tests still green (the host is now named in the doc). `fixtures_layout_test` and `test_new_registers_all_eight_adapters` are untouched: `RUSTUP` is not in `RECIPES` yet.
 
 - [ ] **Step 5: Run the gates**
@@ -4547,7 +4547,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add adapters/meta/standalone-rustup.toml crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/http/real.rs docs/what-we-run.md
+git add adapters/meta/standalone-rustup.toml crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/http/real.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Describe rustup as a recipe, with its own uninstall command, its gate and its cargo lock
 
@@ -4572,8 +4572,8 @@ EOF
 ### Task 7: A refresh leaves an adapter alone while an operation holds its instance
 
 **Files:**
-- Modify: `crates/canager-core/src/ops/mod.rs` — one method on `OperationManager`, beside `acquire_resource_lock` (`:876` at `ea30cfb`)
-- Modify: `crates/canager-core/src/session/refresh.rs:156-235` (the detection fan-out and join) and `:236-262` (the per-instance carry-forward branch); its `mod tests` (`:1395-1465` renamed and re-asserted; two new tests)
+- Modify: `crates/banager-core/src/ops/mod.rs` — one method on `OperationManager`, beside `acquire_resource_lock` (`:876` at `ea30cfb`)
+- Modify: `crates/banager-core/src/session/refresh.rs:156-235` (the detection fan-out and join) and `:236-262` (the per-instance carry-forward branch); its `mod tests` (`:1395-1465` renamed and re-asserted; two new tests)
 - Test: `session/refresh.rs`'s `mod tests`; `tests/ops_lock_test.rs` and `tests/ops_cancel_test.rs` keep passing (nothing about acquisition changes).
 
 **Interfaces:**
@@ -4584,7 +4584,7 @@ Ruling 19 in full. Why here and not in the adapter: `refresh_round` spawns every
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/session/refresh.rs`, inside `mod tests`, replace `test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others` (`:1395-1465`: it seeds two `fake` instances, sets `block_execute`, refreshes once, submits an Install on `fake:1`, waits for it to be Running, spawns a second refresh, sleeps 200 ms, asserts `fake:2` was inventoried and `fake:1` was not, cancels the op, and awaits the refresh with a 2 s timeout) with:
+In `crates/banager-core/src/session/refresh.rs`, inside `mod tests`, replace `test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others` (`:1395-1465`: it seeds two `fake` instances, sets `block_execute`, refreshes once, submits an Install on `fake:1`, waits for it to be Running, spawns a second refresh, sleeps 200 ms, asserts `fake:2` was inventoried and `fake:1` was not, cancels the op, and awaits the refresh with a 2 s timeout) with:
 
 ```rust
     #[tokio::test]
@@ -4927,12 +4927,12 @@ and add to the test module's `use` lines whatever of `std::path::PathBuf`, `crat
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib session::refresh::tests`
+Run: `cargo test -p banager-core --lib session::refresh::tests`
 Expected: FAIL — the rustup test does not compile (`no method named \`locks_held\` found`); the renamed test fails at `"a refresh must not wait for an operation on one instance"` (the refresh waits on `fake:1`'s lock until the cancel, which the test no longer sends first); the two-adapter test fails at `"a is skipped"` (`detect_calls` is 2).
 
 - [ ] **Step 3: The held-locks snapshot, the skip, the carry-forward**
 
-In `crates/canager-core/src/ops/mod.rs`, inside `impl OperationManager` (the one holding `acquire_resource_lock`, at the end of the file), before `pub async fn acquire_resource_lock`, insert:
+In `crates/banager-core/src/ops/mod.rs`, inside `impl OperationManager` (the one holding `acquire_resource_lock`, at the end of the file), before `pub async fn acquire_resource_lock`, insert:
 
 ```rust
     /// The resource locks held this instant: by operations from the
@@ -4952,7 +4952,7 @@ In `crates/canager-core/src/ops/mod.rs`, inside `impl OperationManager` (the one
 
 ```
 
-In `crates/canager-core/src/session/refresh.rs`, add `InstanceId` to the `use crate::model::{…}` line and `use std::collections::HashSet;` to the imports. After the `use` lines and before `impl Session`, insert:
+In `crates/banager-core/src/session/refresh.rs`, add `InstanceId` to the `use crate::model::{…}` line and `use std::collections::HashSet;` to the imports. After the `use` lines and before `impl Session`, insert:
 
 ```rust
 
@@ -5084,7 +5084,7 @@ with
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib session` and `cargo test -p canager-core --test ops_lock_test --test ops_cancel_test --test ops_outcome_test`
+Run: `cargo test -p banager-core --lib session` and `cargo test -p banager-core --test ops_lock_test --test ops_cancel_test --test ops_outcome_test`
 Expected: PASS — the renamed test, the two new ones, every other `session` test (`test_dropping_a_refresh_cancels_its_workers_and_releases_their_locks` submits its operation after the dropped refresh's lock is free, and `test_a_refresh_behind_a_running_brew_update_reads_nothing_and_keeps_the_previous_rows` concerns brew's own in-adapter state, not this set), and every ops test (acquisition is untouched).
 
 - [ ] **Step 5: Run the gates**
@@ -5094,7 +5094,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/ops/mod.rs crates/canager-core/src/session/refresh.rs
+git add crates/banager-core/src/ops/mod.rs crates/banager-core/src/session/refresh.rs
 git commit -m "$(cat <<'EOF'
 Leave an adapter alone in a refresh while an operation holds its instance
 
@@ -5119,8 +5119,8 @@ EOF
 ### Task 8: End to end through `OperationManager` — the upgrade's two outcomes, the uninstall's four, the lock cases
 
 **Files:**
-- Create: `crates/canager-core/tests/ops_rustup_uninstall_test.rs`
-- Modify: `crates/canager-core/tests/ops_upgrade_version_test.rs` — imports (`:33-49` at `ea30cfb`; B added `canager_core::adapters::standalone::…` lines), one section appended at the end  [B's file]
+- Create: `crates/banager-core/tests/ops_rustup_uninstall_test.rs`
+- Modify: `crates/banager-core/tests/ops_upgrade_version_test.rs` — imports (`:33-49` at `ea30cfb`; B added `banager_core::adapters::standalone::…` lines), one section appended at the end  [B's file]
 - Test: both files.
 
 **Interfaces:**
@@ -5131,7 +5131,7 @@ Why a separate file for the uninstall: `ops_upgrade_version_test.rs` is about up
 
 - [ ] **Step 1: Write the tests (they pass against the engine as it stands, and are kept as regressions)**
 
-Append to `crates/canager-core/tests/ops_upgrade_version_test.rs` (at the end of the file), and add `use canager_core::adapters::standalone::recipes::RUSTUP;` beside B's `use canager_core::adapters::standalone::recipes::CLAUDE;` (or merge into one `use canager_core::adapters::standalone::recipes::{CLAUDE, RUSTUP};`), `use canager_core::runner::HostEnv;` and `use canager_core::trash::MockTrasher;` (C's; skip it if C already imports it for its claude helpers) to the imports:
+Append to `crates/banager-core/tests/ops_upgrade_version_test.rs` (at the end of the file), and add `use banager_core::adapters::standalone::recipes::RUSTUP;` beside B's `use banager_core::adapters::standalone::recipes::CLAUDE;` (or merge into one `use banager_core::adapters::standalone::recipes::{CLAUDE, RUSTUP};`), `use banager_core::runner::HostEnv;` and `use banager_core::trash::MockTrasher;` (C's; skip it if C already imports it for its claude helpers) to the imports:
 
 ```rust
 
@@ -5253,7 +5253,7 @@ async fn test_a_rustup_self_update_stopped_by_the_timeout_is_unconfirmed_whateve
 }
 ```
 
-Create `crates/canager-core/tests/ops_rustup_uninstall_test.rs`:
+Create `crates/banager-core/tests/ops_rustup_uninstall_test.rs`:
 
 ```rust
 //! `rustup self uninstall -y`'s outcome, end to end through
@@ -5279,19 +5279,19 @@ Create `crates/canager-core/tests/ops_rustup_uninstall_test.rs`:
 //! longer describes is refused before anything is submitted.
 
 use async_trait::async_trait;
-use canager_core::adapters::standalone::recipes::RUSTUP;
-use canager_core::adapters::standalone::StandaloneAdapter;
-use canager_core::adapters::{Adapter, AdapterError};
-use canager_core::events::VecSink;
-use canager_core::http::MockHttpClient;
-use canager_core::model::{
+use banager_core::adapters::standalone::recipes::RUSTUP;
+use banager_core::adapters::standalone::StandaloneAdapter;
+use banager_core::adapters::{Adapter, AdapterError};
+use banager_core::events::VecSink;
+use banager_core::http::MockHttpClient;
+use banager_core::model::{
     ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome, ResourceLock,
 };
-use canager_core::ops::OperationManager;
-use canager_core::runner::{
+use banager_core::ops::OperationManager;
+use banager_core::runner::{
     CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, MockRunner, RunnerError,
 };
-use canager_core::trash::MockTrasher;
+use banager_core::trash::MockTrasher;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -5588,7 +5588,7 @@ async fn test_a_plan_for_an_instance_from_another_home_is_refused_and_a_redetect
 
 - [ ] **Step 2: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test ops_upgrade_version_test` and `cargo test -p canager-core --test ops_rustup_uninstall_test`
+Run: `cargo test -p banager-core --test ops_upgrade_version_test` and `cargo test -p banager-core --test ops_rustup_uninstall_test`
 Expected: PASS — the three upgrade tests and the six uninstall tests. These pass against the engine as it stands: the recipe (Task 6), C's `reconcile_after_uninstall` and Task 4's `FlatFile` arms in `probe_strict` are what they exercise, and they are here because this is where each of the outcomes the trust file describes becomes a test rather than a sentence. If `test_an_uninstall_exiting_zero_with_the_launcher_gone_and_other_bin_files_left_succeeded` fails with `StillInstalledAfterUninstall`, C's `reconcile_after_uninstall` is answering presence of something other than the launcher: read it (C checklist row 6) and write down what it reads before touching anything.
 
 - [ ] **Step 3: Run the gates**
@@ -5598,7 +5598,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/canager-core/tests/ops_upgrade_version_test.rs crates/canager-core/tests/ops_rustup_uninstall_test.rs
+git add crates/banager-core/tests/ops_upgrade_version_test.rs crates/banager-core/tests/ops_rustup_uninstall_test.rs
 git commit -m "$(cat <<'EOF'
 Prove rustup's outcomes end to end: unchanged, updated, stopped, gone, still there
 
@@ -5622,8 +5622,8 @@ EOF
 ### Task 9: `NoCancel`'s first producer and `operations.noCancelHint`'s two readers
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — the doc comment on `NoCancel` inside `pub enum CancelPolicy` (the seven `///` lines directly above `NoCancel,`; C's `PlanAction` lands above the enum and moves it)  [B's/C's file: anchor by the variant]
-- Modify: `crates/canager-core/tests/ops_cancel_test.rs` — the policy-matrix comment, the three lines reading `none produced yet; a standalone` … (`:742-744` at `ea30cfb`)
+- Modify: `crates/banager-core/src/model.rs` — the doc comment on `NoCancel` inside `pub enum CancelPolicy` (the seven `///` lines directly above `NoCancel,`; C's `PlanAction` lands above the enum and moves it)  [B's/C's file: anchor by the variant]
+- Modify: `crates/banager-core/tests/ops_cancel_test.rs` — the policy-matrix comment, the three lines reading `none produced yet; a standalone` … (`:742-744` at `ea30cfb`)
 - Modify: `src-tauri/src/ipc.rs:629-630` (the fake adapter's `cancel_policy` field doc), `:1733` and `:1778` (the two test names)
 - Modify: `src/lib/types.ts` — the doc comment above `export type CancelPolicy` (`:168-176` at `ea30cfb`)  [A's/C's file: anchor by the type]
 - Modify: `src/components/OperationBar.tsx:32-37` (the comment above `cancellable`)
@@ -5650,7 +5650,7 @@ In `src/components/OperationBar.test.tsx`, replace the two `NoCancel` cases (`:1
     // `OperationManager::cancel` (ops/mod.rs) refuses such an op once it
     // is Running, so a button here would promise something the backend
     // will not do. rustup's `self update` and `self uninstall` are the
-    // plans that say NoCancel (crates/canager-core/src/adapters/
+    // plans that say NoCancel (crates/banager-core/src/adapters/
     // standalone/recipes.rs): the first unlinks and re-copies the binary
     // every Rust proxy runs, the second removes Rust directory by
     // directory.
@@ -5722,7 +5722,7 @@ In `src/components/UninstallDialog.test.tsx`, append inside `describe("Uninstall
 ```tsx
 
   it("says a NoCancel plan cannot be stopped once it starts, and says nothing of the kind for a cancellable one", async () => {
-    // rustup's `self uninstall` (crates/canager-core/src/adapters/
+    // rustup's `self uninstall` (crates/banager-core/src/adapters/
     // standalone/recipes.rs): `OperationBar` will offer no Cancel once it
     // is Running, so the preview says so before the click (spec §五,
     // §6.6's last line).
@@ -5757,7 +5757,7 @@ In `src/pages/UpdatesPage.test.tsx`: after `let needsPassword: Set<string>;` add
 
 ```ts
 // Names whose plan comes back `NoCancel`, mirroring the rustup recipe's
-// `self update` (crates/canager-core/src/adapters/standalone/recipes.rs).
+// `self update` (crates/banager-core/src/adapters/standalone/recipes.rs).
 let noCancel: Set<string>;
 ```
 
@@ -5805,7 +5805,7 @@ Expected: `pnpm exec vitest run src/components/OperationBar.test.tsx` PASSES alr
 
 - [ ] **Step 3: Point the four sentences at rustup, rename the two tests, add the key and its two readers**
 
-In `crates/canager-core/src/model.rs`, in `pub enum CancelPolicy`, replace the seven-line doc comment directly above `NoCancel,` — at `ea30cfb` it begins `/// Cancel is refused once the op is Running` and ends with the lines `/// \`KillThenReconcile\` and the command never starts. No adapter` / `/// produces this yet: a standalone self-updating installer (\`rustup` / `/// self update\`) is the expected first.` — with:
+In `crates/banager-core/src/model.rs`, in `pub enum CancelPolicy`, replace the seven-line doc comment directly above `NoCancel,` — at `ea30cfb` it begins `/// Cancel is refused once the op is Running` and ends with the lines `/// \`KillThenReconcile\` and the command never starts. No adapter` / `/// produces this yet: a standalone self-updating installer (\`rustup` / `/// self update\`) is the expected first.` — with:
 
 ```rust
     /// Cancel is refused once the op is Running, and its command then ends
@@ -5821,7 +5821,7 @@ In `crates/canager-core/src/model.rs`, in `pub enum CancelPolicy`, replace the s
     /// partway leaves no working Rust.
 ```
 
-In `crates/canager-core/tests/ops_cancel_test.rs`, replace the comment lines (`:742-744` at `ea30cfb`)
+In `crates/banager-core/tests/ops_cancel_test.rs`, replace the comment lines (`:742-744` at `ea30cfb`)
 
 ```rust
 // reconciled. A `NoCancel` plan -- none produced yet; a standalone
@@ -5845,13 +5845,13 @@ In `src/lib/types.ts`, replace the doc comment directly above `export type Cance
 ```ts
 /**
  * What the user's Cancel does to an operation. Mirrors `CancelPolicy` in
- * crates/canager-core/src/model.rs: bare-string unit variants.
+ * crates/banager-core/src/model.rs: bare-string unit variants.
  * `OperationBar.tsx` reads the copy `OpSummary` carries, with its
  * `status`, and offers no Cancel button for a Running `NoCancel` op,
  * which `OperationManager::cancel` would refuse; a Queued one keeps the
  * button, since nothing has started and the cancel is accepted. rustup's
  * `self update` and `self uninstall` produce `NoCancel` (the recipe in
- * crates/canager-core/src/adapters/standalone/recipes.rs); the update
+ * crates/banager-core/src/adapters/standalone/recipes.rs); the update
  * confirmation and the uninstall dialog say so under the command
  * (`operations.noCancelHint`) before the click.
  */
@@ -5861,7 +5861,7 @@ In `src/components/OperationBar.tsx`, replace the comment line `// No adapter pr
 
 ```ts
   // rustup's `self update` and `self uninstall` produce `NoCancel`
-  // (crates/canager-core/src/adapters/standalone/recipes.rs); the preview
+  // (crates/banager-core/src/adapters/standalone/recipes.rs); the preview
   // said so under the command, before the click.
 ```
 
@@ -5872,7 +5872,7 @@ In `src/components/UninstallDialog.tsx`, after the `<CommandPreview … />` elem
             {plan.cancel_policy === "NoCancel" && (
               // The one policy the operation bar will offer no Cancel for
               // once the command is Running (`OperationManager::cancel`,
-              // crates/canager-core/src/ops/mod.rs): rustup's own uninstall,
+              // crates/banager-core/src/ops/mod.rs): rustup's own uninstall,
               // which removes Rust directory by directory. Said here, before
               // the click, as the preview's password notice is.
               <p className="text-sm font-medium text-[var(--color-foreground)]">
@@ -5908,7 +5908,7 @@ In `src/i18n/zh-CN.json`, after `"cancel": "取消",` in `"operations"`:
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test ops_cancel_test`, `cargo test -p canager --lib` (the Tauri crate's tests, renamed), `pnpm typecheck && pnpm test`
+Run: `cargo test -p banager-core --test ops_cancel_test`, `cargo test -p canager --lib` (the Tauri crate's tests, renamed), `pnpm typecheck && pnpm test`
 Expected: PASS — including `completeness.test.ts` (`operations.noCancelHint` is a literal in two components) and `no-literal-strings.test.ts` (the new JSX carries `t()` only).
 
 - [ ] **Step 5: Run the gates**
@@ -5918,7 +5918,7 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/tests/ops_cancel_test.rs src-tauri/src/ipc.rs src/lib/types.ts src/components/OperationBar.tsx src/components/OperationBar.test.tsx src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs crates/banager-core/tests/ops_cancel_test.rs src-tauri/src/ipc.rs src/lib/types.ts src/components/OperationBar.tsx src/components/OperationBar.test.tsx src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Name rustup as the producer of NoCancel, and warn in the preview that it cannot be stopped
 
@@ -5942,11 +5942,11 @@ EOF
 **Files:**
 - Create: `adapters/fixtures/standalone-rustup/1.29.1/{README.md, version.txt, version-stderr.txt, release-stable.toml, toolchains.txt, layout.txt}` — recorded, never typed (the directory is named after the recorded version; see Step 1)
 - Modify: `adapters/meta/standalone-rustup.toml` only if the recorded version is not `1.29.1`
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `RECIPES`, `test_recipes_lists_claude_once`; and C's RECIPES-wide `Uninstall::Paths` tests, a skip each, in whichever file C put them (the C checklist's row 5 grep names it)
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — three fixture-backed tests in `mod tests`
-- Modify: `crates/canager-core/src/session/mod.rs` — `test_new_registers_all_eight_adapters` (`:508` at `ea30cfb`) → nine  [B's file]
-- Modify: `crates/canager-core/src/scan/mod.rs` — the comment on B's `("standalone-rustup", …)` tuple in `test_owned_roots_table` (`:810-812`), and the `standalone-rustup` clause of `owned_roots`'s doc comment (`:257-258`); the `_` arm's comment about it (`:291-292`, "`standalone-rustup` never joins: everything of rustup's resolves to its launcher") stays true — `hexyl` is cargo's, not rustup's — and is not touched  [F's/B's file]
-- Modify: `crates/canager-core/src/lib.rs` — the crate doc's list of sources  [F's/B's file]
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `RECIPES`, `test_recipes_lists_claude_once`; and C's RECIPES-wide `Uninstall::Paths` tests, a skip each, in whichever file C put them (the C checklist's row 5 grep names it)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — three fixture-backed tests in `mod tests`
+- Modify: `crates/banager-core/src/session/mod.rs` — `test_new_registers_all_eight_adapters` (`:508` at `ea30cfb`) → nine  [B's file]
+- Modify: `crates/banager-core/src/scan/mod.rs` — the comment on B's `("standalone-rustup", …)` tuple in `test_owned_roots_table` (`:810-812`), and the `standalone-rustup` clause of `owned_roots`'s doc comment (`:257-258`); the `_` arm's comment about it (`:291-292`, "`standalone-rustup` never joins: everything of rustup's resolves to its launcher") stays true — `hexyl` is cargo's, not rustup's — and is not touched  [F's/B's file]
+- Modify: `crates/banager-core/src/lib.rs` — the crate doc's list of sources  [F's/B's file]
 - Modify: `docs/what-we-run.md` — intro (`:4`), "Where the program comes from", a `## rustup` section after `## Claude Code` (`:460`), "Files Canager reads" (`:602`), "What Canager never does" (`:693`)  [A's/B's file]
 - Test: `fixtures_layout_test.rs`, `what_we_run_test.rs` (both existing), the session test, the three fixture tests, `recipes` tests.
 
@@ -6063,7 +6063,7 @@ Check what was recorded: `cat "adapters/fixtures/standalone-rustup/$VERSION/vers
 
 - [ ] **Step 2: Write the failing tests**
 
-Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs`:
+Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 ```rust
 
@@ -6167,7 +6167,7 @@ Append inside `mod tests` in `crates/canager-core/src/adapters/standalone/mod.rs
     }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, replace `test_recipes_lists_claude_once` with:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, replace `test_recipes_lists_claude_once` with:
 
 ```rust
     #[test]
@@ -6181,7 +6181,7 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, replace `test_recip
     }
 ```
 
-In `crates/canager-core/src/session/mod.rs`, replace `test_new_registers_all_eight_adapters` (B's) with:
+In `crates/banager-core/src/session/mod.rs`, replace `test_new_registers_all_eight_adapters` (B's) with:
 
 ```rust
     #[test]
@@ -6207,12 +6207,12 @@ In `crates/canager-core/src/session/mod.rs`, replace `test_new_registers_all_eig
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: FAIL — `test_recipes_lists_each_registered_tool_once_in_reading_order` (`RECIPES.len()` is 1); `test_new_registers_all_nine_adapters` (no `standalone-rustup`); `fixtures_layout_test::test_every_registered_adapter_has_a_documented_fixture_directory` (`adapters/fixtures/*` now has a `standalone-rustup` directory no registered adapter matches). The three fixture tests PASS already (they read the recording through the recipe, which exists since Task 6) — they are here because the recording is.
 
 - [ ] **Step 4: Register, and write the section**
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, change `pub static RECIPES: &[&Recipe] = &[&CLAUDE];` to:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, change `pub static RECIPES: &[&Recipe] = &[&CLAUDE];` to:
 
 ```rust
 pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
@@ -6220,7 +6220,7 @@ pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
 
 (`Session::new` already extends its list with `standalone::all(…)`, one adapter per recipe — B's Task 9, C's trasher; nothing else registers.)
 
-In `crates/canager-core/src/scan/mod.rs`, in `test_owned_roots_table`, replace the comment B put above the `("standalone-rustup", "standalone-rustup", "/Users/someone/.cargo"),` tuple
+In `crates/banager-core/src/scan/mod.rs`, in `test_owned_roots_table`, replace the comment B put above the `("standalone-rustup", "standalone-rustup", "/Users/someone/.cargo"),` tuple
 
 ```rust
             // No adapter with this id exists yet (rustup is step E); the
@@ -6242,7 +6242,7 @@ and in `owned_roots`'s doc comment, the paragraph listing the standalone roots: 
 
 In every RECIPES-wide test C wrote that destructures `Uninstall::Paths { .. }` (the C checklist's row 5 grep lists them; typical shapes are "the launcher is removed last", "every `remove` path is under home", "every `keep` has copy"), `RUSTUP` now reaches the destructuring with `Uninstall::Command`: give each a skip for it, in whichever form matches the test — `let Some(Uninstall::Paths { remove, .. }) = &recipe.uninstall else { continue };` (a recipe with no path list has nothing to check; bind only the fields the test reads, `..` for the rest, or `-D warnings` stops at an unused binding) or, in a `match`, `Some(Uninstall::Command(_)) | None => continue,`. A test that is about *every* recipe having a verified way out keeps passing without a change: `RUSTUP.uninstall` is `Some`.
 
-In `crates/canager-core/src/lib.rs`, in the crate doc, change B's clause `(Claude Code). This crate is the part that does the work: the` to `(Claude Code, rustup). This crate is the part that does the work: the` (keep the surrounding wording as it stands in the tree).
+In `crates/banager-core/src/lib.rs`, in the crate doc, change B's clause `(Claude Code). This crate is the part that does the work: the` to `(Claude Code, rustup). This crate is the part that does the work: the` (keep the surrounding wording as it stands in the tree).
 
 In `docs/what-we-run.md` (both sentences below are hard-wrapped in the file; match by words and keep the wrapping style):
 
@@ -6257,7 +6257,7 @@ In `docs/what-we-run.md` (both sentences below are hard-wrapped in the file; mat
 ## rustup
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `rustup.rs` what its uninstall does, when Canager may offer it, and what to
 say about it). Verified against rustup 1.29.1 (the version in
 `adapters/meta/standalone-rustup.toml` and the name of the recorded fixture
@@ -6448,7 +6448,7 @@ and in the bullet `- Never writes, moves or deletes a file on the Mac itself, ot
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — `test_new_registers_all_nine_adapters`, `fixtures_layout_test` (nine directories, nine ids, one README each), `what_we_run_test` (a `## rustup` section; every host named), `test_recipes_lists_each_registered_tool_once_in_reading_order`, `test_every_recipe_latest_url_is_an_allowed_https_host`, `test_every_recipe_path_is_under_home_or_the_cargo_home` and `test_a_paths_recipe_names_only_home_paths` (now over both recipes), B's `test_every_recipe_launcher_is_named_after_its_id` and `test_every_recipe_meta_parses_and_names_the_standalone_id` (`rustup` / `standalone-rustup`), each of C's RECIPES-wide `Uninstall::Paths` tests with its new skip, `test_owned_roots_table`, the three fixture tests, and everything before.
 
 - [ ] **Step 6: Run the gates**
@@ -6457,10 +6457,10 @@ Run `cargo fmt --all`, then all five from Global Constraints. Expected: all clea
 
 - [ ] **Step 7: Commit**
 
-If one of C's RECIPES-wide tests that got a skip in Step 4 lives outside `recipes.rs` and `mod.rs` (C keeps its removal logic in `crates/canager-core/src/adapters/standalone/removal.rs`), append that file's exact path to the `git add` below; nothing else joins it.
+If one of C's RECIPES-wide tests that got a skip in Step 4 lives outside `recipes.rs` and `mod.rs` (C keeps its removal logic in `crates/banager-core/src/adapters/standalone/removal.rs`), append that file's exact path to the `git add` below; nothing else joins it.
 
 ```bash
-git add adapters/fixtures/standalone-rustup adapters/meta/standalone-rustup.toml crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/session/mod.rs crates/canager-core/src/scan/mod.rs crates/canager-core/src/lib.rs docs/what-we-run.md
+git add adapters/fixtures/standalone-rustup adapters/meta/standalone-rustup.toml crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/session/mod.rs crates/banager-core/src/scan/mod.rs crates/banager-core/src/lib.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Register rustup as a source, with its recording and its trust-file section
 
@@ -6527,7 +6527,7 @@ and, after that `describe`'s closing `});`, append:
 describe("uninstallBlockedCopy", () => {
   it("gives rustup's row its own reason for NoSafeMethod, and every other row B's", () => {
     // The rustup recipe's gate puts `NoSafeMethod` on the artifact when
-    // Rust is not in its standard folders (crates/canager-core/src/
+    // Rust is not in its standard folders (crates/banager-core/src/
     // adapters/standalone/rustup.rs, `uninstall_blocked`); B's sentence
     // for that variant says the tool has no uninstall command, which is
     // false for rustup. The badge stays; the two sentences are rustup's.
@@ -6619,7 +6619,7 @@ Still in `src/lib/sources.ts`, directly after the closing `};` of `export const 
  * One source's own words for a reason, where B's sentence would be false
  * of it. rustup's row carries `NoSafeMethod` when Rust is not in its
  * standard folders (`rustup::uninstall_blocked` in
- * crates/canager-core/src/adapters/standalone/rustup.rs) -- not because it
+ * crates/banager-core/src/adapters/standalone/rustup.rs) -- not because it
  * has no uninstall command, which is what `UNINSTALL_BLOCKED_KEYS`'s
  * sentence says. Keyed by adapter id, then reason; a missing entry means
  * B's copy. Literal keys, so `completeness.test.ts` finds each one.
@@ -6914,7 +6914,7 @@ Adversarial review of this plan, 2026-09-25, 13 points. Each was checked against
 **Found while verifying (not raised by the review), fixed:**
 
 - **A1 — `leftover_env_lines` under-warned.** It counted every exact copy of rustup's line as removed, and also a last line with no newline after it. rustup's `find_exact_line` (`unix.rs:164-172`) matches the line *with* its newline and returns the first match only, once per file (`:55-77`, `:147-162`). So a duplicated line, or one with no final newline, survives the uninstall and errors in every new terminal, and the preview said nothing. rustup's own writes end in `\n` (`raw.rs:144-155`, `writeln!`), so only a hand edit produces that case. The function was made to emulate rustup exactly, with two assertions added — and has since become `remove_first_exact_line` inside the visit model (Astra finding 8), which also handles the `ZDOTDIR=$HOME` double visit. Ruling 2, Review Focus #2, the trust-file paragraph and spec-deviation 17 were updated then and again now.
-- **A2 — C's draft changes `StandaloneAdapter::new` to four arguments** (`…, trasher: Arc<dyn Trasher>`; `canager_core::trash::MockTrasher` is public). This plan's direct constructor calls had B's three and would not compile once C lands. Every one now passes `Arc::new(MockTrasher::new())`. Imports are added only where C has not added them, since a second identical `use` is E0252 (checked). There is a C-checklist row, and the Baseline records that C's plan is committed.
+- **A2 — C's draft changes `StandaloneAdapter::new` to four arguments** (`…, trasher: Arc<dyn Trasher>`; `banager_core::trash::MockTrasher` is public). This plan's direct constructor calls had B's three and would not compile once C lands. Every one now passes `Arc::new(MockTrasher::new())`. Imports are added only where C has not added them, since a second identical `use` is E0252 (checked). There is a C-checklist row, and the Baseline records that C's plan is committed.
 - **A3 — C's ruling 2 promises a test-only `Recipe` literal with `uninstall: None`.** Task 4's new required field `extra_locks` would stop the build there. Task 4 Step 3 adds `extra_locks: no_extra_locks` to every literal the baseline grep finds, and there is a `git add` note for one outside the four files.
 - **A4 — two comment edits said something false.** Task 1's reworded `Known` doc sentence let "for those, rules 1 and 2 compare the same file" cover cargo. For cargo, rule 2 is the *only* rule that places `hexyl`. The sentence is reworded, and the paragraph is correctly attributed to `struct Known`, not `owned_roots`. The registration task's Files list also promised an edit to B's "`standalone-rustup` never joins" arm comment that no step made; that comment stays true, and the list now says it is untouched.
 

@@ -109,12 +109,12 @@ export interface UpdateVersionColumn {
  * that /api/tags reported and `target` is the registry manifest's config
  * digest -- **different hash spaces**, not two readings of one
  * identifier, and they will not be equal even after a successful pull.
- * The adapter's own comment (crates/canager-core/src/adapters/ollama/
+ * The adapter's own comment (crates/banager-core/src/adapters/ollama/
  * mod.rs) says never to render them as a version jump, and a 64-hex
  * string is not something to put in front of this audience either way:
  * such a row says "New version" -- only when it was checked. A row
  * Canager could not check has no version to move to (its `target` is its
- * installed version, `uncheckable_candidate` in crates/canager-core/src/
+ * installed version, `uncheckable_candidate` in crates/banager-core/src/
  * adapters/mod.rs), so it shows the version it has, and a model's
  * nothing at all.
  */

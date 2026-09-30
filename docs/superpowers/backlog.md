@@ -68,7 +68,7 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 
 ## 阶段 2（界面 / IPC）之前必须处理
 
-- `crates/canager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。
+- `crates/banager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。
 - `src-tauri/tauri.conf.json`：`csp` 目前为 `null`；spec §6 要求禁止远程脚本与导航。界面计划的清单项。
 - 清理 create-tauri-app 模板残留：`src/App.tsx`（logo、外链、greet 表单）、`src-tauri/src/lib.rs` 的 `greet` 命令、`index.html` 标题。
 - `OpRecord.cancel` 是 `pub`，调用方可绕过 `cancel()` 的状态簿记；IPC 层接入时改为私有 + `Notify` 替代 `wait()` 的 20 ms 轮询。
@@ -166,7 +166,7 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 - **pip 的「不可用」分不清「这个 Python 根本没带 pip」和「pip 装了但坏了」**——两者退出码相同。
 - ~~**`Session` 的 `testing` 模块里有一个会改动实时状态的 `expire_issued_plans`**，而该模块刻意不是
   `#[cfg(test)]`，所以会进发布版的库。~~ —— **已于 2026-09-23 在 `11e5ac8` 修复**：`expire_issued_plans`
-  收进 `test-support` this-crate-only 的 Cargo feature（`crates/canager-core/Cargo.toml`），默认不开，
+  收进 `test-support` this-crate-only 的 Cargo feature（`crates/banager-core/Cargo.toml`），默认不开，
   `src-tauri` 的测试通过 `[dev-dependencies]` 单独开它，resolver = "2" 保证不进发布版二进制。
 
 **五、需要作者本人拍板**
@@ -249,14 +249,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - ~~`Adapter::capabilities()` 七份实现零调用方~~ —— **已于 2026-09-22 在 `e4b13b4` 整体删除**。六个字段里界面唯一需要的「能不能写」是每实例的事实（npm 取决于 prefix 权限），静态的每适配器 trait 方法承载不了，所以移到 `ManagerInstance.read_only_reason`；`search` / `upgrade_all` / `background_check` / `cancel_safe` 四个零调用方直接删。阶段 3 曾因这条砍掉 `needs_network` 标志，该裁决依然正确。
 
-- `crates/canager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
+- `crates/banager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
   修的代价：要给 `ManagerInstance`（或 `Snapshot`）加一条实例级 warnings 通道，连带 TypeScript 镜像、线格式表、界面渲染与测试——本身就是一个完整任务，不该塞进阶段 3 的任何一格。
   可接受的理由：后果是少说了一句提示，不是做错了动作；一旦真有可更新项，提醒照常显示。**不阻塞 v0.1**，但要在做 `Capabilities` 那条（同样需要实例级字段）时一起做掉——两者是同一个通道。
 
 ## 阶段 4（独立安装工具）进行中的遗留（2026-09-25 立，分支 feat/phase-4-standalone）
 
-- **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/canager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Canager 自己拒绝的。用户于是去查自己的反向代理而不是 Canager。
-  **现状已写明**（2026-09-25）：`docs/what-we-run.md` 的 Ollama 与 Network 两节各有一段说 `https://` 的 `OLLAMA_HOST` 会被拒绝；`crates/canager-core/tests/what_we_run_test.rs` 的 `test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is` 把这两句话钉在 `host_allowed` 的实际行为上——修掉缝隙时测试与两句话要一起改。
+- **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/banager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Canager 自己拒绝的。用户于是去查自己的反向代理而不是 Canager。
+  **现状已写明**（2026-09-25）：`docs/what-we-run.md` 的 Ollama 与 Network 两节各有一段说 `https://` 的 `OLLAMA_HOST` 会被拒绝；`crates/banager-core/tests/what_we_run_test.rs` 的 `test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is` 把这两句话钉在 `host_allowed` 的实际行为上——修掉缝隙时测试与两句话要一起改。
   **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
   **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
 
@@ -374,8 +374,8 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - `runner/real.rs`：最后的 `child.wait()` 未受剩余超时约束；末尾无换行的半行不会推给 `on_line`；kill 后不排空已缓冲的管道数据；每个字节被复制两次。
 - `RunnerError::NotFound` / `Spawn` 两条错误路径无测试。
-- `lib.rs` 加 `#[cfg(not(unix))] compile_error!("canager-core targets Unix (macOS) in v1")` 与 crate 文档说明；`path_env.rs`（`geteuid`、`HOME`）、`resolve_exe`（无 `.exe`）、`libc` 无条件依赖都隐含 Unix。
-- `crates/canager-core/Cargo.toml`：tokio 的 `rt-multi-thread`、`macros` 只有测试与示例用，应移到 `[dev-dependencies]`，使"core 不创建运行时"成为机械事实。
+- `lib.rs` 加 `#[cfg(not(unix))] compile_error!("banager-core targets Unix (macOS) in v1")` 与 crate 文档说明；`path_env.rs`（`geteuid`、`HOME`）、`resolve_exe`（无 `.exe`）、`libc` 无条件依赖都隐含 Unix。
+- `crates/banager-core/Cargo.toml`：tokio 的 `rt-multi-thread`、`macros` 只有测试与示例用，应移到 `[dev-dependencies]`，使"core 不创建运行时"成为机械事实。
 - `brew/mod.rs` 的 `SUDO_ASKPASS` 透传与 `needs_password` 无关且子进程本就继承环境，实际只起预览作用；相关测试修改进程全局环境变量，未加串行化，将来可能抖动。
 
 ## 测试数据
@@ -413,20 +413,20 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - 更新列表未虚拟化（`src/pages/UpdatesPage.tsx:283-315`），而已安装列表用了 `useVirtualizer`。Global Constraints 与 spec §7 都写了长列表要虚拟化。
 
 **资源增长（接入更多来源前处理）**
-- `crates/canager-core/src/session/mod.rs:138` 的 `issued_plans` 只在成功提交时清理，被放弃的预览（关掉对话框、被取代的批次、StrictMode 双次签发）会泄漏到进程结束。插入时顺带清掉超过 600 秒的条目。
-- `crates/canager-core/src/ops/mod.rs:154` 的 `records` 只增不减，于是 `summaries()` 无限增长，底部操作条在一次会话里做完第一个操作后就再也回不到空闲态。给历史加个上限（比如最新 100 条）。
+- `crates/banager-core/src/session/mod.rs:138` 的 `issued_plans` 只在成功提交时清理，被放弃的预览（关掉对话框、被取代的批次、StrictMode 双次签发）会泄漏到进程结束。插入时顺带清掉超过 600 秒的条目。
+- `crates/banager-core/src/ops/mod.rs:154` 的 `records` 只增不减，于是 `summaries()` 无限增长，底部操作条在一次会话里做完第一个操作后就再也回不到空闲态。给历史加个上限（比如最新 100 条）。
 
 **并发与一致性打磨**
 - `src/lib/queries.ts:33-41` 的 `useRefresh` 绕过了 `src/lib/events.ts` 里的模块级合并器，手动重试可能与事件驱动的刷新赛跑。改为走 `refreshIntoCache`。
 - `src-tauri/src/ipc.rs:27-32`：两个并发的 refresh 都在完成前读了 `generation_before`，一次真实变化可能广播两次 `SnapshotChanged`（幂等，但注释声称的不变量比实际强）。
-- `crates/canager-core/src/session/mod.rs:216-218`：`RefusedAsRoot` 分支清空了 artifacts 与 updates，而逐实例失败路径是保留旧数据并标记陈旧。实际不可达（进程内 euid 不变），但与既定规则不一致。
+- `crates/banager-core/src/session/mod.rs:216-218`：`RefusedAsRoot` 分支清空了 artifacts 与 updates，而逐实例失败路径是保留旧数据并标记陈旧。实际不可达（进程内 euid 不变），但与既定规则不一致。
 - `src/components/UninstallDialog.tsx:56` 缺同步的重入闩，两次极快的点击都会进入；服务端一次性 PlanId 挡住了重复卸载，但失败那次会重新签发计划。另外 `:123` 的提交错误文字会停留在新预览旁边，读起来像「还是坏的」——在 `onError` 重新签发时顺手 `submitMutation.reset()`。
 
 **测试与工具链**
 - `src/pages/UpdatesPage.tsx` 的 14 个测试里 `snapshot.artifacts` 全是空数组，所以 `artifactsById` 从来没命中过，非技术细节视图的描述路径从未被真正执行。补一个带 artifact 的夹具。全部规划失败那条页面错误分支也没有任何测试。
 - `tsconfig.json:16` 的 `"types": ["node"]` 把 Node 全局类型套给了整个 `src/`，而这是个 WebView 应用。改用 `tsconfig.test.json` 把这个让步限制在测试里；同时复查 `vite.config.ts:5` 那个在 `tsc -b` 下已过时的 `@ts-expect-error`。
 - `src/i18n/no-literal-strings.test.ts:8` 只扫 `components` 与 `pages`，漏了 `App.tsx`、`lib/` 与 `store/`；正则要求至少 4 个字符，"OK"、"Done" 这类短文案会溜过去。
-- `crates/canager-core/src/session/mod.rs` 已 1152 行，阶段 3 值得拆分。
+- `crates/banager-core/src/session/mod.rs` 已 1152 行，阶段 3 值得拆分。
 
 **界面打磨**
 - `src/pages/SettingsPage.tsx:98-108` 的 `role="radio"` 按钮没有 roving tabindex 也没有方向键处理，键盘用户只能逐个 Tab；这些按钮与 `EmptyState` 的操作按钮都完全没有样式类。
@@ -439,7 +439,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - `clearSelectedUpdates` 与 `clearLogs` 在计划的接口里、有测试，但生产代码从不调用。
 - `src/pages/UpdatesPage.tsx:264` 的 `item.planError ?? ""` 按构造是死代码。
 - `src/components/UninstallDialog.tsx:36` 带着一个 eslint 抑制注释，而本仓库并未配置 eslint。
-- `crates/canager-core/src/settings.rs:57` 用了 `Ordering::SeqCst`，`Relaxed` 就够。
+- `crates/banager-core/src/settings.rs:57` 用了 `Ordering::SeqCst`，`Relaxed` 就够。
 
 ## 界面重构终审推迟项（2026-09-28 立，分支 feat/ui-redesign）
 
@@ -509,7 +509,7 @@ app 或更多工作。
   （如「npm 和它的 4 个工具」），「卸载」保持不可点，与 Homebrew 的依赖者一样。npm 适配器拒绝卸载 `npm` 自己，行上用
   标签代替按钮。
 - 【待作者定】**每次更新都留下旧版本，之后的卸载会"又回来"**：`HOMEBREW_NO_INSTALL_CLEANUP=1`
-  （`crates/canager-core/src/adapters/brew/mod.rs:225`）让更新不删旧版本，不带 `--force` 的 `brew uninstall` 只删当前
+  （`crates/banager-core/src/adapters/brew/mod.rs:225`）让更新不删旧版本，不带 `--force` 的 `brew uninstall` 只删当前
   那一版（Homebrew `cmd/uninstall.rb:45`、`uninstall.rb:63-69`），剩下的旧版本又出现在已安装里。定一条规则：(a) 更新时
   删掉它所更新的那个包的旧版本，并在更新确认框里说（「会删除旧版本 1.25.0」），autoremove 与定期全面清理仍然关着；
   (b) 保留旧版本，但「卸载」删掉所有已装版本，确认框逐个列出（「删除 wget 的 2 个版本：1.25.0、1.26.0」），另加
@@ -559,5 +559,5 @@ app 或更多工作。
   `settings.notifyUpdates.refused` 那行「在系统设置 → 通知里允许 Canager」。
 - 【大改动】**第一次检查要等每个来源都答完才显示任何东西**（今天只补了说明：三页同一个圆环和「第一次检查要联网查每个
   工具的新版本，有时要一两分钟。」）：清单一读到就先提交一版快照，让「已安装」马上有内容，更新随各来源回答陆续补上。
-  现在一轮只在末尾提交一次（`crates/canager-core/src/session/refresh.rs:681`），Homebrew 一轮最多等 `brew update`
+  现在一轮只在末尾提交一次（`crates/banager-core/src/session/refresh.rs:681`），Homebrew 一轮最多等 `brew update`
   120 秒（`adapters/brew/mod.rs:233`）。上文的本地快照缓存只帮得到以后的启动，帮不到第一次。

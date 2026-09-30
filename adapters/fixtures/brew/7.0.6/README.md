@@ -25,7 +25,7 @@ from `outdated.json` above by hand, and **only these four values differ**:
 
 Everything else is byte-for-byte `outdated.json`. The test
 `outdated_pinned_fixture_differs_from_the_recording_only_in_the_pin_fields`
-in `crates/canager-core/tests/brew_fixtures.rs` checks exactly that, so this
+in `crates/banager-core/tests/brew_fixtures.rs` checks exactly that, so this
 table cannot silently stop being true.
 
 Why `pinned_version` was edited too, not only `pinned`: Homebrew never prints
@@ -40,7 +40,7 @@ keg (`formula_pin.rb:14-16`), and the cask's to its Caskroom version
 directory (`cask/cask.rb:318-357`).
 
 Canager reads `pinned` and nothing else from these two fields
-(`OutdatedItem` in `crates/canager-core/src/adapters/brew/parse.rs`).
+(`OutdatedItem` in `crates/banager-core/src/adapters/brew/parse.rs`).
 
 ## `receipts/` — cask install receipts (`INSTALL_RECEIPT.json`)
 
@@ -51,7 +51,7 @@ installed the cask: `Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, whose
 uninstall phase, plus `zap` — and whose `uninstall_flight_blocks` says whether
 the cask has Ruby that runs around its uninstall (Homebrew 7.0.6-70,
 `cask/tab.rb:31-45`, `cask/cask.rb:709-732`). Canager reads these in the
-uninstall preview (`crates/canager-core/src/adapters/brew/cask_receipt.rs`).
+uninstall preview (`crates/banager-core/src/adapters/brew/cask_receipt.rs`).
 
 **Recorded, unedited** (copied on 2026-09-28 from this Mac's
 `/opt/homebrew/Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, byte for

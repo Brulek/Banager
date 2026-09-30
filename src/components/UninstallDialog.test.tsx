@@ -239,7 +239,7 @@ describe("UninstallDialog", () => {
   });
 
   it("says some apps ask for the Mac's password when the plan may need it, and stays quiet when it does not", async () => {
-    // Every Cask uninstall sets `needs_password` (crates/canager-core/src/
+    // Every Cask uninstall sets `needs_password` (crates/banager-core/src/
     // adapters/brew/mod.rs), though not every app then asks for it: T3 of
     // the copy table. Spec §6: an operation that needs a password is
     // marked in the preview -- a password is never a surprise.
@@ -312,7 +312,7 @@ describe("UninstallDialog", () => {
 
   it("names what still needs it once, not again as a warning", async () => {
     // Homebrew's preview fills `WouldBreak` and `affected` from the same
-    // `brew uses` (crates/canager-core/src/adapters/brew/mod.rs); the list
+    // `brew uses` (crates/banager-core/src/adapters/brew/mod.rs); the list
     // says it, and the sentence would say it a second time.
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({ affected: ["wget", "git"], warnings: [{ WouldBreak: { names: ["wget", "git"] } }] }),
@@ -521,7 +521,7 @@ describe("UninstallDialog", () => {
 
   it("says as its text, under the question and not behind an ⓘ, what the uninstall removes and what it leaves", async () => {
     // `Warning::UninstallScope`: one sentence per source, true for the
-    // exact command the plan runs (crates/canager-core/src/model.rs).
+    // exact command the plan runs (crates/banager-core/src/model.rs).
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({ warnings: [{ UninstallScope: { what: "HomebrewFormulaOnly" } }] }),
     );
@@ -743,7 +743,7 @@ describe("UninstallDialog", () => {
 
   it("lists a cask's extra uninstall steps under Before you continue, one line per kind, counting what only an id names", async () => {
     // `Warning::CaskUninstallStep`s from the cask's install receipt
-    // (crates/canager-core/src/adapters/brew/cask_receipt.rs), after the
+    // (crates/banager-core/src/adapters/brew/cask_receipt.rs), after the
     // sentence under the tool that says there are steps.
     const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "microsoft-word" };
     vi.mocked(invoke).mockResolvedValue(
@@ -1005,7 +1005,7 @@ describe("UninstallDialog", () => {
   it("says Uninstall permanently where a cask's recorded steps delete files they find only as they run", async () => {
     // mailtrackerblocker's `remove` of the script in its staged folder,
     // with no check: `CaskStep::DeletesUnnamed`
-    // (crates/canager-core/src/adapters/brew/cask_receipt.rs).
+    // (crates/banager-core/src/adapters/brew/cask_receipt.rs).
     const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "mailtrackerblocker" };
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({
@@ -1193,7 +1193,7 @@ describe("UninstallDialog", () => {
   it("says Homebrew will also remove what nothing needs when a brew.env turns autoremove back on, with the why behind its ⓘ", async () => {
     // `Warning::HomebrewAutoremoves`: every brew command runs with
     // HOMEBREW_NO_AUTOREMOVE=1, and a brew.env took it back
-    // (crates/canager-core/src/adapters/brew/brew_env.rs), so after this
+    // (crates/banager-core/src/adapters/brew/brew_env.rs), so after this
     // uninstall Homebrew removes more than the command names.
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ warnings: ["HomebrewAutoremoves"] }));
 
@@ -1728,7 +1728,7 @@ describe("UninstallDialog", () => {
   it("says a pinned package was not uninstalled and gives the unpin command as code", async () => {
     // A stale Installed page can still offer Uninstall on a package pinned
     // since the last refresh; `Session::issue_plan` refuses it
-    // (`blocked_uninstall` in crates/canager-core/src/session/plans.rs)
+    // (`blocked_uninstall` in crates/banager-core/src/session/plans.rs)
     // and `uninstall_blocked_json` in src-tauri/src/ipc.rs sends this.
     // It is not "couldn't check what this affects": Canager did.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -1799,7 +1799,7 @@ describe("UninstallDialog", () => {
   it("words a refused path-list preview with the path and the reason, never the payload, and keeps the why behind its ⓘ", async () => {
     // One of the checks a path-list uninstall runs at preview time refused
     // a path (`removal::plan_removal` in
-    // crates/canager-core/src/adapters/standalone/removal.rs);
+    // crates/banager-core/src/adapters/standalone/removal.rs);
     // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
     // the reason as data, and the dialog words them. Canager did check,
     // so the sentence is shown on its own, not inside "Couldn't check
@@ -1981,7 +1981,7 @@ describe("UninstallDialog", () => {
   });
 
   it("says a NoCancel plan cannot be stopped once it starts, and says nothing of the kind for a cancellable one", async () => {
-    // rustup's `self uninstall` (crates/canager-core/src/adapters/
+    // rustup's `self uninstall` (crates/banager-core/src/adapters/
     // standalone/recipes.rs): `OperationBar` will offer no Cancel once it
     // is Running, so the preview says so before the click (spec §五,
     // §6.6's last line), with why behind its ⓘ.

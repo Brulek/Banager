@@ -1,7 +1,7 @@
 /**
  * The browser preview's backend (docs/ui-preview.md): every command
  * src/lib/api.ts sends, answered from the machine in ./mockData.ts the way
- * src-tauri/src/ipc.rs and crates/canager-core answer it -- the same
+ * src-tauri/src/ipc.rs and crates/banager-core answer it -- the same
  * refusals, the same event sequence for an operation, the same snapshot
  * generations. Dev-only: ./mockTauri.ts is its one caller, and only
  * `vite --mode mock` puts that in a page. Deterministic apart from the

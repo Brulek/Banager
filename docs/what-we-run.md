@@ -6,8 +6,8 @@ for the eleven sources it manages today: Homebrew, npm, pipx, uv, pip
 (read-only), Cargo, Ollama, and four tools with their own installer:
 Claude Code, Antigravity CLI, Grok Build and rustup. Each sentence
 describes what the code does now and names the function it describes, so
-it can be checked against `crates/canager-core/src/adapters/` rather than
-believed. `crates/canager-core/tests/what_we_run_test.rs` checks the parts
+it can be checked against `crates/banager-core/src/adapters/` rather than
+believed. `crates/banager-core/tests/what_we_run_test.rs` checks the parts
 a test can: a section per registered source, every host on the https
 allowlist, every environment variable Homebrew's and npm's commands are
 given, that Cargo's section says every Cargo command is given the
@@ -46,7 +46,7 @@ command can carry.
 
 **Never through a shell.** Every package-manager command is a fixed argv
 array run directly against an absolute program path by `RealRunner::run`
-(`crates/canager-core/src/runner/real.rs`): `Command::new(program)` with
+(`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
 nothing Canager downloads is ever piped into one.
 
@@ -77,7 +77,7 @@ a grace period, and then `SIGKILL` for whatever is left.
 `src-tauri/src/lib.rs`), at the start of every refresh, when the Open
 Ollama button is pressed, and at the start of every Other Programs scan,
 `HostEnv::discover`
-(`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
+(`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
 environment and the effective user id from the process. Homebrew's
 install, uninstall and upgrade previews read four more, to find its
@@ -93,7 +93,7 @@ one previewed and the one run.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
-(`crates/canager-core/src/adapters/mod.rs`): `^[A-Za-z0-9@._+/-]+$`, not
+(`crates/banager-core/src/adapters/mod.rs`): `^[A-Za-z0-9@._+/-]+$`, not
 starting with `-`, `/` or `.`, no `..` segment, no `.rb` suffix. Two
 sources have their own rule for their own shape of input: npm's search
 box (`validate_search_query`: once surrounding whitespace is trimmed,
@@ -130,7 +130,7 @@ Settings' daily check turned on, once a day while Canager runs (next
 section). The window
 opens once a launch: closing it only hides it (`src-tauri/src/window.rs`),
 and bringing it back starts no refresh. Within a
-refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
+refresh (`refresh_round` in `crates/banager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,
 under that instance's lock, its inventory is read and then its update
 check runs. Everything a refresh runs is in the read-only tables below,
@@ -151,7 +151,7 @@ argv (`commandText` in `src/components/CommandPreview.tsx`) — open from
 the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
-minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),
+minutes (`PLAN_LIFETIME` in `crates/banager-core/src/session/plans.rs`),
 after which it has to be previewed again. The window can ask for the
 preview of an upgrade or an uninstall, never of an install: no page
 offers one, and `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses
@@ -163,7 +163,7 @@ updates itself and has no update command Canager may run (Antigravity
 CLI's section), and an uninstall of a uv tool while `UV_TOOL_DIR` is set
 (uv's section) — the buttons the pages hide are backed by that refusal,
 not only by the page. On confirmation
-`run_operation` (`crates/canager-core/src/ops/mod.rs`) takes the plan's
+`run_operation` (`crates/banager-core/src/ops/mod.rs`) takes the plan's
 locks, runs the command (or moves the listed paths to the
 Trash), and then re-reads the inventory to check what actually happened;
 an upgrade is also preceded by a reading,
@@ -182,7 +182,7 @@ the reading after settles it: an install after which the package is
 present, or an uninstall after which it is gone, is reported as
 succeeded, and one the user cancelled that did not take effect as
 cancelled; an upgrade stopped partway is never settled either way
-(`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
+(`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
 **Quitting while an operation is under way.** Closing the window leaves
@@ -237,12 +237,12 @@ holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 
 Settings → Updates has a switch, "Check for updates every day"
 (「每天自动检查」), which is off by default (`Settings::auto_check` in
-`crates/canager-core/src/settings.rs`). While it is off, the daily check
+`crates/banager-core/src/settings.rs`). While it is off, the daily check
 starts nothing. Turned on:
 
 - **When.** A task Canager starts at launch (`check_automatically` in
   `src-tauri/src/auto_check.rs`) looks every 15 minutes the Mac is awake
-  (`auto_check::TICK` in `crates/canager-core/src/auto_check.rs`), the
+  (`auto_check::TICK` in `crates/banager-core/src/auto_check.rs`), the
   first time 15 minutes after launch. A look starts a check only when 24
   hours (`auto_check::DUE_AFTER_SECS`) have passed on the Mac's clock since
   the last check ended, whatever started it — the one at launch, Check
@@ -338,7 +338,7 @@ banner for a notification of the app in front, and Rust asks macOS
 whether Canager is (`app_active` in `src-tauri/src/notify.rs`); and one of
 the pairs has been neither in a notification nor before the user in the
 focused window since Canager was opened (`notify_updates::decide` in
-`crates/canager-core/src/notify_updates.rs`). A daily check that stopped
+`crates/banager-core/src/notify_updates.rs`). A daily check that stopped
 waiting for its `brew update` (Homebrew's section) posts nothing itself:
 the refresh that update's end sets off is the daily check's too, and its
 report decides instead, counting every update offered then — what the
@@ -397,7 +397,7 @@ cannot post a notification itself.
 
 ## Homebrew
 
-Adapter: `BrewAdapter` in `crates/canager-core/src/adapters/brew/mod.rs`.
+Adapter: `BrewAdapter` in `crates/banager-core/src/adapters/brew/mod.rs`.
 Verified against Homebrew 7.0.3 (`adapters/meta/brew.toml`).
 
 **Detect.** Canager checks whether `/opt/homebrew/bin/brew`,
@@ -462,7 +462,7 @@ file takes that back.
 was started with (`bin/brew:128-180`), so a line in one of them takes
 either variable back. Every install, uninstall and upgrade preview reads
 those files the way `bin/brew` does (`brew_env::after_brew_env` in
-`crates/canager-core/src/adapters/brew/brew_env.rs`):
+`crates/banager-core/src/adapters/brew/brew_env.rs`):
 `/etc/homebrew/brew.env`; then `<prefix>/etc/homebrew/brew.env`; then
 `$XDG_CONFIG_HOME/homebrew/brew.env` when Canager's environment sets
 `XDG_CONFIG_HOME`, else `$HOMEBREW_XDG_CONFIG_HOME/homebrew/brew.env` when
@@ -499,7 +499,7 @@ are not deleted — without "only" when the `brew.env` files bring
 autoremove back, beside the line above. A cask's comes from what Homebrew
 recorded when it installed the cask, which is what `brew uninstall --cask`
 runs, never from `brew info`, which reads the cask's current definition
-(`crates/canager-core/src/adapters/brew/cask_receipt.rs`; Homebrew
+(`crates/banager-core/src/adapters/brew/cask_receipt.rs`; Homebrew
 7.0.6-70, `cask/installer.rb:987-1045`): the caskfile Homebrew saved,
 `<prefix>/Caskroom/<token>/.metadata/<version>/<timestamp>/Casks/<token>.json`
 (of every version's, the timestamp with the greatest name), with its own
@@ -738,7 +738,7 @@ caskfiles are never opened.
 
 ## npm
 
-Adapter: `NpmAdapter` in `crates/canager-core/src/adapters/npm.rs`.
+Adapter: `NpmAdapter` in `crates/banager-core/src/adapters/npm.rs`.
 Verified against npm 12.0.2 (`adapters/meta/npm.toml`).
 
 **Detect.** `npm` is the first `npm` on `PATH`. Canager runs `<npm>
@@ -795,7 +795,7 @@ own `uninstall` scripts. Nothing more is read or run to say it.
 
 ## pipx
 
-Adapter: `PipxAdapter` in `crates/canager-core/src/adapters/pipx.rs`.
+Adapter: `PipxAdapter` in `crates/banager-core/src/adapters/pipx.rs`.
 Verified against pipx 1.17.3 (`adapters/meta/pipx.toml`).
 
 **Detect.** `pipx` is the first `pipx` on `PATH`; `<pipx> --version`
@@ -829,7 +829,7 @@ an error for the whole source. pipx has no search command Canager uses.
 
 ## uv
 
-Adapter: `UvAdapter` in `crates/canager-core/src/adapters/uv.rs`.
+Adapter: `UvAdapter` in `crates/banager-core/src/adapters/uv.rs`.
 Verified against uv 0.12.17 (`adapters/meta/uv.toml`).
 
 **Detect.** `uv` is the first `uv` on `PATH`; `<uv> --version` (30 s). No
@@ -883,7 +883,7 @@ the variable again and refuses it too. Install and upgrade plan as before.
 
 ## pip (read-only)
 
-Adapter: `PipAdapter` in `crates/canager-core/src/adapters/pip.rs`.
+Adapter: `PipAdapter` in `crates/banager-core/src/adapters/pip.rs`.
 Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 
 **Detect.** For each of `python3.14`, `python3.13`, `python3.12`,
@@ -927,7 +927,7 @@ package. pip has no search command Canager uses.
 
 ## Cargo
 
-Adapter: `CargoAdapter` in `crates/canager-core/src/adapters/cargo.rs`.
+Adapter: `CargoAdapter` in `crates/banager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
@@ -983,7 +983,7 @@ goes to Homebrew.
 
 ## Ollama
 
-Adapter: `OllamaAdapter` in `crates/canager-core/src/adapters/ollama/mod.rs`.
+Adapter: `OllamaAdapter` in `crates/banager-core/src/adapters/ollama/mod.rs`.
 Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 
 **Detect.** `ollama` is the first `ollama` on `PATH`; `<ollama> --version`
@@ -1056,7 +1056,7 @@ refresh.
 ## Claude Code
 
 Adapter: `StandaloneAdapter` over the `CLAUDE` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `mod.rs` the behaviour, `route.rs` the recognition). Verified against
 Claude Code 2.1.282 (the version in `adapters/meta/standalone-claude.toml`
 and the name of the recorded fixture directory). The first source that is
@@ -1269,7 +1269,7 @@ Claude Code's and that the uninstall never moved.
 ## Antigravity CLI
 
 Adapter: `StandaloneAdapter` over the `AGY` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `mod.rs` the behaviour, `route.rs` the recognition, `removal.rs` the
 uninstall). Verified against Antigravity CLI 1.2.11 (the version in
 `adapters/meta/standalone-agy.toml` and the name of the recorded fixture
@@ -1358,7 +1358,7 @@ fixture README says so.
 ## Grok Build
 
 Adapter: `StandaloneAdapter` over the `GROK` recipe in
-`crates/canager-core/src/adapters/standalone/`. Verified against Grok
+`crates/banager-core/src/adapters/standalone/`. Verified against Grok
 Build 1.0.41 (the version in `adapters/meta/standalone-grok.toml` and the
 name of the recorded fixture directory). The row is one tool, installed by
 xAI's own installer (`curl -fsSL https://x.ai/cli/install.sh | bash`, run
@@ -1502,7 +1502,7 @@ its install script, and the fixture README says so.
 ## rustup
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `rustup.rs` what its uninstall does, when Canager may offer it, and what to
 say about it). Verified against rustup 1.29.1 (the version in
 `adapters/meta/standalone-rustup.toml` and the name of the recorded fixture
@@ -1717,7 +1717,7 @@ whose files live under such a `ZDOTDIR` is not read.
 The *Other Programs* page -- the last row under the sidebar's *Sources* --
 lists command-line programs that none of the sources above installed.
 Producing that list runs no command at all. `scan_unknown`
-(`crates/canager-core/src/scan/mod.rs`) reads directory entries and file
+(`crates/banager-core/src/scan/mod.rs`) reads directory entries and file
 metadata and nothing else:
 
 | It looks at | How |
@@ -1729,7 +1729,7 @@ It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
 moves or deletes anything it finds. It takes no lock and is not part of a
 refresh (`Session::scan_unknown` in
-`crates/canager-core/src/session/scan.rs`): it runs when the page opens
+`crates/banager-core/src/session/scan.rs`): it runs when the page opens
 (from the sidebar, or Other Programs, ⌘4, in the menu bar's View menu),
 again when the sources' state changes while the page is open, and when
 you press *Scan Again* — always against the sources' last known state —
@@ -1795,12 +1795,12 @@ icon runs no command, and Canager reads nothing else for it:
   which name — and nothing else (`artifact_icon` in
   `src-tauri/src/ipc.rs`). Canager looks that key up in the sources' last
   known state (`Session::artifact_icon` in
-  `crates/canager-core/src/session/icon.rs`) and goes on only for a cask
+  `crates/banager-core/src/session/icon.rs`) and goes on only for a cask
   whose path is absolute and ends in `.app` (`cask_app_bundle` in
-  `crates/canager-core/src/icon/mod.rs`): the app that Homebrew's own
+  `crates/banager-core/src/icon/mod.rs`): the app that Homebrew's own
   inventory, `brew info --installed --json=v2` (Homebrew's section), names
   beside the cask's `app` stanza (`parse_info_installed` in
-  `crates/canager-core/src/adapters/brew/parse.rs`). No part of the key is
+  `crates/banager-core/src/adapters/brew/parse.rs`). No part of the key is
   ever read as a path. A formula, a font, a cask with no app, and a key
   the last known state has no row for get no icon, and nothing is read
   for them.
@@ -1812,7 +1812,7 @@ icon runs no command, and Canager reads nothing else for it:
 - For a folder with no icon drawn yet, or one that has changed since, it
   makes one call, `NSWorkspace iconForFile:`, through the `objc2-app-kit`
   crate, and has AppKit draw that icon 128 × 128 pixels and encode it as
-  PNG (`RealIconRenderer` in `crates/canager-core/src/icon/real.rs`).
+  PNG (`RealIconRenderer` in `crates/banager-core/src/icon/real.rs`).
   macOS finds the icon itself, in the app or in its own icon cache;
   Canager opens no file in the app.
 - The PNG goes to the window as a `data:image/png;base64,…` URL. Canager
@@ -1823,11 +1823,11 @@ icon runs no command, and Canager reads nothing else for it:
   images (`img-src 'self' data: asset: https://asset.localhost` in
   `src-tauri/tauri.conf.json`) and was not changed for this.
 
-An `#[ignore]`d test in `crates/canager-core/src/icon/real.rs` draws
+An `#[ignore]`d test in `crates/banager-core/src/icon/real.rs` draws
 Calculator's icon (`/System/Applications/Calculator.app`) with the real
 call and checks it is a 128 × 128 PNG drawn across the whole square; it
 reads that icon and writes nothing. Run it with `cargo test -p
-canager-core --lib icon::real -- --ignored`; CI does not.
+banager-core --lib icon::real -- --ignored`; CI does not.
 
 ## Files Canager reads
 
@@ -1958,7 +1958,7 @@ command shown there.
 
 ## Moving files to the Trash
 
-`RealTrasher` (`crates/canager-core/src/trash/real.rs`) is the only code
+`RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
 in Canager that changes a file on the Mac other than its own settings.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
@@ -2037,7 +2037,7 @@ target is gone — which is what every Claude Code uninstall moves last:
 the launcher, after the program files it points to — other macOS
 versions, and Intel Macs.
 
-`crates/canager-core/tests/standalone_uninstall_test.rs` has an
+`crates/banager-core/tests/standalone_uninstall_test.rs` has an
 `#[ignore]`d test that makes five throwaway items — a file, a folder, a
 link to each, and a link to nothing — moves them with the real call, and
 checks that each lands in `~/.Trash` as itself; CI runs it. It runs from
@@ -2047,7 +2047,7 @@ Disk Access, so it checks the move, not Put Back.
 ## Network: Canager only connects to these hosts
 
 Every request goes through `RealHttpClient`
-(`crates/canager-core/src/http/real.rs`), and it refuses, before opening a
+(`crates/banager-core/src/http/real.rs`), and it refuses, before opening a
 connection, any `https` request whose host is not on this list
 (`ALLOWED_HTTPS_HOSTS`, checked by `host_allowed` at the top of `send`):
 

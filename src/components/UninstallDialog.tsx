@@ -149,7 +149,7 @@ export function UninstallDialog({
   // What to know before going on, after the lines the plan carries: that
   // it cannot be stopped once it starts -- the one policy the operation
   // bar offers no Cancel for once the command is Running
-  // (`OperationManager::cancel`, crates/canager-core/src/ops/mod.rs):
+  // (`OperationManager::cancel`, crates/banager-core/src/ops/mod.rs):
   // rustup's own uninstall, which removes Rust directory by directory --
   // and that it may ask for the Mac's password. Every Cask uninstall sets
   // `needs_password`, though not every app then asks (the copy table's
@@ -166,7 +166,7 @@ export function UninstallDialog({
   // `uninstall.planError`'s "Couldn't check what this affects", because
   // Canager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
-  // crates/canager-core/src/session/plans.rs), which only a stale Installed
+  // crates/banager-core/src/session/plans.rs), which only a stale Installed
   // page can reach and whose sentence carries the unpin command, set apart
   // as code as on the Installed page's row; and a path-list uninstall whose
   // preview refused one of its paths (`uninstall_unsafe`,

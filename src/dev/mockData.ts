@@ -159,7 +159,7 @@ function update(
 }
 
 /** A row Canager could not check: `target` is the installed version
- *  (`uncheckable_candidate` in crates/canager-core/src/adapters/mod.rs). */
+ *  (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs). */
 function uncheckable(
   artifactKey: ArtifactKey,
   current: string,

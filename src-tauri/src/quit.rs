@@ -62,8 +62,8 @@
 
 use crate::state::AppState;
 use crate::window;
-use canager_core::model::{CancelPolicy, OpStatus};
-use canager_core::ops::OpSummary;
+use banager_core::model::{CancelPolicy, OpStatus};
+use banager_core::ops::OpSummary;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, Runtime, State};
@@ -611,7 +611,7 @@ fn add_should_terminate(class: &objc2::runtime::AnyClass) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::model::{ArtifactKind, OpKind};
+    use banager_core::model::{ArtifactKind, OpKind};
 
     fn op(id: u64, status: OpStatus) -> OpSummary {
         op_with(id, status, CancelPolicy::KillThenReconcile)
@@ -677,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_a_quit_waits_longer_than_the_runner_takes_to_sigkill_a_command() {
-        assert!(STOP_WITHIN > canager_core::runner::real::STOP_GRACE);
+        assert!(STOP_WITHIN > banager_core::runner::real::STOP_GRACE);
     }
 
     /// A fake session for `stop_then_quit`: its operations, a cancel that

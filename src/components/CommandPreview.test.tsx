@@ -192,7 +192,7 @@ describe("CommandPreview", () => {
     // A `TrashPaths` plan runs no command: Canager moves the items itself.
     // T4 of the copy table: they go to the Trash and can be dragged back
     // out -- and no promise of Finder's Put Back, which works as often as
-    // not (crates/canager-core/src/trash/mod.rs).
+    // not (crates/banager-core/src/trash/mod.rs).
     const { container } = renderWithProviders(
       <CommandPreview
         plans={[

@@ -6,7 +6,7 @@
 
 **Architecture:** Two more `pub static Recipe` rows (`AGY`, `GROK`) and the shapes they are the first to need: `Latest::HttpJsonField` (agy's version manifest, Apple silicon only — an Intel Mac gets an honest "could not check"), `Latest::Command` (grok's own check, trusted as it answers), `Recipe.upgrade: Option<UpgradeCmd>` whose `None` makes every candidate `UpdateBlocked::SelfUpdatesOnly` (gate, `updateStateOf`, copy record), `Recipe.backup_globs: &[Glob]` with `Glob` living in `scan/` so the Unknown page's rule 4 and the removal's check 5 read one type, `Expect::File`, `RemovedWhat::Backups` and five `KeptWhat`s, and the `NotOurs` skip for an optional path Canager cannot confirm is the tool's. Everything runs through C's `removal.rs` and `Trasher` unchanged in contract: `plan_removal` learns to list backup files before the launcher and to keep-and-say instead of refusing for an optional path; `take_turn` looks items up the same way. Recordings are read-only (`--version`, `update --check --json`, `curl`, `ls`), with the home folder abbreviated to `~` and numeric owners, and the version-read-does-not-update observation spec §3.4 demands for agy written into the fixture README.
 
-**Tech Stack:** Rust (canager-core: `serde_json` for two JSON bodies, `std::fs` for the checks and the glob, the existing `CommandRunner`/`HttpClient`/`Trasher` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
+**Tech Stack:** Rust (banager-core: `serde_json` for two JSON bodies, `std::fs` for the checks and the glob, the existing `CommandRunner`/`HttpClient`/`Trasher` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
 **Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row D and argues from §3.1, §3.3–§3.5 (the agy and grok rows), §4.1/§4.4 (self-updating semantics, `SelfUpdatesOnly`), §6.1–§6.3 (the `Paths` uninstall, the agy and grok rows of the §6.3 table), §8.3 rule 4, §9, 附录 A. Raw research it cites: `~/dev/Canager/.superpowers/phase4/agy.md`, `grok.md`, `architecture.md`, `unknown-scan.md` (VERIFIED/UNVERIFIED per line). This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-d-grok-agy.md`.
 
@@ -18,12 +18,12 @@ The confirm-grep, run at the start of execution and pasted into the branch's han
 
 ```bash
 git log --oneline | head -20
-grep -n "enum PlanAction\|pub uninstall:\|pub extra_locks\|pub upgrade:\|pub euid\|pub cargo_home\|pub rustup_home\|pub zdotdir\|fn seated_detected_for\|fn locks(\|fn detected_or_refuse\|pub fn new(\|pub fn with_trash_gap\|pub fn all(\|fn reconcile_after_uninstall\|fn probe_strict\|pub fn expand_route\|pub fn no_extra_locks\|Command(CommandUninstall)\|pub const SHARED_FOLDERS\|pub enum Expect" crates/canager-core/src/adapters/standalone/{mod,recipe,route,recipes}.rs
-grep -n "pub struct Job\|pub struct Removal\|pub fn plan_removal\|pub async fn execute_removal\|fn take_turn\|fn check_item\|fn kept_places\|fn disturbed\|fn spelled\|fn shown\|fn is_shared_folder\|struct Look\|struct Kept\|struct Refusal\|pub const TIMEOUT_SECS\|pub const PUT_BACK_SETTLE\|pub struct Confirmed\|pub struct Pacing" crates/canager-core/src/adapters/standalone/removal.rs
-grep -n "pub fn scan_dirs\|pub fn scan_unknown\|fn index(\|fn claimant(\|pub(crate) fn display_path\|pub fn owned_roots" crates/canager-core/src/scan/mod.rs
-grep -rn "Recipe {$\|Job {$\|Detected {$" crates/canager-core/src/adapters/standalone/
-grep -n "fn test_new_registers_all_" crates/canager-core/src/session/mod.rs
-ls crates/canager-core/tests/standalone_uninstall_test.rs && grep -n "async fn outcome_of" crates/canager-core/tests/standalone_uninstall_test.rs
+grep -n "enum PlanAction\|pub uninstall:\|pub extra_locks\|pub upgrade:\|pub euid\|pub cargo_home\|pub rustup_home\|pub zdotdir\|fn seated_detected_for\|fn locks(\|fn detected_or_refuse\|pub fn new(\|pub fn with_trash_gap\|pub fn all(\|fn reconcile_after_uninstall\|fn probe_strict\|pub fn expand_route\|pub fn no_extra_locks\|Command(CommandUninstall)\|pub const SHARED_FOLDERS\|pub enum Expect" crates/banager-core/src/adapters/standalone/{mod,recipe,route,recipes}.rs
+grep -n "pub struct Job\|pub struct Removal\|pub fn plan_removal\|pub async fn execute_removal\|fn take_turn\|fn check_item\|fn kept_places\|fn disturbed\|fn spelled\|fn shown\|fn is_shared_folder\|struct Look\|struct Kept\|struct Refusal\|pub const TIMEOUT_SECS\|pub const PUT_BACK_SETTLE\|pub struct Confirmed\|pub struct Pacing" crates/banager-core/src/adapters/standalone/removal.rs
+grep -n "pub fn scan_dirs\|pub fn scan_unknown\|fn index(\|fn claimant(\|pub(crate) fn display_path\|pub fn owned_roots" crates/banager-core/src/scan/mod.rs
+grep -rn "Recipe {$\|Job {$\|Detected {$" crates/banager-core/src/adapters/standalone/
+grep -n "fn test_new_registers_all_" crates/banager-core/src/session/mod.rs
+ls crates/banager-core/tests/standalone_uninstall_test.rs && grep -n "async fn outcome_of" crates/banager-core/tests/standalone_uninstall_test.rs
 grep -n "^## " docs/what-we-run.md
 ```
 
@@ -38,14 +38,14 @@ Every point where this plan meets C or E. A row whose landed shape differs from 
 | # | C/E shape | Where D touches it | What D does if it was spelled differently |
 |---|---|---|---|
 | 1 | `PlanAction::{Command { program, args, env }, TrashPaths { paths, previewed }}`, `Plan.action` (C Task 1, stage 6e) | Tasks 5–6 tests destructure `TrashPaths`; Task 4 leaves `plan_removal`/`execute_removal`'s contract alone | Use the landed field names |
-| 2 | `Recipe { id, meta_toml, route, version, latest, self_updates, upgrade, uninstall, extra_locks }` (B, C, E Task 4) | Task 3 adds `backup_globs`; Task 5 widens `upgrade` to `Option<UpgradeCmd>`; every `Recipe {` literal (`CLAUDE`, `RUSTUP`, C's test-only `NO_UNINSTALL`, any E test recipe) gains the field and `Some(…)` | `grep -rn "Recipe {$" crates/canager-core/src/adapters/standalone/` before Tasks 3 and 5; `missing field` names any the grep missed |
+| 2 | `Recipe { id, meta_toml, route, version, latest, self_updates, upgrade, uninstall, extra_locks }` (B, C, E Task 4) | Task 3 adds `backup_globs`; Task 5 widens `upgrade` to `Option<UpgradeCmd>`; every `Recipe {` literal (`CLAUDE`, `RUSTUP`, C's test-only `NO_UNINSTALL`, any E test recipe) gains the field and `Some(…)` | `grep -rn "Recipe {$" crates/banager-core/src/adapters/standalone/` before Tasks 3 and 5; `missing field` names any the grep missed |
 | 3 | `Uninstall::Paths { remove, keep }` (C stage 6b) and `Uninstall::Command(CommandUninstall)` (E Task 6); every RECIPES-wide test destructuring `Paths` with `else { continue }` (E Task 10) | Task 4 rewrites three of those tests; agy and grok are `Paths`, so the skips stay for rustup | Match by test name; keep E's skip form |
 | 4 | `RemoveSpec { path, expect, what, optional }`, `KeepSpec { path, what }`, `Expect::{SymlinkIntoRoot, Dir}`, `pub const SHARED_FOLDERS: [&str; 5]` (C stage 6b) | Task 4 adds `Expect::File`, lets a `KeepSpec` with `what: OutsideHome` name an absolute path | If C's field names differ, use C's |
 | 5 | `removal::{Job { recipe, detected, remove, keep }, Removal { paths, identities, warnings }, plan_removal, execute_removal, Confirmed, Pacing, TIMEOUT_SECS, PUT_BACK_SETTLE}` and its private `check_item(look, kept, spec, path)`, `kept_places`, `disturbed`, `take_turn`, `spelled`, `shown`, `is_shared_folder`, `identity_of`, `Look { job, canonical_home, launcher, root }` (`root` is `route::expand(home, recipe.route.root)`, landed at `removal.rs:174-190`), `Kept`, `Refusal { path, reason }`, `Turn` (C stages 6c–6d) | Task 4 adds `Job.globs`, `Item`, `listed_items`, `keeps_instead`, `outside_home_keeps(look)`, `points_into`; changes `check_item`'s signature, `plan_removal`, `take_turn`, `kept_places` | Edit the landed function of the same role; the code below quotes C's plan text as the anchor |
 | 6 | C's `removal.rs` test helpers `detected(home)` (E adds three fields), `claude_job`, `only`, `trash`, `keep`, `refused`, `identity`, `run`, `no_gap`, `path_changed`, `moved`; `test_plan_removal_refuses_an_optional_path_of_the_wrong_shape`; `test_plan_removal_refuses_a_path_reached_through_a_linked_folder_inside_home` (landed at `removal.rs:859-899`, two halves: `~/.claude -> ~/Documents` refusing the optional `~/.claude/downloads`, and a dotfiles-linked `~/.local/bin` refusing the launcher) | Task 4 reuses the helpers, gives `claude_job` a `globs: &[]`, replaces the first test, and rewrites the second to its launcher half (its first half becomes a keep, folded into a new test) | If a helper has another name, use it |
 | 7 | `route::{expand(home, spec), expand_route(home, cargo_home, spec), probe, probe_strict, lexical_join, shadow_note, Probe::{Absent, Present { real }, LauncherOnly}}` (B, C, E) | Read only. `Glob::dir_under` (Task 3) mirrors `expand`'s `~/` rule for the scan, which must not depend on `adapters` | — |
 | 8 | `#[derive(Clone, Debug)] Detected { home, euid, cargo_home, rustup_home, zdotdir }`; `seated_detected_for(inst)`, `locks(inst, detected)`, `detected_or_refuse()` (C, E Task 4) | Task 5's `plan(Upgrade)` edit keeps E's `let detected = self.seated_detected_for(inst)?;` line and changes only the `upgrade` binding | If E routed C's `Paths` arm through `seated_detected_for` (E checklist row 16), keep that |
-| 9 | `StandaloneAdapter { recipe, meta, runner, http, trasher, trash_gap, detected }`, `new(recipe, runner, http, trasher)`, `with_trash_gap`, `all(runner, http, trasher)`, `canager_core::trash::MockTrasher` (C stage 6e) | Task 5 adds `arch: &'static str` and `with_arch`; every D test passes `Arc::new(MockTrasher::new())` | If `new` has another arity, match it |
+| 9 | `StandaloneAdapter { recipe, meta, runner, http, trasher, trash_gap, detected }`, `new(recipe, runner, http, trasher)`, `with_trash_gap`, `all(runner, http, trasher)`, `banager_core::trash::MockTrasher` (C stage 6e) | Task 5 adds `arch: &'static str` and `with_arch`; every D test passes `Arc::new(MockTrasher::new())` | If `new` has another arity, match it |
 | 10 | `Adapter::reconcile_after_uninstall` with `StandaloneAdapter`'s override over `probe_strict` (C Task 2, stage 6e) | Tasks 5–6 tests read presence after an agy/grok uninstall | — |
 | 11 | `RouteKind::FlatFile`, `VersionParse::SecondToken`, `Latest::HttpTomlVersion { url }`, `latest::parse_release_stable_toml`, `latest_version`'s two arms (E Tasks 3–4) | Task 5 folds `latest_version` into `published`, keeping both arms word for word | If E named the function differently, fold that one |
 | 12 | `Recipe.extra_locks: fn(&Detected) -> Vec<ResourceLock>`, `pub fn no_extra_locks` (E Task 4) | `AGY` and `GROK` carry `extra_locks: no_extra_locks` | — |
@@ -249,20 +249,20 @@ adapters/meta/standalone-agy.toml                                  NEW   Adapter
 adapters/meta/standalone-grok.toml                                 NEW   same (5b)
 adapters/fixtures/standalone-agy/<version>/                        NEW   README.md, version.txt, manifest-darwin_arm64.json, update_status.json, layout.txt — recorded (6)
 adapters/fixtures/standalone-grok/<version>/                       NEW   README.md, version.txt, update-check.json, layout.txt — recorded (6)
-crates/canager-core/src/model.rs                                   MOD   UpdateBlocked::SelfUpdatesOnly + wire test (1); RemovedWhat::Backups, KeptWhat ×5 + shape test (2)                    [B's/C's file]
-crates/canager-core/src/scan/mod.rs                                MOD   Glob (+ dir_under, matches_name), Known.backups, rule 4, globs parameter on scan_dirs/scan_unknown, claimant(raw, dir, resolved, kind) (3); owned_roots rows + test rows (6)   [F's file]
-crates/canager-core/src/session/scan.rs                            MOD   passes recipes::backup_globs() (3)                                                                                  [F's file]
-crates/canager-core/src/adapters/standalone/recipe.rs              MOD   Recipe.backup_globs (3); Expect::File, KeepSpec doc (4); Latest::{HttpJsonField, Command}, upgrade: Option (5a)     [B's/C's/E's file]
-crates/canager-core/src/adapters/standalone/latest.rs              MOD   parse_json_field, UpdateCheck, parse_update_check, MANIFEST_VERIFIED_ARCHES, manifest_arch_allowed (5a)          [B's/E's file]
-crates/canager-core/src/adapters/standalone/removal.rs             MOD   Job.globs, Item, listed_items, check_item(rel, expect), keeps_instead, outside_home_keeps(look), points_into, plan_removal, take_turn, kept_places; tests (4)   [C's file]
-crates/canager-core/src/adapters/standalone/mod.rs                 MOD   Job literals gain globs (4); arch, with_arch, Published, published, check_updates, plan(Upgrade) (5a); testing::{agy_layout, grok_layout}; tests (5c); fixture tests (6)   [B's/C's/E's file]
-crates/canager-core/src/adapters/standalone/recipes.rs             MOD   backup_globs() + tests (3); three invariants tests rewritten (4); AGY, GROK, tests, allowlist-test arms, --check test (5); RECIPES, count test (6)   [B's/C's/E's file]
-crates/canager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += the agy manifest host; doc (5b)                                                              [A's/B's/E's file]
-crates/canager-core/src/session/mod.rs                             MOD   the eleven-adapter test (6)                                                                                         [B's/E's file]
-crates/canager-core/src/lib.rs                                     MOD   crate-doc clause (6)                                                                                                [B's/E's file]
-crates/canager-core/tests/unknown_scan_test.rs                     MOD   every scan_dirs call gains `&[]`; the rule-4 test (3)                                                               [F's file]
-crates/canager-core/tests/what_we_run_test.rs                      MOD   the read-only-check-command test (6)                                                                                [A's file]
-crates/canager-core/tests/standalone_agy_grok_test.rs              NEW   through Session: agy's gate refusal, grok's uninstall end to end (6)
+crates/banager-core/src/model.rs                                   MOD   UpdateBlocked::SelfUpdatesOnly + wire test (1); RemovedWhat::Backups, KeptWhat ×5 + shape test (2)                    [B's/C's file]
+crates/banager-core/src/scan/mod.rs                                MOD   Glob (+ dir_under, matches_name), Known.backups, rule 4, globs parameter on scan_dirs/scan_unknown, claimant(raw, dir, resolved, kind) (3); owned_roots rows + test rows (6)   [F's file]
+crates/banager-core/src/session/scan.rs                            MOD   passes recipes::backup_globs() (3)                                                                                  [F's file]
+crates/banager-core/src/adapters/standalone/recipe.rs              MOD   Recipe.backup_globs (3); Expect::File, KeepSpec doc (4); Latest::{HttpJsonField, Command}, upgrade: Option (5a)     [B's/C's/E's file]
+crates/banager-core/src/adapters/standalone/latest.rs              MOD   parse_json_field, UpdateCheck, parse_update_check, MANIFEST_VERIFIED_ARCHES, manifest_arch_allowed (5a)          [B's/E's file]
+crates/banager-core/src/adapters/standalone/removal.rs             MOD   Job.globs, Item, listed_items, check_item(rel, expect), keeps_instead, outside_home_keeps(look), points_into, plan_removal, take_turn, kept_places; tests (4)   [C's file]
+crates/banager-core/src/adapters/standalone/mod.rs                 MOD   Job literals gain globs (4); arch, with_arch, Published, published, check_updates, plan(Upgrade) (5a); testing::{agy_layout, grok_layout}; tests (5c); fixture tests (6)   [B's/C's/E's file]
+crates/banager-core/src/adapters/standalone/recipes.rs             MOD   backup_globs() + tests (3); three invariants tests rewritten (4); AGY, GROK, tests, allowlist-test arms, --check test (5); RECIPES, count test (6)   [B's/C's/E's file]
+crates/banager-core/src/http/real.rs                               MOD   ALLOWED_HTTPS_HOSTS += the agy manifest host; doc (5b)                                                              [A's/B's/E's file]
+crates/banager-core/src/session/mod.rs                             MOD   the eleven-adapter test (6)                                                                                         [B's/E's file]
+crates/banager-core/src/lib.rs                                     MOD   crate-doc clause (6)                                                                                                [B's/E's file]
+crates/banager-core/tests/unknown_scan_test.rs                     MOD   every scan_dirs call gains `&[]`; the rule-4 test (3)                                                               [F's file]
+crates/banager-core/tests/what_we_run_test.rs                      MOD   the read-only-check-command test (6)                                                                                [A's file]
+crates/banager-core/tests/standalone_agy_grok_test.rs              NEW   through Session: agy's gate refusal, grok's uninstall end to end (6)
 src/lib/types.ts, types.test.ts                                    MOD   UpdateBlocked (1); RemovedWhat, KeptWhat (2)                                                                        [A's/C's file]
 src/lib/sources.ts, sources.test.ts                                MOD   UPDATE_BLOCKED_KEYS.SelfUpdatesOnly, launcherCommand (1); labels, StandaloneAdapterId, summaries (7)                [B's/E's file]
 src/lib/warnings.ts, warnings.test.ts                              MOD   REMOVED_WHAT_KEYS.Backups, five KEPT_WHAT_KEYS rows (2)                                                             [A's/C's/E's file]
@@ -279,12 +279,12 @@ Single responsibility, unchanged from B/C/E: `recipe.rs` the shapes, `recipes.rs
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
 ```rust
-// crates/canager-core/src/model.rs
+// crates/banager-core/src/model.rs
 pub enum UpdateBlocked { Pinned, SelfUpdatesOnly }
 pub enum RemovedWhat { Launcher, Program, Cache, Backups }
 pub enum KeptWhat { Settings, SettingsAndHistory, ToolState, ShellConfigLines, OutsideHome, NotOurs, InstallerCache }
 
-// crates/canager-core/src/scan/mod.rs
+// crates/banager-core/src/scan/mod.rs
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Glob { pub dir: &'static str, pub prefix: &'static str, pub suffix: &'static str, pub what: RemovedWhat }
 impl Glob { pub fn dir_under(&self, home: &Path) -> PathBuf; pub fn matches_name(&self, name: &str) -> bool; }
@@ -294,7 +294,7 @@ pub fn scan_unknown(env: &HostEnv, instances: &[ManagerInstance], artifacts: &[I
 //          Known::index(instances, artifacts, globs, home) ; Known::claimant(&self, raw: &Path, dir: &Path, resolved: Option<&Path>, kind: EntryKind) -> Option<&InstanceId>
 pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf>;   // + "standalone-agy" | "standalone-grok" => vec![inst.prefix.clone()]
 
-// crates/canager-core/src/adapters/standalone/recipe.rs
+// crates/banager-core/src/adapters/standalone/recipe.rs
 pub struct Recipe { …B/C/E's nine fields with `upgrade: Option<UpgradeCmd>`…, pub backup_globs: &'static [Glob] }
 pub enum Latest { ClaudeChannel { base }, HttpTomlVersion { url },
                   HttpJsonField { url: &'static str, field: &'static str },
@@ -302,14 +302,14 @@ pub enum Latest { ClaudeChannel { base }, HttpTomlVersion { url },
 pub enum Expect { SymlinkIntoRoot, Dir, File }
 // KeepSpec.path: `~/…`, or an absolute path when `what == KeptWhat::OutsideHome` (report-only, and only when it links into the root)
 
-// crates/canager-core/src/adapters/standalone/latest.rs
+// crates/banager-core/src/adapters/standalone/latest.rs
 pub fn parse_json_field(body: &str, field: &str) -> Result<String, String>;
 #[derive(Clone, Debug, PartialEq, Eq)] pub struct UpdateCheck { pub latest: String, pub available: bool }
 pub fn parse_update_check(stdout: &str, latest_field: &str, available_field: &str, error_field: Option<&str>) -> Result<UpdateCheck, String>;
 pub const MANIFEST_VERIFIED_ARCHES: [&str; 1] = ["aarch64"];
 pub fn manifest_arch_allowed(arch: &str) -> Result<(), String>;
 
-// crates/canager-core/src/adapters/standalone/removal.rs
+// crates/banager-core/src/adapters/standalone/removal.rs
 pub struct Job { pub recipe: &'static Recipe, pub detected: Detected, pub remove: &'static [RemoveSpec], pub keep: &'static [KeepSpec], pub globs: &'static [Glob] }
 // private: struct Item { rel: PathBuf, path: PathBuf, expect: Expect, what: RemovedWhat, optional: bool }
 //          fn listed_items(job: &Job) -> Vec<Item>
@@ -318,19 +318,19 @@ pub struct Job { pub recipe: &'static Recipe, pub detected: Detected, pub remove
 //          fn outside_home_keeps(look: &Look<'_>) -> Vec<Warning>
 //          fn points_into(link: &Path, root: &Path) -> bool
 
-// crates/canager-core/src/adapters/standalone/recipes.rs
+// crates/banager-core/src/adapters/standalone/recipes.rs
 pub static AGY: Recipe;  pub static GROK: Recipe;
 pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP];
 pub fn backup_globs() -> Vec<(String, &'static [Glob])>;
 
-// crates/canager-core/src/adapters/standalone/mod.rs
+// crates/banager-core/src/adapters/standalone/mod.rs
 pub struct StandaloneAdapter { …C's seven fields…, arch: &'static str }
 impl StandaloneAdapter { pub fn with_arch(self, arch: &'static str) -> StandaloneAdapter; /* private */ async fn published(&self, launcher: &Path) -> Result<Published, String>; }
 // private: enum Published { Version(String), ToolSays(latest::UpdateCheck) }
 pub(super) mod testing { pub struct AgyLayout { pub launcher: PathBuf, pub root: PathBuf } pub fn agy_layout(home: &TempHome) -> AgyLayout;
                          pub struct GrokLayout { pub launcher: PathBuf, pub agent: PathBuf, pub root: PathBuf, pub real: PathBuf } pub fn grok_layout(home: &TempHome, version: &str) -> GrokLayout; }
 
-// crates/canager-core/src/http/real.rs
+// crates/banager-core/src/http/real.rs
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai", "downloads.claude.ai", "static.rust-lang.org",
                                           "antigravity-cli-auto-updater-974169037036.us-central1.run.app"];
 ```
@@ -385,7 +385,7 @@ Eight inputs the spec implies, or the research found, that a person is most like
 ### Task 1: `UpdateBlocked::SelfUpdatesOnly`, its wire mirror, copy record and page test
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — `pub enum UpdateBlocked`; `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
+- Modify: `crates/banager-core/src/model.rs` — `pub enum UpdateBlocked`; `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
 - Modify: `src/lib/types.ts` — `UpdateBlocked` and its doc; `src/lib/types.test.ts` — `it("spells UpdateBlocked as a bare string, …")`
 - Modify: `src/lib/sources.ts` — `launcherCommand`, `UPDATE_BLOCKED_KEYS`; `src/lib/sources.test.ts` — `describe("UPDATE_BLOCKED_KEYS", …)`
 - Modify: `src/pages/UpdatesPage.tsx` — `rowDescription`'s blocked branch; `src/pages/UpdatesPage.test.tsx` — one test after `gives no self-updating hint to a standalone row whose source did not answer`
@@ -398,7 +398,7 @@ Eight inputs the spec implies, or the research found, that a person is most like
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`, after its last assertion (`assert_eq!(serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"), pinned);`) and before the test's closing `}`, add:
+In `crates/banager-core/src/model.rs`, inside `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`, after its last assertion (`assert_eq!(serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"), pinned);`) and before the test's closing `}`, add:
 
 ```rust
         // Phase 4 step D: the second reason, a tool that installs its updates
@@ -526,7 +526,7 @@ In `src/pages/UpdatesPage.test.tsx`, after the test `it("gives no self-updating 
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
+Run: `cargo test -p banager-core --lib model::tests::test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
 Expected: FAIL to compile — `no variant or associated item named \`SelfUpdatesOnly\` found for enum \`UpdateBlocked\``.
 
 Run: `pnpm typecheck`
@@ -534,7 +534,7 @@ Expected: FAIL — `Type '"SelfUpdatesOnly"' is not assignable to type 'UpdateBl
 
 - [ ] **Step 3: Write the variant, the mirror, the copy record and the copy**
 
-In `crates/canager-core/src/model.rs`, in `pub enum UpdateBlocked`, after the `Pinned,` variant (its doc ends `Read by \`parse_outdated\` in \`adapters/pipx.rs\`.`), add:
+In `crates/banager-core/src/model.rs`, in `pub enum UpdateBlocked`, after the `Pinned,` variant (its doc ends `Read by \`parse_outdated\` in \`adapters/pipx.rs\`.`), add:
 
 ```rust
     /// The tool installs its updates itself and has no update command
@@ -560,7 +560,7 @@ In `src/lib/types.ts`, replace the `UpdateBlocked` type and its doc comment (fro
 /**
  * Why the tool itself will refuse to update this one package, although its
  * source is writable and answering. Mirrors `UpdateBlocked` in
- * crates/canager-core/src/model.rs: bare-string unit variants. `Pinned` is
+ * crates/banager-core/src/model.rs: bare-string unit variants. `Pinned` is
  * produced by brew's `parse_outdated` (from `brew outdated`'s
  * `pinned: true`) and pipx's (from `pipx list --outdated`'s
  * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
@@ -667,7 +667,7 @@ In `src/i18n/zh-CN.json`, the same place (after `"Pinned"`'s `"refused": "这个
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `pnpm exec vitest run src/lib/types.test.ts src/lib/sources.test.ts src/pages/UpdatesPage.test.tsx src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `pnpm exec vitest run src/lib/types.test.ts src/lib/sources.test.ts src/pages/UpdatesPage.test.tsx src/i18n`
 Expected: PASS — the wire test, the two new sources tests, the new page test, and `completeness.test.ts` (the four keys are looked up through the `Record`'s literals). Then `pnpm typecheck`: clean (the `Record<UpdateBlocked, …>` is complete again).
 
 - [ ] **Step 5: Format, gates, commit**
@@ -675,7 +675,7 @@ Expected: PASS — the wire test, the two new sources tests, the new page test, 
 Run `cargo fmt --all`, then the five gates from Global Constraints. Expected: all clean.
 
 ```bash
-git add crates/canager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add SelfUpdatesOnly, the update reason for a tool that updates itself
 
@@ -694,7 +694,7 @@ EOF
 ### Task 2: `RemovedWhat::Backups`, five `KeptWhat`s, their mirror, keys and copy
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — `pub enum RemovedWhat`, `pub enum KeptWhat` and their docs; the shape test `test_warning_wire_shapes_match_the_hand_written_ts_mirror` (its two `for what in […]` loops)
+- Modify: `crates/banager-core/src/model.rs` — `pub enum RemovedWhat`, `pub enum KeptWhat` and their docs; the shape test `test_warning_wire_shapes_match_the_hand_written_ts_mirror` (its two `for what in […]` loops)
 - Modify: `src/lib/types.ts` — `RemovedWhat`, `KeptWhat`; `src/lib/types.test.ts` — the `removed`/`kept` arrays
 - Modify: `src/lib/warnings.ts` — `REMOVED_WHAT_KEYS`, `KEPT_WHAT_KEYS`; `src/lib/warnings.test.ts` — `it("gives each fixed warning its own key", …)`
 - Modify: `src/i18n/en.json`, `src/i18n/zh-CN.json` — `warnings.willTrash.Backups`, `warnings.willKeep.{ToolState,ShellConfigLines,OutsideHome,NotOurs,InstallerCache}`
@@ -706,7 +706,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, replace the two loops
+In `crates/banager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, replace the two loops
 
 ```rust
         for what in [
@@ -815,7 +815,7 @@ In `src/lib/warnings.test.ts`, inside `it("gives each fixed warning its own key"
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror`
+Run: `cargo test -p banager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror`
 Expected: FAIL to compile — `no variant or associated item named \`Backups\` found for enum \`RemovedWhat\``, and the five `KeptWhat` names.
 
 Run: `pnpm typecheck`
@@ -823,7 +823,7 @@ Expected: FAIL — `Type '"Backups"' is not assignable to type 'RemovedWhat'` an
 
 - [ ] **Step 3: Write the variants, the mirror, the keys and the copy**
 
-In `crates/canager-core/src/model.rs`, replace the doc comment and enum `RemovedWhat` (from `/// What one path a path-list uninstall moves to the Trash is, for the` through the enum's closing `}`) with:
+In `crates/banager-core/src/model.rs`, replace the doc comment and enum `RemovedWhat` (from `/// What one path a path-list uninstall moves to the Trash is, for the` through the enum's closing `}`) with:
 
 ```rust
 /// What one path a path-list uninstall moves to the Trash is, for the
@@ -988,7 +988,7 @@ and after `"SettingsAndHistory": "保留：{{path}}（你的设置、登录信�
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `pnpm exec vitest run src/lib/types.test.ts src/lib/warnings.test.ts src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `pnpm exec vitest run src/lib/types.test.ts src/lib/warnings.test.ts src/i18n`
 Expected: PASS (the six keys are referenced through the two `Record`s' literals, so `completeness.test.ts` finds them). `pnpm typecheck`: clean.
 
 - [ ] **Step 5: Format, gates, commit**
@@ -996,7 +996,7 @@ Expected: PASS (the six keys are referenced through the two `Record`s' literals,
 Run `cargo fmt --all`, then the five gates. Expected: all clean.
 
 ```bash
-git add crates/canager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add the kinds the Antigravity and Grok uninstall lists move and keep
 
@@ -1014,12 +1014,12 @@ EOF
 ### Task 3: `Glob`, `Recipe.backup_globs`, the Unknown page's rule 4
 
 **Files:**
-- Modify: `crates/canager-core/src/scan/mod.rs` — imports; new `Glob`; `Known` (field, `index`, `claimant`); `scan_dirs`, `scan_unknown`; `test_the_longest_owned_root_wins`; two new unit tests
-- Modify: `crates/canager-core/src/session/scan.rs` — the one call
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `Recipe.backup_globs`; module doc
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `backup_globs()`; every `Recipe {` literal; two tests
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — C's test-only `NO_UNINSTALL` recipe literal (and any other `Recipe {` literal the grep finds)
-- Modify: `crates/canager-core/tests/unknown_scan_test.rs` — every `scan_dirs(` call; one new test
+- Modify: `crates/banager-core/src/scan/mod.rs` — imports; new `Glob`; `Known` (field, `index`, `claimant`); `scan_dirs`, `scan_unknown`; `test_the_longest_owned_root_wins`; two new unit tests
+- Modify: `crates/banager-core/src/session/scan.rs` — the one call
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `Recipe.backup_globs`; module doc
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `backup_globs()`; every `Recipe {` literal; two tests
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — C's test-only `NO_UNINSTALL` recipe literal (and any other `Recipe {` literal the grep finds)
+- Modify: `crates/banager-core/tests/unknown_scan_test.rs` — every `scan_dirs(` call; one new test
 - Modify: `docs/what-we-run.md` — the `## Unknown-source scan` section's attribution paragraph
 - Test: the files above.
 
@@ -1031,7 +1031,7 @@ Rule 4 (spec §8.3): after rules 0–3, an entry that is a regular file (`EntryK
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/scan/mod.rs`, inside `mod tests`, after `test_app_bundle_takes_the_first_candidate_with_a_dot_app_component` add:
+In `crates/banager-core/src/scan/mod.rs`, inside `mod tests`, after `test_app_bundle_takes_the_first_candidate_with_a_dot_app_component` add:
 
 ```rust
     #[test]
@@ -1098,7 +1098,7 @@ with
         );
 ```
 
-In `crates/canager-core/tests/unknown_scan_test.rs`, add `RemovedWhat` to the `use canager_core::model::{…}` list and `Glob` to the `use canager_core::scan::{…}` list, and after `test_rule_3_never_treats_a_parent_derived_prefix_as_owned` add:
+In `crates/banager-core/tests/unknown_scan_test.rs`, add `RemovedWhat` to the `use banager_core::model::{…}` list and `Glob` to the `use banager_core::scan::{…}` list, and after `test_rule_3_never_treats_a_parent_derived_prefix_as_owned` add:
 
 ```rust
 
@@ -1167,7 +1167,7 @@ fn test_rule_4_claims_a_backup_the_updaters_pattern_names_only_while_the_tool_is
 
 Every other `scan_dirs(` call in that file gains a `&[],` argument between the `artifacts` argument and `ScanBudget::default()` (F wrote them all as `scan_dirs(&[…], &home.env(…), &[…], &[…], ScanBudget::default())`; the compiler names each one: `this function takes 6 arguments but 5 arguments were supplied`).
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, add `use crate::scan::Glob;` to the imports and append two tests before the module's closing `}`:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, add `use crate::scan::Glob;` to the imports and append two tests before the module's closing `}`:
 
 ```rust
     #[test]
@@ -1217,15 +1217,15 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`,
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib scan::tests` and `cargo test -p canager-core --test unknown_scan_test`
-Expected: FAIL to compile — `cannot find type \`Glob\` in this scope`; `this method takes 2 arguments but 4 arguments were supplied` (`Known::index`), `this method takes 2 arguments but 4 arguments were supplied` (`claimant`); `unresolved import \`canager_core::scan::Glob\``.
+Run: `cargo test -p banager-core --lib scan::tests` and `cargo test -p banager-core --test unknown_scan_test`
+Expected: FAIL to compile — `cannot find type \`Glob\` in this scope`; `this method takes 2 arguments but 4 arguments were supplied` (`Known::index`), `this method takes 2 arguments but 4 arguments were supplied` (`claimant`); `unresolved import \`banager_core::scan::Glob\``.
 
-Run: `cargo test -p canager-core --lib adapters::standalone::recipes`
+Run: `cargo test -p banager-core --lib adapters::standalone::recipes`
 Expected: FAIL to compile — `no field \`backup_globs\` on type \`&Recipe\``; `cannot find function \`backup_globs\``.
 
 - [ ] **Step 3: Write `Glob`, the field, the rule and the wiring**
 
-In `crates/canager-core/src/scan/mod.rs`, change the import `use crate::model::{InstalledArtifact, InstanceId, ManagerInstance};` to `use crate::model::{InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};`, and after `ScannedDir`'s definition (before `/// What one listed entry is.`) insert:
+In `crates/banager-core/src/scan/mod.rs`, change the import `use crate::model::{InstalledArtifact, InstanceId, ManagerInstance};` to `use crate::model::{InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};`, and after `ScannedDir`'s definition (before `/// What one listed entry is.`) insert:
 
 ```rust
 
@@ -1383,7 +1383,7 @@ and add `backups,` to that literal. Replace `claimant` (from its doc comment `//
 
 In `scan_dirs`: add the parameter `globs: &[(String, &'static [Glob])],` between `artifacts: &[InstalledArtifact],` and `budget: ScanBudget,`; change `let known = Known::index(instances, artifacts);` to `let known = Known::index(instances, artifacts, globs, &env.home);`; change `seen.push(canonical);` to `seen.push(canonical.clone());`; and change `match known.claimant(&raw, entry.resolved.as_deref()) {` to `match known.claimant(&raw, &canonical, entry.resolved.as_deref(), entry.kind) {`. In `scan_unknown`: the same parameter in the same place, passed through: `scan_dirs(&candidate_dirs(env), env, instances, artifacts, globs, budget)`. In both functions' doc comments add the sentence `\`globs\` are the installed tools' backup-file patterns by adapter id (rule 4).`
 
-In `crates/canager-core/src/session/scan.rs`, replace `scan::scan_unknown(env, &instances, &artifacts, ScanBudget::default())` with:
+In `crates/banager-core/src/session/scan.rs`, replace `scan::scan_unknown(env, &instances, &artifacts, ScanBudget::default())` with:
 
 ```rust
         scan::scan_unknown(
@@ -1397,7 +1397,7 @@ In `crates/canager-core/src/session/scan.rs`, replace `scan::scan_unknown(env, &
 
 and add to the method's doc comment: `The backup-file patterns of every standalone recipe (\`recipes::backup_globs\`) are handed in for rule 4; only the ones with an instance in the snapshot claim anything.`
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`, add `use crate::scan::Glob;` to the imports, and inside `Recipe`, after E's `extra_locks` field, add:
+In `crates/banager-core/src/adapters/standalone/recipe.rs`, add `use crate::scan::Glob;` to the imports, and inside `Recipe`, after E's `extra_locks` field, add:
 
 ```rust
     /// The file-name patterns of the backup copies the tool's own updater
@@ -1413,7 +1413,7 @@ In `crates/canager-core/src/adapters/standalone/recipe.rs`, add `use crate::scan
 
 In the module doc, change the sentence beginning `step D adds \`backup_globs\`` (C's wording: "step D adds `backup_globs`, a `FlatFile` route, `Expect::File`, a `SecondToken` version parse, the other `Latest` sources and an optional `upgrade` (agy updates itself only)") to `step D added \`backup_globs\`, \`Expect::File\`, the other \`Latest\` sources and an optional \`upgrade\` (agy updates itself only)` — the `FlatFile` and `SecondToken` clauses went with E.
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, add `use crate::scan::Glob;` to the imports, add `backup_globs: &[],` as the last field of `CLAUDE` and of `RUSTUP` (after E's `extra_locks: …,`), and after `RECIPES` add:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `use crate::scan::Glob;` to the imports, add `backup_globs: &[],` as the last field of `CLAUDE` and of `RUSTUP` (after E's `extra_locks: …,`), and after `RECIPES` add:
 
 ```rust
 
@@ -1429,7 +1429,7 @@ pub fn backup_globs() -> Vec<(String, &'static [Glob])> {
 }
 ```
 
-Every other `Recipe {` literal gains `backup_globs: &[],` as its last field: `grep -rn "Recipe {$" crates/canager-core/src/adapters/standalone/` lists them (C's test-only `NO_UNINSTALL` in `mod.rs`'s tests; any E test recipe); the build stops with `missing field \`backup_globs\`` at any the grep missed.
+Every other `Recipe {` literal gains `backup_globs: &[],` as its last field: `grep -rn "Recipe {$" crates/banager-core/src/adapters/standalone/` lists them (C's test-only `NO_UNINSTALL` in `mod.rs`'s tests; any E test recipe); the build stops with `missing field \`backup_globs\`` at any the grep missed.
 
 In `docs/what-we-run.md`, in the `## Unknown-source scan` section's paragraph beginning `A program is *not* listed when a known source accounts for it`, after the clause ending `Ollama's \`~/.ollama\`; Claude Code's \`~/.local/share/claude\`).` (C/E may have extended that list; append after its closing parenthesis and before `Everything else is listed`), insert the sentence:
 
@@ -1443,7 +1443,7 @@ is gone the pattern goes with it and such a file is listed.
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib scan`, `cargo test -p canager-core --test unknown_scan_test`, `cargo test -p canager-core --lib adapters::standalone::recipes`, `cargo test -p canager-core --lib session::scan`
+Run: `cargo test -p banager-core --lib scan`, `cargo test -p banager-core --test unknown_scan_test`, `cargo test -p banager-core --lib adapters::standalone::recipes`, `cargo test -p banager-core --lib session::scan`
 Expected: PASS — the two new `scan` unit tests and F's (with the two amended calls); the rule-4 test and F's twenty-odd with their `&[]`; `test_every_backup_glob_is_under_home_and_names_a_pattern` (nothing to check yet: every slice is empty) and `test_backup_globs_lists_every_recipe_under_its_adapter_id`; F's session test.
 
 - [ ] **Step 5: Format, gates, commit**
@@ -1451,7 +1451,7 @@ Expected: PASS — the two new `scan` unit tests and F's (with the two amended c
 Run `cargo fmt --all`, then the five gates. Expected: all clean.
 
 ```bash
-git add crates/canager-core/src/scan/mod.rs crates/canager-core/src/session/scan.rs crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/tests/unknown_scan_test.rs docs/what-we-run.md
+git add crates/banager-core/src/scan/mod.rs crates/banager-core/src/session/scan.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/tests/unknown_scan_test.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Claim a backup copy a tool's own updater left beside its launcher
 
@@ -1473,12 +1473,12 @@ EOF
 ### Task 4: `removal.rs` — check 5, `Expect::File`, the `NotOurs` skip, report-only outside-home keeps
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `Expect::File`; `KeepSpec.path`'s doc
-- Modify: `crates/canager-core/src/adapters/standalone/removal.rs` — imports; `Job.globs`; `Item`, `listed_items`, `keeps_instead`, `outside_home_keeps`, `points_into`; `check_item`, `kept_places`, `plan_removal`, `take_turn`; tests (two of C's replaced or cut down, six new)
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — the two `removal::Job { … }` literals in `plan` and `execute`
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — three invariants tests rewritten
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `Expect::File`; `KeepSpec.path`'s doc
+- Modify: `crates/banager-core/src/adapters/standalone/removal.rs` — imports; `Job.globs`; `Item`, `listed_items`, `keeps_instead`, `outside_home_keeps`, `points_into`; `check_item`, `kept_places`, `plan_removal`, `take_turn`; tests (two of C's replaced or cut down, six new)
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — the two `removal::Job { … }` literals in `plan` and `execute`
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — three invariants tests rewritten
 - Modify: `docs/what-we-run.md` — two sentences of the `## Claude Code` check paragraph that this task makes false (C's rule: a document changes in the commit that changes what it describes)
-- Test: `cargo test -p canager-core --lib adapters::standalone`, `cargo test -p canager-core --test what_we_run_test`
+- Test: `cargo test -p banager-core --lib adapters::standalone`, `cargo test -p banager-core --test what_we_run_test`
 
 **Interfaces:**
 - Consumes: C's `Job`, `Removal`, `Look`, `Kept`, `Refusal { path, reason }`, `check_item`, `kept_places`, `disturbed`, `is_shared_folder`, `spelled`, `shown`, `identity_of`, `take_turn`, `Turn`, `execute_removal`, `plan_removal`, the test helpers of `removal.rs`'s `mod tests` (`detected`, `claude_job`, `only`, `trash`, `keep`, `refused`, `identity`, `run`, `no_gap`, `path_changed`, `moved`); `Glob` (Task 3); `KeptWhat::{NotOurs, OutsideHome}`, `RemovedWhat::Backups` (Task 2); `UninstallUnsafeReason`.
@@ -1488,7 +1488,7 @@ Rules (spec §6.3, as C implemented it, plus this step's three): **check 5** —
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/removal.rs`, in `mod tests`:
+In `crates/banager-core/src/adapters/standalone/removal.rs`, in `mod tests`:
 
 (a) Add `use crate::scan::Glob;` to the imports, and add `RemoveSpec`'s neighbour `KeepSpec` (already imported by C: `use super::super::recipe::{Expect, KeepSpec, RemoveSpec, Uninstall};`).
 
@@ -1908,7 +1908,7 @@ In `crates/canager-core/src/adapters/standalone/removal.rs`, in `mod tests`:
     }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, replace C's `test_every_uninstall_path_is_under_home_and_not_in_a_shared_folder` and `test_every_paths_recipe_moves_its_launcher_last_and_lists_no_path_inside_another`, and E's `test_a_paths_recipe_names_only_home_paths`, each from its `#[test]` through its closing `}`, with:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, replace C's `test_every_uninstall_path_is_under_home_and_not_in_a_shared_folder` and `test_every_paths_recipe_moves_its_launcher_last_and_lists_no_path_inside_another`, and E's `test_a_paths_recipe_names_only_home_paths`, each from its `#[test]` through its closing `}`, with:
 
 ```rust
     /// The kept paths of a `Paths` recipe that must live under home (every
@@ -2046,12 +2046,12 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`,
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: FAIL to compile — `struct \`Job\` has no field named \`globs\``; `no variant or associated item named \`File\` found for enum \`Expect\``; `cannot find function \`points_into\``; `no variant or associated item named \`NotOurs\`` is *not* raised (Task 2 added it); `unresolved import \`crate::scan::Glob\`` is *not* raised (Task 3 added it).
 
 - [ ] **Step 3: Write `Expect::File`, the items, the skip and the outside-home report**
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`:
+In `crates/banager-core/src/adapters/standalone/recipe.rs`:
 
 (a) In `pub enum Expect`, after the `Dir,` variant add:
 
@@ -2078,7 +2078,7 @@ and in the enum's doc comment delete the sentence `Only the kinds Claude Code's 
 /// (`recipes::tests` hold the two spellings apart).
 ```
 
-In `crates/canager-core/src/adapters/standalone/removal.rs`:
+In `crates/banager-core/src/adapters/standalone/removal.rs`:
 
 (c) Add `use crate::scan::Glob;` to the imports, and add `KeptWhat` and `RemovedWhat` to the `use crate::model::{…}` list (C imports `ItemIdentity, ItemKind, UninstallUnsafeReason, Warning` and, from stage 6d, `Fault` and `Outcome`; keep those).
 
@@ -2436,7 +2436,7 @@ with
 
 and its check call `check_item(&look, &kept, spec, path)` with `check_item(&look, &kept, &item.rel, item.expect, path)`. (`home` is no longer used in `take_turn` before `Look::new`; delete the `let home = …` line if nothing else in the function reads it — `-D warnings` says.)
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, in `plan`'s `Uninstall::Paths { remove, keep } => { let removal = removal::plan_removal(&removal::Job { … }) }` literal and in `execute`'s `removal::execute_removal(&removal::Job { … }, …)` literal, add `globs: self.recipe.backup_globs,` after `keep,` in each.
+In `crates/banager-core/src/adapters/standalone/mod.rs`, in `plan`'s `Uninstall::Paths { remove, keep } => { let removal = removal::plan_removal(&removal::Job { … }) }` literal and in `execute`'s `removal::execute_removal(&removal::Job { … }, …)` literal, add `globs: self.recipe.backup_globs,` after `keep,` in each.
 
 (j) In `docs/what-we-run.md`, in the `## Claude Code` section's check paragraph (the one beginning `Before the preview is shown every listed path is checked`), two sentences become false with this commit, since `~/.claude/downloads` is an optional path. Replace
 
@@ -2482,15 +2482,15 @@ preview also records what each path is — its
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib adapters::standalone` and `cargo test -p canager-core --test what_we_run_test`
-Expected: PASS — C's removal tests except the two this task changed (`…_refuses_an_optional_path_of_the_wrong_shape` replaced by a keep, `…_refuses_a_path_reached_through_a_linked_folder_inside_home` cut down to its launcher half; every other C test is unchanged in behaviour, since no recipe has globs or an outside keep yet), the seven new removal tests (including `test_points_into_…`), the three rewritten recipes tests, B's and E's route/recipes/adapter tests; A's document tests over the re-wrapped Claude Code paragraph. `cargo test -p canager-core --test standalone_uninstall_test`: PASS, unchanged (Claude Code's list has no optional path of the wrong shape in those layouts).
+Run: `cargo test -p banager-core --lib adapters::standalone` and `cargo test -p banager-core --test what_we_run_test`
+Expected: PASS — C's removal tests except the two this task changed (`…_refuses_an_optional_path_of_the_wrong_shape` replaced by a keep, `…_refuses_a_path_reached_through_a_linked_folder_inside_home` cut down to its launcher half; every other C test is unchanged in behaviour, since no recipe has globs or an outside keep yet), the seven new removal tests (including `test_points_into_…`), the three rewritten recipes tests, B's and E's route/recipes/adapter tests; A's document tests over the re-wrapped Claude Code paragraph. `cargo test -p banager-core --test standalone_uninstall_test`: PASS, unchanged (Claude Code's list has no optional path of the wrong shape in those layouts).
 
 - [ ] **Step 5: Format, gates, commit**
 
 Run `cargo fmt --all`, then the five gates. Expected: all clean.
 
 ```bash
-git add crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/removal.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/recipes.rs docs/what-we-run.md
+git add crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/removal.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/recipes.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Teach the path-list uninstall backups, regular files and what is not its own
 
@@ -2520,14 +2520,14 @@ EOF
 One commit, built in stages, because every new shape here has its only producer in the two recipe constants and its only reader in the adapter, and the fixture-set test is untouched until Task 6 registers them (B's Task 3 and E's Task 6 are the precedent). Stage 5a: the shapes and the adapter; 5b: the meta files, the two constants and their invariants tests; 5c: the adapter tests on synthetic layouts; 5d: format, gates, commit.
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — `Latest::{HttpJsonField, Command}`, `Recipe.upgrade: Option<UpgradeCmd>`, module doc
-- Modify: `crates/canager-core/src/adapters/standalone/latest.rs` — `parse_json_field`, `UpdateCheck`, `parse_update_check`, `MANIFEST_VERIFIED_ARCHES`, `manifest_arch_allowed`; tests
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — `StandaloneAdapter.arch`, `new`, `with_arch`, `Published`, `published` (replacing `latest_version`), `check_updates`, `plan`'s Upgrade arm; `testing::{AgyLayout, agy_layout, GrokLayout, grok_layout}`; tests
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `AGY`, `GROK`; `CLAUDE`/`RUSTUP` `upgrade: Some(…)`; `test_every_recipe_latest_url_is_an_allowed_https_host`'s arms; new tests
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — `Latest::{HttpJsonField, Command}`, `Recipe.upgrade: Option<UpgradeCmd>`, module doc
+- Modify: `crates/banager-core/src/adapters/standalone/latest.rs` — `parse_json_field`, `UpdateCheck`, `parse_update_check`, `MANIFEST_VERIFIED_ARCHES`, `manifest_arch_allowed`; tests
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `StandaloneAdapter.arch`, `new`, `with_arch`, `Published`, `published` (replacing `latest_version`), `check_updates`, `plan`'s Upgrade arm; `testing::{AgyLayout, agy_layout, GrokLayout, grok_layout}`; tests
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `AGY`, `GROK`; `CLAUDE`/`RUSTUP` `upgrade: Some(…)`; `test_every_recipe_latest_url_is_an_allowed_https_host`'s arms; new tests
 - Create: `adapters/meta/standalone-agy.toml`, `adapters/meta/standalone-grok.toml`
-- Modify: `crates/canager-core/src/http/real.rs` — `ALLOWED_HTTPS_HOSTS`, its doc
+- Modify: `crates/banager-core/src/http/real.rs` — `ALLOWED_HTTPS_HOSTS`, its doc
 - Modify: `docs/what-we-run.md` — one row of the network table (A's test wants the host named in the same commit as the constant)
-- Test: `cargo test -p canager-core --lib adapters::standalone`, `cargo test -p canager-core --test what_we_run_test`
+- Test: `cargo test -p banager-core --lib adapters::standalone`, `cargo test -p banager-core --test what_we_run_test`
 
 **Interfaces:**
 - Consumes: B's `read_version`, `artifact_key`, `check_updates`, `latest_version` (with E's `HttpTomlVersion` arm), `uncheckable_candidate`, `compare_dotted`, `is_dotted_version`, `parse_version`; E's `seated_detected_for`, `locks`, `RouteKind::FlatFile`, `VersionParse::SecondToken`, `no_extra_locks`, `Detected`; C's `Uninstall::Paths`, `RemoveSpec`, `KeepSpec`, `Expect` (+ `File`, Task 4), `MockTrasher`, `with_trash_gap`, `reconcile_after_uninstall`; `Glob` and `Recipe.backup_globs` (Task 3); `UpdateBlocked::SelfUpdatesOnly` (Task 1); `RemovedWhat::Backups`, the five `KeptWhat`s (Task 2); `MockRunner`, `MockHttpClient`, `RecordingRunner`, `TempHome`.
@@ -2537,7 +2537,7 @@ One commit, built in stages, because every new shape here has its only producer 
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/latest.rs`, inside `mod tests`, append before the module's closing `}`:
+In `crates/banager-core/src/adapters/standalone/latest.rs`, inside `mod tests`, append before the module's closing `}`:
 
 ```rust
 
@@ -2647,12 +2647,12 @@ In `crates/canager-core/src/adapters/standalone/latest.rs`, inside `mod tests`, 
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::latest`
+Run: `cargo test -p banager-core --lib adapters::standalone::latest`
 Expected: FAIL to compile — `cannot find function \`parse_json_field\``, `\`parse_update_check\``, `\`manifest_arch_allowed\``; `cannot find struct, variant or union type \`UpdateCheck\``; `cannot find value \`MANIFEST_VERIFIED_ARCHES\``.
 
 - [ ] **Step 3: Write the shapes and the adapter**
 
-In `crates/canager-core/src/adapters/standalone/latest.rs`, after `parse_release_stable_toml`'s closing `}` (E's; before `#[cfg(test)]`), insert:
+In `crates/banager-core/src/adapters/standalone/latest.rs`, after `parse_release_stable_toml`'s closing `}` (E's; before `#[cfg(test)]`), insert:
 
 ```rust
 
@@ -2768,7 +2768,7 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`:
+In `crates/banager-core/src/adapters/standalone/recipe.rs`:
 
 (a) In `pub enum Latest`, after E's `HttpTomlVersion { url: &'static str },` arm add:
 
@@ -2820,9 +2820,9 @@ In `crates/canager-core/src/adapters/standalone/recipe.rs`:
 
 (c) In the module doc, change `the other \`Latest\` sources and an optional \`upgrade\` (agy updates itself only)` to `the two \`Latest\` sources a manifest and a tool's own check need, and an optional \`upgrade\` (agy updates itself only)`.
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, in `CLAUDE` and in `RUSTUP`, wrap the `upgrade` value: `upgrade: UpgradeCmd { … },` becomes `upgrade: Some(UpgradeCmd { … }),`. The same in every other `Recipe {` literal (C's `NO_UNINSTALL` in `mod.rs`'s tests; the compiler names them: `expected \`Option<UpgradeCmd>\`, found \`UpgradeCmd\``). In `test_claude_updates_with_its_own_updater`, the assertions on `CLAUDE.upgrade.args`/`timeout_secs`/`cancel` become `let upgrade = CLAUDE.upgrade.as_ref().expect("claude has an update command");` followed by the same three assertions on `upgrade.…`. E's rustup test that reads `RUSTUP.upgrade` gets the same `as_ref().expect(…)`.
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, in `CLAUDE` and in `RUSTUP`, wrap the `upgrade` value: `upgrade: UpgradeCmd { … },` becomes `upgrade: Some(UpgradeCmd { … }),`. The same in every other `Recipe {` literal (C's `NO_UNINSTALL` in `mod.rs`'s tests; the compiler names them: `expected \`Option<UpgradeCmd>\`, found \`UpgradeCmd\``). In `test_claude_updates_with_its_own_updater`, the assertions on `CLAUDE.upgrade.args`/`timeout_secs`/`cancel` become `let upgrade = CLAUDE.upgrade.as_ref().expect("claude has an update command");` followed by the same three assertions on `upgrade.…`. E's rustup test that reads `RUSTUP.upgrade` gets the same `as_ref().expect(…)`.
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`:
+In `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 (d) In `pub struct StandaloneAdapter`, after `detected: Mutex<Option<Detected>>,` add:
 
@@ -3002,7 +3002,7 @@ keep B's `Latest::ClaudeChannel { base } => { … }` arm and E's `Latest::HttpTo
                 };
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, in `test_every_recipe_latest_url_is_an_allowed_https_host`, add two arms to the `match recipe.latest { … }` after E's `Latest::HttpTomlVersion { url } => vec![url.to_string()],`:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, in `test_every_recipe_latest_url_is_an_allowed_https_host`, add two arms to the `match recipe.latest { … }` after E's `Latest::HttpTomlVersion { url } => vec![url.to_string()],`:
 
 ```rust
                 Latest::HttpJsonField { url, .. } => vec![url.to_string()],
@@ -3014,8 +3014,8 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, in `test_every_reci
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
-Expected: PASS — the three new `latest` tests; every B/C/E test as before (`check_updates`'s comparison path is unchanged in behaviour; the `Option` wrap is mechanical). `cargo build -p canager-core` clean: `with_arch`, `Published::ToolSays` and the two new arms are `pub` or matched, so no dead-code warning even before a recipe produces them (the gates run at 5d).
+Run: `cargo test -p banager-core --lib adapters::standalone`
+Expected: PASS — the three new `latest` tests; every B/C/E test as before (`check_updates`'s comparison path is unchanged in behaviour; the `Option` wrap is mechanical). `cargo build -p banager-core` clean: `with_arch`, `Published::ToolSays` and the two new arms are `pub` or matched, so no dead-code warning even before a recipe produces them (the gates run at 5d).
 
 - [ ] **Step 5: Continue the task**
 
@@ -3025,7 +3025,7 @@ No commit: continue to stage 5b.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, append before the module's closing `}`:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, append before the module's closing `}`:
 
 ```rust
 
@@ -3206,7 +3206,7 @@ In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`,
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::recipes`
+Run: `cargo test -p banager-core --lib adapters::standalone::recipes`
 Expected: FAIL to compile — `cannot find value \`AGY\` in this scope`, `cannot find value \`GROK\``.
 
 - [ ] **Step 3: Write the meta files, the constants and the host**
@@ -3237,7 +3237,7 @@ verified_versions = ["1.0.41"]
 
 (`kind = "standalone"` is documentary, as for claude. Each `verified_versions` is what Task 6 records; if the recording day's version differs — agy self-updates, and this Mac's `agy` binary changed again on 2026-09-25 — Task 6 changes the line to match.)
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, add `Glob` (Task 3 did) and make sure `Expect, KeepSpec, RemoveSpec, Uninstall, no_extra_locks` are in the `use super::recipe::{…}` list and `KeptWhat, RemovedWhat` in the `use crate::model::{…}` list, then after `CLAUDE` (before E's `RUSTUP`) add:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `Glob` (Task 3 did) and make sure `Expect, KeepSpec, RemoveSpec, Uninstall, no_extra_locks` are in the `use super::recipe::{…}` list and `KeptWhat, RemovedWhat` in the `use crate::model::{…}` list, then after `CLAUDE` (before E's `RUSTUP`) add:
 
 ```rust
 
@@ -3507,7 +3507,7 @@ pub static GROK: Recipe = Recipe {
 
 (`RECIPES` stays `&[&CLAUDE, &RUSTUP]` until Task 6: adding the two registers them through `all()`, and `fixtures_layout_test`/`what_we_run_test` then demand the recordings and the trust-file sections, which Task 6 brings in the same commit.)
 
-In `crates/canager-core/src/http/real.rs`, change the constant (E's five entries) to:
+In `crates/banager-core/src/http/real.rs`, change the constant (E's five entries) to:
 
 ```rust
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
@@ -3530,7 +3530,7 @@ In `docs/what-we-run.md`, in the table under `## Network: Canager only connects 
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::recipes` and `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --lib adapters::standalone::recipes` and `cargo test -p banager-core --test what_we_run_test`
 Expected: PASS — the five new recipes tests; B's/C's/E's invariants over `RECIPES` unchanged (the two constants are not in it yet); A's `test_what_we_run_names_every_allowed_https_host` with the new row.
 
 - [ ] **Step 5: Continue the task**
@@ -3541,7 +3541,7 @@ No commit: continue to stage 5c.
 
 - [ ] **Step 1: Add the two layouts to `testing`**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, inside `#[cfg(test)] pub(super) mod testing { … }`, after `claude_layout`'s closing `}` (before C's `Unreadable`), insert:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, inside `#[cfg(test)] pub(super) mod testing { … }`, after `claude_layout`'s closing `}` (before C's `Unreadable`), insert:
 
 ```rust
 
@@ -4491,7 +4491,7 @@ In the same `mod tests`, append before the module's closing `}`:
 
 - [ ] **Step 5: Run to verify the stage passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: PASS — the seventeen new adapter tests (ten agy, seven grok), the five recipes tests of 5b, the three `latest` tests of 5a, and every B/C/E test. `test_a_stopped_grok_uninstall_…`'s second `detect` finds the same instance id, so the seat (E's `seated_detected_for`) matches the fresh instance.
 
 #### Stage 5d: format, gates, commit
@@ -4503,7 +4503,7 @@ Run `cargo fmt --all`, then the five gates from Global Constraints. Expected: al
 - [ ] **Step 2: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/latest.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/recipes.rs adapters/meta/standalone-agy.toml adapters/meta/standalone-grok.toml crates/canager-core/src/http/real.rs docs/what-we-run.md
+git add crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/latest.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/recipes.rs adapters/meta/standalone-agy.toml adapters/meta/standalone-grok.toml crates/banager-core/src/http/real.rs docs/what-we-run.md
 git commit -m "$(cat <<'EOF'
 Add the Antigravity CLI and Grok Build recipes to the standalone adapter
 
@@ -4533,14 +4533,14 @@ EOF
 - Create: `adapters/fixtures/standalone-agy/<version>/{README.md, version.txt, manifest-darwin_arm64.json, update_status.json, layout.txt}` — recorded, never typed (the directory is named after the recorded version; Step 1)
 - Create: `adapters/fixtures/standalone-grok/<version>/{README.md, version.txt, update-check.json, layout.txt}` — recorded (Step 2)
 - Modify: `adapters/meta/standalone-agy.toml`, `adapters/meta/standalone-grok.toml` — only if the recorded versions differ from `1.2.10` / `1.0.41`
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — `RECIPES`; `test_recipes_lists_each_registered_tool_once_in_reading_order`; the `.chain([&&AGY, &&GROK])` of `test_every_command_latest_source_only_checks`
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — four fixture-backed tests
-- Modify: `crates/canager-core/src/session/mod.rs` — `test_new_registers_all_nine_adapters` → eleven
-- Modify: `crates/canager-core/src/scan/mod.rs` — `owned_roots` rows, its doc, `test_owned_roots_table`
-- Modify: `crates/canager-core/src/lib.rs` — the crate doc's list of sources
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `RECIPES`; `test_recipes_lists_each_registered_tool_once_in_reading_order`; the `.chain([&&AGY, &&GROK])` of `test_every_command_latest_source_only_checks`
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — four fixture-backed tests
+- Modify: `crates/banager-core/src/session/mod.rs` — `test_new_registers_all_nine_adapters` → eleven
+- Modify: `crates/banager-core/src/scan/mod.rs` — `owned_roots` rows, its doc, `test_owned_roots_table`
+- Modify: `crates/banager-core/src/lib.rs` — the crate doc's list of sources
 - Modify: `docs/what-we-run.md` — intro, "Where the program comes from", `## Antigravity CLI`, `## Grok Build`, files read, never-list, one clause of "Moving files to the Trash", the network section's last paragraph
-- Modify: `crates/canager-core/tests/what_we_run_test.rs` — one test
-- Create: `crates/canager-core/tests/standalone_agy_grok_test.rs` — through `Session`
+- Modify: `crates/banager-core/tests/what_we_run_test.rs` — one test
+- Create: `crates/banager-core/tests/standalone_agy_grok_test.rs` — through `Session`
 - Test: `fixtures_layout_test.rs`, `what_we_run_test.rs` (both existing), the session test, the fixture tests, the new integration test.
 
 **Interfaces:**
@@ -4657,7 +4657,7 @@ is not recorded; the shared-exclusion and PATH cases use synthetic unit tests.
 ## Uninstall list
 
 Nothing here was recorded for the uninstall: Canager runs no command for it.
-The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`AGY.uninstall`, `AGY.backup_globs`) is not a vendor document — Google
 publishes none and there is no `agy uninstall` (agy.md §5). It is the install
 script's own path (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`,
@@ -4769,7 +4769,7 @@ installer's marked block ([RC_MARKERS] marker lines).
 ## Uninstall list
 
 Nothing here was recorded for the uninstall: Canager runs no command for it.
-The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`GROK.uninstall`) is not a vendor document — xAI publishes none and there is
 no `grok uninstall` (grok.md §6). It is the README grok ships ("File
 Locations") plus its install script: Canager moves the two optional fallback
@@ -4796,9 +4796,9 @@ No run yet: the registration follows.
 
 - [ ] **Step 4: Write the failing tests (registration, roots, fixtures, the trust file)**
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, replace E's `test_recipes_lists_each_registered_tool_once_in_reading_order`'s `assert_eq!(RECIPES.len(), 2);` with `assert_eq!(RECIPES.len(), 4);` (its uniqueness assertion stays), and in `test_every_command_latest_source_only_checks` change `for recipe in RECIPES.iter().chain([&&AGY, &&GROK]) {` to `for recipe in RECIPES {`.
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, replace E's `test_recipes_lists_each_registered_tool_once_in_reading_order`'s `assert_eq!(RECIPES.len(), 2);` with `assert_eq!(RECIPES.len(), 4);` (its uniqueness assertion stays), and in `test_every_command_latest_source_only_checks` change `for recipe in RECIPES.iter().chain([&&AGY, &&GROK]) {` to `for recipe in RECIPES {`.
 
-In `crates/canager-core/src/session/mod.rs`, replace E's `test_new_registers_all_nine_adapters` with:
+In `crates/banager-core/src/session/mod.rs`, replace E's `test_new_registers_all_nine_adapters` with:
 
 ```rust
     #[test]
@@ -4824,7 +4824,7 @@ In `crates/canager-core/src/session/mod.rs`, replace E's `test_new_registers_all
     }
 ```
 
-In `crates/canager-core/src/scan/mod.rs`, in `test_owned_roots_table`, after the `claude` block (its `assert_eq!(owned_roots(&claude), vec![PathBuf::from("/Users/someone/.local/share/claude")]);`) add:
+In `crates/banager-core/src/scan/mod.rs`, in `test_owned_roots_table`, after the `claude` block (its `assert_eq!(owned_roots(&claude), vec![PathBuf::from("/Users/someone/.local/share/claude")]);`) add:
 
 ```rust
         // The two other path-list tools own their roots the same way
@@ -4842,7 +4842,7 @@ In `crates/canager-core/src/scan/mod.rs`, in `test_owned_roots_table`, after the
         }
 ```
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`'s `mod tests`, after B's `fixture(name)` helper add:
+In `crates/banager-core/src/adapters/standalone/mod.rs`'s `mod tests`, after B's `fixture(name)` helper add:
 
 ```rust
 
@@ -4925,7 +4925,7 @@ In `crates/canager-core/src/adapters/standalone/mod.rs`'s `mod tests`, after B's
     }
 ```
 
-In `crates/canager-core/tests/what_we_run_test.rs`, replace C's `test_what_we_run_names_every_path_claude_codes_uninstall_moves_or_keeps` (from its `#[test]` through its closing `}`; landed at `what_we_run_test.rs:191-218`, iterating `CLAUDE.uninstall` only) with the test below, which pins every `Paths` recipe's section — so the two new sections cannot drift from `AGY`/`GROK` any more than Claude Code's could — and pins the never-list to the state each list keeps. Change the file's `use canager_core::adapters::standalone::recipes::CLAUDE;` (line 18 at `db42e79`) to `use canager_core::adapters::standalone::recipes::RECIPES;` (if another landed test still reads `CLAUDE`, import both), and add `use canager_core::model::KeptWhat;` (or `KeptWhat` to an existing `use canager_core::model::{…}` line, if one exists); `AdapterMeta`, `Uninstall` and `TIMEOUT_SECS` are already imported for the landed tests (lines 17-20).
+In `crates/banager-core/tests/what_we_run_test.rs`, replace C's `test_what_we_run_names_every_path_claude_codes_uninstall_moves_or_keeps` (from its `#[test]` through its closing `}`; landed at `what_we_run_test.rs:191-218`, iterating `CLAUDE.uninstall` only) with the test below, which pins every `Paths` recipe's section — so the two new sections cannot drift from `AGY`/`GROK` any more than Claude Code's could — and pins the never-list to the state each list keeps. Change the file's `use banager_core::adapters::standalone::recipes::CLAUDE;` (line 18 at `db42e79`) to `use banager_core::adapters::standalone::recipes::RECIPES;` (if another landed test still reads `CLAUDE`, import both), and add `use banager_core::model::KeptWhat;` (or `KeptWhat` to an existing `use banager_core::model::{…}` line, if one exists); `AdapterMeta`, `Uninstall` and `TIMEOUT_SECS` are already imported for the landed tests (lines 17-20).
 
 ```rust
 #[test]
@@ -5000,8 +5000,8 @@ fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_i
     // the argv and say it installs nothing -- a reader who sees `grok
     // update` in a refresh table and nothing more would think Canager
     // upgrades grok behind their back.
-    use canager_core::adapters::standalone::recipe::Latest;
-    use canager_core::adapters::standalone::recipes::RECIPES;
+    use banager_core::adapters::standalone::recipe::Latest;
+    use banager_core::adapters::standalone::recipes::RECIPES;
     let doc = read_doc();
     for recipe in RECIPES {
         let Latest::Command { args, .. } = recipe.latest else {
@@ -5028,18 +5028,18 @@ fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_i
 
 - [ ] **Step 5: Run to verify they fail**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: FAIL — `test_recipes_lists_each_registered_tool_once_in_reading_order` (`RECIPES.len()` is 2); `test_new_registers_all_eleven_adapters` (no `standalone-agy`/`standalone-grok`); `fixtures_layout_test::test_every_registered_adapter_has_a_documented_fixture_directory` (two fixture directories no registered adapter matches); `test_owned_roots_table` (the `_` arm answers `vec![]` for the two); the four fixture tests PASS already (they read the recording through the constants). `what_we_run_test`'s rewritten path test FAILS on `paths_recipes == 3` (one `Paths` recipe registered) and its new `--check` test PASSES vacuously (no registered `Command` recipe yet); both fail after registration until Step 6's sections exist — the order of edits in Step 6 keeps every gate red until the last edit.
 
 - [ ] **Step 6: Register, own the roots, write the sections**
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, change E's `pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];` to:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, change E's `pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];` to:
 
 ```rust
 pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP];
 ```
 
-In `crates/canager-core/src/scan/mod.rs`, in `owned_roots`, replace the arm `"standalone-claude" => vec![inst.prefix.clone()],` (with the comment above it, from `// A tool installed by its own installer owns its root` through the arm) with:
+In `crates/banager-core/src/scan/mod.rs`, in `owned_roots`, replace the arm `"standalone-claude" => vec![inst.prefix.clone()],` (with the comment above it, from `// A tool installed by its own installer owns its root` through the arm) with:
 
 ```rust
         // A tool installed by its own installer owns its root: Claude Code's
@@ -5056,7 +5056,7 @@ In `crates/canager-core/src/scan/mod.rs`, in `owned_roots`, replace the arm `"st
 
 and in `owned_roots`'s doc comment change the sentence `The standalone adapters add their tool roots as their recipes land -- … -- in the same change that first produces an instance with one of those ids.` (F's wording; E may have re-wrapped it) to `The standalone adapters own their tool roots -- \`standalone-claude\` → \`~/.local/share/claude\`, \`standalone-agy\` → \`~/.gemini/antigravity-cli\`, \`standalone-grok\` → \`~/.grok\`, each the instance's \`prefix\`; \`standalone-rustup\` nothing (its root is the Cargo home, whose \`bin/\` is scanned; rule 1 has the launcher and its proxies, rule 2 the \`cargo install\`ed programs).` Keep the paragraph's remaining sentence about a row without a producer.
 
-In `crates/canager-core/src/lib.rs`, in the crate doc, change E's `(Claude Code, rustup). This crate is the part that does the work: the` to `(Claude Code, Antigravity CLI, Grok Build, rustup). This crate is the part that does the work: the`.
+In `crates/banager-core/src/lib.rs`, in the crate doc, change E's `(Claude Code, rustup). This crate is the part that does the work: the` to `(Claude Code, Antigravity CLI, Grok Build, rustup). This crate is the part that does the work: the`.
 
 In `docs/what-we-run.md` (hard-wrapped; match by words, keep the wrapping style):
 
@@ -5071,7 +5071,7 @@ In `docs/what-we-run.md` (hard-wrapped; match by words, keep the wrapping style)
 ## Antigravity CLI
 
 Adapter: `StandaloneAdapter` over the `AGY` recipe in
-`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
 `mod.rs` the behaviour, `route.rs` the recognition, `removal.rs` the
 uninstall). Verified against Antigravity CLI [VERSION_AGY] (the version in
 `adapters/meta/standalone-agy.toml` and the name of the recorded fixture
@@ -5148,7 +5148,7 @@ plus the cask's `zap`, and the fixture README says so.
 ## Grok Build
 
 Adapter: `StandaloneAdapter` over the `GROK` recipe in
-`crates/canager-core/src/adapters/standalone/`. Verified against Grok
+`crates/banager-core/src/adapters/standalone/`. Verified against Grok
 Build [VERSION_GROK] (the version in `adapters/meta/standalone-grok.toml`
 and the name of the recorded fixture directory). The row is one tool,
 installed by xAI's own installer (`curl -fsSL https://x.ai/cli/install.sh
@@ -5318,12 +5318,12 @@ section) records the time of the check in `~/.grok/version.json`.
 
 - [ ] **Step 7: Run to verify they pass**
 
-Run: `cargo test -p canager-core`
+Run: `cargo test -p banager-core`
 Expected: PASS — `test_new_registers_all_eleven_adapters`; `fixtures_layout_test` (eleven directories, eleven ids, one README each); `what_we_run_test` (the two sections, every host, the `--check` test now over grok, the path test over three recipes and the never-list); `test_recipes_lists_each_registered_tool_once_in_reading_order`; `test_every_recipe_latest_url_is_an_allowed_https_host` (agy's host), `test_every_recipe_path_is_under_home_or_the_cargo_home`, `test_a_paths_recipe_names_only_home_paths`, `test_every_uninstall_path_is_under_home_and_not_in_a_shared_folder`, `test_every_paths_recipe_moves_its_launcher_last_and_lists_no_path_inside_another`, `test_every_backup_glob_is_under_home_and_names_a_pattern`, `test_backup_globs_lists_every_recipe_under_its_adapter_id` (now over four recipes), B's `test_every_recipe_launcher_is_named_after_its_id` and `test_every_recipe_meta_parses_and_names_the_standalone_id`; `test_owned_roots_table`; the four fixture tests; everything before.
 
 - [ ] **Step 8: The end-to-end test through `Session`**
 
-Create `crates/canager-core/tests/standalone_agy_grok_test.rs`:
+Create `crates/banager-core/tests/standalone_agy_grok_test.rs`:
 
 ```rust
 //! The two step D recipes through `Session`: the gate refusing agy's
@@ -5333,17 +5333,17 @@ Create `crates/canager-core/tests/standalone_agy_grok_test.rs`:
 //! layout is synthetic, in a temp home; every name is invented; the Trash
 //! is a `MockTrasher` (a temp directory).
 
-use canager_core::adapters::standalone::recipes::{AGY, GROK};
-use canager_core::adapters::standalone::StandaloneAdapter;
-use canager_core::adapters::{Adapter, AdapterError, CheckOptions};
-use canager_core::events::{OpId, VecSink};
-use canager_core::http::{HttpResponse, MockHttpClient};
-use canager_core::model::{
+use banager_core::adapters::standalone::recipes::{AGY, GROK};
+use banager_core::adapters::standalone::StandaloneAdapter;
+use banager_core::adapters::{Adapter, AdapterError, CheckOptions};
+use banager_core::events::{OpId, VecSink};
+use banager_core::http::{HttpResponse, MockHttpClient};
+use banager_core::model::{
     ArtifactKind, OpKind, OpRequest, OpStatus, Outcome, PlanAction, UpdateBlocked,
 };
-use canager_core::runner::{CommandOutput, HostEnv, MockRunner};
-use canager_core::session::Session;
-use canager_core::trash::MockTrasher;
+use banager_core::runner::{CommandOutput, HostEnv, MockRunner};
+use banager_core::session::Session;
+use banager_core::trash::MockTrasher;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -5599,7 +5599,7 @@ async fn test_uninstalling_grok_through_the_session_moves_its_folders_and_keeps_
 
 - [ ] **Step 9: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test standalone_agy_grok_test`
+Run: `cargo test -p banager-core --test standalone_agy_grok_test`
 Expected: PASS, both tests. (If `Session::refresh`'s return or `submit`'s signature differ from C's Task 7 usage, copy the calls from `tests/standalone_uninstall_test.rs` as landed.)
 
 - [ ] **Step 10: Format, gates, commit**
@@ -5607,7 +5607,7 @@ Expected: PASS, both tests. (If `Session::refresh`'s return or `submit`'s signat
 Run `cargo fmt --all`, then the five gates. Expected: all clean.
 
 ```bash
-git add adapters/fixtures/standalone-agy adapters/fixtures/standalone-grok adapters/meta/standalone-agy.toml adapters/meta/standalone-grok.toml crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/session/mod.rs crates/canager-core/src/scan/mod.rs crates/canager-core/src/lib.rs docs/what-we-run.md crates/canager-core/tests/what_we_run_test.rs crates/canager-core/tests/standalone_agy_grok_test.rs
+git add adapters/fixtures/standalone-agy adapters/fixtures/standalone-grok adapters/meta/standalone-agy.toml adapters/meta/standalone-grok.toml crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/session/mod.rs crates/banager-core/src/scan/mod.rs crates/banager-core/src/lib.rs docs/what-we-run.md crates/banager-core/tests/what_we_run_test.rs crates/banager-core/tests/standalone_agy_grok_test.rs
 git commit -m "$(cat <<'EOF'
 Register Antigravity CLI and Grok Build, with their recordings and sections
 

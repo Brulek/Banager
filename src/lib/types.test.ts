@@ -35,7 +35,7 @@ function roundTrip<T>(value: T): T {
 }
 
 describe("types", () => {
-  it("round-trips a realistic Snapshot (shape copied from canager-core's brew fixtures)", () => {
+  it("round-trips a realistic Snapshot (shape copied from banager-core's brew fixtures)", () => {
     const snapshot = {
       generation: 3,
       round: 5,
@@ -115,7 +115,7 @@ describe("types", () => {
   it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
     // `Option<ReadOnlyReason>` on the Rust side: a unit variant serialises
     // to its bare name, `None` to `null`. Every spelling below has to match
-    // `crates/canager-core/src/model.rs` exactly -- nothing checks this at
+    // `crates/banager-core/src/model.rs` exactly -- nothing checks this at
     // compile time, and a typo would silently land every npm row in the
     // wrong branch of the notice copy.
     const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable"];
@@ -126,7 +126,7 @@ describe("types", () => {
 
   it("spells UpdateBlocked as a bare string, and an updatable candidate as null", () => {
     // `Option<UpdateBlocked>` on `UpdateCandidate.blocked` in
-    // crates/canager-core/src/model.rs, whose
+    // crates/banager-core/src/model.rs, whose
     // `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
     const reasons: UpdateBlocked[] = ["Pinned", "SelfUpdatesOnly"];
@@ -137,7 +137,7 @@ describe("types", () => {
 
   it("spells UninstallBlocked as a bare string, and a removable artifact as null", () => {
     // `Option<UninstallBlocked>` on `InstalledArtifact.uninstall_blocked`
-    // in crates/canager-core/src/model.rs, whose
+    // in crates/banager-core/src/model.rs, whose
     // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
     const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod", "UvToolDirSet"];
@@ -151,7 +151,7 @@ describe("types", () => {
     // struct field, so it is never absent and never null: an available
     // source with nothing to report is `{unavailable: null, notes: []}`.
     // Both spellings below have to match
-    // `crates/canager-core/src/model.rs` exactly -- nothing checks this at
+    // `crates/banager-core/src/model.rs` exactly -- nothing checks this at
     // compile time, and `status.unavailable` reading `undefined` because
     // the key moved would make every source look available, including the
     // Ollama whose notice is the only way to start it.
@@ -228,7 +228,7 @@ describe("types", () => {
   });
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {
-    // Mirrors `Warning` in crates/canager-core/src/model.rs -- every
+    // Mirrors `Warning` in crates/banager-core/src/model.rs -- every
     // spelling below has to match it exactly. `warningKey` is exhaustive
     // over this union, so a variant it lacks fails `tsc`; but a spelling
     // here that differs from Rust's compiles fine and lands the real wire
@@ -260,7 +260,7 @@ describe("types", () => {
     // Phase 4 step C: the three struct variants a path-list uninstall
     // carries, and the two nested unit enums, spelled as
     // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
-    // crates/canager-core/src/model.rs asserts serde emits them.
+    // crates/banager-core/src/model.rs asserts serde emits them.
     const willTrash: Warning = { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } };
     const willKeep: Warning = { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } };
     const alreadyGone: Warning = { AlreadyGone: { path: "~/.local/share/claude" } };
@@ -289,7 +289,7 @@ describe("types", () => {
 
     // Phase 4 step E: what rustup's own uninstall does. Pinned against
     // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
-    // crates/canager-core/src/model.rs.
+    // crates/banager-core/src/model.rs.
     const removesToolchains: Warning = {
       RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] },
     };
@@ -473,7 +473,7 @@ describe("types", () => {
 
   it("spells Settings.skipped_versions as settings.rs's shape test does", () => {
     // `test_skipped_versions_wire_shape_matches_the_hand_written_ts_mirror`
-    // in crates/canager-core/src/settings.rs asserts this exact string from
+    // in crates/banager-core/src/settings.rs asserts this exact string from
     // the Rust side: the key is the same object `ignored_updates` holds, and
     // the skipped version is a bare string.
     const skipped: SkippedVersion[] = [
@@ -496,7 +496,7 @@ describe("types", () => {
 
   it("spells Settings as settings.rs's shape test does, the daily check's two fields last", () => {
     // `test_default_settings_wire_shape_matches_the_hand_written_ts_mirror`
-    // in crates/canager-core/src/settings.rs asserts this exact string from
+    // in crates/banager-core/src/settings.rs asserts this exact string from
     // the Rust side: `Settings::default()`, every field snake_case.
     const defaults: Settings = {
       language: "System",
@@ -514,14 +514,14 @@ describe("types", () => {
 
   it("spells UpdatePair as notify_updates.rs's shape test reads it", () => {
     // `test_update_pair_is_the_json_the_page_sends` in
-    // crates/canager-core/src/notify_updates.rs parses this exact string.
+    // crates/banager-core/src/notify_updates.rs parses this exact string.
     const pair: UpdatePair = { key_id: "brew:/opt/homebrew|Formula|jq", target: "1.8.1" };
     expect(JSON.stringify(pair)).toBe('{"key_id":"brew:/opt/homebrew|Formula|jq","target":"1.8.1"}');
   });
 
   it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {
     // `test_plan_action_is_externally_tagged_on_the_wire` in
-    // crates/canager-core/src/model.rs asserts these exact strings from the
+    // crates/banager-core/src/model.rs asserts these exact strings from the
     // Rust side. `CommandPreview.tsx` branches on `"Command" in action`.
     const command: PlanAction = {
       Command: { program: "/opt/homebrew/bin/brew", args: ["install"], env: [["A", "1"]] },
@@ -536,7 +536,7 @@ describe("types", () => {
   });
 
   it("spells the unknown-source scan's shapes as Rust sends them", () => {
-    // Mirrors `crates/canager-core/src/scan/mod.rs`, whose
+    // Mirrors `crates/banager-core/src/scan/mod.rs`, whose
     // `test_scan_wire_shapes_match_the_hand_written_ts_mirror` asserts
     // these exact spellings from the Rust side: `EntryKind` bare strings,
     // `ScanStop` externally tagged with the limit the scan enforced, and

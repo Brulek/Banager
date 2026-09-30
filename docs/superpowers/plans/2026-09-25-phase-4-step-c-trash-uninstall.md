@@ -4,9 +4,9 @@
 
 **Goal:** Let a user uninstall the native Claude Code install from Canager safely: the uninstall dialog lists, in plain words, the three paths Anthropic's own instructions and installer name (`~/.local/share/claude`, `~/.claude/downloads`, `~/.local/bin/claude`) and the two it keeps (`~/.claude`, `~/.claude.json`); on confirmation Canager itself moves each listed path to the Trash with macOS's own `NSFileManager trashItemAtURL:` — no command, nothing deleted, the launcher last — after checks that run at preview time, again at the confirmation against what the preview saw, and once more immediately before each item moves; an uninstall stopped partway leaves exactly one state (program files in the Trash, a dangling launcher shown as a *launcher-only* row) that a second Uninstall finishes; and every sentence the row, the dialog, the trust file and the README say about it is true.
 
-**Architecture:** `Plan` gains a two-arm `PlanAction { Command | TrashPaths }` in place of `program`/`args`/`env` (spec §6.2, Q16), and every construction site, the readers and the TypeScript mirror follow. A `Trasher` trait (`crates/canager-core/src/trash/`) is the seam, like `CommandRunner`/`HttpClient`: `RealTrasher` is `trashItemAtURL:` through `objc2-foundation` (macOS only), `MockTrasher` renames into a temporary directory and records every call. `Recipe` gains `uninstall: Option<Uninstall>` with `Uninstall::Paths`; `adapters/standalone/removal.rs` turns the list into a `TrashPaths` plan under the checks of spec §6.3 and two of this plan's — every folder between the home folder and a listed path is a real folder (Ruling 24), and nothing moved may take a kept path along (Ruling 25) — and records what the preview saw at each path (`ItemIdentity`: `st_dev`, `st_ino` and the kind), which travels with the plan in `PlanAction::TrashPaths.previewed`, a field serde skips so the window never sees it (Ruling 10). It executes the plan item by item: every check again and every identity against the preview's before anything moves; then, for each item on tokio's blocking pool, every check once more and the move with nothing in between (`Fault::PathChanged` otherwise; Rulings 26, 28). `route::probe` now accepts only a launcher one link away from its root, and `run_operation` verifies an uninstall through a new `Adapter::reconcile_after_uninstall` — the operation-aware reading B's plan hands to this step — which the standalone adapter answers with `route::probe_strict`, where "could not tell" is an error and never "gone" (Ruling 27).
+**Architecture:** `Plan` gains a two-arm `PlanAction { Command | TrashPaths }` in place of `program`/`args`/`env` (spec §6.2, Q16), and every construction site, the readers and the TypeScript mirror follow. A `Trasher` trait (`crates/banager-core/src/trash/`) is the seam, like `CommandRunner`/`HttpClient`: `RealTrasher` is `trashItemAtURL:` through `objc2-foundation` (macOS only), `MockTrasher` renames into a temporary directory and records every call. `Recipe` gains `uninstall: Option<Uninstall>` with `Uninstall::Paths`; `adapters/standalone/removal.rs` turns the list into a `TrashPaths` plan under the checks of spec §6.3 and two of this plan's — every folder between the home folder and a listed path is a real folder (Ruling 24), and nothing moved may take a kept path along (Ruling 25) — and records what the preview saw at each path (`ItemIdentity`: `st_dev`, `st_ino` and the kind), which travels with the plan in `PlanAction::TrashPaths.previewed`, a field serde skips so the window never sees it (Ruling 10). It executes the plan item by item: every check again and every identity against the preview's before anything moves; then, for each item on tokio's blocking pool, every check once more and the move with nothing in between (`Fault::PathChanged` otherwise; Rulings 26, 28). `route::probe` now accepts only a launcher one link away from its root, and `run_operation` verifies an uninstall through a new `Adapter::reconcile_after_uninstall` — the operation-aware reading B's plan hands to this step — which the standalone adapter answers with `route::probe_strict`, where "could not tell" is an error and never "gone" (Ruling 27).
 
-**Tech Stack:** Rust (canager-core: `std::fs` lstat/canonicalize/`MetadataExt`, `objc2` 0.6 + `objc2-foundation` 0.3 under `cfg(target_os = "macos")` — both already in `Cargo.lock` through tauri, so no new crate is compiled; `tokio::task::spawn_blocking` for each item's last check and its move, `tokio::select!` for a cancellable pause after each item), TypeScript 5 `strict`, React 19, i18next, vitest.
+**Tech Stack:** Rust (banager-core: `std::fs` lstat/canonicalize/`MetadataExt`, `objc2` 0.6 + `objc2-foundation` 0.3 under `cfg(target_os = "macos")` — both already in `Cargo.lock` through tauri, so no new crate is compiled; `tokio::task::spawn_blocking` for each item's last check and its move, `tokio::select!` for a cancellable pause after each item), TypeScript 5 `strict`, React 19, i18next, vitest.
 
 **Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row C and argues from D8, §6.1–§6.3, §6.5 (`WillTrash`/`WillKeep`/`AlreadyGone`), §6.6 (the Claude Code dialog), §九 (9.1 wire, 9.2 copy, 9.4 tests, 9.5 trust file), 附录 A and 附录 B. Ground truth for the pre-merge verification: `~/dev/Canager/.superpowers/phase4/spike-trash-tcc.md`. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-c-trash-uninstall.md`.
 
@@ -69,7 +69,7 @@ Spec §6.2 makes step C's merge conditional on a check from a Finder-launched de
 
 **The author's pre-merge check** — closes (a), (b) and (c); not for an agent: it needs a person's eyes on Finder, it changes the author's Trash, and it must never touch the author's real Claude Code install (this very session may be running on it). Its Finder part uses a throwaway home built inside a fresh private folder (`mktemp -d`, never a fixed path that could already exist as a link), confirms that Canager is really using it before anything is pressed, and establishes that the build it runs has no Full Disk Access.
 
-**Step 1 — the smoke test**, in the author's own terminal: `CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored --nocapture`, then `sw_vers -productVersion` and `uname -m`. It leaves five `canager-trash-smoke-…` items in the Trash, and, being a debug build, prints `RealTrasher`'s `[canager] debug: read_dir(…/.Trash) -> …` line after each move. What that line says about a terminal (which often has Full Disk Access) does not count: Step 3 reads the Finder-launched build's own line. **If it fails**, stop: a link moved as its target, or a dangling link refused, means `RealTrasher` needs a different URL construction — a Task 6 fix and an author decision.
+**Step 1 — the smoke test**, in the author's own terminal: `CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture`, then `sw_vers -productVersion` and `uname -m`. It leaves five `canager-trash-smoke-…` items in the Trash, and, being a debug build, prints `RealTrasher`'s `[canager] debug: read_dir(…/.Trash) -> …` line after each move. What that line says about a terminal (which often has Full Disk Access) does not count: Step 3 reads the Finder-launched build's own line. **If it fails**, stop: a link moved as its target, or a dangling link refused, means `RealTrasher` needs a different URL construction — a Task 6 fix and an author decision.
 
 **Step 2 — a Finder-launched build**, against a throwaway home built inside a fresh private folder, whose fake Claude Code prints a version no real one has. From the worktree's root, in the author's own terminal. The block runs in a subshell, so a stop ends the block and not the terminal; `set -euC` stops it at the first failure and refuses to overwrite any existing file; `mktemp -d` makes a fresh, private (`0700`), unpredictable folder — never a fixed path, never reused — and every file below is created inside it and nowhere else. (No `#` comments inside the block: an interactive zsh would run them as words.)
 
@@ -135,7 +135,7 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 17. **`operations.outcome.CanagerFailed.PathChanged` says what is true for a stop in the middle too**: spec §9.2's "so Canager didn't move anything" is true only when the first item changed; the sentence names the path, says Canager stopped without moving it, and points at the log for anything moved before.
 18. **The end-to-end test runs through `Session`** (`refresh` → `issue_plan`'s gate → `submit` → `run_operation`), not only `OperationManager`, so it also proves the gate lets an unblocked Claude Code uninstall through and that the next refresh shows the launcher-only row.
 19. **The pause is per operation.** Two uninstalls whose moves fall within ~2 s of each other could still lose a Put Back record for the second's first item; a second uninstall needs a fresh preview and a confirmation, which take longer than that. Recorded in the backlog (Task 8), with its shape.
-20. **`MockTrasher` is test-only code.** It creates a temporary directory, renames into it and removes it on drop — a permanent delete of whatever was moved into it — so it is compiled only under `#[cfg(any(test, feature = "test-support"))]`, the crate's existing feature for test code that touches real state (`testing::expire_issued_plans`), and canager-core's own integration tests turn that feature on through a dev-dependency on the crate itself (`canager-core = { path = ".", features = ["test-support"] }`). Checked in a scratch workspace of the same shape on cargo 1.98.1 (a second member that also enables the feature under `[dev-dependencies]`): `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, and a release build does not have the feature.
+20. **`MockTrasher` is test-only code.** It creates a temporary directory, renames into it and removes it on drop — a permanent delete of whatever was moved into it — so it is compiled only under `#[cfg(any(test, feature = "test-support"))]`, the crate's existing feature for test code that touches real state (`testing::expire_issued_plans`), and banager-core's own integration tests turn that feature on through a dev-dependency on the crate itself (`banager-core = { path = ".", features = ["test-support"] }`). Checked in a scratch workspace of the same shape on cargo 1.98.1 (a second member that also enables the feature under `[dev-dependencies]`): `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, and a release build does not have the feature.
 21. **Six refusal reasons, not four.** Check 1 has two findings a sentence must keep apart: the folder leads out of the home folder (`OutsideHome`), and the folder is the home folder or a shared one (`SharedFolder`, Ruling 5) — "it's outside your home folder" would be false for `~/.local/bin`. `NotWhatInstructionsExpect`'s sentence says Canager *couldn't confirm* the path is what the instructions describe, naming the usual causes as possibilities — the path, or a folder it is in, may be a link to somewhere else (Ruling 24), or it may be a different kind of file — because it is also the answer for a path that could not be examined at all. The sixth, `OverlapsKept`, is Ruling 25's, and its sentence names the kept path, not a listed one.
 22. **The preview's label follows the arm.** `CommandPreview` shows `commandPreview.label` ("This will run:") above an argv, and `commandPreview.trashLabel` ("What Canager will do:"; zh "将执行：", the label spec §6.6's dialog shows) above the `TrashPaths` sentence, so "no command runs" never sits under "This will run:".
 23. **The documents change in the commit that makes them true.** Task 6's commit (stage 6g) carries every trust-file and README sentence its behaviour makes true or false — the Claude Code section's uninstall, "Files Canager writes", the new Trash section, the never-list, the README row and safety bullets — with the two `what_we_run_test` tests that hold them to the code. Task 7 adds what describes its own test (the smoke test's sentences, the ignored-tests paragraph, "plus 3 more"); Task 8 the backlog, the Language sections and the test counts, which only lag, never contradict.
@@ -157,32 +157,32 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 ## File Structure
 
 ```
-crates/canager-core/Cargo.toml                                    MOD  objc2 + objc2-foundation under [target.'cfg(target_os = "macos")'.dependencies]; the crate itself under [dev-dependencies] with test-support, so tests/ see MockTrasher; the feature's comment (6a)
-Cargo.lock                                                        MOD  canager-core's dependency list gains the two, and canager-core itself (6a)
-crates/canager-core/src/lib.rs                                    MOD  `pub mod trash;`; one crate-doc sentence (6a)                     [B's file]
-crates/canager-core/src/trash/mod.rs                              NEW  Trasher trait (`trash(path, kind)`), TrashError (6a)
-crates/canager-core/src/trash/real.rs                             NEW  RealTrasher: trashItemAtURL: on macOS, the URL from the caller's kind; Unsupported elsewhere; the debug-only Full Disk Access line (6a)
-crates/canager-core/src/trash/mock.rs                             NEW  MockTrasher, test-only (cfg(test) or feature test-support): rename into a temp dir, call and kind log, refuse-nth, cancel-after-nth (6a)
-crates/canager-core/src/model.rs                                  MOD  PlanAction + Plan.action (1); RemovedWhat, KeptWhat, Warning ×3 (3); Fault::PathChanged (4); UninstallUnsafeReason ×6 (5); ItemKind (6a); ItemIdentity (6c); TrashPaths.previewed, serde-skipped, and its wire test (6e); doc comments (6f)   [B's file]
-crates/canager-core/src/testing.rs                                MOD  command_program / command_args / command_env (1)
-crates/canager-core/src/events.rs                                 MOD  LogNote::{MovedToTrash, TrashFailed} + shape test (4)
-crates/canager-core/src/adapters/mod.rs                           MOD  run_plan matches PlanAction (1); Adapter::reconcile_after_uninstall (2); AdapterError::UninstallUnsafe (5)   [B's file]
-crates/canager-core/src/ops/mod.rs                                MOD  argv_preview matches PlanAction (1); the reading after an uninstall (2); execute_error_outcome arm (5)
-crates/canager-core/src/adapters/{brew/mod,cargo,npm,pip,pipx,uv,ollama/mod}.rs   MOD  Plan literals → action; test assertions via testing::command_* (1)
-crates/canager-core/src/session/{test_support,plans}.rs           MOD  fake_plan literal; one assertion (1)
-crates/canager-core/src/scan/mod.rs                               MOD  display_path becomes pub(crate) (6c)                             [B's + F's file]
-crates/canager-core/src/adapters/standalone/recipe.rs             MOD  Uninstall, RemoveSpec, KeepSpec, Expect, SHARED_FOLDERS; Recipe.uninstall (6b)  [B's file]
-crates/canager-core/src/adapters/standalone/recipes.rs            MOD  CLAUDE.uninstall; three invariants tests (6b)                   [B's file]
-crates/canager-core/src/adapters/standalone/removal.rs            NEW  Job, Removal, the checks (check_item: check 1, ancestry, kept paths, check 4, the last lstat), plan_removal (6c); TIMEOUT_SECS, PUT_BACK_SETTLE, Confirmed, Pacing, take_turn, execute_removal (6d)
-crates/canager-core/src/adapters/standalone/mod.rs                MOD  `pub mod removal;`, Detected.euid, testing::Unreadable (6c); trasher, trash_gap, new/with_trash_gap, inventory, plan, execute, reconcile_after_uninstall (probe_strict), all; B's tests updated; new tests (6e)   [B's file]
-crates/canager-core/src/adapters/standalone/route.rs              MOD  the one-hop launcher: probe_strict, one_hop, probe over it, three tests (6c); Probe::LauncherOnly doc (6f)   [B's file]
-crates/canager-core/src/session/mod.rs                            MOD  Session::new injects RealTrasher (6e)                           [B's file]
+crates/banager-core/Cargo.toml                                    MOD  objc2 + objc2-foundation under [target.'cfg(target_os = "macos")'.dependencies]; the crate itself under [dev-dependencies] with test-support, so tests/ see MockTrasher; the feature's comment (6a)
+Cargo.lock                                                        MOD  banager-core's dependency list gains the two, and banager-core itself (6a)
+crates/banager-core/src/lib.rs                                    MOD  `pub mod trash;`; one crate-doc sentence (6a)                     [B's file]
+crates/banager-core/src/trash/mod.rs                              NEW  Trasher trait (`trash(path, kind)`), TrashError (6a)
+crates/banager-core/src/trash/real.rs                             NEW  RealTrasher: trashItemAtURL: on macOS, the URL from the caller's kind; Unsupported elsewhere; the debug-only Full Disk Access line (6a)
+crates/banager-core/src/trash/mock.rs                             NEW  MockTrasher, test-only (cfg(test) or feature test-support): rename into a temp dir, call and kind log, refuse-nth, cancel-after-nth (6a)
+crates/banager-core/src/model.rs                                  MOD  PlanAction + Plan.action (1); RemovedWhat, KeptWhat, Warning ×3 (3); Fault::PathChanged (4); UninstallUnsafeReason ×6 (5); ItemKind (6a); ItemIdentity (6c); TrashPaths.previewed, serde-skipped, and its wire test (6e); doc comments (6f)   [B's file]
+crates/banager-core/src/testing.rs                                MOD  command_program / command_args / command_env (1)
+crates/banager-core/src/events.rs                                 MOD  LogNote::{MovedToTrash, TrashFailed} + shape test (4)
+crates/banager-core/src/adapters/mod.rs                           MOD  run_plan matches PlanAction (1); Adapter::reconcile_after_uninstall (2); AdapterError::UninstallUnsafe (5)   [B's file]
+crates/banager-core/src/ops/mod.rs                                MOD  argv_preview matches PlanAction (1); the reading after an uninstall (2); execute_error_outcome arm (5)
+crates/banager-core/src/adapters/{brew/mod,cargo,npm,pip,pipx,uv,ollama/mod}.rs   MOD  Plan literals → action; test assertions via testing::command_* (1)
+crates/banager-core/src/session/{test_support,plans}.rs           MOD  fake_plan literal; one assertion (1)
+crates/banager-core/src/scan/mod.rs                               MOD  display_path becomes pub(crate) (6c)                             [B's + F's file]
+crates/banager-core/src/adapters/standalone/recipe.rs             MOD  Uninstall, RemoveSpec, KeepSpec, Expect, SHARED_FOLDERS; Recipe.uninstall (6b)  [B's file]
+crates/banager-core/src/adapters/standalone/recipes.rs            MOD  CLAUDE.uninstall; three invariants tests (6b)                   [B's file]
+crates/banager-core/src/adapters/standalone/removal.rs            NEW  Job, Removal, the checks (check_item: check 1, ancestry, kept paths, check 4, the last lstat), plan_removal (6c); TIMEOUT_SECS, PUT_BACK_SETTLE, Confirmed, Pacing, take_turn, execute_removal (6d)
+crates/banager-core/src/adapters/standalone/mod.rs                MOD  `pub mod removal;`, Detected.euid, testing::Unreadable (6c); trasher, trash_gap, new/with_trash_gap, inventory, plan, execute, reconcile_after_uninstall (probe_strict), all; B's tests updated; new tests (6e)   [B's file]
+crates/banager-core/src/adapters/standalone/route.rs              MOD  the one-hop launcher: probe_strict, one_hop, probe over it, three tests (6c); Probe::LauncherOnly doc (6f)   [B's file]
+crates/banager-core/src/session/mod.rs                            MOD  Session::new injects RealTrasher (6e)                           [B's file]
 adapters/fixtures/standalone-claude/<the recorded version>/README.md   MOD  "Uninstall list" provenance section (6b)                  [B's file]
-crates/canager-core/tests/ops_outcome_test.rs                     MOD  Plan literal (1); the split-reading adapter and its tests (2)
-crates/canager-core/tests/ops_{cancel,fault,lock,panic,semaphore,summaries}_test.rs, brew_live.rs   MOD  Plan literals / assertions (1); one TrashPaths argv_preview test in ops_summaries_test (1)
-crates/canager-core/tests/ops_upgrade_version_test.rs             MOD  the two StandaloneAdapter::new calls gain a trasher (6e)        [B's file]
-crates/canager-core/tests/standalone_uninstall_test.rs            NEW  end to end through Session with MockTrasher; #[ignore] RealTrasher smoke (7)
-crates/canager-core/tests/what_we_run_test.rs                     MOD  two tests: every listed path named; the call and the pause stated (6g)
+crates/banager-core/tests/ops_outcome_test.rs                     MOD  Plan literal (1); the split-reading adapter and its tests (2)
+crates/banager-core/tests/ops_{cancel,fault,lock,panic,semaphore,summaries}_test.rs, brew_live.rs   MOD  Plan literals / assertions (1); one TrashPaths argv_preview test in ops_summaries_test (1)
+crates/banager-core/tests/ops_upgrade_version_test.rs             MOD  the two StandaloneAdapter::new calls gain a trasher (6e)        [B's file]
+crates/banager-core/tests/standalone_uninstall_test.rs            NEW  end to end through Session with MockTrasher; #[ignore] RealTrasher smoke (7)
+crates/banager-core/tests/what_we_run_test.rs                     MOD  two tests: every listed path named; the call and the pause stated (6g)
 .github/workflows/ci.yml                                          MOD  the RealTrasher smoke step (7)
 src-tauri/src/ipc.rs                                              MOD  FakeAdapter's Plan literal + one assertion (1); uninstall_unsafe arm + tests (5)
 src/lib/types.ts, types.test.ts                                   MOD  PlanAction, Plan.action (1); RemovedWhat, KeptWhat, Warning (3); Fault, LogNote (4); UninstallBlocked doc (6f)   [B's file]
@@ -206,7 +206,7 @@ Single responsibility: `trash/` knows how to move one item and nothing about too
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
 ```rust
-// crates/canager-core/src/model.rs
+// crates/banager-core/src/model.rs
 pub enum PlanAction {
     Command { program: PathBuf, args: Vec<String>, env: Vec<(String, String)> },
     TrashPaths { paths: Vec<PathBuf>, #[serde(skip)] previewed: Vec<ItemIdentity> },   // `previewed` arrives in Task 6 (6e); Task 1 has `{ paths }`
@@ -221,24 +221,24 @@ pub enum Warning { …the six at HEAD…, WillTrash { path: String, what: Remove
 pub enum Fault { …the five at HEAD…, PathChanged { path: String } }
 pub enum UninstallUnsafeReason { OutsideHome, SharedFolder, Missing, NotOwnedByYou, NotWhatInstructionsExpect, OverlapsKept }   // Clone, Copy, Debug, PartialEq, Eq; no serde
 
-// crates/canager-core/src/events.rs
+// crates/banager-core/src/events.rs
 pub enum LogNote { WaitingForBrewUpdate { minutes: u64 }, ReadFailed { stream: Stream, error: String },
                    MovedToTrash { path: String, trashed_to: String }, TrashFailed { path: String, error: String } }
 
-// crates/canager-core/src/adapters/mod.rs
+// crates/banager-core/src/adapters/mod.rs
 pub enum AdapterError { …, UninstallUnsafe { path: String, reason: UninstallUnsafeReason }, … }
 pub trait Adapter { …; async fn reconcile_after_uninstall(&self, inst: &ManagerInstance, key: &ArtifactKey)
                          -> Result<Reconciled, AdapterError> { self.reconcile(inst, key).await } }
 
-// crates/canager-core/src/testing.rs
+// crates/banager-core/src/testing.rs
 pub fn command_program(plan: &Plan) -> &Path;
 pub fn command_args(plan: &Plan) -> &[String];
 pub fn command_env(plan: &Plan) -> &[(String, String)];
 
-// crates/canager-core/src/scan/mod.rs (F's; visibility widened)
+// crates/banager-core/src/scan/mod.rs (F's; visibility widened)
 pub(crate) fn display_path(path: &Path, home: &Path) -> PathBuf;
 
-// crates/canager-core/src/trash/mod.rs, real.rs, mock.rs
+// crates/banager-core/src/trash/mod.rs, real.rs, mock.rs
 pub trait Trasher: Send + Sync { fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError>; }   // kind: what the last check's lstat saw
 pub enum TrashError { Refused { detail: String }, Unsupported }   // Debug, thiserror; Refused = the system's words, Unsupported = Canager could not ask (not macOS, not UTF-8)
 pub struct RealTrasher;  impl RealTrasher { pub fn new() -> RealTrasher }            // + Default
@@ -246,7 +246,7 @@ pub struct RealTrasher;  impl RealTrasher { pub fn new() -> RealTrasher }       
 pub struct MockTrasher;  impl MockTrasher { pub fn new() -> MockTrasher; pub fn bin(&self) -> &Path; pub fn calls(&self) -> Vec<PathBuf>; pub fn kinds(&self) -> Vec<ItemKind>;
                                             pub fn refuse_call(&self, nth: usize, detail: &str); pub fn cancel_after_call(&self, nth: usize, token: CancellationToken) }   // + Default
 
-// crates/canager-core/src/adapters/standalone/recipe.rs
+// crates/banager-core/src/adapters/standalone/recipe.rs
 pub struct Recipe { …B's seven fields…, pub uninstall: Option<Uninstall> }
 pub enum Uninstall { Paths { remove: &'static [RemoveSpec], keep: &'static [KeepSpec] } }
 pub struct RemoveSpec { pub path: &'static str, pub expect: Expect, pub what: RemovedWhat, pub optional: bool }
@@ -254,10 +254,10 @@ pub enum Expect { SymlinkIntoRoot, Dir }                                        
 pub struct KeepSpec { pub path: &'static str, pub what: KeptWhat }
 pub const SHARED_FOLDERS: [&str; 5] = [".local", ".config", ".cache", "Library", ".cargo"];   // check 1's never-list, besides home itself
 
-// crates/canager-core/src/adapters/standalone/route.rs (B's; stage 6c adds)
+// crates/banager-core/src/adapters/standalone/route.rs (B's; stage 6c adds)
 pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::Result<Probe>;   // probe = probe_strict(..).unwrap_or(Absent)
 
-// crates/canager-core/src/adapters/standalone/removal.rs
+// crates/banager-core/src/adapters/standalone/removal.rs
 pub struct Job { pub recipe: &'static Recipe, pub detected: Detected, pub remove: &'static [RemoveSpec], pub keep: &'static [KeepSpec] }   // Clone, Debug; owned, for the blocking pool
 pub struct Removal { pub paths: Vec<PathBuf>, pub identities: Vec<ItemIdentity>, pub warnings: Vec<Warning> }   // Debug, PartialEq, Eq
 pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError>;
@@ -268,7 +268,7 @@ pub struct Pacing { pub settle: Duration, pub budget: Duration }                
 pub async fn execute_removal(job: &Job, confirmed: Confirmed<'_>, trasher: &Arc<dyn Trasher>, pacing: Pacing,
                              sink: Arc<dyn EventSink>, op_id: OpId, cancel: CancellationToken) -> Result<Outcome, AdapterError>;
 
-// crates/canager-core/src/adapters/standalone/mod.rs
+// crates/banager-core/src/adapters/standalone/mod.rs
 pub struct Detected { pub home: PathBuf, pub euid: u32 }                              // Clone, Debug
 pub struct StandaloneAdapter { recipe, meta, runner, http, trasher: Arc<dyn Trasher>, trash_gap: Duration, detected: Mutex<Option<Detected>> }
 impl StandaloneAdapter {
@@ -336,10 +336,10 @@ Eight inputs the spec implies, or its reviewers found, that a person is most lik
 ### Task 1: `PlanAction` in place of `program`/`args`/`env`, everywhere
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — `Plan` and `test_plan_round_trips_through_json`  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/testing.rs:25` (the `use crate::model::{…}` line) and three helpers appended after `unavailable_instance` (ends `:82`)
-- Modify: `crates/canager-core/src/adapters/mod.rs` — the `use crate::model::{…}` list, `run_plan`, the two test `Plan` literals, one test  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/ops/mod.rs:3-6` (imports), `:205` (`OpSummary.argv_preview`'s comment), `:284-285` (`summaries`)
+- Modify: `crates/banager-core/src/model.rs` — `Plan` and `test_plan_round_trips_through_json`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/testing.rs:25` (the `use crate::model::{…}` line) and three helpers appended after `unavailable_instance` (ends `:82`)
+- Modify: `crates/banager-core/src/adapters/mod.rs` — the `use crate::model::{…}` list, `run_plan`, the two test `Plan` literals, one test  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/ops/mod.rs:3-6` (imports), `:205` (`OpSummary.argv_preview`'s comment), `:284-285` (`summaries`)
 - Modify: the 24 construction sites and the test assertions listed in Step 3
 - Modify: `src/lib/types.ts`, `src/lib/types.test.ts`  [B's files]
 - Modify: `src/components/CommandPreview.tsx`, `src/components/CommandPreview.test.tsx`
@@ -355,7 +355,7 @@ Eight inputs the spec implies, or its reviewers found, that a person is most lik
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, replace `test_plan_round_trips_through_json` (from its `#[test]` through its closing `}`) with:
+In `crates/banager-core/src/model.rs`, replace `test_plan_round_trips_through_json` (from its `#[test]` through its closing `}`) with:
 
 ```rust
     #[test]
@@ -436,7 +436,7 @@ In `crates/canager-core/src/model.rs`, replace `test_plan_round_trips_through_js
     }
 ```
 
-In `crates/canager-core/src/adapters/mod.rs`, inside `mod tests`, after the closing `}` of `test_run_plan_sends_a_runner_note_to_the_log_as_a_note_not_as_text` and before the line `use crate::model::ArtifactKind;` that precedes `fn installed(`, insert:
+In `crates/banager-core/src/adapters/mod.rs`, inside `mod tests`, after the closing `}` of `test_run_plan_sends_a_runner_note_to_the_log_as_a_note_not_as_text` and before the line `use crate::model::ArtifactKind;` that precedes `fn installed(`, insert:
 
 ```rust
 
@@ -484,7 +484,7 @@ In `crates/canager-core/src/adapters/mod.rs`, inside `mod tests`, after the clos
     }
 ```
 
-In `crates/canager-core/tests/ops_summaries_test.rs`, add `PlanAction` to the `use canager_core::model::{ … }` list (between `Plan,` and `Reconciled,`), add `use std::path::PathBuf;` after `use std::sync::Arc;`, and append at the end of the file:
+In `crates/banager-core/tests/ops_summaries_test.rs`, add `PlanAction` to the `use banager_core::model::{ … }` list (between `Plan,` and `Reconciled,`), add `use std::path::PathBuf;` after `use std::sync::Arc;`, and append at the end of the file:
 
 ```rust
 
@@ -550,7 +550,7 @@ and after that `it`'s closing `});` (before `it("spells the unknown-source scan'
 
   it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {
     // `test_plan_action_is_externally_tagged_on_the_wire` in
-    // crates/canager-core/src/model.rs asserts these exact strings from the
+    // crates/banager-core/src/model.rs asserts these exact strings from the
     // Rust side. `CommandPreview.tsx` branches on `"Command" in action`.
     const command: PlanAction = {
       Command: { program: "/opt/homebrew/bin/brew", args: ["install"], env: [["A", "1"]] },
@@ -644,7 +644,7 @@ describe("CommandPreview", () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_plan_action_is_externally_tagged_on_the_wire`
+Run: `cargo test -p banager-core --lib model::tests::test_plan_action_is_externally_tagged_on_the_wire`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type \`PlanAction\`` and, in `test_plan_round_trips_through_json`, `error[E0560]: struct \`Plan\` has no field named \`action\``.
 
 Run: `pnpm typecheck`
@@ -652,7 +652,7 @@ Expected: FAIL — `Module '"./types"' has no exported member 'PlanAction'` (`ty
 
 - [ ] **Step 3: Move the three fields into `PlanAction`, at every site**
 
-**3a. The type.** In `crates/canager-core/src/model.rs`, replace the `Plan` struct (its `#[derive(…)]` line through its closing `}`, which today reads `pub struct Plan { pub request: OpRequest, pub program: PathBuf, pub args: Vec<String>, // argv without program; preview = program + args` … `pub timeout_secs: u64, }`) with:
+**3a. The type.** In `crates/banager-core/src/model.rs`, replace the `Plan` struct (its `#[derive(…)]` line through its closing `}`, which today reads `pub struct Plan { pub request: OpRequest, pub program: PathBuf, pub args: Vec<String>, // argv without program; preview = program + args` … `pub timeout_secs: u64, }`) with:
 
 ```rust
 /// What a `Plan` does when it runs. Every plan an adapter built before
@@ -708,7 +708,7 @@ pub struct Plan {
 }
 ```
 
-**3b. The test helpers.** In `crates/canager-core/src/testing.rs`, change line 25,
+**3b. The test helpers.** In `crates/banager-core/src/testing.rs`, change line 25,
 
 ```rust
 use crate::model::{InstanceStatus, ManagerInstance, ReadOnlyReason, Scope, Unavailable};
@@ -762,7 +762,7 @@ pub fn command_env(plan: &Plan) -> &[(String, String)] {
 }
 ```
 
-**3c. The two production readers.** In `crates/canager-core/src/adapters/mod.rs`, add `PlanAction` to the `use crate::model::{…}` list at the top of the file (after `Plan,`; rustfmt re-wraps it), and in `run_plan` replace
+**3c. The two production readers.** In `crates/banager-core/src/adapters/mod.rs`, add `PlanAction` to the `use crate::model::{…}` list at the top of the file (after `Plan,`; rustfmt re-wraps it), and in `run_plan` replace
 
 ```rust
     let spec = CommandSpec {
@@ -789,7 +789,7 @@ with
         env: env.clone(),
 ```
 
-In `crates/canager-core/src/ops/mod.rs`, change the import at `:3-6`
+In `crates/banager-core/src/ops/mod.rs`, change the import at `:3-6`
 
 ```rust
 use crate::model::{
@@ -831,7 +831,7 @@ with
                 };
 ```
 
-**3d. The 24 construction sites.** The rule is mechanical and identical everywhere: the three consecutive fields `program: P, args: A, env: E,` become one field `action: PlanAction::Command { program: P, args: A, env: E },` — each expression kept exactly as it is, including the `program,`/`args,`/`env,` shorthands — and `PlanAction` is added to that file's `use crate::model::{…}` (or `use canager_core::model::{…}`) list in alphabetical position. The sites, with the exact three lines each has at `3b5117a`:
+**3d. The 24 construction sites.** The rule is mechanical and identical everywhere: the three consecutive fields `program: P, args: A, env: E,` become one field `action: PlanAction::Command { program: P, args: A, env: E },` — each expression kept exactly as it is, including the `program,`/`args,`/`env,` shorthands — and `PlanAction` is added to that file's `use crate::model::{…}` (or `use banager_core::model::{…}`) list in alphabetical position. The sites, with the exact three lines each has at `3b5117a`:
 
 | File:line of `Plan {` | The three lines | Import list to extend |
 |---|---|---|
@@ -848,15 +848,15 @@ with
 | `adapters/mod.rs`, test `plan_for` inside `test_run_plan_maps_a_cancelled_run_to_unconfirmed_and_a_failure_to_the_last_stderr_lines` | `program: PathBuf::from("/bin/fake"),` / `args: args.into_iter().map(\|a\| a.to_string()).collect(),` / `env: Vec::new(),` | covered by 3c's top-level import (`use super::*;`) |
 | `adapters/mod.rs`, `let plan = Plan {` inside `test_run_plan_sends_a_runner_note_to_the_log_as_a_note_not_as_text` | `program: std::path::PathBuf::from("/bin/fake"),` / `args: Vec::new(),` / `env: Vec::new(),` | (same) |
 | `session/test_support.rs:88` (`fake_plan`) | `program: inst.exe_path.clone(),` / `args: vec!["do".to_string(), req.name.clone()],` / `env: vec![],` | `test_support.rs:12` |
-| `src-tauri/src/ipc.rs:677` (test `FakeAdapter::plan`) | `program: inst.exe_path.clone(),` / `args: vec!["do".to_string(), req.name.clone()],` / `env: vec![],` | the test module's `use canager_core::model::{…}` at `ipc.rs:599` |
-| `tests/ops_fault_test.rs:85`, `ops_panic_test.rs:92`, `ops_lock_test.rs:74`, `ops_cancel_test.rs:131`, `ops_outcome_test.rs:98`, `ops_semaphore_test.rs:85` and `:283` | `program: inst.exe_path.clone(),` / `args: vec![],` / `env: vec![],` | each file's `use canager_core::model::{…}` (lines 15, 12, 4, 16, 15, 10) |
+| `src-tauri/src/ipc.rs:677` (test `FakeAdapter::plan`) | `program: inst.exe_path.clone(),` / `args: vec!["do".to_string(), req.name.clone()],` / `env: vec![],` | the test module's `use banager_core::model::{…}` at `ipc.rs:599` |
+| `tests/ops_fault_test.rs:85`, `ops_panic_test.rs:92`, `ops_lock_test.rs:74`, `ops_cancel_test.rs:131`, `ops_outcome_test.rs:98`, `ops_semaphore_test.rs:85` and `:283` | `program: inst.exe_path.clone(),` / `args: vec![],` / `env: vec![],` | each file's `use banager_core::model::{…}` (lines 15, 12, 4, 16, 15, 10) |
 | `tests/ops_summaries_test.rs:78` | `program: inst.exe_path.clone(),` / `args: vec!["install".to_string(), req.name.clone()],` / `env: vec![],` | done in Step 1 |
 | `model.rs` (test) | done in Step 1 | — |
-| B's `StandaloneAdapter::plan`, `OpKind::Upgrade` arm (`crates/canager-core/src/adapters/standalone/mod.rs`) | `program: inst.exe_path.clone(),` (with its two comment lines `// The launcher, exactly as previewed: never a program` / `// the recipe could name (spec 附录 B).`) / `args: upgrade.args.iter().map(\|a\| a.to_string()).collect(),` / `env: Vec::new(),` (with `// Not the version read's environment: \`claude update\`` / `// must not be told to stop updating (spec §3.4).`) → `action: PlanAction::Command { program: inst.exe_path.clone(), args: upgrade.args.iter().map(\|a\| a.to_string()).collect(), env: Vec::new() },`, each comment kept above the field it explains, inside the braces | B's non-test `use crate::model::{…}` list in that file (it holds `OpKind, OpRequest, Outcome, Plan, …` since B's stage 8) → add `PlanAction` |
+| B's `StandaloneAdapter::plan`, `OpKind::Upgrade` arm (`crates/banager-core/src/adapters/standalone/mod.rs`) | `program: inst.exe_path.clone(),` (with its two comment lines `// The launcher, exactly as previewed: never a program` / `// the recipe could name (spec 附录 B).`) / `args: upgrade.args.iter().map(\|a\| a.to_string()).collect(),` / `env: Vec::new(),` (with `// Not the version read's environment: \`claude update\`` / `// must not be told to stop updating (spec §3.4).`) → `action: PlanAction::Command { program: inst.exe_path.clone(), args: upgrade.args.iter().map(\|a\| a.to_string()).collect(), env: Vec::new() },`, each comment kept above the field it explains, inside the braces | B's non-test `use crate::model::{…}` list in that file (it holds `OpKind, OpRequest, Outcome, Plan, …` since B's stage 8) → add `PlanAction` |
 
 That is 23 `Plan {` literals at `3b5117a` (`grep -rnE '(^|[^A-Za-z_])Plan\s*\{' crates src-tauri --include='*.rs'`, minus `struct Plan` and the four `-> Plan {` signatures) plus B's one. The compiler is the completeness check: after 3a no `Plan` has a `program`, `args` or `env` field, so `cargo test --workspace --no-run` names every site still unconverted and builds once all 24 are done.
 
-**3e. The test assertions that read the three fields.** Replace each expression per this table. Inside the crate the helpers are `crate::testing::…`; in `tests/` and `src-tauri` they are `canager_core::testing::…`:
+**3e. The test assertions that read the three fields.** Replace each expression per this table. Inside the crate the helpers are `crate::testing::…`; in `tests/` and `src-tauri` they are `banager_core::testing::…`:
 
 | File:line(s) | Today | Becomes |
 |---|---|---|
@@ -875,9 +875,9 @@ That is 23 `Plan {` literals at `3b5117a` (`grep -rnE '(^|[^A-Za-z_])Plan\s*\{' 
 | `adapters/brew/mod.rs:2910` | `assert!(plan.env.contains(&(` | `assert!(command_env(&plan).contains(&(` |
 | `adapters/brew/mod.rs:2935`, `:2937` | `!plan.env.iter().any(\|(k, _)\| k == "SUDO_ASKPASS"),` / `plan.env` | `!command_env(&plan).iter().any(\|(k, _)\| k == "SUDO_ASKPASS"),` / `command_env(&plan)` |
 | `session/plans.rs:498` | `assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);` | `assert_eq!(crate::testing::command_args(&issued.plan), vec!["do".to_string(), "jq".to_string()]);` |
-| `src-tauri/src/ipc.rs:1342` | the same line | `assert_eq!(canager_core::testing::command_args(&issued.plan), vec!["do".to_string(), "jq".to_string()]);` |
-| `tests/brew_live.rs:112` | `install_plan.args,` | `canager_core::testing::command_args(&install_plan),` |
-| `tests/brew_live.rs:165` | `uninstall_plan.args,` | `canager_core::testing::command_args(&uninstall_plan),` |
+| `src-tauri/src/ipc.rs:1342` | the same line | `assert_eq!(banager_core::testing::command_args(&issued.plan), vec!["do".to_string(), "jq".to_string()]);` |
+| `tests/brew_live.rs:112` | `install_plan.args,` | `banager_core::testing::command_args(&install_plan),` |
+| `tests/brew_live.rs:165` | `uninstall_plan.args,` | `banager_core::testing::command_args(&uninstall_plan),` |
 | B's `test_plan_upgrade_is_the_tools_own_update_command_without_the_version_env` in `standalone/mod.rs`'s `mod tests` | `assert_eq!(plan.program, layout.launcher);` / `assert_eq!(plan.args, vec!["update".to_string()]);` / `assert!(plan.env.is_empty(), "upgrade adds no environment override");` | `assert_eq!(command_program(&plan), layout.launcher);` / `assert_eq!(command_args(&plan), vec!["update".to_string()]);` / `assert!(command_env(&plan).is_empty(), "upgrade adds no environment override");` |
 
 (`&[String] == Vec<&str>`, `&[String] == Vec<String>` and `&Path == PathBuf` all have `PartialEq` impls in std, so no assertion needs anything but the swap.) Imports for the helpers: add `use crate::testing::command_args;` right after `use super::*;` in `mod tests` of `npm.rs` (`:587`), `pipx.rs` (`:514`), `uv.rs` (`:358`) and `ollama/mod.rs` (`:628`); `use crate::testing::{command_args, command_program};` after `use super::*;` in `cargo.rs`'s `mod tests` (`:437`); `use crate::testing::{command_args, command_env};` after `use super::*;` in `brew/mod.rs`'s **`mod plan_execute_tests`** (`:2241` — every brew assertion above is in that module, none in `mod tests` at `:1437`); and `use crate::testing::{command_args, command_env, command_program};` beside the other `use` lines of B's `standalone/mod.rs` `mod tests`. `session/plans.rs`, `ipc.rs` and `brew_live.rs` use the qualified path in the table.
@@ -886,7 +886,7 @@ That is 23 `Plan {` literals at `3b5117a` (`grep -rnE '(^|[^A-Za-z_])Plan\s*\{' 
 
 ```ts
 /**
- * Mirrors `PlanAction` in crates/canager-core/src/model.rs: what a plan
+ * Mirrors `PlanAction` in crates/banager-core/src/model.rs: what a plan
  * does when it runs. Externally tagged single-key objects. `Command` is
  * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
  * path-list uninstall of a tool installed by its own installer, which
@@ -1006,7 +1006,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/src/testing.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/ops/mod.rs crates/canager-core/src/adapters/brew/mod.rs crates/canager-core/src/adapters/cargo.rs crates/canager-core/src/adapters/npm.rs crates/canager-core/src/adapters/pip.rs crates/canager-core/src/adapters/pipx.rs crates/canager-core/src/adapters/uv.rs crates/canager-core/src/adapters/ollama/mod.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/session/test_support.rs crates/canager-core/src/session/plans.rs crates/canager-core/tests/ops_cancel_test.rs crates/canager-core/tests/ops_fault_test.rs crates/canager-core/tests/ops_lock_test.rs crates/canager-core/tests/ops_outcome_test.rs crates/canager-core/tests/ops_panic_test.rs crates/canager-core/tests/ops_semaphore_test.rs crates/canager-core/tests/ops_summaries_test.rs crates/canager-core/tests/brew_live.rs src-tauri/src/ipc.rs src/lib/types.ts src/lib/types.test.ts src/components/CommandPreview.tsx src/components/CommandPreview.test.tsx src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/lib/queries.test.ts src/lib/api.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs crates/banager-core/src/testing.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/ops/mod.rs crates/banager-core/src/adapters/brew/mod.rs crates/banager-core/src/adapters/cargo.rs crates/banager-core/src/adapters/npm.rs crates/banager-core/src/adapters/pip.rs crates/banager-core/src/adapters/pipx.rs crates/banager-core/src/adapters/uv.rs crates/banager-core/src/adapters/ollama/mod.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/session/test_support.rs crates/banager-core/src/session/plans.rs crates/banager-core/tests/ops_cancel_test.rs crates/banager-core/tests/ops_fault_test.rs crates/banager-core/tests/ops_lock_test.rs crates/banager-core/tests/ops_outcome_test.rs crates/banager-core/tests/ops_panic_test.rs crates/banager-core/tests/ops_semaphore_test.rs crates/banager-core/tests/ops_summaries_test.rs crates/banager-core/tests/brew_live.rs src-tauri/src/ipc.rs src/lib/types.ts src/lib/types.test.ts src/components/CommandPreview.tsx src/components/CommandPreview.test.tsx src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/lib/queries.test.ts src/lib/api.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Give a plan an action: one command, or a list of paths to move to the Trash
 
@@ -1032,9 +1032,9 @@ EOF
 B's plan hands this to step C in its deviation 15: B's `StandaloneAdapter::reconcile` refuses (`AdapterError::Parse`) an owned launcher it cannot read a version from, because after an *upgrade* that exits 0 such a launcher is no evidence of success; but after an *uninstall* that same launcher — the launcher-only state a stopped path-list uninstall leaves — is exactly the evidence that the tool is still there. "Before enabling uninstall, make verification operation-aware so uninstall reads that presence even without a version, while upgrades retain this strict check." This task adds the operation-aware reading with a default that changes nothing for any existing adapter; Task 6 gives `StandaloneAdapter` its override.
 
 **Files:**
-- Modify: `crates/canager-core/src/adapters/mod.rs` — the `Adapter` trait, after `async fn reconcile(…) -> Result<Reconciled, AdapterError>;`  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/ops/mod.rs:668` (`let reconciled = adapter.reconcile(&instance, &key).await;` in `run_operation`)
-- Modify: `crates/canager-core/tests/ops_outcome_test.rs` — a second fake adapter and its tests, appended at the end of the file
+- Modify: `crates/banager-core/src/adapters/mod.rs` — the `Adapter` trait, after `async fn reconcile(…) -> Result<Reconciled, AdapterError>;`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/ops/mod.rs:668` (`let reconciled = adapter.reconcile(&instance, &key).await;` in `run_operation`)
+- Modify: `crates/banager-core/tests/ops_outcome_test.rs` — a second fake adapter and its tests, appended at the end of the file
 - Test: `tests/ops_outcome_test.rs`.
 
 **Interfaces:**
@@ -1043,7 +1043,7 @@ B's plan hands this to step C in its deviation 15: B's `StandaloneAdapter::recon
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `crates/canager-core/tests/ops_outcome_test.rs`:
+Append to `crates/banager-core/tests/ops_outcome_test.rs`:
 
 ```rust
 
@@ -1301,12 +1301,12 @@ async fn test_an_adapter_that_does_not_override_it_verifies_an_uninstall_with_re
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --test ops_outcome_test`
+Run: `cargo test -p banager-core --test ops_outcome_test`
 Expected: FAIL to compile — `error[E0407]: method \`reconcile_after_uninstall\` is not a member of trait \`Adapter\``.
 
 - [ ] **Step 3: Add the method and read it**
 
-In `crates/canager-core/src/adapters/mod.rs`, inside `pub trait Adapter`, after
+In `crates/banager-core/src/adapters/mod.rs`, inside `pub trait Adapter`, after
 
 ```rust
     async fn reconcile(
@@ -1345,7 +1345,7 @@ insert:
     }
 ```
 
-In `crates/canager-core/src/ops/mod.rs`, replace `:668`
+In `crates/banager-core/src/ops/mod.rs`, replace `:668`
 
 ```rust
         let reconciled = adapter.reconcile(&instance, &key).await;
@@ -1366,7 +1366,7 @@ with
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --test ops_outcome_test` and `cargo test --workspace`
+Run: `cargo test -p banager-core --test ops_outcome_test` and `cargo test --workspace`
 Expected: PASS — the four new tests and every existing one (no adapter implements the new method, so each keeps its current verification). `test_an_uninstall_whose_reading_cannot_tell_is_unconfirmed_never_succeeded` pins what `run_operation` already does with an `Err` reading, now that the uninstall's reading is a method an adapter can answer on its own.
 
 - [ ] **Step 5: Run the gates**
@@ -1376,7 +1376,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/adapters/mod.rs crates/canager-core/src/ops/mod.rs crates/canager-core/tests/ops_outcome_test.rs
+git add crates/banager-core/src/adapters/mod.rs crates/banager-core/src/ops/mod.rs crates/banager-core/tests/ops_outcome_test.rs
 git commit -m "$(cat <<'EOF'
 Verify an uninstall by asking only whether the item is still there
 
@@ -1401,7 +1401,7 @@ EOF
 ### Task 3: `Warning::{WillTrash, WillKeep, AlreadyGone}`, `RemovedWhat`, `KeptWhat`, their copy
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — before `Warning`, inside `Warning`, `test_warning_wire_shapes_match_the_hand_written_ts_mirror`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/model.rs` — before `Warning`, inside `Warning`, `test_warning_wire_shapes_match_the_hand_written_ts_mirror`  [B's file: anchor by symbol]
 - Modify: `src/lib/types.ts` — before `Warning`, the `Warning` union and its doc  [B's file]
 - Modify: `src/lib/types.test.ts` — the import list; `spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged`  [B's file]
 - Modify: `src/lib/warnings.ts` (`warningKey`, `warningArgs`; two `Record`s)  [A's file]
@@ -1416,7 +1416,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, after the statement `let round_tripped: Warning = serde_json::from_str(r#"{"WouldBreak":{"names":["a","b"]}}"#).unwrap();` and its `assert_eq!(round_tripped, Warning::WouldBreak { … });`, before the test's closing `}`, insert:
+In `crates/banager-core/src/model.rs`, inside `test_warning_wire_shapes_match_the_hand_written_ts_mirror`, after the statement `let round_tripped: Warning = serde_json::from_str(r#"{"WouldBreak":{"names":["a","b"]}}"#).unwrap();` and its `assert_eq!(round_tripped, Warning::WouldBreak { … });`, before the test's closing `}`, insert:
 
 ```rust
 
@@ -1462,7 +1462,7 @@ In `src/lib/types.test.ts`, add `RemovedWhat,` and `KeptWhat,` to the `import ty
     // Phase 4 step C: the three struct variants a path-list uninstall
     // carries, and the two nested unit enums, spelled as
     // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
-    // crates/canager-core/src/model.rs asserts serde emits them.
+    // crates/banager-core/src/model.rs asserts serde emits them.
     const willTrash: Warning = { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } };
     const willKeep: Warning = { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } };
     const alreadyGone: Warning = { AlreadyGone: { path: "~/.local/share/claude" } };
@@ -1631,7 +1631,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("pl
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror`
+Run: `cargo test -p banager-core --lib model::tests::test_warning_wire_shapes_match_the_hand_written_ts_mirror`
 Expected: FAIL to compile — `no variant named \`WillTrash\` found for enum \`Warning\`` (and `WillKeep`, `AlreadyGone`); `cannot find type \`RemovedWhat\``, `\`KeptWhat\``.
 
 Run: `pnpm typecheck`
@@ -1639,7 +1639,7 @@ Expected: FAIL — `Module '"./types"' has no exported member 'RemovedWhat'`; in
 
 - [ ] **Step 3: Add the variants, the mirror, the branches and the copy**
 
-In `crates/canager-core/src/model.rs`, directly above the doc comment that begins `/// A specific warning \`Plan\` or \`UpdateCandidate\` carries` (the `Warning` enum's), insert:
+In `crates/banager-core/src/model.rs`, directly above the doc comment that begins `/// A specific warning \`Plan\` or \`UpdateCandidate\` carries` (the `Warning` enum's), insert:
 
 ```rust
 /// What one path a path-list uninstall moves to the Trash is, for the
@@ -1703,7 +1703,7 @@ In `src/lib/types.ts`, directly above the doc comment of `Warning` (`/**` follow
 ```ts
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
- * `RemovedWhat` in crates/canager-core/src/model.rs: bare-string unit
+ * `RemovedWhat` in crates/banager-core/src/model.rs: bare-string unit
  * variants, the payload of `Warning.WillTrash`. Read through
  * `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over this union,
  * so a variant added here without copy fails `tsc`.
@@ -1800,7 +1800,7 @@ In `src/i18n/zh-CN.json`, the same position:
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib src/components/UninstallDialog.test.tsx src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `pnpm typecheck && pnpm exec vitest run src/lib src/components/UninstallDialog.test.tsx src/i18n`
 Expected: PASS. `completeness.test.ts` passes because every new key is a string literal in `warnings.ts`.
 
 - [ ] **Step 5: Run the gates**
@@ -1810,7 +1810,7 @@ Run all five from Global Constraints. Expected: all clean (a `pub` enum variant 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/components/UninstallDialog.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts src/lib/warnings.ts src/lib/warnings.test.ts src/components/UninstallDialog.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Add the warnings a path-list uninstall lists: moved, kept, already gone
 
@@ -1833,8 +1833,8 @@ EOF
 ### Task 4: `Fault::PathChanged`, `LogNote::{MovedToTrash, TrashFailed}`, their copy
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — inside `Fault`; `test_canager_failed_is_externally_tagged_on_the_wire`  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/events.rs:26-42` (`LogNote`), `:115-139` (`test_note_wire_shape_is_what_the_typescript_mirror_expects`)
+- Modify: `crates/banager-core/src/model.rs` — inside `Fault`; `test_canager_failed_is_externally_tagged_on_the_wire`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/events.rs:26-42` (`LogNote`), `:115-139` (`test_note_wire_shape_is_what_the_typescript_mirror_expects`)
 - Modify: `src/lib/types.ts` — the `Fault` and `LogNote` unions  [B's file]
 - Modify: `src/lib/types.test.ts` — `keeps Outcome's externally tagged variants intact on the wire`, `keeps OperationEvent and UiEvent wire shapes intact`  [B's file]
 - Modify: `src/lib/format.ts` — `faultKey`, `faultArgs`  [F's file: anchor by symbol]
@@ -1850,7 +1850,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/model.rs`, inside `test_canager_failed_is_externally_tagged_on_the_wire`, after the `assert_eq!` whose expected string is `r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#` (and its closing `);`), insert:
+In `crates/banager-core/src/model.rs`, inside `test_canager_failed_is_externally_tagged_on_the_wire`, after the `assert_eq!` whose expected string is `r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#` (and its closing `);`), insert:
 
 ```rust
         // Phase 4 step C: a path-list uninstall found a path changed
@@ -1864,7 +1864,7 @@ In `crates/canager-core/src/model.rs`, inside `test_canager_failed_is_externally
         );
 ```
 
-In `crates/canager-core/src/events.rs`, inside `test_note_wire_shape_is_what_the_typescript_mirror_expects`, after the `assert_eq!` on `failed` (its expected string ends `"error":"Input/output error (os error 5)"}}}}"#`) and its closing `);`, insert:
+In `crates/banager-core/src/events.rs`, inside `test_note_wire_shape_is_what_the_typescript_mirror_expects`, after the `assert_eq!` on `failed` (its expected string ends `"error":"Input/output error (os error 5)"}}}}"#`) and its closing `);`, insert:
 
 ```rust
         // Phase 4 step C: the two lines a path-list uninstall writes, one
@@ -1989,10 +1989,10 @@ In `src/components/LogDrawer.test.tsx`, after the closing `});` of `it("says whi
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --lib model::tests::test_canager_failed_is_externally_tagged_on_the_wire`
+Run: `cargo test -p banager-core --lib model::tests::test_canager_failed_is_externally_tagged_on_the_wire`
 Expected: FAIL to compile — `no variant or associated item named \`PathChanged\` found for enum \`Fault\``.
 
-Run: `cargo test -p canager-core --lib events::tests::test_note_wire_shape_is_what_the_typescript_mirror_expects`
+Run: `cargo test -p banager-core --lib events::tests::test_note_wire_shape_is_what_the_typescript_mirror_expects`
 Expected: FAIL to compile — `no variant or associated item named \`MovedToTrash\` found for enum \`LogNote\`` (and `TrashFailed`).
 
 Run: `pnpm typecheck`
@@ -2000,7 +2000,7 @@ Expected: FAIL — in `types.test.ts`, `Object literal may only specify known pr
 
 - [ ] **Step 3: Add the variants, the mirror, the branches and the copy**
 
-In `crates/canager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdating { minutes: u64 },` and before the doc comment `/// Something on Canager's side did not add up`, insert:
+In `crates/banager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdating { minutes: u64 },` and before the doc comment `/// Something on Canager's side did not add up`, insert:
 
 ```rust
     /// A path a path-list uninstall was about to move is not what the
@@ -2020,7 +2020,7 @@ In `crates/canager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdat
     PathChanged { path: String },
 ```
 
-In `crates/canager-core/src/events.rs`, inside `LogNote`, after `ReadFailed { stream: Stream, error: String },` insert:
+In `crates/banager-core/src/events.rs`, inside `LogNote`, after `ReadFailed { stream: Stream, error: String },` insert:
 
 ```rust
     /// A path-list uninstall moved `path` (home folder abbreviated to `~`)
@@ -2118,7 +2118,7 @@ In `src/i18n/zh-CN.json`, the same two positions:
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --lib model::tests` and `cargo test -p canager-core --lib events::tests` and `pnpm typecheck && pnpm exec vitest run src/lib src/components/LogDrawer.test.tsx src/i18n`
+Run: `cargo test -p banager-core --lib model::tests` and `cargo test -p banager-core --lib events::tests` and `pnpm typecheck && pnpm exec vitest run src/lib src/components/LogDrawer.test.tsx src/i18n`
 Expected: PASS. `completeness.test.ts` passes because both `operations.logNote.*` keys are literals in `LogDrawer.tsx` and `CanagerFailed.PathChanged` is enumerated in `INTERPOLATED_SUBTREES`.
 
 - [ ] **Step 5: Run the gates**
@@ -2128,7 +2128,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/src/events.rs src/lib/types.ts src/lib/types.test.ts src/lib/format.ts src/lib/format.test.ts src/components/LogDrawer.tsx src/components/LogDrawer.test.tsx src/i18n/completeness.test.ts src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs crates/banager-core/src/events.rs src/lib/types.ts src/lib/types.test.ts src/lib/format.ts src/lib/format.test.ts src/components/LogDrawer.tsx src/components/LogDrawer.test.tsx src/i18n/completeness.test.ts src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Word a path that changed after its preview, and each move to the Trash
 
@@ -2151,9 +2151,9 @@ EOF
 ### Task 5: `AdapterError::UninstallUnsafe`, `UninstallUnsafeReason`, the IPC kind, the dialog's wording
 
 **Files:**
-- Modify: `crates/canager-core/src/model.rs` — after the closing `}` of `pub enum UninstallBlocked`  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/adapters/mod.rs` — the `use crate::model::{…}` list; inside `AdapterError`, after `UninstallBlocked { reason: UninstallBlocked },`  [B's file: anchor by symbol]
-- Modify: `crates/canager-core/src/ops/mod.rs:36-62` (`execute_error_outcome`'s doc comment and `match`)
+- Modify: `crates/banager-core/src/model.rs` — after the closing `}` of `pub enum UninstallBlocked`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/adapters/mod.rs` — the `use crate::model::{…}` list; inside `AdapterError`, after `UninstallBlocked { reason: UninstallBlocked },`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/ops/mod.rs:36-62` (`execute_error_outcome`'s doc comment and `match`)
 - Modify: `src-tauri/src/ipc.rs` — `plan_operation_error` (`:184-217`; anchor: the arm `AdapterError::UninstallBlocked { reason } => uninstall_blocked_json(reason),`), `test_plan_operation_error_never_sends_canagers_own_english` (`:1363-1443`), one test after it
 - Modify: `src/lib/sources.ts` — after `parseUninstallBlocked`; `planFailureMessage`'s doc and `switch`  [B's file]
 - Modify: `src/lib/sources.test.ts` — the import list, `describe("planErrorMessage")`, one `describe` after `describe("parseUninstallBlocked")`  [B's file]
@@ -2176,7 +2176,7 @@ In `src-tauri/src/ipc.rs`, inside `test_plan_operation_error_never_sends_canager
         // snake_case data for `parseUninstallUnsafe` in src/lib/sources.ts.
         let v = parse(AdapterError::UninstallUnsafe {
             path: "~/.local/bin/claude".to_string(),
-            reason: canager_core::model::UninstallUnsafeReason::NotWhatInstructionsExpect,
+            reason: banager_core::model::UninstallUnsafeReason::NotWhatInstructionsExpect,
         });
         assert_eq!(
             v,
@@ -2194,7 +2194,7 @@ and after that test's closing `}` (before the next `#[test]`), insert:
 
     #[test]
     fn test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case() {
-        use canager_core::model::UninstallUnsafeReason;
+        use banager_core::model::UninstallUnsafeReason;
         // Written out by hand in `plan_operation_error`, not derived:
         // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes its copy by
         // these exact strings, and the `match` is exhaustive, so a reason
@@ -2284,7 +2284,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("sa
   it("words a refused path-list preview with the path and the reason, never the payload", async () => {
     // One of the checks a path-list uninstall runs at preview time refused
     // a path (`removal::plan_removal` in
-    // crates/canager-core/src/adapters/standalone/removal.rs);
+    // crates/banager-core/src/adapters/standalone/removal.rs);
     // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
     // the reason as data, and the dialog words them. Canager did check,
     // so the sentence is shown on its own, not inside "Couldn't check
@@ -2344,14 +2344,14 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("sa
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `cargo test -p canager --lib ipc::tests::test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case`
-Expected: FAIL to compile — `no variant or associated item named \`UninstallUnsafe\` found for enum \`AdapterError\``; `cannot find type \`UninstallUnsafeReason\` in module \`canager_core::model\``.
+Expected: FAIL to compile — `no variant or associated item named \`UninstallUnsafe\` found for enum \`AdapterError\``; `cannot find type \`UninstallUnsafeReason\` in module \`banager_core::model\``.
 
 Run: `pnpm typecheck`
 Expected: FAIL — `Module '"./sources"' has no exported member 'parseUninstallUnsafe'`.
 
 - [ ] **Step 3: Add the reason, the error, the IPC arm, the decoder, the dialog branch and the copy**
 
-In `crates/canager-core/src/model.rs`, after the closing `}` of `pub enum UninstallBlocked { … }`, insert:
+In `crates/banager-core/src/model.rs`, after the closing `}` of `pub enum UninstallBlocked { … }`, insert:
 
 ```rust
 
@@ -2402,7 +2402,7 @@ pub enum UninstallUnsafeReason {
 }
 ```
 
-In `crates/canager-core/src/adapters/mod.rs`, add `UninstallUnsafeReason` to the `use crate::model::{…}` list (after `UninstallBlocked,`; rustfmt re-wraps it), and inside `AdapterError`, after the `UninstallBlocked { reason: UninstallBlocked },` variant and before the doc comment `/// \`Session::issue_plan\` was asked to plan against an instance that is`, insert:
+In `crates/banager-core/src/adapters/mod.rs`, add `UninstallUnsafeReason` to the `use crate::model::{…}` list (after `UninstallBlocked,`; rustfmt re-wraps it), and inside `AdapterError`, after the `UninstallBlocked { reason: UninstallBlocked },` variant and before the doc comment `/// \`Session::issue_plan\` was asked to plan against an instance that is`, insert:
 
 ```rust
     /// A path-list uninstall's `plan()` (`StandaloneAdapter`, through
@@ -2423,7 +2423,7 @@ In `crates/canager-core/src/adapters/mod.rs`, add `UninstallUnsafeReason` to the
     },
 ```
 
-In `crates/canager-core/src/ops/mod.rs`, in `execute_error_outcome`'s doc comment, replace the two lines
+In `crates/banager-core/src/ops/mod.rs`, in `execute_error_outcome`'s doc comment, replace the two lines
 
 ```rust
 /// `InvalidName`, `NotActionable`, `UpdateBlocked`, `UninstallBlocked`
@@ -2449,7 +2449,7 @@ In `src-tauri/src/ipc.rs`, in `plan_operation_error`, after the arm `AdapterErro
         // spelled by hand -- the one producer of these strings, which
         // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes by.
         AdapterError::UninstallUnsafe { path, reason } => {
-            use canager_core::model::UninstallUnsafeReason;
+            use banager_core::model::UninstallUnsafeReason;
             let reason = match reason {
                 UninstallUnsafeReason::OutsideHome => "outside_home",
                 UninstallUnsafeReason::SharedFolder => "shared_folder",
@@ -2472,7 +2472,7 @@ In `src/lib/sources.ts`, after the closing `}` of `parseUninstallBlocked`, inser
 /**
  * The reasons a path-list uninstall preview can be refused by one of its
  * checks (`removal::plan_removal` in
- * crates/canager-core/src/adapters/standalone/removal.rs), as
+ * crates/banager-core/src/adapters/standalone/removal.rs), as
  * `plan_operation_error` in src-tauri/src/ipc.rs spells them -- by hand,
  * in snake_case, one `match` arm each. Mirrored here as a union so the
  * copy table below is a `Record` over it: a reason without a sentence
@@ -2531,7 +2531,7 @@ In `src/components/UninstallDialog.tsx`, add `parseUninstallUnsafe,` to the `imp
   // `uninstall.planError`'s "Couldn't check what this would affect", because
   // Canager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
-  // crates/canager-core/src/session/plans.rs), which only a stale Installed
+  // crates/banager-core/src/session/plans.rs), which only a stale Installed
   // page can reach and whose sentence carries the unpin command, set apart
   // as code as on the Installed page's row; and a path-list uninstall whose
   // preview refused one of its paths (`uninstall_unsafe`,
@@ -2594,7 +2594,7 @@ Run all five from Global Constraints. Expected: all clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/src/model.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/ops/mod.rs src-tauri/src/ipc.rs src/lib/sources.ts src/lib/sources.test.ts src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/i18n/en.json src/i18n/zh-CN.json
+git add crates/banager-core/src/model.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/ops/mod.rs src-tauri/src/ipc.rs src/lib/sources.ts src/lib/sources.test.ts src/components/UninstallDialog.tsx src/components/UninstallDialog.test.tsx src/i18n/en.json src/i18n/zh-CN.json
 git commit -m "$(cat <<'EOF'
 Send a refused path-list uninstall preview as the path and the reason
 
@@ -2621,36 +2621,36 @@ EOF
 One task, seven stages and a commit stage, **one commit** at the end of stage 6h: every type, field and function below has its production reader in this commit — `Trasher` → `removal::execute_removal` → `StandaloneAdapter::execute`; `RealTrasher` → `Session::new`; `ItemKind` → `Trasher::trash`; `Uninstall::Paths`/`RemoveSpec`/`KeepSpec`/`Expect`/`SHARED_FOLDERS` → `removal::plan_removal` → `StandaloneAdapter::plan`; `ItemIdentity` and `PlanAction::TrashPaths.previewed` → `removal::execute_removal`; `Detected.euid` → check 3; `route::probe_strict` → `route::probe` and `StandaloneAdapter::reconcile_after_uninstall` → `run_operation` (Task 2). A commit after any earlier stage would ship one of these with no reader, which is the defect spec §十 names and B's review refused (B's finding 19). The same commit carries every trust-file and README sentence this behaviour makes true or false (stage 6g, Ruling 23), so no commit says "no uninstall" or "never moves a file" while Canager moves files. Each stage still has its own red → green cycle; the five gates run once, at 6h.
 
 **Files (whole task):**
-- Modify: `crates/canager-core/Cargo.toml` (a target-specific dependency section after `getrandom = "0.4"`; the `[features]` comment; one `[dev-dependencies]` line), `Cargo.lock` (cargo rewrites canager-core's entry)
-- Modify: `crates/canager-core/src/lib.rs` — the crate doc's `[`scan`]` sentence; one module line after `pub mod testing;`  [B's file]
-- Create: `crates/canager-core/src/trash/mod.rs`, `crates/canager-core/src/trash/real.rs`, `crates/canager-core/src/trash/mock.rs`
-- Modify: `crates/canager-core/src/adapters/standalone/recipe.rs` — the module doc's last paragraph, the `use` line, `Recipe` (a field after `upgrade`), five items appended (`Uninstall`, `RemoveSpec`, `SHARED_FOLDERS`, `Expect`, `KeepSpec`)  [B's file]
-- Modify: `crates/canager-core/src/adapters/standalone/recipes.rs` — the two `use` lines, `CLAUDE`'s doc comment and body, `mod tests`  [B's file]
+- Modify: `crates/banager-core/Cargo.toml` (a target-specific dependency section after `getrandom = "0.4"`; the `[features]` comment; one `[dev-dependencies]` line), `Cargo.lock` (cargo rewrites banager-core's entry)
+- Modify: `crates/banager-core/src/lib.rs` — the crate doc's `[`scan`]` sentence; one module line after `pub mod testing;`  [B's file]
+- Create: `crates/banager-core/src/trash/mod.rs`, `crates/banager-core/src/trash/real.rs`, `crates/banager-core/src/trash/mock.rs`
+- Modify: `crates/banager-core/src/adapters/standalone/recipe.rs` — the module doc's last paragraph, the `use` line, `Recipe` (a field after `upgrade`), five items appended (`Uninstall`, `RemoveSpec`, `SHARED_FOLDERS`, `Expect`, `KeepSpec`)  [B's file]
+- Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — the two `use` lines, `CLAUDE`'s doc comment and body, `mod tests`  [B's file]
 - Modify: `adapters/fixtures/standalone-claude/<the one version directory B recorded>/README.md` — a section appended  [B's file]
-- Modify: `crates/canager-core/src/scan/mod.rs` — `display_path`'s visibility and doc  [B's and F's file]
-- Modify: `crates/canager-core/src/adapters/standalone/route.rs` — `probe` becomes `probe_strict` plus a one-line `probe` over it, `one_hop` added, three tests (stage 6c); `Probe::LauncherOnly`'s doc comment (6f)  [B's file]
-- Create: `crates/canager-core/src/adapters/standalone/removal.rs`
-- Modify: `crates/canager-core/src/adapters/standalone/mod.rs` — `pub mod removal;`, `Detected`, `detect`, `testing::Unreadable` (6c); `StandaloneAdapter` and `new`, `with_trash_gap`, `inventory`, `reconcile`'s doc, `reconcile_after_uninstall`, `plan`, `execute`, `all`, `impl Adapter`, `mod tests` (6e)  [B's file]
-- Modify: `crates/canager-core/src/model.rs` — `ItemKind` (6a); `ItemIdentity` (6c); `PlanAction::TrashPaths.previewed`, its doc, and the two Task 1 tests that build a `TrashPaths` (6e); the doc comments of `InstanceNote::LauncherOnly`, `UninstallBlocked::NoSafeMethod`, `CancelPolicy::KillThenReconcile` (6f)  [B's file]
-- Modify: `crates/canager-core/src/adapters/mod.rs` — Task 1's `test_run_plan_refuses_a_plan_that_runs_no_command` builds a `TrashPaths` (6e)  [B's file]
-- Modify: `crates/canager-core/tests/ops_summaries_test.rs` — Task 1's `test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview` builds a `TrashPaths` (6e)
-- Modify: `crates/canager-core/src/session/mod.rs` — imports, `Session::new` and its doc  [B's file]
-- Modify: `crates/canager-core/tests/ops_upgrade_version_test.rs` — imports; the two `StandaloneAdapter::new(` calls in `claude_upgrade_outputs`  [B's file]
+- Modify: `crates/banager-core/src/scan/mod.rs` — `display_path`'s visibility and doc  [B's and F's file]
+- Modify: `crates/banager-core/src/adapters/standalone/route.rs` — `probe` becomes `probe_strict` plus a one-line `probe` over it, `one_hop` added, three tests (stage 6c); `Probe::LauncherOnly`'s doc comment (6f)  [B's file]
+- Create: `crates/banager-core/src/adapters/standalone/removal.rs`
+- Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `pub mod removal;`, `Detected`, `detect`, `testing::Unreadable` (6c); `StandaloneAdapter` and `new`, `with_trash_gap`, `inventory`, `reconcile`'s doc, `reconcile_after_uninstall`, `plan`, `execute`, `all`, `impl Adapter`, `mod tests` (6e)  [B's file]
+- Modify: `crates/banager-core/src/model.rs` — `ItemKind` (6a); `ItemIdentity` (6c); `PlanAction::TrashPaths.previewed`, its doc, and the two Task 1 tests that build a `TrashPaths` (6e); the doc comments of `InstanceNote::LauncherOnly`, `UninstallBlocked::NoSafeMethod`, `CancelPolicy::KillThenReconcile` (6f)  [B's file]
+- Modify: `crates/banager-core/src/adapters/mod.rs` — Task 1's `test_run_plan_refuses_a_plan_that_runs_no_command` builds a `TrashPaths` (6e)  [B's file]
+- Modify: `crates/banager-core/tests/ops_summaries_test.rs` — Task 1's `test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview` builds a `TrashPaths` (6e)
+- Modify: `crates/banager-core/src/session/mod.rs` — imports, `Session::new` and its doc  [B's file]
+- Modify: `crates/banager-core/tests/ops_upgrade_version_test.rs` — imports; the two `StandaloneAdapter::new(` calls in `claude_upgrade_outputs`  [B's file]
 - Modify: `src/lib/types.ts` (`UninstallBlocked`'s doc), `src/lib/sources.ts` (the `LauncherOnly` branch's comment), `src/lib/sources.test.ts` (two `it`s), `src/pages/InstalledPage.test.tsx` (one test added, one comment), `src/i18n/en.json`, `src/i18n/zh-CN.json` (`sourceNotice.launcherOnly.description`)  [B's files]
-- Modify: `crates/canager-core/tests/what_we_run_test.rs` — the module doc, the `use` lines, two tests appended  [A's file: anchor by symbol]
+- Modify: `crates/banager-core/tests/what_we_run_test.rs` — the module doc, the `use` lines, two tests appended  [A's file: anchor by symbol]
 - Modify: `docs/what-we-run.md` — the intro, `## When commands run`, B's `## Claude Code`, `## Files Canager reads`, `## Files Canager writes`, a new `## Moving files to the Trash`, `## What Canager never does`  [A's + B's + F's file: anchor by quoted text; A hard-wraps the prose, so match a quoted sentence by its words, not as one line, and keep the file's wrapping when rewriting]
 - Modify: `README.md` — B's Claude Code row, the exact-command bullet, two new safety bullets  [B's + F's file: anchor by quoted text]
 - Test: `trash/mock.rs`'s, `recipes.rs`'s, `route.rs`'s, `removal.rs`'s, `model.rs`'s and `standalone/mod.rs`'s `mod tests`; `tests/ops_upgrade_version_test.rs`; `tests/ops_summaries_test.rs`; `session/mod.rs`'s `test_new_registers_all_eight_adapters` and `tests/fixtures_layout_test.rs` (unchanged, still green); `tests/what_we_run_test.rs` (two new tests, stage 6g); `sources.test.ts`; `InstalledPage.test.tsx`.
 
 **Interfaces:**
-- Consumes: B's `Recipe`, `Route`, `RouteKind::SymlinkIntoRoot`, `route::{expand(home: &Path, spec: &str) -> PathBuf, probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe, Probe::{Absent, Present { real }, LauncherOnly}}` and its private `canonicalize_existing_prefix`, `CLAUDE`/`RECIPES`, `Detected`, `StandaloneAdapter` and its methods as B wrote them (quoted below where changed), B's test helpers (`exited_0`, `adapter`, `instance_for`, `request`, `detected_adapter`) and `standalone::testing::{TempHome, ClaudeLayout, claude_layout}`; `PlanAction::TrashPaths` (Task 1); `Adapter::reconcile_after_uninstall` (Task 2); `Warning::{WillTrash, WillKeep, AlreadyGone}`, `RemovedWhat`, `KeptWhat` (Task 3); `Fault::PathChanged`, `LogNote::{MovedToTrash, TrashFailed}` (Task 4); `AdapterError::UninstallUnsafe`, `UninstallUnsafeReason` with its six reasons (Task 5); `reconcile_from`, `ensure_instance_match`, `validate_package_name`, `run_plan`; `EventSink`, `OpId`, `OperationEvent`; `std::os::unix::fs::MetadataExt` (`dev`, `ino`, `uid`); `tokio::task::spawn_blocking` (tokio's `rt` feature, which canager-core already has through `tokio-util`'s `rt`, its `Cargo.toml` says).
+- Consumes: B's `Recipe`, `Route`, `RouteKind::SymlinkIntoRoot`, `route::{expand(home: &Path, spec: &str) -> PathBuf, probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe, Probe::{Absent, Present { real }, LauncherOnly}}` and its private `canonicalize_existing_prefix`, `CLAUDE`/`RECIPES`, `Detected`, `StandaloneAdapter` and its methods as B wrote them (quoted below where changed), B's test helpers (`exited_0`, `adapter`, `instance_for`, `request`, `detected_adapter`) and `standalone::testing::{TempHome, ClaudeLayout, claude_layout}`; `PlanAction::TrashPaths` (Task 1); `Adapter::reconcile_after_uninstall` (Task 2); `Warning::{WillTrash, WillKeep, AlreadyGone}`, `RemovedWhat`, `KeptWhat` (Task 3); `Fault::PathChanged`, `LogNote::{MovedToTrash, TrashFailed}` (Task 4); `AdapterError::UninstallUnsafe`, `UninstallUnsafeReason` with its six reasons (Task 5); `reconcile_from`, `ensure_instance_match`, `validate_package_name`, `run_plan`; `EventSink`, `OpId`, `OperationEvent`; `std::os::unix::fs::MetadataExt` (`dev`, `ino`, `uid`); `tokio::task::spawn_blocking` (tokio's `rt` feature, which banager-core already has through `tokio-util`'s `rt`, its `Cargo.toml` says).
 - Produces (verbatim, from Core Interfaces): the `trash` module (`Trasher` with `trash(path, kind)`, `TrashError`, `RealTrasher`, `MockTrasher` with `kinds()`); `ItemKind`, `ItemIdentity`, `PlanAction::TrashPaths.previewed` (`#[serde(skip)]`); `Recipe.uninstall`, `Uninstall::Paths`, `RemoveSpec`, `Expect`, `KeepSpec`; `CLAUDE.uninstall`; `scan::display_path` as `pub(crate)`; `route::probe_strict`; `removal::{Job, Removal, plan_removal, TIMEOUT_SECS, PUT_BACK_SETTLE, Confirmed, Pacing, execute_removal}`; `Detected { home, euid }`; `testing::Unreadable` (test-only); `StandaloneAdapter::{new(recipe, runner, http, trasher), with_trash_gap, reconcile_after_uninstall}`; `all(runner, http, trasher)`; `Session::new` injecting `RealTrasher`; the restored `sourceNotice.launcherOnly.description`; `recipe::SHARED_FOLDERS`; the trust file's and the README's sentences about all of it, with two `what_we_run_test` tests. Readers of each are named in their doc comments and land in this commit; this task's `what_we_run_test` tests and Task 7's tests read `removal::{PUT_BACK_SETTLE, TIMEOUT_SECS}`, `Uninstall::Paths`, `RECIPES`, `StandaloneAdapter::with_trash_gap`, `MockTrasher`, `RealTrasher` and `ItemKind` too.
 
 #### Stage 6a: the `trash/` module — `Trasher`, `RealTrasher`, `MockTrasher` — and `ItemKind`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/lib.rs`, after the line `pub mod testing;` insert:
+In `crates/banager-core/src/lib.rs`, after the line `pub mod testing;` insert:
 
 ```rust
 /// Moving an item to the Trash -- the one change Canager makes to a file
@@ -2659,13 +2659,13 @@ In `crates/canager-core/src/lib.rs`, after the line `pub mod testing;` insert:
 pub mod trash;
 ```
 
-Create `crates/canager-core/src/trash/mod.rs` containing only:
+Create `crates/banager-core/src/trash/mod.rs` containing only:
 
 ```rust
 pub mod mock;
 ```
 
-Create `crates/canager-core/src/trash/mock.rs` with the test module only (Step 3 adds the type above it):
+Create `crates/banager-core/src/trash/mock.rs` with the test module only (Step 3 adds the type above it):
 
 ```rust
 #[cfg(test)]
@@ -2817,12 +2817,12 @@ mod tests {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib trash`
+Run: `cargo test -p banager-core --lib trash`
 Expected: FAIL to compile — `cannot find type \`MockTrasher\` in this scope`, `cannot find type \`PathBuf\``, `cannot find type \`CancellationToken\``, `cannot find type \`ItemKind\`` (the test module's `use super::*;` has nothing to bring in yet), and `no method named \`trash\``.
 
 - [ ] **Step 3: Write the dependency, the kind, the trait and the two implementations**
 
-In `crates/canager-core/Cargo.toml`, after the line `getrandom = "0.4"` (the last entry of `[dependencies]`) and before `[features]`, insert:
+In `crates/banager-core/Cargo.toml`, after the line `getrandom = "0.4"` (the last entry of `[dependencies]`) and before `[features]`, insert:
 
 ```toml
 
@@ -2853,7 +2853,7 @@ In the same file, under `[dev-dependencies]`, after the line `tokio = { version 
 # (`tests/`) can use `trash::MockTrasher`, which that feature keeps out of
 # every release build (see `[features]`). Resolver v2 scopes the feature to
 # test targets.
-canager-core = { path = ".", features = ["test-support"] }
+banager-core = { path = ".", features = ["test-support"] }
 ```
 
 and replace the whole comment above `test-support = []` (from ``# Gates `testing::expire_issued_plans`, the one item in `testing` that`` through ``# `testing.rs` for the item this gates and why.``) with:
@@ -2871,7 +2871,7 @@ and replace the whole comment above `test-support = []` (from ``# Gates `testing
 # `trash/mod.rs` for the items this gates and why.
 ```
 
-In `crates/canager-core/src/lib.rs`, in the crate doc, replace the line
+In `crates/banager-core/src/lib.rs`, in the crate doc, replace the line
 
 ```rust
 //! directories none of those sources put there.
@@ -2885,7 +2885,7 @@ with
 //! uninstall of a tool that has no uninstall command.
 ```
 
-In `crates/canager-core/src/model.rs`, directly after the closing `}` of `pub enum PlanAction` (Task 1), insert:
+In `crates/banager-core/src/model.rs`, directly after the closing `}` of `pub enum PlanAction` (Task 1), insert:
 
 ```rust
 
@@ -2906,7 +2906,7 @@ pub enum ItemKind {
 }
 ```
 
-Replace the whole of `crates/canager-core/src/trash/mod.rs` with:
+Replace the whole of `crates/banager-core/src/trash/mod.rs` with:
 
 ```rust
 //! Moving files to the Trash: the one change Canager makes to a file in
@@ -2981,7 +2981,7 @@ pub trait Trasher: Send + Sync {
 }
 ```
 
-Create `crates/canager-core/src/trash/real.rs`:
+Create `crates/banager-core/src/trash/real.rs`:
 
 ```rust
 //! `RealTrasher`: macOS's own "move to Trash".
@@ -3094,7 +3094,7 @@ impl Trasher for RealTrasher {
 }
 ```
 
-Prepend to `crates/canager-core/src/trash/mock.rs` (above `#[cfg(test)]`):
+Prepend to `crates/banager-core/src/trash/mock.rs` (above `#[cfg(test)]`):
 
 ```rust
 //! `MockTrasher`: the Trash as a temporary directory, for tests only --
@@ -3250,8 +3250,8 @@ impl Drop for MockTrasher {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib trash`
-Expected: PASS — 5 tests. `RealTrasher` compiles on this Mac (clippy checks it at 6h; the revised `trash` body, with the kind parameter, the typed `autoreleasepool` result and the debug-only line, was built and linted clean against objc2 0.6.4 / objc2-foundation 0.3.2 in a scratch crate, debug and release); nothing calls it until stage 6e. `objc2`/`objc2-foundation` resolve from `Cargo.lock` without the network; if cargo nonetheless reaches for the index, `cargo test -p canager-core --lib trash --offline` works, because the sources are in the local registry cache. `git diff Cargo.lock` now shows canager-core's dependency list with the two crates added, and canager-core itself (the dev-dependency on itself).
+Run: `cargo test -p banager-core --lib trash`
+Expected: PASS — 5 tests. `RealTrasher` compiles on this Mac (clippy checks it at 6h; the revised `trash` body, with the kind parameter, the typed `autoreleasepool` result and the debug-only line, was built and linted clean against objc2 0.6.4 / objc2-foundation 0.3.2 in a scratch crate, debug and release); nothing calls it until stage 6e. `objc2`/`objc2-foundation` resolve from `Cargo.lock` without the network; if cargo nonetheless reaches for the index, `cargo test -p banager-core --lib trash --offline` works, because the sources are in the local registry cache. `git diff Cargo.lock` now shows banager-core's dependency list with the two crates added, and banager-core itself (the dev-dependency on itself).
 
 - [ ] **Step 5: Continue the task**
 
@@ -3261,7 +3261,7 @@ No commit: continue to stage 6b.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, after B's `use` lines (`use super::*;`, `use crate::adapters::AdapterMeta;`, `use crate::model::CancelPolicy;`, `use std::path::Path;`) add:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, inside `mod tests`, after B's `use` lines (`use super::*;`, `use crate::adapters::AdapterMeta;`, `use crate::model::CancelPolicy;`, `use std::path::Path;`) add:
 
 ```rust
     use super::super::recipe::{Expect, Uninstall, SHARED_FOLDERS};
@@ -3398,12 +3398,12 @@ and after the module's last test (B's `test_every_recipe_latest_url_is_an_allowe
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::recipes`
+Run: `cargo test -p banager-core --lib adapters::standalone::recipes`
 Expected: FAIL to compile — `unresolved imports \`super::super::recipe::Expect\`, \`super::super::recipe::Uninstall\``; `no field \`uninstall\` on type \`&Recipe\``.
 
 - [ ] **Step 3: Write the types, the list and the provenance**
 
-In `crates/canager-core/src/adapters/standalone/recipe.rs`, replace B's module-doc paragraph
+In `crates/banager-core/src/adapters/standalone/recipe.rs`, replace B's module-doc paragraph
 
 ```rust
 //! Only the shapes this step produces exist here. Step C adds the
@@ -3515,7 +3515,7 @@ pub struct KeepSpec {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/recipes.rs`, replace B's two `use` lines with:
+In `crates/banager-core/src/adapters/standalone/recipes.rs`, replace B's two `use` lines with:
 
 ```rust
 use super::recipe::{
@@ -3595,7 +3595,7 @@ Find the one version directory B recorded (`ls adapters/fixtures/standalone-clau
 ## Uninstall list (phase 4 step C)
 
 Nothing here was recorded for the uninstall: Canager runs no command for
-it. The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+it. The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`CLAUDE.uninstall`) comes from Anthropic's "Uninstall Claude Code →
 Native" instructions at <https://code.claude.com/docs/en/setup>, read on
 2026-09-24: `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`
@@ -3610,7 +3610,7 @@ subcommand exists (`claude --help`, 2026-09-24).
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::recipes`
+Run: `cargo test -p banager-core --lib adapters::standalone::recipes`
 Expected: PASS — B's invariants and the three new ones. (Nothing in `standalone/mod.rs` reads `uninstall` yet, and `SHARED_FOLDERS`' run-time reader, `plan_removal`, arrives in 6c; the gates run at 6h.)
 
 - [ ] **Step 5: Continue the task**
@@ -3621,7 +3621,7 @@ No commit: continue to stage 6c.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, replace B's lines
+In `crates/banager-core/src/adapters/standalone/mod.rs`, replace B's lines
 
 ```rust
 pub mod recipes;
@@ -3669,7 +3669,7 @@ and inside B's `#[cfg(test)] pub(super) mod testing { … }`, after the closing 
     }
 ```
 
-In `crates/canager-core/src/adapters/standalone/route.rs`, inside `mod tests`, change B's line `use super::super::testing::{claude_layout, TempHome};` to `use super::super::testing::{claude_layout, TempHome, Unreadable};`; in B's `test_probe_follows_a_two_hop_link_into_the_root`, after its comment's second line (`// \`current\` link inside the root still resolves into it.`) add the line `// Its first hop lands inside the root, as the one-hop rule requires.`; and after that test's closing `}` (before `test_probe_accepts_a_home_reached_through_a_symlink`) insert:
+In `crates/banager-core/src/adapters/standalone/route.rs`, inside `mod tests`, change B's line `use super::super::testing::{claude_layout, TempHome};` to `use super::super::testing::{claude_layout, TempHome, Unreadable};`; in B's `test_probe_follows_a_two_hop_link_into_the_root`, after its comment's second line (`// \`current\` link inside the root still resolves into it.`) add the line `// Its first hop lands inside the root, as the one-hop rule requires.`; and after that test's closing `}` (before `test_probe_accepts_a_home_reached_through_a_symlink`) insert:
 
 ```rust
     #[test]
@@ -3747,7 +3747,7 @@ In `crates/canager-core/src/adapters/standalone/route.rs`, inside `mod tests`, c
     }
 ```
 
-Create `crates/canager-core/src/adapters/standalone/removal.rs` with the test module only (Step 3 adds the code above it):
+Create `crates/banager-core/src/adapters/standalone/removal.rs` with the test module only (Step 3 adds the code above it):
 
 ```rust
 #[cfg(test)]
@@ -4238,12 +4238,12 @@ mod tests {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`
+Run: `cargo test -p banager-core --lib adapters::standalone`
 Expected: FAIL to compile — in `route.rs`, `cannot find function \`probe_strict\` in this scope`; in `removal.rs`, `cannot find function \`plan_removal\``, `cannot find type \`Job\``, `\`Removal\``, `\`ItemIdentity\`` (the test module's `use super::*;` has nothing to bring in yet); and `struct \`Detected\` has no field named \`euid\``.
 
 - [ ] **Step 3: Write `Detected.euid`, widen `display_path`, the one-hop probe, `ItemIdentity` and `plan_removal`**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, replace B's `Detected` (its doc comment `/// What \`detect\` learned that the \`Adapter\` methods without a \`HostEnv\`` through the struct's closing `}`) with:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, replace B's `Detected` (its doc comment `/// What \`detect\` learned that the \`Adapter\` methods without a \`HostEnv\`` through the struct's closing `}`) with:
 
 ```rust
 /// What `detect` learned that the `Adapter` methods without a `HostEnv`
@@ -4280,7 +4280,7 @@ with
         });
 ```
 
-In `crates/canager-core/src/scan/mod.rs`, change F's signature line `fn display_path(path: &Path, home: &Path) -> PathBuf {` to `pub(crate) fn display_path(path: &Path, home: &Path) -> PathBuf {`, and add to the end of its doc comment (after `/// compares absolute paths; only the output is abbreviated.`):
+In `crates/banager-core/src/scan/mod.rs`, change F's signature line `fn display_path(path: &Path, home: &Path) -> PathBuf {` to `pub(crate) fn display_path(path: &Path, home: &Path) -> PathBuf {`, and add to the end of its doc comment (after `/// compares absolute paths; only the output is abbreviated.`):
 
 ```rust
 /// Also the one `~` rule for the sentences a path-list uninstall sends
@@ -4288,7 +4288,7 @@ In `crates/canager-core/src/scan/mod.rs`, change F's signature line `fn display_
 /// anything acts on.
 ```
 
-In `crates/canager-core/src/model.rs`, after the closing `}` of `pub enum ItemKind` (stage 6a), insert:
+In `crates/banager-core/src/model.rs`, after the closing `}` of `pub enum ItemKind` (stage 6a), insert:
 
 ```rust
 
@@ -4309,7 +4309,7 @@ pub struct ItemIdentity {
 }
 ```
 
-In `crates/canager-core/src/adapters/standalone/route.rs`, replace B's `probe` — from its doc comment `/// Whether \`launcher\` is this route's install of the tool whose root is` through the function's closing `}`, just above `/// \`target\` as seen from \`dir\`, with \`.\` and \`..\` folded away without` — with (Ruling 27; B's steps 1–3 and B's `canonicalize_existing_prefix` unchanged inside it):
+In `crates/banager-core/src/adapters/standalone/route.rs`, replace B's `probe` — from its doc comment `/// Whether \`launcher\` is this route's install of the tool whose root is` through the function's closing `}`, just above `/// \`target\` as seen from \`dir\`, with \`.\` and \`..\` folded away without` — with (Ruling 27; B's steps 1–3 and B's `canonicalize_existing_prefix` unchanged inside it):
 
 ```rust
 /// Whether `launcher` is this route's install of the tool whose root is
@@ -4415,7 +4415,7 @@ fn one_hop(launcher: &Path) -> std::io::Result<PathBuf> {
 }
 ```
 
-Prepend to `crates/canager-core/src/adapters/standalone/removal.rs` (above `#[cfg(test)]`):
+Prepend to `crates/banager-core/src/adapters/standalone/removal.rs` (above `#[cfg(test)]`):
 
 ```rust
 //! The path-list uninstall: how a tool with no uninstall command is removed
@@ -4794,7 +4794,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::removal`, `cargo test -p canager-core --lib adapters::standalone::route` and `cargo test -p canager-core --lib scan`
+Run: `cargo test -p banager-core --lib adapters::standalone::removal`, `cargo test -p banager-core --lib adapters::standalone::route` and `cargo test -p banager-core --lib scan`
 Expected: PASS — the 13 removal tests; B's route tests (24 at `cf7a955`, B's review having added two `shadow_note` tests) and the 3 new ones (B's detection, inventory and upgrade tests elsewhere in the crate are untouched by the one-hop rule: every layout they build links straight into its root, and `tests/ops_upgrade_version_test.rs`'s `claude_home` spells that link through the non-canonical `/var/folders`, which `one_hop` resolves component by component); F's `test_display_path_abbreviates_home_and_only_home` unchanged. The same code and these 16 tests were run in a scratch mirror of the crate's module paths (stubs for the rest), with `cargo clippy --all-targets -- -D warnings` clean. (`plan_removal` has no production caller until stage 6e; it is `pub`, so no dead-code warning, and the gates run at 6h.)
 
 - [ ] **Step 5: Continue the task**
@@ -4805,7 +4805,7 @@ No commit: continue to stage 6d.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/src/adapters/standalone/removal.rs`, add to the test module's `use` lines:
+In `crates/banager-core/src/adapters/standalone/removal.rs`, add to the test module's `use` lines:
 
 ```rust
     use crate::events::VecSink;
@@ -5530,12 +5530,12 @@ and append before the test module's closing `}`:
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::removal`
+Run: `cargo test -p banager-core --lib adapters::standalone::removal`
 Expected: FAIL to compile — `cannot find function \`execute_removal\` in this scope`; `cannot find struct \`Confirmed\``, `cannot find type \`Pacing\``; `cannot find value \`TIMEOUT_SECS\``; `cannot find trait \`Trasher\``, `cannot find type \`CancellationToken\``, `\`LogNote\``, `\`Outcome\`` (the parent does not import them yet).
 
 - [ ] **Step 3: Write `execute_removal`**
 
-In `crates/canager-core/src/adapters/standalone/removal.rs`, replace the line
+In `crates/banager-core/src/adapters/standalone/removal.rs`, replace the line
 
 ```rust
 use crate::model::{ItemIdentity, ItemKind, UninstallUnsafeReason, Warning};
@@ -5836,11 +5836,11 @@ pub async fn execute_removal(
 
 ```
 
-Each item's turn — its checks and its move — runs on tokio's blocking pool (`spawn_blocking`, which canager-core's `tokio` has through `tokio-util`'s `rt` feature) and is awaited to its end, Cancel or not (Ruling 28); the checks and the move sit in one closure so nothing runs between the item's last `lstat` and `Trasher::trash` (Ruling 26).
+Each item's turn — its checks and its move — runs on tokio's blocking pool (`spawn_blocking`, which banager-core's `tokio` has through `tokio-util`'s `rt` feature) and is awaited to its end, Cancel or not (Ruling 28); the checks and the move sit in one closure so nothing runs between the item's last `lstat` and `Trasher::trash` (Ruling 26).
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::removal`
+Run: `cargo test -p banager-core --lib adapters::standalone::removal`
 Expected: PASS — 30 tests (13 from stage 6c, 17 here); the pause test takes about 0.3 s, the move-under-way test about 0.3 s, the budget-cut test about 1 s, the cancel-during-pause test well under a second. The same 30 ran green in the scratch mirror of stage 6c, with clippy clean.
 
 - [ ] **Step 5: Continue the task**
@@ -5851,7 +5851,7 @@ No commit: continue to stage 6e.
 
 - [ ] **Step 1: Write the failing tests and update B's**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`, inside `mod tests`:
+In `crates/banager-core/src/adapters/standalone/mod.rs`, inside `mod tests`:
 
 (i) Add to the module's `use` lines (B's already import `Warning`, `CancelPolicy`, `OpKind`, `OpRequest`, `Outcome`, `ResourceLock`, `UninstallBlocked`, `InstanceNote`, `VecSink`, `Adapter`; do not import any of those a second time):
 
@@ -6405,11 +6405,11 @@ with:
     }
 ```
 
-In `crates/canager-core/tests/ops_upgrade_version_test.rs`, add `use canager_core::trash::MockTrasher;` to the imports (after the `use canager_core::runner::{…};` line), and in `claude_upgrade_outputs` append `Arc::new(MockTrasher::new())` as the fourth argument of both `StandaloneAdapter::new(` calls (the one rustfmt wrote over three lines inside `upgrade(&runner, Arc::new(StandaloneAdapter::new(` … `)), …)` — `&CLAUDE,` / `mutating,` / `Arc::new(MockHttpClient::new()),` — and `let adapter =` / `StandaloneAdapter::new(&CLAUDE, runner.clone(), Arc::new(MockHttpClient::new()));`, wrapped after the `=`).
+In `crates/banager-core/tests/ops_upgrade_version_test.rs`, add `use banager_core::trash::MockTrasher;` to the imports (after the `use banager_core::runner::{…};` line), and in `claude_upgrade_outputs` append `Arc::new(MockTrasher::new())` as the fourth argument of both `StandaloneAdapter::new(` calls (the one rustfmt wrote over three lines inside `upgrade(&runner, Arc::new(StandaloneAdapter::new(` … `)), …)` — `&CLAUDE,` / `mutating,` / `Arc::new(MockHttpClient::new()),` — and `let adapter =` / `StandaloneAdapter::new(&CLAUDE, runner.clone(), Arc::new(MockHttpClient::new()));`, wrapped after the `=`).
 
 Task 1's four `TrashPaths` literals gain the field stage Step 3 adds, and its wire test says what the field does on the wire:
 
-- In `crates/canager-core/src/model.rs`, `test_plan_round_trips_through_json`: in the `trash` plan's `action: PlanAction::TrashPaths { paths: vec![ … ], }`, after the `paths` vector's closing `],` add the line `previewed: Vec::new(),` (a plan read back from JSON has none, so the round trip compares equal only with none).
+- In `crates/banager-core/src/model.rs`, `test_plan_round_trips_through_json`: in the `trash` plan's `action: PlanAction::TrashPaths { paths: vec![ … ], }`, after the `paths` vector's closing `],` add the line `previewed: Vec::new(),` (a plan read back from JSON has none, so the round trip compares equal only with none).
 - In the same file, in `test_plan_action_is_externally_tagged_on_the_wire`, replace the second `assert_eq!` (the one on `PlanAction::TrashPaths { paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")], }`, through its closing `);`) with:
 
 ```rust
@@ -6449,16 +6449,16 @@ Task 1's four `TrashPaths` literals gain the field stage Step 3 adds, and its wi
         );
 ```
 
-- In `crates/canager-core/src/adapters/mod.rs`, `test_run_plan_refuses_a_plan_that_runs_no_command`, and in `crates/canager-core/tests/ops_summaries_test.rs`, `test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview`: in each `action: PlanAction::TrashPaths { … }`, after the line `paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],` add the line `previewed: Vec::new(),` (neither plan reaches `execute`).
+- In `crates/banager-core/src/adapters/mod.rs`, `test_run_plan_refuses_a_plan_that_runs_no_command`, and in `crates/banager-core/tests/ops_summaries_test.rs`, `test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview`: in each `action: PlanAction::TrashPaths { … }`, after the line `paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],` add the line `previewed: Vec::new(),` (neither plan reaches `execute`).
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager-core --lib adapters::standalone::tests`
-Expected: FAIL to compile — `this function takes 3 arguments but 4 arguments were supplied` for `StandaloneAdapter::new` (and `all`); `no method named \`with_trash_gap\``; `no method named \`reconcile_after_uninstall\` found for struct \`StandaloneAdapter\``; `variant \`PlanAction::TrashPaths\` has no field named \`previewed\`` (in `standalone/mod.rs`'s tests, `model.rs`'s, `adapters/mod.rs`'s). `cargo test -p canager-core --test ops_upgrade_version_test` and `--test ops_summaries_test` fail the same way.
+Run: `cargo test -p banager-core --lib adapters::standalone::tests`
+Expected: FAIL to compile — `this function takes 3 arguments but 4 arguments were supplied` for `StandaloneAdapter::new` (and `all`); `no method named \`with_trash_gap\``; `no method named \`reconcile_after_uninstall\` found for struct \`StandaloneAdapter\``; `variant \`PlanAction::TrashPaths\` has no field named \`previewed\`` (in `standalone/mod.rs`'s tests, `model.rs`'s, `adapters/mod.rs`'s). `cargo test -p banager-core --test ops_upgrade_version_test` and `--test ops_summaries_test` fail the same way.
 
 - [ ] **Step 3: Wire the adapter and the session**
 
-In `crates/canager-core/src/adapters/standalone/mod.rs`:
+In `crates/banager-core/src/adapters/standalone/mod.rs`:
 
 (i) Imports (non-test). Add `Uninstall` to B's `use self::recipe::{…}` import (it holds `Latest, Recipe` since B's stage 7); add `CancelPolicy` to B's `use crate::model::{…}` list (alphabetical; rustfmt re-wraps — `PlanAction` is already there, from Task 1, and a second import of it would not compile); and add a line `use crate::trash::Trasher;`. (`CancelPolicy` is named by `plan` now; B kept it out of the non-test imports because only the tests named it.)
 
@@ -6799,7 +6799,7 @@ pub fn all(
     }
 ```
 
-(viii) In `crates/canager-core/src/model.rs`, in `pub enum PlanAction` (Task 1), replace the variant line `    TrashPaths { paths: Vec<PathBuf> },` (below its doc comment, which ends `/// \`uninstall\` is \`Uninstall::Paths\`.` and stays) with:
+(viii) In `crates/banager-core/src/model.rs`, in `pub enum PlanAction` (Task 1), replace the variant line `    TrashPaths { paths: Vec<PathBuf> },` (below its doc comment, which ends `/// \`uninstall\` is \`Uninstall::Paths\`.` and stays) with:
 
 ```rust
     TrashPaths {
@@ -6822,7 +6822,7 @@ pub fn all(
 
 (`#[serde(skip)]` on a field of an externally tagged variant: checked in a scratch crate on this lockfile's serde 1.0.229 — the variant serialises without the field, deserialises it as `Vec::new()`, needs no serde impls on `ItemIdentity`, and passes `cargo clippy -- -D warnings`. Ruling 10.)
 
-In `crates/canager-core/src/session/mod.rs`, add `use crate::trash::RealTrasher;` to the imports (after B's `use crate::adapters::standalone;`), replace in `Session::new`
+In `crates/banager-core/src/session/mod.rs`, add `use crate::trash::RealTrasher;` to the imports (after B's `use crate::adapters::standalone;`), replace in `Session::new`
 
 ```rust
         adapters.extend(standalone::all(runner, http));
@@ -6851,7 +6851,7 @@ and replace its doc comment's first sentence (B's `/// Registers all eight adapt
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager-core --lib adapters::standalone`, `cargo test -p canager-core --lib model`, `cargo test -p canager-core --lib adapters::tests`, `cargo test -p canager-core --test ops_upgrade_version_test`, `cargo test -p canager-core --test ops_summaries_test` and `cargo test -p canager-core --lib session`
+Run: `cargo test -p banager-core --lib adapters::standalone`, `cargo test -p banager-core --lib model`, `cargo test -p banager-core --lib adapters::tests`, `cargo test -p banager-core --test ops_upgrade_version_test`, `cargo test -p banager-core --test ops_summaries_test` and `cargo test -p banager-core --lib session`
 Expected: PASS — B's tests as updated, the stage 6b–6d tests, the new adapter tests (two in (v), twelve in (vi)); `test_plan_action_is_externally_tagged_on_the_wire` with the skipped field; B's `test_a_claude_update_exiting_zero_with_a_dangling_launcher_is_unconfirmed` still `Unconfirmed` (an upgrade is verified with `reconcile`, which stays strict, and its dangling launcher is still launcher-only under the one-hop rule, which that test's own assertion checks); `test_new_registers_all_eight_adapters` unchanged. The glue of (iv)–(v) — `let Some(Uninstall::Paths { remove, keep }) = self.recipe.uninstall else`, `match *uninstall`, `removal::Confirmed { paths, previewed }` built from the plan's `&Vec`s, and `probe_strict`'s three arms — was compiled clippy-clean against the scratch mirror of stage 6c.
 
 - [ ] **Step 5: Continue the task**
@@ -7057,7 +7057,7 @@ with
  * its path list; the second batch's Ollama.app). Read through
 ```
 
-In `crates/canager-core/src/model.rs`:
+In `crates/banager-core/src/model.rs`:
 
 replace `InstanceNote::LauncherOnly`'s doc comment (B's, from `/// The launcher is still there but points at program files that are` through `/// \`LauncherOnly\`.`) with
 
@@ -7100,7 +7100,7 @@ and in `CancelPolicy::KillThenReconcile`'s doc comment, after `/// adapter build
     /// and `run_operation` reads the disk the same way.
 ```
 
-In `crates/canager-core/src/adapters/standalone/route.rs`, replace the doc comment directly above `LauncherOnly,` in `pub enum Probe` — as landed in `71eacd0`:
+In `crates/banager-core/src/adapters/standalone/route.rs`, replace the doc comment directly above `LauncherOnly,` in `pub enum Probe` — as landed in `71eacd0`:
 
 ```rust
     /// A dangling launcher whose own text points into the root: the
@@ -7141,7 +7141,7 @@ Stages 6a–6f make Canager move files, so this commit is also where the trust f
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/canager-core/tests/what_we_run_test.rs`, in the module doc, replace
+In `crates/banager-core/tests/what_we_run_test.rs`, in the module doc, replace
 
 ```rust
 //! enforces, and the one thing the allowlist refuses that a reader would
@@ -7160,12 +7160,12 @@ with
 //! its line in the document fails here.
 ```
 
-(If A's wording of those three lines has moved, keep A's sentence and add the same clauses to it.) Add to the `use` lines, after `use canager_core::adapters::npm::NpmAdapter;`:
+(If A's wording of those three lines has moved, keep A's sentence and add the same clauses to it.) Add to the `use` lines, after `use banager_core::adapters::npm::NpmAdapter;`:
 
 ```rust
-use canager_core::adapters::standalone::recipe::Uninstall;
-use canager_core::adapters::standalone::recipes::CLAUDE;
-use canager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
+use banager_core::adapters::standalone::recipe::Uninstall;
+use banager_core::adapters::standalone::recipes::CLAUDE;
+use banager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
 ```
 
 and append at the end of the file:
@@ -7223,7 +7223,7 @@ fn test_what_we_run_states_the_trash_call_and_the_pause_after_each_move() {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --test what_we_run_test`
 Expected: FAIL — `the \`## Claude Code\` section of docs/what-we-run.md does not name \`~/.claude/downloads\`, which CLAUDE.uninstall lists` (B's section already names the launcher and the program directory, not the cache or the kept paths), and `docs/what-we-run.md has no \`## Moving files to the Trash\` section for trash::RealTrasher`. A's tests and B's still pass.
 
 - [ ] **Step 3: Write the trust file**
@@ -7340,7 +7340,7 @@ shown there.
 ```markdown
 ## Moving files to the Trash
 
-`RealTrasher` (`crates/canager-core/src/trash/real.rs`) is the only code
+`RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
 in Canager that changes a file on the Mac other than its own settings.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
@@ -7423,7 +7423,7 @@ versions, and Intel Macs.
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager-core --test what_we_run_test`
+Run: `cargo test -p banager-core --test what_we_run_test`
 Expected: PASS — A's tests, B's, and the two new ones. Then check that no sentence in the file still says Claude Code cannot be uninstalled. The file is hard-wrapped, so fold it first:
 
 ```bash
@@ -7481,7 +7481,7 @@ Expected: all clean. Notes for clippy: `execute_removal` has seven parameters, t
 - [ ] **Step 2: Commit**
 
 ```bash
-git add crates/canager-core/Cargo.toml Cargo.lock crates/canager-core/src/lib.rs crates/canager-core/src/trash/mod.rs crates/canager-core/src/trash/real.rs crates/canager-core/src/trash/mock.rs crates/canager-core/src/adapters/standalone/recipe.rs crates/canager-core/src/adapters/standalone/recipes.rs crates/canager-core/src/adapters/standalone/removal.rs crates/canager-core/src/adapters/standalone/mod.rs crates/canager-core/src/adapters/standalone/route.rs crates/canager-core/src/scan/mod.rs crates/canager-core/src/model.rs crates/canager-core/src/adapters/mod.rs crates/canager-core/src/session/mod.rs crates/canager-core/tests/ops_upgrade_version_test.rs crates/canager-core/tests/ops_summaries_test.rs crates/canager-core/tests/what_we_run_test.rs adapters/fixtures/standalone-claude src/lib/types.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json docs/what-we-run.md README.md
+git add crates/banager-core/Cargo.toml Cargo.lock crates/banager-core/src/lib.rs crates/banager-core/src/trash/mod.rs crates/banager-core/src/trash/real.rs crates/banager-core/src/trash/mock.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/recipes.rs crates/banager-core/src/adapters/standalone/removal.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/scan/mod.rs crates/banager-core/src/model.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/session/mod.rs crates/banager-core/tests/ops_upgrade_version_test.rs crates/banager-core/tests/ops_summaries_test.rs crates/banager-core/tests/what_we_run_test.rs adapters/fixtures/standalone-claude src/lib/types.ts src/lib/sources.ts src/lib/sources.test.ts src/pages/InstalledPage.test.tsx src/i18n/en.json src/i18n/zh-CN.json docs/what-we-run.md README.md
 git commit -m "$(cat <<'EOF'
 Uninstall Claude Code by moving its three paths to the Trash, launcher last
 
@@ -7525,21 +7525,21 @@ EOF
 ### Task 7: End to end through `Session`; the `#[ignore]` `RealTrasher` smoke; the CI step; the smoke test's lines in the documents
 
 **Files:**
-- Create: `crates/canager-core/tests/standalone_uninstall_test.rs`
+- Create: `crates/banager-core/tests/standalone_uninstall_test.rs`
 - Modify: `.github/workflows/ci.yml` — one step after `live homebrew smoke (install/inventory/uninstall hello)`
 - Modify: `docs/what-we-run.md` — one paragraph at the end of `## Moving files to the Trash` (stage 6g wrote the section)
 - Modify: `README.md` — the ignored-tests paragraph and its code block; "plus 2 more" in the status block, en and zh  [B's + F's file: anchor by quoted text]
 - Test: `tests/standalone_uninstall_test.rs`.
 
 **Interfaces:**
-- Consumes (all public, from Task 6 and B): `canager_core::adapters::standalone::{StandaloneAdapter, recipes::CLAUDE}`, `StandaloneAdapter::{new, with_trash_gap}`, `canager_core::trash::{MockTrasher, RealTrasher, TrashError, Trasher}`, `canager_core::model::ItemKind` (`MockTrasher` reaches `tests/` through the crate's dev-dependency on itself with `test-support`, stage 6a), `canager_core::session::Session::{with_adapters, refresh, issue_plan, submit, cancel, operations}`, `canager_core::runner::{HostEnv, MockRunner, CommandOutput}`, `canager_core::http::{MockHttpClient, HttpResponse}`, `canager_core::model::*`.
+- Consumes (all public, from Task 6 and B): `banager_core::adapters::standalone::{StandaloneAdapter, recipes::CLAUDE}`, `StandaloneAdapter::{new, with_trash_gap}`, `banager_core::trash::{MockTrasher, RealTrasher, TrashError, Trasher}`, `banager_core::model::ItemKind` (`MockTrasher` reaches `tests/` through the crate's dev-dependency on itself with `test-support`, stage 6a), `banager_core::session::Session::{with_adapters, refresh, issue_plan, submit, cancel, operations}`, `banager_core::runner::{HostEnv, MockRunner, CommandOutput}`, `banager_core::http::{MockHttpClient, HttpResponse}`, `banager_core::model::*`.
 - Produces: tests only (no production item); a CI step that runs the `#[ignore]`d smoke with `CANAGER_LIVE=1`, the gate `brew_live`'s install test uses for a test that changes the machine; the trust file's and the README's sentences about that test (Ruling 23).
 
 The home builder is this file's own: B's `standalone::testing::TempHome` is `#[cfg(test)] pub(super)`, invisible to `tests/`. It follows `tests/unknown_scan_test.rs`'s `Home` (canonical temp dir, `euid` from the home's owner).
 
 - [ ] **Step 1: Write the tests**
 
-Create `crates/canager-core/tests/standalone_uninstall_test.rs`:
+Create `crates/banager-core/tests/standalone_uninstall_test.rs`:
 
 ```rust
 //! A path-list uninstall end to end (phase 4 step C): the real
@@ -7559,18 +7559,18 @@ Create `crates/canager-core/tests/standalone_uninstall_test.rs`:
 //! which the cancel test relies on: a submitted operation does not start
 //! until the test awaits.
 
-use canager_core::adapters::standalone::recipes::CLAUDE;
-use canager_core::adapters::standalone::StandaloneAdapter;
-use canager_core::adapters::{Adapter, CheckOptions};
-use canager_core::events::{OpId, VecSink};
-use canager_core::http::{HttpResponse, MockHttpClient};
-use canager_core::model::{
+use banager_core::adapters::standalone::recipes::CLAUDE;
+use banager_core::adapters::standalone::StandaloneAdapter;
+use banager_core::adapters::{Adapter, CheckOptions};
+use banager_core::events::{OpId, VecSink};
+use banager_core::http::{HttpResponse, MockHttpClient};
+use banager_core::model::{
     ArtifactKind, Fault, InstanceNote, ItemKind, KeptWhat, OpKind, OpRequest, OpStatus, Outcome,
     PlanAction, RemovedWhat, Warning,
 };
-use canager_core::runner::{CommandOutput, HostEnv, MockRunner};
-use canager_core::session::Session;
-use canager_core::trash::{MockTrasher, TrashError, Trasher};
+use banager_core::runner::{CommandOutput, HostEnv, MockRunner};
+use banager_core::session::Session;
+use banager_core::trash::{MockTrasher, TrashError, Trasher};
 use std::collections::BTreeSet;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -8100,9 +8100,9 @@ async fn test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_suc
 /// `CANAGER_LIVE=1` and skips loudly without it.
 #[cfg(target_os = "macos")]
 #[test]
-#[ignore = "moves five throwaway items into the real Trash; run with CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored"]
+#[ignore = "moves five throwaway items into the real Trash; run with CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored"]
 fn test_real_trasher_moves_each_kind_of_item_and_links_as_links() {
-    use canager_core::trash::RealTrasher;
+    use banager_core::trash::RealTrasher;
 
     if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
         eprintln!("CANAGER_LIVE is not 1; skipping the real Trash smoke test");
@@ -8180,7 +8180,7 @@ In `.github/workflows/ci.yml`, after the step
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
           CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test brew_live -- --ignored --nocapture
+        run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 ```
 
 insert:
@@ -8193,17 +8193,17 @@ insert:
       - name: real Trash smoke (moves five throwaway items)
         env:
           CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test standalone_uninstall_test -- --ignored --nocapture
+        run: cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture
 ```
 
 - [ ] **Step 2: Run the end-to-end tests**
 
-Run: `cargo test -p canager-core --test standalone_uninstall_test`
+Run: `cargo test -p banager-core --test standalone_uninstall_test`
 Expected: PASS — 6 tests, 1 ignored. (These are the first tests to drive `Session` over the real standalone adapter; if one fails, the defect is in Task 6's code, not here — fix it there, in a follow-up commit that names the failing test.)
 
 - [ ] **Step 3: Check the smoke test's gate — and leave the real run to the author**
 
-Run: `cargo test -p canager-core --test standalone_uninstall_test -- --ignored --nocapture`, without the variable.
+Run: `cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture`, without the variable.
 Expected: PASS, printing `CANAGER_LIVE is not 1; skipping the real Trash smoke test` — the gate works.
 
 Do **not** run it with `CANAGER_LIVE=1` here. It moves five items into the real Trash of the Mac it runs on, and spec §9.4 makes the development machine's run a manual one: it is the first step of the author's pre-merge check ("The pre-merge verification"), beside CI's run on every push. Neither is the Finder-launched, no-Full-Disk-Access case — a terminal here has Full Disk Access, and CI is a runner — so either run verifies the move itself (each kind of item, links as links, the dangling one included), not Put Back without FDA; the author's Finder check covers that.
@@ -8214,7 +8214,7 @@ In `docs/what-we-run.md`, at the end of `## Moving files to the Trash` (stage 6g
 
 ```markdown
 
-`crates/canager-core/tests/standalone_uninstall_test.rs` has an
+`crates/banager-core/tests/standalone_uninstall_test.rs` has an
 `#[ignore]`d test that makes five throwaway items — a file, a folder, a
 link to each, and a link to nothing — moves them with the real call, and
 checks that each lands in `~/.Trash` as itself; CI runs it on every push.
@@ -8222,20 +8222,20 @@ It runs from a terminal or a CI runner, not from a Finder-launched app
 without Full Disk Access, so it checks the move, not Put Back.
 ```
 
-In `README.md`, replace the paragraph that begins `` `cargo test --workspace` has two `#[ignore]`d tests in `crates/canager-core/tests/brew_live.rs`, `` and ends `CI runs both; run them yourself with:`, and the code block after it, with:
+In `README.md`, replace the paragraph that begins `` `cargo test --workspace` has two `#[ignore]`d tests in `crates/banager-core/tests/brew_live.rs`, `` and ends `CI runs both; run them yourself with:`, and the code block after it, with:
 
 ````markdown
 `cargo test --workspace` has three `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
-in `crates/canager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
+in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
 running it, the other installs and removes the `hello` formula. The third, in
-`crates/canager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
+`crates/banager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
 (named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
 The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI runs all
 three; run them yourself with:
 
 ```bash
-CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
-CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored
+CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
+CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
 ```
 ````
 
@@ -8250,7 +8250,7 @@ CI runs the new step on the first push after this commit (the branch's pushes wa
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/canager-core/tests/standalone_uninstall_test.rs .github/workflows/ci.yml docs/what-we-run.md README.md
+git add crates/banager-core/tests/standalone_uninstall_test.rs .github/workflows/ci.yml docs/what-we-run.md README.md
 git commit -m "$(cat <<'EOF'
 Test a Claude Code uninstall end to end, and the real Trash call
 
@@ -8448,7 +8448,7 @@ Not in this step, by the spec's own slicing or this plan's rulings (each with it
 15. **`sourceNotice.launcherOnly.description` restores the spec's three promises with B's correction kept** (ruling 13): "this link can't run", not "typing claude fails", since another installation may still run (B's finding 9).
 16. **`operations.outcome.CanagerFailed.PathChanged`** does not say "so Canager didn't move anything" (spec §9.2): that is false for a stop after the first item. It names the path, says Canager stopped without moving it, and points at the log (ruling 17).
 17. **Recorded but not decided here:** the Put Back click, a Tauri build and that build's lack of Full Disk Access are unverified until the author's check; macOS 13–26 and Intel are unobserved; the pause is a four-run measurement that makes Put Back likely, not certain. The trust file and the backlog say so in those words.
-18. **`MockTrasher` is compiled only for tests** (ruling 20). Spec §6.2 describes it beside `RealTrasher` with no gate; it deletes its bin when dropped, so it sits behind `test-support`, which canager-core's own integration tests turn on through a dev-dependency on the crate itself.
+18. **`MockTrasher` is compiled only for tests** (ruling 20). Spec §6.2 describes it beside `RealTrasher` with no gate; it deletes its bin when dropped, so it sits behind `test-support`, which banager-core's own integration tests turn on through a dev-dependency on the crate itself.
 19. **The Put Back pause also follows the last move** (author decision 1, extended). Spec §6.2 step 4 returns `Succeeded` right after the last move; this plan waits `PUT_BACK_SETTLE` first, because every run that recorded all items stayed alive 3 s after its last call and the record is written after the call returns. Claude Code's uninstall spends 9 s in pauses, not 6.
 20. **`TrashError::Unsupported` is `CanagerFailed(Internal)`, not `Failed`** (ruling 9). Spec §6.2 step 3 sends every trash failure to `Failed { summary }`, whose summary the front end quotes as another program's words; "Canager could not ask the system" is Canager's own.
 21. **Six refusal reasons, and two sentences reworded** (rulings 21, 25). Spec §9.1/§9.2 have four reasons, and check 1's never-list refusal would have used `outsideHome`, whose sentence ("it's outside your home folder") is false for `~/.local/bin`. `outsideHome` now says the folder leads outside the home folder, and `notWhatInstructionsExpect` says Canager couldn't confirm the path is what the instructions describe — the path, or a folder it is in, may be a link to somewhere else — since it is also the answer for a path that could not be examined and for the ancestry rule. The sixth, `overlapsKept`, names a kept path that a listed one would disturb (ruling 25).
@@ -8486,7 +8486,7 @@ Adversarial review of this plan, 23 points, each checked against the worktree (`
 | 16 | Two README sentences overstate | **Accepted** | "moves exactly those" → "moves those paths, plus its installer's download cache"; "the only change … itself" → "… besides saving its own settings". The second bullet's heading "Nothing is moved that isn't what you were shown" also overstated after point 21 (a same-shape replacement before the click is moved): it is now "Only the paths you were shown are moved", which the list comparison guarantees, and it names the shared-folder rule. |
 | 17 | Same as 5, and Review Focus 3 generalises it | **Accepted** | Same fix as 5; Review Focus 3 now reads "an item after the first" and says a refusal of the first item leaves the ordinary row. |
 | 18 | "This will run:" above "no command runs" | **Accepted** | New key `commandPreview.trashLabel`: en "What Canager will do:", zh "将执行：" (the label spec §6.6's dialog shows, which does not say a command runs). `CommandPreview` picks the label per arm; its test asserts the new label and that "This will run:" is absent (Ruling 22). |
-| 19 | `MockTrasher` (whose drop deletes) is compiled into release builds | **Accepted** | `pub mod mock` and `pub use mock::MockTrasher` are now `#[cfg(any(test, feature = "test-support"))]` — the crate's existing feature for test code that touches real state — and canager-core gains a dev-dependency on itself with that feature so `tests/` still see it. Verified in a scratch workspace of the same shape on cargo 1.98.1: `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, release builds lack it. The claims at Global Constraints and in `trash/mod.rs` corrected (Ruling 20). |
+| 19 | `MockTrasher` (whose drop deletes) is compiled into release builds | **Accepted** | `pub mod mock` and `pub use mock::MockTrasher` are now `#[cfg(any(test, feature = "test-support"))]` — the crate's existing feature for test code that touches real state — and banager-core gains a dev-dependency on itself with that feature so `tests/` still see it. Verified in a scratch workspace of the same shape on cargo 1.98.1: `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, release builds lack it. The claims at Global Constraints and in `trash/mod.rs` corrected (Ruling 20). |
 | 20 | Task 6 turns uninstall on while the docs say "no uninstall" until Task 8 | **Accepted, broadened** | Not only the "no uninstall" sentences: after Task 6 the trust file's "Files Canager writes" and never-list ("never … moves a file") and the README's "shows its real argv" were false too. All of Task 8's trust-file edits and the README row and safety bullets moved into Task 6 as stage 6g (with the two `what_we_run_test` tests; the commit is 6h); the smoke test's sentences, the ignored-tests paragraph and "plus 3 more" moved to Task 7; Task 8 keeps the backlog, the Language sections and the counts, which only lag (Ruling 23). Task list, File Structure, self-review and delivery note follow. |
 | 21 | `Identity`'s doc is false; the plan-to-execute identity comparison is silently dropped | **Accepted** | A re-pointed link is a new link, a new inode; the doc now says so. Deviation 9 states that spec §6.3's comparison with what `plan()` saw is not implemented between preview and click, why (the identities would have to cross IPC in `TrashPaths` or live in the adapter between calls), and where the comparison is made (fresh look → each move). `Fault::PathChanged`'s doc now describes exactly the three findings the code makes. |
 | 22 | No test for Ruling 1's "optional path of the wrong shape is refused" | **Accepted** | `test_plan_removal_refuses_an_optional_path_of_the_wrong_shape`: `~/.claude/downloads` as a link and as a file → `NotWhatInstructionsExpect`. Ruling 1 names it. |

@@ -62,7 +62,7 @@ export interface InstalledArtifact {
 }
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
- * `UninstallBlocked` in crates/canager-core/src/model.rs: bare-string unit
+ * `UninstallBlocked` in crates/banager-core/src/model.rs: bare-string unit
  * variants. `Pinned` is produced by brew's `parse_info_installed` (from
  * `brew info --installed --json=v2`'s `pinned: true`); `NoSafeMethod` by
  * the standalone adapter's inventory for a tool with no uninstall command
@@ -78,7 +78,7 @@ export interface InstalledArtifact {
 export type UninstallBlocked = "Pinned" | "NoSafeMethod" | "UvToolDirSet";
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
- * `RemovedWhat` in crates/canager-core/src/model.rs: bare-string unit
+ * `RemovedWhat` in crates/banager-core/src/model.rs: bare-string unit
  * variants, the payload of `Warning.WillTrash`. Read through
  * `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over this union,
  * so a variant added here without copy fails `tsc`.
@@ -99,7 +99,7 @@ export type KeptWhat =
 /**
  * Which sentence an uninstall says under the tool about what goes and what
  * stays, the payload of `Warning.UninstallScope`. Mirrors `UninstallScope`
- * in crates/canager-core/src/model.rs: bare-string unit variants. Homebrew's
+ * in crates/banager-core/src/model.rs: bare-string unit variants. Homebrew's
  * formula sentence says "only" unless a brew.env file brought autoremove
  * back (`HomebrewFormula`, beside `HomebrewAutoremoves`); a cask's is
  * `HomebrewCaskPlain`, `HomebrewCaskSteps` (with a `CaskUninstallStep` per
@@ -132,7 +132,7 @@ export type UninstallScope =
 /**
  * One kind of extra step a cask's recorded uninstall takes, the `step` of
  * `Warning.CaskUninstallStep`. Mirrors `CaskStep` in
- * crates/canager-core/src/model.rs: bare-string unit variants, declared in
+ * crates/banager-core/src/model.rs: bare-string unit variants, declared in
  * the order the lines are said. Read through `CASK_STEP_KEYS` in
  * src/lib/warnings.ts, a `Record` over this union.
  */
@@ -153,7 +153,7 @@ export type CaskStep =
  * The check an uninstall step of type `remove` makes of each path before it
  * deletes it, the `only_if` of a `Deletes` or `DeletesUnnamed`
  * `Warning.CaskUninstallStep`. Mirrors `RemoveCheck` in
- * crates/canager-core/src/model.rs: externally tagged, the text as the
+ * crates/banager-core/src/model.rs: externally tagged, the text as the
  * record spells it -- only a link whose target contains it, only a file
  * whose contents contain it, or both. Read through `CHECKED_DELETE_KEYS`
  * and `warningArgs` in src/lib/warnings.ts.
@@ -164,7 +164,7 @@ export type RemoveCheck =
   | { LinkTargetAndContentContain: { link_target: string; content: string } };
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
- * in crates/canager-core/src/model.rs: bare-string unit variants,
+ * in crates/banager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
  * and pluralise the copy in `src/lib/warnings.ts`, and
  * `ThirdPartyRegistry`, whose `host` interpolates it, with
@@ -219,7 +219,7 @@ export type Warning =
 /**
  * Why the tool itself will refuse to update this one package, although its
  * source is writable and answering. Mirrors `UpdateBlocked` in
- * crates/canager-core/src/model.rs: bare-string unit variants. `Pinned` is
+ * crates/banager-core/src/model.rs: bare-string unit variants. `Pinned` is
  * produced by brew's `parse_outdated` (from `brew outdated`'s
  * `pinned: true`) and pipx's (from `pipx list --outdated`'s
  * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
@@ -241,7 +241,7 @@ export interface UpdateCandidate {
 }
 /**
  * Why a source can be listed but never changed from Canager. Mirrors
- * `ReadOnlyReason` in crates/canager-core/src/model.rs: bare-string unit
+ * `ReadOnlyReason` in crates/banager-core/src/model.rs: bare-string unit
  * variants, so a new Rust variant does *not* fail this union at compile
  * time -- it lands in whatever default branch reads it. `types.test.ts`
  * keeps a shape test over both spellings.
@@ -249,13 +249,13 @@ export interface UpdateCandidate {
 export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
 /**
  * Why a source Canager knows about cannot answer right now. Mirrors
- * `Unavailable` in crates/canager-core/src/model.rs, same bare-string rule
+ * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule
  * as `ReadOnlyReason`: a new Rust variant does not fail this union at
  * compile time, it lands in whatever default branch reads it.
  */
 export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot";
 /**
- * Mirrors `InstanceNote` in crates/canager-core/src/model.rs; payload-free
+ * Mirrors `InstanceNote` in crates/banager-core/src/model.rs; payload-free
  * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts
  * ends its loop over these in a `never`, so a variant added here without
  * a branch there fails `tsc`. The last five are a standalone tool's
@@ -300,19 +300,19 @@ export interface ManagerInstance {
 }
 /**
  * What the user's Cancel does to an operation. Mirrors `CancelPolicy` in
- * crates/canager-core/src/model.rs: bare-string unit variants.
+ * crates/banager-core/src/model.rs: bare-string unit variants.
  * `OperationBar.tsx` reads the copy `OpSummary` carries, with its
  * `status`, and offers no Cancel button for a Running `NoCancel` op,
  * which `OperationManager::cancel` would refuse; a Queued one keeps the
  * button, since nothing has started and the cancel is accepted. rustup's
  * `self update` and `self uninstall` produce `NoCancel` (the recipe in
- * crates/canager-core/src/adapters/standalone/recipes.rs); the update
+ * crates/banager-core/src/adapters/standalone/recipes.rs); the update
  * confirmation and the uninstall dialog say so under the command
  * (`operations.noCancelHint`) before the click.
  */
 export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 /**
- * Mirrors `PlanAction` in crates/canager-core/src/model.rs: what a plan
+ * Mirrors `PlanAction` in crates/banager-core/src/model.rs: what a plan
  * does when it runs. Externally tagged single-key objects. `Command` is
  * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
  * path-list uninstall of a tool installed by its own installer, which
@@ -342,7 +342,7 @@ export interface OpRequest {
 }
 /**
  * A random 128-bit token (32 hex chars), not a sequential counter -- see
- * `PlanId` in crates/canager-core/src/session/mod.rs. A plan the user
+ * `PlanId` in crates/banager-core/src/session/mod.rs. A plan the user
  * previewed and declined used to have a guessable next-in-sequence id that
  * `submit_operation` would still fire; this makes a declined preview
  * unfireable by anything short of a renderer that can call
@@ -390,7 +390,7 @@ export interface Snapshot {
   errors: SourceError[];
 }
 /**
- * Rust `EntryKind` (crates/canager-core/src/scan/mod.rs): what one entry
+ * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry
  * of a scanned bin directory is. Bare-string unit variants. Read through
  * `KIND_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
  * a variant added here without a badge fails `tsc`.
@@ -447,7 +447,7 @@ export type Language = "System" | "En" | "ZhCn";
 /**
  * One update the user skipped with "Skip this version": `key`'s update to
  * `version`, the `UpdateCandidate.target` its row offered. Mirrors
- * `SkippedVersion` in crates/canager-core/src/settings.rs, whose shape test
+ * `SkippedVersion` in crates/banager-core/src/settings.rs, whose shape test
  * `types.test.ts` repeats. Hides that update only while the source still
  * offers `version`, and never on a row whose `target` does not name one
  * release (`canSkipVersion`, `hidingRule` in src/lib/updateState.ts); an
@@ -476,7 +476,7 @@ export interface Settings {
   notify_updates: boolean;
 }
 /**
- * Rust `UpdatePair` (crates/canager-core/src/notify_updates.rs): one row
+ * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row
  * the Updates page's Update all would take, as the page reports it after
  * each snapshot for the update notification -- the row's key as
  * `artifactKeyId` spells it, and the version the row offers.

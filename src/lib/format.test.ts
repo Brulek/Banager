@@ -89,11 +89,11 @@ describe("outcomeKey", () => {
   });
 
   it("says an uninstall seemed to succeed, naming no command, since a path-list uninstall runs none", () => {
-    // `run_operation` (crates/canager-core/src/ops/mod.rs) sends this
+    // `run_operation` (crates/banager-core/src/ops/mod.rs) sends this
     // whenever `execute` answered Succeeded and the reading after still
     // finds the item installed: after an uninstall command that exited 0,
     // and after a path-list uninstall (`execute_removal` in
-    // crates/canager-core/src/adapters/standalone/removal.rs) that moved
+    // crates/banager-core/src/adapters/standalone/removal.rs) that moved
     // every listed path to the Trash and ran no command at all. The
     // Chinese used to say "卸载命令显示成功" -- the uninstall *command*
     // showed success -- which is false on the second route.
@@ -115,9 +115,9 @@ describe("outcomeKey", () => {
   it("never says a cancelled or crashed operation changed nothing, in either language (T9)", () => {
     // A path-list uninstall cancelled between two of its items has moved
     // the first to the Trash and still ends `Cancelled`
-    // (crates/canager-core/src/events.rs), and an operation Canager lost
+    // (crates/banager-core/src/events.rs), and an operation Canager lost
     // to a panic may have run its command (`Fault::Panicked`,
-    // crates/canager-core/src/model.rs). The refusals that stop before
+    // crates/banager-core/src/model.rs). The refusals that stop before
     // anything runs may say nothing changed, and do; these two may not --
     // nor what the drawer says next about a crash, nor the row's own word
     // for a cancelled update.
@@ -150,7 +150,7 @@ describe("outcomeKey", () => {
   it("says an update that changed nothing changed nothing, and points to the log", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after
-    // (`run_operation` in crates/canager-core/src/ops/mod.rs). It used to
+    // (`run_operation` in crates/banager-core/src/ops/mod.rs). It used to
     // arrive as plain "Succeeded". The bar says what happened; the drawer
     // says where to look.
     const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
@@ -170,7 +170,7 @@ describe("outcomeKey", () => {
   });
 
   it("says files showed up again after a path-list uninstall, that the log names them, and what to do", () => {
-    // `execute_removal` (crates/canager-core/src/adapters/standalone/removal.rs)
+    // `execute_removal` (crates/banager-core/src/adapters/standalone/removal.rs)
     // sends this itself when, after the pause that follows its last move,
     // part of what its list names is there. Each such path gets a log line
     // of its own (`operations.logNote.backAfterUninstall`), carrying the

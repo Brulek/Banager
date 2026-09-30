@@ -53,7 +53,7 @@ jobs:
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
           CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test brew_live -- --ignored --nocapture
+        run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 
       # The one test that calls macOS's real move-to-Trash: it moves five
       # throwaway items it makes (a file, a directory, and three kinds of
@@ -61,7 +61,7 @@ jobs:
       - name: real Trash smoke (moves five throwaway items)
         env:
           CANAGER_LIVE: "1"
-        run: cargo test -p canager-core --test standalone_uninstall_test -- --ignored --nocapture
+        run: cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile

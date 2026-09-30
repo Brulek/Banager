@@ -1,5 +1,5 @@
 [package]
-name = "canager"
+name = "banager"
 version = "0.1.0"
 description = "A friendly manager for everything you installed from the terminal"
 authors = ["Brulek"]
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "canager_lib"
+name = "banager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -31,10 +31,10 @@ tauri-plugin-window-state = "2.4.1"
 tauri-plugin-notification = "~2.4.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-canager-core = { path = "../crates/canager-core" }
+banager-core = { path = "../crates/banager-core" }
 # The daily check's timer (`tokio::time::interval_at` in auto_check.rs), on
 # tauri's own tokio runtime. Already in Cargo.lock at this version as a
-# dependency of tauri, and canager-core already switches `time` on, so no
+# dependency of tauri, and banager-core already switches `time` on, so no
 # new crate and no new feature enters the build.
 tokio = { version = "1", features = ["time"] }
 # Pinned to an explicit rev (not just whatever Cargo.lock happens to resolve
@@ -51,7 +51,7 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c
 # watches Foundation's notification center for Canager coming to the front
 # (`addObserverForName:object:queue:usingBlock:`). Already in Cargo.lock at
 # this version as a dependency of tauri, with these features on, so no new
-# crate and no new feature enters the build -- declared, as canager-core
+# crate and no new feature enters the build -- declared, as banager-core
 # declares its own. macOS only, as the calls are.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = [
@@ -83,7 +83,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 # `quit::guard_quitting` adds `applicationShouldTerminate:` to the class of
 # AppKit's application delegate (`objc2::ffi::class_addMethod`), and its
 # test sends that method to a class of its own. Already in Cargo.lock at
-# this version as a dependency of tauri, and canager-core already declares
+# this version as a dependency of tauri, and banager-core already declares
 # it with `std`, so no new crate and no new feature enters the build.
 # macOS only, as the call is.
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
@@ -109,14 +109,14 @@ muda = { version = "0.19", default-features = false }
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-# Same crate as the plain `canager-core` entry under [dependencies] above,
+# Same crate as the plain `banager-core` entry under [dependencies] above,
 # with `test-support` turned on: resolver v2 unifies features per target,
-# so this only reaches the test build of canager-core, never the release
+# so this only reaches the test build of banager-core, never the release
 # binary's. This is what lets `ipc.rs`'s tests call
-# `canager_core::testing::expire_issued_plans`, which is cfg-gated on that
+# `banager_core::testing::expire_issued_plans`, which is cfg-gated on that
 # feature specifically so it cannot ship in a release build. See
-# `crates/canager-core/src/testing.rs`.
-canager-core = { path = "../crates/canager-core", features = ["test-support"] }
+# `crates/banager-core/src/testing.rs`.
+banager-core = { path = "../crates/banager-core", features = ["test-support"] }
 
 # tests/tao_delegate.rs makes tao's event loop, as tauri makes it, to ask
 # whether tao's application delegate answers `applicationShouldTerminate:`

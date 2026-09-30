@@ -1,11 +1,11 @@
-use canager_core::events::EventSink;
+use banager_core::events::EventSink;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
-    Operation(canager_core::events::OperationEvent),
+    Operation(banager_core::events::OperationEvent),
     SnapshotChanged { generation: u64 },
 }
 
@@ -33,7 +33,7 @@ impl ChannelSink {
 }
 
 impl EventSink for ChannelSink {
-    fn emit(&self, event: canager_core::events::OperationEvent) {
+    fn emit(&self, event: banager_core::events::OperationEvent) {
         self.broadcast(UiEvent::Operation(event));
     }
 }
@@ -41,8 +41,8 @@ impl EventSink for ChannelSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::events::OperationEvent;
-    use canager_core::model::OpStatus;
+    use banager_core::events::OperationEvent;
+    use banager_core::model::OpStatus;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]

@@ -62,7 +62,7 @@ marked block (2 marker lines).
 ## Uninstall list
 
 Nothing here was recorded for the uninstall: Canager runs no command for it.
-The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`GROK.uninstall`) is not a vendor document — xAI publishes none and there is
 no `grok uninstall` (grok.md §6). It is the README grok ships ("File
 Locations") plus its install script: Canager moves the two optional fallback

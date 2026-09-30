@@ -2,7 +2,7 @@
 //! (`Settings::notify_updates`, off by default, and on only with the daily
 //! check it sits under). After each snapshot the page reports the rows its
 //! Update all would take, with the round the snapshot came from
-//! (`report_update_set`), and `canager_core::notify_updates` decides what
+//! (`report_update_set`), and `banager_core::notify_updates` decides what
 //! that report does. This is the shell's part: where the focus is -- on
 //! the window, on Canager without its window, or on another app -- and the
 //! notification itself, titled with the app's name, Canager, and saying
@@ -19,7 +19,7 @@
 use crate::menu::{self, MenuBar, MenuLanguage};
 use crate::state::AppState;
 use crate::window::{NotificationPending, MAIN_WINDOW};
-use canager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
+use banager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
@@ -286,10 +286,10 @@ fn permission_granted(state: PermissionState) -> bool {
 mod tests {
     use super::*;
     use crate::events::ChannelSink;
-    use canager_core::auto_check::RoundTrigger;
-    use canager_core::model::InstanceNote;
-    use canager_core::session::{DetectOutcome, Session, Snapshot};
-    use canager_core::settings::Settings;
+    use banager_core::auto_check::RoundTrigger;
+    use banager_core::model::InstanceNote;
+    use banager_core::session::{DetectOutcome, Session, Snapshot};
+    use banager_core::settings::Settings;
     use std::cell::RefCell;
     use std::sync::Mutex;
 
@@ -317,7 +317,7 @@ mod tests {
     /// Round `round`'s snapshot, reporting a `brew update` Canager started
     /// as still running when `brew_updating`.
     fn snapshot_with_homebrew(round: u64, brew_updating: bool) -> Snapshot {
-        let mut brew = canager_core::testing::manager_instance("brew", "brew:/opt/homebrew");
+        let mut brew = banager_core::testing::manager_instance("brew", "brew:/opt/homebrew");
         if brew_updating {
             brew.status.notes.push(InstanceNote::IndexUpdating);
         }

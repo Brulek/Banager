@@ -24,7 +24,7 @@ pub fn run() {
     if fix_path_env::fix().is_err() {
         eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
     }
-    let host_env = canager_core::runner::HostEnv::discover();
+    let host_env = banager_core::runner::HostEnv::discover();
     println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
@@ -63,7 +63,7 @@ pub fn run() {
         // macOS once per app folder and kept in memory until Canager quits.
         // Managed beside `AppState`, not in it: nothing but that command
         // reads it.
-        .manage(std::sync::Arc::new(canager_core::icon::AppIcons::real()))
+        .manage(std::sync::Arc::new(banager_core::icon::AppIcons::real()))
         .setup(|app| {
             let settings_path = app.path().app_data_dir()?.join("settings.json");
             let channel_sink = events::ChannelSink::new();
