@@ -245,7 +245,7 @@ describe("OverviewPage", () => {
     expect(symbol?.querySelector('[fill="currentColor"]')).toBeNull();
     expect(symbol?.querySelector('g[stroke="currentColor"] circle')).not.toBeNull();
     // Its sentence under it, 11 muted, and Details, a link, on what
-    // Canager works with and where it looks.
+    // Banager works with and where it looks.
     const line = heading.nextElementSibling as HTMLElement;
     expect(line.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
     expect(line).toHaveTextContent(sentence);
@@ -437,7 +437,7 @@ describe("OverviewPage", () => {
   // "Everything is up to date" over any of them. Under the headline, the
   // line that says what there is instead, or none; and Review updates
   // only where the Updates page lists a row.
-  // The headline says nothing to update only of the sources Canager could
+  // The headline says nothing to update only of the sources Banager could
   // check where one was not checked in full, as the Updates page does.
   const NOT_CHECKED = "No updates in the sources checked";
   const notUpToDate: Array<[string, () => void, string | null, boolean, string]> = [
@@ -464,7 +464,7 @@ describe("OverviewPage", () => {
       NOT_CHECKED,
     ],
     [
-      "only updates Canager cannot install",
+      "only updates Banager cannot install",
       () => {
         served = snapshotWith({
           updates: [candidate(formula("jq"), { blocked: "Pinned" }), candidate(urllib3)],

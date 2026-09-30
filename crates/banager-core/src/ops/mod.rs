@@ -21,7 +21,7 @@ const DEFAULT_MAX_RECORDS: usize = 200;
 
 /// The `Outcome` for an `Err` out of `Adapter::execute`.
 ///
-/// Every `Err` here is a reason of Canager's own, worded by the front end
+/// Every `Err` here is a reason of Banager's own, worded by the front end
 /// in the user's language; the English `Display` of `AdapterError` never
 /// reaches the wire. A tool that ran and failed is not an `Err` at all:
 /// `run_plan` turns its exit code and stderr into `Ok(Outcome::Failed)`.
@@ -40,7 +40,7 @@ const DEFAULT_MAX_RECORDS: usize = 200;
 /// `IndexUpdating` (brew's `execute`
 /// waits for a running `brew update` instead; only its `inventory`,
 /// `check_updates` and uninstall `plan` return that). Everything but the two runner errors
-/// is therefore a bug in Canager, and says so as `Fault::Internal` rather
+/// is therefore a bug in Banager, and says so as `Fault::Internal` rather
 /// than as a sentence of its own that nothing can produce.
 fn execute_error_outcome(e: AdapterError) -> Outcome {
     let fault = match e {
@@ -64,7 +64,7 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
         | AdapterError::UninstallUnsafe { .. }
         | AdapterError::IndexUpdating => Fault::Internal,
     };
-    Outcome::CanagerFailed(fault)
+    Outcome::BanagerFailed(fault)
 }
 
 /// What an upgrade whose tool exited 0 did to the installed version, judged
@@ -412,7 +412,7 @@ impl OperationManager {
         tokio::spawn(async move {
             if let Err(join_err) = handle.await {
                 if join_err.is_panic() {
-                    manager_for_panic.finish(op_id, Outcome::CanagerFailed(Fault::Panicked), true);
+                    manager_for_panic.finish(op_id, Outcome::BanagerFailed(Fault::Panicked), true);
                 }
             }
         });
@@ -534,7 +534,7 @@ impl OperationManager {
         // finish. That is a permit held doing nothing but waiting, for as
         // long as ten minutes, not a bug in this reasoning: the DAG claim
         // above is about what a permit holder can be *blocked on*, and
-        // `wait_for_update` blocks on Canager's own per-instance update lock
+        // `wait_for_update` blocks on Banager's own per-instance update lock
         // (`update_lock_for` -- an in-process `tokio::sync::Mutex`, not
         // Homebrew's file-based `var/homebrew/locks/update`;
         // `wait_for_update`'s doc in
@@ -571,7 +571,7 @@ impl OperationManager {
                         // reported as one.
                         self.finish(
                             op_id,
-                            Outcome::CanagerFailed(Fault::Internal),
+                            Outcome::BanagerFailed(Fault::Internal),
                             true,
                         );
                         return;
@@ -592,11 +592,11 @@ impl OperationManager {
         // snapshot is registered here first (`refresh`, before it commits),
         // and `instances` is insert-only. A source that has gone since the
         // preview is refused by `Session::submit` itself, as
-        // `SubmitError::SourceGone`. So a miss is Canager's own bug.
+        // `SubmitError::SourceGone`. So a miss is Banager's own bug.
         let instance = match instance {
             Some(i) => i,
             None => {
-                self.finish(op_id, Outcome::CanagerFailed(Fault::Internal), true);
+                self.finish(op_id, Outcome::BanagerFailed(Fault::Internal), true);
                 return;
             }
         };
@@ -605,7 +605,7 @@ impl OperationManager {
         let adapter = match adapter {
             Some(a) => a,
             None => {
-                self.finish(op_id, Outcome::CanagerFailed(Fault::Internal), true);
+                self.finish(op_id, Outcome::BanagerFailed(Fault::Internal), true);
                 return;
             }
         };
@@ -834,8 +834,8 @@ impl OperationManager {
                 }
             }
             // Anything else `execute` answered stands as it is, whatever
-            // the reading after says -- a tool's own `Failed`, Canager's
-            // `CanagerFailed`, brew's `Cancelled` before its command starts,
+            // the reading after says -- a tool's own `Failed`, Banager's
+            // `BanagerFailed`, brew's `Cancelled` before its command starts,
             // and a path-list uninstall's `NeedsAttention(BackAfterUninstall)`,
             // which its own last look found (adapters/standalone/removal.rs).
             Ok(other) => other,

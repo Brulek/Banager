@@ -77,7 +77,7 @@ afterEach(async () => {
 describe.each([
   // Homebrew's formulae and casks, and npm, PyPI and crates.io packages.
   { file: "zh-CN.json", prefixes: ["brew", "cask", "npm", "pypi", "cargo"] },
-  // Only the packages whose sources give Canager no description: npm's,
+  // Only the packages whose sources give Banager no description: npm's,
   // PyPI's (pip, pipx and uv) and crates.io's. Homebrew gives its own
   // words in English.
   { file: "en.json", prefixes: ["npm", "pypi", "cargo"] },

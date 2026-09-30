@@ -60,7 +60,7 @@ describe("SnapshotStatus", () => {
     expect(await screen.findByText("No tools to manage")).toBeInTheDocument();
     expect(screen.getByText("Install Homebrew first.")).toBeInTheDocument();
     expect(screen.queryByText(/None of them are set up|yet/)).not.toBeInTheDocument();
-    // What Canager works with, and where it looks, behind Details.
+    // What Banager works with, and where it looks, behind Details.
     const details = screen.getByRole("button", { name: "Details: No tools to manage" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
@@ -214,7 +214,7 @@ describe("SnapshotStatus", () => {
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     // What to do, not the backend's words: those are for "Show technical
     // details", as every raw error is.
-    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Banager.")).toBeInTheDocument();
     expect(screen.queryByText(/brew: command not found/)).toBeNull();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
@@ -274,7 +274,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Banager.")).toBeInTheDocument();
     expect(screen.queryByText(/brew: command not found/)).toBeNull();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
     plain.unmount();
@@ -301,7 +301,7 @@ describe("SnapshotStatus", () => {
 
   it("renders children, not the nothing-installed state, when nothing is listed because a check did not finish", async () => {
     // A Mac whose only source is pipx, whose list timed out on the first
-    // check since Canager opened: nothing listed is only what the check
+    // check since Banager opened: nothing listed is only what the check
     // did not get to, and the page's notice line says so, with its Check
     // again. "No installed tools found" in its place would be the lie.
     vi.mocked(invoke).mockResolvedValue(
@@ -392,7 +392,7 @@ describe("SnapshotStatus", () => {
     });
 
     // It failed again: what to do, and the button back on.
-    expect(await screen.findByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(await screen.findByText("Check again. If that doesn't help, quit and reopen Banager.")).toBeInTheDocument();
     expect(screen.queryByText(/the session is gone/)).toBeNull();
     expect(screen.getByRole("button", { name: "Check Again" })).toBeEnabled();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);

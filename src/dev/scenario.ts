@@ -50,7 +50,7 @@ export const SCENARIO_OUTCOMES = [
   "cancelled",
   "unconfirmed",
   "attention",
-  "canager",
+  "banager",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

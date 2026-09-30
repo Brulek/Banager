@@ -130,7 +130,7 @@ export function statusKey(op: OpSummary, logs: LogLine[]): string | null {
 /**
  * How an operation ended, for its icon and whether its log is offered:
  * `success` (a tick), `cancelled` (the user's own doing), `attention` --
- * the tool said it worked and Canager could not confirm it or found the
+ * the tool said it worked and Banager could not confirm it or found the
  * opposite -- and `failure`. A finished operation with no outcome, which
  * the backend never sends, claims nothing either way: `attention`, as the
  * row's progress calls it (`UpdateProgress`).
@@ -164,10 +164,10 @@ export function outcomeWords(t: Translate, outcome: Outcome | null, technical: b
       if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].word);
       return outcome.Failed.summary.trim() ? t("operations.outcome.FailedShort") : outcomeSentence(t, outcome);
     }
-    if ("CanagerFailed" in outcome && !technical) {
-      const fault = outcome.CanagerFailed;
+    if ("BanagerFailed" in outcome && !technical) {
+      const fault = outcome.BanagerFailed;
       if (typeof fault !== "string" && "SpawnFailed" in fault) {
-        return t("operations.outcome.CanagerFailed.SpawnFailedShort");
+        return t("operations.outcome.BanagerFailed.SpawnFailedShort");
       }
     }
   }
@@ -191,7 +191,7 @@ export function outcomeTone(outcome: Outcome | null): OutcomeTone {
     }
   }
   if ("NeedsAttention" in outcome) return "attention";
-  if ("Failed" in outcome || "CanagerFailed" in outcome) return "failure";
+  if ("Failed" in outcome || "BanagerFailed" in outcome) return "failure";
   const unhandled: never = outcome;
   return unhandled;
 }

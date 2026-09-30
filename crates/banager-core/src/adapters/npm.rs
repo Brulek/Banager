@@ -70,7 +70,7 @@ fn path_is_writable(path: &Path) -> bool {
 }
 
 /// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
-/// for the npm `version` Canager detected (`npm --version`), only when that
+/// for the npm `version` Banager detected (`npm --version`), only when that
 /// is 7 or later. npm 7 and later run no script of the package's on
 /// `uninstall -g` (npm 10.9.9: arborist's `reify.js:1308-1341` runs scripts
 /// only for added and changed packages, and for `-g` it loads only the
@@ -78,7 +78,7 @@ fn path_is_writable(path: &Path) -> bool {
 /// data outside its folder stay; npm 6 ran the package's `preuninstall`,
 /// `uninstall` and `postuninstall` scripts (npm 10.9.9's
 /// `docs/content/using-npm/scripts.md:216-228`), which could do anything.
-/// A version Canager could not read, or whose major number does not parse,
+/// A version Banager could not read, or whose major number does not parse,
 /// gets no sentence.
 fn uninstall_scope(version: Option<&str>) -> Option<Warning> {
     let major: u64 = version?.trim().split('.').next()?.parse().ok()?;
@@ -708,7 +708,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_finds_npm_on_path_and_resolves_its_global_prefix() {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-detect-{}-{}",
+            "banager-npm-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -771,7 +771,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_flags_an_unverified_version() {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-detect-unverified-{}-{}",
+            "banager-npm-detect-unverified-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -826,7 +826,7 @@ mod tests {
     /// the unique-name dance around them.
     fn detect_fixture(tag: &str) -> (PathBuf, PathBuf, HostEnv) {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-detect-{}-{}-{}",
+            "banager-npm-detect-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -882,7 +882,7 @@ mod tests {
     async fn test_detect_reports_prefix_not_writable_when_npm_cannot_write_where_it_installs() {
         // The nodejs.org installer's npm: the CLI works, `npm prefix -g`
         // answers, but the directory it would write into belongs to root.
-        // The instance must still be detected -- Canager lists what is
+        // The instance must still be detected -- Banager lists what is
         // there -- and must carry the reason it cannot be changed, so the
         // Updates page can say "install Node with Homebrew instead"
         // rather than pip's "use pipx or uv".
@@ -1063,7 +1063,7 @@ mod tests {
         // why exit 1 is accepted at all. A registry that could not be
         // reached also exits non-zero -- with nothing on stdout and the
         // reason on stderr -- and reading that as an empty result told the
-        // user "Everything is up to date" about packages Canager had not
+        // user "Everything is up to date" about packages Banager had not
         // managed to ask about. It is the one adapter whose failure mode was
         // indistinguishable from good news.
         let runner = Arc::new(MockRunner::new());
@@ -1231,7 +1231,7 @@ mod tests {
     async fn test_an_uninstall_by_npm_6_or_of_an_unread_version_says_nothing_of_what_stays() {
         // npm 6 ran the package's `preuninstall`, `uninstall` and
         // `postuninstall` scripts, which could do anything; a version
-        // Canager could not read might be that.
+        // Banager could not read might be that.
         let adapter =
             NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
         for version in [
@@ -1432,7 +1432,7 @@ mod tests {
 
     fn scratch_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-prefix-writable-{}-{}-{}",
+            "banager-npm-prefix-writable-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()

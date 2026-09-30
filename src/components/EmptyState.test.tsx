@@ -26,21 +26,21 @@ describe("EmptyState", () => {
   it("keeps more than its one line behind Details, named for what it explains", () => {
     renderWithProviders(
       <EmptyState
-        title="Canager found nothing installed"
+        title="Banager found nothing installed"
         description="Tools you install with Homebrew, npm and the like show up here."
         detail={{
           label: "Details",
-          ariaLabel: "Details: Canager found nothing installed",
-          content: "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.",
+          ariaLabel: "Details: Banager found nothing installed",
+          content: "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.",
         }}
       />,
     );
 
-    expect(screen.queryByText("Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeNull();
-    const details = screen.getByRole("button", { name: "Details: Canager found nothing installed" });
+    expect(screen.queryByText("Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeNull();
+    const details = screen.getByRole("button", { name: "Details: Banager found nothing installed" });
     expect(details).toHaveTextContent("Details");
     fireEvent.click(details);
-    expect(screen.getByText("Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeInTheDocument();
+    expect(screen.getByText("Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeInTheDocument();
   });
 
   it("is centred in the list's area: a 36 symbol, 24 to the title, 8 to its sentence, 16 to its one button", () => {

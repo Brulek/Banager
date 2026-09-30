@@ -4,7 +4,7 @@
  * and in no other mode, as ./mockTauri.ts is for "@tauri-apps/api/core".
  * src/lib/api.ts listens through it for the menu bar's items that act in
  * the page (`onMenuCommand`), and for Rust's question before a quit
- * (`onQuitRequested`). The browser has no menu bar of Canager's, and
+ * (`onQuitRequested`). The browser has no menu bar of Banager's, and
  * `pnpm tauri:mock`'s -- the app's own, which Rust puts up -- could only
  * be heard by asking the real backend to listen, which the preview never
  * does: this listens to nothing, and nothing is ever heard.

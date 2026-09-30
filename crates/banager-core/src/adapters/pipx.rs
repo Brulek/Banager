@@ -694,7 +694,7 @@ mod tests {
         // a real system path — so this test cannot collide with, depend on,
         // or modify anything actually installed on the machine running it.
         let tmp_dir = std::env::temp_dir().join(format!(
-            "canager-pipx-detect-{}-{}",
+            "banager-pipx-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1023,7 +1023,7 @@ mod tests {
     #[tokio::test]
     async fn test_latest_pypi_version_percent_encodes_the_package_name_into_the_url() {
         // The package name comes out of `pipx list --json`, i.e. off disk
-        // and out of a subprocess Canager does not control. Interpolated
+        // and out of a subprocess Banager does not control. Interpolated
         // raw, a `/` in it re-points the request at a different PyPI path.
         let http = Arc::new(MockHttpClient::new());
         http.respond(
@@ -1052,7 +1052,7 @@ mod tests {
     /// detect test above; nothing installed on the machine is touched.
     async fn refreshed_pipx_session(outdated: String) -> Arc<crate::session::Session> {
         let tmp_dir = std::env::temp_dir().join(format!(
-            "canager-pipx-session-{}-{}",
+            "banager-pipx-session-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1111,7 +1111,7 @@ mod tests {
     async fn test_the_session_refuses_to_upgrade_a_pinned_pipx_tool_like_a_pinned_formula() {
         // `pipx upgrade cowsay` on a pinned cowsay exits 0 having changed
         // nothing (see `parse_outdated`), so the refusal has to come from
-        // Canager: the same `blocked_upgrade` gate in `issue_plan` that
+        // Banager: the same `blocked_upgrade` gate in `issue_plan` that
         // refuses a pinned Homebrew formula (session/plans.rs).
         let session = refreshed_pipx_session(read_fixture(PINNED_OUTDATED)).await;
         match session.issue_plan(&upgrade_cowsay()).await {

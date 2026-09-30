@@ -164,7 +164,7 @@ export function UninstallDialog({
 
   // Two refusals are shown as sentences of their own rather than inside
   // `uninstall.planError`'s "Couldn't check what this affects", because
-  // Canager did check: the tool will not uninstall this package (a pinned
+  // Banager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
   // crates/banager-core/src/session/plans.rs), which only a stale Installed
   // page can reach and whose sentence carries the unpin command, set apart

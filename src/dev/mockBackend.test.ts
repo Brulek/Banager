@@ -209,7 +209,7 @@ describe("the browser preview's mock backend", () => {
       expect(count(id)).toBeGreaterThan(5);
     }
     // Every update is of a tool on the list, from a source that answered;
-    // the list is the Updates page's, of which Canager can install ~120.
+    // the list is the Updates page's, of which Banager can install ~120.
     expect(updates.every((u) => ids.includes(artifactKeyId(u.key)))).toBe(true);
     expect(instances.every((i) => i.status.unavailable === null && i.status.notes.length === 0)).toBe(true);
     const settings = await answer<Settings>(backend.invoke("get_settings"));
@@ -446,7 +446,7 @@ describe("the preview's stand-ins for Tauri", () => {
       const docker = "/Applications/Docker.app/Contents/Resources/bin/docker";
       await expect(revealItemInDir(docker)).resolves.toBeUndefined();
       const said = String(info.mock.lastCall?.[0]);
-      expect(said.startsWith("[canager-ui-preview-mock] ")).toBe(true);
+      expect(said.startsWith("[banager-ui-preview-mock] ")).toBe(true);
       expect(said.endsWith(docker)).toBe(true);
     } finally {
       info.mockRestore();

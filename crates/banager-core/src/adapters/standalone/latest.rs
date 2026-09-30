@@ -83,8 +83,8 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 }
 
 /// `claude_channel_from_json` over `<home>/.claude/settings.json`, the one
-/// file Canager reads for Claude Code (`docs/what-we-run.md`, "Files
-/// Canager reads"): read-only, and `latest` when it cannot be read.
+/// file Banager reads for Claude Code (`docs/what-we-run.md`, "Files
+/// Banager reads"): read-only, and `latest` when it cannot be read.
 pub fn claude_channel(home: &Path) -> &'static str {
     match std::fs::read_to_string(home.join(".claude").join("settings.json")) {
         Ok(json) => claude_channel_from_json(&json),
@@ -245,7 +245,7 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "not yet verified on Intel Macs: this Canager runs as {arch:?}, and the manifest URL is verified for Apple silicon only"
+            "not yet verified on Intel Macs: this Banager runs as {arch:?}, and the manifest URL is verified for Apple silicon only"
         ))
     }
 }
@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(compare_dotted("abc", "2.1.281"), None);
         assert_eq!(compare_dotted("2.1.281", "latest"), None);
         assert_eq!(compare_dotted("", ""), None);
-        // A component too large for an integer is not a version Canager
+        // A component too large for an integer is not a version Banager
         // will reason about either.
         assert_eq!(compare_dotted("1.99999999999999999999999", "2"), None);
     }
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn test_claude_channel_reads_the_settings_file_under_home_and_defaults_when_absent() {
         let home = std::env::temp_dir().join(format!(
-            "canager-standalone-channel-{}-{}",
+            "banager-standalone-channel-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

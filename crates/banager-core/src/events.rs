@@ -9,12 +9,12 @@ pub enum Stream {
     Stderr,
 }
 
-/// A line Canager itself writes into an operation's log, as opposed to a
+/// A line Banager itself writes into an operation's log, as opposed to a
 /// line the package manager printed.
 ///
 /// It travels as a key plus arguments, never as text, because the log
 /// drawer is the one place in the app a tool's own words are shown as-is:
-/// if Canager's remarks went through [`OperationEvent::Log`] they would be
+/// if Banager's remarks went through [`OperationEvent::Log`] they would be
 /// English sentences sitting among the tool's lines, the only English a
 /// Chinese user met anywhere else in a fully translated UI. The front end
 /// (`LogDrawer.tsx`) looks each variant up in its locale files instead.
@@ -36,7 +36,7 @@ pub enum LogNote {
     WaitingForBrewUpdate { minutes: u64 },
     /// Reading one of the command's streams failed, so nothing more from
     /// that stream reaches the log. `error` is the operating system's own
-    /// description of the failure, shown as-is like any other text Canager
+    /// description of the failure, shown as-is like any other text Banager
     /// did not write.
     ReadFailed { stream: Stream, error: String },
     /// A path-list uninstall moved `path` (home folder abbreviated to `~`)
@@ -70,7 +70,7 @@ pub enum LogNote {
     /// abbreviated to `~`), a path on that list, was there: one it moved,
     /// back again -- a copy of the tool still running can put its program
     /// folder or its download cache back -- or one it never moved, there
-    /// now (`removal::left_behind`). Canager left it where it is. One per
+    /// now (`removal::left_behind`). Banager left it where it is. One per
     /// such path, in the list's order, from `removal::execute_removal`,
     /// which then returns `Outcome::NeedsAttention(Attention::
     /// BackAfterUninstall)`; worded by `LogDrawer.tsx`.
@@ -88,7 +88,7 @@ pub enum OperationEvent {
         stream: Stream,
         line: String,
     },
-    /// A line of Canager's own in the log. See [`LogNote`].
+    /// A line of Banager's own in the log. See [`LogNote`].
     Note {
         op_id: OpId,
         note: LogNote,

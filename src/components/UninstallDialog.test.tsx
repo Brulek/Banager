@@ -479,7 +479,7 @@ describe("UninstallDialog", () => {
       "Also permanently deletes tokei from the Cargo folder.",
       "Homebrew's rustup shares these folders, so its toolchains go too.",
       "~/.zprofile has a line that mentions Cargo, which rustup won't remove.",
-      "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+      "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
     ]);
     expect(linesOf("Kept")).toEqual(["Conversations and history: ~/.gemini/antigravity-cli"]);
 
@@ -497,7 +497,7 @@ describe("UninstallDialog", () => {
         "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
       ],
       [
-        "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+        "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
         "Wait until the bottom of the window shows the result before you quit or shut down.",
       ],
       [
@@ -550,7 +550,7 @@ describe("UninstallDialog", () => {
   it("says each source's sentence with the name the row has, in either language, and where it holds, that nothing goes to the Trash", async () => {
     // Each of these runs the source's own uninstall command, which deletes
     // in place (`skipsTrash` in src/lib/warnings.ts): the paragraph ends
-    // saying so, where the sentence can -- not beside a step Canager cannot
+    // saying so, where the sentence can -- not beside a step Banager cannot
     // see into, nor for a record it could not read.
     const EN_SKIPS = " Removed files don't go to the Trash.";
     const ZH_SKIPS = "删除的文件不会进入废纸篓。";
@@ -591,9 +591,9 @@ describe("UninstallDialog", () => {
         "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；“Charles”的其他文件不删除。" + ZH_SKIPS,
       ],
       // A step that runs a program or code -- Ruby around the uninstall,
-      // here -- whose deletions Canager cannot see: nothing is said to
+      // here -- whose deletions Banager cannot see: nothing is said to
       // stay, and nothing about the Trash, where that program may put
-      // something for all Canager knows.
+      // something for all Banager knows.
       [
         { UninstallScope: { what: "HomebrewCaskStepsUnseen" } },
         "Uninstall Flight Block",
@@ -610,14 +610,14 @@ describe("UninstallDialog", () => {
         "执行Homebrew为“Little Snitch”记下的卸载步骤；安装器安装的其他文件不删除。" + ZH_SKIPS,
       ],
       // ...unless a step runs a program -- wireshark-chmodbpf's vendor
-      // uninstaller -- whose deletions Canager cannot see.
+      // uninstaller -- whose deletions Banager cannot see.
       [
         { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
         "Wireshark-ChmodBPF",
         "Runs the uninstall steps Homebrew recorded for Wireshark-ChmodBPF; what else some of those steps delete can't be seen in advance.",
         "执行Homebrew为“Wireshark-ChmodBPF”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       ],
-      // A record Canager could not read, or one that lists nothing to go
+      // A record Banager could not read, or one that lists nothing to go
       // by -- an empty list, for one: no deletion claimed, and a `trash:`
       // step may be in it.
       [
@@ -755,7 +755,7 @@ describe("UninstallDialog", () => {
         needs_password: true,
         warnings: [
           // Word installs with a `pkg`, which its record leaves out; beside
-          // a step Canager cannot see into, nothing is said to stay.
+          // a step Banager cannot see into, nothing is said to stay.
           { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
           {
             CaskUninstallStep: {
@@ -803,7 +803,7 @@ describe("UninstallDialog", () => {
   it("says nothing stays beside a cask step that runs a program, and still names the program under Before you continue, in either language", async () => {
     // wireshark-chmodbpf's record (a fixture of cask_receipt.rs): its
     // `early_script:` runs the vendor's uninstaller package with
-    // `installer`, whose deletions Canager cannot see, then `pkgutil:`.
+    // `installer`, whose deletions Banager cannot see, then `pkgutil:`.
     const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "wireshark-chmodbpf" };
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({
@@ -1730,7 +1730,7 @@ describe("UninstallDialog", () => {
     // since the last refresh; `Session::issue_plan` refuses it
     // (`blocked_uninstall` in crates/banager-core/src/session/plans.rs)
     // and `uninstall_blocked_json` in src-tauri/src/ipc.rs sends this.
-    // It is not "couldn't check what this affects": Canager did.
+    // It is not "couldn't check what this affects": Banager did.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
         return snapshotWith([
@@ -1801,7 +1801,7 @@ describe("UninstallDialog", () => {
     // a path (`removal::plan_removal` in
     // crates/banager-core/src/adapters/standalone/removal.rs);
     // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
-    // the reason as data, and the dialog words them. Canager did check,
+    // the reason as data, and the dialog words them. Banager did check,
     // so the sentence is shown on its own, not inside "Couldn't check
     // what this affects" -- the same reason the pin above skips it.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -1844,7 +1844,7 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("says Canager's own refusal in one sentence, with no ⓘ reassuring whose problem it was", async () => {
+  it("says Banager's own refusal in one sentence, with no ⓘ reassuring whose problem it was", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") throw '{"kind":"refused"}';
       return undefined;
@@ -1991,7 +1991,7 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="rustup" />,
     );
 
-    const hint = "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.";
+    const hint = "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.";
     expect(await screen.findByText(noteLine(hint))).toBeInTheDocument();
     expect(linesOf("Notes")).toEqual([hint]);
     fireEvent.click(screen.getByRole("button", { name: `Details: ${hint}` }));

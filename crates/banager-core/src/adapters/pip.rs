@@ -212,7 +212,7 @@ impl PipAdapter {
                 version,
                 unverified_version,
                 // Not a property of this machine: pip offers no
-                // install/uninstall path Canager can safely drive, so
+                // install/uninstall path Banager can safely drive, so
                 // every pip instance anywhere is read-only by design --
                 // whether or not this round could reach it.
                 read_only_reason: Some(ReadOnlyReason::ByDesign),
@@ -312,7 +312,7 @@ impl PipAdapter {
     /// that is not the same as "the user asked for this", so packages in
     /// that set map to `InstallReason::Unknown`, and everything else (something
     /// depends on it) maps to `InstallReason::Dependency`. pip never tells
-    /// Canager what the user explicitly typed `pip install` for, so
+    /// Banager what the user explicitly typed `pip install` for, so
     /// `InstallReason::Requested` is never used here (this phase's documented
     /// trap for pip).
     pub async fn inventory(
@@ -379,7 +379,7 @@ impl PipAdapter {
             )
             .await?;
         // `pip list --outdated` reaches PyPI. When it cannot, pip itself
-        // answered fine -- the index did not -- so this is "Canager does
+        // answered fine -- the index did not -- so this is "Banager does
         // not know about these packages", not "this source failed". Failing
         // the source made every refresh on such a machine report an error
         // and hold the whole snapshot stale; cargo already answers this
@@ -422,7 +422,7 @@ impl PipAdapter {
         ))
     }
 
-    /// pip is read-only in Canager (contract: `detect()` reports
+    /// pip is read-only in Banager (contract: `detect()` reports
     /// `read_only_reason: Some(ReadOnlyReason::ByDesign)`, and `plan()` must
     /// refuse every kind with a clear `AdapterError::Unsupported` rather than
     /// building an argv nobody should run). Every `OpKind` refuses here,
@@ -434,7 +434,7 @@ impl PipAdapter {
         req: &OpRequest,
     ) -> Result<Plan, AdapterError> {
         Err(AdapterError::Unsupported(format!(
-            "pip is read-only in Canager; use pipx or uv to manage {}",
+            "pip is read-only in Banager; use pipx or uv to manage {}",
             req.name
         )))
     }
@@ -453,7 +453,7 @@ impl PipAdapter {
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         Err(AdapterError::Unsupported(
-            "pip is read-only in Canager".to_string(),
+            "pip is read-only in Banager".to_string(),
         ))
     }
 
@@ -585,13 +585,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_marks_every_interpreter_read_only_by_design() {
-        // pip is the one source with no install/uninstall path Canager can
+        // pip is the one source with no install/uninstall path Banager can
         // safely drive, and that is a property of the tool, not of this
         // machine's permissions -- so every pip instance, on every Mac,
         // carries `ByDesign`. This replaces the front end's hardcoded
         // "pip is the read-only adapter" list: the wire now says so.
         let dir = std::env::temp_dir().join(format!(
-            "canager-pip-detect-{}-{}",
+            "banager-pip-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -651,7 +651,7 @@ mod tests {
         // already resolved by `resolve_exe`), so there is no reason not to
         // report it.
         let dir = std::env::temp_dir().join(format!(
-            "canager-pip-detect-unreachable-{}-{}",
+            "banager-pip-detect-unreachable-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -708,7 +708,7 @@ mod tests {
     /// folder on a Mac is reached through a link (`/var` is `/private/var`).
     fn temp_folder(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "canager-pip-{tag}-{}-{}",
+            "banager-pip-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

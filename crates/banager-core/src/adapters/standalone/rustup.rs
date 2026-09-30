@@ -1,4 +1,4 @@
-//! What `rustup self uninstall` does, when Canager may offer it, and what
+//! What `rustup self uninstall` does, when Banager may offer it, and what
 //! to tell the user before it runs (phase 4 spec §6.4): the facts here
 //! were read from rustup's source at the tag the installed binary was
 //! built from -- `1.29.1`, commit d95a37b6, the `d95a37b6a` in `rustup
@@ -13,14 +13,14 @@
 //! `uninstall()` (self_update.rs:924-1032): removes every toolchain
 //! (:955-958, the entries of `$RUSTUP_HOME/toolchains`), then
 //! `$RUSTUP_HOME` (:960-966), then -- unless `--no-modify-path`, which
-//! Canager does not pass -- the line it added to the shell startup files
+//! Banager does not pass -- the line it added to the shell startup files
 //! (:971-973, `do_remove_from_path`), then everything in `$CARGO_HOME`
 //! except `bin/` (:977-993), then everything in `bin/` that is not one of
 //! its own proxies or `rustup` itself (:996-1022), and finally the whole
 //! `$CARGO_HOME` directory (`delete_rustup_and_cargo_home`, :1029;
 //! unix.rs:50-53). Both homes come from `RUSTUP_HOME`/`CARGO_HOME` or
 //! default under `HOME` (env.rs:67-79, :101-113) -- wherever they point,
-//! and permanently: nothing here goes to the Trash. So Canager offers the
+//! and permanently: nothing here goes to the Trash. So Banager offers the
 //! command only for the standard layout (`standard_roots`, ruling 18),
 //! asks that gate again right before the command runs
 //! (`StandaloneAdapter::execute`), and the preview (`uninstall_preview`)
@@ -41,11 +41,11 @@ use crate::model::{ResourceLock, UninstallBlocked, Warning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// The startup files Canager reads (never writes) for a line about the
+/// The startup files Banager reads (never writes) for a line about the
 /// Cargo env file, home-relative, in the order they are reported (spec
 /// §6.4). When `ZDOTDIR` names another folder, zsh's three -- `.zshenv`,
 /// `.zprofile`, `.zshrc` -- are read under it as well (`startup_files`);
-/// a `ZDOTDIR` Canager cannot see, one set only inside a zsh startup
+/// a `ZDOTDIR` Banager cannot see, one set only inside a zsh startup
 /// file, is not modelled, and the trust file says so.
 pub const SHELL_RC_CANDIDATES: [&str; 8] = [
     ".zshenv",
@@ -103,7 +103,7 @@ fn is_real_dir(path: &Path) -> bool {
 
 /// Whether anything at the top of `root` is a link: `Ok(())` when nothing
 /// is, else the path `standard_roots` refuses at -- the first link by
-/// name, or `root` itself when it cannot be listed, since a folder Canager
+/// name, or `root` itself when it cannot be listed, since a folder Banager
 /// cannot list may hold a link it cannot see. `read_dir` and each entry's
 /// own type (`DirEntry::file_type`, which does not follow); nothing is
 /// opened or followed. Read by `standard_roots`.
@@ -150,7 +150,7 @@ fn no_link_at_the_top(root: &Path) -> Result<(), PathBuf> {
 /// `raw::remove_dir` (raw.rs:277-311) `remove_file`s a path that is itself
 /// a link, and the `remove_dir_all` 1.0.0 it hands a real folder to opens
 /// each entry with `follow(false)` and `unlink_at`s a link
-/// (`src/_impl.rs:133-213`). Canager keeps no list of which names rustup
+/// (`src/_impl.rs:133-213`). Banager keeps no list of which names rustup
 /// follows: any link at the top refuses. Anything else -- a custom home, a
 /// link to somewhere else, a relative variable, a link at the top of a
 /// root -- and `uninstall()` would delete a place this preview did not
@@ -322,7 +322,7 @@ pub struct RcVisit {
 /// `~/.bash_login`, `~/.bashrc` (:188-195), Zsh's `$ZDOTDIR/.zshenv`
 /// when there is a ZDOTDIR and `~/.zshenv` (:240-245, no deduplication
 /// -- `ZDOTDIR=$HOME` visits the same file twice); Fish, Nu, Tcsh, Pwsh
-/// and Xonsh visit files Canager does not read. Then
+/// and Xonsh visit files Banager does not read. Then
 /// `remove_legacy_paths` (unix.rs:174-194) removes the pre-1.23 line
 /// `export PATH="<S>/bin:$PATH"` and then `source "<S>/env"`, each from
 /// `legacy_paths` (shell.rs:564-574): `~/.bash_profile`, `~/.profile`,
@@ -330,7 +330,7 @@ pub struct RcVisit {
 /// and Zsh's availability checks are folded in: a Bash file that is not
 /// there is a no-op visit, and on a Mac zsh is at `/bin/zsh`. `zdotdir`
 /// is `HostEnv.zdotdir` -- rustup itself asks `zsh -c 'echo -n $ZDOTDIR'`
-/// when `SHELL` is not zsh (shell.rs:207-225), which Canager does not
+/// when `SHELL` is not zsh (shell.rs:207-225), which Banager does not
 /// (it runs nothing), so a ZDOTDIR set only inside a zsh startup file is
 /// not modelled; an empty one is none (shell.rs:213). `~/.zshrc` and
 /// fish's `config.fish` are visited by nothing.
@@ -451,8 +451,8 @@ pub enum Leftover {
 /// qualified one within a file. A line in one of rustup's sourcing forms
 /// is certain only while every non-blank, non-comment line above it
 /// stands alone (`stands_alone`): inside an `if`, a function body, a
-/// here-document or a quote, or below any line Canager cannot vouch for,
-/// whether it runs depends on shell syntax Canager does not follow --
+/// here-document or a quote, or below any line Banager cannot vouch for,
+/// whether it runs depends on shell syntax Banager does not follow --
 /// once one line does not stand alone, none below it is certain.
 pub fn classify_leftover(contents: &str, patterns: &LeftoverPatterns) -> Option<Leftover> {
     let mut mentions = false;
@@ -734,7 +734,7 @@ fn read_startup_file(path: &Path) -> Option<(FileIdentity, String)> {
 /// uninstall`, in that order, `path` spelled by the crate's one rule
 /// (`scan::display_path`: `~/<file>` under the home, the full path
 /// elsewhere), `certain` by tier. Each name is read once (read-only:
-/// Canager never edits a startup file, spec §6.8), with the identity of
+/// Banager never edits a startup file, spec §6.8), with the identity of
 /// the file it leads to (`read_startup_file`), and the first name read
 /// for a file gives that file its one copy; rustup's visits
 /// (`rustup_rc_visits`) are replayed on the copy of the file the visited
@@ -883,7 +883,7 @@ mod tests {
         // both exactly `<home>/.cargo` and `<home>/.rustup`, the Cargo
         // home a real directory, the rustup home a real directory or not
         // there yet (and nothing at the top of either a link: the next
-        // two tests). Anything else is a layout Canager will not offer to
+        // two tests). Anything else is a layout Banager will not offer to
         // delete: rustup's `uninstall()` removes `$RUSTUP_HOME` and
         // `$CARGO_HOME` whole (self_update.rs:960-966, :1029), wherever
         // they point. Each refusal here names the standard folder the
@@ -932,7 +932,7 @@ mod tests {
         };
         assert_eq!(refused_at(&d), home.path().join(".rustup"));
 
-        // A root that is a link: the path Canager would list is not the
+        // A root that is a link: the path Banager would list is not the
         // directory that would go.
         let home = TempHome::new("roots-linked-cargo");
         let elsewhere = home.dir("Volumes/Data/cargo");
@@ -970,7 +970,7 @@ mod tests {
         // wherever the link leads -- outside the two folders the preview
         // names. Every other link at the top of a root it unlinks without
         // following (`raw::remove_dir`, raw.rs:277-311; `remove_dir_all`
-        // 1.0.0, `src/_impl.rs:133-213`, `.follow(false)`). Canager keeps
+        // 1.0.0, `src/_impl.rs:133-213`, `.follow(false)`). Banager keeps
         // no list of which names rustup follows: any link at the top of
         // either root refuses, at that link -- the first by name when
         // there are several -- so `execute` can name it.
@@ -1338,7 +1338,7 @@ mod tests {
         // and then the `source` line, each over `legacy_paths`
         // (shell.rs:564-574: `.bash_profile`, `.profile`,
         // `$ZDOTDIR/.zprofile`, `~/.zprofile`). Fish, Nu, Tcsh, Pwsh and
-        // Xonsh edit files Canager does not read, so they have no visit
+        // Xonsh edit files Banager does not read, so they have no visit
         // here. `.zshrc` and fish's `config.fish` are visited by nothing.
         let home = Path::new("/Users/someone");
         let current = rc_line();
@@ -1578,7 +1578,7 @@ mod tests {
         // own -- inside an `if` it runs only when the test passes, in a
         // function body only when the function is called, in a
         // here-document or a quote never -- so it is "may" unless every
-        // line above it stands alone (`stands_alone`). Canager does not
+        // line above it stands alone (`stands_alone`). Banager does not
         // track where a block closes, so a closed one above it makes it
         // "may" too.
         let home = Path::new("/Users/someone");
@@ -1678,7 +1678,7 @@ mod tests {
             "fi",
             "while read line; do",
             "case \":$PATH:\" in",
-            // Closed on one line, but Canager does not follow a loop.
+            // Closed on one line, but Banager does not follow a loop.
             "for f in ~/.zsh/*.zsh; do source \"$f\"; done",
             "rust_env() {",
             "rust_env()",

@@ -28,7 +28,7 @@ export function creditSource(url: string): string {
 }
 
 /**
- * Where the logos built into Canager come from, opened from Settings'
+ * Where the logos built into Banager come from, opened from Settings'
  * 「关于」 group, as a dialog in the manner of the others (spec R11: it
  * answers a press, so it stays a dialog): that each logo is its owner's
  * and shown only to tell the tools apart; that most are Simple Icons',

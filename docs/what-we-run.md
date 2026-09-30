@@ -1,6 +1,6 @@
-# What Canager Runs
+# What Banager Runs
 
-Every command Canager runs, every file it reads, writes or moves to the
+Every command Banager runs, every file it reads, writes or moves to the
 Trash, every host it connects to and every environment variable it sets,
 for the eleven sources it manages today: Homebrew, npm, pipx, uv, pip
 (read-only), Cargo, Ollama, and four tools with their own installer:
@@ -28,7 +28,7 @@ the opener plugin the window has and the unknown-source scan's section
 the call Show in Finder makes, saying it runs nothing else, that the
 daily check's section says it is off by default, states how often it
 looks, how long after a check it checks again and how long it waits
-after checks in which every source failed, says Canager itself runs no
+after checks in which every source failed, says Banager itself runs no
 install from it and that `brew update` can install a package Homebrew
 moved between a formula and a cask, and names each permission of the
 notification plugin the window has, and that Homebrew's section keeps
@@ -42,13 +42,13 @@ Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
 command can carry.
 
-## How Canager runs anything
+## How Banager runs anything
 
 **Never through a shell.** Every package-manager command is a fixed argv
 array run directly against an absolute program path by `RealRunner::run`
 (`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
-nothing Canager downloads is ever piped into one.
+nothing Banager downloads is ever piped into one.
 
 **One shell run, at launch, that runs no command.** An app opened from
 Finder starts with a minimal `PATH`, so at startup (`run()` in
@@ -57,12 +57,12 @@ shell once — `$SHELL` (`/bin/zsh` on a Mac when `SHELL` is unset) with the
 arguments `-ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
 "_SHELL_ENV_DELIMITER_"; exit'`, with `DISABLE_AUTO_UPDATE=true` in its
 environment and the home folder as its working directory — reads the
-`PATH` that shell exports, and sets it on Canager's own process
+`PATH` that shell exports, and sets it on Banager's own process
 (`fix_vars` in `fix-path-env-rs` at the pinned commit `c4c45d5`). That is
 the only time a shell is involved, and all it does is print the
 environment.
 
-**What a command inherits.** A child gets Canager's own environment — the
+**What a command inherits.** A child gets Banager's own environment — the
 `PATH` above and whatever else the login shell exported — plus the
 variables listed in each source's section below (`RealRunner::run` adds
 them with `envs` and never clears the environment). Its stdin is
@@ -78,7 +78,7 @@ a grace period, and then `SIGKILL` for whatever is left.
 Ollama button is pressed, and at the start of every Other Programs scan,
 `HostEnv::discover`
 (`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
-`CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
+`CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Banager's
 environment and the effective user id from the process. Homebrew's
 install, uninstall and upgrade previews read four more, to find its
 `brew.env` files, and uv's inventory and uninstall preview read
@@ -103,15 +103,15 @@ Ollama's model references, which contain a colon
 (`validate_model_reference`). Every other token in every argv below is a
 fixed string.
 
-**Root.** Homebrew refuses to run as root, so Canager never runs a `brew`
+**Root.** Homebrew refuses to run as root, so Banager never runs a `brew`
 command when its effective user ID is 0 (`refuse_if_root`); a Homebrew
 found under root is listed as refusing, not as missing. No other source
 checks.
 
-**Passwords.** Canager never asks for a password and never handles one.
+**Passwords.** Banager never asks for a password and never handles one.
 The only thing it does with one is pass `SUDO_ASKPASS` through, unchanged,
 to Homebrew cask installs and upgrades when the variable is already set
-in Canager's environment (Homebrew's section); it never sets it on its
+in Banager's environment (Homebrew's section); it never sets it on its
 own behalf.
 
 ## When commands run
@@ -126,7 +126,7 @@ finishes, when the "include self-updating apps" setting changes, after
 Ollama is opened from its notice, whenever a `brew update` a refresh
 left running in the background ends
 (`refresh_on_background_change` in `src-tauri/src/ipc.rs`), and, with
-Settings' daily check turned on, once a day while Canager runs (next
+Settings' daily check turned on, once a day while Banager runs (next
 section). The window
 opens once a launch: closing it only hides it (`src-tauri/src/window.rs`),
 and bringing it back starts no refresh. Within a
@@ -146,7 +146,7 @@ for an uninstall that runs no command, the exact list of paths it will
 move to the Trash (the Claude Code, Antigravity CLI and Grok Build
 sections) — and the front end shows it: the paths in the confirmation,
 the command one press away there ("Show Command") — the variables
-the plan sets on top of Canager's environment, as `NAME=value`, then the
+the plan sets on top of Banager's environment, as `NAME=value`, then the
 argv (`commandText` in `src/components/CommandPreview.tsx`) — open from
 the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
@@ -159,7 +159,7 @@ an install before any source is asked. Before a plan is built,
 `Session::issue_plan` refuses an operation on a source that is read-only
 or not answering, an upgrade or uninstall the tool itself reports it will
 refuse (a pinned package), an update of a tool that installs its
-updates itself and has no update command Canager may run (Antigravity
+updates itself and has no update command Banager may run (Antigravity
 CLI's section), and an uninstall of a uv tool while `UV_TOOL_DIR` is set
 (uv's section) — the buttons the pages hide are backed by that refusal,
 not only by the page. On confirmation
@@ -176,7 +176,7 @@ while a `brew update` a refresh left running is still going (Homebrew's
 section) — there is nothing to compare, and an upgrade that exits 0 is
 reported as a success whenever the package is still present afterwards,
 whether or not its version moved. A command that was
-cancelled or timed out, or that a signal Canager did not send ended
+cancelled or timed out, or that a signal Banager did not send ended
 (killed from Activity Monitor, say), is reported as unconfirmed unless
 the reading after settles it: an install after which the package is
 present, or an uninstall after which it is gone, is reported as
@@ -186,20 +186,20 @@ cancelled; an upgrade stopped partway is never settled either way
 `run_operation`).
 
 **Quitting while an operation is under way.** Closing the window leaves
-Canager and its operations running (`src-tauri/src/window.rs`). Quitting
+Banager and its operations running (`src-tauri/src/window.rs`). Quitting
 after the question below — *Quit*, or a question the window never
 showed — first cancels every operation that can be cancelled, as the
 operation bar's *Stop All* does: one still queued never runs, and a
 running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
 of it is left, which can leave the tool it was updating or uninstalling
-half done. Canager quits once those commands have stopped, 7 seconds
+half done. Banager quits once those commands have stopped, 7 seconds
 after *Quit* at the most (`quit_now` in `src-tauri/src/quit.rs`);
 another quit meanwhile — ⌘Q, the Dock's Quit, a logout — is called off,
 and does not cut that wait short.
 A running operation that cannot be cancelled — rustup's self update or
-self uninstall — is not stopped: Canager sends it no signal, and it runs
-in a process group of its own, so its command runs on without Canager.
-Its output went to pipes only Canager read, which close as Canager
+self uninstall — is not stopped: Banager sends it no signal, and it runs
+in a process group of its own, so its command runs on without Banager.
+Its output went to pipes only Banager read, which close as Banager
 exits; a write to them after that fails with a broken pipe (EPIPE, or
 SIGPIPE, which ends a program that does not ignore it). The question
 names such an operation and says to wait for it to finish; its line
@@ -207,25 +207,25 @@ about what quitting stops leaves it out. A quit that asks nothing (below)
 cancels nothing, and every command still running then runs on the same
 way. So on a Mac, while an operation is not done —
 queued, running, being cancelled or checking its result — every way of
-quitting (Quit Canager, ⌘Q; Quit in the Dock icon's menu; logging out,
+quitting (Quit Banager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:
 *N operations haven't finished* (「还有N个操作未完成」), with *Cancel*
 (「取消」, which has the focus, and which Escape does) and
 *Quit* (「退出」), and it names an operation that has started
 and cannot be cancelled, such as rustup's self update. Every one of those
 quits ends in AppKit's `terminate:`, which asks the application
-delegate's `applicationShouldTerminate:`; Canager adds that method to the
+delegate's `applicationShouldTerminate:`; Banager adds that method to the
 delegate as it starts (`guard_quitting` in `src-tauri/src/quit.rs`) and
 answers it at once, so a logout, restart or shutdown is called off rather
 than kept waiting, and has to be started again after *Quit*.
 Nothing asks until the window has loaded and listens for the question,
 nor once the page has stopped listening, as it does when an error in
 drawing it takes it down; and once asked, the window has 2 seconds to
-say that the question is on screen, or Canager quits — a window that
+say that the question is on screen, or Banager quits — a window that
 was reloaded or stopped working is not there to answer, and a quit
 called off with nobody to ask would never happen. *Cancel* (or
 Escape, or the question going away once everything has finished) tells
-Canager too, and that 2-second wait then does not quit, even when the
+Banager too, and that 2-second wait then does not quit, even when the
 word that the question was on screen did not get through; the window
 sends each of the two words once more should it fail. A quit repeated
 before the window has said the question is on screen asks the same
@@ -240,7 +240,7 @@ Settings → Updates has a switch, "Check for updates every day"
 `crates/banager-core/src/settings.rs`). While it is off, the daily check
 starts nothing. Turned on:
 
-- **When.** A task Canager starts at launch (`check_automatically` in
+- **When.** A task Banager starts at launch (`check_automatically` in
   `src-tauri/src/auto_check.rs`) looks every 15 minutes the Mac is awake
   (`auto_check::TICK` in `crates/banager-core/src/auto_check.rs`), the
   first time 15 minutes after launch. A look starts a check only when 24
@@ -293,10 +293,10 @@ starts nothing. Turned on:
   running or waiting, or an operation queued, running, being cancelled or
   being verified (`Session::busy`), starts nothing; the next look asks
   again.
-- **Only while Canager runs.** When the last check ended, and how many
-  daily checks have failed since, are kept in memory, so after Canager is
+- **Only while Banager runs.** When the last check ended, and how many
+  daily checks have failed since, are kept in memory, so after Banager is
   quit and opened again, the check at launch is the day's. Nothing checks
-  while Canager is not running. Closing the window leaves Canager running
+  while Banager is not running. Closing the window leaves Banager running
   (`src-tauri/src/window.rs`), and the task with it.
 
 **What it runs** is the refresh Check Again runs, through the same
@@ -309,8 +309,8 @@ its local catalogue, and when Homebrew has moved a package this Mac has
 installed between a formula and a cask, or renamed one, it can install,
 move or uninstall Homebrew packages by itself (Homebrew's section) — and
 when the check stops waiting for it, the refresh its end sets off follows
-— and Grok Build's update check writes inside `~/.grok` ("Files Canager
-writes"). Canager itself runs no install, upgrade or uninstall from it,
+— and Grok Build's update check writes inside `~/.grok` ("Files Banager
+writes"). Banager itself runs no install, upgrade or uninstall from it,
 and installs none of the updates it finds: every write command runs only
 after a preview the user confirmed.
 
@@ -323,9 +323,9 @@ post first (`request_notification_permission` in
 `request_permission`. The plugin, at the 2.4 line `src-tauri/Cargo.toml`
 pins, answers yes on a Mac without asking macOS, so there the switch
 always turns on, and whether a notification shows is up to System
-Settings → Notifications → Canager. Were the answer no, the switch would
-turn back off with "Allow Canager to send notifications in System Settings > Notifications."
-(「请在“系统设置”>“通知”中允许Canager发送通知。」) under it.
+Settings → Notifications → Banager. Were the answer no, the switch would
+turn back off with "Allow Banager to send notifications in System Settings > Notifications."
+(「请在“系统设置”>“通知”中允许Banager发送通知。」) under it.
 
 Each time the window receives a check's result — every daily check's
 included, which Rust announces to it even when nothing changed
@@ -333,11 +333,11 @@ included, which Rust announces to it even when nothing changed
 Update All would take, as tool-and-version pairs, and which check it was
 (`report_update_set`). Rust posts one notification only when that check
 was a daily one, or the refresh a daily one's `brew update` set off; both
-switches are on; another app is in front, not Canager — macOS shows no
+switches are on; another app is in front, not Banager — macOS shows no
 banner for a notification of the app in front, and Rust asks macOS
-whether Canager is (`app_active` in `src-tauri/src/notify.rs`); and one of
+whether Banager is (`app_active` in `src-tauri/src/notify.rs`); and one of
 the pairs has been neither in a notification nor before the user in the
-focused window since Canager was opened (`notify_updates::decide` in
+focused window since Banager was opened (`notify_updates::decide` in
 `crates/banager-core/src/notify_updates.rs`). A daily check that stopped
 waiting for its `brew update` (Homebrew's section) posts nothing itself:
 the refresh that update's end sets off is the daily check's too, and its
@@ -351,48 +351,48 @@ instead when a check of the window's reads the new catalogue before it or
 shares its round (`RoundLog::record`), and the daily check then posts
 nothing. A report that comes while
 the window has the focus marks its pairs as seen, and posts nothing. One
-that comes while Canager is in front with its window closed or in the
+that comes while Banager is in front with its window closed or in the
 Dock posts nothing and marks nothing, so its updates are still news to
 the next daily check that finds them.
 
-The notification is titled Canager and says "N tools can be updated"
+The notification is titled Banager and says "N tools can be updated"
 (「N个工具可以更新」) in the window's language, N being every update
 Update All would take. It is handed to macOS's Notification Center
 (`NSUserNotificationCenter`) through notify-rust, the crate the plugin
 posts through, on a thread of its own (`post` and `hand_off` in
 `src-tauri/src/notify.rs`): no command runs, nothing connects, and
-Canager writes no file for it. That thread waits only for macOS to
+Banager writes no file for it. That thread waits only for macOS to
 confirm the delivery, two seconds at most, and learns nothing either way:
-Canager is told of no delivery that failed, and hears no click on the
+Banager is told of no delivery that failed, and hears no click on the
 notification. The updates it counts are marked as told once it is handed
 over, so one that macOS does not show — System Settings → Notifications
-can turn Canager's off — is not posted again for the same updates. Only
+can turn Banager's off — is not posted again for the same updates. Only
 when that thread cannot be started is nothing handed over: that is
 logged, and the next daily check that finds those updates tries again.
-What has been told is kept in memory only, so after Canager is quit and
+What has been told is kept in memory only, so after Banager is quit and
 opened again, nothing has been.
 
-**A click on the notification** brings Canager to the front. Canager is
+**A click on the notification** brings Banager to the front. Banager is
 told only that it has come to the front, not what brought it there: it
 watches for AppKit's `NSApplicationDidBecomeActiveNotification` from
 launch (`observe_activation` in `src-tauri/src/window.rs`). From its
 hand-over, a notification waits on the window until the window is next
-in front — brought back by Canager, or given the focus any other way
-(`NotificationPending`). When Canager comes to the front while one
+in front — brought back by Banager, or given the focus any other way
+(`NotificationPending`). When Banager comes to the front while one
 waits, with its window closed or minimized into the Dock, it brings the
 window back and tells the page to open Updates (`on_activate`, then
 `open_updates` in `src-tauri/src/notify.rs`), whatever brought it there:
 a click on the notification, ⌘-Tab, or its Dock icon, a click on which
-Canager also hears as such and decides the same way (`on_run_event`).
-With the window on screen, or nothing waiting, Canager comes to the front
-as it always has. No command runs for it, nothing connects, and Canager
+Banager also hears as such and decides the same way (`on_run_event`).
+With the window on screen, or nothing waiting, Banager comes to the front
+as it always has. No command runs for it, nothing connects, and Banager
 writes no file.
 
 The window is given one of the plugin's commands, `is_permission_granted`
 (`notification:allow-is-permission-granted` in
 `src-tauri/capabilities/default.json`), which the plugin's own script
 calls as the page loads, and which answers yes on a Mac. Asking for
-permission and posting go through Canager's own commands, so the page
+permission and posting go through Banager's own commands, so the page
 cannot post a notification itself.
 
 ## Homebrew
@@ -400,7 +400,7 @@ cannot post a notification itself.
 Adapter: `BrewAdapter` in `crates/banager-core/src/adapters/brew/mod.rs`.
 Verified against Homebrew 7.0.3 (`adapters/meta/brew.toml`).
 
-**Detect.** Canager checks whether `/opt/homebrew/bin/brew`,
+**Detect.** Banager checks whether `/opt/homebrew/bin/brew`,
 `/usr/local/bin/brew` and `/home/linuxbrew/.linuxbrew/bin/brew` exist
 (`BrewAdapter::CANDIDATE_PATHS`) — never a `brew` resolved through `PATH`
 — and runs `<brew> --version` (30 s) for each that does. Each is its own
@@ -416,7 +416,7 @@ including `--version`, `update` and every plan:
     NO_COLOR=1
 
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
-already set in Canager's process environment (`askpass_fn`, read per
+already set in Banager's process environment (`askpass_fn`, read per
 plan). It only has any effect for casks whose installer scripts invoke
 `sudo`.
 
@@ -464,14 +464,14 @@ either variable back. Every install, uninstall and upgrade preview reads
 those files the way `bin/brew` does (`brew_env::after_brew_env` in
 `crates/banager-core/src/adapters/brew/brew_env.rs`):
 `/etc/homebrew/brew.env`; then `<prefix>/etc/homebrew/brew.env`; then
-`$XDG_CONFIG_HOME/homebrew/brew.env` when Canager's environment sets
+`$XDG_CONFIG_HOME/homebrew/brew.env` when Banager's environment sets
 `XDG_CONFIG_HOME`, else `$HOMEBREW_XDG_CONFIG_HOME/homebrew/brew.env` when
-Canager's environment or one of the first two files sets that, else
+Banager's environment or one of the first two files sets that, else
 `~/.homebrew/brew.env`; and `/etc/homebrew/brew.env` again, last, when
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` is set once that file has been read.
 To find them it reads `HOME`, `XDG_CONFIG_HOME`,
 `HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
-Canager's environment (`env_var_fn`, per preview). A file's lines count as
+Banager's environment (`env_var_fn`, per preview). A file's lines count as
 bash reads them: the last line to set a variable wins, and a last line
 with no newline after it is not read. Homebrew counts
 `HOMEBREW_NO_AUTOREMOVE` as unset when it is empty, only whitespace, or
@@ -488,7 +488,7 @@ downloads, and, when its periodic clean-up is due, those of all Homebrew
 software (`Warning::HomebrewPeriodicCleanup`); when they
 leave both variables unset, the next line adds that the periodic clean-up
 also removes those packages (`Warning::HomebrewCleanupAutoremoves`).
-Canager changes nothing in those files.
+Banager changes nothing in those files.
 
 **What an uninstall says it removes.** Under the tool, the uninstall
 confirmation says in one sentence what the command removes and what it
@@ -539,15 +539,15 @@ with a `pkg` or an installer, such as `little-snitch@4`, whose one step
 removes its background services — the sentence says Homebrew runs the
 uninstall steps it recorded and that the other files its installer put on
 the Mac stay. Neither of these two sentences is said when a step's
-deletions are ones Canager cannot see: a program the cask names
+deletions are ones Banager cannot see: a program the cask names
 (`early_script:`, `script:`, an uninstall step of type `run` —
 `wireshark-chmodbpf`'s `early_script:` runs its vendor's uninstaller
 package), Ruby that runs before or after the uninstall, or an uninstall
-step Canager does not name (`move`, `copy` and `write` among them can
+step Banager does not name (`move`, `copy` and `write` among them can
 replace what is at their target, `install_steps.rb:1001-1215`). The record
 says such a step is there, never what it deletes, so the sentence says
 Homebrew deletes the files it placed for the cask, when it placed any, and
-runs the uninstall steps it recorded, and that Canager can't see what else
+runs the uninstall steps it recorded, and that Banager can't see what else
 some of those steps delete — nothing about what stays, whether the
 autoremove is on or off (`UninstallScope::HomebrewCaskStepsUnseen`,
 `HomebrewCaskStepsOnlyUnseen`); the step's own line below still names the
@@ -584,7 +584,7 @@ contains that text, `install_steps.rb:1179-1210`; one that also names a
 hash, and counts among the other uninstall steps), login items
 (`login_item:`), the apps quit (`quit:`, `signal:`), and, naming nothing,
 Ruby blocks and other uninstall steps. An app quit is named as Finder
-names it ("Visual Studio Code") when Canager finds it: an app the record
+names it ("Visual Studio Code") when Banager finds it: an app the record
 puts down (its `app` stanza's target, or its file name), where Homebrew
 puts it — at that target when it is absolute or under `~`, else in
 `/Applications` or `~/Applications` — whose `Contents/Info.plist` gives
@@ -593,7 +593,7 @@ and nothing is opened or run). An app it does not find — one kept in an
 `--appdir` of its own, or a bundle id with a `*` in it — is counted
 instead, its bundle id behind the line's ⓘ; a line with a `*` bundle id,
 a pattern Homebrew matches against every running app (`expand_bundle_id`,
-`abstract_uninstall.rb:371-384`), gives no number. When Canager finds no such
+`abstract_uninstall.rb:371-384`), gives no number. When Banager finds no such
 list — no Caskroom folder for the cask or one that is a link, no saved
 caskfile, a legacy `.internal.json` one, a file that does not parse, or
 neither `artifacts` of its own nor a receipt that lists any, when Homebrew
@@ -602,10 +602,10 @@ directive it does not read, or it holds neither anything Homebrew put down
 nor any step (an empty list, which Homebrew saves for a cask with nothing
 to uninstall, `cask/installer.rb:594-607`, whatever the receipt says of
 Ruby blocks, since a `.json` caskfile carries none, `:599-600`; or `zap`
-alone), the sentence says only that Canager could not read from
+alone), the sentence says only that Banager could not read from
 Homebrew's records what uninstalling the cask deletes, and claims no
 deletion it cannot back: with an empty list Homebrew runs no artifact's
-uninstall at all (`:714-761`), and a record Canager does not read can
+uninstall at all (`:714-761`), and a record Banager does not read can
 list anything.
 
 **Read-only commands** (background checks; never need a password):
@@ -630,7 +630,7 @@ list anything.
 formulae and casks, and rewrites both on disk. When anything changed, it
 then carries out what the new index says has moved or been renamed, for
 the packages this Mac has installed (`cmd/update-report.rb:259-261` in
-Homebrew 7.0.6). Homebrew does this itself, not Canager, with no
+Homebrew 7.0.6). Homebrew does this itself, not Banager, with no
 preview:
 
 - A cask that has moved to a formula: unless the formula is installed
@@ -649,7 +649,7 @@ preview:
   `cask/migrator.rb:61-65`).
 
 So a refresh that runs `brew update`, the daily check's included, can
-install, move or uninstall Homebrew packages, although Canager runs no
+install, move or uninstall Homebrew packages, although Banager runs no
 install, upgrade or uninstall of its own from it. That refresh read the
 installed packages before `brew update` ran (`inventory` comes first), so
 the next refresh is the first to show all it changed.
@@ -697,7 +697,7 @@ preview):
 
 Every one of these argvs is exactly the verb, the kind flag and the name
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in the same
-file). Canager never passes `--zap`, `--force` or `--ignore-dependencies`
+file). Banager never passes `--zap`, `--force` or `--ignore-dependencies`
 to Homebrew, and never runs a bare `brew upgrade`: upgrades are one
 confirmed artifact per invocation. Before a write command starts,
 `execute` waits up to ten minutes (`OP_UPDATE_WAIT`) for a `brew update`
@@ -716,7 +716,7 @@ Claude Code's section names another.
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
 `<prefix>/var/homebrew/locks/update`, to make sure no `brew update` —
-Canager's or anyone's — overlapped its `brew uses` read
+Banager's or anyone's — overlapped its `brew uses` read
 (`probe_homebrew_update_lock`): the directory is `stat`ed, the file is
 opened read-only and never created, and `fcntl(F_GETLK)` asks whether the
 lock is held without taking it. Every install, uninstall and upgrade
@@ -741,7 +741,7 @@ caskfiles are never opened.
 Adapter: `NpmAdapter` in `crates/banager-core/src/adapters/npm.rs`.
 Verified against npm 12.0.2 (`adapters/meta/npm.toml`).
 
-**Detect.** `npm` is the first `npm` on `PATH`. Canager runs `<npm>
+**Detect.** `npm` is the first `npm` on `PATH`. Banager runs `<npm>
 prefix -g` (30 s) to learn the global prefix, which is the instance's
 identity, and `<npm> --version` (30 s), then asks `access(2)` whether the
 current user can write `{prefix}/lib/node_modules` — or, when that does
@@ -813,11 +813,11 @@ If `pipx list --outdated` exits non-zero, `<pipx> list --json` is run once
 more so every installed tool can be listed as "could not check", with the
 reason — one more process than the table shows, on that path only.
 
-On a pipx older than 1.16, which has no `list --outdated`, Canager
+On a pipx older than 1.16, which has no `list --outdated`, Banager
 instead asks PyPI about each installed tool: `GET
 https://pypi.org/pypi/{name}/json` (30 s each), the name percent-encoded.
 A tool PyPI does not answer for is listed as "could not check", never as
-an error for the whole source. pipx has no search command Canager uses.
+an error for the whole source. pipx has no search command Banager uses.
 
 **Write commands:**
 
@@ -833,7 +833,7 @@ Adapter: `UvAdapter` in `crates/banager-core/src/adapters/uv.rs`.
 Verified against uv 0.12.17 (`adapters/meta/uv.toml`).
 
 **Detect.** `uv` is the first `uv` on `PATH`; `<uv> --version` (30 s). No
-environment variables are added to any uv command, and Canager makes no
+environment variables are added to any uv command, and Banager makes no
 network request of its own for uv: `uv tool list --outdated` reaches PyPI
 itself, under uv's own configuration.
 
@@ -848,7 +848,7 @@ itself, under uv's own configuration.
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
 check", with the reason — one more process than the table shows, on that
-path only. uv has no tool-search command Canager uses.
+path only. uv has no tool-search command Banager uses.
 
 **Write commands:**
 
@@ -873,7 +873,7 @@ named for its package, which never starts with `.`
 (`crates/uv-normalize/src/lib.rs:46-49`), and uv deletes
 neither folder while one that is not `.tmp…` is left there
 (`uninstall.rs:40-41`, `is_temporary`, `crates/uv-fs/src/lib.rs:863-868`).
-So every inventory reads `UV_TOOL_DIR` from Canager's environment, which
+So every inventory reads `UV_TOOL_DIR` from Banager's environment, which
 every uv command inherits (`tool_dir_fn` in `UvAdapter`), and while it is
 set and not empty no uv tool offers Uninstall: each row says why, and
 does not send anyone to run the same `uv tool uninstall` in Terminal,
@@ -888,18 +888,18 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 
 **Detect.** For each of `python3.14`, `python3.13`, `python3.12`,
 `python3.11`, `python3.10`, `python3` and `python` found on `PATH`
-(`PipAdapter::CANDIDATE_INTERPRETERS`), Canager canonicalises the path so
+(`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
 two names for one interpreter count once, and runs `<python> -m pip
 --version` (30 s). Every pip instance is read-only by design. No
-environment variables are added, and Canager makes no network request of
+environment variables are added, and Banager makes no network request of
 its own for pip: `pip list --outdated` reaches PyPI itself.
 
-**The `/usr/bin` shim.** Canager takes an interpreter found in
+**The `/usr/bin` shim.** Banager takes an interpreter found in
 `/usr/bin`, or one that leads there, for one of the developer-tool shims
 `man xcode-select` lists — on a Mac, `/usr/bin/python3` — which run the
 tool of their name from Xcode or the Command Line Tools; with neither
 installed, running one opens the system's dialog offering to install the
-Command Line Tools instead. So before running it, Canager asks
+Command Line Tools instead. So before running it, Banager asks
 `/usr/bin/xcode-select -p` (10 s), which only prints the developer
 directory the shims use, at most once a refresh (`PipAdapter::detect`).
 It runs the interpreter only when that answer names a folder whose
@@ -923,7 +923,7 @@ are installed, its pip is listed.
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command
 can be previewed, let alone run; the pages show no such button for a pip
-package. pip has no search command Canager uses.
+package. pip has no search command Banager uses.
 
 ## Cargo
 
@@ -931,12 +931,12 @@ Adapter: `CargoAdapter` in `crates/banager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
-(30 s). Canager also looks for `cargo-binstall` on the same `PATH` and
+(30 s). Banager also looks for `cargo-binstall` on the same `PATH` and
 remembers the path found for plans. `CARGO_HOME` is read as cargo itself
 reads it: unset or an empty value means the default `~/.cargo`; an
 absolute value is the Cargo home; a relative value names a folder
-relative to cargo's own working directory, which Canager cannot know, so
-Canager then lists no Cargo source rather than guess.
+relative to cargo's own working directory, which Banager cannot know, so
+Banager then lists no Cargo source rather than guess.
 
 **Environment applied to every invocation** (`CargoAdapter::ENV`),
 including `--version` and every plan, cargo-binstall's among them:
@@ -964,7 +964,7 @@ same file and, for each crate installed from the registry, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
 percent-encoded. Crates installed from a git repository or a local path
 are never looked up; they are listed as "could not check" with that
-reason. Cargo has no search command Canager uses.
+reason. Cargo has no search command Banager uses.
 
 **Write commands:**
 
@@ -978,7 +978,7 @@ reason. Cargo has no search command Canager uses.
 
 `--force` here is cargo's own flag, meaning "reinstall even though a
 version of this crate is already installed" — it is how cargo upgrades a
-binary. It is the only `--force` Canager passes to any tool, and it never
+binary. It is the only `--force` Banager passes to any tool, and it never
 goes to Homebrew.
 
 ## Ollama
@@ -993,7 +993,7 @@ daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
 http(s) URL (a bare `host:port` gets `http://` in front; a value that
 does not make an http(s) URL is ignored and the default used), or
-Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Canager also
+Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
 checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
 is a directory: a daemon on this Mac that does not answer while the app
 is there is reported as not running, with an Open Ollama button; anything
@@ -1002,12 +1002,12 @@ No environment variables are added to any ollama command.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
 an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
-Network section, which exempts `http` only, so Canager never sends the
+Network section, which exempts `http` only, so Banager never sends the
 request, and the daemon is reported exactly as one that did not answer —
 not responding, or, when the address is this Mac and Ollama.app is there,
 not running with an Open Ollama button that cannot help, since the next
 request is refused the same way. Nothing on screen says that it was
-Canager that refused. Recorded in `docs/superpowers/backlog.md`.
+Banager that refused. Recorded in `docs/superpowers/backlog.md`.
 
 **Read-only reads:**
 
@@ -1025,7 +1025,7 @@ come out of the daemon's `/api/tags` answer, so before any path is built
 each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
 manifest is always fetched from `registry.ollama.ai`, whatever registry
-the model was pulled from. Ollama has no search command Canager uses.
+the model was pulled from. Ollama has no search command Banager uses.
 
 **Write commands:**
 
@@ -1062,9 +1062,9 @@ Claude Code 2.1.282 (the version in `adapters/meta/standalone-claude.toml`
 and the name of the recorded fixture directory). The first source that is
 not a package manager: the row is one tool, installed by its own installer
 (`curl -fsSL https://claude.ai/install.sh | bash`, run by the user —
-Canager never runs it), and the one item under it is the tool itself.
+Banager never runs it), and the one item under it is the tool itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.local/bin/claude` — never a `claude` found through `PATH`, which on a
 Mac with the Homebrew cask earlier on `PATH` would be that copy instead —
 and checks with `lstat`, `readlink` and `realpath` that it is a symbolic
@@ -1080,7 +1080,7 @@ into `~/.local/share/claude` (the program files were removed by hand or
 by another tool, or by an uninstall that stopped partway) is listed with
 no version and a notice saying so, and its Uninstall moves the link to
 the Trash (below). For a link that does resolve
-into the root, Canager then runs `<claude> --version` (30 s) with
+into the root, Banager then runs `<claude> --version` (30 s) with
 `DISABLE_AUTOUPDATER=1` in its environment: Anthropic documents that
 Claude Code checks for updates on startup, and the variable as stopping
 only that background check (so `claude update` is unaffected); whether
@@ -1098,10 +1098,10 @@ listing an install that no longer matches its own row; the next refresh
 lists what is there. The update check that follows in the same refresh
 runs nothing itself: it compares the version the second look read.
 
-Canager also asks where `claude` would run from if typed in Terminal (the
-first regular file named `claude` with executable bits in Canager's
+Banager also asks where `claude` would run from if typed in Terminal (the
+first regular file named `claude` with executable bits in Banager's
 `PATH`, and where it resolves). When that is this copy there is no
-notice. When it is another file, Canager looks on down `PATH` the same
+notice. When it is another file, Banager looks on down `PATH` the same
 way for a `claude` that resolves to this copy, stopping at the first
 that does or at the end of `PATH`, and says so under the source:
 another program named `claude` comes first — from Homebrew, from npm or
@@ -1113,9 +1113,9 @@ Where a `claude` resolves does not say what program it is, so the first
 of those notices says it may be another copy of Claude Code or a
 different program with the same name, and neither calls it another
 copy. Both looks are reads (`stat`, `realpath`; listed under Files
-Canager reads); that is a notice, not a command.
+Banager reads); that is a notice, not a command.
 
-**Environment Canager adds to version reads** (`CLAUDE.version.env`;
+**Environment Banager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):
 
     DISABLE_AUTOUPDATER=1
@@ -1147,12 +1147,12 @@ preview):
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
 | Upgrade | `<claude> update` | 1800 s | No |
-| Uninstall | none: Canager moves up to three paths to the Trash itself (below) | 120 s; Canager stops between items once it is spent | No |
+| Uninstall | none: Banager moves up to three paths to the Trash itself (below) | 120 s; Banager stops between items once it is spent | No |
 
-Canager adds no environment override to `claude update`; the runner
+Banager adds no environment override to `claude update`; the runner
 inherits the app's ambient environment. `DISABLE_AUTOUPDATER=1` stops the
 background check, and manual updates still work with it set. Immediately
-before starting it, Canager looks at `~/.local/bin/claude` once more, the
+before starting it, Banager looks at `~/.local/bin/claude` once more, the
 way Detect does (`lstat`, `readlink`, `realpath`; no command runs): it
 must still be one link straight into `~/.local/share/claude` that
 resolves there. If it has gone, dangles, is a plain file, or now points
@@ -1165,9 +1165,9 @@ install script stages its download under `~/.claude/downloads`, checks it
 against the release manifest's checksum, and only then runs the new
 binary's own `install`, which sets up the launcher (install.sh, read
 directly); `claude update` itself is a compiled program whose steps were
-not read, so Canager assumes nothing about what a run stopped partway
+not read, so Banager assumes nothing about what a run stopped partway
 leaves behind, and its preview promises nothing. Cancel: allowed
-(`KillThenReconcile`) — the runner stops the process group, Canager reads
+(`KillThenReconcile`) — the runner stops the process group, Banager reads
 `<claude> --version` again, and the operation is reported as unconfirmed
 regardless of that reading (the same rule as every stopped upgrade). If
 it exits 0 but afterwards the launcher is dangling or its version cannot
@@ -1179,11 +1179,11 @@ none could (`--version` did not answer just before the update), there is
 nothing to compare, and an update that exits 0 is reported as a success
 if a version can be read afterwards — even when `claude update` found
 nothing to install. There is no install: the installer is Anthropic's,
-not Canager's.
+not Banager's.
 
 **Uninstall.** Claude Code has no uninstall command. Anthropic's own
 instructions ("Uninstall Claude Code → Native" on
-code.claude.com/docs/en/setup) are two `rm` commands; Canager runs
+code.claude.com/docs/en/setup) are two `rm` commands; Banager runs
 neither and instead moves the same paths, plus the installer's download
 cache, to the Trash itself (`CLAUDE.uninstall` in `recipes.rs`; how, in
 "Moving files to the Trash" below), in this order:
@@ -1208,7 +1208,7 @@ a link — so a `~/.local/bin` kept as a link to a dotfiles folder
 refuses the uninstall, while a `~/.claude` that is a link leaves the
 download cache inside it where it is, and the preview says so; the path
 must belong to the user
-Canager runs as; it must be what the list describes — the
+Banager runs as; it must be what the list describes — the
 program files and the download cache real folders, the launcher one
 symbolic link straight into `~/.local/share/claude`; and moving it must
 not take `~/.claude` or `~/.claude.json` along (of `~/.claude`, only
@@ -1219,12 +1219,12 @@ what either leads to, or any link or folder on the way there: a
 refuses the uninstall. If a
 check fails on a path the list requires, the whole uninstall is refused,
 in the user's language, and nothing is moved; an optional path that is
-there but that Canager cannot confirm is the tool's — the wrong kind of
+there but that Banager cannot confirm is the tool's — the wrong kind of
 thing, a link elsewhere, a folder on the way that is a link — stays,
 and the preview lists it among what is kept. Not yours, or would take a
 kept path along, refuses whether the path is optional or not. The
 preview also records what each path is — its
-device, inode and kind, from `lstat` — and Canager keeps that with the
+device, inode and kind, from `lstat` — and Banager keeps that with the
 plan it issued, never sending it to the window. When the preview is
 confirmed the list is built again from the disk
 (`removal::execute_removal`): if a check now fails, if the list is not
@@ -1237,15 +1237,15 @@ before it — every check runs again on that path, and it is compared once
 more with what the preview recorded; if anything differs the uninstall
 stops before moving it (`Fault::PathChanged`, naming the path), and the
 operation log lists every path already moved. Before the launcher, the
-last, is moved, Canager also looks for every other listed path once
+last, is moved, Banager also looks for every other listed path once
 more: one that is there again — the program files recreated during a
 pause by a Claude Code still running, say — stops the uninstall before
 the launcher (`Fault::PathChanged`, naming that path), so the row stays
-and a fresh preview lists what came back. Canager checks each item
+and a fresh preview lists what came back. Banager checks each item
 immediately before moving it; a program running as you that swaps the
 item in that instant could still race it. The launcher is last, so a
 stop partway — macOS refusing an item (its own words are shown), Cancel,
-or Canager stopping between items once the 120 s budget is spent (a move
+or Banager stopping between items once the 120 s budget is spent (a move
 already under way is always finished first) — always leaves it: a stop
 before the first move changes nothing, and the row stays as it was; once
 the program files are in the Trash, the next refresh shows the
@@ -1253,16 +1253,16 @@ launcher-only row, and its Uninstall lists them as already gone and
 moves the rest. A Claude Code still running can put its program files or
 its cache back after the launcher has gone to the Trash, and with the
 launcher gone no row would show them. So once the pause after the last
-move is over, Canager looks for every other path on the list once more
+move is over, Banager looks for every other path on the list once more
 (`removal::left_behind`): each one that is there is named in the
 operation log (`LogNote::BackAfterUninstall`) and left where it is, and
 the uninstall is reported as needing attention
 (`Attention::BackAfterUninstall`) — quit Claude Code, then uninstall it
 again if it is still listed, or move what came back to the Trash
-yourself. Then Canager looks for the launcher again and, when it is
+yourself. Then Banager looks for the launcher again and, when it is
 gone, for every other path on the list (`reconcile_after_uninstall`):
 the uninstall is reported as succeeded only when all of them are gone,
-and as unconfirmed when Canager cannot tell (a folder it may not read,
+and as unconfirmed when Banager cannot tell (a folder it may not read,
 say). Neither look counts a path the preview's own rule keeps as not
 Claude Code's and that the uninstall never moved.
 
@@ -1275,15 +1275,15 @@ uninstall). Verified against Antigravity CLI 1.2.11 (the version in
 `adapters/meta/standalone-agy.toml` and the name of the recorded fixture
 directory). The row is one tool, installed by Google's own installer
 (`curl -fsSL https://antigravity.google/cli/install.sh | bash`, run by the
-user — Canager never runs it), and the one item under it is the tool
+user — Banager never runs it), and the one item under it is the tool
 itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.local/bin/agy` — never an `agy` found through `PATH` — and checks with
 `lstat` and `realpath` that it is a regular file: the installer copies the
 binary there, and a link of that name is somebody else's (the Homebrew
 cask's `agy` is a link into its Caskroom, and is Homebrew's row). There is
-no launcher-only state: the file *is* the program. Canager then runs
+no launcher-only state: the file *is* the program. Banager then runs
 `<agy> --version` (30 s) with `AGY_CLI_DISABLE_AUTO_UPDATE=true` in its
 environment, the switch Google documents for its background updater. On
 the recorded version (1.2.11, 2026-09-26), `--version` alone did not reach
@@ -1294,11 +1294,11 @@ the switch is a belt on top of that; a run with a prompt is what writes a
 log and starts the updater. The version is the first token of the first
 non-empty line (`1.2.11`).
 
-Canager also asks where `agy` would run from if typed in Terminal, as it
+Banager also asks where `agy` would run from if typed in Terminal, as it
 does for Claude Code, and says so under the source. That is a notice, not
 a command.
 
-**Environment Canager adds to version reads** (`AGY.version.env`):
+**Environment Banager adds to version reads** (`AGY.version.env`):
 
     AGY_CLI_DISABLE_AUTO_UPDATE=true
 
@@ -1310,9 +1310,9 @@ password):
 | Detect, and inventory (whose reading the update check compares) | `<agy> --version`, with `AGY_CLI_DISABLE_AUTO_UPDATE=true` | 30 s |
 | Newest published version (`check_updates`), on Apple silicon only | `GET https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json` — the manifest the installer and the updater read; its top-level `version` | 30 s |
 
-On an Intel Mac, or when Canager itself runs under Rosetta (it then
+On an Intel Mac, or when Banager itself runs under Rosetta (it then
 reports `x86_64`), no request is made: only the Apple-silicon manifest
-has been fetched. The row says only that Canager could not check it for
+has been fetched. The row says only that Banager could not check it for
 updates; why (the check is not yet verified on Intel Macs) is shown, in
 English, with "Show technical details" turned on in Settings. An
 update is listed only when the manifest's version is greater than the
@@ -1325,16 +1325,16 @@ the background (at most every 15 minutes, by Google's documentation and
 this Mac's own log), unless `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the
 switch Google documents for turning that off, is set where it runs; and
 its `agy update` subcommand is undocumented, has no options and has never
-been run — so Canager offers no Update button: a newer version is listed
+been run — so Banager offers no Update button: a newer version is listed
 with the badge "Open to update" and a sentence that says to open the tool
 once and quit it, after which it installs the new version unless its
-automatic updates have been turned off. Canager does not look for that
+automatic updates have been turned off. Banager does not look for that
 switch, so the sentence cannot say whether it is set.
 `Session::issue_plan` refuses the upgrade as well, and so does the
 adapter.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
-command runs): Canager moves to the Trash, in this order, any backup copy
+command runs): Banager moves to the Trash, in this order, any backup copy
 `agy.<time>.old` the updater left in `~/.local/bin` (a regular file with
 that name shape, each listed in the preview), then `~/.local/bin/agy`
 itself — through the same call and the same checks as Claude Code's
@@ -1348,8 +1348,8 @@ list says which of them could go alone, and the Homebrew cask's `zap`
 treats it as one folder; `~/.gemini` itself is shared with Gemini CLI and
 is never touched), `~/.cache/antigravity` (the installer's download staging
 folder, usually empty: it sits directly in `~/.cache`, one of the folders
-Canager never moves anything out of), and `~/.zshrc` and `~/.zprofile`,
-where the installer adds its `PATH` line (Canager never edits a startup
+Banager never moves anything out of), and `~/.zshrc` and `~/.zprofile`,
+where the installer adds its `PATH` line (Banager never edits a startup
 file, and does not read these to find the line). The whole uninstall has
 120 s, as Claude Code's does. There is no vendor uninstall document; the
 list is the installer script's own path plus the cask's `zap`, and the
@@ -1362,10 +1362,10 @@ Adapter: `StandaloneAdapter` over the `GROK` recipe in
 Build 1.0.41 (the version in `adapters/meta/standalone-grok.toml` and the
 name of the recorded fixture directory). The row is one tool, installed by
 xAI's own installer (`curl -fsSL https://x.ai/cli/install.sh | bash`, run
-by the user — Canager never runs it), and the one item under it is the
+by the user — Banager never runs it), and the one item under it is the
 tool itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.grok/bin/grok`, and checks with `lstat`, `readlink` and `realpath` that
 it is a symbolic link whose own text names a place inside `~/.grok` and
 which resolves there — the installer's layout, a relative link,
@@ -1377,7 +1377,7 @@ in `/opt/homebrew/bin` and is Homebrew's row; the Homebrew *formula* named
 `grok` is an unrelated library. A dangling link whose own text points into
 `~/.grok` (the downloads folder was removed — by an uninstall that stopped
 partway, or by hand) is listed with no version and a notice saying so, and
-Uninstall removes what is left. For a link that resolves, Canager runs
+Uninstall removes what is left. For a link that resolves, Banager runs
 `<grok> --version` (30 s) with no added environment (none is documented).
 Whether `--version` runs grok's launch-time updater, and whether that
 updater installs or only checks, are both unverified; on the recorded
@@ -1387,10 +1387,10 @@ wrote nothing under `~/.grok`, as the fixture README records around the
 very read it holds. The version is the second token of the first
 non-empty line (`grok 1.0.41 (4220f3b224a6)`).
 
-Canager also asks where `grok` would run from if typed in Terminal and
+Banager also asks where `grok` would run from if typed in Terminal and
 says so under the source, as it does for Claude Code. The `grok` of the
 formula above, and that of npm's package `grok-cli` (a third-party
-wrapper), are not Grok Build. Canager tells where a `grok` resolves — a
+wrapper), are not Grok Build. Banager tells where a `grok` resolves — a
 Homebrew directory, an npm one or anywhere else — not which program it
 is, so the notice calls a `grok` that comes first another program with
 that name, which may or may not be Grok Build, and never another copy.
@@ -1407,27 +1407,27 @@ are both unverified, above):
 | Detect, inventory (the version the update check lists as current), and the reading before and after an update | `<grok> --version` | 30 s |
 | Newest published version (`check_updates`) | `<grok> update --check --json` — grok's own check; its `--help` describes `--check` as "Check for updates without installing" | 60 s |
 
-Grok's own check prints one JSON object; Canager believes its
+Grok's own check prints one JSON object; Banager believes its
 `updateAvailable` and shows its `latestVersion`, comparing nothing itself
 (the channel is the tool's own, "Native"). A check that exits non-zero,
 prints something that is not that JSON, does not finish in 60 seconds, or
 answers with a non-null `error` field (grok could not find out — say,
 offline) is "could not check" with a short reason, never "up to date" and
 never an error for the source. The reason quotes grok's `error` text when
-it gave one, and says so when Canager could not run the check, when it did
+it gave one, and says so when Banager could not run the check, when it did
 not finish in 60 seconds, or when it did not print that JSON; any other
 end than exit code 0 is worded as every other lookup that runs a command
 words it: the first line of grok's stderr or, when there is none, how the
 check ended (that `grok update --check --json` exited with code 1, say).
-Canager makes no network request of its own for grok; the check's
+Banager makes no network request of its own for grok; the check's
 connection is grok's, under grok's
-configuration (`~/.grok/config.toml`, which Canager does not read). The
+configuration (`~/.grok/config.toml`, which Banager does not read). The
 check writes inside `~/.grok` each time it runs, so every refresh causes
-those writes — grok's, not Canager's ("Files Canager writes"). On the
+those writes — grok's, not Banager's ("Files Banager writes"). On the
 recorded run (2026-09-26) it replaced `~/.grok/version.json`, whose
 `checked_at` became the time of the check; added two lines to grok's own
 log, `~/.grok/logs/unified.jsonl`, recording that it loaded its saved
-login (`~/.grok/auth.json`, which Canager never reads); and touched the 27
+login (`~/.grok/auth.json`, which Banager never reads); and touched the 27
 files of the user guide grok ships, `~/.grok/docs/user-guide` (their
 modification times moved; no file was added or removed). Whether grok
 installs updates on its own (`auto_update = true` means "check for updates
@@ -1439,27 +1439,27 @@ preview):
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
 | Upgrade | `<grok> update` | 1800 s | No |
-| Uninstall | none: Canager moves up to eight paths to the Trash itself (below) | 120 s; Canager stops between items once it is spent | No |
+| Uninstall | none: Banager moves up to eight paths to the Trash itself (below) | 120 s; Banager stops between items once it is spent | No |
 
 `grok update` downloads the new version into `~/.grok/downloads` and
 re-points the `bin/` links, leaving the old download in place (the
 installer's layout; the update's own steps were not read). Immediately
-before starting it, Canager looks at `~/.grok/bin/grok` once more, the way
+before starting it, Banager looks at `~/.grok/bin/grok` once more, the way
 Detect does (no command runs): it must still be one link straight into
 `~/.grok` that resolves there; if it has gone, dangles, is a plain file or
 now points elsewhere, the update is not started, and the operation reports
 the launcher as changed since the preview. Cancel: allowed
-(`KillThenReconcile`) — the runner stops the process group, Canager reads
+(`KillThenReconcile`) — the runner stops the process group, Banager reads
 `<grok> --version` again, and the operation is reported as unconfirmed
 regardless of that reading. An update that exits 0 with the version
 unchanged is reported as needing attention, as for every source. **How
-`grok update` behaves when nothing can answer a prompt (Canager gives it
+`grok update` behaves when nothing can answer a prompt (Banager gives it
 no terminal and a closed stdin) has not been observed by this project**;
 the author records it on a CI runner before this step merges, and this
 paragraph then says what was seen.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
-command runs): Canager moves to the Trash, in this order,
+command runs): Banager moves to the Trash, in this order,
 `~/.local/bin/grok` and `~/.local/bin/agent` when the installer made them
 (it does so only when `~/.grok/bin` was not on `PATH`; they go first,
 while every folder their link text could pass through is still there —
@@ -1478,7 +1478,7 @@ uninstall keeps, so pointing into it does not make a link grok's. Each
 must lead to grok's program — its own text pointing into
 `~/.grok/downloads` or at `~/.grok/bin/grok` or `~/.grok/bin/agent`, and,
 if it still leads somewhere, leading into `~/.grok/downloads` or to the
-very file `~/.grok/bin/grok` runs. An optional path Canager cannot
+very file `~/.grok/bin/grok` runs. An optional path Banager cannot
 confirm is grok's own — a `~/.local/bin/agent` that belongs to another
 program, say, or a link of yours to a plugin's or a skill's program
 inside `~/.grok` — stays and the preview says so. The launcher is last: once
@@ -1488,7 +1488,7 @@ The whole uninstall has 120 s, as Claude Code's does. It keeps `~/.grok`
 itself — `config.toml`, `auth.json` (the login), `sessions/`, `memory/`,
 `skills/`, `plugins/` — and `~/.zshrc`, where the installer wrote its
 marked block. A `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside
-your home folder, so Canager never touches it: when it is a link into
+your home folder, so Banager never touches it: when it is a link into
 `~/.grok` that leads nowhere once the paths above are in the Trash — the
 installer's fallback, to grok's download or through `~/.grok/bin/grok`,
 or one that leads nowhere already — the preview says it becomes a dead
@@ -1503,20 +1503,20 @@ its install script, and the fixture README says so.
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
 `crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
-`rustup.rs` what its uninstall does, when Canager may offer it, and what to
+`rustup.rs` what its uninstall does, when Banager may offer it, and what to
 say about it). Verified against rustup 1.29.1 (the version in
 `adapters/meta/standalone-rustup.toml` and the name of the recorded fixture
 directory). The Rust toolchain installer, installed by its own script
-(`curl … https://sh.rustup.rs | sh`, run by the user — Canager never runs
+(`curl … https://sh.rustup.rs | sh`, run by the user — Banager never runs
 it); the one item under it is rustup itself. The toolchains it manages, and
 the programs `cargo install` installs, are not rows of this source: the
 first are outside phase 4, the second are Cargo's.
 
-**Detect.** Canager looks at the fixed path the installer writes,
-`$CARGO_HOME/bin/rustup` — `CARGO_HOME` from the environment Canager was
+**Detect.** Banager looks at the fixed path the installer writes,
+`$CARGO_HOME/bin/rustup` — `CARGO_HOME` from the environment Banager was
 started with (see "Which Rust" below), read the way rustup and cargo read
 it: an empty value means the default `~/.cargo`, a relative value names a
-folder relative to the tool's own working directory, which Canager cannot
+folder relative to the tool's own working directory, which Banager cannot
 know, so it then lists no rustup rather than guess — never a `rustup`
 found through `PATH` — and checks with `lstat` and `realpath` that it is a
 regular file, not a link: the installer's copy is an executable of its own,
@@ -1532,7 +1532,7 @@ output (`rustup 1.29.1 (d95a37b6a 2026-08-13)`); the two `info:` lines
 rustup prints on standard error are not read. Two things rustup itself
 does on *any* invocation, this read included: it creates `~/.rustup` if it
 is missing, and it deletes a leftover `~/.cargo/bin/rustup-init` from an
-earlier self update, if there is one. Canager also asks where `rustup`
+earlier self update, if there is one. Banager also asks where `rustup`
 would run from if typed in Terminal and says so under the source when it
 is not this copy (as for Claude Code); that is a notice, not a command.
 
@@ -1550,9 +1550,9 @@ comparing the dot-separated integers; a request that fails, answers
 anything but 200, or answers something that is not a versioned TOML file is
 listed as "could not check", never as an error for the source. rustup does
 not update itself on its own: it updates itself only as part of `rustup
-update` and `rustup toolchain install`, which Canager never runs.
+update` and `rustup toolchain install`, which Banager never runs.
 
-**While rustup is being updated or uninstalled, Canager does not run it.**
+**While rustup is being updated or uninstalled, Banager does not run it.**
 Both write commands hold rustup's own lock and the Cargo source's (the
 `cargo` command is rustup's binary under another name), and a refresh that
 arrives while an operation holds a source's lock skips that source
@@ -1586,9 +1586,9 @@ called done on the strength of a version number.
 
 `rustup self uninstall -y` is rustup's official uninstall (`-y` skips its
 own confirmation prompt, which would otherwise read end-of-file from the
-`/dev/null` standard input and stop). **Canager offers it only when Rust
+`/dev/null` standard input and stop). **Banager offers it only when Rust
 lives in its standard folders**: `CARGO_HOME` and `RUSTUP_HOME` (from the
-environment Canager was started with, read as rustup reads them) resolve to
+environment Banager was started with, read as rustup reads them) resolve to
 `~/.cargo` and `~/.rustup`, `~/.cargo` is a real folder and not a link,
 `~/.rustup` is a real folder, not a link, or not there yet, and nothing
 directly inside either folder is a link. Any other layout — a custom
@@ -1599,8 +1599,8 @@ reaches `~/.rustup/toolchains/<name>`, `~/.rustup/update-hashes/<name>` and
 `~/.cargo/bin/<name>` through their parent folder, so a link at one of
 those three names would have it delete the contents of wherever the link
 leads; every other link at the top of either folder it unlinks without
-following, and Canager refuses at any of them rather than keep a list of
-the names rustup follows. Canager will not ask it to delete a place the
+following, and Banager refuses at any of them rather than keep a list of
+the names rustup follows. Banager will not ask it to delete a place the
 preview did not name. The same question is asked of the disk again right
 before the command is started (`StandaloneAdapter::execute`): a folder
 that has since become a link, or been replaced, or a link that has since
@@ -1632,25 +1632,25 @@ that rustup will edit your shell startup files; and each startup file that
 will still speak of Cargo's env file afterwards. It is not cancellable once
 running, for the same reason as the update, and holds the same two locks
 (it deletes the record the Cargo source's inventory reads). Afterwards
-Canager looks for `~/.cargo/bin/rustup` again and reads no version: an
+Banager looks for `~/.cargo/bin/rustup` again and reads no version: an
 exit 0 with it gone is reported as succeeded, an exit 0 with it still there
 as needing attention, and a run stopped by the timeout is judged by the
 same look — gone is succeeded, still there is unconfirmed.
 `--no-modify-path` is not passed: rustup removing its own line beats
 leaving one that makes every shell reading that file print an error.
 
-**Which Rust.** rustup runs with the environment Canager itself was
-started with: at launch Canager restores only `PATH` from your login shell,
-and every command it runs inherits the rest. Canager reads `CARGO_HOME`,
+**Which Rust.** rustup runs with the environment Banager itself was
+started with: at launch Banager restores only `PATH` from your login shell,
+and every command it runs inherits the rest. Banager reads `CARGO_HOME`,
 `RUSTUP_HOME` and `ZDOTDIR` from that same environment — the one the
 rustup it runs will see, so the two always agree about which folders are
 meant. A `RUSTUP_HOME` or `CARGO_HOME` exported only in a shell startup
 file is therefore not seen by either: the preview and the uninstall act on
 the default folders, and a Rust kept only where the shell says is left
-alone, not deleted; a `CARGO_HOME` exported only there also means Canager
+alone, not deleted; a `CARGO_HOME` exported only there also means Banager
 looks for rustup under `~/.cargo` and does not list one installed elsewhere.
 
-**Shell startup files.** Canager never edits one. rustup's uninstall removes
+**Shell startup files.** Banager never edits one. rustup's uninstall removes
 exactly the line it wrote, `. "$HOME/.cargo/env"` (the absolute path when
 the Cargo home is not `~/.cargo`), from `~/.profile`, `~/.bash_profile`,
 `~/.bash_login`, `~/.bashrc`, `$ZDOTDIR/.zshenv` and `~/.zshenv`, in that
@@ -1661,7 +1661,7 @@ visit removes the first line that matches byte for byte, newline included,
 by rewriting in place the file the visited name leads to (`utils/raw.rs`,
 lines 86–98); when `ZDOTDIR` is your home folder the same file is visited
 twice and two copies go. It never visits `~/.zshrc` or fish's
-`config.fish`. So before the uninstall Canager reads those eight files —
+`config.fish`. So before the uninstall Banager reads those eight files —
 `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.bash_profile`, `~/.bash_login`,
 `~/.bashrc`, `~/.profile`, `~/.config/fish/config.fish` — and, when
 `ZDOTDIR` names a folder other than your home, that folder's `.zshenv`,
@@ -1678,7 +1678,7 @@ reads it will meet: "will print an error" when what is left is a line in
 the exact form rustup itself writes (in a file rustup does not edit —
 `~/.zshrc`, unless it is another name for a file rustup visits; a second
 copy of its line; its line last in the file with no newline after it) and
-every line above it stands alone. Canager reads each of those lines with
+every line above it stands alone. Banager reads each of those lines with
 sh's quoting and lets it stand alone only as a whole command that ends on
 that line: no quote, `(`, `{`, `$(` or `${` left open, nor a `)` or `}`
 that does not match the innermost one still open on it; no `<<` outside
@@ -1708,7 +1708,7 @@ guarded line such as `[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`;
 an `echo`; another spelling such as `source ~/.cargo/env`; a
 `$CARGO_HOME/env`. A line that is only a comment counts for nothing.
 rustup learns `ZDOTDIR` by asking `zsh` when your login shell is not zsh;
-Canager runs nothing and reads only the variable it was started with, so
+Banager runs nothing and reads only the variable it was started with, so
 a `ZDOTDIR` set only inside a zsh startup file is not modelled, and a zsh
 whose files live under such a `ZDOTDIR` is not read.
 
@@ -1761,7 +1761,7 @@ Everything else is listed, with where a broken link pointed, the app a
 program runs inside, and whether an installer with administrator rights
 put it there.
 
-Canager reads one path per cask, the first `app` stanza's, so two cask
+Banager reads one path per cask, the first `app` stanza's, so two cask
 shapes are still listed here although Homebrew installed them: a command
 that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
 put on the disk, or one inside a second `.app` of the same cask), and a
@@ -1789,11 +1789,11 @@ icon Finder shows for it (`artifactIcon` in `src/lib/api.ts`, through
 `useArtifactIcon` in `src/lib/queries.ts`), when it draws that cask's
 avatar (`ToolAvatar` in `src/components/ToolAvatar.tsx`), and shows it
 in place of the cask's logo, if it has one (Network, below). Getting an
-icon runs no command, and Canager reads nothing else for it:
+icon runs no command, and Banager reads nothing else for it:
 
 - The window sends the row's key — which source, which kind of package,
   which name — and nothing else (`artifact_icon` in
-  `src-tauri/src/ipc.rs`). Canager looks that key up in the sources' last
+  `src-tauri/src/ipc.rs`). Banager looks that key up in the sources' last
   known state (`Session::artifact_icon` in
   `crates/banager-core/src/session/icon.rs`) and goes on only for a cask
   whose path is absolute and ends in `.app` (`cask_app_bundle` in
@@ -1804,7 +1804,7 @@ icon runs no command, and Canager reads nothing else for it:
   ever read as a path. A formula, a font, a cask with no app, and a key
   the last known state has no row for get no icon, and nothing is read
   for them.
-- Canager `lstat`s that path, each time the window asks: an icon is drawn
+- Banager `lstat`s that path, each time the window asks: an icon is drawn
   only for a folder, never for a link to one — an app Homebrew recorded as
   a link gets no icon rather than one with Finder's alias arrow — and the
   folder's modification time, device and inode tell whether the icon drawn
@@ -1814,8 +1814,8 @@ icon runs no command, and Canager reads nothing else for it:
   crate, and has AppKit draw that icon 128 × 128 pixels and encode it as
   PNG (`RealIconRenderer` in `crates/banager-core/src/icon/real.rs`).
   macOS finds the icon itself, in the app or in its own icon cache;
-  Canager opens no file in the app.
-- The PNG goes to the window as a `data:image/png;base64,…` URL. Canager
+  Banager opens no file in the app.
+- The PNG goes to the window as a `data:image/png;base64,…` URL. Banager
   keeps each icon in memory, one per app folder, until it quits
   (`AppIcons`), and the window does not ask for it again for an hour
   (`useArtifactIcon`). Nothing is written to disk and no connection is
@@ -1829,7 +1829,7 @@ call and checks it is a 128 × 128 PNG drawn across the whole square; it
 reads that icon and writes nothing. Run it with `cargo test -p
 banager-core --lib icon::real -- --ignored`; CI does not.
 
-## Files Canager reads
+## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:
 
@@ -1842,7 +1842,7 @@ All read-only, none saved anywhere else, none uploaded:
   `INSTALL_RECEIPT.json` (Homebrew's section).
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
-  through `NSWorkspace iconForFile:` — Canager opens no file in the app
+  through `NSWorkspace iconForFile:` — Banager opens no file in the app
   (App icons, above).
 - npm: whether `{prefix}/lib/node_modules`, `{prefix}/lib` or `{prefix}`
   is writable, via `access(2)`.
@@ -1877,7 +1877,7 @@ All read-only, none saved anywhere else, none uploaded:
   directory's `agy`, as for Claude Code. For an uninstall preview, when
   it is confirmed, and again right before each path is moved: the same
   reads as for Claude Code's list, for `~/.local/bin/agy` and every
-  `agy.<time>.old` backup, which Canager finds among the names in
+  `agy.<time>.old` backup, which Banager finds among the names in
   `~/.local/bin` (the Other Programs page's rule 4 goes by the same names); and
   whether `~/.gemini/antigravity-cli`, `~/.cache/antigravity`, `~/.zshrc`
   and `~/.zprofile` exist and where they lead (`lstat`, `realpath`;
@@ -1923,43 +1923,43 @@ All read-only, none saved anywhere else, none uploaded:
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents. A row's Show in Finder: where the path it shows
   leads (`realpath`), and nothing else (Unknown-source scan, above).
-- Canager's own `settings.json` in its application data directory
+- Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
-- Canager's own `.window-state.json` beside it, once, as the window opens:
-  the size and position the window had when Canager last quit, the
+- Banager's own `.window-state.json` beside it, once, as the window opens:
+  the size and position the window had when Banager last quit, the
   position used only if a display is still there (the Tauri window-state
   plugin, registered in `run()` in `src-tauri/src/lib.rs`; a missing or
   unreadable file means the window opens at its default size, centred).
 
-## Files Canager writes
+## Files Banager writes
 
-Two, both in Canager's application data directory. `settings.json`
+Two, both in Banager's application data directory. `settings.json`
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
 directory is created if it is missing). And `.window-state.json`: the
 window's size and position, and whether it was zoomed or in full screen,
-written as Canager quits so that the window opens the same way next time
+written as Banager quits so that the window opens the same way next time
 (the Tauri window-state plugin, registered in `run()` in
 `src-tauri/src/lib.rs`, which keeps it in Tauri's config directory for the
 app — on macOS the same folder). That one is written in place, not renamed
 into place: a file a crash cut short is ignored at the next launch, and
 the window opens at its default size. Nothing else on the Mac is written
-or deleted by Canager itself. It moves files in one case: a
+or deleted by Banager itself. It moves files in one case: a
 confirmed uninstall of a tool that has no uninstall command (Claude Code,
 Antigravity CLI or Grok Build) moves the paths its preview listed to the
-Trash (next section). The programs Canager runs write their own files as
+Trash (next section). The programs Banager runs write their own files as
 they run — Grok Build's own update check (`grok update --check --json`,
 Grok Build's section), for one, writes inside `~/.grok` on every refresh:
 on the recorded run it replaced `~/.grok/version.json` with the time of
 the check, added two lines to its log and touched the user guide it
-ships. Those writes are grok's, not Canager's. Every other change to what
+ships. Those writes are grok's, not Banager's. Every other change to what
 is installed is made by the tool named in the preview, running the
 command shown there.
 
 ## Moving files to the Trash
 
 `RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
-in Canager that changes a file on the Mac other than its own settings.
+in Banager that changes a file on the Mac other than its own settings.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by
@@ -1971,7 +1971,7 @@ link, never its target: the
 item's kind comes from the `lstat` that ends its last check, so a link is
 never handed to the system as a folder, and nothing else looks at the
 path between that check and the call. The call itself takes a path, so
-one gap remains: Canager checks each item immediately before moving it;
+one gap remains: Banager checks each item immediately before moving it;
 a program running as you that swaps the item in that instant could still
 race it. Each move is written to the operation log with where the item
 now is (`LogNote::MovedToTrash`); an item macOS refuses stops the
@@ -1981,17 +1981,17 @@ uninstall stopped before and the budget it ran out of
 (`LogNote::OutOfTime`); and a path on the list that is there once the
 pause after the last move is over is named too, and left where it is
 (`LogNote::BackAfterUninstall`; the Claude Code section says why).
-After each move Canager waits 3 seconds
+After each move Banager waits 3 seconds
 (`removal::PUT_BACK_SETTLE`) before it moves anything else, and before it
 reports the uninstall finished. That holds across uninstalls: up to three
 operations run at once and each path-list uninstall locks only its own
 tool, so two tools' uninstalls can run side by side, and their moves take
 turns on one shared clock (`removal::LastMove`) — an item waits while an
 item of the other uninstall is waiting or moving, then until 3 seconds
-after the last move Canager made, and only then gets its last check and
+after the last move Banager made, and only then gets its last check and
 its move. Cancel ends a wait, and no wait outlasts the uninstall's time
 budget; time spent waiting for another uninstall's moves comes out of it
-too. The second finding below says why. A debug build of Canager, never
+too. The second finding below says why. A debug build of Banager, never
 a release one, also tries to list the Trash after each move and prints
 whether it may; that is how the pre-merge check learns the build it ran
 had no Full Disk Access.
@@ -2011,28 +2011,28 @@ a listing of `~/.Trash`:
   Every item got one when the calls were at least 2 seconds apart (4 runs
   out of 4); when they came 1.5 seconds apart or less, only the first
   item of the burst did (15 runs out of 15). Those were one process's
-  calls, and two uninstalls in Canager are one process too — hence the
-  3-second pause between any two of Canager's moves, not only between one
+  calls, and two uninstalls in Banager are one process too — hence the
+  3-second pause between any two of Banager's moves, not only between one
   uninstall's: it makes Put Back likely for every item, not certain, and
   an item without the record can still be dragged back out of the Trash
   by hand. The runs that recorded every item also kept running for 3
   seconds after the last call, and the record is written after the call
   returns — with Full Disk Access, a process that quit at once lost the
-  later records — so Canager waits after an uninstall's last move too,
-  and quitting Canager while an uninstall is still running may leave the
+  later records — so Banager waits after an uninstall's last move too,
+  and quitting Banager while an uninstall is still running may leave the
   item it moved last without Put Back. Why macOS behaves this way is not
   known: the pause is a measurement on one Mac, not a documented
   guarantee.
 - A plain `rename` into `~/.Trash` from the same process succeeded too
   (24 runs out of 24), where the design had expected it to be refused:
   the Trash's protection covers listing it, not adding to it, so a `mv`
-  could have reached it. Canager does not use one anyway: a renamed item
+  could have reached it. Banager does not use one anyway: a renamed item
   gets no Put Back record, and one `mv` of Claude Code's two paths named
   `claude` collides on the name — `mv -n` skips the second and still
   reports success.
 
 Not verified by that app: a click on Put Back itself (the records were
-checked, not used), a build of Canager itself, a symbolic link whose
+checked, not used), a build of Banager itself, a symbolic link whose
 target is gone — which is what every Claude Code uninstall moves last:
 the launcher, after the program files it points to — other macOS
 versions, and Intel Macs.
@@ -2044,7 +2044,7 @@ checks that each lands in `~/.Trash` as itself; CI runs it. It runs from
 a terminal or a CI runner, not from a Finder-launched app without Full
 Disk Access, so it checks the move, not Put Back.
 
-## Network: Canager only connects to these hosts
+## Network: Banager only connects to these hosts
 
 Every request goes through `RealHttpClient`
 (`crates/banager-core/src/http/real.rs`), and it refuses, before opening a
@@ -2058,7 +2058,7 @@ connection, any `https` request whose host is not on this list
 | `registry.ollama.ai` | `GET /v2/{namespace}/{name}/manifests/{tag}` — one model's manifest | Ollama's `check_updates` |
 | `downloads.claude.ai` | `GET /claude-code-releases/latest` or `/stable` — the newest published Claude Code version on that channel, answered as one bare version number | Claude Code's `check_updates` (`StandaloneAdapter`) |
 | `static.rust-lang.org` | `GET /rustup/release-stable.toml` — the newest published rustup version, a two-line TOML file (`version = '…'`) | rustup's `check_updates` (`StandaloneAdapter`) |
-| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Canager itself runs on Apple silicon — on an Intel Mac no request is made and the row says only that it could not be checked (why, only with "Show technical details" on) |
+| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Banager itself runs on Apple silicon — on an Intel Mac no request is made and the row says only that it could not be checked (why, only with "Show technical details" on) |
 
 Plain `http` is exempt from the list for one caller: the Ollama daemon at
 `OLLAMA_HOST` or `http://127.0.0.1:11434` (`GET /api/tags`), which may be
@@ -2069,7 +2069,7 @@ that did not answer (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
 Every request: TLS through rustls; the header `User-Agent:
-canager/<version>`; no other header of Canager's own, except `Accept` on
+banager/<version>`; no other header of Banager's own, except `Accept` on
 the Ollama registry request — the HTTP library adds what the protocol
 needs, `Host` and `Accept: */*`, and nothing else; no cookies, no
 credentials, nothing about this Mac in the request; a timeout per request
@@ -2090,12 +2090,12 @@ which asks Finder to show a file and connects to nothing (Unknown-source
 scan, above). The window cannot have it open a URL: there is no homepage
 link; when one ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint
-`https://github.com/Brulek/Canager/releases/latest/download/latest.json`
-(`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Canager
+`https://github.com/Brulek/Banager/releases/latest/download/latest.json`
+(`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Banager
 calls it yet, so no request to it is made; when app self-update ships,
 this paragraph changes.
 
-Showing a logo makes no network request either. The logos Canager shows
+Showing a logo makes no network request either. The logos Banager shows
 for tools and sources are built into the app: `pnpm icons:build`
 (`scripts/tool-icons/build.mjs`) writes them into `src/assets/tool-icons/`
 at development time, downloading the GitHub avatars among them, and
@@ -2105,7 +2105,7 @@ own that the window loads from the app, as it loads the rest of itself.
 The window's content security policy was not changed for them. A logo
 Simple Icons lists under a license of its own keeps that license:
 `icons:build` stops, before it downloads or writes anything, when the
-mapping names one under a license Canager does not ship
+mapping names one under a license Banager does not ship
 (`SHIPPABLE_LICENSE` in `build.mjs`), and otherwise writes that logo
 unmodified — its path exactly as Simple Icons has it — with its license
 and Simple Icons' source for it into `pack.json`. Settings credits each
@@ -2116,7 +2116,7 @@ credits call no opener either.
 
 Showing a tool's line in Chinese, or an npm, PyPI or crates.io
 package's line in English, makes no network request either. The lines a
-window shows under a tool's name, where Canager has one, are built into
+window shows under a tool's name, where Banager has one, are built into
 the app too: `src/assets/tool-descriptions/zh-CN.json`, translated at
 development time from the description each tool's own source gives it,
 and `src/assets/tool-descriptions/en.json`, rewritten at development
@@ -2126,14 +2126,14 @@ committed. `src/lib/toolDescriptions.ts` reads each with a dynamic
 window's script, that the window loads from the app only once it is in
 that file's language (`useTranslatedDescription`).
 
-The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
+The tools Banager runs make their own connections — `brew`, `npm`, `pip`,
 `pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull`, `claude update`,
 `rustup self update`, `grok update --check --json` and `grok update` each
 reach whatever index, registry or release server they are configured to
 use. Those are the tools' connections, under the tools' configuration;
-Canager neither chooses nor sees them.
+Banager neither chooses nor sees them.
 
-## What Canager never does
+## What Banager never does
 
 - Never runs a shell for any command, and never pipes a download into one
   (`curl … | sh`). The one shell run is the `PATH` read at launch, above.
@@ -2151,7 +2151,7 @@ Canager neither chooses nor sees them.
   (`RUSTUP_AUTO_INSTALL=0`).
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
-  Canager offers that only when the preview can name exactly those two.
+  Banager offers that only when the preview can name exactly those two.
 - Never runs `agy update` (undocumented, never observed), and never runs
   `grok update` from a refresh: the refresh runs `grok update --check
   --json`, which grok's own help describes as checking without
@@ -2167,7 +2167,7 @@ Canager neither chooses nor sees them.
   Homebrew software when its periodic clean-up is due; when a `brew.env`
   file takes either back, the preview says so (Homebrew's section).
 - Never runs a `brew` command as root.
-- Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Canager's
+- Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Banager's
   environment: removing the last tool, uv would then also delete the
   folder above that one, with every file in it, when that folder holds no
   other folder (uv's section).
@@ -2183,7 +2183,7 @@ Canager neither chooses nor sees them.
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
 - Never opens a tool to make it update itself: a self-updating tool's row
-  tells the user how, and Canager runs nothing.
+  tells the user how, and Banager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
 - Never deletes a file and never empties the Trash. Never writes a file
@@ -2206,7 +2206,7 @@ Canager neither chooses nor sees them.
   tool's uninstall list describes
   (for Claude Code, Anthropic's removal steps plus its installer's
   download cache; for Antigravity CLI and Grok Build, which publish no
-  removal steps, Canager's own reading of how each was installed);
+  removal steps, Banager's own reading of how each was installed);
   never moves the settings, login and history Claude Code keeps
   in `~/.claude` (of that folder only its download cache,
   `~/.claude/downloads`) or `~/.claude.json`, the login, sessions, memory

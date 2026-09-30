@@ -201,28 +201,28 @@ describe("types", () => {
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
 
-    // What `model.rs`'s `test_canager_failed_is_externally_tagged_on_the_wire`
+    // What `model.rs`'s `test_banager_failed_is_externally_tagged_on_the_wire`
     // asserts serde emits: a unit `Fault` is a bare string, a data one a
     // single-key object.
-    const panicked: Outcome = { CanagerFailed: "Panicked" };
+    const panicked: Outcome = { BanagerFailed: "Panicked" };
     const missing: Outcome = {
-      CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
+      BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     };
     const spawn: Outcome = {
-      CanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } },
+      BanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } },
     };
-    expect(JSON.stringify(panicked)).toBe('{"CanagerFailed":"Panicked"}');
+    expect(JSON.stringify(panicked)).toBe('{"BanagerFailed":"Panicked"}');
     expect(JSON.stringify(missing)).toBe(
-      '{"CanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}',
+      '{"BanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}',
     );
     expect(JSON.stringify(spawn)).toBe(
-      '{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}',
+      '{"BanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}',
     );
     expect(roundTrip(missing)).toEqual(missing);
     // Phase 4 step C: a path changed between the preview and the run.
-    const changed: Outcome = { CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } };
+    const changed: Outcome = { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } };
     expect(JSON.stringify(changed)).toBe(
-      '{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
+      '{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
     );
     expect(roundTrip(changed)).toEqual(changed);
   });

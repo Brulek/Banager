@@ -89,7 +89,7 @@ struct Cached {
     icon: Option<Arc<str>>,
 }
 
-/// Every cask icon drawn since Canager started, kept in memory only: one
+/// Every cask icon drawn since Banager started, kept in memory only: one
 /// entry per `.app` path, each for the folder as it was when drawn (its
 /// modification time, device and inode). A row asking again for a folder
 /// that has not changed gets the icon already drawn, so a list of fifty
@@ -215,7 +215,7 @@ mod tests {
         fn new(tag: &str) -> TempDir {
             static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let raw = std::env::temp_dir().join(format!(
-                "canager-icon-{tag}-{}-{}",
+                "banager-icon-{tag}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));

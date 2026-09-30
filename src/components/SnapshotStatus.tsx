@@ -37,7 +37,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false, showsNothing
   const { data: settings } = useSettings();
   const technical = settings?.show_technical_details ?? false;
 
-  // What Canager works with, and where it looks, behind "Details" on the
+  // What Banager works with, and where it looks, behind "Details" on the
   // two states that found nothing. "Not found", never "not installed": a
   // tool with its own installer is looked for in its default location
   // only, so one somewhere else is not found although it is there.
@@ -106,7 +106,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false, showsNothing
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
     // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
     // why its three fields, and only they, mean that). Judging it here
-    // would flash "Canager found nothing it can manage" at every launch.
+    // would flash "Banager found nothing it can manage" at every launch.
     // The first check's spinner and why it takes a while (`FirstCheck`) are
     // shown instead, by the page itself where it draws them. The Updates
     // and Installed pages said a small grey "Loading…" in a corner here,

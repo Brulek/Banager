@@ -1,4 +1,4 @@
-//! Moving files to the Trash: the one change Canager makes to a file in
+//! Moving files to the Trash: the one change Banager makes to a file in
 //! its own process besides its settings (phase 4 spec §6.2, 附录 B).
 //! `Trasher` is the seam, like `CommandRunner` and `HttpClient`:
 //! `RealTrasher` is macOS's own `NSFileManager trashItemAtURL:` -- the call
@@ -39,18 +39,18 @@ pub enum TrashError {
     /// and in a `LogNote::TrashFailed`.
     #[error("{detail}")]
     Refused { detail: String },
-    /// Canager could not hand the item to the system at all: not macOS,
-    /// where nothing implements the move (Canager v0.1 ships for macOS
+    /// Banager could not hand the item to the system at all: not macOS,
+    /// where nothing implements the move (Banager v0.1 ships for macOS
     /// only, the crate doc in lib.rs; a build for another Unix reaches this
     /// at run time, honestly, rather than failing to compile), or a path
     /// that is not valid UTF-8, which `NSString` cannot carry (macOS's file
-    /// systems do not create such names). Canager's own limitation, with no
+    /// systems do not create such names). Banager's own limitation, with no
     /// words of the Mac's to quote: `execute_removal` reports it as
     /// `Fault::Internal`, never as `Failed` or `TrashFailed`. Produced by
     /// `RealTrasher`: off macOS for every path, and on macOS only for a
     /// path whose home folder's own name is not UTF-8 -- so, either way,
     /// for every path of one uninstall alike, from the first on.
-    #[error("Canager could not hand this item to the system's Trash")]
+    #[error("Banager could not hand this item to the system's Trash")]
     Unsupported,
 }
 

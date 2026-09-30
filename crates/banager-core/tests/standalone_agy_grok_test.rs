@@ -30,7 +30,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-agy-grok-{tag}-{}-{}",
+            "banager-agy-grok-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

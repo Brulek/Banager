@@ -93,7 +93,7 @@ export function useUnknownScan(): UseQueryResult<UnknownScan> {
 /**
  * The Unknown page's Show in Finder, handed the path to show
  * (`revealInFinder`). Nothing is cached and nothing refreshed after it:
- * Finder shows the file, and nothing Canager knows has changed. A mutation
+ * Finder shows the file, and nothing Banager knows has changed. A mutation
  * for its error, which the page says.
  */
 export function useRevealInFinder(): UseMutationResult<void, Error, string> {
@@ -244,7 +244,7 @@ export function useOpenOllamaApp(): UseMutationResult<void, Error, void> {
  * again. An app's icon changes only when the app is replaced, by an
  * upgrade, and asking again costs little: the Rust side keeps every icon it
  * drew in memory until the app's folder changes (`AppIcons`). An hour, so
- * an app upgraded while Canager stays open shows its new icon without a
+ * an app upgraded while Banager stays open shows its new icon without a
  * relaunch, and a row scrolled away and back does not ask again.
  */
 export const ARTIFACT_ICON_STALE_MS = 60 * 60 * 1000;

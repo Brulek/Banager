@@ -244,7 +244,7 @@ describe("OperationBar", () => {
     tech.unmount();
 
     // macOS's own reason a program would not start, likewise.
-    operations = [op(7, "wget", "Done", { CanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } } })];
+    operations = [op(7, "wget", "Done", { BanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } } })];
     const on = renderWithProviders(<OperationBar />);
     await on.findByText(/os error 13/);
     on.unmount();

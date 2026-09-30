@@ -318,7 +318,7 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * The number of updates is said once, in the title. Where the check found
  * nothing to show (`nothingFound`) -- no source, or nothing installed --
  * the row says that, a muted ⓘ beside it, its sentence under it with
- * 「详情」 on what Canager works with, and a grey Check Again.
+ * 「详情」 on what Banager works with, and a grey Check Again.
  *
  * While a check runs, the row keeps what the last one found -- its symbol,
  * its title, its button -- and only its line says 「正在检查…」: the
@@ -339,7 +339,7 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * program that runs instead), with its own button (`ProblemRow`) -- the
  * warnings first, the notes folded into one row after them
  * (`ProblemsGroup`). The checks that did not finish this round are its
- * first row (`unfinishedChecksNotice`), as they are the lists' first line. What a source lets Canager do at all,
+ * first row (`unfinishedChecksNotice`), as they are the lists' first line. What a source lets Banager do at all,
  * pip being read-only, is not news here; both lists say it on each of its
  * rows. The sources themselves are in the sidebar.
  */
@@ -424,7 +424,7 @@ export function OverviewPage() {
   } else if (checking) {
     line = t("common.checking");
   } else if (found !== null) {
-    // Its one sentence, and what Canager works with and where it looks
+    // Its one sentence, and what Banager works with and where it looks
     // behind 「详情」, a link: the page's one.
     const title = t(NOTHING_FOUND_KEYS[found].title);
     line = (

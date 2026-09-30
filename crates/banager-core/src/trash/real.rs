@@ -37,7 +37,7 @@ impl Trasher for RealTrasher {
         use objc2_foundation::{NSFileManager, NSString, NSURL};
 
         // `NSString` carries UTF-8, and macOS's file systems do not create
-        // a name that is not: Canager's limitation, not the system's
+        // a name that is not: Banager's limitation, not the system's
         // answer, so `Unsupported` rather than a `Refused` in its own words.
         let Some(utf8) = path.to_str() else {
             return Err(TrashError::Unsupported);
@@ -93,10 +93,10 @@ fn report_trash_access(trashed: &Path) {
     };
     match std::fs::read_dir(trash) {
         Ok(_) => eprintln!(
-            "[canager] debug: read_dir({}) -> Ok: this process can list the Trash (it has Full Disk Access)",
+            "[banager] debug: read_dir({}) -> Ok: this process can list the Trash (it has Full Disk Access)",
             trash.display()
         ),
-        Err(error) => eprintln!("[canager] debug: read_dir({}) -> Err: {error}", trash.display()),
+        Err(error) => eprintln!("[banager] debug: read_dir({}) -> Err: {error}", trash.display()),
     }
 }
 

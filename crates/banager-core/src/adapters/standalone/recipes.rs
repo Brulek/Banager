@@ -15,7 +15,7 @@ use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 use crate::scan::Glob;
 
 /// Claude Code, the native install (`curl -fsSL https://claude.ai/install.sh
-/// | bash`, run by the user; Canager never runs it).
+/// | bash`, run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/claude.md` (VERIFIED on
 /// this Mac or in Anthropic's own documentation, 2026-09-24, unless
@@ -45,7 +45,7 @@ use crate::scan::Glob;
 ///   checksum, and only then runs the new binary's own `install`, which
 ///   sets up the launcher (install.sh, read directly, §4 and §6);
 ///   `claude update` itself is compiled and its steps were not read
-///   (§6, §8), so Canager assumes nothing about interruption:
+///   (§6, §8), so Banager assumes nothing about interruption:
 ///   `KillThenReconcile`, no claim in the preview, and stopped upgrades
 ///   remain `Unconfirmed` even if the version changes. After exit 0, a
 ///   readable version gates success. 1800 s is spec §4.1's upgrade
@@ -61,7 +61,7 @@ use crate::scan::Glob;
 /// same page's separate, explicitly optional step ("Removing configuration
 /// files will delete all your settings…"; the VS Code extension, the
 /// JetBrains plugin and the desktop app write to `~/.claude/` too, §7):
-/// `~/.claude` and `~/.claude.json`, which Canager keeps (spec Q4) -- of
+/// `~/.claude` and `~/.claude.json`, which Banager keeps (spec Q4) -- of
 /// `~/.claude` it moves only `downloads`, the cache above. Order: program
 /// files, cache, the launcher last (spec §6.2).
 pub static CLAUDE: Recipe = Recipe {
@@ -124,7 +124,7 @@ pub static CLAUDE: Recipe = Recipe {
 
 /// Antigravity CLI (`agy`), Google's terminal agent, installed by its own
 /// script (`curl -fsSL https://antigravity.google/cli/install.sh | bash`,
-/// run by the user; Canager never runs it).
+/// run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/agy.md` (VERIFIED on this
 /// Mac, in the install script read in full, or in Google's own
@@ -235,7 +235,7 @@ pub static AGY: Recipe = Recipe {
 
 /// Grok Build (`grok`), xAI's terminal agent, installed by its own script
 /// (`curl -fsSL https://x.ai/cli/install.sh | bash`, run by the user;
-/// Canager never runs it).
+/// Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/grok.md` (VERIFIED on
 /// this Mac, in the install script, or in the README the tool ships,
@@ -265,7 +265,7 @@ pub static AGY: Recipe = Recipe {
 ///   `updateAvailable` is believed and `latestVersion` shown (spec §4.3);
 ///   a non-null `error` makes the row "could not check" with that text
 ///   (ruling 10 of the phase 4 step D plan); 60 s. The check writes inside
-///   `~/.grok` when it runs -- grok's writes, not Canager's, once per
+///   `~/.grok` when it runs -- grok's writes, not Banager's, once per
 ///   refresh: on the recording it replaced `version.json` with the time of
 ///   the check (`checked_at`, §1), added two lines to its log
 ///   `logs/unified.jsonl` and touched the user guide it ships in
@@ -434,7 +434,7 @@ const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
 
 /// rustup, the Rust toolchain installer, installed by its own script
 /// (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`,
-/// run by the user; Canager never runs it).
+/// run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/rustup.md` (VERIFIED on
 /// this Mac or in rustup's own source at tag 1.29.1, 2026-09-24/25,
@@ -447,7 +447,7 @@ const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
 ///   on this Mac); the thirteen proxies beside it (`cargo`, `rustc`,
 ///   `rustfmt`, …) are relative symlinks to it (§2; unknown-scan.md §2),
 ///   which the Unknown page's rule 1 attributes. The root is the Cargo
-///   home: Canager reads nothing under `RUSTUP_HOME` except, during the
+///   home: Banager reads nothing under `RUSTUP_HOME` except, during the
 ///   uninstall preview, the names in its `toolchains/` (spec §2.2, §3.2);
 /// - `rustup --version` prints `rustup <version> (<hash> <date>)` on
 ///   stdout, and two `info:` lines on stderr that are never read (§3;
@@ -470,7 +470,7 @@ const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
 /// - it does not update itself on its own (spec §3.5): rustup updates
 ///   itself only as part of `rustup update` and `rustup toolchain
 ///   install` (`SelfUpdateMode::update`, rustup_mode.rs:1042-1090), which
-///   Canager never runs;
+///   Banager never runs;
 /// - `rustup self update` (never `rustup update`, which updates the
 ///   toolchains and, interrupted, leaves them half installed:
 ///   rust-lang/rustup#4724, §7) is `NoCancel` with the cargo instance's
@@ -495,10 +495,10 @@ const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
 ///   lines). `--no-modify-path` is not passed (spec Q6): rustup removing
 ///   its own startup line beats leaving one that errors on every new
 ///   terminal;
-/// - both commands run with Canager's own environment: `fix_path_env`
+/// - both commands run with Banager's own environment: `fix_path_env`
 ///   restores only `PATH` from the login shell, and the runner passes the
 ///   rest as inherited. A `RUSTUP_HOME` or `CARGO_HOME` exported only in
-///   a shell startup file is not seen by Canager or by the rustup it
+///   a shell startup file is not seen by Banager or by the rustup it
 ///   runs -- the two agree, which is what the gate relies on -- so the
 ///   preview and the uninstall act on the default folders, and a Rust
 ///   kept only where the shell says is left alone, not deleted (plan
@@ -746,7 +746,7 @@ mod tests {
                 Latest::HttpJsonField { url, .. } => vec![url.to_string()],
                 // The tool's own command makes its own connection, under its
                 // own configuration (docs/what-we-run.md, the network
-                // section's last paragraph): no host of Canager's.
+                // section's last paragraph): no host of Banager's.
                 Latest::Command { .. } => Vec::new(),
             };
             for url in urls {

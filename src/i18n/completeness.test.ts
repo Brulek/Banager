@@ -204,12 +204,12 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.BackAfterUninstall",
     "Failed",
     "FailedSilent",
-    "CanagerFailed.Panicked",
-    "CanagerFailed.ProgramMissing",
-    "CanagerFailed.SpawnFailed",
-    "CanagerFailed.HomebrewStillUpdating",
-    "CanagerFailed.PathChanged",
-    "CanagerFailed.Internal",
+    "BanagerFailed.Panicked",
+    "BanagerFailed.ProgramMissing",
+    "BanagerFailed.SpawnFailed",
+    "BanagerFailed.HomebrewStillUpdating",
+    "BanagerFailed.PathChanged",
+    "BanagerFailed.Internal",
   ],
 };
 

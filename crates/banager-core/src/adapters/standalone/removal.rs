@@ -8,7 +8,7 @@
 //! every check on that item once more immediately before its move and,
 //! before the launcher's move, looking once more for every other listed
 //! path, which must be gone by then unless it is an optional one this run
-//! never moved that Canager cannot confirm is the tool's
+//! never moved that Banager cannot confirm is the tool's
 //! (`listed_path_back`); and, once the pause after the last move is over,
 //! looking for them all again and naming any that came back
 //! (`left_behind`). Nothing here knows the `Adapter` contract (`mod.rs`
@@ -17,7 +17,7 @@
 //! What the checks guard against is change by accident: the tool's own
 //! updater, the user, another app doing its ordinary work between the
 //! preview and the click, or during the pauses between moves. A program
-//! running as the user can do everything Canager can; one that swaps an
+//! running as the user can do everything Banager can; one that swaps an
 //! item in the instant between that item's last check and the system's
 //! move could still race it (`take_turn`; docs/what-we-run.md says so).
 
@@ -52,7 +52,7 @@ pub const TIMEOUT_SECS: u64 = 120;
 /// run's next item, or an item of another path-list uninstall running at
 /// the same time (`LastMove`) -- and after a run's last move before that
 /// run is reported finished. From a process without Full Disk
-/// Access -- a Finder-launched Canager -- Finder wrote its "Put Back"
+/// Access -- a Finder-launched Banager -- Finder wrote its "Put Back"
 /// record for only the first of a burst of `trashItemAtURL:` calls up to
 /// 1.5 s apart, and for every item when they were 2 s or more apart
 /// (2026-09-25, one Mac, macOS 27.0: 15/15 and 4/4 runs; the mechanism is
@@ -128,7 +128,7 @@ pub struct Pacing {
 /// up to three operations at once and a path-list uninstall locks only its
 /// own instance, so two tools' uninstalls can run side by side; the Trash
 /// spike's bursts were one process's calls (`PUT_BACK_SETTLE`), and to
-/// macOS two uninstalls in Canager are one process too. So each item waits
+/// macOS two uninstalls in Banager are one process too. So each item waits
 /// for the lock, then until its run's `Pacing.settle` has passed since the
 /// move recorded here, has its turn, and records its own move before it
 /// lets go (`wait_for_the_trash`, `execute_removal`): no other uninstall's
@@ -174,7 +174,7 @@ fn shown(home: &Path, path: &Path) -> String {
 
 /// A run that stopped at `path` because it is not what was confirmed.
 fn changed(home: &Path, path: &Path) -> Outcome {
-    Outcome::CanagerFailed(Fault::PathChanged {
+    Outcome::BanagerFailed(Fault::PathChanged {
         path: shown(home, path),
     })
 }
@@ -229,7 +229,7 @@ struct Item {
 /// whose name is prefix + something + suffix (`Glob::matches_name`), in
 /// name order so the preview is stable; a folder that cannot be read
 /// matches nothing (the launcher's own check speaks for that folder).
-/// Every match is optional: it may be gone by its turn, and one Canager
+/// Every match is optional: it may be gone by its turn, and one Banager
 /// cannot confirm is the tool's is kept and said, like an optional listed
 /// path.
 fn listed_items(job: &Job) -> Vec<Item> {
@@ -277,7 +277,7 @@ fn listed_items(job: &Job) -> Vec<Item> {
 /// elsewhere or a folder on the way that is a link
 /// (`NotWhatInstructionsExpect`), and a folder that leads out of the home
 /// folder or into a shared one (`OutsideHome`, `SharedFolder`) -- all
-/// places Canager will not move from, none of them a reason to leave the
+/// places Banager will not move from, none of them a reason to leave the
 /// tool uninstallable (spec §十三 #27). `NotOwnedByYou` and `OverlapsKept`
 /// still stop the whole list: they are about what the move would do, not
 /// about whose the path is. Read by `plan_removal`.
@@ -293,7 +293,7 @@ fn keeps_instead(reason: UninstallUnsafeReason) -> bool {
 /// The kept paths outside the home folder that this uninstall leaves as
 /// dead links -- grok's installer may put `/usr/local/bin/grok` and
 /// `/usr/local/bin/agent` there when `~/.grok/bin` is not on PATH (grok.md
-/// §2) -- each as a `WillKeep` sentence: Canager never moves anything
+/// §2) -- each as a `WillKeep` sentence: Banager never moves anything
 /// outside the home folder (spec §6.3), so they stay, leading nowhere, and
 /// the user can delete them. Only a link into the root that leads nowhere
 /// once `moved` -- where each path the list moves is, its folder resolved
@@ -450,7 +450,7 @@ fn push_steps(left: &mut Vec<Step>, path: &Path) {
 /// leads that far. Anything else that stops the lookup -- a name on the
 /// way that is not a folder (a `..` after a file included, which macOS's
 /// `realpath`, and so `canonicalize`, climbs past without looking), more
-/// links than `MOST_LINKS`, a folder Canager may not look into -- is an
+/// links than `MOST_LINKS`, a folder Banager may not look into -- is an
 /// error, as the system's own lookup (`stat`) gives one. Read by
 /// `kept_places`.
 fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -498,7 +498,7 @@ fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// protected (ruling 6) -- each placed, with the way to what it leads to
 /// (`the_way_to`). One that is there but cannot be placed -- its folder,
 /// what it leads to or the way there cannot be looked up -- refuses the
-/// whole list: Canager could not confirm the moves leave it alone
+/// whole list: Banager could not confirm the moves leave it alone
 /// (`OverlapsKept`).
 fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
@@ -766,7 +766,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
                 moved.push(look.canonical_home.join(&item.rel));
                 paths.push(item.path);
             }
-            // An optional path that is there but not, as far as Canager can
+            // An optional path that is there but not, as far as Banager can
             // tell, this install's (spec §6.3 check 4, §十三 #27): kept, and
             // said after the moves. Never the launcher, which is never
             // optional.
@@ -850,7 +850,7 @@ enum Wait<'p> {
 /// record, `PUT_BACK_SETTLE`). The turn is held through the second wait,
 /// so no other uninstall's move can land between it and this item's.
 /// Cancel ends either wait and is answered before a spent budget, as a run
-/// the user stopped needs no line of Canager's; neither wait outlasts the
+/// the user stopped needs no line of Banager's; neither wait outlasts the
 /// budget (`left`). Read by `execute_removal`.
 async fn wait_for_the_trash<'p>(
     pacing: &'p Pacing,
@@ -885,7 +885,7 @@ enum Turn {
     Changed(PathBuf),
     /// The system refused; its own words. Not moved.
     Refused(String),
-    /// Canager could not ask the system at all (`TrashError::Unsupported`).
+    /// Banager could not ask the system at all (`TrashError::Unsupported`).
     CannotAsk,
 }
 
@@ -904,7 +904,7 @@ enum Turn {
 /// such file" -- it is there again, or cannot be looked at -- is returned,
 /// and the run stops before the launcher (`Turn::Changed`): the launcher
 /// stays, the row with it, and a fresh preview lists what came back. The
-/// one exception is an optional path this run never moved that Canager
+/// one exception is an optional path this run never moved that Banager
 /// cannot confirm is the tool's, by the preview's own rule
 /// (`kept_as_not_ours`): not something the list moves -- a preview lists
 /// it among what stays (`WillKeep { NotOurs }`) -- and stopping for it
@@ -935,7 +935,7 @@ fn listed_path_back(look: &Look<'_>, moved: &[PathBuf]) -> Option<PathBuf> {
 /// Whether the preview's own rule keeps `path` -- an optional listed path,
 /// or a backup file a pattern matches (every match is optional,
 /// `listed_items`), spelled `rel` under the home folder and expected to be
-/// `expect` -- as one Canager cannot confirm is the tool's (`WillKeep {
+/// `expect` -- as one Banager cannot confirm is the tool's (`WillKeep {
 /// NotOurs }`): `plan_removal`'s two branches that say so, asked again
 /// from this look. Its `lstat` fails with anything but "no such file" (it
 /// cannot be looked at), or `check_item` refuses it for a reason
@@ -1015,10 +1015,10 @@ pub fn left_behind(job: &Job, moved: &[PathBuf]) -> Result<Vec<PathBuf>, PathBuf
 /// -- with nothing in between -- the move. At the launcher's turn, before
 /// its own checks, every other listed path must be gone, save an optional
 /// one this run never moved (`moved`: the paths before this one) that
-/// Canager cannot confirm is the tool's (`listed_path_back`).
+/// Banager cannot confirm is the tool's (`listed_path_back`).
 /// `check_item`'s last step is the `lstat` that
 /// produced `seen`, and `Trasher::trash` is handed that answer's kind
-/// rather than looking again: Canager checks each item immediately before
+/// rather than looking again: Banager checks each item immediately before
 /// moving it; a program running as you that swaps the item in that instant
 /// could still race it (docs/what-we-run.md, "Moving files to the Trash").
 /// That is the documented edge of the design: the system's call takes a
@@ -1073,7 +1073,7 @@ fn take_turn(
 /// (`wait_for_the_trash`: Cancel ends it, and it never outlasts the
 /// budget); one turn on the blocking pool (`take_turn`: at the launcher's,
 /// that every other listed path is gone or, optional and never moved by
-/// this run, one Canager cannot confirm is the tool's; every check again,
+/// this run, one Banager cannot confirm is the tool's; every check again,
 /// the identity against the preview's, the move), awaited to its end even
 /// if Cancel arrives meanwhile -- a move handed to the system finishes and
 /// is reported -- and its move recorded before the turn is let go; one log
@@ -1088,8 +1088,8 @@ fn take_turn(
 /// something, each path named by a `LogNote::BackAfterUninstall` in the
 /// list's order, and nothing moved again; `Failed` with the system's
 /// own words when it refused one (the launcher, last, is then still there,
-/// and the row comes back as launcher-only); `CanagerFailed(Internal)`
-/// when Canager could not ask the system at all (`TrashError::Unsupported`,
+/// and the row comes back as launcher-only); `BanagerFailed(Internal)`
+/// when Banager could not ask the system at all (`TrashError::Unsupported`,
 /// at the first item); `Unconfirmed` when cancelled or out of time between
 /// items (the budget's stop, the one the user did not ask for, first
 /// writes `LogNote::OutOfTime` naming the item it stopped before), when
@@ -1127,7 +1127,7 @@ pub async fn execute_removal(
         // listed path changed. Not a refusal of a plan (that plan was
         // issued and confirmed) but a run that stopped before moving it.
         Err(AdapterError::UninstallUnsafe { path, .. }) => {
-            return Ok(Outcome::CanagerFailed(Fault::PathChanged { path }));
+            return Ok(Outcome::BanagerFailed(Fault::PathChanged { path }));
         }
         Err(other) => return Err(other),
     };
@@ -1146,7 +1146,7 @@ pub async fn execute_removal(
         // The turn at the Trash, `settle` after the last move made through
         // `pacing.last_move` -- this run's previous item's or another
         // uninstall's (`wait_for_the_trash`). Cancel first: a run the user
-        // stopped needs no line of Canager's (`run_operation` reports it as
+        // stopped needs no line of Banager's (`run_operation` reports it as
         // `Cancelled` once it finds the launcher, last, still there). A
         // spent budget is the stop nobody asked for, so it says which item
         // it stopped before and how much time there was -- otherwise the
@@ -1208,19 +1208,19 @@ pub async fn execute_removal(
                     summary: detail,
                 });
             }
-            // Canager could not ask the system at all (not macOS, or a path
+            // Banager could not ask the system at all (not macOS, or a path
             // `NSString` cannot carry): its own limitation, with no words of
             // the Mac's to quote (ruling 9). `RealTrasher` answers it for
             // every path alike, so it comes at the first item, before
             // anything moved.
-            Ok(Turn::CannotAsk) => return Ok(Outcome::CanagerFailed(Fault::Internal)),
+            Ok(Turn::CannotAsk) => return Ok(Outcome::BanagerFailed(Fault::Internal)),
             // The turn panicked: whether this item moved is not known.
             Err(_) => return Ok(Outcome::Unconfirmed),
         }
     }
     // The same pause after the last move: Finder writes the Put Back record
     // after the call returns, so the run is not reported finished -- the cue
-    // a user may quit Canager on -- before it had the time every measured
+    // a user may quit Banager on -- before it had the time every measured
     // run gave it. Everything is in the Trash by now, so a Cancel or the
     // budget only cuts the wait short.
     pause(pacing.settle.min(left()), &cancel).await;
@@ -2384,7 +2384,7 @@ mod tests {
     }
 
     fn path_changed(path: &str) -> Outcome {
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: path.to_string(),
         })
     }
@@ -2740,7 +2740,7 @@ mod tests {
         // the system's call takes a path, so an item swapped between the
         // two -- here, inside the call -- is what gets moved, and the run
         // cannot tell. Out of scope by design (the threat model is change by
-        // accident, and a program running as the user can do all Canager
+        // accident, and a program running as the user can do all Banager
         // can); docs/what-we-run.md says so in one sentence. If this ever
         // fails because the gap was closed, change that sentence too.
         let home = TempHome::new("removal-exec-swapped-in-call");
@@ -2967,7 +2967,7 @@ mod tests {
     async fn test_execute_removal_moves_the_launcher_past_a_path_kept_as_not_ours_never_past_one_it_moved(
     ) {
         // Ruling 5 of the phase 4 step D plan: an optional path that is there
-        // but that Canager cannot confirm is the tool's is kept and said, and
+        // but that Banager cannot confirm is the tool's is kept and said, and
         // the uninstall goes on (spec §十三 #27). At the launcher's turn it is
         // still there -- nothing moved it -- and the preview showed it
         // staying, so the launcher moves. Claude Code's `~/.claude` as a link
@@ -3438,7 +3438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_removal_stops_before_an_item_when_the_budget_is_spent_and_says_so() {
-        // The one stop the user did not ask for gets a line of Canager's
+        // The one stop the user did not ask for gets a line of Banager's
         // own -- the item it stopped before and the budget it ran out of --
         // so the log does not simply end before a "Result unconfirmed".
         let home = TempHome::new("removal-exec-budget");
@@ -3610,7 +3610,7 @@ mod tests {
         // Another tool's uninstall holds the turn at the Trash
         // (`LastMove`): one of its items is between its wait and its move.
         // No item of this run moves until it lets go. Cancel ends that
-        // wait at once, with no line of Canager's; a spent budget ends it
+        // wait at once, with no line of Banager's; a spent budget ends it
         // too, with the note naming the item the run stopped before.
         // Nothing moves either time; once the other turn is over, the same
         // list goes ahead.
@@ -3678,8 +3678,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_removal_reports_a_trasher_that_cannot_ask_as_canagers_own_failure() {
-        // Ruling 9: Canager's own limitation is `Fault::Internal` -- never a
+    async fn test_execute_removal_reports_a_trasher_that_cannot_ask_as_banagers_own_failure() {
+        // Ruling 9: Banager's own limitation is `Fault::Internal` -- never a
         // `Failed` whose summary the front end would quote as the Mac's
         // words, and never a `TrashFailed` note. Nothing was moved.
         let home = TempHome::new("removal-exec-unsupported");
@@ -3692,7 +3692,7 @@ mod tests {
         let (outcome, notes) =
             run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
 
-        assert_eq!(outcome, Outcome::CanagerFailed(Fault::Internal));
+        assert_eq!(outcome, Outcome::BanagerFailed(Fault::Internal));
         assert!(notes.is_empty());
         assert!(
             layout.root.join("versions/2.1.281").is_file(),
@@ -3704,7 +3704,7 @@ mod tests {
     async fn test_execute_removal_refuses_a_plan_that_lost_what_its_preview_saw() {
         // A `TrashPaths` plan read back from JSON carries no identities
         // (`previewed` is skipped by serde); one without them is a bug in
-        // Canager, refused before anything moves.
+        // Banager, refused before anything moves.
         let home = TempHome::new("removal-exec-no-preview");
         let layout = claude_layout(&home, "2.1.281");
         let d = detected(home.path());

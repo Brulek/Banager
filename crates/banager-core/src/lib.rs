@@ -1,6 +1,6 @@
-//! Canager's engine: everything an operation does, with no window attached.
+//! Banager's engine: everything an operation does, with no window attached.
 //!
-//! Canager is a desktop app for people who do not write code, for looking
+//! Banager is a desktop app for people who do not write code, for looking
 //! after the things they installed from a terminal — Homebrew, npm, pipx,
 //! uv, pip, cargo, Ollama, and tools that come with their own installer
 //! (Claude Code, Antigravity CLI, Grok Build, rustup). This crate is the
@@ -17,7 +17,7 @@
 //! that has no uninstall command.
 //!
 //! It must never depend on `tauri` (see
-//! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3). The
+//! `docs/superpowers/specs/2026-09-17-banager-design.md` section 3). The
 //! Tauri shell in `src-tauri/` is a thin IPC layer over this crate, and
 //! keeping the dependency one-way is what lets the whole engine be tested
 //! headlessly, which is most of this repository's test suite.
@@ -33,7 +33,7 @@
 //! those have a drop-in Windows equivalent — they need a different design,
 //! not a shim.
 //!
-//! Canager v0.1 ships for macOS only: that is the platform it is built,
+//! Banager v0.1 ships for macOS only: that is the platform it is built,
 //! signed and tested on. Linux is Unix, so this crate compiles there and
 //! the Linuxbrew path is already among Homebrew's candidates, but nothing
 //! in the release is verified on it. **Windows and Linux are roadmap, not
@@ -45,7 +45,7 @@
 compile_error!(
     "banager-core does not support this platform yet. It is written against POSIX \
      (process groups and killpg, geteuid, access(2)), which Windows has no drop-in \
-     equivalent for. Canager v0.1 targets macOS; Windows support is on the roadmap, \
+     equivalent for. Banager v0.1 targets macOS; Windows support is on the roadmap, \
      so this is a feature that has not been written, not a build you need to fix. \
      See the crate documentation in crates/banager-core/src/lib.rs."
 );
@@ -74,7 +74,7 @@ pub mod settings;
 /// integration tests and the Tauri shell's tests. See the module doc for
 /// why it is public rather than `#[cfg(test)]`.
 pub mod testing;
-/// Moving an item to the Trash -- the one change Canager makes to a file
+/// Moving an item to the Trash -- the one change Banager makes to a file
 /// in its own process besides its settings, behind a seam like `runner`
 /// and `http`.
 pub mod trash;

@@ -4,7 +4,7 @@
 //! then SIGKILL for whatever is left -- so that a `brew` invocation's
 //! grandchildren (e.g. a `curl` download) stop with it. Both APIs are
 //! POSIX-only, so this module (and the `banager-core` crate as a whole) is
-//! not expected to build or run on non-Unix platforms. Canager v1 targets
+//! not expected to build or run on non-Unix platforms. Banager v1 targets
 //! macOS only (see Global Constraints in the phase 0-1 plan), so this is not
 //! a limitation in practice.
 
@@ -262,9 +262,9 @@ impl StreamBuffer {
     /// but the hole can at least be visible.
     ///
     /// The remark goes to `on_line` as a [`LogNote`], not into the
-    /// transcript as text: it is Canager speaking, and the log drawer
-    /// localises what Canager says (it used to be an English
-    /// `[canager: ...]` sentence spliced into the tool's own bytes, where
+    /// transcript as text: it is Banager speaking, and the log drawer
+    /// localises what Banager says (it used to be an English
+    /// `[banager: ...]` sentence spliced into the tool's own bytes, where
     /// it also ended up in a failed run's five-line stderr summary). Any
     /// half-line already read is delivered first, so the note lands
     /// after the last thing the tool said, which is where the hole is.
@@ -325,7 +325,7 @@ impl StreamBuffer {
         // and its last five stderr lines are shown to the user verbatim as
         // a failed run's summary -- which reaches back past this marker
         // whenever the retained tail holds fewer than five lines. An
-        // English "[canager: N bytes elided]" there was Canager speaking
+        // English "[banager: N bytes elided]" there was Banager speaking
         // untranslated inside text the UI promises is only the tool's own.
         // `[…]` is the one omission mark every reader of either locale
         // already knows, and it needs no translating.
@@ -873,7 +873,7 @@ impl CommandRunner for RealRunner {
                 // as timed out or cancelled would tell the caller a
                 // finished command was not -- `brew update` would not record
                 // its update, and an install would come back `Unconfirmed`.
-                // The tools Canager runs report a stop they obeyed as death
+                // The tools Banager runs report a stop they obeyed as death
                 // by SIGTERM (git, Ruby, Python, Rust and Go all end that
                 // way by default) or a non-zero exit (npm), so a 0 here is
                 // not what obeying looks like.
@@ -1068,7 +1068,7 @@ mod tests {
         // command that would otherwise leave an observable trace (creating a
         // file) if it ran.
         let marker = std::env::temp_dir().join(format!(
-            "canager-cancel-before-spawn-{}-{}",
+            "banager-cancel-before-spawn-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1805,7 +1805,7 @@ mod tests {
     /// disk cannot collide with each other or with a previous run.
     fn unique_temp_path(label: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-{}-{}-{}",
+            "banager-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -1818,7 +1818,7 @@ mod tests {
     #[tokio::test]
     async fn test_a_program_that_is_not_there_reports_not_found() {
         // Not exotic: this is what the user hits when Homebrew (or pipx,
-        // or uv) is uninstalled from a terminal while Canager is open and
+        // or uv) is uninstalled from a terminal while Banager is open and
         // still holding the path it detected at startup. The operation
         // must come back as a clean `NotFound` carrying the path, not as
         // some spawn errno the UI has to guess at.
@@ -2215,8 +2215,8 @@ mod tests {
     #[test]
     fn test_a_failed_read_is_a_note_for_the_log_not_english_in_the_transcript() {
         // The read error used to be spliced into the tool's bytes as
-        // "[canager: reading stderr failed (...); output ends here]": an
-        // English sentence in Canager's voice that the log drawer showed
+        // "[banager: reading stderr failed (...); output ends here]": an
+        // English sentence in Banager's voice that the log drawer showed
         // verbatim and a failed run's five-line summary could quote. It is
         // now a `LogNote` the front end localises, after whatever half-line
         // the tool had got out, and the transcript stays the tool's alone.
@@ -2305,8 +2305,8 @@ mod tests {
         );
         assert!(text.contains(ELISION_MARK));
         assert!(
-            !text.contains("canager"),
-            "Canager's own English is back inside the tool's transcript"
+            !text.contains("banager"),
+            "Banager's own English is back inside the tool's transcript"
         );
         assert!(text.len() < HEAD_CAP + TAIL_CAP + 512);
     }

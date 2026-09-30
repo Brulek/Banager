@@ -25,9 +25,9 @@ import { SpinnerIcon } from "./icons";
 const NEAR_BOTTOM_PX = 32;
 
 /**
- * The words for one of Canager's own log notes, in the user's language.
+ * The words for one of Banager's own log notes, in the user's language.
  * Each `LogNote` variant needs a case here: the log is the one place the
- * app shows text it did not write, and a remark of Canager's that arrived
+ * app shows text it did not write, and a remark of Banager's that arrived
  * as plain text would be English sitting among the tool's lines.
  */
 function noteText(t: TFunction, note: LogNote): string {
@@ -73,7 +73,7 @@ function noteText(t: TFunction, note: LogNote): string {
  * (`outcomeCause`), or the outcome's own -- as its text; then everything
  * the tool printed, in its own words, in
  * a grouped container in 11/14 monospace, what it wrote to stderr in red,
- * keeping to its end while more arrives, with Canager's own notes among
+ * keeping to its end while more arrives, with Banager's own notes among
  * the lines as plain sentences. That text selects, as nothing else in the
  * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
@@ -117,7 +117,7 @@ export function LogDrawer() {
     setStickToBottom(distanceFromBottom <= NEAR_BOTTOM_PX);
   }
 
-  /** The log as text, a line each, Canager's notes in the user's words. */
+  /** The log as text, a line each, Banager's notes in the user's words. */
   const logText = () =>
     visibleLogs.map((line) => ("note" in line ? noteText(t, line.note) : line.line)).join("\n");
 
@@ -221,7 +221,7 @@ export function LogDrawer() {
         >
           {visibleLogs.map((line) =>
             "note" in line ? (
-              // Canager's own voice, set apart from the tool's output so
+              // Banager's own voice, set apart from the tool's output so
               // nobody mistakes it for something the tool said: a sentence
               // in the window's own type, marked at its side.
               <p

@@ -62,7 +62,7 @@ describe("useOperationEvents", () => {
     ]);
   });
 
-  it("appends Canager's own Note events to the log without refetching operations", async () => {
+  it("appends Banager's own Note events to the log without refetching operations", async () => {
     let capturedChannel = null as InstanceType<typeof Channel> | null;
     mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "subscribe_events") {

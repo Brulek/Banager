@@ -172,7 +172,7 @@ pub struct UnknownEntry {
     /// Formatted with `Intl.DateTimeFormat`, as an absolute date: when the
     /// file last changed, not how long ago.
     pub modified_at: Option<i64>,
-    /// Whether the entry itself belongs to the user Canager runs as
+    /// Whether the entry itself belongs to the user Banager runs as
     /// (`st_uid == euid`, of the entry, not its target: the question is
     /// who put it here). `false` renders "Put here by an installer with
     /// administrator rights".
@@ -197,7 +197,7 @@ pub struct UnknownScan {
     pub entries: Vec<UnknownEntry>,
     /// How many examined programs a registered source accounted for and
     /// are therefore not listed. The page's "N more programs came from
-    /// sources Canager knows" sentence.
+    /// sources Banager knows" sentence.
     pub attributed: u32,
     /// `Some` when the scan hit its budget; the page's banner. What was
     /// scanned before that point is still in the fields above.
@@ -217,7 +217,7 @@ pub struct UnknownScan {
 ///
 /// Only `PATH` entries under `home` are taken. The rest --
 /// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
-/// not what this page is for. Which `PATH` that is depends on how Canager
+/// not what this page is for. Which `PATH` that is depends on how Banager
 /// was launched (`fix_path_env` restores a login shell's for a Finder
 /// launch; a terminal launch inherits that terminal's, temporary agent
 /// directories and all); the research machine's `PATH` held 23 entries
@@ -578,7 +578,7 @@ fn dead_end(link: &Path) -> Option<PathBuf> {
 /// there, the rest folded without touching the disk. `None` for a relative
 /// `path`, one ending in `..` or naming `/`, and one with a folder on the
 /// way that is there but cannot be resolved (a link to nothing, a loop, a
-/// file, a folder Canager may not look into). Read by `dead_end`.
+/// file, a folder Banager may not look into). Read by `dead_end`.
 fn placed(path: &Path) -> Option<PathBuf> {
     if !path.is_absolute() {
         return None;
@@ -1120,7 +1120,7 @@ mod tests {
 
     fn temp_dir(tag: &str) -> PathBuf {
         let raw = std::env::temp_dir().join(format!(
-            "canager-scan-unit-{}-{}-{}",
+            "banager-scan-unit-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

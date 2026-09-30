@@ -524,7 +524,7 @@ describe("SettingsPage", () => {
     const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
     expect(daily).not.toBeChecked();
     expect(daily).toHaveAccessibleDescription(
-      "Canager checks for updates once a day while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates once a day while it's running, and doesn't install the updates it finds.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
@@ -633,11 +633,11 @@ describe("SettingsPage", () => {
     fireEvent.click(notify);
 
     await waitFor(() =>
-      expect(notify).toHaveAccessibleDescription("Allow Canager to send notifications in System Settings > Notifications."),
+      expect(notify).toHaveAccessibleDescription("Allow Banager to send notifications in System Settings > Notifications."),
     );
     expect(notify).not.toBeChecked();
     expect(notify).toBeEnabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Allow Canager to send notifications in System Settings > Notifications.");
+    expect(screen.getByRole("status")).toHaveTextContent("Allow Banager to send notifications in System Settings > Notifications.");
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
   });
 
@@ -654,7 +654,7 @@ describe("SettingsPage", () => {
     fireEvent.click(notify);
 
     await waitFor(() =>
-      expect(notify).toHaveAccessibleDescription("Allow Canager to send notifications in System Settings > Notifications."),
+      expect(notify).toHaveAccessibleDescription("Allow Banager to send notifications in System Settings > Notifications."),
     );
     expect(notify).not.toBeChecked();
   });
@@ -749,9 +749,9 @@ describe("SettingsPage", () => {
     // update the check finds is installed. The same holds against the
     // polish-3 copy table's 「不会自动安装」, which claims more than that.
     expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
-    expect(zhCN.settings.autoCheck.description).toBe("Canager运行时每天检查一次更新，查到的更新不会自动安装。");
+    expect(zhCN.settings.autoCheck.description).toBe("Banager运行时每天检查一次更新，查到的更新不会自动安装。");
     expect(zhCN.settings.notifyUpdates.label).toBe("有更新时通知我");
-    expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Canager发送通知。");
+    expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Banager发送通知。");
   });
 
   it("says whose the logos are in the icon credits in few words, in Chinese as the review asked", () => {
@@ -960,7 +960,7 @@ describe("SettingsPage", () => {
     const updates = await screen.findByRole("region", { name: "Updates" });
     const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
     const what = within(updates).getByText(
-      "Canager checks for updates once a day while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates once a day while it's running, and doesn't install the updates it finds.",
     );
     // In the daily check's own row, under its label.
     expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);
@@ -1154,7 +1154,7 @@ describe("SettingsPage's icon credits", () => {
     );
     expect(
       within(drawer).getByText(
-        "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
+        "Most of the logos built into Banager come from Simple Icons, which is released under CC0.",
       ),
     ).toBeInTheDocument();
     const list = within(drawer).getByRole("list", { name: "The following logos use other licenses:" });
@@ -1212,7 +1212,7 @@ describe("SettingsPage's icon credits", () => {
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
     expect(within(drawer).queryByRole("list")).toBeNull();
     expect(within(drawer).queryByText("The following logos use other licenses:")).toBeNull();
-    expect(within(drawer).getByText(/^Most of the logos built into Canager/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/^Most of the logos built into Banager/)).toBeInTheDocument();
     expect(within(drawer).getByText(/^Built-in logos that do not come from Simple Icons/)).toBeInTheDocument();
   });
 

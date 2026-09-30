@@ -666,7 +666,7 @@ describe("UpdatesPage", () => {
 
   it("says an update ends in Homebrew's clean-up when brew.env turns it back on, with the why behind its ⓘ", async () => {
     // `Warning::HomebrewPeriodicCleanup`, once a brew.env takes back
-    // Canager's HOMEBREW_NO_INSTALL_CLEANUP=1
+    // Banager's HOMEBREW_NO_INSTALL_CLEANUP=1
     // (crates/banager-core/src/adapters/brew/brew_env.rs): after every
     // `brew upgrade`, Homebrew deletes the older versions and old downloads
     // of the package it upgrades (`Cleanup.install_clean!`), and, when its
@@ -1082,7 +1082,7 @@ describe("UpdatesPage", () => {
     // -> 6.1`, and `pipx upgrade cowsay` then changes nothing and exits 0.
     // The row must say pipx, not Homebrew, and give the command pipx
     // itself names ("Run `pipx unpin cowsay` to unpin it"), from the pipx
-    // Canager found.
+    // Banager found.
     const pipx: Snapshot["instances"][number] = {
       id: "pipx",
       adapter_id: "pipx",
@@ -1150,7 +1150,7 @@ describe("UpdatesPage", () => {
 
   it("offers no Update button and no checkbox for a pip package, and points at pipx or uv instead", async () => {
     // pip is read-only by design: its plan() refuses every operation with
-    // "unsupported: pip is read-only in Canager; use pipx or uv to manage
+    // "unsupported: pip is read-only in Banager; use pipx or uv to manage
     // {name}". Its candidates are still built with checkable: true, because
     // pip genuinely can check -- so gating the Update button on `checkable`
     // alone offered a button whose only possible outcome is a raw Rust error
@@ -1237,7 +1237,7 @@ describe("UpdatesPage", () => {
   });
 
   it("does not count a row it could not check as an available update", async () => {
-    // The headline counts what Canager can act on, and `checkable` is one
+    // The headline counts what Banager can act on, and `checkable` is one
     // of the things that decides that. A writable, answering source whose
     // registry lookup failed produced six rows with no buttons under the
     // words "6 updates available". The two numbers now come from exactly
@@ -1264,7 +1264,7 @@ describe("UpdatesPage", () => {
   it("says why a row can't be checked even when its source is also read-only", async () => {
     // pip is read-only *and* reaches PyPI, so a failed lookup produces
     // rows where both facts are true at once -- and the read-only advice
-    // used to win outright, leaving no trace that Canager had not managed
+    // used to win outright, leaving no trace that Banager had not managed
     // to check anything. A row has one word (spec §3.4): "Can't check",
     // this check's news, the words the page's line over these rows counts;
     // its why says both -- that this check found nothing, then that no
@@ -1297,7 +1297,7 @@ describe("UpdatesPage", () => {
     // stderr: every installed package gets a row, and every row got "pip
     // list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/"
     // as its description. `show_technical_details` promises to hide "the
-    // commands Canager actually runs", which is exactly what that line is
+    // commands Banager actually runs", which is exactly what that line is
     // (spec §6).
     const names = ["urllib3", "requests", "certifi"];
     updates = names.map((name) => ({
@@ -1683,7 +1683,7 @@ describe("UpdatesPage", () => {
     }
   });
 
-  it("shows no version and no digest for an Ollama model Canager could not check", async () => {
+  it("shows no version and no digest for an Ollama model Banager could not check", async () => {
     // Its `target` is the digest it has, not a newer one: "New version"
     // would be false, and the digest is never shown.
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
@@ -2047,7 +2047,7 @@ describe("UpdatesPage", () => {
     });
 
     it("Update all ticks every row it can update and opens the same confirmation with exactly those", async () => {
-      // 360's 全部更新: one press for everything Canager can update here,
+      // 360's 全部更新: one press for everything Banager can update here,
       // into the one confirmation Update selected uses -- the command for
       // each, then one operation per item on Confirm.
       updates = [
@@ -2254,7 +2254,7 @@ describe("UpdatesPage", () => {
         "Cargo isn't responding. Click Check Again later.",
       );
       expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
-        "Homebrew doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click.",
+        "Homebrew doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click.",
       );
     });
 
@@ -2376,7 +2376,7 @@ describe("UpdatesPage", () => {
     expect(plannedNames()).toEqual(["onyx"]);
   });
 
-  it("offers Never remind me but no Skip this version on a row Canager could not check", async () => {
+  it("offers Never remind me but no Skip this version on a row Banager could not check", async () => {
     // An uncheckable row's `target` is its installed version, not one the
     // source offered, so there is no version to skip.
     updates = [
@@ -2406,7 +2406,7 @@ describe("UpdatesPage", () => {
   });
 
   // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2
-  // --greedy` lists one -- Show self-updating apps is what makes Canager
+  // --greedy` lists one -- Show self-updating apps is what makes Banager
   // pass `--greedy` -- whenever it takes its download to have changed:
   // `latest -> latest`, for every release.
   const chromiumKey: ArtifactKey = {
@@ -3232,7 +3232,7 @@ describe("UpdatesPage", () => {
     // The lie this page used to tell. No candidates is exactly what an
     // unreachable source produces, and the page read that silence as good
     // news: a Mac with Ollama stopped was told, in so many words, that
-    // everything was up to date -- about a source Canager had not managed
+    // everything was up to date -- about a source Banager had not managed
     // to ask.
     updates = [];
     instances = [...snapshot.instances, stoppedOllama];
@@ -3473,7 +3473,7 @@ describe("UpdatesPage", () => {
     });
 
     it("marks every row of a read-only source View only, and no row of another source", async () => {
-      // "Canager can only show what's installed with pip" used to sit
+      // "Banager can only show what's installed with pip" used to sit
       // above nine rows, three of which were Homebrew's and perfectly
       // updatable.
       const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
@@ -3777,7 +3777,7 @@ describe("UpdatesPage", () => {
           lines: [
             { text: "This compiles on your Mac and takes a while.", caution: false },
             {
-              text: "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+              text: "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
               caution: true,
             },
           ],
@@ -4618,7 +4618,7 @@ describe("UpdatesPage", () => {
   it("offers no Update button for a tool that updates itself, and says to open it once", async () => {
     // Spec §4.4, D5 item 4: the newer version is real (read from the
     // launcher's live version), so the row stays and is counted with what
-    // Canager cannot update; the tool has no update command Canager could
+    // Banager cannot update; the tool has no update command Banager could
     // run, so there is no button and no checkbox, and the detail says what
     // does work: opening it. The launcher is a path, shown only with
     // technical details on. The claude fixtures stand in for agy here: the
@@ -4703,10 +4703,10 @@ describe("UpdatesPage", () => {
   );
 
   it.each(pathNotes)(
-    "says everything is up to date under a %s notice: what typing the name runs is not whether Canager could check it",
+    "says everything is up to date under a %s notice: what typing the name runs is not whether Banager could check it",
     async (note, noticeTitle) => {
       // One source, Claude Code, which answered: with no updates listed,
-      // Canager read this copy's version and the published one, and the
+      // Banager read this copy's version and the published one, and the
       // published one is not newer. The note is only about what typing
       // `claude` in Terminal runs, so its notice goes above the sentence
       // and leaves the sentence alone.
@@ -4778,7 +4778,7 @@ describe("UpdatesPage", () => {
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
 
     const hints = within(dialog).getAllByText(
-      noteLine("This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes."),
+      noteLine("This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes."),
     );
     expect(hints).toHaveLength(1);
     const row = hints[0].closest("[data-sheet-tool]");
@@ -5025,7 +5025,7 @@ describe("UpdatesPage", () => {
 
     it("is off, and so is Update all, when no listed row has a checkbox", async () => {
       // tree and curl could be updated but are hidden, so they are not
-      // listed; every row that is listed is one Canager cannot update.
+      // listed; every row that is listed is one Banager cannot update.
       listEveryKindOfRow();
       const withCheckbox = ids(glibKey, onyxKey, jq.key);
       updates = updates.filter((u) => !withCheckbox.includes(artifactKeyId(u.key)));

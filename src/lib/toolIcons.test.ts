@@ -315,7 +315,7 @@ describe("the built-in pack", () => {
       return icon;
     };
 
-    it("is the one Simple Icons gives the logo, and one Canager may ship", () => {
+    it("is the one Simple Icons gives the logo, and one Banager may ship", () => {
       for (const [id, glyph] of Object.entries(built.glyphs)) {
         // None where Simple Icons gives none: the logo is then under its CC0.
         expect(glyph.license, id).toEqual(simpleIconOf(id).license);
@@ -348,7 +348,7 @@ describe("the built-in pack", () => {
     expect(orphans, `raster/ has files pack.json does not name: ${orphans.join(", ")}`).toEqual([]);
   });
 
-  it("resolves every source's logo, for a source Canager knows", () => {
+  it("resolves every source's logo, for a source Banager knows", () => {
     for (const adapterId of Object.keys(built.sources)) {
       expect(Object.keys(ADAPTER_LABEL_KEYS), adapterId).toContain(adapterId);
       expect(resolveSourceIcon(adapterId), adapterId).not.toBeNull();
@@ -438,7 +438,7 @@ describe("the built-in pack", () => {
       expect(built.tools[`npm:${name}`], name).toBe(built.tools[`brew:${name}`]);
     }
     // And a reviewed "no logo" stays one: webpack's, Sass's and Vue's
-    // logos carry licenses Canager does not ship.
+    // logos carry licenses Banager does not ship.
     for (const toolKey of ["npm:webpack-cli", "npm:sass", "npm:@vue/cli"]) {
       expect(built.tools[toolKey], toolKey).toBeUndefined();
     }

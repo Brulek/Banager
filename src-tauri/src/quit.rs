@@ -4,29 +4,29 @@
 //! first cancels every operation that can be cancelled, as the operation
 //! bar's 「全部取消」 does (`Session::cancel`): one still queued never
 //! starts, and a running command is stopped partway, which can leave the
-//! tool it was updating or uninstalling half done. Canager waits for those
+//! tool it was updating or uninstalling half done. Banager waits for those
 //! commands to stop, `STOP_WITHIN` at the most, then quits (`quit_now`).
 //! A running operation that cannot be cancelled -- rustup's self update or
 //! self uninstall (`operations.noCancelHint`) -- is not stopped: its command
-//! runs on without Canager (`quit_now` says what becomes of it).
+//! runs on without Banager (`quit_now` says what becomes of it).
 //!
-//! So on a Mac every way of quitting -- Quit Canager (⌘Q) in the menu bar,
+//! So on a Mac every way of quitting -- Quit Banager (⌘Q) in the menu bar,
 //! Quit in the Dock icon's menu, logging out, restarting or shutting down
 //! -- first asks `should_quit`. While every operation is `Done`, it
-//! answers yes and Canager quits as it always has. While one is not, the
+//! answers yes and Banager quits as it always has. While one is not, the
 //! quit is called off, the window comes back, and the page asks
 //! (src/components/QuitQuestion.tsx): 「还有 N 个操作没完成」, with
-//! 「取消」, which leaves Canager running, and 「退出」, which quits
+//! 「取消」, which leaves Banager running, and 「退出」, which quits
 //! (`quit_anyway`).
 //!
 //! A quit is called off only while the page is there to ask: one that
 //! nobody asks about would never happen, and nothing but Force Quit would
-//! end Canager. So nothing asks until the page has said it listens for the
+//! end Banager. So nothing asks until the page has said it listens for the
 //! question (`ask_before_quit`), and the page takes that back as it goes
 //! -- taken down by an error in drawing it, say (src/lib/quit.ts). A page
 //! can also go without a word: reloaded, or its web content crashed. So
 //! once asked, the page has `SHOW_WITHIN`, 2 seconds, to say that the
-//! question is on screen (`quit_question_shown`); without that, Canager
+//! question is on screen (`quit_question_shown`); without that, Banager
 //! quits, as it does on 「退出」 (`quit_unless_shown`). 「取消」, or
 //! Escape, says so too (`quit_kept_waiting`), which stops that wait from
 //! quitting should the first word not have got through; and a quit
@@ -43,22 +43,22 @@
 //! only as `RunEvent::Exit`, too late to stop; its `RunEvent::ExitRequested`
 //! comes only from tauri itself -- `AppHandle::exit`, or the last window
 //! closing, which on a Mac only hides it. So `guard_quitting` adds the
-//! method to the class of tao's delegate, as Canager starts.
+//! method to the class of tao's delegate, as Banager starts.
 //!
 //! Logging out, restarting or shutting down: the method answers at once,
-//! so macOS is never kept waiting on Canager. While an operation is under
+//! so macOS is never kept waiting on Banager. While an operation is under
 //! way the answer is no, which calls the logout off, and the window asks
-//! as it does for ⌘Q; after 「退出」 Canager quits, and the logout has
+//! as it does for ⌘Q; after 「退出」 Banager quits, and the logout has
 //! to be started again. Holding the logout until the user answers would
 //! take AppKit's `NSTerminateLater`, then `replyToApplicationShouldTerminate:`,
 //! which tauri does not offer: until the reply, AppKit runs the main run
 //! loop in its modal-panel mode, and the reply would come from the page,
 //! through the web view and tauri's IPC, which no test here can run -- a
 //! Mac logging out would be left waiting on it. Force Quit, or a process
-//! killed from outside, ends Canager with no question at all.
+//! killed from outside, ends Banager with no question at all.
 //!
 //! Off a Mac nothing asks: closing the window closes it (window.rs), and
-//! Canager quits with its last window.
+//! Banager quits with its last window.
 
 use crate::state::AppState;
 use crate::window;
@@ -79,16 +79,16 @@ pub const QUIT_REQUESTED_EVENT: &str = "quit://requested";
 /// screen (`quit_question_shown`): time enough to ask the backend for the
 /// operations and draw the sheet, which takes it a moment. Past that,
 /// nobody is there to answer -- the page was reloaded, its web content
-/// crashed, or it could not draw the sheet -- and Canager quits
+/// crashed, or it could not draw the sheet -- and Banager quits
 /// (`quit_unless_shown`) rather than be left unable to.
 pub const SHOW_WITHIN: Duration = Duration::from_secs(2);
 
 /// How long a quit waits, once it has cancelled what can be cancelled, for
-/// those commands to stop (`waits_for`) before Canager quits all the same.
+/// those commands to stop (`waits_for`) before Banager quits all the same.
 /// Longer than the runner's grace after SIGTERM (`STOP_GRACE`, 5 seconds),
 /// at the end of which it SIGKILLs whatever of a command is left: so every
-/// command a quit cancels has had that SIGKILL sent by the time Canager
-/// quits. A command that honours SIGTERM ends in milliseconds, and Canager
+/// command a quit cancels has had that SIGKILL sent by the time Banager
+/// quits. A command that honours SIGTERM ends in milliseconds, and Banager
 /// quits as soon as every one has.
 pub const STOP_WITHIN: Duration = Duration::from_secs(7);
 
@@ -98,12 +98,12 @@ const STOP_POLL: Duration = Duration::from_millis(20);
 /// What a request to quit does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OnQuit {
-    /// Canager quits, as it always has.
+    /// Banager quits, as it always has.
     Quit,
     /// The quit is called off, and the page asks whether to quit anyway.
     Ask,
     /// The quit is called off, and nothing asks: a quit is under way
-    /// already, stopping the operations (`quit_now`), and ends Canager
+    /// already, stopping the operations (`quit_now`), and ends Banager
     /// within `STOP_WITHIN` -- quitting at once would cut that short.
     Stopping,
 }
@@ -124,10 +124,10 @@ pub fn on_quit(unfinished: usize, page_asks: bool, confirmed: bool) -> OnQuit {
 /// has passed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OnceAsked {
-    /// The question is on screen: Canager waits for the user's answer.
+    /// The question is on screen: Banager waits for the user's answer.
     Wait,
     /// The page never said the question was on screen: nobody is there to
-    /// answer it, and Canager quits.
+    /// answer it, and Banager quits.
     Quit,
 }
 
@@ -135,7 +135,7 @@ pub enum OnceAsked {
 /// asking: it waits for the user once the page has said the question is
 /// on screen (`shown`), and there is nothing left to do once the user has
 /// answered 「退出」 (`confirmed`), which quits already; with neither,
-/// Canager quits.
+/// Banager quits.
 pub fn once_asked(shown: bool, confirmed: bool) -> OnceAsked {
     if shown || confirmed {
         OnceAsked::Wait
@@ -170,11 +170,11 @@ pub fn cancels(op: &OpSummary) -> bool {
     }
 }
 
-/// Whether a quit waits for `op` before Canager quits: while it may still
+/// Whether a quit waits for `op` before Banager quits: while it may still
 /// start a command (queued), or its command is still being stopped (a
 /// cancel requested, or running and cancellable). `Cancelling`, `Verifying`
 /// and `Done` come once its command has ended (`run_operation`); a running
-/// `NoCancel` one does not end on Canager's account, and is not waited for.
+/// `NoCancel` one does not end on Banager's account, and is not waited for.
 pub fn waits_for(op: &OpSummary) -> bool {
     match op.status {
         OpStatus::Queued | OpStatus::CancelRequested => true,
@@ -206,7 +206,7 @@ async fn stop_then_quit(
         let now = tokio::time::Instant::now();
         if now >= deadline {
             eprintln!(
-                "[canager] {left} operation(s) had not stopped within {within:?} of quitting; Canager quits"
+                "[banager] {left} operation(s) had not stopped within {within:?} of quitting; Banager quits"
             );
             break;
         }
@@ -258,7 +258,7 @@ impl QuitGuard {
         self.confirmed.store(true, Ordering::SeqCst);
     }
 
-    /// A quit is under way, stopping the operations before Canager quits
+    /// A quit is under way, stopping the operations before Banager quits
     /// (`quit_now`): until it does, another quit is called off
     /// (`OnQuit::Stopping`), so as not to cut it short. Its own
     /// `AppHandle::exit` asks AppKit nothing -- tao ends with `stop:`, not
@@ -331,15 +331,15 @@ impl QuitGuard {
     }
 }
 
-/// Whether Canager quits now: what the method `guard_quitting` adds to
+/// Whether Banager quits now: what the method `guard_quitting` adds to
 /// AppKit's delegate asks at every quit, on the main thread. When the
 /// page is to ask (`OnQuit::Ask`), the window comes back and is told,
 /// with the question's number (`window::show_and_send`), and the quit is
-/// called off -- and Canager quits after all should the page not say
+/// called off -- and Banager quits after all should the page not say
 /// within `SHOW_WITHIN` that the question is on screen
 /// (`quit_unless_shown`). A quit repeated while that question is pending
 /// asks the same question again, and starts no second wait
-/// (`QuitGuard::ask`). Should the page be out of reach, Canager quits
+/// (`QuitGuard::ask`). Should the page be out of reach, Banager quits
 /// at once, as it always has, rather than not quitting and asking nobody.
 /// So does anything missing here.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -362,7 +362,7 @@ pub fn should_quit<R: Runtime>(app: &AppHandle<R>) -> bool {
                 }
                 Err(e) => {
                     eprintln!(
-                        "[canager] could not ask the window before quitting, so Canager quits: {e}"
+                        "[banager] could not ask the window before quitting, so Banager quits: {e}"
                     );
                     true
                 }
@@ -371,7 +371,7 @@ pub fn should_quit<R: Runtime>(app: &AppHandle<R>) -> bool {
     }
 }
 
-/// Canager quits `SHOW_WITHIN` from now, unless the page has said by then
+/// Banager quits `SHOW_WITHIN` from now, unless the page has said by then
 /// that question `question` is on screen (`wait_for_the_page`) -- on
 /// tauri's async runtime, so that AppKit has its answer, no, at once.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -381,14 +381,14 @@ fn quit_unless_shown<R: Runtime>(app: &AppHandle<R>, question: u64) {
         let quits = wait_for_the_page(&app.state::<QuitGuard>(), question, SHOW_WITHIN).await;
         if quits {
             eprintln!(
-                "[canager] the window did not show the question within {SHOW_WITHIN:?}, so Canager quits"
+                "[banager] the window did not show the question within {SHOW_WITHIN:?}, so Banager quits"
             );
             quit_now(&app).await;
         }
     });
 }
 
-/// Waits `within`, then answers whether Canager quits: yes unless the page
+/// Waits `within`, then answers whether Banager quits: yes unless the page
 /// has said by then that question `question` is on screen
 /// (`QuitGuard::once_asked`). `quit_unless_shown`'s wait, which the tests
 /// run with a wait of their own.
@@ -397,24 +397,24 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
     guard.once_asked(question) == OnceAsked::Quit
 }
 
-/// Canager quits: 「退出」 (`quit_anyway`), and a question the page never
+/// Banager quits: 「退出」 (`quit_anyway`), and a question the page never
 /// showed (`quit_unless_shown`). A quit that comes while this runs is called
 /// off, and this goes on (`QuitGuard::stop`). First every operation that can
 /// be cancelled is, as
-/// 「全部取消」 does, and Canager waits for those commands to stop,
+/// 「全部取消」 does, and Banager waits for those commands to stop,
 /// `STOP_WITHIN` at the most (`stop_then_quit`); then it quits through
 /// tauri's own `AppHandle::exit`, which asks AppKit nothing and ends in
 /// `RunEvent::Exit` as a quit from the menu does, the window's size and
 /// place saved with it.
 ///
-/// That exit is tao's `process::exit`: nothing still running in Canager
+/// That exit is tao's `process::exit`: nothing still running in Banager
 /// gets to clean up, and the runner's `GroupedChild`, which SIGKILLs its
 /// command's process group when dropped, is never dropped. So a command
 /// still running then -- one that cannot be cancelled, or one that outlived
-/// `STOP_WITHIN` -- is sent no signal by Canager, and runs in a process
-/// group of its own (`process_group(0)`), which nothing sent to Canager
-/// reaches: it runs on without Canager. Its output went to pipes that only
-/// Canager read, and their reading ends close as Canager exits, so a write
+/// `STOP_WITHIN` -- is sent no signal by Banager, and runs in a process
+/// group of its own (`process_group(0)`), which nothing sent to Banager
+/// reaches: it runs on without Banager. Its output went to pipes that only
+/// Banager read, and their reading ends close as Banager exits, so a write
 /// to its standard output or error after that fails with a broken pipe
 /// (EPIPE, or SIGPIPE, which ends a program that does not ignore it).
 async fn quit_now<R: Runtime>(app: &AppHandle<R>) {
@@ -447,7 +447,7 @@ pub fn ask_before_quit(guard: State<'_, QuitGuard>, ask: bool) {
 }
 
 /// The page has question `question` (`QUIT_REQUESTED_EVENT`'s payload) on
-/// screen, and waits for the user's answer: Canager does not quit for
+/// screen, and waits for the user's answer: Banager does not quit for
 /// want of one (`quit_unless_shown`).
 #[tauri::command]
 pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
@@ -455,7 +455,7 @@ pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
 }
 
 /// The user answered question `question` 「取消」 (or Escape), or the
-/// sheet went by itself, everything having finished: Canager does not quit
+/// sheet went by itself, everything having finished: Banager does not quit
 /// for want of word from the page (`QuitGuard::kept_waiting`) -- which
 /// matters when that word, `quit_question_shown`, did not get through.
 #[tauri::command]
@@ -463,8 +463,8 @@ pub fn quit_kept_waiting(guard: State<'_, QuitGuard>, question: u64) {
     guard.kept_waiting(question);
 }
 
-/// 「退出」: Canager cancels what can be cancelled, waits for it to stop,
-/// and quits (`quit_now`); the answer comes only if Canager is still there
+/// 「退出」: Banager cancels what can be cancelled, waits for it to stop,
+/// and quits (`quit_now`); the answer comes only if Banager is still there
 /// to give it. Also the page's answer when a quit it was asked about finds
 /// nothing left to wait for.
 #[tauri::command]
@@ -474,8 +474,8 @@ pub async fn quit_anyway(app: AppHandle) {
 
 /// What the method added to AppKit's delegate asks at every quit
 /// (`should_quit`, handed over by `guard_quitting`), or nothing yet: then
-/// it answers that Canager quits. Behind a lock only so that it can be
-/// set as Canager starts, and by the tests; taken out before it is
+/// it answers that Banager quits. Behind a lock only so that it can be
+/// set as Banager starts, and by the tests; taken out before it is
 /// called, so that nothing it does can wait on this lock.
 #[cfg(target_os = "macos")]
 type Decide = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
@@ -486,7 +486,7 @@ static DECIDE: std::sync::Mutex<Option<Decide>> = std::sync::Mutex::new(None);
 /// Makes every quit ask `should_quit` first: adds
 /// `applicationShouldTerminate:` to the class of AppKit's application
 /// delegate -- tao's, which has none -- answering `NSTerminateNow` when
-/// `should_quit` says Canager quits and `NSTerminateCancel` when it does
+/// `should_quit` says Banager quits and `NSTerminateCancel` when it does
 /// not. AppKit looks for the method at each `terminate:`, not only as
 /// the delegate is set, so one added after launch is asked -- as it was
 /// on macOS 27, for `terminate:` and for the quit Apple event with and
@@ -502,11 +502,11 @@ pub fn guard_quitting<R: Runtime>(app: &AppHandle<R>) {
     use objc2_app_kit::NSApplication;
 
     let Some(mtm) = MainThreadMarker::new() else {
-        eprintln!("[canager] quitting asks nothing: not set up on the main thread");
+        eprintln!("[banager] quitting asks nothing: not set up on the main thread");
         return;
     };
     let Some(delegate) = NSApplication::sharedApplication(mtm).delegate() else {
-        eprintln!("[canager] quitting asks nothing: AppKit has no application delegate");
+        eprintln!("[banager] quitting asks nothing: AppKit has no application delegate");
         return;
     };
     let app = app.clone();
@@ -514,7 +514,7 @@ pub fn guard_quitting<R: Runtime>(app: &AppHandle<R>) {
         Some(std::sync::Arc::new(move || should_quit(&app)));
     let delegate = AsRef::<objc2::runtime::AnyObject>::as_ref(&*delegate);
     if let Err(e) = add_should_terminate(delegate.class()) {
-        eprintln!("[canager] quitting asks nothing: {e}");
+        eprintln!("[banager] quitting asks nothing: {e}");
     }
 }
 
@@ -531,7 +531,7 @@ type ShouldTerminate = unsafe extern "C-unwind" fn(
 ) -> objc2_app_kit::NSApplicationTerminateReply;
 
 /// `applicationShouldTerminate:`, as `guard_quitting` adds it: `DECIDE`'s
-/// answer, and Canager quits when there is none to ask or it panics --
+/// answer, and Banager quits when there is none to ask or it panics --
 /// nothing unwinds into AppKit.
 #[cfg(target_os = "macos")]
 unsafe extern "C-unwind" fn application_should_terminate(
@@ -668,7 +668,7 @@ mod tests {
         assert!(waits(OpStatus::Running, Kill));
         assert!(
             !waits(OpStatus::Running, NoCancel),
-            "it does not end on Canager's account"
+            "it does not end on Banager's account"
         );
         for status in [OpStatus::Cancelling, OpStatus::Verifying, OpStatus::Done] {
             assert!(!waits(status, Kill), "{status:?}: its command has ended");
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(
             once_asked(false, true),
             OnceAsked::Wait,
-            "「退出」 was chosen, and Canager quits already"
+            "「退出」 was chosen, and Banager quits already"
         );
         assert_eq!(once_asked(true, true), OnceAsked::Wait);
     }
@@ -994,12 +994,12 @@ mod tests {
         assert_eq!(
             guard.once_asked(fifth),
             OnceAsked::Wait,
-            "「退出」: Canager quits already"
+            "「退出」: Banager quits already"
         );
     }
 
     /// `quit_unless_shown`'s wait, the page saying while it lasts that the
-    /// question is on screen: Canager goes on waiting for the user.
+    /// question is on screen: Banager goes on waiting for the user.
     #[tokio::test]
     async fn test_a_question_the_page_has_on_screen_in_time_waits_for_the_user() {
         let guard = QuitGuard::default();
@@ -1014,13 +1014,13 @@ mod tests {
             tokio::time::timeout(Duration::ZERO, waiting.as_mut())
                 .await
                 .is_err(),
-            "Canager waits"
+            "Banager waits"
         );
         guard.shown(question);
-        assert!(!waiting.await, "Canager does not quit");
+        assert!(!waiting.await, "Banager does not quit");
     }
 
-    /// `quit_unless_shown`'s wait, with no word from the page: Canager
+    /// `quit_unless_shown`'s wait, with no word from the page: Banager
     /// quits once the wait is over, and not before.
     #[tokio::test]
     async fn test_a_question_nobody_says_is_on_screen_quits_once_the_wait_is_over() {
@@ -1039,7 +1039,7 @@ mod tests {
     }
 
     /// 「取消」 while the page's word that the question is on screen has
-    /// not got through: Canager does not quit.
+    /// not got through: Banager does not quit.
     #[tokio::test]
     async fn test_keep_waiting_stops_the_wait_from_quitting_without_word_that_it_was_shown() {
         let guard = QuitGuard::default();
@@ -1055,7 +1055,7 @@ mod tests {
             .await
             .is_err());
         guard.kept_waiting(question.number);
-        assert!(!waiting.await, "Canager does not quit");
+        assert!(!waiting.await, "Banager does not quit");
         assert_eq!(guard.once_asked(question.number), OnceAsked::Wait);
         // Answered, it is not pending: the next quit asks anew, with a wait.
         let next = guard.ask();
@@ -1089,7 +1089,7 @@ mod tests {
         use std::sync::Arc;
 
         let name = std::ffi::CString::new(format!(
-            "CanagerQuitGuardTestDelegate{}",
+            "BanagerQuitGuardTestDelegate{}",
             std::process::id()
         ))
         .unwrap();
@@ -1112,7 +1112,7 @@ mod tests {
         // A subclass inherits it: refused too, and the superclass's method
         // is still what answers.
         let sub_name = std::ffi::CString::new(format!(
-            "CanagerQuitGuardTestDelegateSub{}",
+            "BanagerQuitGuardTestDelegateSub{}",
             std::process::id()
         ))
         .unwrap();
@@ -1141,7 +1141,7 @@ mod tests {
         assert_eq!(
             ask(None),
             NSApplicationTerminateReply::TerminateNow,
-            "nothing to ask yet: Canager quits"
+            "nothing to ask yet: Banager quits"
         );
         assert_eq!(
             ask(Some(

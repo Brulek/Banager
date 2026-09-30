@@ -48,7 +48,7 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c
 # `menu::preferred_languages` asks macOS for the user's preferred languages
 # (`NSLocale preferredLanguages`), to build the menu bar in the window's
 # language before the page has said which; `window::observe_activation`
-# watches Foundation's notification center for Canager coming to the front
+# watches Foundation's notification center for Banager coming to the front
 # (`addObserverForName:object:queue:usingBlock:`). Already in Cargo.lock at
 # this version as a dependency of tauri, with these features on, so no new
 # crate and no new feature enters the build -- declared, as banager-core
@@ -63,10 +63,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSString",
     "block2",
 ] }
-# `notify::app_active` asks macOS whether Canager is the app in front
+# `notify::app_active` asks macOS whether Banager is the app in front
 # (`NSRunningApplication`'s `isActive`): macOS shows no banner for its
 # notifications then, so none is posted. `window::observe_activation`
-# names the notification AppKit posts as Canager comes to the front
+# names the notification AppKit posts as Banager comes to the front
 # (`NSApplicationDidBecomeActiveNotification`). `quit::guard_quitting`
 # asks for AppKit's application delegate (`NSApplication`, which is an
 # `NSResponder`) and answers its `applicationShouldTerminate:` with an

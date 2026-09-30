@@ -3,7 +3,7 @@
  * sentences: what the Updates page's chips open, and what the Installed
  * page's chips and detail drawer say about the same update. One set of
  * builders, so a pinned package, a source that did not answer or a row
- * Canager could not check reads the same on both pages.
+ * Banager could not check reads the same on both pages.
  */
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
@@ -113,7 +113,7 @@ export interface UpdateVersionColumn {
  * mod.rs) says never to render them as a version jump, and a 64-hex
  * string is not something to put in front of this audience either way:
  * such a row says "New version" -- only when it was checked. A row
- * Canager could not check has no version to move to (its `target` is its
+ * Banager could not check has no version to move to (its `target` is its
  * installed version, `uncheckable_candidate` in crates/banager-core/src/
  * adapters/mod.rs), so it shows the version it has, and a model's
  * nothing at all.

@@ -60,7 +60,7 @@ pub struct SourceError {
 
 /// Whether any adapter detected a usable instance. There used to be a
 /// third variant, `RefusedAsRoot`, standing for "every adapter is disabled
-/// because Canager is running as root" -- but that was never true: the
+/// because Banager is running as root" -- but that was never true: the
 /// root objection belongs to `BrewAdapter` alone, and npm, pipx, uv, pip,
 /// cargo and ollama have no objection to root at all.
 ///
@@ -102,7 +102,7 @@ pub struct Snapshot {
     /// (spec §2.4-1) -- `stale` is what says whether it came back clean.
     /// Gated on success, one permanently broken source left this null for
     /// the life of the machine, and `SnapshotStatus` reads a null
-    /// timestamp as "Canager has never finished a check". `None` now means
+    /// timestamp as "Banager has never finished a check". `None` now means
     /// only that: `Snapshot::empty()`, before the first refresh commits.
     pub refreshed_at: Option<i64>,
     /// True when part of the newest refresh attempt failed, so this data

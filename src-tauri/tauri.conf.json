@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Canager",
+  "productName": "Banager",
   "version": "0.1.0",
-  "identifier": "com.brulek.canager",
+  "identifier": "com.brulek.banager",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Canager",
+        "title": "Banager",
         "width": 960,
         "height": 640,
         "minWidth": 800,
@@ -45,7 +45,7 @@
     "updater": {
       "pubkey": "REPLACE_WITH_UPDATER_PUBKEY",
       "endpoints": [
-        "https://github.com/Brulek/Canager/releases/latest/download/latest.json"
+        "https://github.com/Brulek/Banager/releases/latest/download/latest.json"
       ]
     }
   }

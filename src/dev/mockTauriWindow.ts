@@ -2,7 +2,7 @@
  * The browser preview's stand-in for "@tauri-apps/api/window"
  * (docs/ui-preview.md), aliased by vite.config.ts in `vite --mode mock`
  * and in no other mode, as ./mockTauri.ts is for "@tauri-apps/api/core".
- * src/lib/api.ts badges Canager's icon in the Dock through it
+ * src/lib/api.ts badges Banager's icon in the Dock through it
  * (`setDockBadge`). The browser has no such icon, and `pnpm tauri:mock`'s
  * -- the app's own -- could only be badged by asking the real backend,
  * which the preview never does: this badges nothing.

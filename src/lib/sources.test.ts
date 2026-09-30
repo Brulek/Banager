@@ -73,9 +73,9 @@ describe("sourceNoticesFor", () => {
     expect(isAvailable(instance())).toBe(true);
   });
 
-  it("has no notice for what a source lets Canager do: a read-only source's rows say it themselves", () => {
+  it("has no notice for what a source lets Banager do: a read-only source's rows say it themselves", () => {
     // pip, or an npm whose folder the account cannot write, being
-    // read-only is what it always is, not something Canager found out this
+    // read-only is what it always is, not something Banager found out this
     // time: each of its rows carries a "Read-only" chip, on both lists,
     // with its own way out (`READ_ONLY_DETAIL_KEYS`). A notice line for it
     // at the top of a list that mixes sources would not say which rows it
@@ -91,7 +91,7 @@ describe("sourceNoticesFor", () => {
   it("offers to start Ollama, and only Ollama, when a source is not running", () => {
     // One state, one sentence: every source that is not running gets the
     // same copy, named in the user's language. Ollama is the only one
-    // Canager can start, so it is the only one whose notice also carries a
+    // Banager can start, so it is the only one whose notice also carries a
     // button -- a second wording for the same state is what let a stopped
     // Ollama read one way in its notice and another in its plan refusal.
     const [ollama] = sourceNoticesFor(
@@ -105,7 +105,7 @@ describe("sourceNoticesFor", () => {
     expect(ollama.action).toEqual({ id: "openOllama", labelKey: "sourceNotice.openOllama" });
 
     // Any other source that reports NotRunning gets the same copy and no
-    // button: Canager has no way to start it.
+    // button: Banager has no way to start it.
     const [other] = sourceNoticesFor(
       instance({ adapter_id: "brew", status: { unavailable: "NotRunning", notes: [] } }),
       "Homebrew",
@@ -128,11 +128,11 @@ describe("sourceNoticesFor", () => {
     ).toBe(fakeT(notice.descriptionKey, notice.values));
   });
 
-  it("tells a root user to reopen Canager rather than that Homebrew is missing", () => {
+  it("tells a root user to reopen Banager rather than that Homebrew is missing", () => {
     // Launched with `sudo`, Homebrew refuses to run, so `BrewAdapter::detect`
     // reports the install it found as `RefusesAsRoot` instead of reporting
     // nothing. Its own copy, because the action is its own: not "start it"
-    // and not "reinstall it", but quit and open Canager again normally.
+    // and not "reinstall it", but quit and open Banager again normally.
     const [notice] = sourceNoticesFor(
       instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
       "Homebrew",
@@ -141,7 +141,7 @@ describe("sourceNoticesFor", () => {
     expect(notice.titleKey).toBe("sourceNotice.refusesAsRoot.title");
     expect(notice.descriptionKey).toBe("sourceNotice.refusesAsRoot.description");
     expect(notice.values).toEqual({ source: "Homebrew" });
-    // Canager cannot relaunch itself out from under sudo, so no button
+    // Banager cannot relaunch itself out from under sudo, so no button
     // pretends it can.
     expect(notice.action).toBeUndefined();
   });
@@ -166,7 +166,7 @@ describe("sourceNoticesFor", () => {
     // refresh after every launch there is nothing to carry forward. A
     // source whose CLI simply fails (cargo, when `cargo --version` does)
     // hits this on every single launch, and the notice used to say
-    // "Below is what Canager saw last time" over an empty group.
+    // "Below is what Banager saw last time" over an empty group.
     const [notice] = sourceNoticesFor(
       instance({ status: { unavailable: "NotResponding", notes: [] } }),
       "Homebrew",
@@ -334,7 +334,7 @@ describe("sourceNoticesFor", () => {
       expect(locale.sourceNotice.launcherOnly.description).toContain("{{command}}");
       expect(locale.sourceNotice.launcherOnly.description).toContain("{{source}}");
       // Each "another program runs first" title says whose it is, where
-      // Canager can tell: the three used to share one title.
+      // Banager can tell: the three used to share one title.
       expect(locale.sourceNotice.shadowedByHomebrew.title).toContain("Homebrew");
       expect(locale.sourceNotice.shadowedByNpm.title).toContain("npm");
       expect(locale.sourceNotice.shadowedByOther.title).not.toMatch(/Homebrew|npm/);
@@ -354,7 +354,7 @@ describe("sourceNoticesFor", () => {
     // there. The title says it is the one installed -- "it" -- that typing
     // the name does not run, in plain words: 「找不到这一份」 meant nothing
     // to someone who does not know there can be several copies of a tool.
-    // What happens in Terminal is judged by the PATH Canager sees, which it
+    // What happens in Terminal is judged by the PATH Banager sees, which it
     // takes from a login shell when opened from Finder
     // (src-tauri/src/lib.rs); the detail's first step, a new Terminal
     // window, covers a shell whose PATH has not caught up.
@@ -394,7 +394,7 @@ describe("sourceNoticesFor", () => {
     }
   });
 
-  it("calls what PATH finds first a program with the tool's name, never another copy, and says Canager can't tell which it is, in both locales (T6)", () => {
+  it("calls what PATH finds first a program with the tool's name, never another copy, and says Banager can't tell which it is, in both locales (T6)", () => {
     // Step D's review: route::shadow_note compares the name the user types
     // and where the first executable of that name resolves -- a Homebrew
     // directory, an npm one, or anywhere else -- never what program it is.
@@ -404,7 +404,7 @@ describe("sourceNoticesFor", () => {
     // `grok` on PATH that is not Grok Build either (route.rs,
     // test_shadow_note_classifies_by_where_the_first_one_resolves_not_by_what_program_it_is).
     // So each title names a program with the same name, its detail says
-    // Canager can't tell whether it is the tool, and none says "probably".
+    // Banager can't tell whether it is the tool, and none says "probably".
     expect(en.sourceNotice.shadowedByHomebrew.title).toBe(
       "Typing {{command}} runs a same-named program from Homebrew first",
     );
@@ -622,7 +622,7 @@ describe("planErrorMessage", () => {
     );
   });
 
-  it("words each of Canager's own planning failures itself, naming the source", () => {
+  it("words each of Banager's own planning failures itself, naming the source", () => {
     for (const [kind, key] of [
       ["output_too_large", "planRefused.outputTooLarge"],
       ["index_updating", "planRefused.indexUpdating"],
@@ -696,12 +696,12 @@ describe("planErrorMessage", () => {
     // `not_what_instructions_expect` is what check 4 and the ancestry rule
     // (`removal::check_item`) answer on every path-list uninstall. Claude
     // Code's list is built from Anthropic's removal steps, but Antigravity
-    // CLI and Grok Build publish none: their lists are Canager's own
+    // CLI and Grok Build publish none: their lists are Banager's own
     // reading of how each was installed (`recipes::AGY`, `recipes::GROK`
     // and their fixture READMEs). An agy launcher in a `~/.local/bin` that
     // is a link to a dotfiles folder inside the home folder, or a grok
     // `~/.grok/downloads` that is a link to another disk, gets this
-    // sentence, so it says what Canager expects rather than what "the
+    // sentence, so it says what Banager expects rather than what "the
     // official instructions" describe.
     const refusal = {
       en: en.planRefused.uninstallUnsafe.notWhatInstructionsExpect,
@@ -924,8 +924,8 @@ describe("sourceWarningOf", () => {
 });
 
 describe("planErrorDetail", () => {
-  it("says Canager's own refusal in one sentence, with nothing behind an ⓘ about whose problem it was", () => {
-    // The polish-3 copy rules (规则 3): 「问题出在 Canager，不在你的 Mac」
+  it("says Banager's own refusal in one sentence, with nothing behind an ⓘ about whose problem it was", () => {
+    // The polish-3 copy rules (规则 3): 「问题出在 Banager，不在你的 Mac」
     // was reassurance, not a next step, and is gone.
     expect(planErrorMessage(fakeT, '{"kind":"refused"}', "Homebrew", false)).toBe(
       'planRefused.refused({"source":"Homebrew"})',
@@ -933,8 +933,8 @@ describe("planErrorDetail", () => {
     expect(planErrorDetail(fakeT, '{"kind":"refused"}')).toBeNull();
     expect(en.planRefused.refused).toBe("Couldn't continue because of an internal error.");
     expect(zhCN.planRefused.refused).toBe("发生内部错误，无法继续。");
-    expect("canagerFaultDetail" in en.common).toBe(false);
-    expect("canagerFaultDetail" in zhCN.common).toBe(false);
+    expect("banagerFaultDetail" in en.common).toBe(false);
+    expect("banagerFaultDetail" in zhCN.common).toBe(false);
   });
 
   it("has nothing more to say about every other refusal, or about text that is not one", () => {
@@ -1330,7 +1330,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     );
   });
 
-  it("builds pipx's own unpin command for a pinned pipx tool, from the pipx Canager found", () => {
+  it("builds pipx's own unpin command for a pinned pipx tool, from the pipx Banager found", () => {
     // pipx spells it `pipx unpin <name>` (its `commands/upgrade.py:473`);
     // a brew-shaped `brew unpin cowsay` would answer "No available formula".
     const pipx = {
@@ -1368,7 +1368,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // The one sentence serves a row whose source did not answer the last
     // check, which gets no Update button until it does, and a pinned app
     // that updates itself, which `brew pin` warns may move anyway: "the
-    // next time Canager checks" and "keeping it at the version it has"
+    // next time Banager checks" and "keeping it at the version it has"
     // would each be false of one of them.
     expect(en.updates.blocked.Pinned.detail).not.toMatch(/next time|version it has now|keeping/);
     expect(zhCN.updates.blocked.Pinned.detail).not.toMatch(/下次|现在的版本/);
@@ -1473,7 +1473,7 @@ describe("the Updates page's chip details", () => {
     // account cannot change. The chip's detail is the sentence a refusal
     // for that source says (`notActionableMessage`), so the two cannot
     // disagree -- npm's used to promise, on the chip, that a Node from
-    // Homebrew lets Canager manage the packages already there (T5).
+    // Homebrew lets Banager manage the packages already there (T5).
     expect(READ_ONLY_DETAIL_KEYS).toEqual({
       ByDesign: "sourceNotice.pipReadOnly.description",
       PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
@@ -1536,7 +1536,7 @@ describe("the Updates page's chip details", () => {
 
   it("says what to do about a source that did not answer by why it did not, naming the source", () => {
     // "Check again later" is no help for an Ollama that is not running or
-    // a Canager started with sudo.
+    // a Banager started with sudo.
     expect(UNAVAILABLE_DETAIL_KEYS).toEqual({
       NotRunning: "updates.unavailableDetail.NotRunning",
       NotResponding: "updates.unavailableDetail.NotResponding",
@@ -1556,7 +1556,7 @@ describe("the Updates page's chip details", () => {
     }
     expect(en.updates.unavailableDetail.NotRunning).toBe("{{source}} isn't running. Open it, then click Check Again.");
     expect(zhCN.updates.unavailableDetail.NotRunning).toBe("{{source}}没有运行。请打开它，然后点按“重新检查”。");
-    expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Quit, then open Canager again/);
+    expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Quit, then open Banager again/);
     expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/请退出，然后连按两次重新打开/);
   });
 });
@@ -1600,7 +1600,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     // A row carried forward from a Homebrew that did not answer has no
     // Uninstall button until Homebrew answers a check again, pinned or
     // not, so "the next time it checks, at the latest the next time you
-    // start Canager" did not hold there, and needed a second sentence.
+    // start Banager" did not hold there, and needed a second sentence.
     // The detail says what stands in the way and what removes it.
     expect(en.installed.blocked.Pinned.description).toBe(
       "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",
@@ -1614,7 +1614,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
   });
 
   it("carries no command for a tool with no safe uninstall method: there is nothing to run first", () => {
-    // Unlike a pin, nothing the user runs can make Canager able to
+    // Unlike a pin, nothing the user runs can make Banager able to
     // uninstall it; the sentence points at the tool's own instructions
     // and has no `{{command}}` slot, so `withCommand` renders it as plain
     // text and `InstalledPage` sets no `<code>`.
@@ -1645,8 +1645,8 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(zhCN.adapters["standalone-claude"]).toBe("Claude Code");
   });
 
-  it("points at the tool's official documentation, not at a website Canager doesn't show, in the no-safe-method sentence", () => {
-    // Canager shows no homepage and opens no link (the Tauri opener
+  it("points at the tool's official documentation, not at a website Banager doesn't show, in the no-safe-method sentence", () => {
+    // Banager shows no homepage and opens no link (the Tauri opener
     // paragraph in docs/what-we-run.md), so "its website" named nothing
     // the user could find from the row. The documentation, called by the
     // tool's own name, is something they can look up.
@@ -1663,7 +1663,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     // holds no other folder. The command that would do it is not set
     // apart to be copied. Every uv tool carries the reason
     // (`UvAdapter::uninstall_blocked`), the last or not, so the copy says
-    // Canager uninstalls none, not that this one is the last.
+    // Banager uninstalls none, not that this one is the last.
     const uv = instance({ id: "uv", adapter_id: "uv", exe_path: "/opt/homebrew/bin/uv" });
     const key: ArtifactKey = { instance_id: "uv", kind: "Tool", name: "ruff" };
     expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.command(key, uv)).toBe("");
@@ -1690,7 +1690,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(zhCN.installed.blocked.UvToolDirSet.refused).toBe("无法卸载，因为设置了UV_TOOL_DIR。");
     // uv's rule, said once: uv checks the tools folder for another tool's
     // folder first (`crates/uv/src/commands/tool/uninstall.rs:40-52`), so
-    // "its last tool" is the whole condition. Then that Canager uninstalls
+    // "its last tool" is the whole condition. Then that Banager uninstalls
     // none. The refusal says what happened in one sentence, as the other
     // reasons' refusals do.
     expect(en.installed.blocked.UvToolDirSet.description).toContain("when uv uninstalls its last tool");

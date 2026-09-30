@@ -927,7 +927,7 @@ mod tests {
     #[tokio::test]
     async fn test_issue_plan_refuses_an_uninstall_with_no_safe_method_but_plans_its_upgrade() {
         // `UninstallBlocked::NoSafeMethod`: the tool has no uninstall
-        // command and Canager has no safe way yet to remove its files, so
+        // command and Banager has no safe way yet to remove its files, so
         // its inventory entry carries the refusal (phase 4 step B: Claude
         // Code, whose two-path list is verified but which nothing can move
         // to the Trash until step C). Per package, like `Pinned`: the same

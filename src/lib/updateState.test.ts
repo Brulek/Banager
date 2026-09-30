@@ -127,7 +127,7 @@ describe("canSkipVersion", () => {
     ).toBe(true);
   });
 
-  it("offers none on a row Canager could not check", () => {
+  it("offers none on a row Banager could not check", () => {
     // Its `target` is its installed version, not one any source offered.
     expect(
       canSkipVersion(candidate({ current: "2.88.3", target: "2.88.3", checkable: false })),
@@ -184,12 +184,12 @@ describe("hidingRule", () => {
     expect(hiddenBy({ ...otherPrefix, target: "2.90.0" })).toBeNull();
   });
 
-  it("never lets a skip hide a row Canager could not check", () => {
+  it("never lets a skip hide a row Banager could not check", () => {
     // An uncheckable candidate's `target` is its installed version
     // (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs),
     // not one the source offered. glib 2.90.0 was skipped, glib was later
     // brought to 2.90.0 some other way, and now its lookup fails: that row
-    // says Canager could not check it, and a skip of an offered 2.90.0 must
+    // says Banager could not check it, and a skip of an offered 2.90.0 must
     // not hide it.
     const hiddenBy = hidingRule(
       hiding({ skipped_versions: [{ key: formula.key, version: "2.90.0" }] }),

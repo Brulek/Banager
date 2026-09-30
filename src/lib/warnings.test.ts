@@ -554,7 +554,7 @@ describe("warningDetailKey", () => {
 
   it("keeps which Homebrew setting brought a clean-up or autoremove back behind the line", () => {
     // The line says what else Homebrew removes; the ⓘ, that a brew.env
-    // took back the variable Canager runs Homebrew with.
+    // took back the variable Banager runs Homebrew with.
     expect(warningDetailKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremovesDetail");
     expect(warningDetailKey("HomebrewPeriodicCleanup")).toBe("warnings.homebrewPeriodicCleanupDetail");
     expect(warningDetailKey("HomebrewCleanupAutoremoves")).toBe(
@@ -615,7 +615,7 @@ describe("warningDetailKey", () => {
         'warnings.caskStep.systemNames({"count":2,"items":"com.microsoft.VSCode、com.microsoft.VSCode.helper"})',
       caution: true,
     });
-    // An app Canager found is named on the line itself, with nothing behind it.
+    // An app Banager found is named on the line itself, with nothing behind it.
     expect(warningDetailKey({ CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } })).toBeNull();
   });
 

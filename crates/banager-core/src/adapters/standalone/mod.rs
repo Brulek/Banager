@@ -148,7 +148,7 @@ pub struct StandaloneAdapter {
     /// Read by `execute`.
     last_move: Arc<removal::LastMove>,
     detected: Mutex<Option<Detected>>,
-    /// The CPU architecture this Canager runs as (`std::env::consts::ARCH`;
+    /// The CPU architecture this Banager runs as (`std::env::consts::ARCH`;
     /// `with_arch` in tests): a `Latest::HttpJsonField` manifest is fetched
     /// only on the architectures it was verified for
     /// (`latest::manifest_arch_allowed`). Read by `published`.
@@ -225,7 +225,7 @@ impl StandaloneAdapter {
     /// the PATH note. One instance or none; never two.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         // The Cargo home by the `home` crate's rule (`None`: a relative
-        // CARGO_HOME, which no path of Canager's can stand for). A recipe
+        // CARGO_HOME, which no path of Banager's can stand for). A recipe
         // under `$CARGO_HOME` then has no launcher to look for; a `~/`
         // recipe is unaffected and seats `None`.
         let cargo_home = crate::adapters::cargo::cargo_home_of(env);
@@ -631,7 +631,7 @@ impl StandaloneAdapter {
                 channel,
                 checkable: true,
                 warnings: Vec::new(),
-                // A tool with no update command Canager may run: the newer
+                // A tool with no update command Banager may run: the newer
                 // version is real and has no button (spec §4.4, D5 item 4).
                 blocked: self
                     .recipe
@@ -726,7 +726,7 @@ impl StandaloneAdapter {
                 error_field,
             } => {
                 // The tool's own read-only check, against the launcher, with
-                // no environment of Canager's (spec §3.4's variables are for
+                // no environment of Banager's (spec §3.4's variables are for
                 // the version read). A failure names it as the user would
                 // type it: `recipe.id` is the command's name.
                 let shown = format!("{} {}", self.recipe.id, args.join(" "));
@@ -774,7 +774,7 @@ impl StandaloneAdapter {
     /// launcher through `run_plan` unchanged, or, for a recipe with none
     /// (agy), `UpdateBlocked::SelfUpdatesOnly` -- the gate
     /// (`blocked_upgrade`) refuses that first. `Install` is `Unsupported`
-    /// (the installer is the tool's own and Canager never runs it;
+    /// (the installer is the tool's own and Banager never runs it;
     /// installing tools is phase 5). `Uninstall` is the recipe's path list
     /// as a `TrashPaths` plan under the removal's checks (spec §6.2-§6.3),
     /// with what the preview saw at each path riding along on this side
@@ -798,7 +798,7 @@ impl StandaloneAdapter {
         }
         match req.kind {
             OpKind::Install => Err(AdapterError::Unsupported(format!(
-                "{} is installed by its own installer, which Canager never runs",
+                "{} is installed by its own installer, which Banager never runs",
                 self.meta.name
             ))),
             OpKind::Uninstall => {
@@ -850,7 +850,7 @@ impl StandaloneAdapter {
             OpKind::Upgrade => {
                 let detected = self.seated_detected_for(inst)?;
                 // A tool that installs its updates itself and offers nothing
-                // Canager may run (agy): the gate refuses this first
+                // Banager may run (agy): the gate refuses this first
                 // (`blocked_upgrade`, from the candidate's `blocked`); this is
                 // its late twin for a stale snapshot (spec §五).
                 let Some(upgrade) = &self.recipe.upgrade else {
@@ -971,7 +971,7 @@ impl StandaloneAdapter {
                     route::probe(self.recipe.route.kind, &launcher, &root),
                     Probe::Present { .. }
                 ) {
-                    return Ok(Outcome::CanagerFailed(Fault::PathChanged {
+                    return Ok(Outcome::BanagerFailed(Fault::PathChanged {
                         path: crate::scan::display_path(&launcher, &detected.home)
                             .display()
                             .to_string(),
@@ -1002,7 +1002,7 @@ impl StandaloneAdapter {
                             )));
                         };
                         if let Some(refusal) = (cmd.blocked)(&detected) {
-                            return Ok(Outcome::CanagerFailed(Fault::PathChanged {
+                            return Ok(Outcome::BanagerFailed(Fault::PathChanged {
                                 path: crate::scan::display_path(&refusal.path, &detected.home)
                                     .display()
                                     .to_string(),
@@ -1011,7 +1011,7 @@ impl StandaloneAdapter {
                     }
                     OpKind::Install => {
                         return Err(AdapterError::Refused(format!(
-                            "{} is never installed by a plan of Canager's",
+                            "{} is never installed by a plan of Banager's",
                             self.meta.name
                         )));
                     }
@@ -1086,7 +1086,7 @@ impl StandaloneAdapter {
     /// truthfully (`Cancelled` after the user's Cancel,
     /// `StillInstalledAfterUninstall` after a run that claimed success) and
     /// the next refresh shows the row a second Uninstall finishes; a
-    /// launcher that is gone is absent (spec §3.6); and a launcher Canager
+    /// launcher that is gone is absent (spec §3.6); and a launcher Banager
     /// cannot look at -- a permission error, a loop -- is neither: an
     /// error, which `run_operation` reports as `Unconfirmed`, never as a
     /// finished uninstall (Ruling 27). No version is read: presence is the
@@ -1099,7 +1099,7 @@ impl StandaloneAdapter {
     /// and every backup file its patterns match, is looked at too
     /// (`removal::left_behind`, with `plan`'s paths as the ones the run
     /// moved, bound to this instance's seat): one that is there is the
-    /// tool still there, and one Canager cannot look at is an error, as
+    /// tool still there, and one Banager cannot look at is an error, as
     /// for the launcher. What the preview's own rule keeps as not the
     /// tool's, and this run never moved, is not counted (`left_behind`
     /// says why). A launcher still there answers alone: the tool is there,
@@ -1273,7 +1273,7 @@ pub(super) mod testing {
     impl TempHome {
         pub fn new(tag: &str) -> TempHome {
             let raw = std::env::temp_dir().join(format!(
-                "canager-standalone-{tag}-{}-{}",
+                "banager-standalone-{tag}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -2287,7 +2287,7 @@ mod tests {
         assert_eq!(request.method, "GET");
         assert!(
             request.headers.is_empty(),
-            "nothing of Canager's own but the client's UA"
+            "nothing of Banager's own but the client's UA"
         );
         assert_eq!(request.timeout, Duration::from_secs(30));
     }
@@ -2346,7 +2346,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_updates_marks_a_failed_request_uncheckable_never_an_error() {
-        // A network failure is "Canager could not find out", not a failed
+        // A network failure is "Banager could not find out", not a failed
         // source (which would hold the snapshot stale): one row at the
         // installed version, `checkable: false`, with the reason.
         let home = TempHome::new("check-network");
@@ -2980,7 +2980,7 @@ mod tests {
 
             assert_eq!(
                 outcome,
-                Outcome::CanagerFailed(Fault::PathChanged {
+                Outcome::BanagerFailed(Fault::PathChanged {
                     path: "~/.local/bin/claude".to_string()
                 }),
                 "{case}"
@@ -3023,14 +3023,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_refuses_an_upgrade_plan_that_names_another_program_as_canagers_own_bug() {
+    async fn test_execute_refuses_an_upgrade_plan_that_names_another_program_as_banagers_own_bug() {
         // `plan` names the launcher and nothing else (spec 附录 B). A plan
         // whose program is any other file was not built by `plan`, and so
         // is one handed to an adapter with no detect before it (no home to
         // find the launcher under -- unreachable through `Session`, which
         // detects first; `plan` itself refuses such an adapter,
         // `test_plan_upgrade_is_refused_before_any_detect`): both are
-        // refused as Canager's own bug (`Refused`, which `run_operation`
+        // refused as Banager's own bug (`Refused`, which `run_operation`
         // reports as `Fault::Internal`), nothing spawned -- never run on
         // the plan's word.
         let UpgradeSetup {
@@ -3462,7 +3462,7 @@ mod tests {
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             })
         );
@@ -3493,7 +3493,7 @@ mod tests {
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             })
         );
@@ -3593,7 +3593,7 @@ mod tests {
         // `StillInstalledAfterUninstall` after an exit that claimed
         // success) -- while `reconcile` keeps B's strict rule for upgrades;
         // a launcher that is gone, with every other path the plan listed,
-        // is absent; and one Canager cannot look at (its folder
+        // is absent; and one Banager cannot look at (its folder
         // unreadable) is neither: an error, which `run_operation` reports
         // as `Unconfirmed`, never as a finished uninstall.
         let trasher = Arc::new(MockTrasher::new());
@@ -3637,7 +3637,7 @@ mod tests {
         // would then read as gone. So after a path-list uninstall every
         // other path on the list is looked for too (`removal::left_behind`,
         // with the plan's paths as the ones this run moved): one that is
-        // there is the tool still there, and one Canager cannot look at is
+        // there is the tool still there, and one Banager cannot look at is
         // an error, never "gone".
         let trasher = Arc::new(MockTrasher::new());
         let (home, _layout, adapter, inst) =
@@ -3899,7 +3899,7 @@ mod tests {
         assert_eq!(
             runner.calls().len(),
             before,
-            "nothing run for a home Canager cannot name"
+            "nothing run for a home Banager cannot name"
         );
     }
 
@@ -4510,7 +4510,7 @@ mod tests {
 
             assert_eq!(
                 outcome,
-                Outcome::CanagerFailed(Fault::PathChanged {
+                Outcome::BanagerFailed(Fault::PathChanged {
                     path: format!("~/{linked}")
                 }),
                 "{linked}"
@@ -4596,7 +4596,7 @@ mod tests {
 
             assert_eq!(
                 outcome,
-                Outcome::CanagerFailed(Fault::PathChanged {
+                Outcome::BanagerFailed(Fault::PathChanged {
                     path: format!("~/{container}")
                 }),
                 "{container}"
@@ -4895,7 +4895,7 @@ mod tests {
     async fn test_check_updates_for_agy_lists_a_newer_manifest_version_with_no_button() {
         // Spec §4.4 D5 item 4: a real candidate (the manifest is newer),
         // `SelfUpdatesOnly` (no `upgrade`), `Registry` channel, one GET with
-        // no header of Canager's.
+        // no header of Banager's.
         let home = TempHome::new("agy-check-newer");
         let http = Arc::new(MockHttpClient::new());
         http.respond(
@@ -5243,7 +5243,7 @@ mod tests {
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/agy".to_string()
             })
         );
@@ -5373,7 +5373,7 @@ mod tests {
             }]
         );
         // The check runs against the launcher, with the recipe's argv and
-        // its own timeout, and no environment of Canager's.
+        // its own timeout, and no environment of Banager's.
         let runner = Arc::new(RecordingRunner {
             specs: StdMutex::new(Vec::new()),
             output: exited_0(GROK_VERSION_LINE),

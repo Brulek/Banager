@@ -1,6 +1,6 @@
 //! `RealHttpClient` wraps a `reqwest::Client` pinned to the rustls TLS
 //! backend (never native-tls/openssl — Global Constraints). Every request
-//! carries the `canager/{version}` User-Agent and a 30-second client-wide
+//! carries the `banager/{version}` User-Agent and a 30-second client-wide
 //! default timeout; `HttpRequest::timeout` overrides that default on a
 //! per-request basis. Redirects are not followed, a 3xx is an error rather
 //! than a response, a response body is read to a cap instead of being
@@ -13,10 +13,10 @@ use async_trait::async_trait;
 /// The largest response body `RealHttpClient` will read, in bytes.
 ///
 /// `Response::text()` has no bound of its own: the only thing standing
-/// between Canager and an arbitrarily large body was the 30-second timeout,
+/// between Banager and an arbitrarily large body was the 30-second timeout,
 /// and against a *loopback* daemon — which is exactly what the Ollama
 /// adapter talks to — thirty seconds is gigabytes of resident memory in one
-/// `String`. The largest body Canager legitimately reads is Ollama's
+/// `String`. The largest body Banager legitimately reads is Ollama's
 /// 1209-layer manifest at ~246 KiB (see
 /// `adapters/fixtures/ollama/0.34.1/`), so 8 MiB is roughly 33x headroom
 /// over the real worst case while still bounding the damage.
@@ -48,7 +48,7 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 ///
 /// Adding a host here is a reviewed change with two other halves: the
 /// adapter that contacts it, and `docs/what-we-run.md`, which must name
-/// every host Canager connects to.
+/// every host Banager connects to.
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
     "crates.io",
     "pypi.org",
@@ -102,14 +102,14 @@ impl RealHttpClient {
     /// behaviour can be tested at the byte, at a few kilobytes rather than
     /// a few megabytes.
     pub fn with_body_limit(max_body_bytes: usize) -> RealHttpClient {
-        let user_agent = format!("canager/{}", env!("CARGO_PKG_VERSION"));
+        let user_agent = format!("banager/{}", env!("CARGO_PKG_VERSION"));
         let client = reqwest::Client::builder()
             .tls_backend_rustls()
             .user_agent(user_agent)
             // reqwest's default is `Policy::limited(10)`: up to ten
             // redirects, to any host, with no https-only guard — so an
             // https request could be walked to plain http, or to a host
-            // Canager never chose, carrying its headers with it. None of
+            // Banager never chose, carrying its headers with it. None of
             // the hosts this client talks to -- `ALLOWED_HTTPS_HOSTS` over
             // https, and the Ollama daemon over http -- ever needs a
             // redirect, so the policy is `none` and `send` below turns a
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_real_http_client_sends_the_canager_user_agent() {
+    async fn test_real_http_client_sends_the_banager_user_agent() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -296,8 +296,8 @@ mod tests {
 
         let request_text = captured.await.expect("server task panicked");
         assert!(
-            request_text.contains(&format!("canager/{}", env!("CARGO_PKG_VERSION"))),
-            "expected the canager User-Agent in the request, got: {request_text}"
+            request_text.contains(&format!("banager/{}", env!("CARGO_PKG_VERSION"))),
+            "expected the banager User-Agent in the request, got: {request_text}"
         );
     }
 
@@ -363,10 +363,10 @@ mod tests {
     #[tokio::test]
     async fn test_real_http_client_does_not_follow_a_redirect_and_reports_it_as_an_error() {
         // reqwest's default policy follows up to ten redirects, to any host,
-        // with no https-only guard. None of Canager's requests -- the
+        // with no https-only guard. None of Banager's requests -- the
         // Ollama daemon over http, `ALLOWED_HTTPS_HOSTS` over https -- ever
         // needs one, so a 3xx means something has gone wrong and following
-        // it would carry the request (and its headers) somewhere Canager
+        // it would carry the request (and its headers) somewhere Banager
         // never chose. The destination here is a second, *watched* server:
         // if it is ever contacted, the redirect was followed.
         let followed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -457,7 +457,7 @@ mod tests {
         // `response.text()` read the whole body into a String with no bound
         // at all; the only limit was the 30s timeout, and against a loopback
         // daemon that is gigabytes of resident memory. The largest body
-        // Canager legitimately reads is the 1209-layer Ollama manifest, at
+        // Banager legitimately reads is the 1209-layer Ollama manifest, at
         // ~246 KiB, so the default cap leaves roughly 33x headroom.
         let addr = serve_body_of_length(MAX_RESPONSE_BYTES + 1).await;
         let client = RealHttpClient::new();

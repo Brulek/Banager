@@ -189,7 +189,7 @@ describe("CommandPreview", () => {
   });
 
   it("says only what is sure of a path-list uninstall, in the open, with no command to show", () => {
-    // A `TrashPaths` plan runs no command: Canager moves the items itself.
+    // A `TrashPaths` plan runs no command: Banager moves the items itself.
     // T4 of the copy table: they go to the Trash and can be dragged back
     // out -- and no promise of Finder's Put Back, which works as often as
     // not (crates/banager-core/src/trash/mod.rs).

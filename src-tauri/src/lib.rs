@@ -22,10 +22,10 @@ use tauri_plugin_window_state::StateFlags;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if fix_path_env::fix().is_err() {
-        eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
+        eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }
     let host_env = banager_core::runner::HostEnv::discover();
-    println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
+    println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -33,16 +33,16 @@ pub fn run() {
         // The update notification's plugin (notify.rs): asked for
         // permission to post, and, off a Mac, posting through. The page is
         // given one of its commands, the one the plugin's own script calls
-        // as the page loads (capabilities/default.json); Canager's
+        // as the page loads (capabilities/default.json); Banager's
         // commands in notify.rs do the rest.
         .plugin(tauri_plugin_notification::init())
-        // The window opens as big as it was when Canager last quit, and
+        // The window opens as big as it was when Banager last quit, and
         // where it was if a display is still there -- zoomed or in full
         // screen, if it was -- as a Mac app's does; with nothing saved yet,
         // at tauri.conf.json's size, centred. Saved as the app quits, to
         // `.window-state.json` in the app's config folder, on macOS the
         // folder `settings.json` is in (docs/what-we-run.md, "Files
-        // Canager writes"). A window closed before then was only hidden
+        // Banager writes"). A window closed before then was only hidden
         // (window.rs), so it is still there to be saved, with the size and
         // position it had. Not whether the window is shown, or its title
         // bar: it always opens shown, with the title bar tauri.conf.json
@@ -60,7 +60,7 @@ pub fn run() {
                 .build(),
         )
         // The cask icons `ipc::artifact_icon` hands the window, drawn by
-        // macOS once per app folder and kept in memory until Canager quits.
+        // macOS once per app folder and kept in memory until Banager quits.
         // Managed beside `AppState`, not in it: nothing but that command
         // reads it.
         .manage(std::sync::Arc::new(banager_core::icon::AppIcons::real()))
@@ -86,7 +86,7 @@ pub fn run() {
                 &menu::preferred_languages(),
             );
             menu::show(app.handle(), language)?;
-            // Canager coming to the front -- a click on the update
+            // Banager coming to the front -- a click on the update
             // notification brings it there -- with its window closed while
             // a notification waits on the window brings the window back on
             // the Updates page (window.rs).
@@ -97,7 +97,7 @@ pub fn run() {
             quit::guard_quitting(app.handle());
             Ok(())
         })
-        // Canager's own menu bar in place of tauri's default, which `setup`
+        // Banager's own menu bar in place of tauri's default, which `setup`
         // above would only replace. Its state is managed here, on the
         // builder, so that it is there before the page can name a language.
         .enable_macos_default_menu(false)
@@ -112,7 +112,7 @@ pub fn run() {
         // Its items that act in the page bring the window back and tell it;
         // macOS carries out the rest itself.
         .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
-        // Closing the window hides it, and Canager keeps running until it
+        // Closing the window hides it, and Banager keeps running until it
         // quits (window.rs).
         .on_window_event(window::on_window_event)
         .invoke_handler(tauri::generate_handler![
@@ -138,7 +138,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        // A click on Canager's icon in the Dock brings a closed window back,
+        // A click on Banager's icon in the Dock brings a closed window back,
         // on the Updates page while a notification waits on it (window.rs).
         .run(window::on_run_event);
 }

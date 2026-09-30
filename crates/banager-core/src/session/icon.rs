@@ -124,7 +124,7 @@ mod tests {
     /// test itself at the end.
     fn temp_app(tag: &str) -> (PathBuf, PathBuf) {
         let raw = std::env::temp_dir().join(format!(
-            "canager-session-icon-{}-{}-{}",
+            "banager-session-icon-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

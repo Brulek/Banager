@@ -23,7 +23,7 @@ import { parseScenario } from "./scenario";
 export type { InvokeArgs };
 
 /** In every preview page's console, and in no production bundle (docs/ui-preview.md). */
-export const MOCK_MARKER = "canager-ui-preview-mock";
+export const MOCK_MARKER = "banager-ui-preview-mock";
 
 /** Tauri's `Channel`, as far as api.ts uses it: the backend calls `onmessage`. */
 export class Channel<T = unknown> implements Pick<TauriChannel<T>, "onmessage"> {

@@ -7,7 +7,7 @@
 //! menu. Where macOS provides an item's action (About and its panel,
 //! Services, Hide, Quit, Close Window, the Edit menu's, the Window
 //! menu's), the item is macOS's own (`MacItem`), shortcut and all, and
-//! Canager gives only its label. The items that act in the page --
+//! Banager gives only its label. The items that act in the page --
 //! Settings…; the View menu's four pages, ⌘1 to ⌘4 as in Finder's and
 //! Mail's; Check Again; Search -- bring the window back if it was closed
 //! or minimized and tell it, one event each (`PageCommand`, through
@@ -132,7 +132,7 @@ pub enum MacItem {
     HideOthers,
     ShowAll,
     /// ⌘Q: AppKit's `terminate:`, which asks quit.rs first whether
-    /// Canager quits now, as the Dock's Quit and a logout do.
+    /// Banager quits now, as the Dock's Quit and a logout do.
     Quit,
     /// ⌘W: AppKit's `performClose:`, what the window's red button does,
     /// which hides the window rather than closing it (window.rs).
@@ -156,7 +156,7 @@ pub enum Item {
     Separator,
 }
 
-/// One menu of the menu bar: Canager's own (the one macOS titles with the
+/// One menu of the menu bar: Banager's own (the one macOS titles with the
 /// app's name), File, Edit, View, Window, Help.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TopMenu {
@@ -274,7 +274,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
 /// sidebar's Overview, Updates and Installed and the last row under its
 /// 「来源」, Other Programs, ⌘1 to ⌘4 as Finder's and Mail's are, then the
 /// page's Check Again and Search; the Window menu; and Help, which has no
-/// item of Canager's -- only the search field macOS puts there.
+/// item of Banager's -- only the search field macOS puts there.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
@@ -506,7 +506,7 @@ pub fn forward_to_page<R: Runtime>(app: &AppHandle<R>, id: &str) {
     };
     if let Err(e) = window::show_and_tell(app, command.event()) {
         eprintln!(
-            "[canager] could not tell the window {} was chosen: {e}",
+            "[banager] could not tell the window {} was chosen: {e}",
             command.id()
         );
     }
@@ -569,24 +569,24 @@ mod tests {
 
     #[test]
     fn test_the_english_menu_bar_is_a_mac_apps() {
-        let bar = menu_bar(MenuLanguage::En, "Canager");
+        let bar = menu_bar(MenuLanguage::En, "Banager");
         assert_eq!(
             labels(&bar),
             owned(&[
                 (
-                    "Canager",
+                    "Banager",
                     &[
-                        "About Canager",
+                        "About Banager",
                         "—",
                         "Settings…",
                         "—",
                         "Services",
                         "—",
-                        "Hide Canager",
+                        "Hide Banager",
                         "Hide Others",
                         "Show All",
                         "—",
-                        "Quit Canager",
+                        "Quit Banager",
                     ],
                 ),
                 ("File", &["Close Window"]),
@@ -614,24 +614,24 @@ mod tests {
 
     #[test]
     fn test_the_chinese_menu_bar_has_macos_own_chinese_words() {
-        let bar = menu_bar(MenuLanguage::ZhCn, "Canager");
+        let bar = menu_bar(MenuLanguage::ZhCn, "Banager");
         assert_eq!(
             labels(&bar),
             owned(&[
                 (
-                    "Canager",
+                    "Banager",
                     &[
-                        "关于 Canager",
+                        "关于 Banager",
                         "—",
                         "设置…",
                         "—",
                         "服务",
                         "—",
-                        "隐藏 Canager",
+                        "隐藏 Banager",
                         "隐藏其他",
                         "全部显示",
                         "—",
-                        "退出 Canager",
+                        "退出 Banager",
                     ],
                 ),
                 ("文件", &["关闭窗口"]),
@@ -659,10 +659,10 @@ mod tests {
 
     #[test]
     fn test_only_the_words_differ_between_the_two_languages() {
-        let english = menu_bar(MenuLanguage::En, "Canager");
+        let english = menu_bar(MenuLanguage::En, "Banager");
         assert_eq!(
             shape(&english),
-            shape(&menu_bar(MenuLanguage::ZhCn, "Canager"))
+            shape(&menu_bar(MenuLanguage::ZhCn, "Banager"))
         );
         assert_eq!(
             english.iter().map(|menu| menu.id).collect::<Vec<_>>(),
@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn test_every_item_but_the_pages_seven_is_macos_own() {
-        let bar = menu_bar(MenuLanguage::En, "Canager");
+        let bar = menu_bar(MenuLanguage::En, "Banager");
         let items: Vec<&Item> = bar.iter().flat_map(|menu| &menu.items).collect();
         let pages: Vec<PageCommand> = items
             .iter()

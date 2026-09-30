@@ -1,8 +1,8 @@
-//! What Homebrew's own launcher does to the environment Canager hands it,
-//! for the two variables that decide whether a `brew` command Canager runs
+//! What Homebrew's own launcher does to the environment Banager hands it,
+//! for the two variables that decide whether a `brew` command Banager runs
 //! also deletes or uninstalls software its preview never named.
 //!
-//! Every `brew` command Canager runs carries `HOMEBREW_NO_AUTOREMOVE=1` and
+//! Every `brew` command Banager runs carries `HOMEBREW_NO_AUTOREMOVE=1` and
 //! `HOMEBREW_NO_INSTALL_CLEANUP=1` (`BrewAdapter::ENV`). Before any of
 //! Homebrew's Ruby runs, `bin/brew` (Homebrew 7.0.6-70,
 //! `/opt/homebrew/bin/brew:128-180`) exports each `HOMEBREW_*` line of up to
@@ -33,7 +33,7 @@
 //! `BrewAdapter::plan` turns the answer into `Warning::HomebrewAutoremoves`,
 //! or `Warning::HomebrewPeriodicCleanup` and then, with autoremove back
 //! too, `Warning::HomebrewCleanupAutoremoves`. Everything it reads --
-//! Canager's environment, the files -- comes through the two functions it
+//! Banager's environment, the files -- comes through the two functions it
 //! is handed.
 
 use std::ffi::{OsStr, OsString};
@@ -47,7 +47,7 @@ pub(crate) const NO_AUTOREMOVE: &str = "HOMEBREW_NO_AUTOREMOVE";
 /// (`env_config.rb:605-611`), on whenever it is not blank.
 pub(crate) const NO_INSTALL_CLEANUP: &str = "HOMEBREW_NO_INSTALL_CLEANUP";
 /// Where `bin/brew` looks for the user's `brew.env` when `XDG_CONFIG_HOME`
-/// is not set (`bin/brew:168-170`). It can come from Canager's environment
+/// is not set (`bin/brew:168-170`). It can come from Banager's environment
 /// or from either of the two files read before that choice.
 const XDG_CONFIG_FALLBACK: &str = "HOMEBREW_XDG_CONFIG_HOME";
 /// When set after the system file is read, `bin/brew` reads that file again
@@ -85,15 +85,15 @@ pub(crate) struct HomebrewSwitches {
 
 /// What Homebrew will make of `HOMEBREW_NO_AUTOREMOVE` and
 /// `HOMEBREW_NO_INSTALL_CLEANUP` for a `brew` command started with
-/// `plan_env` over Canager's own environment, from Homebrew's prefix
+/// `plan_env` over Banager's own environment, from Homebrew's prefix
 /// `prefix`.
 ///
-/// `canager_var` reads a variable of Canager's environment, which the
+/// `banager_var` reads a variable of Banager's environment, which the
 /// command inherits under `plan_env` (`RealRunner::run` clears nothing);
 /// `read_file` reads one `brew.env` file, `None` when there is none to read.
 /// The files and their order are `bin/brew`'s: `/etc/homebrew/brew.env`,
 /// then `<prefix>/etc/homebrew/brew.env`, then the user's --
-/// `$XDG_CONFIG_HOME/homebrew/brew.env` when Canager's environment sets
+/// `$XDG_CONFIG_HOME/homebrew/brew.env` when Banager's environment sets
 /// `XDG_CONFIG_HOME`, else `$HOMEBREW_XDG_CONFIG_HOME/homebrew/brew.env`
 /// when that is set by then, else `~/.homebrew/brew.env` -- and the system
 /// file once more at the end when `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` was
@@ -102,10 +102,10 @@ pub(crate) struct HomebrewSwitches {
 pub(crate) fn after_brew_env(
     plan_env: &[(String, String)],
     prefix: &Path,
-    canager_var: &dyn Fn(&str) -> Option<OsString>,
+    banager_var: &dyn Fn(&str) -> Option<OsString>,
     read_file: &dyn Fn(&Path) -> Option<Vec<u8>>,
 ) -> HomebrewSwitches {
-    let mut vars = Vars::inherited(plan_env, canager_var);
+    let mut vars = Vars::inherited(plan_env, banager_var);
     let export = |vars: &mut Vars, path: &Path| {
         if let Some(bytes) = read_file(path) {
             vars.export_file(&bytes);
@@ -117,7 +117,7 @@ pub(crate) fn after_brew_env(
         &mut vars,
         &concat(prefix.as_os_str(), "/etc/homebrew/brew.env"),
     );
-    if let Some(user_file) = user_file(&vars, canager_var) {
+    if let Some(user_file) = user_file(&vars, banager_var) {
         export(&mut vars, &user_file);
     }
     if system_takes_priority {
@@ -133,14 +133,14 @@ pub(crate) fn after_brew_env(
 /// by joining strings as bash does. `None` when `HOME` is unset or empty
 /// as well: `bin/brew` then stops before it reads any file
 /// (`bin/brew:39-43`), and nothing runs.
-fn user_file(vars: &Vars, canager_var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+fn user_file(vars: &Vars, banager_var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     let set = |value: Option<OsString>| value.filter(|v| !v.is_empty());
-    let config_home = if let Some(xdg) = set(canager_var("XDG_CONFIG_HOME")) {
+    let config_home = if let Some(xdg) = set(banager_var("XDG_CONFIG_HOME")) {
         concat(&xdg, "/homebrew")
     } else if let Some(fallback) = vars.get(XDG_CONFIG_FALLBACK).filter(|v| !v.is_empty()) {
         concat(OsStr::from_bytes(fallback), "/homebrew")
     } else {
-        concat(&set(canager_var("HOME"))?, "/.homebrew")
+        concat(&set(banager_var("HOME"))?, "/.homebrew")
     };
     Some(concat(config_home.as_os_str(), "/brew.env"))
 }
@@ -158,10 +158,10 @@ struct Vars([Option<Vec<u8>>; 4]);
 
 impl Vars {
     /// What `bin/brew` starts from: the plan's own value, which the runner
-    /// sets over Canager's environment, else Canager's own.
+    /// sets over Banager's environment, else Banager's own.
     fn inherited(
         plan_env: &[(String, String)],
-        canager_var: &dyn Fn(&str) -> Option<OsString>,
+        banager_var: &dyn Fn(&str) -> Option<OsString>,
     ) -> Vars {
         Vars(FOLLOWED.map(|name| {
             plan_env
@@ -169,7 +169,7 @@ impl Vars {
                 .rev()
                 .find(|(key, _)| key == name)
                 .map(|(_, value)| value.clone().into_bytes())
-                .or_else(|| canager_var(name).map(OsStringExt::into_vec))
+                .or_else(|| banager_var(name).map(OsStringExt::into_vec))
         }))
     }
 
@@ -270,7 +270,7 @@ fn boolean_true(value: Option<&[u8]>) -> bool {
 }
 
 /// One `brew.env` file's bytes, or `None` unless `path` leads, links
-/// followed, to a regular file Canager can read: `bin/brew` reads one only
+/// followed, to a regular file Banager can read: `bin/brew` reads one only
 /// when `[[ -r … ]]` holds (`bin/brew:131-132`). Nothing but a regular file
 /// is opened -- a named pipe would wait for a writer -- and the open file is
 /// checked again, as rustup's startup files are (`read_startup_file` in
@@ -307,7 +307,7 @@ mod tests {
     const HOME_FILE: &str = "/Users/someone/.homebrew/brew.env";
 
     /// `after_brew_env` for `/opt/homebrew` with `files` on disk and
-    /// `vars` as Canager's environment, `HOME` included unless `vars`
+    /// `vars` as Banager's environment, `HOME` included unless `vars`
     /// names it.
     fn switches(files: &[(&str, &str)], vars: &[(&str, &str)]) -> HomebrewSwitches {
         let files: HashMap<PathBuf, Vec<u8>> = files
@@ -332,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_no_brew_env_file_canagers_two_switches_stand() {
+    fn test_with_no_brew_env_file_banagers_two_switches_stand() {
         assert_eq!(
             switches(&[], &[]),
             HomebrewSwitches {
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn test_the_users_file_is_under_xdg_config_home_when_canagers_environment_sets_it() {
+    fn test_the_users_file_is_under_xdg_config_home_when_banagers_environment_sets_it() {
         let off = "HOMEBREW_NO_AUTOREMOVE=0\n";
         let xdg = [("XDG_CONFIG_HOME", "/Users/someone/.config")];
         assert!(autoremoves(
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_homebrew_xdg_config_home_is_the_users_folder_when_xdg_config_home_is_not() {
-        // `bin/brew:168-170`: from Canager's environment, or from a file
+        // `bin/brew:168-170`: from Banager's environment, or from a file
         // read before the choice -- the system's or the prefix's.
         let off = "HOMEBREW_NO_AUTOREMOVE=0\n";
         assert!(autoremoves(
@@ -477,7 +477,7 @@ mod tests {
         let system = "HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY=1\nHOMEBREW_NO_AUTOREMOVE=0\n";
         let on = "HOMEBREW_NO_AUTOREMOVE=1\n";
         assert!(autoremoves(&[(SYSTEM_FILE, system), (HOME_FILE, on)], &[]));
-        // Or when Canager's own environment sets it.
+        // Or when Banager's own environment sets it.
         assert!(autoremoves(
             &[
                 (SYSTEM_FILE, "HOMEBREW_NO_AUTOREMOVE=0\n"),
@@ -553,9 +553,9 @@ mod tests {
     }
 
     #[test]
-    fn test_canagers_plan_variable_is_what_bin_brew_starts_from() {
-        // The runner sets the plan's variables over Canager's environment,
-        // so a `HOMEBREW_NO_AUTOREMOVE=0` Canager inherited never reaches
+    fn test_banagers_plan_variable_is_what_bin_brew_starts_from() {
+        // The runner sets the plan's variables over Banager's environment,
+        // so a `HOMEBREW_NO_AUTOREMOVE=0` Banager inherited never reaches
         // Homebrew; only a brew.env line does.
         assert!(!autoremoves(&[], &[("HOMEBREW_NO_AUTOREMOVE", "0")]));
     }
@@ -586,7 +586,7 @@ mod tests {
         fn new() -> TempDir {
             static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let path = std::env::temp_dir().join(format!(
-                "canager-brew-env-{}-{}",
+                "banager-brew-env-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));

@@ -9,7 +9,7 @@
 //!   injectable -- those now prove the *logic* against a pinned layout, and
 //!   this proves the logic still matches a real Homebrew install.
 //! - `live_install_inventory_uninstall_hello` changes the machine, so it
-//!   additionally requires `CANAGER_LIVE=1` and skips loudly without it.
+//!   additionally requires `BANAGER_LIVE=1` and skips loudly without it.
 
 use banager_core::adapters::brew::BrewAdapter;
 use banager_core::adapters::Adapter;
@@ -74,10 +74,10 @@ async fn live_detect_finds_the_homebrew_installed_on_this_machine() {
 }
 
 #[tokio::test]
-#[ignore = "installs and removes the `hello` formula; run with CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored"]
+#[ignore = "installs and removes the `hello` formula; run with BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored"]
 async fn live_install_inventory_uninstall_hello() {
-    if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
-        eprintln!("CANAGER_LIVE is not 1; skipping live smoke test");
+    if std::env::var("BANAGER_LIVE").as_deref() != Ok("1") {
+        eprintln!("BANAGER_LIVE is not 1; skipping live smoke test");
         return;
     }
 

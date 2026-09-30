@@ -22,7 +22,7 @@ export interface CommandPreviewProps {
 
 /**
  * The command as Terminal would take it: the variables the plan sets on
- * top of Canager's own environment, as `NAME=value` in the plan's order --
+ * top of Banager's own environment, as `NAME=value` in the plan's order --
  * so a setting that changes what the tool does, such as Homebrew's
  * `HOMEBREW_NO_AUTOREMOVE=1`, is on screen -- then the argv, each value and
  * token per `displayToken`.
@@ -59,7 +59,7 @@ function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unkno
  * be copied into Terminal. A sheet about several updates
  * lists each command under its tool's name, behind one disclosure.
  *
- * For a `TrashPaths` plan there is no command to show: Canager moves the
+ * For a `TrashPaths` plan there is no command to show: Banager moves the
  * items itself. It says so in one sentence, in the open, under the list of
  * what moves -- a button promising a command would promise one that does
  * not exist.

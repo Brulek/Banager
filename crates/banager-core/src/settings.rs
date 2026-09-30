@@ -15,7 +15,7 @@ pub enum Language {
 /// still offers `version`; once it offers another, the row is listed again.
 /// So the page offers the button, and lets a stored skip hide a row, only
 /// where the target names one release (`canSkipVersion` in
-/// src/lib/updateState.ts): not on a row Canager could not check, whose
+/// src/lib/updateState.ts): not on a row Banager could not check, whose
 /// target is its installed version, and not on a Homebrew cask declared
 /// `version :latest`, every release of which is offered as "latest", so
 /// that a skip of it would never end.
@@ -54,15 +54,15 @@ pub struct Settings {
     /// Feeds CheckOptions.include_self_updating. Default false: most people
     /// do not want Chrome and Docker listed as updatable when those apps
     /// update themselves. `#[serde(default)]` so a settings.json written by
-    /// an older Canager version (or a front end not yet sending this field)
+    /// an older Banager version (or a front end not yet sending this field)
     /// still deserializes instead of losing every other field to
     /// `Settings::default()` in `load()`.
     #[serde(default)]
     pub include_self_updating: bool,
     /// The daily check, Settings → Updates' 「每天自动检查」: whether
-    /// Canager, while it runs, refreshes by itself once a day -- the same
+    /// Banager, while it runs, refreshes by itself once a day -- the same
     /// refresh as Check again, which runs no install, upgrade or uninstall
-    /// of Canager's; the `brew update` in it can install, move or uninstall
+    /// of Banager's; the `brew update` in it can install, move or uninstall
     /// Homebrew packages Homebrew has moved or renamed (docs/what-we-run.md,
     /// Homebrew). Read at every tick
     /// of the shell's task (`check_automatically` in
@@ -142,7 +142,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-settings-{}-{}-{}",
+            "banager-settings-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_load_of_json_with_the_daily_check_but_no_notify_updates_keeps_the_daily_check() {
-        // Written by a Canager with the daily check and nothing after it:
+        // Written by a Banager with the daily check and nothing after it:
         // `notify_updates` alone is missing, and alone defaults.
         let path = temp_settings_path("no-notify-updates");
         std::fs::write(

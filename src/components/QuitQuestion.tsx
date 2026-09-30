@@ -20,16 +20,16 @@ import { BUTTON } from "./ui/controls";
  * done (`quitBodyKey`) -- a line for each one that has started and that
  * nothing can stop, such as rustup's self update, which quitting does not
  * stop, and two buttons, one over the other: on top, the default
- * 「取消」, which leaves Canager running, has the focus as the sheet opens,
+ * 「取消」, which leaves Banager running, has the focus as the sheet opens,
  * and is what Escape does; under it 「退出」, which cancels what can be
  * cancelled, waits for it to stop and quits (`quitAnyway`; the buttons
  * stay held meanwhile).
  *
  * It goes by the operations as the backend lists them when Rust asks
- * (`freshOperations`): with none left undone by then, Canager quits
+ * (`freshOperations`): with none left undone by then, Banager quits
  * without asking, as the user asked. Asked, it counts them as they go on,
  * and goes away by itself once every one has finished: nothing is left to
- * wait for, and Canager stays, with how they went on the operation bar.
+ * wait for, and Banager stays, with how they went on the operation bar.
  *
  * Once it is on screen, it tells Rust so, by the number of the newest
  * question it answers (`quitQuestionShown`): Rust waits 2 seconds for
@@ -61,7 +61,7 @@ export function QuitQuestion() {
         setAsked(false);
       },
       (e: unknown) => {
-        // Canager stays, and the question with it, to be answered again.
+        // Banager stays, and the question with it, to be answered again.
         console.error("quit_anyway failed", e);
         setQuitting(false);
       },
@@ -87,16 +87,16 @@ export function QuitQuestion() {
   const body = quitBodyKey(active);
   const bodyId = useId();
 
-  // It goes, and Canager stays: Rust is told, so that its wait for word
+  // It goes, and Banager stays: Rust is told, so that its wait for word
   // from the page does not quit.
   const keepWaiting = useCallback(() => {
     setAsked(false);
     if (question !== null) void tellRustTwice(() => quitKeptWaiting(question), "quit_kept_waiting");
   }, [question]);
 
-  // Everything finished while it asked: it goes, and Canager stays -- and
+  // Everything finished while it asked: it goes, and Banager stays -- and
   // it does not come back by itself when something starts later. Not while
-  // Canager quits: 「仍然退出」 cancels them, and they finish on the way.
+  // Banager quits: 「仍然退出」 cancels them, and they finish on the way.
   useEffect(() => {
     if (asked && count === 0 && !quitting) keepWaiting();
   }, [asked, count, quitting, keepWaiting]);
@@ -145,10 +145,10 @@ export function QuitQuestion() {
 
 /**
  * Tells Rust that question `question` is on screen (`quitQuestionShown`),
- * so that Canager waits for the user's answer rather than quitting: drawn
+ * so that Banager waits for the user's answer rather than quitting: drawn
  * inside the sheet, so that it says so once the sheet is in the page, and
  * again for each question that comes while it is up. Sent once more should
- * it fail; should that fail too, Canager quits 2 seconds after asking, as
+ * it fail; should that fail too, Banager quits 2 seconds after asking, as
  * it does with nobody here to answer, unless the user has answered
  * 「取消」 by then (`quitKeptWaiting`).
  */

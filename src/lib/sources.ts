@@ -175,7 +175,7 @@ export function toolDescription(
 }
 
 /**
- * Whether Canager may offer operations on this source. The front-end
+ * Whether Banager may offer operations on this source. The front-end
  * mirror of `ManagerInstance::writable()`; `Session::issue_plan` refuses
  * anything this would have hidden, so a stale snapshot can only ever cost
  * an error message, never an unintended command.
@@ -190,7 +190,7 @@ export function canWrite(instance: ManagerInstance): boolean {
 }
 
 /**
- * Whether Canager reached this source on the last refresh. The front-end
+ * Whether Banager reached this source on the last refresh. The front-end
  * mirror of `ManagerInstance::available()`, and what `healthy: boolean`
  * used to be -- except the wire now also says *why*, which is what lets
  * the copy differ between "start it" and "it did not answer".
@@ -263,9 +263,9 @@ export type SourceNoticeAction =
  * page came to say "Everything is up to date" for a source it had not
  * managed to ask.
  *
- * Only what Canager found out about the source this time: not running,
+ * Only what Banager found out about the source this time: not running,
  * not answering, a list it could not download, another copy that runs
- * instead. What a source lets Canager do at all -- pip, or an npm whose
+ * instead. What a source lets Banager do at all -- pip, or an npm whose
  * folder the account cannot write, being read-only -- is each of its
  * rows' "View only" chip, on both lists (`READ_ONLY_DETAIL_KEYS`).
  */
@@ -321,7 +321,7 @@ export function sourceNoticesFor(
   const unavailable = instance.status.unavailable;
   if (unavailable === "NotRunning") {
     // One state, one sentence, named through `sourceLabel` so it reads in
-    // the user's language. Ollama is the only source Canager can start --
+    // the user's language. Ollama is the only source Banager can start --
     // and `OllamaAdapter::detect` says NotRunning only when it can: the
     // daemon is on this Mac and Ollama.app is installed; otherwise it says
     // NotResponding -- so it is the only one whose notice carries a
@@ -349,7 +349,7 @@ export function sourceNoticesFor(
       // Each ends with the one next step there is, the one its rows' chips
       // give too: check again later -- with the notice's own Check again
       // there to do it, so the sentence need not say which button. Nothing
-      // more: the way out they used to offer ("Reopening Canager usually
+      // more: the way out they used to offer ("Reopening Banager usually
       // fixes this") is simply wrong for a source that will fail the same
       // way on the next launch, and promising a recovery that may not
       // happen is the pattern this phase exists to remove.
@@ -364,9 +364,9 @@ export function sourceNoticesFor(
       action: { id: "checkAgain", labelKey: "header.checkAgain" },
     });
   } else if (unavailable === "RefusesAsRoot") {
-    // Its own copy because its own action: Canager was started with
+    // Its own copy because its own action: Banager was started with
     // `sudo`, Homebrew will not run that way, and the way out is to quit
-    // and open Canager again normally. No button -- Canager cannot
+    // and open Banager again normally. No button -- Banager cannot
     // relaunch itself out from under root, and offering to do what it
     // cannot is the pattern this phase exists to remove.
     notices.push({
@@ -475,7 +475,7 @@ export function sourceNoticesFor(
  *
  * `nothingFound` asks this for `SnapshotStatus` and the Overview: the
  * zero-artifact empty state replaces the page outright, so without it a
- * Mac whose only source is a stopped Ollama shows "Canager found nothing
+ * Mac whose only source is a stopped Ollama shows "Banager found nothing
  * installed" and the Open Ollama button is unreachable. A read-only
  * source with nothing installed has nothing to show -- its notice is its
  * rows' chip -- so it gets the empty state like any other. One rule, one
@@ -487,7 +487,7 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
 
 /**
  * The command that releases the pin on `key`, for the user to run
- * themselves: Canager does not unpin, which would be a new write
+ * themselves: Banager does not unpin, which would be a new write
  * operation. Both `UPDATE_BLOCKED_KEYS.Pinned` and
  * `UNINSTALL_BLOCKED_KEYS.Pinned` build their command with this. Their
  * producers are brew's `parse_outdated` and `parse_info_installed`
@@ -506,7 +506,7 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
  * `main.py:969-978`). The name is the one `parse_outdated` read off
  * the line, and pipx canonicalizes it into the venv's directory name
  * (`_venv_dir`, `main.py:1752-1753`; `get_venv_dir`, `venv.py:142-144`).
- * The program is the instance's `exe_path`, the pipx Canager found on
+ * The program is the instance's `exe_path`, the pipx Banager found on
  * its own PATH (`resolve_exe` in `PipxAdapter::detect`), which
  * Terminal's PATH may not include.
  *
@@ -515,7 +515,7 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
  * a formula can share a cask's name.
  *
  * The program is the instance's `exe_path`, the absolute path of the
- * brew that owns this package, not a bare `brew`: Canager finds brew
+ * brew that owns this package, not a bare `brew`: Banager finds brew
  * by absolute path (`CANDIDATE_PATHS` in
  * crates/banager-core/src/adapters/brew/mod.rs) and lists
  * /opt/homebrew and /usr/local side by side, while Terminal's `brew`
@@ -602,7 +602,7 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // "It's pinned in {{source}}. To update it, first run {{command}} in
     // Terminal." `{{source}}`, not Homebrew: pipx pins too. It says what
     // stands in the way and what removes it, and nothing about when
-    // Canager will offer the update or whether the package stays where
+    // Banager will offer the update or whether the package stays where
     // it is -- a pinned cask that updates itself may move anyway (`brew
     // pin` warns of it, Homebrew's `cmd/pin.rb`), and a row whose source
     // did not answer is offered nothing until it does.
@@ -614,7 +614,7 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   SelfUpdatesOnly: {
     badge: "updates.blocked.SelfUpdatesOnly.badge",
     // The tool installs its updates itself (agy: when it starts, at most
-    // every 15 minutes, agy.md §4) and offers no command Canager may run,
+    // every 15 minutes, agy.md §4) and offers no command Banager may run,
     // so the detail says what does work: open it once. The launcher that
     // opens it is a path, which is a technical detail: it is shown under
     // the sentence only while "Show technical details" is on.
@@ -649,7 +649,7 @@ export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
  * "Can't update now" chip on both lists, and of the Installed page's
  * "Can't uninstall now": what is wrong and what to do, per reason, because
  * "check again later" is no help for an Ollama that is not running or a
- * Canager started with `sudo`. The page fills `{{source}}`.
+ * Banager started with `sudo`. The page fills `{{source}}`.
  */
 export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
   NotRunning: "updates.unavailableDetail.NotRunning",
@@ -720,7 +720,7 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
   NoSafeMethod: {
     badge: "installed.blocked.NoSafeMethod.badge",
     // No command: unlike a pin there is nothing the user can run to make
-    // Canager able to uninstall it, so the sentence has no `{{command}}`
+    // Banager able to uninstall it, so the sentence has no `{{command}}`
     // slot and `withCommand` returns it as plain text.
     description: "installed.blocked.NoSafeMethod.description",
     command: () => "",
@@ -1075,7 +1075,7 @@ export function notActionableMessage(
  * (`UpdateConfirm`, `UninstallDialog`) goes through this instead of showing
  * the backend's string directly, so no refusal that can reach a real
  * person is ever a raw Rust `{:?}` or this project's own English reaching
- * someone reading Canager in another language.
+ * someone reading Banager in another language.
  *
  * `raw` verbatim, and another program's words quoted in a sentence (a
  * tool that would not start: macOS's reason), only with "Show technical
@@ -1146,7 +1146,7 @@ export function refusalSentence(
  * What `planErrorMessage`'s sentence leaves for its ⓘ, or null when it has
  * nothing more to say: which of its checks a path-list uninstall's
  * `not_what_instructions_expect` covers. The sentence stands alone
- * without it. Canager's own refusal (`refused`) has nothing more: its
+ * without it. Banager's own refusal (`refused`) has nothing more: its
  * sentence already says the error is an internal one, and whose fault it
  * is was reassurance, not a next step (the polish-3 copy rules, 规则 3).
  */
@@ -1161,7 +1161,7 @@ export function planErrorDetail(t: Translate, raw: string): string | null {
 
 /**
  * The `planRefused.*` key for each kind `plan_operation_error` sends with
- * no field but its `kind` -- Canager's own reasons, whose Rust wording is
+ * no field but its `kind` -- Banager's own reasons, whose Rust wording is
  * for logs and is dropped before it reaches the wire. `index_updating` is
  * brew's uninstall preview declining to read Homebrew's catalogue while
  * `brew update` rewrites it (`catalogue_stamp` in
@@ -1179,7 +1179,7 @@ const PLAN_FAILURE_KEYS: Record<string, string> = {
  *
  * One of them quotes another program verbatim, inside a sentence that
  * says what happened: `spawn_failed` carries the operating system's reason
- * it could not start the tool. That is not Canager's text, so it cannot be
+ * it could not start the tool. That is not Banager's text, so it cannot be
  * translated -- but the sentence around it is -- and it is quoted only
  * with "Show technical details" on (`technical`); without it, the
  * sentence says that the tool could not start. `invalid_name` and
@@ -1360,7 +1360,7 @@ const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
  * caller's own frame (`settings.saveError`, `updates.saveChoiceFailed`) to
  * interpolate. The three reasons a person can act on are worded here;
  * `other` quotes the operating system's own description verbatim inside
- * a translated phrase, since that text is the system's, not Canager's.
+ * a translated phrase, since that text is the system's, not Banager's.
  * Anything that is not the payload at all is shown verbatim, as
  * `planErrorMessage` shows one, so an unexpected error is still
  * visible rather than swallowed -- both, as every raw error, only with
@@ -1515,7 +1515,7 @@ export function unfinishedChecksNotice(
 /**
  * What a finished check says when it found nothing to show (`nothingFound`):
  * no source at all, or sources with nothing installed. Its title and its
- * one sentence; what Canager works with, and where it looks, is
+ * one sentence; what Banager works with, and where it looks, is
  * `emptyStates.supportedList`, behind 「详情」 after the sentence.
  */
 export type NothingFound = "noSources" | "nothingInstalled";

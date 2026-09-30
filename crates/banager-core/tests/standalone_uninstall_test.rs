@@ -4,7 +4,7 @@
 //! `issue_plan` (the actionability gate), `submit`, `run_operation`
 //! (`execute`, then the reading after an uninstall) -- with `MockTrasher`
 //! standing in for the Trash, so nothing here touches anyone's Trash. The
-//! last test is the exception, `#[ignore]`d and gated on `CANAGER_LIVE=1`
+//! last test is the exception, `#[ignore]`d and gated on `BANAGER_LIVE=1`
 //! like `brew_live`'s install test: `RealTrasher` moving five throwaway
 //! items it makes into the real Trash of the Mac running it (CI's runner,
 //! whose Trash is discarded with it; on a developer's Mac, once, by hand).
@@ -41,7 +41,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-uninstall-{tag}-{}-{}",
+            "banager-uninstall-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -288,7 +288,7 @@ async fn test_a_path_changed_after_the_preview_stops_the_uninstall_before_it_mov
 
     assert_eq!(
         outcome_of(&session, op_id).await,
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: "~/.local/bin/claude".to_string()
         })
     );
@@ -323,7 +323,7 @@ async fn test_a_self_update_between_the_preview_and_the_click_stops_the_uninstal
 
     assert_eq!(
         outcome_of(&session, op_id).await,
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: "~/.local/bin/claude".to_string()
         })
     );
@@ -704,23 +704,23 @@ async fn test_an_uninstall_that_cannot_tell_whether_a_moved_path_came_back_is_un
 /// the same from `$TMPDIR`). Each call is told the item's kind, as the
 /// removal's last check tells it -- a link as `Symlink` whatever it points
 /// at. It changes the machine -- it leaves five
-/// throwaway items, named `canager-trash-smoke-…`, in the Trash of the Mac
+/// throwaway items, named `banager-trash-smoke-…`, in the Trash of the Mac
 /// running it -- so, like `brew_live`'s install test, it also requires
-/// `CANAGER_LIVE=1` and skips loudly without it.
+/// `BANAGER_LIVE=1` and skips loudly without it.
 #[cfg(target_os = "macos")]
 #[test]
-#[ignore = "moves five throwaway items into the real Trash; run with CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored"]
+#[ignore = "moves five throwaway items into the real Trash; run with BANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored"]
 fn test_real_trasher_moves_each_kind_of_item_and_links_as_links() {
     use banager_core::trash::RealTrasher;
 
-    if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
-        eprintln!("CANAGER_LIVE is not 1; skipping the real Trash smoke test");
+    if std::env::var("BANAGER_LIVE").as_deref() != Ok("1") {
+        eprintln!("BANAGER_LIVE is not 1; skipping the real Trash smoke test");
         return;
     }
     let trash = PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".Trash");
     let scratch = Home::new("real-trash");
     let stem = format!(
-        "canager-trash-smoke-{}-{}",
+        "banager-trash-smoke-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

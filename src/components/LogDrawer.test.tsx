@@ -75,8 +75,8 @@ describe("LogDrawer", () => {
     expect(getByRole("log").className).toContain("font-mono");
   });
 
-  it("renders Canager's own notes in the user's language, in place among the tool's lines", async () => {
-    // A note is Canager speaking, so it goes through the locale files: a
+  it("renders Banager's own notes in the user's language, in place among the tool's lines", async () => {
+    // A note is Banager speaking, so it goes through the locale files: a
     // Chinese user must not meet English in the one place the app has no
     // excuse for it. The tool's own line beside it stays verbatim.
     await i18n.changeLanguage("zh-CN");
@@ -129,7 +129,7 @@ describe("LogDrawer", () => {
     });
 
     await findByText("Error: No such keg: /opt/homebrew/Cellar/jq");
-    // The whole log, Canager's notes among the tool's lines.
+    // The whole log, Banager's notes among the tool's lines.
     const log = getByRole("log");
     expect(log).toHaveClass("select-text");
     // Not its title, where it stands, nor Cancel.
@@ -137,7 +137,7 @@ describe("LogDrawer", () => {
   });
 
   it("words each path a path-list uninstall moved, and the one macOS refused", async () => {
-    // Canager's own two lines in an uninstall that runs no command: where
+    // Banager's own two lines in an uninstall that runs no command: where
     // each path went, and the system's words for one it would not move.
     const { findByText } = renderWithProviders(<LogDrawer />);
 
@@ -262,7 +262,7 @@ describe("LogDrawer", () => {
   it("says what to do next under an outcome that leaves the user a step", async () => {
     // A crash may have run the command (T9): the next step is to look,
     // never "nothing changed".
-    operations = [{ ...runningOp, status: "Done", outcome: { CanagerFailed: "Panicked" } }];
+    operations = [{ ...runningOp, status: "Done", outcome: { BanagerFailed: "Panicked" } }];
 
     const { findByText } = renderWithProviders(<LogDrawer />);
 
@@ -270,7 +270,7 @@ describe("LogDrawer", () => {
     await findByText("Check the list to see whether anything changed.");
   });
 
-  it("words Canager's own failure in the user's language, quoting only the path", async () => {
+  it("words Banager's own failure in the user's language, quoting only the path", async () => {
     // This used to arrive as `Failed` with Rust's English in its summary
     // ("runner: program not found: /opt/homebrew/bin/brew"), printed inside
     // the translated "失败：" frame (now 「未能开始：」).
@@ -278,7 +278,7 @@ describe("LogDrawer", () => {
       {
         ...runningOp,
         status: "Done",
-        outcome: { CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } },
+        outcome: { BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } },
       },
     ];
     await i18n.changeLanguage("zh-CN");
@@ -331,7 +331,7 @@ describe("LogDrawer", () => {
       expect(buttons[2].className).toBe(BUTTON.large.default);
 
       fireEvent.click(buttons[0]);
-      // The whole log, Canager's notes in the user's words.
+      // The whole log, Banager's notes in the user's words.
       await waitFor(() =>
         expect(writeText).toHaveBeenCalledWith(
           "Fetching jq\nHomebrew is updating its software list; this starts when it's done, waiting up to 10 minutes. Cancelling now changes nothing.",

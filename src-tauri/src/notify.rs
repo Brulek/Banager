@@ -4,14 +4,14 @@
 //! Update all would take, with the round the snapshot came from
 //! (`report_update_set`), and `banager_core::notify_updates` decides what
 //! that report does. This is the shell's part: where the focus is -- on
-//! the window, on Canager without its window, or on another app -- and the
-//! notification itself, titled with the app's name, Canager, and saying
+//! the window, on Banager without its window, or on another app -- and the
+//! notification itself, titled with the app's name, Banager, and saying
 //! how many tools can be updated, in the window's language. On a Mac it
 //! carries a handler that would bring the window back on the Updates page
 //! for a click (`OPEN_UPDATES_EVENT`), which notify-rust never hands a
-//! click (`post`). What a click does instead is bring Canager to the
+//! click (`post`). What a click does instead is bring Banager to the
 //! front, and from its hand-off the notification waits on the window
-//! (`window::NotificationPending`), so that Canager coming to the front
+//! (`window::NotificationPending`), so that Banager coming to the front
 //! with its window closed or in the Dock brings it back on the Updates
 //! page (`window::on_activate`). The Settings page asks for permission to
 //! post as the switch is turned on (`request_notification_permission`).
@@ -26,7 +26,7 @@ use tauri_plugin_notification::NotificationExt;
 
 /// The event `open_updates` tells the window, once it is back on screen,
 /// for the update notification -- whose click `post` never hears, but
-/// which brings Canager to the front (`window::on_activate`) -- and which
+/// which brings Banager to the front (`window::on_activate`) -- and which
 /// opens the Updates page: src/lib/api.ts's `OPEN_UPDATES_EVENT` spells
 /// the same.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -56,7 +56,7 @@ pub async fn report_update_set(
     match reported {
         Ok(Notice::Post { .. }) => app.state::<NotificationPending>().set(),
         Ok(_) => {}
-        Err(e) => eprintln!("[canager] could not post the update notification: {e}"),
+        Err(e) => eprintln!("[banager] could not post the update notification: {e}"),
     }
     Ok(())
 }
@@ -91,12 +91,12 @@ pub(crate) fn report(
 }
 
 /// Where the focus is now: `focus_of` over whether the window has the
-/// focus and whether Canager is the active app.
+/// focus and whether Banager is the active app.
 fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
     focus_of(window_focused(app), app_active())
 }
 
-/// On the window when it has the focus; else on Canager when it is the
+/// On the window when it has the focus; else on Banager when it is the
 /// active app -- the app in front, whose notifications macOS shows no
 /// banner for -- with its window closed or in the Dock; else away.
 fn focus_of(window_focused: bool, app_active: bool) -> Focus {
@@ -109,7 +109,7 @@ fn focus_of(window_focused: bool, app_active: bool) -> Focus {
     }
 }
 
-/// Whether Canager is the active app, the one in front, as macOS says
+/// Whether Banager is the active app, the one in front, as macOS says
 /// (`NSRunningApplication`'s `isActive`, for this process; safe to ask
 /// off the main thread, and it runs nothing).
 #[cfg(target_os = "macos")]
@@ -132,7 +132,7 @@ fn window_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
         return false;
     };
     window.is_focused().unwrap_or_else(|e| {
-        eprintln!("[canager] could not ask whether the window has the focus: {e}");
+        eprintln!("[banager] could not ask whether the window has the focus: {e}");
         false
     })
 }
@@ -171,7 +171,7 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
         .name("update-notification".to_string())
         .spawn(move || {
             if let Err(e) = deliver() {
-                eprintln!("[canager] the update notification: {e}");
+                eprintln!("[banager] the update notification: {e}");
             }
         })
         .map(|_| ())
@@ -194,7 +194,7 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
 /// as told at the hand-off, and a notification macOS does not show is not
 /// posted again. Nor is the handler, which would bring the window back on
 /// the Updates page (`open_updates`), ever handed a click: a click only
-/// brings Canager to the front, and it is Canager coming to the front
+/// brings Banager to the front, and it is Banager coming to the front
 /// while the notification waits on the window that brings the window back
 /// on the Updates page (`window::on_activate`). What `wait_for_response`
 /// reports as an error is logged.
@@ -202,7 +202,7 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
 fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
     use notify_rust::error::{ApplicationError, MacOsError};
     // Which app macOS shows the notification as, set before the first
-    // one, as tauri-plugin-notification sets it: Canager, by its bundle
+    // one, as tauri-plugin-notification sets it: Banager, by its bundle
     // identifier; under `tauri dev`, which runs no app bundle, Terminal.
     // mac-notification-sys sets it once for the life of the process, by
     // answering that identifier for the app's own bundle from then on, so
@@ -216,7 +216,7 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
     };
     match notify_rust::set_application(&bundle) {
         Ok(()) | Err(MacOsError::Application(ApplicationError::AlreadySet(_))) => {}
-        Err(e) => eprintln!("[canager] could not post notifications as {bundle}: {e}"),
+        Err(e) => eprintln!("[banager] could not post notifications as {bundle}: {e}"),
     }
     let handle = notify_rust::Notification::new()
         .summary(title)
@@ -250,7 +250,7 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
 
 /// The notification answered: the window back on screen and the page told
 /// to open Updates, as the menu bar's items that act in the page are
-/// carried out (`window::show_and_tell`). Called when Canager comes to the
+/// carried out (`window::show_and_tell`). Called when Banager comes to the
 /// front, or its Dock icon is clicked, with its window closed or in the
 /// Dock while the notification waits on the window (`window::on_activate`)
 /// -- which is how a click on the notification arrives -- and from
@@ -258,7 +258,7 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
 #[cfg(target_os = "macos")]
 pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = crate::window::show_and_tell(app, OPEN_UPDATES_EVENT) {
-        eprintln!("[canager] could not open Updates for the update notification: {e}");
+        eprintln!("[banager] could not open Updates for the update notification: {e}");
     }
 }
 
@@ -266,7 +266,7 @@ pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
 /// 「有更新时通知我」 on: yes when tauri-plugin-notification's
 /// `request_permission` answers `Granted`, and the page turns the switch
 /// back off otherwise. On a Mac the plugin answers `Granted` without
-/// asking macOS; whether macOS shows what Canager posts is then up to
+/// asking macOS; whether macOS shows what Banager posts is then up to
 /// System Settings → Notifications.
 #[tauri::command]
 pub async fn request_notification_permission(app: AppHandle) -> Result<bool, String> {
@@ -314,7 +314,7 @@ mod tests {
         }
     }
 
-    /// Round `round`'s snapshot, reporting a `brew update` Canager started
+    /// Round `round`'s snapshot, reporting a `brew update` Banager started
     /// as still running when `brew_updating`.
     fn snapshot_with_homebrew(round: u64, brew_updating: bool) -> Snapshot {
         let mut brew = banager_core::testing::manager_instance("brew", "brew:/opt/homebrew");
@@ -334,7 +334,7 @@ mod tests {
         let sink = ChannelSink::new();
         let state = AppState {
             session: Session::with_adapters(sink.clone(), Vec::new(), None),
-            settings_path: std::env::temp_dir().join("canager-notify-never-written"),
+            settings_path: std::env::temp_dir().join("banager-notify-never-written"),
             settings: Mutex::new(settings),
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
@@ -488,10 +488,10 @@ mod tests {
     }
 
     #[test]
-    fn test_with_canager_in_front_and_its_window_closed_nothing_is_posted_and_nothing_seen() {
+    fn test_with_banager_in_front_and_its_window_closed_nothing_is_posted_and_nothing_seen() {
         let state = state(notifications_on());
         let updates = [pair("jq", "1.8.1")];
-        let never = |_| -> Result<(), String> { panic!("posted while Canager was in front") };
+        let never = |_| -> Result<(), String> { panic!("posted while Banager was in front") };
         assert_eq!(
             report(&state, DAILY, &updates, Focus::App, never),
             Ok(Notice::Withheld)
@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn test_the_focus_is_the_windows_else_canagers_when_it_is_in_front_else_away() {
+    fn test_the_focus_is_the_windows_else_banagers_when_it_is_in_front_else_away() {
         assert_eq!(focus_of(true, true), Focus::Window);
         assert_eq!(
             focus_of(true, false),
@@ -599,18 +599,18 @@ mod tests {
             );
         }
         assert!(
-            folded.contains("The notification is titled Canager"),
+            folded.contains("The notification is titled Banager"),
             "docs/what-we-run.md does not say the notification's title"
         );
     }
 
     #[test]
-    fn test_the_notification_is_titled_with_the_apps_name_canager() {
+    fn test_the_notification_is_titled_with_the_apps_name_banager() {
         // `report_update_set` titles it with `package_info().name`, which
         // tauri takes from tauri.conf.json's productName.
         let config: tauri::utils::config::Config =
             serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(config.product_name.as_deref(), Some("Canager"));
+        assert_eq!(config.product_name.as_deref(), Some("Banager"));
     }
 
     #[test]

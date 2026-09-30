@@ -1,5 +1,5 @@
 warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
-package:   /Users/brulek/dev/Canager/src-tauri/Cargo.toml
-workspace: /Users/brulek/dev/Canager/Cargo.toml
+package:   /Users/brulek/dev/Banager/src-tauri/Cargo.toml
+workspace: /Users/brulek/dev/Banager/Cargo.toml
 hexyl v0.17.0:
     hexyl

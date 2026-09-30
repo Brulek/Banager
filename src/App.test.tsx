@@ -636,7 +636,7 @@ describe("App", () => {
   });
 
   it("switches to Other Programs, under 「来源」 with no source, and outside the snapshot's empty states", async () => {
-    // A Mac with no source at all: SnapshotStatus shows "Canager found
+    // A Mac with no source at all: SnapshotStatus shows "Banager found
     // nothing it can manage" for the Installed and Updates pages. That is
     // exactly where no source accounts for anything on the machine, so this
     // page must not be behind that gate -- nor its row behind the sources'.

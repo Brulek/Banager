@@ -7,7 +7,7 @@ export type Page = "overview" | "updates" | "installed" | "unknown" | "settings"
 export type InstalledSort = "name" | "source";
 
 // One entry in an operation's log: either a line the tool wrote, shown
-// verbatim, or a note of Canager's own, which the drawer localises.
+// verbatim, or a note of Banager's own, which the drawer localises.
 export type LogEntry =
   | { opId: number; stream: Stream; line: string }
   | { opId: number; note: LogNote };
@@ -89,7 +89,7 @@ export interface UiState {
   selectUpdates(keys: ArtifactKey[]): void;
   // Removes the id of every key given that is selected.
   deselectUpdates(keys: ArtifactKey[]): void;
-  // The version each update Canager started was for, by operation id:
+  // The version each update Banager started was for, by operation id:
   // the `target` of the candidate it was started from (`useUpdateConfirm`,
   // on the Updates page or in the Installed page's detail). An operation
   // carries no version (`OpSummary`), and a finished one stays in the

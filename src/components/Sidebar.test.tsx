@@ -422,8 +422,8 @@ describe("Sidebar", () => {
     const scroller = firstRow.nextElementSibling as HTMLElement;
     expect(scroller).toHaveAttribute("data-sidebar-scroller");
     expect(scroller.firstElementChild?.firstElementChild).toBe(getAllByRole("list")[0]);
-    expect(queryByText("Canager")).toBeNull();
-    expect(nav.textContent).not.toContain("Canager");
+    expect(queryByText("Banager")).toBeNull();
+    expect(nav.textContent).not.toContain("Banager");
 
     // Pressing it drags the window; nothing else in the sidebar does.
     expect(dragsWindow(firstRow)).toBe(true);

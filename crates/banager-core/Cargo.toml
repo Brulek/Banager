@@ -2,7 +2,7 @@
 name = "banager-core"
 version = "0.1.0"
 edition = "2021"
-description = "Pure-Rust core library for Canager: model, adapters, runner, operation engine. Must never depend on tauri."
+description = "Pure-Rust core library for Banager: model, adapters, runner, operation engine. Must never depend on tauri."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

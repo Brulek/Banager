@@ -122,7 +122,7 @@ pub struct BrewAdapter {
     /// test here answers differently because the Mac running it happens to
     /// be in the middle of a `brew update`.
     update_lock_fn: fn(&Path) -> HomebrewUpdateLock,
-    /// How to read one variable of Canager's own environment, which every
+    /// How to read one variable of Banager's own environment, which every
     /// `brew` command inherits under its plan's own: `HOME`,
     /// `XDG_CONFIG_HOME`, `HOMEBREW_XDG_CONFIG_HOME` and
     /// `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, from which `bin/brew` finds and
@@ -169,7 +169,7 @@ const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| {
 };
 
 /// `BrewAdapter::env_var_fn` and `brew_env_fn` as `BrewAdapter::new` sets
-/// them: Canager's real environment and the real files in every build but
+/// them: Banager's real environment and the real files in every build but
 /// this crate's unit tests, where both are empty.
 #[cfg(not(test))]
 const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |name| std::env::var_os(name);
@@ -208,8 +208,8 @@ const DEFAULT_WALL_CLOCK_FN: fn() -> SystemTime =
     || SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_640_000);
 
 impl BrewAdapter {
-    /// The environment every `brew` command Canager runs is given, on top
-    /// of Canager's own. `HOMEBREW_NO_AUTOREMOVE` keeps Homebrew's
+    /// The environment every `brew` command Banager runs is given, on top
+    /// of Banager's own. `HOMEBREW_NO_AUTOREMOVE` keeps Homebrew's
     /// autoremove from uninstalling every formula installed only as a
     /// dependency that nothing needs any more -- packages no preview names
     /// -- after an uninstall, and in the periodic cleanup an install or
@@ -267,7 +267,7 @@ impl BrewAdapter {
     /// enough that a stuck one ends the operation with a sentence saying
     /// so, and nothing changed. The log line the wait prints
     /// (`operations.logNote.waitingForBrewUpdate`) and the sentence it ends
-    /// with (`operations.outcome.CanagerFailed.HomebrewStillUpdating`) both
+    /// with (`operations.outcome.BanagerFailed.HomebrewStillUpdating`) both
     /// interpolate this number as `{{minutes}}` (via `op_update_wait_minutes`
     /// below) rather than carrying their own copy of it, so there is nothing
     /// to keep in sync by hand when it changes.
@@ -380,7 +380,7 @@ impl BrewAdapter {
         self
     }
 
-    /// Test-only hook to describe Canager's environment as `bin/brew` would
+    /// Test-only hook to describe Banager's environment as `bin/brew` would
     /// inherit it (see `env_var_fn`).
     #[cfg(test)]
     fn with_env_var_fn(mut self, env_var_fn: fn(&str) -> Option<OsString>) -> BrewAdapter {
@@ -426,11 +426,11 @@ impl BrewAdapter {
     /// autoremove back (`brew_env_warnings`): a formula's sentence says
     /// "only", and that of a cask with steps beside what Homebrew placed
     /// "nothing else is deleted", when they do not -- unless a step runs a
-    /// program or code whose deletions Canager cannot see
+    /// program or code whose deletions Banager cannot see
     /// (`cask_receipt::runs_unseen`), when a cask's sentence says so and
     /// nothing of what stays. A cask's comes from what Homebrew recorded
     /// when it installed the cask (`cask_receipt`), the home folder read
-    /// from Canager's environment, as Homebrew's is (`env_var_fn`).
+    /// from Banager's environment, as Homebrew's is (`env_var_fn`).
     fn uninstall_scope(
         &self,
         inst: &ManagerInstance,
@@ -457,7 +457,7 @@ impl BrewAdapter {
         let (what, steps) = match classified {
             Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
-            // A program or code Canager cannot see into: no sentence says
+            // A program or code Banager cannot see into: no sentence says
             // what stays, with the autoremove on or off.
             Classified::Steps(steps) if cask_receipt::runs_unseen(&steps) => {
                 (UninstallScope::HomebrewCaskStepsUnseen, steps)
@@ -557,7 +557,7 @@ impl BrewAdapter {
 
     /// What the `brew.env` files make Homebrew do beyond a plan's command,
     /// for a plan of `kind` on `inst` whose environment is `env`, in the
-    /// order it is said -- nothing when Canager's variables hold
+    /// order it is said -- nothing when Banager's variables hold
     /// (`brew_env::after_brew_env`). An uninstall autoremoves unless
     /// `HOMEBREW_NO_AUTOREMOVE` holds. Unless `HOMEBREW_NO_INSTALL_CLEANUP`
     /// holds, an install or upgrade deletes the older versions and old
@@ -662,7 +662,7 @@ impl BrewAdapter {
     /// -- can leave `.git/index.lock` behind, and
     /// from then on Homebrew refuses to update until someone deletes that
     /// file by hand: not something a person who does not write code can be
-    /// expected to know how to do, or that Canager can explain from here.
+    /// expected to know how to do, or that Banager can explain from here.
     /// Two paths used to deliver that kill: the two-minute timeout this
     /// command had, which any slow network reached, and dropping the
     /// refresh (the only way to stop one: `Session::refresh` takes no
@@ -836,13 +836,13 @@ impl BrewAdapter {
     }
 
     /// `None` while a `brew update` is running for `inst` that either
-    /// Canager started (`UpdateRecord::running`) or anyone holds Homebrew's
+    /// Banager started (`UpdateRecord::running`) or anyone holds Homebrew's
     /// own update lock for (`HomebrewUpdateLock::Held`), otherwise a stamp.
     /// A read of the catalogue takes one before and one after and trusts
     /// what it read only when both are the same `Some`.
     ///
     /// What two equal stamps prove:
-    /// - No `brew update` Canager started overlapped the read. The stamp
+    /// - No `brew update` Banager started overlapped the read. The stamp
     ///   carries `UpdateRecord::started`, which `UpdateFinish::begin` bumps
     ///   in the same write that sets `running`, both under the `updates`
     ///   lock this reads them under.
@@ -902,13 +902,13 @@ impl BrewAdapter {
             seen => seen,
         };
         let updates = self.updates.lock().unwrap();
-        let canager_updates = match updates.get(&inst.id) {
+        let banager_updates = match updates.get(&inst.id) {
             Some(record) if record.running => return None,
             Some(record) => record.started,
             None => 0,
         };
         Some(CatalogueStamp {
-            canager_updates,
+            banager_updates,
             homebrew_lock,
         })
     }
@@ -983,7 +983,7 @@ impl BrewAdapter {
     /// empty `Vec` would have been read as "Homebrew is not installed" --
     /// by `Session::refresh`'s `DetectOutcome` and, through it, by the
     /// user, who would be told to go and install the Homebrew they already
-    /// have instead of to reopen Canager without `sudo`.
+    /// have instead of to reopen Banager without `sudo`.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let as_root = Self::refuses_as_root(env);
         let mut found = Vec::new();
@@ -1219,7 +1219,7 @@ enum UpdateWait {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CatalogueStamp {
     /// `UpdateRecord::started` for the instance.
-    canager_updates: u64,
+    banager_updates: u64,
     /// Homebrew's own update lock, never `Held` here: `catalogue_stamp`
     /// returns `None` for that.
     homebrew_lock: HomebrewUpdateLock,
@@ -1589,7 +1589,7 @@ impl BrewAdapter {
                 // uninstall against: a half-written read that still
                 // parses would show fewer dependents than will break --
                 // worse than any error. So it is not read while an update
-                // runs -- one Canager started, as `inventory` also checks,
+                // runs -- one Banager started, as `inventory` also checks,
                 // or one holding Homebrew's own update lock -- and a read
                 // that one began during is thrown away. `catalogue_stamp`
                 // says exactly what that does and does not catch, and why
@@ -1702,7 +1702,7 @@ impl BrewAdapter {
             UpdateWait::Ready(guard) => guard,
             UpdateWait::Cancelled => return Ok(Outcome::Cancelled),
             UpdateWait::GaveUp => {
-                return Ok(Outcome::CanagerFailed(Fault::HomebrewStillUpdating {
+                return Ok(Outcome::BanagerFailed(Fault::HomebrewStillUpdating {
                     minutes: self.op_update_wait_minutes(),
                 }));
             }
@@ -2571,7 +2571,7 @@ mod tests {
     #[tokio::test]
     async fn test_check_updates_reports_a_failed_brew_update_as_a_note_on_the_source() {
         // A failed `brew update` is a fact about Homebrew, not about jq:
-        // the catalogue Canager compared against may be behind, so every
+        // the catalogue Banager compared against may be behind, so every
         // answer from this round -- including "nothing is outdated" -- may
         // be wrong. It used to ride along as a string on each candidate's
         // `warnings`, where `UpdatesPage` renders a "1 warning" badge on a
@@ -3110,7 +3110,7 @@ mod plan_execute_tests {
     /// `--force` and `--ignore-dependencies` override refusals Homebrew makes
     /// on the user's behalf. None of the three has ever been passed here, but
     /// until now that was an absence, not a promise: `docs/what-we-run.md`
-    /// says Canager never passes them, and this is what keeps that sentence
+    /// says Banager never passes them, and this is what keeps that sentence
     /// true when `plan` is next edited. Every plan brew builds, for both
     /// artifact kinds, is exactly the verb, the kind flag and the name.
     #[tokio::test]
@@ -3295,7 +3295,7 @@ mod plan_execute_tests {
         // (`cleanup.rb:361-389`), and whose periodic cleanup
         // (`cleanup.rb:431-445`) deletes those of every formula
         // (`cleanup.rb:448-473`) and autoremoves (`cleanup.rb:471`) -- once
-        // neither of Canager's two variables holds.
+        // neither of Banager's two variables holds.
         let runner = Arc::new(MockRunner::new());
         let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
             (path == Path::new("/etc/homebrew/brew.env"))
@@ -3352,7 +3352,7 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_uninstall_preview_finds_the_prefix_and_xdg_brew_env_files() {
         // The prefix's file is this instance's (`<prefix>/etc/homebrew`),
-        // and the user's is under `XDG_CONFIG_HOME` when Canager's
+        // and the user's is under `XDG_CONFIG_HOME` when Banager's
         // environment sets it -- then `~/.homebrew/brew.env` is not read.
         fn off_at(path: &Path, at: &str) -> Option<Vec<u8>> {
             (path == Path::new(at)).then(|| b"HOMEBREW_NO_AUTOREMOVE=false\n".to_vec())
@@ -3427,7 +3427,7 @@ mod plan_execute_tests {
     impl CaskroomPrefix {
         fn new(label: &str, receipts: &[(&str, &str)]) -> CaskroomPrefix {
             let dir = std::env::temp_dir().join(format!(
-                "canager-brew-caskroom-{label}-{}-{}",
+                "banager-brew-caskroom-{label}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -3834,7 +3834,7 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_a_cask_uninstall_that_runs_a_script_or_code_says_nothing_of_what_stays() {
         // A `script:`, an `early_script:` or Ruby around the uninstall:
-        // Canager knows the step is there, and names the program, but not
+        // Banager knows the step is there, and names the program, but not
         // what it deletes -- a vendor's uninstaller may take settings and
         // data -- so the sentence says that, not that the rest stays, and
         // the step's own line still names what runs.
@@ -3940,7 +3940,7 @@ mod plan_execute_tests {
 
     #[tokio::test]
     async fn test_a_cask_whose_record_is_empty_or_missing_gets_the_could_not_read_sentence() {
-        // Every way Canager ends up with no list to go by, or an empty one,
+        // Every way Banager ends up with no list to go by, or an empty one,
         // gets the one sentence that claims no deletion (`HomebrewCask`).
         const FLIGHT_BLOCK_RECEIPT: &str = include_str!(
             "../../../../../adapters/fixtures/brew/7.0.6/receipts/uninstall-flight-block.json"
@@ -4375,7 +4375,7 @@ mod plan_execute_tests {
     /// test can tell an update that was killed from one that completed.
     fn slow_update_brew(label: &str, update_secs: u32) -> (PathBuf, ManagerInstance) {
         let dir = std::env::temp_dir().join(format!(
-            "canager-brew-{}-{}-{}",
+            "banager-brew-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -4880,14 +4880,14 @@ mod plan_execute_tests {
              OP_UPDATE_WAIT (BrewAdapter::new does not override op_update_wait here): {:?}",
             sink.snapshot()
         );
-        // The wait is Canager speaking, not Homebrew: it must arrive as a
+        // The wait is Banager speaking, not Homebrew: it must arrive as a
         // note the front end localises, never as a verbatim English line.
         assert!(
             !sink.snapshot().iter().any(|e| matches!(
                 e,
                 crate::events::OperationEvent::Log { line, .. } if line.contains("Waiting")
             )),
-            "Canager's own remark went out as tool output: {:?}",
+            "Banager's own remark went out as tool output: {:?}",
             sink.snapshot()
         );
     }
@@ -4923,7 +4923,7 @@ mod plan_execute_tests {
             // (`with_op_update_wait` above), not a hard-coded 10 that
             // would happen to match the default and hide the wiring
             // being broken.
-            Outcome::CanagerFailed(Fault::HomebrewStillUpdating { minutes: 0 })
+            Outcome::BanagerFailed(Fault::HomebrewStillUpdating { minutes: 0 })
         );
         assert!(
             started.elapsed() < Duration::from_secs(2),
@@ -5101,7 +5101,7 @@ mod plan_execute_tests {
         assert_eq!(update_calls(&runner), 1, "setup: {:?}", runner.calls());
     }
 
-    // ---- ... nor one a `brew update` Canager did not start is rewriting ----
+    // ---- ... nor one a `brew update` Banager did not start is rewriting ----
     //
     // These take Homebrew's update lock the way Homebrew's own `lock.sh`
     // does on macOS -- `exec 200>` the file, then `lockf -t 0 200` -- in a
@@ -5110,7 +5110,7 @@ mod plan_execute_tests {
     /// A fresh directory to act as a Homebrew prefix.
     fn scratch_prefix(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "canager-brew-lock-{}-{}-{}",
+            "banager-brew-lock-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -5326,7 +5326,7 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_uninstall_preview_discards_a_brew_uses_that_a_homebrew_update_began_during() {
         // The lock is free when `brew uses` starts and free again when it
-        // answers; a `brew update` Canager did not start took it and let it
+        // answers; a `brew update` Banager did not start took it and let it
         // go in between. Looking only at whether it is held would see
         // nothing; the file's mtime has moved.
         let prefix = scratch_prefix("between");

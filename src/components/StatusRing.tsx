@@ -3,7 +3,7 @@ import { SpinnerIcon } from "./icons";
 
 /**
  * What the Overview, Updates and Installed pages show until the first
- * check since Canager opened has answered, centred in the page, as an
+ * check since Banager opened has answered, centred in the page, as an
  * empty state is (spec §3.10): a 32 spinner, "Checking…" under it in the
  * 15 title style, and a line saying why that takes a while, no wider than
  * 360. The first check looks up every tool's newest version online, and

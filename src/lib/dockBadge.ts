@@ -1,5 +1,5 @@
 /**
- * The badge on Canager's icon in the Dock: how many updates the Updates
+ * The badge on Banager's icon in the Dock: how many updates the Updates
  * page offers to start now, the number beside the sidebar's Updates. Both read it from
  * one hook (`useUpdateCount`), so the Dock cannot promise an update the
  * window does not offer.

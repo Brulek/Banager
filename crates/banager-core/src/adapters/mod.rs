@@ -225,7 +225,7 @@ pub enum AdapterError {
 /// **path segment**.
 ///
 /// Every registry lookup in this crate builds its URL by interpolating a
-/// name Canager did not choose: Ollama's model references arrive in the body
+/// name Banager did not choose: Ollama's model references arrive in the body
 /// of `GET {host}/api/tags`, cargo's crate names come out of
 /// `.crates2.json`'s keys, pipx's package names out of `pipx list --json`.
 /// Raw, such a name can change *which resource the URL addresses* rather
@@ -269,7 +269,7 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
     .add(b'/')
     .add(b'%');
 
-/// One "Canager could not find out" row: the item is listed at the version
+/// One "Banager could not find out" row: the item is listed at the version
 /// it is installed at, with `checkable: false` and the reason attached.
 ///
 /// Every adapter that reaches a registry answers a failed lookup this way,
@@ -281,7 +281,7 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
 /// none of those things: it is not knowing.
 ///
 /// `target` is the installed version, not a guess. `UpdateCandidate` has no
-/// "unknown" target, and any other value would be a version Canager is
+/// "unknown" target, and any other value would be a version Banager is
 /// claiming exists.
 pub(crate) fn uncheckable_candidate(
     key: ArtifactKey,
@@ -387,7 +387,7 @@ pub fn validate_package_name(name: &str) -> Result<(), AdapterError> {
 /// The rule is `kind` **and** `name`, both exactly: a source can hold two
 /// artifacts that share a name and differ in kind (Homebrew's `python`
 /// formula and its `python` cask), and answering "present, at 3.14.2" for
-/// the wrong one would make Canager report an uninstall as having failed,
+/// the wrong one would make Banager report an uninstall as having failed,
 /// or an install as having already happened.
 ///
 /// `ArtifactKey::instance_id` is deliberately *not* compared. An adapter

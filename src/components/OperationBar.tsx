@@ -36,7 +36,7 @@ function needsALook(tone: OutcomeTone): boolean {
 }
 
 /**
- * The strip at the foot of the window that says what Canager is doing, in
+ * The strip at the foot of the window that says what Banager is doing, in
  * the manner of a Mac window's status bar (spec §3.10): 28 high, the
  * window's own background, a hairline over it, its words 11/14 in the
  * muted grey. Nothing at all until something has run: the window has that

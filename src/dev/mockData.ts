@@ -1,6 +1,6 @@
 /**
  * The machine the browser preview pretends to be (docs/ui-preview.md):
- * every source Canager knows, with installed software and update rows in
+ * every source Banager knows, with installed software and update rows in
  * every state the pages render. Dev-only; nothing outside src/dev imports
  * it. Typed against src/lib/types.ts, so `pnpm typecheck` holds it to the
  * wire format the real backend sends.
@@ -158,7 +158,7 @@ function update(
   };
 }
 
-/** A row Canager could not check: `target` is the installed version
+/** A row Banager could not check: `target` is the installed version
  *  (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs). */
 function uncheckable(
   artifactKey: ArtifactKey,
@@ -375,7 +375,7 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     // pip is read-only: listed, never offered.
     update(key(IDS.pip, "Package", "requests"), "2.32.4", "2.32.5", "Native"),
     update(key(IDS.pipx, "Tool", "httpie"), "3.2.4", "3.3.0", "Native"),
-    // agy installs its updates itself; Canager has nothing to run.
+    // agy installs its updates itself; Banager has nothing to run.
     update(key(IDS.agy, "Binary", "agy"), "1.2.11", "1.2.12", "Registry", { blocked: "SelfUpdatesOnly" }),
     // Updates itself too, but has `claude update`: a button and a hint.
     update(key(IDS.claude, "Binary", "claude"), "2.1.282", "2.1.290", "Registry"),
@@ -464,7 +464,7 @@ function withNotices(world: World): void {
   // `WaitingForBrewUpdate` note).
   findInstance(world, IDS.brew).status.notes = ["IndexUpdating"];
   // Node from nodejs.org: npm's prefix is not the user's to write, and
-  // this npm is newer than the one Canager was verified against. It also
+  // this npm is newer than the one Banager was verified against. It also
   // has an older npm copy of Claude Code, which is what runs when the
   // user types `claude`.
   const npm = findInstance(world, IDS.npm);

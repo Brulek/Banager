@@ -138,7 +138,7 @@ fn make_instance(id: &str) -> ManagerInstance {
 }
 
 #[tokio::test]
-async fn test_panic_in_execute_reports_a_canager_fault_and_releases_the_lock() {
+async fn test_panic_in_execute_reports_a_banager_fault_and_releases_the_lock() {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink);
     let should_panic = Arc::new(AtomicBool::new(true));
@@ -161,10 +161,10 @@ async fn test_panic_in_execute_reports_a_canager_fault_and_releases_the_lock() {
 
     let outcome1 = wait_with_timeout(&manager, id1).await;
     match outcome1 {
-        // Canager's own failure, as a reason the front end words -- not an
+        // Banager's own failure, as a reason the front end words -- not an
         // English sentence in `Failed`'s `summary`, which is the tool's.
-        Outcome::CanagerFailed(Fault::Panicked) => {}
-        other => panic!("expected CanagerFailed(Panicked), got {other:?}"),
+        Outcome::BanagerFailed(Fault::Panicked) => {}
+        other => panic!("expected BanagerFailed(Panicked), got {other:?}"),
     }
 
     // Second op, same resource lock: if the panic leaked the lock, this

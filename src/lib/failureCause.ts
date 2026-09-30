@@ -115,16 +115,16 @@ export function failureCause(text: string): FailureCause | null {
 
 /**
  * The cause of an operation's failure, from its outcome: a tool's own
- * words (`Failed.summary`), classified; Canager's own `HomebrewStillUpdating`,
+ * words (`Failed.summary`), classified; Banager's own `HomebrewStillUpdating`,
  * which is the Homebrew list by definition. Every other outcome -- one
- * that worked, was cancelled, or failed for a reason Canager words itself
+ * that worked, was cancelled, or failed for a reason Banager words itself
  * -- has none.
  */
 export function outcomeCause(outcome: Outcome | null): FailureCause | null {
   if (outcome === null || typeof outcome === "string") return null;
   if ("Failed" in outcome) return failureCause(outcome.Failed.summary);
-  if ("CanagerFailed" in outcome) {
-    const fault = outcome.CanagerFailed;
+  if ("BanagerFailed" in outcome) {
+    const fault = outcome.BanagerFailed;
     return typeof fault !== "string" && "HomebrewStillUpdating" in fault ? "homebrewUpdating" : null;
   }
   return null;

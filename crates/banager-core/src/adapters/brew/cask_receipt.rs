@@ -20,7 +20,7 @@
 //!   `uninstall_preflight`/`uninstall_postflight` blocks
 //!   (`save_caskfile`, `cask/installer.rb:594-607`), and the receipt written
 //!   by the same install lists the artifacts it declares.
-//! - An `.internal.json` one is a legacy full definition, which Canager
+//! - An `.internal.json` one is a legacy full definition, which Banager
 //!   does not read.
 //!
 //! The receipt, `Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, is
@@ -56,7 +56,7 @@ pub(crate) struct Recorded {
 const RECEIPT: &str = "INSTALL_RECEIPT.json";
 
 /// `token`'s recorded uninstall under the Homebrew at `prefix`, or `None`
-/// when Canager cannot tell what Homebrew will run: no Caskroom folder for
+/// when Banager cannot tell what Homebrew will run: no Caskroom folder for
 /// the token (or one that is a link), no saved caskfile, a legacy
 /// `.internal.json` one, a file that does not parse as the object it
 /// should be, or no list of artifacts short of the cask's current
@@ -159,7 +159,7 @@ fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// A file's bytes, or `None` unless `path` leads, links followed, to a
-/// regular file Canager can read. Nothing but a regular file is opened --
+/// regular file Banager can read. Nothing but a regular file is opened --
 /// a named pipe would wait for a writer -- and the open file is checked
 /// again, as `brew_env::read_brew_env_file` does.
 fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
@@ -203,7 +203,7 @@ pub(crate) enum Classified {
     /// steps, as in `Steps`: they are all that deletes any of what its
     /// installer put down.
     OnlySteps(Vec<StepLine>),
-    /// A record Canager does not read -- an artifact, a directive or a
+    /// A record Banager does not read -- an artifact, a directive or a
     /// value of a shape it does not know -- or one that lists neither any
     /// of `PLACED_STANZAS` nor any step: an empty list, which Homebrew saves
     /// for a cask with nothing to uninstall (`save_caskfile`,
@@ -212,16 +212,16 @@ pub(crate) enum Classified {
     Unknown,
 }
 
-/// The kinds of step whose deletions Canager cannot see: a program the
+/// The kinds of step whose deletions Banager cannot see: a program the
 /// cask names (`early_script:`, `script:`, a `run` uninstall step), Ruby
-/// around the uninstall, and an uninstall step Canager does not name --
+/// around the uninstall, and an uninstall step Banager does not name --
 /// `move`, `copy` and `write` among them, which can replace what is at
 /// their target (`Runner#run_install_step`, `install_steps.rb:1001-1215` in
 /// Homebrew 7.0.6-70). The record says such a step is there, never what it
 /// deletes.
 const UNSEEN_STEPS: [CaskStep; 2] = [CaskStep::RunsScript, CaskStep::RunsOwnSteps];
 
-/// Whether any of `steps` is of a kind whose deletions Canager cannot see
+/// Whether any of `steps` is of a kind whose deletions Banager cannot see
 /// (`UNSEEN_STEPS`): then no sentence beside them may say what stays
 /// (`UninstallScope::HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`).
 pub(crate) fn runs_unseen(steps: &[StepLine]) -> bool {
@@ -276,7 +276,7 @@ const PLACED_STANZAS: [&str; 26] = [
 /// links they made and marked so (`Runner#run_uninstall_step`,
 /// `install_steps.rb:1349-1363`) -- for the `pkg` casks that have them,
 /// never what the installer put down -- and `zap` runs only with `--zap`,
-/// which Canager never passes.
+/// which Banager never passes.
 const NO_STEP_STANZAS: [&str; 3] = ["preflight_steps", "postflight_steps", "zap"];
 
 /// Uninstall steps that leave the cask plain: they change who owns a path
@@ -607,7 +607,7 @@ fn login_items(value: &Value) -> Option<Vec<String>> {
 
 /// `uninstall_preflight_steps`/`uninstall_postflight_steps`
 /// (`[{ "steps": [ { "type": …, … } ] }]`), which run with every step type
-/// (`install_steps.rb` `Runner#run_install_step`). A step Canager names goes
+/// (`install_steps.rb` `Runner#run_install_step`). A step Banager names goes
 /// under its kind; one it does not, under `RunsOwnSteps`. A `remove` step
 /// deletes for good (`install_steps.rb:1049-1070`): each path it names
 /// outright goes under `Deletes`, and one it does not, under
@@ -1167,7 +1167,7 @@ mod tests {
                     ),
                 ]),
             ),
-            // A `move` step Canager does not name.
+            // A `move` step Banager does not name.
             (
                 receipt!("miniconda"),
                 steps(&[
@@ -1236,7 +1236,7 @@ mod tests {
     }
 
     #[test]
-    fn ruby_around_the_uninstall_runs_steps_canager_cannot_name() {
+    fn ruby_around_the_uninstall_runs_steps_banager_cannot_name() {
         let (_, json) = receipt!("uninstall-flight-block");
         assert_eq!(classified(json), steps(&[(RunsOwnSteps, &[])]));
         // The receipt's flag alone says so too.
@@ -1251,7 +1251,7 @@ mod tests {
     }
 
     #[test]
-    fn a_program_or_code_the_record_only_names_is_a_step_canager_cannot_see_into() {
+    fn a_program_or_code_the_record_only_names_is_a_step_banager_cannot_see_into() {
         // The steps of a record, which the fixture must have.
         let steps_of = |name: &str, json: &str| match classified(json) {
             Classified::Steps(steps) | Classified::OnlySteps(steps) => steps,
@@ -1261,7 +1261,7 @@ mod tests {
         // gutenprint's uninstall script), `early_script:` alone
         // (wireshark-chmodbpf's uninstaller package) and with `script:`
         // (adobe-creative-cloud), a `run` step (openzfs), Ruby around the
-        // uninstall (uninstall-flight-block), and steps Canager does not
+        // uninstall (uninstall-flight-block), and steps Banager does not
         // name (miniconda's `move`, betwixt's certificate by a file's hash):
         // the record says each is there, not what it deletes.
         for (name, json) in [
@@ -1306,7 +1306,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_canager_does_not_read_is_unknown_not_plain() {
+    fn a_record_banager_does_not_read_is_unknown_not_plain() {
         let (_, json) = receipt!("unknown-stanza");
         assert_eq!(classified(json), Classified::Unknown);
         let unknown = |artifacts: Value| {
@@ -1654,7 +1654,7 @@ mod tests {
     impl Prefix {
         fn new(label: &str) -> Prefix {
             let dir = std::env::temp_dir().join(format!(
-                "canager-cask-receipt-{label}-{}-{}",
+                "banager-cask-receipt-{label}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

@@ -100,7 +100,7 @@ impl RustupHome {
     fn new(tag: &str) -> RustupHome {
         use std::os::unix::fs::PermissionsExt;
         let raw = std::env::temp_dir().join(format!(
-            "canager-ops-rustup-uninstall-{tag}-{}-{}",
+            "banager-ops-rustup-uninstall-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

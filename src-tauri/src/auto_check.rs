@@ -6,7 +6,7 @@
 //! `ipc::refresh_daily`), recorded as `RoundTrigger::Automatic` with the
 //! time of the look that started it (`RoundLog::record_daily`). That is
 //! all it does: the refresh runs what every refresh runs -- no install,
-//! upgrade or uninstall of Canager's, though the `brew update` in it can
+//! upgrade or uninstall of Banager's, though the `brew update` in it can
 //! install, move or uninstall Homebrew packages Homebrew has moved or
 //! renamed (docs/what-we-run.md, Homebrew) -- and the task ends with the
 //! app.
@@ -90,7 +90,7 @@ mod tests {
     /// One source, answering at once unless told to wait. Counts its
     /// rounds by its `detect`, which every round calls once, and its reads
     /// of its packages; says its catalogue is being rewritten -- a `brew
-    /// update` Canager started still running -- while `index_updating` is
+    /// update` Banager started still running -- while `index_updating` is
     /// set; says its catalogue update failed, and checks its updates
     /// against the catalogue it had -- Homebrew offline -- while
     /// `index_stale` is; fails to read its packages while `failing` is;
@@ -246,7 +246,7 @@ mod tests {
         Arc::new(AppState {
             session,
             settings_path: std::env::temp_dir().join(format!(
-                "canager-auto-check-{}-{}",
+                "banager-auto-check-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

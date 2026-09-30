@@ -14,7 +14,7 @@ export function displayToken(token: string): string {
 
 /** The `operations.outcome.*` key suffix for an Outcome, mirroring its
  *  externally tagged variant name -- and, for `NeedsAttention` and
- *  `CanagerFailed`, which reason it carries, since each has its own
+ *  `BanagerFailed`, which reason it carries, since each has its own
  *  sentence. A `Failed` whose tool said nothing on stderr gets its own
  *  sentence too, rather than "Failed: " and a blank. */
 export function outcomeKey(outcome: Outcome): string {
@@ -35,7 +35,7 @@ export function outcomeKey(outcome: Outcome): string {
   }
   if ("NeedsAttention" in outcome) return `NeedsAttention.${attentionKey(outcome.NeedsAttention)}`;
   if ("Failed" in outcome) return outcome.Failed.summary.trim() ? "Failed" : "FailedSilent";
-  if ("CanagerFailed" in outcome) return `CanagerFailed.${faultKey(outcome.CanagerFailed)}`;
+  if ("BanagerFailed" in outcome) return `BanagerFailed.${faultKey(outcome.BanagerFailed)}`;
   const unhandled: never = outcome;
   return unhandled;
 }
@@ -101,12 +101,12 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
   // The tool's own words are the sentence; a tool that said nothing gets
   // pointed at its output.
   if ("Failed" in outcome) return outcome.Failed.summary.trim() ? null : "operations.outcome.FailedSilentDetail";
-  if ("CanagerFailed" in outcome) {
-    const fault = outcome.CanagerFailed;
+  if ("BanagerFailed" in outcome) {
+    const fault = outcome.BanagerFailed;
     if (typeof fault === "string") {
       switch (fault) {
         case "Panicked":
-          return "operations.outcome.CanagerFailed.PanickedDetail";
+          return "operations.outcome.BanagerFailed.PanickedDetail";
         // Its sentence says it is an internal error and that nothing
         // changed; there is nothing to do next.
         case "Internal":
@@ -117,8 +117,8 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
         }
       }
     }
-    if ("HomebrewStillUpdating" in fault) return "operations.outcome.CanagerFailed.HomebrewStillUpdatingDetail";
-    if ("PathChanged" in fault) return "operations.outcome.CanagerFailed.PathChangedDetail";
+    if ("HomebrewStillUpdating" in fault) return "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail";
+    if ("PathChanged" in fault) return "operations.outcome.BanagerFailed.PathChangedDetail";
     if ("ProgramMissing" in fault || "SpawnFailed" in fault) return null;
     const unhandled: never = fault;
     return unhandled;
@@ -132,15 +132,15 @@ export function outcomeArgs(outcome: Outcome): Record<string, unknown> {
   if (typeof outcome === "string") return {};
   if ("NeedsAttention" in outcome) return {};
   if ("Failed" in outcome) return { summary: outcome.Failed.summary.trim() };
-  if ("CanagerFailed" in outcome) return faultArgs(outcome.CanagerFailed);
+  if ("BanagerFailed" in outcome) return faultArgs(outcome.BanagerFailed);
   const unhandled: never = outcome;
   return unhandled;
 }
 
 /**
- * The variant name of one of Canager's own failure reasons. Each `Fault`
+ * The variant name of one of Banager's own failure reasons. Each `Fault`
  * variant needs a case here and a sentence in both locales under
- * `operations.outcome.CanagerFailed`: a reason that arrived with no words
+ * `operations.outcome.BanagerFailed`: a reason that arrived with no words
  * would be this project's signature defect, defined and never rendered.
  */
 function faultKey(fault: Fault): string {
@@ -164,7 +164,7 @@ function faultKey(fault: Fault): string {
 }
 
 /** The data a `Fault` carries, for its sentence: a path, or the operating
- *  system's own reason -- never prose of Canager's. */
+ *  system's own reason -- never prose of Banager's. */
 function faultArgs(fault: Fault): Record<string, unknown> {
   if (typeof fault === "string") return {};
   if ("ProgramMissing" in fault) return { program: fault.ProgramMissing.program };

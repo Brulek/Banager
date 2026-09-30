@@ -235,7 +235,7 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// sentence inside a Chinese frame. The kinds split along whose words the
 /// detail is:
 ///
-/// - **Canager's own words** go out with no prose at all, only data the
+/// - **Banager's own words** go out with no prose at all, only data the
 ///   front end can interpolate into its own sentence: `source_gone`,
 ///   `invalid_name` (the name), `program_missing` (the path),
 ///   `output_too_large`, `uninstall_unsafe` (the path a path-list
@@ -244,7 +244,7 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 ///   would not read Homebrew's catalogue while `brew update` rewrites
 ///   it, and the user should try again shortly), and `refused` for
 ///   everything that is a bug in
-///   Canager rather than a state of the Mac (an instance/request mismatch,
+///   Banager rather than a state of the Mac (an instance/request mismatch,
 ///   an unregistered adapter, a test-only `NoMock`, an install the window
 ///   asked for, which `plan_operation_impl` refuses). `Refused` carries an
 ///   English string in Rust; it is dropped here on purpose -- it is for
@@ -261,7 +261,7 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// nothing. pip's `plan()` does refuse with `Unsupported`, but every pip
 /// instance is read-only by design, so `issue_plan`'s gate refuses first
 /// with `not_actionable`. They go out as `refused` -- if one ever arrives,
-/// an adapter broke that contract, which is Canager's bug. A kind of their
+/// an adapter broke that contract, which is Banager's bug. A kind of their
 /// own would be copy in two locales that nothing can make appear.
 /// `IndexUpdating` is not one of them: brew's uninstall `plan()` returns it
 /// (the `catalogue_stamp` checks around its `brew uses`) while a `brew
@@ -407,7 +407,7 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
 /// `submit_operation` away from running (phase 5 proposal §零 6). The
 /// adapters keep planning installs, for the catalogue's own command
 /// (§3.4), which will name a catalogue entry rather than a package.
-/// Refused as `refused`, the payload for Canager's own bug: a page asking
+/// Refused as `refused`, the payload for Banager's own bug: a page asking
 /// for what no page offers.
 pub(crate) async fn plan_operation_impl(
     state: &AppState,
@@ -516,8 +516,8 @@ pub(crate) fn set_settings_impl(state: &AppState, settings: Settings) -> Result<
 /// The three reasons a person can do something about get a `reason` the
 /// front end words itself. Anything else is `other`, with the operating
 /// system's own description kept verbatim in `detail` for the front end to
-/// quote: that is the OS's text, not Canager's, and there is no honest way
-/// to translate a reason Canager did not anticipate.
+/// quote: that is the OS's text, not Banager's, and there is no honest way
+/// to translate a reason Banager did not anticipate.
 fn settings_save_error(e: std::io::Error) -> String {
     use std::io::ErrorKind;
     let reason = match e.kind() {
@@ -613,7 +613,7 @@ fn open_ollama_failed_json(reason: &str) -> String {
 fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     let (_default_program, args) = open_ollama_app_argv();
     // `spawn()` inherits the parent's stdin/stdout/stderr by default, which
-    // hands this child Canager's own console and pipes for no reason -- it
+    // hands this child Banager's own console and pipes for no reason -- it
     // takes no input and nothing here ever reads its output. Nulling all
     // three is the same "share nothing it does not need" rule `run_plan`
     // already applies to every package-manager command; this is the one
@@ -721,7 +721,7 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
         // Only a panic inside the scan reaches this arm. The text is the
         // front end's to show verbatim, the way a failed load shows the
         // backend's own words under `emptyStates.loadFailed`; it is the
-        // runtime's sentence, not one of Canager's to translate.
+        // runtime's sentence, not one of Banager's to translate.
         .map_err(|e| e.to_string())
 }
 
@@ -898,7 +898,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-ipc-{}-{}-{}",
+            "banager-ipc-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -924,7 +924,7 @@ mod tests {
         // The command itself passes `HostEnv::discover()`.
         let env = HostEnv {
             path_dirs: Vec::new(),
-            home: std::env::temp_dir().join(format!("canager-ipc-scan-{}", std::process::id())),
+            home: std::env::temp_dir().join(format!("banager-ipc-scan-{}", std::process::id())),
             euid: 0,
             cargo_home: None,
             rustup_home: None,
@@ -1673,7 +1673,7 @@ mod tests {
             let err = plan_operation_impl(&state, req)
                 .await
                 .expect_err("the window may not plan an install");
-            // `refused`, which the page already words: Canager's own bug,
+            // `refused`, which the page already words: Banager's own bug,
             // not a state of the Mac, and never the Rust string.
             assert_eq!(err, r#"{"kind":"refused"}"#, "{instance_id}");
         }
@@ -1686,13 +1686,13 @@ mod tests {
 
     #[test]
     fn test_what_we_run_never_list_says_the_window_cannot_ask_for_an_install() {
-        // docs/what-we-run.md, "What Canager never does": the promise
+        // docs/what-we-run.md, "What Banager never does": the promise
         // `window_may_plan` keeps. Hard-wrapped prose: compared with the
         // line breaks folded away.
         let doc = include_str!("../../docs/what-we-run.md");
         let never = doc
-            .split_once("\n## What Canager never does\n")
-            .expect("docs/what-we-run.md has no `## What Canager never does` section")
+            .split_once("\n## What Banager never does\n")
+            .expect("docs/what-we-run.md has no `## What Banager never does` section")
             .1;
         let folded = never.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
@@ -1731,14 +1731,14 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_operation_error_never_sends_canagers_own_english() {
+    fn test_plan_operation_error_never_sends_banagers_own_english() {
         use banager_core::runner::RunnerError;
         let parse = |e: AdapterError| -> serde_json::Value {
             let raw = plan_operation_error(e);
             serde_json::from_str(&raw).unwrap_or_else(|_| panic!("not JSON: {raw}"))
         };
 
-        // Canager's own words: the kind and data only, no prose.
+        // Banager's own words: the kind and data only, no prose.
         let v = parse(AdapterError::InvalidName("-rf".to_string()));
         assert_eq!(
             v,
@@ -1766,7 +1766,7 @@ mod tests {
         });
         assert_eq!(v, serde_json::json!({ "kind": "source_gone" }));
         // brew's uninstall preview while `brew update` runs: a state of
-        // the Mac the dialog words itself, not Canager's bug.
+        // the Mac the dialog words itself, not Banager's bug.
         let v = parse(AdapterError::IndexUpdating);
         assert_eq!(v, serde_json::json!({ "kind": "index_updating" }));
         // A pinned package on a stale Updates page: the reason as data,
@@ -1804,14 +1804,14 @@ mod tests {
         );
 
         // Errors no `plan()` returns: a broken adapter contract, so
-        // Canager's own bug, and none of their text reaches the wire.
+        // Banager's own bug, and none of their text reaches the wire.
         for e in [
             AdapterError::Parse("unexpected token".to_string()),
             AdapterError::CommandFailed {
                 code: Some(1),
                 stderr: "Error: No such keg".to_string(),
             },
-            AdapterError::Unsupported("pip is read-only in Canager".to_string()),
+            AdapterError::Unsupported("pip is read-only in Banager".to_string()),
         ] {
             assert_eq!(parse(e), serde_json::json!({ "kind": "refused" }));
         }
@@ -2487,7 +2487,7 @@ mod tests {
 
     #[test]
     fn test_open_ollama_app_impl_with_nulls_all_three_stdio_streams() {
-        // "Open Ollama" spawns with inherited stdio today: a Canager built
+        // "Open Ollama" spawns with inherited stdio today: a Banager built
         // and launched from a Terminal window hands that child process the
         // app's own stdin/stdout/stderr, which it has no business sharing
         // (spec's step D, item 3). This runs a shell script in place of
@@ -2502,7 +2502,7 @@ mod tests {
 
         let mut dir = std::env::temp_dir();
         dir.push(format!(
-            "canager-stdio-test-{}-{}",
+            "banager-stdio-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2596,7 +2596,7 @@ mod tests {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh");
         let dir = std::env::temp_dir().join(format!(
-            "canager-ipc-icon-{}-{}",
+            "banager-ipc-icon-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

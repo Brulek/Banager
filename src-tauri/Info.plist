@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Tauri merges this file, found beside tauri.conf.json, into the Info.plist
-  it writes for Canager.app. It says which languages the app is in: with
+  it writes for Banager.app. It says which languages the app is in: with
   none declared, macOS takes it for an English-only app, and the menu
   items macOS adds itself (Edit's Start Dictation and Emoji & Symbols, the
   Window menu's tiling items, the About panel's words) stay in English on

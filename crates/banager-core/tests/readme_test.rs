@@ -1,6 +1,6 @@
 //! README.md says, in its English block and again in its Chinese one
 //! under `## 中文`, which tools' update checks can show each of the two
-//! reasons about the installed version that are still Canager's own
+//! reasons about the installed version that are still Banager's own
 //! English. Prose cannot be compiled, so these pin both lists to the
 //! recipes. `StandaloneAdapter::check_updates` gives "cannot read the
 //! installed version now" before it asks for a published version at all,

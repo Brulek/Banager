@@ -370,7 +370,7 @@ describe("the menu bar's events", () => {
 });
 
 describe("the Dock's badge", () => {
-  it("is the count setDockBadge is given, set on the window, not through a command of Canager's", async () => {
+  it("is the count setDockBadge is given, set on the window, not through a command of Banager's", async () => {
     const dock = watchDock();
     await setDockBadge(12);
     expect(dock.counts()).toEqual([12]);
@@ -403,7 +403,7 @@ describe("Show in Finder", () => {
     mockReveal.mockReset();
   });
 
-  it("hands the opener plugin the path and nothing else, not through a command of Canager's", async () => {
+  it("hands the opener plugin the path and nothing else, not through a command of Banager's", async () => {
     mockReveal.mockResolvedValueOnce(undefined);
     await revealInFinder("/Applications/Helper.app/Contents/Helpers/helper-cli");
     expect(mockReveal).toHaveBeenCalledTimes(1);
@@ -431,7 +431,7 @@ describe("the notification plugin", () => {
     // tauri-plugin-notification's script asks whether notifications are
     // allowed as the page loads; refused, the call would end in an
     // unhandled rejection. Asking for permission and posting are
-    // Canager's own commands (src-tauri/src/notify.rs), so the page can
+    // Banager's own commands (src-tauri/src/notify.rs), so the page can
     // post nothing itself: not `notification:default`, which would let it.
     expect(capability.permissions.filter((p) => p.startsWith("notification:"))).toEqual([
       "notification:allow-is-permission-granted",

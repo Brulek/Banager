@@ -299,7 +299,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     if (inst === undefined) {
       // Its source went while it waited (an uninstall of the same tool
       // ahead of it): the real manager reports that as its own fault.
-      schedule(op, 0, () => finish(op, { CanagerFailed: "Internal" }));
+      schedule(op, 0, () => finish(op, { BanagerFailed: "Internal" }));
       return;
     }
     const subject: Subject = {
@@ -502,7 +502,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       return true;
     },
     async ask_before_quit(args) {
-      // Nothing to ask before: the browser has no Quit of Canager's, and
+      // Nothing to ask before: the browser has no Quit of Banager's, and
       // the one `pnpm tauri:mock` shows is Rust's, which this page never
       // reaches, so it never hears the question (./mockTauriEvent.ts).
       // Like the real command, it takes whether the page asks; Tauri turns
@@ -532,7 +532,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // of `pnpm tauri:mock`, and the preview never asks (above).
     },
     async set_menu_language(args) {
-      // No menu bar to build: the browser has none of Canager's, and the
+      // No menu bar to build: the browser has none of Banager's, and the
       // one `pnpm tauri:mock` shows is Rust's, which this page never
       // reaches (./mockTauriEvent.ts). Like the real command, it takes
       // only the window's two languages; Tauri turns any other away.

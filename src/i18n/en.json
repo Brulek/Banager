@@ -215,7 +215,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}} isn't running. Open it, then click Check Again.",
       "NotResponding": "{{source}} isn't responding. Click Check Again later.",
-      "RefusesAsRoot": "{{source}} doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click."
+      "RefusesAsRoot": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
     },
     "runInTerminal": "In Terminal: {{command}}",
     "progress": {
@@ -389,7 +389,7 @@
     },
     "refusesAsRoot": {
       "title": "{{source}} doesn't run as administrator",
-      "description": "{{source}} doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click."
+      "description": "{{source}} doesn't work when this app runs as administrator. Quit, then open Banager again with a double-click."
     },
     "notRunning": {
       "title": "{{source}} isn't running",
@@ -464,7 +464,7 @@
   "operations": {
     "current": "{{kind}} {{name}}: {{status}}",
     "title": "{{kind}} {{name}}",
-    "noCancelHint": "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+    "noCancelHint": "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
     "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
     "stop": "Cancel",
     "logDrawerTitle": "Operation log",
@@ -527,7 +527,7 @@
       "FailedShort": "Couldn't finish",
       "FailedSilent": "Couldn't finish, and the program didn't say why",
       "FailedSilentDetail": "The operation log shows its output.",
-      "CanagerFailed": {
+      "BanagerFailed": {
         "Panicked": "Couldn't finish because of an internal error",
         "PanickedDetail": "Check the list to see whether anything changed.",
         "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",
@@ -605,12 +605,12 @@
     },
     "autoCheck": {
       "label": "Check for updates every day",
-      "description": "Canager checks for updates once a day while it's running, and doesn't install the updates it finds."
+      "description": "Banager checks for updates once a day while it's running, and doesn't install the updates it finds."
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
       "needsAutoCheck": "Requires “{{setting}}”.",
-      "refused": "Allow Canager to send notifications in System Settings > Notifications."
+      "refused": "Allow Banager to send notifications in System Settings > Notifications."
     },
     "language": {
       "label": "Language",
@@ -637,7 +637,7 @@
       "openAriaLabel": "View icon credits",
       "title": "Icon credits",
       "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
-      "simpleIcons": "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
+      "simpleIcons": "Most of the logos built into Banager come from Simple Icons, which is released under CC0.",
       "ownLicense": "The following logos use other licenses:",
       "license": "License",
       "source": "Source",
@@ -698,7 +698,7 @@
     "loadFailed": {
       "title": "Couldn't load installed tools",
       "description": "Reason: {{message}}",
-      "nextStep": "Check again. If that doesn't help, quit and reopen Canager."
+      "nextStep": "Check again. If that doesn't help, quit and reopen Banager."
     },
     "noSources": {
       "title": "No tools to manage",

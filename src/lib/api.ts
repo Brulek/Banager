@@ -190,7 +190,7 @@ export async function onMenuCommand(onCommand: (command: MenuCommand) => void): 
 }
 
 /**
- * Puts `count` on Canager's icon in the Dock, as the App Store puts there
+ * Puts `count` on Banager's icon in the Dock, as the App Store puts there
  * the number of updates it has, or takes the badge away at 0. Through
  * Tauri's `setBadgeCount` (`core:window:allow-set-badge-count` in
  * src-tauri/capabilities/default.json), which on macOS badges the app, not
@@ -230,8 +230,8 @@ export function requestNotificationPermission(): Promise<boolean> {
  * The event Rust sends the window for the update notification, once the
  * window is back on screen: `OPEN_UPDATES_EVENT` in src-tauri/src/notify.rs,
  * sent the way the menu bar's are. On a Mac, Rust hears no click on the
- * notification itself (`post` there): it sends this when Canager comes to
- * the front -- as a click on it brings Canager -- with its window closed or
+ * notification itself (`post` there): it sends this when Banager comes to
+ * the front -- as a click on it brings Banager -- with its window closed or
  * minimized while a notification waits on the window (`on_activate` in
  * src-tauri/src/window.rs).
  */
@@ -254,7 +254,7 @@ export async function onOpenUpdates(onClick: () => void): Promise<() => void> {
  * The event Rust sends the window when a quit waits on the page's question:
  * `QUIT_REQUESTED_EVENT` in src-tauri/src/quit.rs, sent the way the menu
  * bar's are, once the window is back on screen. On a Mac every way of
- * quitting reaches it -- Quit Canager (⌘Q), the Dock's Quit, a logout --
+ * quitting reaches it -- Quit Banager (⌘Q), the Dock's Quit, a logout --
  * while an operation is not done, once the page has said it listens
  * (`askBeforeQuit`). Its payload is the question's number, which the page
  * hands back once the question is on screen (`quitQuestionShown`).
@@ -287,8 +287,8 @@ export function askBeforeQuit(ask: boolean): Promise<void> {
 
 /**
  * Tells Rust that question `question` (`QUIT_REQUESTED_EVENT`'s payload) is
- * on screen, so that Canager waits for the user's answer
- * (`quit_question_shown` in src-tauri/src/quit.rs). Without it, Canager
+ * on screen, so that Banager waits for the user's answer
+ * (`quit_question_shown` in src-tauri/src/quit.rs). Without it, Banager
  * quits 2 seconds after asking: nobody is there to answer. `QuitQuestion`
  * sends it.
  */
@@ -298,7 +298,7 @@ export function quitQuestionShown(question: number): Promise<void> {
 
 /**
  * The user answered question `question` 「继续等待」 (or Escape), or the
- * sheet went by itself, everything having finished: Canager does not quit
+ * sheet went by itself, everything having finished: Banager does not quit
  * 2 seconds after asking, even when `quitQuestionShown` did not get through
  * (`quit_kept_waiting` in src-tauri/src/quit.rs). `QuitQuestion` sends it.
  */
@@ -307,9 +307,9 @@ export function quitKeptWaiting(question: number): Promise<void> {
 }
 
 /**
- * 「仍然退出」: Canager cancels what can be cancelled, waits for it to stop,
+ * 「仍然退出」: Banager cancels what can be cancelled, waits for it to stop,
  * and quits (`quit_anyway` in src-tauri/src/quit.rs); the promise settles
- * only if Canager is still there to answer.
+ * only if Banager is still there to answer.
  */
 export function quitAnyway(): Promise<void> {
   return call<void>("quit_anyway");

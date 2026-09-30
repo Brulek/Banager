@@ -1,13 +1,13 @@
 /**
  * The page's part in quitting while an operation is under way
- * (src-tauri/src/quit.rs). On a Mac every way of quitting -- Quit Canager
+ * (src-tauri/src/quit.rs). On a Mac every way of quitting -- Quit Banager
  * (⌘Q), the Dock's Quit, a logout -- asks Rust first; while an operation is
  * not done, Rust calls the quit off, brings the window back and sends
  * `QUIT_REQUESTED_EVENT`, and the page asks the user
  * (`QuitQuestion`): 「还有 N 个操作没完成」, 「继续等待」 or 「仍然退出」. Rust
  * asks only while the page has said it listens (`askBeforeQuit`), so that a
  * page that could not listen, or has gone, leaves quitting as it was; and
- * Canager quits after all when the page does not say within 2 seconds that
+ * Banager quits after all when the page does not say within 2 seconds that
  * the question is on screen (`quitQuestionShown`), or that the user answered
  * 「继续等待」 (`quitKeptWaiting`).
  */
@@ -40,7 +40,7 @@ const HALF_DONE_KEYS: Record<OpKind, string> = {
 /**
  * The operations of `active` that quitting stops: all but one that has
  * started and that nothing can stop (`runsToItsEnd`), which runs on
- * without Canager (src-tauri/src/quit.rs, `quit_now`). Their number is the
+ * without Banager (src-tauri/src/quit.rs, `quit_now`). Their number is the
  * `count` of `quitBodyKey`'s line.
  */
 export function quitStops(active: OpSummary[]): OpSummary[] {

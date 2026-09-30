@@ -1,5 +1,5 @@
 //! Contract tests for how an `Err` out of `Adapter::execute` reaches the
-//! front end: always as `Outcome::CanagerFailed` (a reason of Canager's
+//! front end: always as `Outcome::BanagerFailed` (a reason of Banager's
 //! own, worded by the front end in the user's language), never as
 //! `Outcome::Failed`, whose `summary` is only ever another program's own
 //! words (a tool's stderr, or macOS's reason for refusing a move to the
@@ -8,7 +8,7 @@
 //! Before this split, `run_operation` put English sentences of its own
 //! ("unknown instance ...", "runner: program not found: ...") into
 //! `Failed`'s `summary` -- the same string that carries a tool's stderr --
-//! so a Chinese user read Canager's English inside a translated frame, and
+//! so a Chinese user read Banager's English inside a translated frame, and
 //! the front end had no way to tell the two apart.
 
 use async_trait::async_trait;
@@ -169,7 +169,7 @@ async fn test_a_missing_program_is_a_fault_carrying_its_path_not_an_english_summ
     .await;
     assert_eq!(
         outcome,
-        Outcome::CanagerFailed(Fault::ProgramMissing {
+        Outcome::BanagerFailed(Fault::ProgramMissing {
             program: "/opt/homebrew/bin/brew".to_string()
         })
     );
@@ -184,25 +184,25 @@ async fn test_a_program_macos_would_not_start_carries_only_the_systems_reason() 
     }))
     .await;
     match outcome {
-        Outcome::CanagerFailed(Fault::SpawnFailed { detail }) => {
-            // The operating system's words, with none of Canager's own
+        Outcome::BanagerFailed(Fault::SpawnFailed { detail }) => {
+            // The operating system's words, with none of Banager's own
             // ("runner: spawn failed: ") in front of them.
             assert!(!detail.contains("runner"), "{detail}");
             assert!(!detail.contains("spawn failed"), "{detail}");
             assert!(!detail.is_empty());
         }
-        other => panic!("expected CanagerFailed(SpawnFailed), got {other:?}"),
+        other => panic!("expected BanagerFailed(SpawnFailed), got {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn test_every_error_but_a_missing_or_unstartable_program_is_canagers_own_bug() {
+async fn test_every_error_but_a_missing_or_unstartable_program_is_banagers_own_bug() {
     // A tool that ran and failed never gets here: `run_plan` makes that an
-    // `Ok(Outcome::Failed)`. What does arrive as an `Err` is Canager's own,
+    // `Ok(Outcome::Failed)`. What does arrive as an `Err` is Banager's own,
     // and none of its English reaches the wire.
     let errors: Vec<MakeError> = vec![
         Box::new(|| AdapterError::Refused("refusing to run Homebrew as root".to_string())),
-        Box::new(|| AdapterError::Unsupported("pip is read-only in Canager".to_string())),
+        Box::new(|| AdapterError::Unsupported("pip is read-only in Banager".to_string())),
         Box::new(|| AdapterError::CommandFailed {
             code: Some(1),
             stderr: "Error: No such keg\n".to_string(),
@@ -212,7 +212,7 @@ async fn test_every_error_but_a_missing_or_unstartable_program_is_canagers_own_b
     for make_error in errors {
         assert_eq!(
             run_execute_error(make_error).await,
-            Outcome::CanagerFailed(Fault::Internal)
+            Outcome::BanagerFailed(Fault::Internal)
         );
     }
 }
@@ -222,14 +222,14 @@ async fn test_a_plan_for_an_unregistered_instance_is_an_internal_fault() {
     // Cannot happen through `Session::submit` (every instance in the
     // snapshot is registered first, and a source that has gone since the
     // preview is refused there as `SubmitError::SourceGone`), so reaching
-    // it at all is a bug in Canager -- what used to be "unknown instance
+    // it at all is a bug in Banager -- what used to be "unknown instance
     // fake:/gone".
     let inst = instance("fake:/present", "fake");
     let adapter = Arc::new(FailingAdapter::new(Box::new(|| {
         AdapterError::Refused("execute must not be reached".to_string())
     })));
     let outcome = run(adapter, inst, "fake:/gone").await;
-    assert_eq!(outcome, Outcome::CanagerFailed(Fault::Internal));
+    assert_eq!(outcome, Outcome::BanagerFailed(Fault::Internal));
 }
 
 #[tokio::test]
@@ -241,5 +241,5 @@ async fn test_an_instance_with_no_registered_adapter_is_an_internal_fault() {
         AdapterError::Refused("execute must not be reached".to_string())
     })));
     let outcome = run(adapter, inst, &id).await;
-    assert_eq!(outcome, Outcome::CanagerFailed(Fault::Internal));
+    assert_eq!(outcome, Outcome::BanagerFailed(Fault::Internal));
 }

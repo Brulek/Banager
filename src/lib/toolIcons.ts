@@ -1,5 +1,5 @@
 /**
- * The logos Canager ships, and which one a tool or a source shows. The
+ * The logos Banager ships, and which one a tool or a source shows. The
  * pack -- src/assets/tool-icons/pack.json and its raster/ folder -- is
  * built at development time by `pnpm icons:build`
  * (scripts/tool-icons/build.mjs) from the reviewed

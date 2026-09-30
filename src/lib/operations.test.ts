@@ -145,7 +145,7 @@ describe("outcomeTone", () => {
     expect(outcomeTone("Unconfirmed")).toBe("attention");
     expect(outcomeTone({ NeedsAttention: "GoneAfterUpgrade" })).toBe("attention");
     expect(outcomeTone({ Failed: { exit_code: 1, summary: "" } })).toBe("failure");
-    expect(outcomeTone({ CanagerFailed: "Internal" })).toBe("failure");
+    expect(outcomeTone({ BanagerFailed: "Internal" })).toBe("failure");
     // Never sent, and so claims nothing either way.
     expect(outcomeTone(null)).toBe("attention");
   });

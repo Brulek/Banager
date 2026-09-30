@@ -103,7 +103,7 @@ fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidat
 pub struct UvAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
-    /// How to read `UV_TOOL_DIR` from Canager's own environment, which
+    /// How to read `UV_TOOL_DIR` from Banager's own environment, which
     /// every `uv` command inherits (a uv plan adds no variables): read at
     /// every inventory and every uninstall preview (`uninstall_blocked`).
     /// The same fn-pointer seam as `BrewAdapter::askpass_fn`; inside this
@@ -113,7 +113,7 @@ pub struct UvAdapter {
     tool_dir_fn: fn() -> Option<OsString>,
 }
 
-/// `UvAdapter::tool_dir_fn` as `UvAdapter::new` sets it: Canager's real
+/// `UvAdapter::tool_dir_fn` as `UvAdapter::new` sets it: Banager's real
 /// environment in every build but this crate's unit tests.
 #[cfg(not(test))]
 const DEFAULT_TOOL_DIR_FN: fn() -> Option<OsString> = || std::env::var_os("UV_TOOL_DIR");
@@ -139,7 +139,7 @@ impl UvAdapter {
         self
     }
 
-    /// Why Canager uninstalls no uv tool here, or `None`: `UV_TOOL_DIR` set
+    /// Why Banager uninstalls no uv tool here, or `None`: `UV_TOOL_DIR` set
     /// and not empty, which is how uv reads it (`InstalledTools::from_settings`
     /// filters an empty one out, uv 0.12.17 `crates/uv-tool/src/lib.rs:133`).
     /// uv then keeps its tools in that folder, and removing the last one
@@ -526,7 +526,7 @@ mod tests {
     #[tokio::test]
     async fn test_check_updates_marks_every_tool_uncheckable_when_the_lookup_fails() {
         // Same rule as cargo, pip, pipx and npm: `uv tool list --outdated`
-        // asks PyPI, and an index that did not answer means "Canager does
+        // asks PyPI, and an index that did not answer means "Banager does
         // not know about these tools", not "this source failed".
         let list =
             std::fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt")

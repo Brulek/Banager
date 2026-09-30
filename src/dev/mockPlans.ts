@@ -162,7 +162,7 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
       };
     }
     case "standalone-agy":
-      // No update command Canager may run: the gate refuses first, from
+      // No update command Banager may run: the gate refuses first, from
       // the row's `blocked`; this is its late twin (`StandaloneAdapter::plan`).
       if (kind === "Upgrade") throw refusal({ kind: "update_blocked", reason: "SelfUpdatesOnly" });
       return {
@@ -338,7 +338,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
   }
 }
 
-/** One thing an operation's log shows: a tool's line, or a note of Canager's. */
+/** One thing an operation's log shows: a tool's line, or a note of Banager's. */
 export type LogLine = { stream: Stream; line: string } | { note: LogNote };
 
 const out = (line: string): LogLine => ({ stream: "Stdout", line });
@@ -524,7 +524,7 @@ function trashRefusal(path: string): string {
 /**
  * The run as it plays out under `?outcome=`: the lines the log shows and
  * how the operation ends. Only `succeeded` changes anything on the
- * machine (the backend applies it); `canager` means nothing started, so
+ * machine (the backend applies it); `banager` means nothing started, so
  * nothing was written.
  */
 export function playOutcome(
@@ -571,10 +571,10 @@ export function playOutcome(
         outcome: { NeedsAttention: "BackAfterUninstall" },
       };
     }
-    case "canager":
+    case "banager":
       return {
         lines: [],
-        outcome: { CanagerFailed: { SpawnFailed: { detail: "Operation not permitted (os error 1)" } } },
+        outcome: { BanagerFailed: { SpawnFailed: { detail: "Operation not permitted (os error 1)" } } },
       };
   }
 }

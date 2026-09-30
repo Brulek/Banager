@@ -1,5 +1,5 @@
 /**
- * `pnpm icons:build`: builds the logo pack Canager ships,
+ * `pnpm icons:build`: builds the logo pack Banager ships,
  * src/assets/tool-icons/, from scripts/tool-icons/mapping.json -- the only
  * input it trusts. Dev-time only: the app shows the pack committed to the
  * repository and fetches nothing to do so, and no test runs this.
@@ -8,7 +8,7 @@
  *   slug from the pinned devDependency `simple-icons`: its path, its brand
  *   colour and its title. Simple Icons is CC0, and a logo with no license
  *   of its own in Simple Icons' data has its path rounded to 2 decimals
- *   (./path.mjs). A logo with one keeps it: under a license Canager ships
+ *   (./path.mjs). A logo with one keeps it: under a license Banager ships
  *   (`SHIPPABLE_LICENSE`) it is written exactly as Simple Icons draws it,
  *   unrounded -- an attribution or share-alike logo stays unmodified --
  *   with that license and Simple Icons' source for it, which Settings
@@ -18,7 +18,7 @@
  *   `gh-<login, lower case>`, file raster/<id>.webp.
  *
  * It fails loudly, and writes nothing, on a slug Simple Icons does not
- * have, a logo under a license Canager does not ship (naming the mapping
+ * have, a logo under a license Banager does not ship (naming the mapping
  * entries that name it), a download that does not arrive, or a mapping
  * entry it cannot read; it fails after writing when the pack is over its
  * 5 MB budget, so the files are there to look at. The only files it
@@ -200,7 +200,7 @@ function readMapping(mapping) {
  * Every glyph the mapping names, by id: `{ path, hex, title, rounded }`,
  * plus `license` (`{ type, url }`) and `source` for a logo with a license
  * of its own in Simple Icons' data. Such a logo is kept exactly as Simple
- * Icons draws it. One under a license Canager does not ship
+ * Icons draws it. One under a license Banager does not ship
  * (`SHIPPABLE_LICENSE`) fails the build before anything is downloaded or
  * written, with every other such logo and the mapping entries naming each.
  * Any other logo's path is rounded and drawn at 64 px next to the
@@ -226,7 +226,7 @@ async function buildGlyphs(icons) {
     if (license === undefined) continue;
     const named = `named by ${namedBy.join(", ")}`;
     if (!SHIPPABLE_LICENSE.test(license.type)) {
-      refused.push(`si:${slug} is under ${license.type}, which Canager does not ship; ${named}`);
+      refused.push(`si:${slug} is under ${license.type}, which Banager does not ship; ${named}`);
     } else if (typeof license.url !== "string" || typeof source !== "string") {
       refused.push(
         `si:${slug} is under ${license.type}, but simple-icons links no license text or source to credit; ${named}`,
@@ -234,7 +234,7 @@ async function buildGlyphs(icons) {
     }
   }
   if (refused.length > 0) {
-    throw new Error(`the mapping names ${refused.length} logo(s) Canager cannot ship:\n  ${refused.join("\n  ")}`);
+    throw new Error(`the mapping names ${refused.length} logo(s) Banager cannot ship:\n  ${refused.join("\n  ")}`);
   }
   const glyphs = new Map();
   for (const [id, { slug }] of wanted) {
@@ -301,7 +301,7 @@ async function download(login) {
   for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
     try {
       const response = await fetch(url, {
-        headers: { "user-agent": "canager-icons-build" },
+        headers: { "user-agent": "banager-icons-build" },
         signal: AbortSignal.timeout(30_000),
       });
       if (response.status === 404) {

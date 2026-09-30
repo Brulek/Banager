@@ -1,5 +1,5 @@
 //! `docs/what-we-run.md` is spec §12's trust file: the one place a person
-//! who does not read Rust can see every command Canager runs and every
+//! who does not read Rust can see every command Banager runs and every
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
 //! the https allowlist, every environment variable brew and npm set, that
@@ -13,8 +13,8 @@
 //! keeps with that uninstall's time budget, and the never-list's promise
 //! to keep each settings-and-state path those lists keep, the read-only
 //! check command of a tool asked for its own update check with the words
-//! that it installs nothing, the call Canager makes to move a file to the
-//! Trash with the pause after each such move, the call Canager makes for a
+//! that it installs nothing, the call Banager makes to move a file to the
+//! Trash with the pause after each such move, the call Banager makes for a
 //! cask app's icon with the size it is drawn at and the words that no
 //! command runs for it, that the `PATH` look behind
 //! Claude Code's notice goes on past the first executable `claude`, that
@@ -30,7 +30,7 @@
 //! makes, saying it runs nothing else, that the daily check's section
 //! says it is off by default, states its tick, how long after a check it
 //! checks again, the waits after daily checks in which every source failed
-//! and how many checks they come to a day, says Canager itself runs no
+//! and how many checks they come to a day, says Banager itself runs no
 //! install from it and that
 //! `brew update` can install a package Homebrew moved between a formula
 //! and a cask, names exactly the notification plugin's permissions the
@@ -116,13 +116,13 @@ fn test_what_we_run_has_a_section_for_every_registered_source() {
             meta.name
         );
     }
-    // The title line, exactly: the phase 0-1 file was headed "What Canager
+    // The title line, exactly: the phase 0-1 file was headed "What Banager
     // Runs (Phase 0–1: Homebrew only)". A substring check for "Homebrew
     // only" would misfire on ordinary prose ("passed through to Homebrew
     // only when it was already set", in the never-list).
     assert_eq!(
         doc.lines().next(),
-        Some("# What Canager Runs"),
+        Some("# What Banager Runs"),
         "docs/what-we-run.md's title still narrows the file to one source"
     );
 }
@@ -147,7 +147,7 @@ fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
     // the error, reports the daemon as one that did not answer. Both
     // sections of the document that describe that host have to say so:
     // a reader who is told https is accepted and the daemon host is exempt
-    // debugs their daemon instead of Canager.
+    // debugs their daemon instead of Banager.
     let refused = host_allowed("https://ollama.home.lan/api/tags");
     assert!(
         matches!(&refused, Err(HttpError::Network(message)) if message.contains("host not allowed")),
@@ -179,7 +179,7 @@ fn test_what_we_run_shows_every_environment_variable_brew_and_npm_set() {
 
 #[test]
 fn test_what_we_run_says_every_cargo_command_is_given_cargos_environment() {
-    // `CargoAdapter::ENV` goes on every cargo command Canager runs:
+    // `CargoAdapter::ENV` goes on every cargo command Banager runs:
     // `detect`'s `cargo --version` and the command of every plan,
     // cargo-binstall's included (`env_vec`;
     // `test_detect_reads_cargos_version_with_rustups_auto_install_off` and
@@ -232,8 +232,8 @@ fn test_what_we_run_promises_the_three_brew_flags_are_never_passed() {
 /// line, so a phrase split across a line break is still found and a phrase
 /// is attributed to the bullet it is in and not to its neighbour.
 fn never_list_bullets(doc: &str) -> Vec<String> {
-    let body = section_body(doc, "What Canager never does").unwrap_or_else(|| {
-        panic!("docs/what-we-run.md has no `## What Canager never does` section")
+    let body = section_body(doc, "What Banager never does").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## What Banager never does` section")
     });
     let mut bullets: Vec<String> = Vec::new();
     for line in body.lines() {
@@ -264,7 +264,7 @@ fn test_what_we_run_never_list_states_the_window_in_which_a_refresh_can_still_re
     // the same two locks); an operation that acquires those locks after
     // that read can overlap the version reads that refresh is already
     // making, which the `## rustup` section discloses. The
-    // never-list used to say Canager never runs rustup at all while its
+    // never-list used to say Banager never runs rustup at all while its
     // update or uninstall is under way, which that window makes false: the
     // bullet that speaks of rustup's update or uninstall being under way
     // has to make the promise the refresh test keeps and state the overlap
@@ -304,9 +304,9 @@ fn test_what_we_run_never_list_holds_a_moved_path_to_the_tools_uninstall_list_no
     // a path-list uninstall moves to what the tool's list says is there
     // (each item's `Expect`). Claude Code's list is built from Anthropic's
     // removal steps; Antigravity CLI and Grok Build publish none, so their
-    // lists are Canager's own reading of how each was installed
+    // lists are Banager's own reading of how each was installed
     // (`recipes::AGY`, `recipes::GROK` and their fixture READMEs). The
-    // bullet saying what Canager never moves used to measure a path against
+    // bullet saying what Banager never moves used to measure a path against
     // "the tool's uninstall instructions", which named, for those two
     // tools, a document that does not exist.
     let doc = read_doc();
@@ -318,7 +318,7 @@ fn test_what_we_run_never_list_holds_a_moved_path_to_the_tools_uninstall_list_no
     assert_eq!(
         never_moves.len(),
         1,
-        "the never-list of docs/what-we-run.md has no single bullet saying what Canager never moves"
+        "the never-list of docs/what-we-run.md has no single bullet saying what Banager never moves"
     );
     let bullet = never_moves[0];
     assert!(
@@ -326,8 +326,8 @@ fn test_what_we_run_never_list_holds_a_moved_path_to_the_tools_uninstall_list_no
         "this never-list bullet does not hold a moved path to the tool's uninstall list, which removal::check_item checks every item against: {bullet:?}"
     );
     assert!(
-        bullet.contains("Canager's own reading"),
-        "this never-list bullet does not say that the Antigravity CLI and Grok Build lists are Canager's own reading of how each was installed: {bullet:?}"
+        bullet.contains("Banager's own reading"),
+        "this never-list bullet does not say that the Antigravity CLI and Grok Build lists are Banager's own reading of how each was installed: {bullet:?}"
     );
     assert!(
         !bullet.contains("instructions"),
@@ -388,7 +388,7 @@ fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_i
     // refresh (grok's `update --check --json`, which its --help calls a
     // check "without installing"). The section for that tool has to show
     // the argv and say it installs nothing -- a reader who sees `grok
-    // update` in a refresh table and nothing more would think Canager
+    // update` in a refresh table and nothing more would think Banager
     // upgrades grok behind their back.
     let doc = read_doc();
     for recipe in RECIPES {
@@ -418,15 +418,15 @@ fn test_what_we_run_names_every_path_a_path_list_uninstall_moves_or_keeps() {
     // The lists are the recipes', and a reader deciding whether to press
     // Uninstall reads them here: a path added to or dropped from a
     // recipe's `uninstall` or `backup_globs` without its section changing
-    // is a trust file that no longer says what Canager moves. Every
+    // is a trust file that no longer says what Banager moves. Every
     // `Paths` recipe (Claude Code, Antigravity CLI, Grok Build since step
     // D), by the name its meta gives its section; each section states the
     // uninstall's budget; and every settings-and-state path a list keeps
     // (`Settings`, `SettingsAndHistory`, `ToolState`) is also named in the
     // never-list, whose promise is the one the reader relies on.
     let doc = read_doc();
-    let never = section_body(&doc, "What Canager never does").unwrap_or_else(|| {
-        panic!("docs/what-we-run.md has no `## What Canager never does` section")
+    let never = section_body(&doc, "What Banager never does").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## What Banager never does` section")
     });
     let budget = format!("{TIMEOUT_SECS} s");
     let mut paths_recipes = 0;
@@ -576,7 +576,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-what-we-run-{tag}-{}-{}",
+            "banager-what-we-run-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -641,7 +641,7 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
     // here with one `PATH` head, Homebrew's copy, and this copy's launcher
     // behind it or not: the same first executable, two different notes.
     // Both sections of the document that describe the look -- the source's
-    // own and the list of files Canager reads -- have to say it goes on: a
+    // own and the list of files Banager reads -- have to say it goes on: a
     // reader told it stops at the first executable would not know that
     // every later `PATH` directory's `claude` may be read as well.
     let home = Home::new("path-look");
@@ -666,7 +666,7 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
         "shadow_note looks on down PATH past the first executable claude today (b93cacd); if that has changed, the sentences this test looks for are now false and must go with it"
     );
     let doc = read_doc();
-    for section in ["Claude Code", "Files Canager reads"] {
+    for section in ["Claude Code", "Files Banager reads"] {
         let body = section_body(&doc, section)
             .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## {section}` section"));
         // Hard-wrapped prose: compare with the line breaks folded away.
@@ -679,7 +679,7 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
 }
 
 #[test]
-fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_canager_runs_no_install_from_it(
+fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_banager_runs_no_install_from_it(
 ) {
     // The daily check's section states the numbers `auto_check::tick` and
     // the shell's task run on -- a look every `TICK`, a check once
@@ -687,9 +687,9 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
     // daily check in which every source failed the waits
     // `retry_after_secs` gives, from the first up to the cap, with the
     // minute of `RETRY_SLACK_SECS` and how many checks those waits come to
-    // a day -- that `Settings::default()` leaves it off, and that Canager
+    // a day -- that `Settings::default()` leaves it off, and that Banager
     // itself runs no install from it (it runs the refresh Check again
-    // runs, and no refresh runs a write command of Canager's), with the
+    // runs, and no refresh runs a write command of Banager's), with the
     // exception Homebrew's `brew update` makes: it can install a package
     // Homebrew moved between a formula and a cask. A number changed, or
     // the default turned on, without the section following fails here.
@@ -778,7 +778,7 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
         format!(
             "{first_day} times in the 24 hours from the first check that fails and {later_day} times a day after that"
         ),
-        "Canager itself runs no install".to_string(),
+        "Banager itself runs no install".to_string(),
         "between a formula and a cask".to_string(),
     ] {
         assert!(

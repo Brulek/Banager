@@ -865,7 +865,7 @@ describe("InstalledPage", () => {
 
   it("offers no Uninstall on a tool with no safe uninstall method, and says so behind its chip without a command", async () => {
     // `UninstallBlocked::NoSafeMethod` (phase 4): the tool has no
-    // uninstall command and Canager has no safe way yet to remove its
+    // uninstall command and Banager has no safe way yet to remove its
     // files, so the row hides the button and its chip says why -- and,
     // unlike a pin, sets no command as code, because there is nothing to
     // run first. `Session::issue_plan` refuses it in Rust too.
@@ -1573,7 +1573,7 @@ describe("InstalledPage", () => {
   it("names a silent source in the list's first line, and says it can't show what it has when it has no rows", async () => {
     // brew, npm, uv, pipx and cargo can all report `NotResponding`,
     // and it means the same thing for all five: the CLI is on PATH but
-    // Canager could not talk to it. The backend keeps such an instance in
+    // Banager could not talk to it. The backend keeps such an instance in
     // `snapshot.instances` precisely so the UI can say so -- it pushes no
     // error, so this line is the only place the user can learn that their
     // global npm packages are missing from the list rather than gone.
@@ -1612,7 +1612,7 @@ describe("InstalledPage", () => {
     );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
-    expect(queryByText(/Reopening Canager/)).not.toBeInTheDocument();
+    expect(queryByText(/Reopening Banager/)).not.toBeInTheDocument();
   });
 
   it("says what is listed for a silent source is from the last time it responded, when it has rows, a search or not", async () => {

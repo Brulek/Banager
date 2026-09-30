@@ -110,7 +110,7 @@ describe("the polish-3 copy rules, in Chinese", () => {
     expect(keysWhere(zhCN, (text) => text.includes(word))).toEqual([]);
   });
 
-  it("names Canager only where it is the one doing the work, the one to quit, or the name itself", () => {
+  it("names Banager only where it is the one doing the work, the one to quit, or the name itself", () => {
     // The app's name, what the daily check does, where to allow its
     // notifications, not to quit it mid-operation, to reopen it when it
     // can't load, and whose built-in logos these are. Everywhere else the sentence has no subject, or
@@ -123,7 +123,7 @@ describe("the polish-3 copy rules, in Chinese", () => {
       "settings.notifyUpdates.refused",
       "settings.iconCredits.simpleIcons",
     ];
-    const naming = keysWhere(zhCN, (text) => text.includes("Canager"));
+    const naming = keysWhere(zhCN, (text) => text.includes("Banager"));
     expect(naming.length).toBeLessThanOrEqual(6);
     expect(naming.filter((key) => !allowed.includes(key))).toEqual([]);
   });
@@ -137,9 +137,9 @@ describe("the polish-3 copy rules, in Chinese", () => {
 });
 
 describe("the polish-3 copy rules, in English", () => {
-  it("never starts a sentence with Canager, but for the app's name and what its daily check does", () => {
+  it("never starts a sentence with Banager, but for the app's name and what its daily check does", () => {
     const allowed = ["app.name", "settings.autoCheck.description"];
-    const sentenceStart = /(^|[.!?]\s+)Canager\b/;
+    const sentenceStart = /(^|[.!?]\s+)Banager\b/;
     expect(keysWhere(en, (text) => sentenceStart.test(text)).filter((key) => !allowed.includes(key))).toEqual([]);
   });
 

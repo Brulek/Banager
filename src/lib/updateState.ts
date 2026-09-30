@@ -1,9 +1,9 @@
 /**
- * What Canager can do about one update candidate, and whether the user
+ * What Banager can do about one update candidate, and whether the user
  * has hidden it, decided in one place so the Updates page and the
  * Installed page cannot disagree. The Installed page's rows used to call
  * every entry in `snapshot.updates` "Update available" -- a pinned
- * package, a package Canager could not check, one the user had ignored --
+ * package, a package Banager could not check, one the user had ignored --
  * and so promised updates the Updates page, which applied four more
  * conditions, did not offer.
  */
@@ -34,7 +34,7 @@ export type UpdateState =
   | { kind: "actionable" }
   /** The source refuses every operation (`ManagerInstance.read_only_reason`). */
   | { kind: "readOnly" }
-  /** `checkable: false`: Canager could not establish the remote version. */
+  /** `checkable: false`: Banager could not establish the remote version. */
   | { kind: "cannotCheck" }
   /** The tool will refuse to update this package (`UpdateCandidate.blocked`). */
   | { kind: "blocked"; reason: UpdateBlocked }
@@ -97,12 +97,12 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  * skip hide the row. It can when `target` names one release. Two kinds of
  * row have a `target` that does not:
  *
- * - One Canager could not check: its `target` is its installed version
+ * - One Banager could not check: its `target` is its installed version
  *   (`uncheckable_candidate` in crates/banager-core/src/adapters/mod.rs),
  *   not a version any source offered.
  * - A Homebrew cask declared `version :latest`. The `brew outdated
- *   --json=v2` Canager runs lists one only when it is greedy about that
- *   cask -- given `--greedy`, which Canager passes while Settings' Include
+ *   --json=v2` Banager runs lists one only when it is greedy about that
+ *   cask -- given `--greedy`, which Banager passes while Settings' Include
  *   self-updating apps is on, or set to be by Homebrew's own
  *   HOMEBREW_UPGRADE_GREEDY or HOMEBREW_UPGRADE_GREEDY_CASKS -- and then
  *   whenever it takes the cask's download to have changed
@@ -147,7 +147,7 @@ export function canSkipVersion(candidate: UpdateCandidate): boolean {
  * An Ollama model's `target` is a digest, and so is what its skip stored:
  * both are the registry manifest's config digest, so they compare like
  * with like. A skip never hides a row whose `target` does not name one
- * release -- one Canager could not check, or a Homebrew cask declared
+ * release -- one Banager could not check, or a Homebrew cask declared
  * `version :latest` (`canSkipVersion`) -- and the Updates page offers no
  * Skip this version on such a row.
  */
@@ -178,7 +178,7 @@ export function notHidden(
 }
 
 /**
- * The updates Canager can install from the Updates page right now: every
+ * The updates Banager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
  * (`isUpdateActionable`, against the instance its key names). Less the
  * rows an update under way or just finished takes (`holdsRow`), this is
@@ -199,7 +199,7 @@ export function actionableUpdatesOf(
 }
 
 /**
- * Whether each note means Canager could not fully check this source for
+ * Whether each note means Banager could not fully check this source for
  * updates this time, so finding none there is not news that there are
  * none: Homebrew's list of software could not be downloaded
  * (`IndexMayBeStale`), so its updates were checked against a copy of that
@@ -225,7 +225,7 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
  * Whether `instance` answered the last check and was checked for updates
  * in full: it answered (`isAvailable`), and no note says its updates went
  * unchecked (`NOTE_LEAVES_UPDATES_UNCHECKED`). A read-only source is one
- * Canager *can* check.
+ * Banager *can* check.
  */
 function checkedInFull(instance: ManagerInstance): boolean {
   return (
@@ -240,7 +240,7 @@ function checkedInFull(instance: ManagerInstance): boolean {
  * none: no call of this round failed, and every instance answered and was
  * checked in full (`checkedInFull`). What the Updates page asks before it
  * says "Everything is up to date" rather than "No updates in the sources
- * Canager could check", and what `updatesSummary` asks before the
+ * Banager could check", and what `updatesSummary` asks before the
  * Overview says it.
  *
  * Any `SourceError` of this round is enough to fail it, whatever it
@@ -276,7 +276,7 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * "Show apps that update themselves" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
  * `auto_updates: true`) or one declared `version :latest`, which Homebrew
- * installs as "latest". Canager passes `--greedy` to `brew outdated
+ * installs as "latest". Banager passes `--greedy` to `brew outdated
  * --json=v2` only while that switch is on
  * (crates/banager-core/src/adapters/brew/mod.rs), and without it Homebrew
  * lists neither kind whatever version it has, so no update listed is no
@@ -303,14 +303,14 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   (`everySourceChecked`) -- exactly when the Updates page says
  *   "Everything is up to date".
  * - `nothingToUpdate`: none to install, and not that either. Some are
- *   listed that Canager cannot install (pinned, read-only, not checkable,
+ *   listed that Banager cannot install (pinned, read-only, not checkable,
  *   from a source not answering), the user hid the rest, a source was not
  *   checked in full, or a check failed this round. Calling that up to date
  *   is the lie the Updates page stopped telling; the Overview does not
  *   start. It carries whether every source was checked in full
  *   (`everyChecked`): where one was not, the headline says nothing to
- *   update only of the sources Canager could check, as the Updates page's
- *   "No updates in the sources Canager could check" does. And it carries
+ *   update only of the sources Banager could check, as the Updates page's
+ *   "No updates in the sources Banager could check" does. And it carries
  *   what the Overview says under its headline, in the
  *   Updates page's own numbers: `cantUpdateHere`, the updates under its
  *   "Can't update here (N)" -- every one it lists but those an update is

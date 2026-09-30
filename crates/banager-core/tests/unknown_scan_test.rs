@@ -32,7 +32,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-scan-{}-{}-{}",
+            "banager-scan-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

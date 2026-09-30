@@ -25,7 +25,7 @@ export type RowProgress =
 /**
  * How a finished update ended, for its row. "Check" -- look at the log --
  * for every outcome that is neither a plain success nor a plain failure:
- * the tool said it worked and Canager could not confirm it (`Unconfirmed`)
+ * the tool said it worked and Banager could not confirm it (`Unconfirmed`)
  * or found the opposite (`NeedsAttention`). A finished operation with no
  * outcome, which the backend never sends, claims nothing either way.
  */
@@ -46,7 +46,7 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
     }
   }
   if ("NeedsAttention" in outcome) return { kind: "check", opId };
-  if ("Failed" in outcome || "CanagerFailed" in outcome) return { kind: "failed", opId, cause: outcomeCause(outcome) };
+  if ("Failed" in outcome || "BanagerFailed" in outcome) return { kind: "failed", opId, cause: outcomeCause(outcome) };
   const unhandled: never = outcome;
   return unhandled;
 }
@@ -84,7 +84,7 @@ export function progressOf(op: OpSummary): RowProgress {
     case "Queued":
       return { kind: "queued" };
     // Verifying is the update's own last step: the command has ended and
-    // Canager is reading the result back.
+    // Banager is reading the result back.
     case "Running":
     case "Verifying":
       return { kind: "running" };

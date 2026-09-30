@@ -353,7 +353,7 @@ async fn test_a_latest_cask_reinstalled_under_the_same_name_is_not_called_unchan
 
 #[tokio::test]
 async fn test_a_formula_upgrade_that_left_its_old_keg_behind_still_reads_as_moved() {
-    // Canager runs brew with `HOMEBREW_NO_INSTALL_CLEANUP=1`, so after an
+    // Banager runs brew with `HOMEBREW_NO_INSTALL_CLEANUP=1`, so after an
     // upgrade the old keg stays and `installed` lists both. The version
     // read is the linked keg's (`parse_info_installed`), which the upgrade
     // moved to the new one. `aria2` is at 1.37.0_2 in the recording.
@@ -638,7 +638,7 @@ fn claude_home(version: &str) -> (PathBuf, ManagerInstance) {
     // microseconds), so a sequence number keeps each call's home its own.
     static NEXT_HOME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let home = std::env::temp_dir().join(format!(
-        "canager-ops-claude-{}-{}-{}",
+        "banager-ops-claude-{}-{}-{}",
         std::process::id(),
         NEXT_HOME.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         std::time::SystemTime::now()
@@ -916,7 +916,7 @@ async fn rustup_home_and_instance(
     // run in parallel in one process and two can read the same time.
     static NEXT_HOME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let home = std::env::temp_dir().join(format!(
-        "canager-ops-rustup-{}-{}-{}",
+        "banager-ops-rustup-{}-{}-{}",
         std::process::id(),
         NEXT_HOME.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         std::time::SystemTime::now()

@@ -96,7 +96,7 @@ pub enum RunnerError {
     /// is willing to hold. Loud on purpose: the alternative -- handing a
     /// parser a shortened copy of its input -- is the same failure
     /// wearing a success's clothes.
-    #[error("the command wrote more than {limit} bytes to stdout, which is more than Canager will read from output it has to parse")]
+    #[error("the command wrote more than {limit} bytes to stdout, which is more than Banager will read from output it has to parse")]
     OutputTooLarge { limit: usize },
 }
 

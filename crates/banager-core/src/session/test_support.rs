@@ -50,7 +50,7 @@ pub(super) fn make_instance(adapter_id: &str, id: &str) -> ManagerInstance {
     crate::testing::manager_instance(adapter_id, id)
 }
 
-/// `make_instance`, but for a source Canager may list and never change --
+/// `make_instance`, but for a source Banager may list and never change --
 /// the capability half of the actionability invariant (spec §2.5).
 pub(super) fn make_read_only_instance(
     adapter_id: &str,

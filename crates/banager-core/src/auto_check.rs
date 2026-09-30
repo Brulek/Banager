@@ -1,5 +1,5 @@
 //! The daily check, Settings → Updates' 「每天自动检查」
-//! (`Settings::auto_check`): Canager, left running, refreshes by itself
+//! (`Settings::auto_check`): Banager, left running, refreshes by itself
 //! once a day. What is decided here is pure -- the clock, the last check,
 //! the daily checks that have failed since it and whether anything is
 //! under way are handed in -- so every case can be tested without waiting
@@ -130,7 +130,7 @@ pub enum Tick {
 /// The wait is measured on the wall clock, so time the Mac spends asleep
 /// counts toward it as it does toward the day. A round that counts clears
 /// `failed`. `None` for `last_check_ended` -- no round has counted since
-/// Canager started -- is due. Both live in memory, so after a relaunch the
+/// Banager started -- is due. Both live in memory, so after a relaunch the
 /// window's check at launch is the day's.
 ///
 /// A `now` [`SET_BACK_SLACK_SECS`] or more before `last_check_ended` is
@@ -255,7 +255,7 @@ pub enum RoundTrigger {
 /// the round that started the `brew update` whose end woke it: that round
 /// is the first to report the update still running
 /// (`InstanceNote::IndexUpdating`) after one that reported none, since
-/// only an update Canager started is reported that way. Every round after
+/// only an update Banager started is reported that way. Every round after
 /// it that the update outlasts reports it too, and leaves the owner as it
 /// is; a round that reports none ends it. So a daily check that reports
 /// its `brew update` still running has its follow-up counted as automatic,
@@ -435,7 +435,7 @@ impl RoundLog {
     }
 }
 
-/// Whether `snapshot` reports a `brew update` Canager started as still
+/// Whether `snapshot` reports a `brew update` Banager started as still
 /// running: an instance carrying `InstanceNote::IndexUpdating`.
 fn reports_brew_update_running(snapshot: &Snapshot) -> bool {
     snapshot

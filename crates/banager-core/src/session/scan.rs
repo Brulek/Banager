@@ -130,7 +130,7 @@ mod tests {
     /// by the test itself at the end.
     fn temp_home(tag: &str) -> PathBuf {
         let raw = std::env::temp_dir().join(format!(
-            "canager-session-scan-{}-{}-{}",
+            "banager-session-scan-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

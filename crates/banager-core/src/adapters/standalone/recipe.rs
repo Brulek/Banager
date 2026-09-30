@@ -51,7 +51,7 @@ pub struct Recipe {
     /// arrives with Task 10 of the phase 4 step B plan.
     pub self_updates: bool,
     /// The tool's own documented update command, or `None` for a tool that
-    /// installs its updates itself and offers nothing Canager may run
+    /// installs its updates itself and offers nothing Banager may run
     /// (agy: `agy update` is undocumented, takes no options and has never
     /// been run, agy.md §4). `None` puts `UpdateBlocked::SelfUpdatesOnly`
     /// on every update candidate the recipe produces and makes
@@ -242,7 +242,7 @@ pub struct UpgradeCmd {
 pub enum Uninstall {
     /// No command exists, so the tool is removed by moving a list of paths:
     /// for Claude Code, built from Anthropic's removal steps; for
-    /// Antigravity CLI and Grok Build, which publish none, Canager's own
+    /// Antigravity CLI and Grok Build, which publish none, Banager's own
     /// reading of how each was installed. `removal::execute_removal` moves
     /// each of `remove` to the Trash in this order -- the launcher last, so
     /// a run that stops partway leaves the one state a second run finishes

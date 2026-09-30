@@ -40,7 +40,7 @@ pub enum Scope {
     System,
 }
 
-/// Why this source can be listed but never changed from Canager.
+/// Why this source can be listed but never changed from Banager.
 ///
 /// An enum rather than a string because these reasons are shown to the
 /// user, and an English sentence assembled on the Rust side cannot be
@@ -48,7 +48,7 @@ pub enum Scope {
 /// that trap (spec §6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReadOnlyReason {
-    /// The tool itself offers no install/uninstall path Canager could
+    /// The tool itself offers no install/uninstall path Banager could
     /// safely drive (pip).
     ByDesign,
     /// The tool can install and uninstall, but the directory it writes to
@@ -57,32 +57,32 @@ pub enum ReadOnlyReason {
     PrefixNotWritable,
 }
 
-/// Why a source Canager knows about cannot answer right now. The state
+/// Why a source Banager knows about cannot answer right now. The state
 /// axis, orthogonal to `ReadOnlyReason`: an Ollama that is not running is
 /// still perfectly writable, it just has nothing to say until it starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Unavailable {
-    /// The service is not running and Canager can start it: the notice
+    /// The service is not running and Banager can start it: the notice
     /// carries a button that does. Today that is only an Ollama whose
     /// daemon is on this Mac and whose Ollama.app is installed -- see
     /// `OllamaAdapter::detect`, which gives a silent daemon it cannot start
     /// `NotResponding` instead.
     NotRunning,
     /// The executable is on PATH but would not run, or its version could
-    /// not be recognised, or a service did not answer and Canager has no
+    /// not be recognised, or a service did not answer and Banager has no
     /// way to start it (an Ollama installed as the command-line tool only,
     /// or one whose `OLLAMA_HOST` names another machine) -- or was never
     /// asked: an `https://` `OLLAMA_HOST` is refused by `RealHttpClient`'s
     /// allowlist, and `OllamaAdapter::detect` cannot tell that refusal
     /// from a daemon that did not answer (`docs/what-we-run.md`, Ollama).
     NotResponding,
-    /// The tool is installed but refuses to do anything while Canager is
-    /// running as root, so Canager never even asked it (Homebrew).
+    /// The tool is installed but refuses to do anything while Banager is
+    /// running as root, so Banager never even asked it (Homebrew).
     ///
     /// A third variant rather than a reuse of `NotResponding` because
     /// these divide by *what the user can do about it*: `NotRunning` means
-    /// "start it", `NotResponding` means "reopen Canager, then consider
-    /// reinstalling", and this one means "quit and open Canager again
+    /// "start it", `NotResponding` means "reopen Banager, then consider
+    /// reinstalling", and this one means "quit and open Banager again
     /// without `sudo`" -- a specific, different, and actually effective
     /// action, which is exactly what the notice says.
     RefusesAsRoot,
@@ -107,7 +107,7 @@ pub enum InstanceNote {
     /// again (see `Session::background_change`), so this clears by itself.
     IndexUpdating,
     /// Typing this tool's name in Terminal would not find this copy: no
-    /// executable of that name on the `PATH` Canager sees is it (usually
+    /// executable of that name on the `PATH` Banager sees is it (usually
     /// because the directory its launcher lives in is not on that `PATH`).
     /// The name then finds nothing, or another program with that name;
     /// either way this is the note, not a `ShadowedBy*` one, which would
@@ -131,12 +131,12 @@ pub enum InstanceNote {
     /// Build).
     ShadowedByNpm,
     /// As `ShadowedByHomebrew`, for one that resolves anywhere else, or
-    /// that Canager could not resolve; the Unknown page may show where it
+    /// that Banager could not resolve; the Unknown page may show where it
     /// is.
     ShadowedByOther,
     /// The launcher is still there but points at program files that are
     /// gone: the program directory was removed by hand or by another tool,
-    /// or by a Canager uninstall that stopped after moving it and before
+    /// or by a Banager uninstall that stopped after moving it and before
     /// moving the launcher -- the removal order (`removal::execute_removal`,
     /// launcher last) makes that the only state a stopped run leaves. The
     /// row stays, with no version, so the state is visible, and its
@@ -171,7 +171,7 @@ impl InstanceNote {
     }
 }
 
-/// The state axis of a source: can Canager talk to it at all, and is there
+/// The state axis of a source: can Banager talk to it at all, and is there
 /// anything about this answer the user has to know to read it correctly.
 ///
 /// Deliberately *without* a per-instance `refreshed_at` (spec §2.4's note):
@@ -214,7 +214,7 @@ pub struct ManagerInstance {
 }
 
 impl ManagerInstance {
-    /// Whether Canager may offer operations on this source at all.
+    /// Whether Banager may offer operations on this source at all.
     ///
     /// The capability half of the actionability invariant (spec §2.5);
     /// `Session::issue_plan` is the single gate that enforces it, and
@@ -280,7 +280,7 @@ pub struct InstalledArtifact {
 /// Why the tool itself will refuse to uninstall this one package, although
 /// its source is writable and answering. The uninstall twin of
 /// `UpdateBlocked`: same rule for what belongs here (the tool reports the
-/// state in the output Canager already reads, here the inventory), and
+/// state in the output Banager already reads, here the inventory), and
 /// its own type because the two refusals have different producers. pipx
 /// pins too, but `pipx uninstall` removes a pinned tool (pipx 1.17.3's
 /// `commands/uninstall.py` never reads `pinned`), so pipx is a producer
@@ -288,17 +288,17 @@ pub struct InstalledArtifact {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UninstallBlocked {
     /// `brew pin`, for a formula or a cask. Without `--force`, which
-    /// Canager never passes, `brew uninstall` prints "Error: <name> is
+    /// Banager never passes, `brew uninstall` prints "Error: <name> is
     /// pinned. You must unpin it to uninstall." and skips it
     /// (`uninstall.rb:48-49`, `cask/uninstall.rb:40-44` in Homebrew 7.0.6).
     /// For a formula it still exits 0, because that message goes through
-    /// `onoe`, not `ofail`, so without this Canager ran the command and
+    /// `onoe`, not `ofail`, so without this Banager ran the command and
     /// then reported `StillInstalledAfterUninstall`. Read by
     /// `parse_info_installed` in `adapters/brew/parse.rs`, from the
     /// `pinned` key `brew info --installed --json=v2` writes for every
     /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
     Pinned,
-    /// The tool has no uninstall command and Canager has no safe way to
+    /// The tool has no uninstall command and Banager has no safe way to
     /// remove its files -- no verified list of them, or no way yet to move
     /// them to the Trash -- so it does not offer to. Per artifact, not the
     /// instance's `read_only_reason`: that would hide the upgrade too,
@@ -311,7 +311,7 @@ pub enum UninstallBlocked {
     /// session/plans.rs), the Installed page hides the button and says why
     /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
     NoSafeMethod,
-    /// `UV_TOOL_DIR` is set, and not empty, in Canager's environment, which
+    /// `UV_TOOL_DIR` is set, and not empty, in Banager's environment, which
     /// every `uv` command inherits, so uv keeps its tools there
     /// (`InstalledTools::from_settings`, uv 0.12.17
     /// `crates/uv-tool/src/lib.rs:132-140`). When `uv tool uninstall`
@@ -320,7 +320,7 @@ pub enum UninstallBlocked {
     /// ones (`crates/uv/src/commands/tool/uninstall.rs:40-52`,
     /// `crates/uv-fs/src/lib.rs:795-815`). In uv's own layout that parent
     /// is uv's data folder; under `UV_TOOL_DIR` it is whatever folder holds
-    /// the user's, so Canager uninstalls no uv tool then. Produced by
+    /// the user's, so Banager uninstalls no uv tool then. Produced by
     /// `UvAdapter::inventory` for every tool, and refused by
     /// `UvAdapter::plan` as well; the gate refuses it (`blocked_uninstall`
     /// in session/plans.rs), and the Installed page hides the button and
@@ -366,7 +366,7 @@ pub enum UninstallUnsafeReason {
     /// could not be examined at all. The name is from step C, when Claude
     /// Code's list, built from Anthropic's removal steps, was the only one;
     /// Antigravity CLI and Grok Build publish no removal steps, so their
-    /// lists are Canager's own reading of how each was installed, and the
+    /// lists are Banager's own reading of how each was installed, and the
     /// sentence the user reads (`notWhatInstructionsExpect`) cites no
     /// instructions.
     NotWhatInstructionsExpect,
@@ -434,7 +434,7 @@ pub enum KeptWhat {
     /// spec §十三 #24).
     ToolState,
     /// A shell startup file the installer added lines to (`~/.zshrc`,
-    /// `~/.zprofile`): Canager never edits one (spec §6.8), and does not
+    /// `~/.zprofile`): Banager never edits one (spec §6.8), and does not
     /// read it to find the lines, so the sentence says "any lines".
     ShellConfigLines,
     /// A link outside the home folder the installer may have made into the
@@ -447,14 +447,14 @@ pub enum KeptWhat {
     /// `kept_places` does not protect it (a link into the program folder
     /// would otherwise refuse the uninstall it exists for).
     OutsideHome,
-    /// An optional listed path that is there but Canager could not confirm
+    /// An optional listed path that is there but Banager could not confirm
     /// is this install's -- the wrong shape, a link elsewhere, a folder on
-    /// the way that is a link, or a place Canager never moves from
+    /// the way that is a link, or a place Banager never moves from
     /// (`~/.local/bin/agent` when another CLI owns it; spec §十三 #27) --
     /// so it stays and the uninstall goes on.
     NotOurs,
     /// The installer's download staging folder, directly in `~/.cache`
-    /// (`~/.cache/antigravity`): Canager moves nothing that sits directly in
+    /// (`~/.cache/antigravity`): Banager moves nothing that sits directly in
     /// a shared folder (check 1's never-list), so it stays, usually empty,
     /// and the user may delete it (phase 4 step D plan, ruling 1).
     InstallerCache,
@@ -469,7 +469,7 @@ pub enum KeptWhat {
 /// button that acts on it (spec §6).
 ///
 /// `Message` is the deliberate escape hatch for warnings this step does
-/// not localise: text built at runtime from something Canager cannot know
+/// not localise: text built at runtime from something Banager cannot know
 /// ahead of time (a subprocess's stderr, an HTTP error). A warning whose
 /// only unknown is a value -- a registry host, a list of dependents --
 /// does not belong here; it gets a variant with a payload, like
@@ -491,7 +491,7 @@ pub enum Warning {
     /// which can take a while.
     CompilesLocally,
     /// Installed from a git repository or a local path, not the crates.io
-    /// registry Canager checks for updates against.
+    /// registry Banager checks for updates against.
     NonRegistrySource,
     /// Installing or upgrading this model downloads it from `host`, a
     /// registry other than Ollama's own library. Carried only on
@@ -526,7 +526,7 @@ pub enum Warning {
     /// the list adds up. Same producer and reader as `WillTrash`.
     AlreadyGone { path: String },
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
-    /// `~/.rustup`; the standard layout is the only one Canager offers
+    /// `~/.rustup`; the standard layout is the only one Banager offers
     /// the uninstall for, `rustup::standard_roots`) permanently -- not
     /// to the Trash -- with every toolchain in it: `names` are the entry
     /// names of its `toolchains/` directory when the preview was built,
@@ -565,7 +565,7 @@ pub enum Warning {
     /// only when the Cellar directory is there.
     HomebrewRustupLosesToolchains,
     /// rustup's `self uninstall` edits the shell startup files it added
-    /// its `. "$HOME/.cargo/env"` line to. Canager itself never edits one.
+    /// its `. "$HOME/.cargo/env"` line to. Banager itself never edits one.
     EditsShellConfig,
     /// After rustup's own cleanup, `path` (`$HOME` spelled `~`) will still
     /// hold a line about Cargo's env file, which is then gone. `certain`
@@ -586,7 +586,7 @@ pub enum Warning {
     /// autoremove, which uninstalls the formulae that were installed only as
     /// dependencies and that nothing installed needs any more -- any on the
     /// system (`cmd/uninstall.rb:129-136`, `cleanup.rb:1038-1077` in
-    /// Homebrew 7.0.6-70). Canager runs every `brew` command with
+    /// Homebrew 7.0.6-70). Banager runs every `brew` command with
     /// `HOMEBREW_NO_AUTOREMOVE=1` (`BrewAdapter::ENV`), so this is produced
     /// only when a `brew.env` file sets it back to a value Homebrew reads as
     /// unset -- `0`, `false`, nothing -- which `bin/brew` exports over the
@@ -612,7 +612,7 @@ pub enum Warning {
     /// set (`cleanup.rb:418-445`) -- it runs one, which does the same for
     /// every installed formula and cask and the whole cache
     /// (`Cleanup#clean!`, `cleanup.rb:448-465`, `:473`). The variant is named
-    /// for the periodic clean-up; its line says both. Canager's
+    /// for the periodic clean-up; its line says both. Banager's
     /// `HOMEBREW_NO_INSTALL_CLEANUP=1` keeps both from starting
     /// (`cleanup.rb:341`, `:363`, `:419`), so this is produced only when a
     /// `brew.env` file sets that to nothing (`adapters/brew/brew_env.rs`).
@@ -623,7 +623,7 @@ pub enum Warning {
     /// same autoremove as `HomebrewAutoremoves` (`cleanup.rb:471`) unless
     /// `HOMEBREW_NO_AUTOREMOVE` is set; the clean-up after every install or
     /// upgrade does not autoremove. So this is produced only when
-    /// `brew.env` files take back both of Canager's variables -- the first
+    /// `brew.env` files take back both of Banager's variables -- the first
     /// set to nothing, the second to a value Homebrew reads as unset
     /// (`adapters/brew/brew_env.rs`) -- and always right after
     /// `HomebrewPeriodicCleanup`. Produced by `BrewAdapter::plan` for an
@@ -675,7 +675,7 @@ pub enum Warning {
 /// without copy fails `tsc`. Each variant names the tool's own source it
 /// rests on; `docs/what-we-run.md` says what each plan runs.
 ///
-/// No sentence for pip (Canager never uninstalls from pip), for npm older
+/// No sentence for pip (Banager never uninstalls from pip), for npm older
 /// than 7 or of an unknown version (npm 6 ran a package's uninstall
 /// scripts), for uv while `UV_TOOL_DIR` is set (the plan is refused), or for
 /// the four tools with their own installer, whose uninstall confirmation
@@ -702,12 +702,12 @@ pub enum UninstallScope {
     /// steps that change a path's owner or permissions or end a process
     /// (`cask_receipt::classify`). Its settings and data stay: the cask's
     /// `zap` stanza runs only with `--zap` (`cmd/uninstall.rb:90-117`),
-    /// which Canager never passes.
+    /// which Banager never passes.
     HomebrewCaskPlain,
     /// `brew uninstall --cask` whose recorded uninstall deletes what
     /// Homebrew put down and linked and takes extra steps, each kind of
     /// which the plan names in a `Warning::CaskUninstallStep` that says what
-    /// it does -- none a step whose deletions Canager cannot see, which
+    /// it does -- none a step whose deletions Banager cannot see, which
     /// makes it `HomebrewCaskStepsUnseen` -- with Homebrew's autoremove off.
     /// The sentence says Homebrew deletes the files it placed for the cask
     /// -- what it moved into place, linked or generated, and its own copy
@@ -716,7 +716,7 @@ pub enum UninstallScope {
     /// and not every file the cask's installer put down: a `pkg` or an
     /// installer beside them is not in the record (`cask/cask.rb:709-732`).
     /// It runs the recorded steps, and nothing else is deleted: `zap` runs
-    /// only with `--zap`, which Canager never passes, and the autoremove is
+    /// only with `--zap`, which Banager never passes, and the autoremove is
     /// off (`cmd/uninstall.rb:89-136`). When the current definition names
     /// an old token the cask still has another installation under,
     /// Homebrew first uninstalls that one -- all but what it shares with
@@ -731,15 +731,15 @@ pub enum UninstallScope {
     /// which says what else goes.
     HomebrewCaskStepsAutoremoves,
     /// `HomebrewCaskSteps` for a record with at least one step whose
-    /// deletions Canager cannot see (`cask_receipt::runs_unseen`): a program
+    /// deletions Banager cannot see (`cask_receipt::runs_unseen`): a program
     /// the cask names (`early_script:`, `script:`, an uninstall step of type
     /// `run`; `CaskStep::RunsScript`), or Ruby around the uninstall or an
-    /// uninstall step Canager does not name (`CaskStep::RunsOwnSteps`).
-    /// Canager knows the step is there, and names the program, but not what
+    /// uninstall step Banager does not name (`CaskStep::RunsOwnSteps`).
+    /// Banager knows the step is there, and names the program, but not what
     /// it deletes: a vendor's uninstaller may take the app's settings and
     /// data with it. So the sentence says Homebrew deletes the files it
     /// placed for the cask and runs the uninstall steps it recorded, and
-    /// that Canager cannot see what else some of those steps delete -- never
+    /// that Banager cannot see what else some of those steps delete -- never
     /// that anything stays. It claims nothing about other files, so it
     /// holds with Homebrew's autoremove on as well, beside
     /// `Warning::HomebrewAutoremoves`.
@@ -749,18 +749,18 @@ pub enum UninstallScope {
     /// of which the record lists (`cask/cask.rb:709-732`) -- but takes extra
     /// steps, each kind of which the plan names in a
     /// `Warning::CaskUninstallStep` that says what it does, none a step
-    /// whose deletions Canager cannot see (`HomebrewCaskStepsOnlyUnseen`):
+    /// whose deletions Banager cannot see (`HomebrewCaskStepsOnlyUnseen`):
     /// nothing else deletes any of what the installer put down
     /// (little-snitch@4's only step removes its background services).
     HomebrewCaskStepsOnly,
     /// `HomebrewCaskStepsOnly` for a record with at least one step whose
-    /// deletions Canager cannot see, as for `HomebrewCaskStepsUnseen`
+    /// deletions Banager cannot see, as for `HomebrewCaskStepsUnseen`
     /// (wireshark-chmodbpf's `early_script:` runs its vendor's uninstaller
     /// package). The sentence says Homebrew runs the uninstall steps it
-    /// recorded, and that Canager cannot see what else some of those steps
+    /// recorded, and that Banager cannot see what else some of those steps
     /// delete -- never that the other files the installer put down stay.
     HomebrewCaskStepsOnlyUnseen,
-    /// `brew uninstall --cask` whose recorded uninstall Canager could not
+    /// `brew uninstall --cask` whose recorded uninstall Banager could not
     /// read (`cask_receipt::read_recorded`): no Caskroom folder, no saved
     /// caskfile, one saved in a form it does not read, a record Homebrew
     /// would replace with the cask's current definition -- no list of its
@@ -768,13 +768,13 @@ pub enum UninstallScope {
     /// it does not know; or a record that lists neither anything Homebrew
     /// put down or linked nor any step -- an empty list, whatever the
     /// receipt says of Ruby blocks, or `zap` alone -- which cannot tell what
-    /// the install left. The sentence says only that Canager could not read
+    /// the install left. The sentence says only that Banager could not read
     /// from Homebrew's records what the uninstall deletes, and claims no
     /// deletion it cannot back: with an empty list Homebrew runs no
     /// artifact's uninstall at all (`cask/installer.rb:714-761`), and a
-    /// record Canager does not read can list anything.
+    /// record Banager does not read can list anything.
     HomebrewCask,
-    /// `npm uninstall -g`, when the npm Canager detected is 7 or later: npm
+    /// `npm uninstall -g`, when the npm Banager detected is 7 or later: npm
     /// deletes the package's folder, with the dependencies inside it, and
     /// its command and man-page links, and runs no script of the package's
     /// (npm 10.9.9 `lib/commands/uninstall.js:38-52`, arborist's
@@ -832,14 +832,14 @@ pub enum CaskStep {
     RemovesPackages,
     /// `early_script:` and `script:`, and an uninstall step of type `run`
     /// whose program the record names: a program the cask names is run.
-    /// What it deletes Canager cannot see, so the sentence beside it is
+    /// What it deletes Banager cannot see, so the sentence beside it is
     /// `UninstallScope::HomebrewCaskStepsUnseen` or
     /// `HomebrewCaskStepsOnlyUnseen`.
     RunsScript,
     /// An `uninstall_preflight`/`uninstall_postflight` block of Ruby, or an
-    /// uninstall step Canager does not name (anything but the ones that set
+    /// uninstall step Banager does not name (anything but the ones that set
     /// ownership or permissions or end a process, which stay plain, and the
-    /// ones the other kinds name). Names nothing; what it deletes Canager
+    /// ones the other kinds name). Names nothing; what it deletes Banager
     /// cannot see, as for `RunsScript`.
     RunsOwnSteps,
     /// `launchctl:`: each service is removed with `launchctl remove` and
@@ -862,11 +862,11 @@ pub enum CaskStep {
     RemovesLoginItems,
     /// `quit:` and `signal:`: running apps with those bundle ids (`*` a
     /// wildcard) are quit or signalled. Plain on its own; said only beside
-    /// another kind. The items are the bundle ids of the apps Canager
+    /// another kind. The items are the bundle ids of the apps Banager
     /// could not find on this Mac; the line counts them, the ids behind
     /// its ⓘ.
     QuitsApps,
-    /// `QuitsApps`, for the apps it quits that Canager found: an app the
+    /// `QuitsApps`, for the apps it quits that Banager found: an app the
     /// cask's record puts down whose `CFBundleIdentifier` is one the step
     /// names, found where Homebrew puts apps
     /// (`BrewAdapter::quit_app_names`). The items are the apps' names, as
@@ -910,7 +910,7 @@ pub enum RemoveCheck {
 /// per-source halves.
 ///
 /// A variant belongs here only when the tool *reports* the state in the
-/// output Canager already reads to list updates, so the row can be marked
+/// output Banager already reads to list updates, so the row can be marked
 /// before anyone clicks. States a tool only reveals by refusing (a
 /// disabled formula, a cask whose installer must be run by hand) do not
 /// qualify: `brew outdated --json=v2` carries no field for them
@@ -931,7 +931,7 @@ pub enum UpdateBlocked {
     ///   Read by `parse_outdated` in `adapters/pipx.rs`.
     Pinned,
     /// The tool installs its updates itself and has no update command
-    /// Canager may run for it, so a newer version is listed with no
+    /// Banager may run for it, so a newer version is listed with no
     /// button. Produced by `StandaloneAdapter::check_updates`
     /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
     /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
@@ -940,7 +940,7 @@ pub enum UpdateBlocked {
     /// `AdapterError::UpdateBlocked`: the gate's late twin for a stale
     /// snapshot (spec §五). Not "no
     /// candidate": the Installed row would then say "up to date", which is
-    /// false while 1.2.11 exists; not `checkable: false`: Canager did
+    /// false while 1.2.11 exists; not `checkable: false`: Banager did
     /// check. Read by the gate (`blocked_upgrade` in session/plans.rs,
     /// generic over this enum), by `updateStateOf` in
     /// src/lib/updateState.ts (no button, no checkbox) and by
@@ -959,7 +959,7 @@ pub struct UpdateCandidate {
     pub checkable: bool,
     pub warnings: Vec<Warning>,
     /// `Some` when the tool will refuse to update this package even though
-    /// Canager could check it -- `checkable` says nothing about this: a
+    /// Banager could check it -- `checkable` says nothing about this: a
     /// pinned formula's newer version is known exactly. `Session::issue_plan`
     /// refuses an `Upgrade` of a candidate that carries one, and the Updates
     /// page's `isActionable` hides the row's button and checkbox for it.
@@ -1137,7 +1137,7 @@ pub enum Outcome {
     /// operation bar both show it).
     NeedsAttention(Attention),
     /// Another program failed the operation, and `summary` is that
-    /// program's own words and nothing of Canager's: the front end shows it
+    /// program's own words and nothing of Banager's: the front end shows it
     /// as-is but for surrounding whitespace, quoted inside a translated
     /// sentence, or says the program gave no reason when it is blank
     /// (`outcomeKey` and `outcomeArgs` in `src/lib/format.ts`).
@@ -1148,48 +1148,48 @@ pub enum Outcome {
     /// `summary` is macOS's own description of the refusal -- the
     /// `NSError`'s localized description, `TrashError::Refused`
     /// (`removal::execute_removal`, which also writes it to the log as a
-    /// `LogNote::TrashFailed`). A failure of Canager's own is
-    /// `CanagerFailed`, never this. A tool a signal ended before it could
+    /// `LogNote::TrashFailed`). A failure of Banager's own is
+    /// `BanagerFailed`, never this. A tool a signal ended before it could
     /// exit reported no failure, and is `Unconfirmed`, never this
     /// (`run_plan` in `adapters/mod.rs`).
     Failed {
         exit_code: Option<i32>,
         summary: String,
     },
-    /// Canager itself could not carry the operation out -- not the tool.
+    /// Banager itself could not carry the operation out -- not the tool.
     /// Carries which reason, never a sentence: the front end words it in
     /// the user's language, the same way it does `NeedsAttention`.
     ///
-    /// These used to be English sentences of Canager's own ("operation
+    /// These used to be English sentences of Banager's own ("operation
     /// panicked", "runner: program not found: ...") inside `Failed`'s
     /// `summary`, sharing one string with a tool's stderr, so neither could
     /// be shown properly: the front end could not translate the first
     /// without mangling the second.
-    CanagerFailed(Fault),
-    /// Canager cannot tell what the operation did: the reading after it
+    BanagerFailed(Fault),
+    /// Banager cannot tell what the operation did: the reading after it
     /// failed, or the command did not reach its exit (a Cancel, the
-    /// timeout, or a signal Canager did not send -- Activity Monitor,
+    /// timeout, or a signal Banager did not send -- Activity Monitor,
     /// `kill`, a crash) and what is installed now does not show whether it
     /// took effect. Every upgrade stopped partway ends here, whatever its
     /// version reads (`run_operation` in `ops/mod.rs` says why).
     Unconfirmed,
 }
 
-/// Why Canager itself could not carry an operation out. See
-/// [`Outcome::CanagerFailed`]. Fields carry data, never Canager's prose:
+/// Why Banager itself could not carry an operation out. See
+/// [`Outcome::BanagerFailed`]. Fields carry data, never Banager's prose:
 /// a path, or the operating system's own reason.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Fault {
-    /// Canager crashed partway through. The command may or may not have
+    /// Banager crashed partway through. The command may or may not have
     /// run, so only a fresh look at the list can say what changed.
     Panicked,
-    /// The program the plan names was not there when Canager went to run
+    /// The program the plan names was not there when Banager went to run
     /// it. Nothing was started.
     ProgramMissing { program: String },
     /// macOS would not start the program; `detail` is the operating
     /// system's own reason, quoted as-is. Nothing was started.
     SpawnFailed { detail: String },
-    /// A `brew update` was still running in the background after Canager
+    /// A `brew update` was still running in the background after Banager
     /// had waited `minutes` minutes for it, so the command was not
     /// started: installing while Homebrew rewrites its own list of
     /// software is not something Homebrew guards against. Nothing was
@@ -1197,11 +1197,11 @@ pub enum Fault {
     ///
     /// `minutes` is `BrewAdapter::OP_UPDATE_WAIT` outside tests, carried
     /// here rather than hard-coded into
-    /// `operations.outcome.CanagerFailed.HomebrewStillUpdating` so the two
+    /// `operations.outcome.BanagerFailed.HomebrewStillUpdating` so the two
     /// can never disagree: see `BrewAdapter::execute`, the only production
     /// call site that builds this variant.
     HomebrewStillUpdating { minutes: u64 },
-    /// A path is not what the preview showed, so Canager stopped and left
+    /// A path is not what the preview showed, so Banager stopped and left
     /// it as it is. For a path-list uninstall, a path it was about to move:
     /// at the confirmation, or when its turn came after the moves before
     /// it, it fails one of the preview's checks (a folder on its way became
@@ -1213,7 +1213,7 @@ pub enum Fault {
     /// the same name; or, when the launcher's turn came (the last), another
     /// listed path was there again -- the program folder recreated during a
     /// pause by a copy still running, say -- and `path` is that one, the
-    /// launcher left in place so the row stays. Canager stopped without
+    /// launcher left in place so the row stays. Banager stopped without
     /// moving the item whose turn it was; whatever it moved before is in
     /// the Trash, one `LogNote::MovedToTrash` each in the log. For a
     /// standalone tool's upgrade, the launcher the plan
@@ -1236,9 +1236,9 @@ pub enum Fault {
     /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     PathChanged { path: String },
-    /// Something on Canager's side did not add up (an unregistered
+    /// Something on Banager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
-    /// business returning). A bug in Canager, not a state of the Mac.
+    /// business returning). A bug in Banager, not a state of the Mac.
     /// Nothing was started.
     Internal,
 }
@@ -1455,7 +1455,7 @@ mod tests {
         );
 
         // Phase 4 step D: the second reason, a tool that installs its updates
-        // itself and offers no command Canager may run
+        // itself and offers no command Banager may run
         // (`StandaloneAdapter::check_updates` for a recipe with no `upgrade`).
         // `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts indexes
         // this spelling.
@@ -1682,7 +1682,7 @@ mod tests {
             r#"{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}"#
         );
 
-        // Round 2: what a brew.env that takes Canager's switches back
+        // Round 2: what a brew.env that takes Banager's switches back
         // makes Homebrew do (adapters/brew/brew_env.rs). Three bare
         // strings, as `warningKey` in src/lib/warnings.ts spells them.
         assert_eq!(
@@ -1817,52 +1817,52 @@ mod tests {
     }
 
     #[test]
-    fn test_canager_failed_is_externally_tagged_on_the_wire() {
+    fn test_banager_failed_is_externally_tagged_on_the_wire() {
         // `src/lib/types.ts` mirrors `Fault` as a union of bare strings
         // (unit variants) and single-key objects (data variants), and
         // `format.ts` builds the locale key from the variant name.
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::Panicked)).unwrap(),
-            r#"{"CanagerFailed":"Panicked"}"#
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::Panicked)).unwrap(),
+            r#"{"BanagerFailed":"Panicked"}"#
         );
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::ProgramMissing {
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::ProgramMissing {
                 program: "/opt/homebrew/bin/brew".to_string()
             }))
             .unwrap(),
-            r#"{"CanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}"#
+            r#"{"BanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}"#
         );
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::SpawnFailed {
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::SpawnFailed {
                 detail: "Permission denied (os error 13)".to_string()
             }))
             .unwrap(),
-            r#"{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}"#
+            r#"{"BanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}"#
         );
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::HomebrewStillUpdating {
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::HomebrewStillUpdating {
                 minutes: 10
             }))
             .unwrap(),
-            r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#
+            r#"{"BanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#
         );
         // Phase 4 step C: a path-list uninstall found a path changed
         // between the preview and the run. `path` has `$HOME` abbreviated.
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::PathChanged {
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             }))
             .unwrap(),
-            r#"{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
+            r#"{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
         );
         for fault in [
             Fault::Panicked,
             Fault::HomebrewStillUpdating { minutes: 10 },
             Fault::Internal,
         ] {
-            let json = serde_json::to_string(&Outcome::CanagerFailed(fault.clone())).unwrap();
+            let json = serde_json::to_string(&Outcome::BanagerFailed(fault.clone())).unwrap();
             let back: Outcome = serde_json::from_str(&json).unwrap();
-            assert_eq!(back, Outcome::CanagerFailed(fault));
+            assert_eq!(back, Outcome::BanagerFailed(fault));
         }
     }
 

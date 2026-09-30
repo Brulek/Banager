@@ -23,7 +23,7 @@ const PACK: ToolIconPack = {
 const toolIcons = loadToolIcons(PACK, new Map([["gh-xai-org.webp", "/assets/gh-xai-org.webp"]]));
 
 describe("SourceAvatar", () => {
-  it("has a colour for every source Canager knows", () => {
+  it("has a colour for every source Banager knows", () => {
     // A source added to ADAPTER_LABEL_KEYS without a colour would get the
     // grey meant for a source this build does not know.
     expect(Object.keys(SOURCE_AVATAR_CLASSES).sort()).toEqual(

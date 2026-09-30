@@ -530,7 +530,7 @@ export function InstalledPage() {
 
   // Every update in the snapshot, split by the rule the Updates page lists
   // by (`hidingRule`, src/lib/updateState.ts): the ones it lists, and the
-  // ones the user hid there, with how. So a pinned package, one Canager
+  // ones the user hid there, with how. So a pinned package, one Banager
   // could not check and one the user ignored are never "Update available"
   // here while the Updates page offers none of them.
   const { listedUpdates, hiddenUpdates } = useMemo(() => {
@@ -676,7 +676,7 @@ export function InstalledPage() {
   // of what its notice says -- "what's listed for uv is from the last time
   // it answered" over rows it has, "can't show what it has installed" over
   // none -- and a search that hides its rows does not make it have none.
-  // Then a source with rows here whose version Canager has not been
+  // Then a source with rows here whose version Banager has not been
   // tested with. Two lines or more fold into one (`SourceNotices`). First
   // of all, the checks of the sources in view that did not finish this
   // round (`unfinishedChecksNotice`): a line like the others, once a band
@@ -962,7 +962,7 @@ export function InstalledPage() {
   };
 
   /**
-   * A row's chips, each with its why: what its source lets Canager do,
+   * A row's chips, each with its why: what its source lets Banager do,
    * the tool's own refusal to remove it, and where its update stands --
    * by `updateStateOf` for an update the Updates page lists, the way that
    * page's row reads, so "Update available" here is exactly an Update
@@ -1207,7 +1207,7 @@ export function InstalledPage() {
     const version = versionOf(artifact);
     // The version a listed or hidden update would bring: said in numbers
     // only where it is one -- not a model's digest, not the installed
-    // version a row Canager could not check carries as its target.
+    // version a row Banager could not check carries as its target.
     const newer =
       candidate !== undefined &&
       candidate.checkable &&

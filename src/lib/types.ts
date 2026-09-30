@@ -19,11 +19,11 @@ export type Attention =
   | "GoneAfterUpgrade"
   | "UnchangedAfterUpgrade"
   | "BackAfterUninstall";
-// Rust `Fault`: why Canager itself could not carry an operation out.
+// Rust `Fault`: why Banager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are
 // data (a path, the operating system's own reason, the minutes
-// `BrewAdapter::OP_UPDATE_WAIT` is), never Canager's prose.
+// `BrewAdapter::OP_UPDATE_WAIT` is), never Banager's prose.
 export type Fault =
   | "Panicked"
   | { ProgramMissing: { program: string } }
@@ -31,17 +31,17 @@ export type Fault =
   | { HomebrewStillUpdating: { minutes: number } }
   | { PathChanged: { path: string } }
   | "Internal";
-// `Failed.summary` is another program's own words, never Canager's: the
+// `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move
 // a path to the Trash (`exit_code` is then `null`: no command ran).
-// Canager's own failures are `CanagerFailed`.
+// Banager's own failures are `BanagerFailed`.
 export type Outcome =
   | "Succeeded"
   | "Cancelled"
   | "Unconfirmed"
   | { NeedsAttention: Attention }
   | { Failed: { exit_code: number | null; summary: string } }
-  | { CanagerFailed: Fault };
+  | { BanagerFailed: Fault };
 export interface ArtifactKey {
   instance_id: string;
   kind: ArtifactKind;
@@ -69,7 +69,7 @@ export interface InstalledArtifact {
  * and no safe way yet to remove its files (a recipe with no uninstall
  * method: none in the first batch since phase 4 step C gave Claude Code
  * its path list; the second batch's Ollama.app); `UvToolDirSet` by uv's
- * inventory for every tool while `UV_TOOL_DIR` is set in Canager's
+ * inventory for every tool while `UV_TOOL_DIR` is set in Banager's
  * environment, since removing the last one would also delete the folder
  * above that one. Read through `UNINSTALL_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
@@ -107,7 +107,7 @@ export type KeptWhat =
  * brought autoremove back), `HomebrewCaskStepsOnly` (the same, for a cask whose
  * record lists nothing Homebrew put down: a `pkg` or installer cask),
  * `HomebrewCaskStepsUnseen` and `HomebrewCaskStepsOnlyUnseen` (the same two,
- * when a step runs a program or code whose deletions Canager cannot see: the
+ * when a step runs a program or code whose deletions Banager cannot see: the
  * sentence says so, and nothing of what stays) or `HomebrewCask` (its record
  * could not be read, or lists nothing to go by: the sentence claims no
  * deletion).
@@ -177,7 +177,7 @@ export type RemoveCheck =
  * key -- with `HomebrewRustupLosesToolchains` and `EditsShellConfig` as
  * that uninstall's two bare-string ones), Homebrew's three bare-string
  * brew.env warnings (`HomebrewAutoremoves` on an uninstall, produced only
- * when a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`;
+ * when a brew.env file takes back Banager's `HOMEBREW_NO_AUTOREMOVE=1`;
  * `HomebrewPeriodicCleanup` on an install or upgrade, when one takes back
  * `HOMEBREW_NO_INSTALL_CLEANUP=1`, and `HomebrewCleanupAutoremoves` right
  * after it when one takes back both), an
@@ -224,7 +224,7 @@ export type Warning =
  * `pinned: true`) and pipx's (from `pipx list --outdated`'s
  * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
  * `check_updates` for a tool that installs its updates itself and has no
- * update command Canager may run (Antigravity CLI, phase 4 step D). Read
+ * update command Banager may run (Antigravity CLI, phase 4 step D). Read
  * through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over
  * this union, so a variant added here without copy fails `tsc` rather
  * than rendering nothing.
@@ -240,7 +240,7 @@ export interface UpdateCandidate {
   blocked: UpdateBlocked | null;
 }
 /**
- * Why a source can be listed but never changed from Canager. Mirrors
+ * Why a source can be listed but never changed from Banager. Mirrors
  * `ReadOnlyReason` in crates/banager-core/src/model.rs: bare-string unit
  * variants, so a new Rust variant does *not* fail this union at compile
  * time -- it lands in whatever default branch reads it. `types.test.ts`
@@ -248,7 +248,7 @@ export interface UpdateCandidate {
  */
 export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
 /**
- * Why a source Canager knows about cannot answer right now. Mirrors
+ * Why a source Banager knows about cannot answer right now. Mirrors
  * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule
  * as `ReadOnlyReason`: a new Rust variant does not fail this union at
  * compile time, it lands in whatever default branch reads it.
@@ -316,7 +316,7 @@ export type CancelPolicy = "KillThenReconcile" | "NoCancel";
  * does when it runs. Externally tagged single-key objects. `Command` is
  * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
  * path-list uninstall of a tool installed by its own installer, which
- * Canager carries out itself by moving each path to the Trash (phase 4
+ * Banager carries out itself by moving each path to the Trash (phase 4
  * step C) -- no argv exists, so `CommandPreview` shows a sentence for it.
  * `CommandPreview` branches on `"Command" in action` with a `never`
  * default, so a third arm fails `tsc` until it has a preview.
@@ -466,7 +466,7 @@ export interface Settings {
   include_self_updating: boolean;
   /**
    * The daily check, 「每天自动检查」 in Settings: a refresh by itself once
-   * a day while Canager runs (src-tauri/src/auto_check.rs). Off by default.
+   * a day while Banager runs (src-tauri/src/auto_check.rs). Off by default.
    */
   auto_check: boolean;
   /**
@@ -486,7 +486,7 @@ export interface UpdatePair {
   target: string;
 }
 export type Stream = "Stdout" | "Stderr";
-// A line of Canager's own in an operation's log (Rust `LogNote`): a key the
+// A line of Banager's own in an operation's log (Rust `LogNote`): a key the
 // front end localises, never text. `Log` lines are the tool's verbatim words.
 // Every variant carries data (serde's external tagging of a struct variant,
 // a one-key object). Two numbers are threaded through rather than

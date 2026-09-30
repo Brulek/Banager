@@ -47,7 +47,7 @@ fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
 ///
 /// All three parts come out of `split_model_reference` applied to a name in
 /// the body of `GET {host}/api/tags` — i.e. straight off the network, from a
-/// daemon Canager does not control, on every background refresh. Two shapes
+/// daemon Banager does not control, on every background refresh. Two shapes
 /// escape a bare `manifests_root.join(namespace).join(name).join(tag)`:
 /// an **absolute** part (`a//etc/passwd` splits into name `/etc/passwd`,
 /// and `Path::join` with an absolute component throws the base away
@@ -186,7 +186,7 @@ pub fn ollama_app_path(home: &Path) -> Option<PathBuf> {
 /// Whether `host` -- a daemon URL as [`host_for`] builds it -- names this
 /// Mac. Only then can launching the local Ollama.app bring it up: with
 /// `OLLAMA_HOST` pointing at another machine, the app would start a
-/// daemon here and the one Canager is asking would stay exactly as silent.
+/// daemon here and the one Banager is asking would stay exactly as silent.
 ///
 /// The unspecified addresses count as this Mac because that is how a
 /// client treats them: `OLLAMA_HOST=0.0.0.0` is Ollama's documented way to
@@ -295,16 +295,16 @@ impl OllamaAdapter {
             scope: Scope::User,
             status: InstanceStatus {
                 // `NotRunning` is the one state whose notice carries a
-                // button that fixes it from inside Canager: Open Ollama,
+                // button that fixes it from inside Banager: Open Ollama,
                 // which runs `open -a Ollama`. So it is given only when
-                // that button can work -- the daemon Canager asked is on
+                // that button can work -- the daemon Banager asked is on
                 // this Mac, and there is an Ollama.app here to open.
                 // Anything else that is not answering is `NotResponding`,
-                // whose notice claims nothing Canager cannot do.
+                // whose notice claims nothing Banager cannot do.
                 //
                 // The comment that used to sit here called Ollama "the
                 // one source whose not-answering the user can fix from
-                // inside Canager" and gave `NotRunning` to any silent
+                // inside Banager" and gave `NotRunning` to any silent
                 // daemon with `ollama` on PATH. That was false twice
                 // over. `brew install ollama` -- Homebrew being the first
                 // source this project's README lists -- installs the CLI
@@ -493,7 +493,7 @@ impl OllamaAdapter {
         _query: &str,
     ) -> Result<Vec<SearchHit>, AdapterError> {
         Err(AdapterError::Unsupported(
-            "Ollama has no search command Canager uses; browse the model library directly"
+            "Ollama has no search command Banager uses; browse the model library directly"
                 .to_string(),
         ))
     }
@@ -730,7 +730,7 @@ mod tests {
         .expect("read registry manifest fixture");
 
         let tmp_root = std::env::temp_dir().join(format!(
-            "canager-ollama-manifests-{}-{}",
+            "banager-ollama-manifests-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -797,7 +797,7 @@ mod tests {
         .expect("read registry manifest fixture");
 
         let home = std::env::temp_dir().join(format!(
-            "canager-ollama-home-{}-{}",
+            "banager-ollama-home-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -870,7 +870,7 @@ mod tests {
         .expect("read local manifest fixture");
 
         let home = std::env::temp_dir().join(format!(
-            "canager-ollama-outdated-{}-{}",
+            "banager-ollama-outdated-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -931,12 +931,12 @@ mod tests {
     #[tokio::test]
     async fn test_check_updates_marks_a_model_uncheckable_when_the_local_manifest_is_missing() {
         // Edge case the fixture cannot show directly: the local manifest
-        // file is absent (e.g. deleted out from under Canager).
+        // file is absent (e.g. deleted out from under Banager).
         let tags_json =
             std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
                 .expect("read ollama api-tags.json fixture");
         let home = std::env::temp_dir().join(format!(
-            "canager-ollama-missing-manifest-{}-{}",
+            "banager-ollama-missing-manifest-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1160,7 +1160,7 @@ mod tests {
     /// or modify whatever Ollama the machine running it actually has.
     fn isolated_path_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "canager-ollama-{label}-{}-{}",
+            "banager-ollama-{label}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1325,7 +1325,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_does_not_offer_to_open_the_app_for_a_daemon_on_another_machine() {
         // With `OLLAMA_HOST` naming another machine, Open Ollama would
-        // start a daemon on this Mac and leave the one Canager is asking
+        // start a daemon on this Mac and leave the one Banager is asking
         // exactly as silent -- a button that cannot do what it says. So
         // even with Ollama.app installed here, this is NotResponding.
         let tmp_dir = isolated_path_dir("detect-remote-host");
@@ -1440,7 +1440,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_returns_no_instance_when_ollama_is_not_on_path() {
         let tmp_dir = std::env::temp_dir().join(format!(
-            "canager-ollama-detect-absent-{}-{}",
+            "banager-ollama-detect-absent-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1493,7 +1493,7 @@ mod tests {
 
     fn escape_fixture(label: &str) -> EscapeFixture {
         let root_home = std::env::temp_dir().join(format!(
-            "canager-ollama-{label}-{}-{}",
+            "banager-ollama-{label}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1734,7 +1734,7 @@ mod tests {
         // a hostname inside a model name as a warning.
         //
         // A payload-carrying variant, not a `Message`: `Message` is the
-        // escape hatch for text Canager cannot know ahead of time, and
+        // escape hatch for text Banager cannot know ahead of time, and
         // this sentence is entirely knowable -- only the host is not. As a
         // `Message` it was an English sentence assembled in Rust, which is
         // the exact trap spec §6 exists to close.

@@ -1,7 +1,7 @@
 // `pnpm tauri:mock`: `tauri dev` with this merged over tauri.conf.json.
 // The real window -- its title bar, traffic lights, drag regions, size --
 // around the browser preview's mock front end (docs/ui-preview.md), to
-// look at the window without Canager looking at this Mac.
+// look at the window without Banager looking at this Mac.
 //
 // Why nothing real runs:
 //
@@ -27,7 +27,7 @@
 //   the page, which does not listen here (src/dev/mockTauriEvent.ts).
 // - What runs at every launch runs here too: the login shell
 //   `fix-path-env` asks for `PATH`, which runs no command
-//   (docs/what-we-run.md, "How Canager runs anything").
+//   (docs/what-we-run.md, "How Banager runs anything").
 // - Its own identifier, so its own folder: the mock window never reads
 //   the app's settings.json, and keeps its size and position apart from
 //   the app's.
@@ -39,7 +39,7 @@
 // Plain JSON apart from these comments (src/test/windowChrome.test.ts
 // reads it so).
 {
-  "identifier": "com.brulek.canager.mock",
+  "identifier": "com.brulek.banager.mock",
   "build": {
     "beforeDevCommand": "pnpm exec vite --mode mock --port 1440 --strictPort",
     "devUrl": "http://localhost:1440"

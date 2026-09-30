@@ -15,7 +15,7 @@ use std::path::PathBuf;
 // nothing; it is not the reply we asked for. With `#[serde(default)]`
 // here it parsed as "you have nothing installed", which is silent, total
 // and the single worst thing this app can tell someone. Refusing it
-// instead routes the source into the "Canager couldn't check this" state
+// instead routes the source into the "Banager couldn't check this" state
 // the UI already knows how to explain.
 #[derive(Debug, Deserialize)]
 struct InfoInstalledRoot {
@@ -527,7 +527,7 @@ mod tests {
     // nothing to report — it is not the reply we asked for. Defaulting the
     // partition to an empty vec turned that into the two worst sentences
     // this app can say: "nothing installed" and "everything is up to date".
-    // Failing the read instead puts the source into its own "Canager
+    // Failing the read instead puts the source into its own "Banager
     // couldn't check this" state, which the UI already explains.
 
     #[test]

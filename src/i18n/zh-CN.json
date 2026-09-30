@@ -426,7 +426,7 @@
   "operations": {
     "current": "{{kind}}{{name}}：{{status}}",
     "title": "{{kind}}{{name}}",
-    "noCancelHint": "开始后无法取消。完成前请勿退出Canager或关机。",
+    "noCancelHint": "开始后无法取消。完成前请勿退出Banager或关机。",
     "noCancelHintDetail": "等窗口底部显示结果后，再退出或关机。",
     "stop": "取消",
     "logDrawerTitle": "操作日志",
@@ -485,7 +485,7 @@
       "FailedShort": "未能完成",
       "FailedSilent": "未能完成，程序没有给出原因",
       "FailedSilentDetail": "可以在操作日志中查看它的输出。",
-      "CanagerFailed": {
+      "BanagerFailed": {
         "Panicked": "未能完成：发生内部错误",
         "PanickedDetail": "请查看列表，确认是否有变化。",
         "ProgramMissing": "未能开始：找不到{{program}}，没有改动",
@@ -555,12 +555,12 @@
     },
     "autoCheck": {
       "label": "每天自动检查",
-      "description": "Canager运行时每天检查一次更新，查到的更新不会自动安装。"
+      "description": "Banager运行时每天检查一次更新，查到的更新不会自动安装。"
     },
     "notifyUpdates": {
       "label": "有更新时通知我",
       "needsAutoCheck": "请先打开上方的“{{setting}}”。",
-      "refused": "请在“系统设置”>“通知”中允许Canager发送通知。"
+      "refused": "请在“系统设置”>“通知”中允许Banager发送通知。"
     },
     "language": {
       "label": "语言",
@@ -587,7 +587,7 @@
       "openAriaLabel": "查看图标来源",
       "title": "图标来源",
       "owners": "各标志归其权利人所有，仅用于识别工具。",
-      "simpleIcons": "Canager内置的标志大多来自Simple Icons，它以CC0发布。",
+      "simpleIcons": "Banager内置的标志大多来自Simple Icons，它以CC0发布。",
       "ownLicense": "以下标志采用其他许可协议：",
       "license": "许可",
       "source": "出处",
@@ -644,7 +644,7 @@
     "loadFailed": {
       "title": "无法读取已安装的工具",
       "description": "原因：{{message}}",
-      "nextStep": "请重新检查。如果仍然不行，请退出并重新打开Canager。"
+      "nextStep": "请重新检查。如果仍然不行，请退出并重新打开Banager。"
     },
     "noSources": {
       "title": "没有找到可管理的工具",

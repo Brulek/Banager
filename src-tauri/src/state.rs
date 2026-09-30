@@ -91,7 +91,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-appstate-{}-{}-{}",
+            "banager-appstate-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()

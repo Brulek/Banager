@@ -54,7 +54,7 @@ fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, Ad
     Ok(entries)
 }
 
-/// The one field of an `installs` *value* Canager reads: the programs the
+/// The one field of an `installs` *value* Banager reads: the programs the
 /// crate put in `<cargo_home>/bin`.
 #[derive(Debug, Deserialize)]
 struct Crates2Install {
@@ -146,7 +146,7 @@ fn parse_crates2(
 /// and this switch off, installs one -- a download and a write, which a
 /// refresh must never cause, and which a confirmed install, upgrade or
 /// uninstall must not begin with: its preview never named one. So every
-/// cargo command Canager runs carries it, through `CargoAdapter::ENV`:
+/// cargo command Banager runs carries it, through `CargoAdapter::ENV`:
 /// `detect`'s `cargo --version` and the command of every plan `plan`
 /// builds, cargo-binstall's included, so that a `cargo` or `rustc`
 /// cargo-binstall starts inherits it. So does the rustup recipe's own
@@ -162,7 +162,7 @@ pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL",
 /// share it, so the two adapters can never disagree about it, and the
 /// lock name `instance_id_for` builds is built from the same path
 /// `detect` names cargo's instance by. `None` for a relative
-/// `CARGO_HOME`, which cargo resolves against a current directory Canager
+/// `CARGO_HOME`, which cargo resolves against a current directory Banager
 /// does not share: `detect` then lists no cargo instance rather than one
 /// whose prefix is somewhere cargo never looks.
 pub(crate) fn cargo_home_of(env: &HostEnv) -> Option<PathBuf> {
@@ -210,7 +210,7 @@ pub struct CargoAdapter {
 }
 
 impl CargoAdapter {
-    /// The environment every cargo command Canager runs is given, through
+    /// The environment every cargo command Banager runs is given, through
     /// `env_vec`: `detect`'s `cargo --version` and the command of every
     /// plan `plan` builds, the cargo-binstall ones included. Only
     /// `RUSTUP_AUTO_INSTALL_OFF`; why is said there.
@@ -253,7 +253,7 @@ impl CargoAdapter {
             return Vec::new();
         };
         // The `home` crate's rule; `None` is a relative CARGO_HOME, which
-        // names a directory relative to cargo's own cwd, not Canager's:
+        // names a directory relative to cargo's own cwd, not Banager's:
         // no instance, rather than one that reads the wrong place.
         let Some(cargo_home) = cargo_home_of(env) else {
             return Vec::new();
@@ -370,7 +370,7 @@ impl CargoAdapter {
 
     /// Registry-sourced crates are checked one at a time against crates.io.
     /// Git and path sources are `checkable: false` with a reason
-    /// unconditionally — Canager has no way to check those for updates at
+    /// unconditionally — Banager has no way to check those for updates at
     /// all, so every such crate always gets a row explaining why, not just
     /// the ones that happen to be outdated (contract: "git and path sources
     /// are checkable: false with a reason").
@@ -428,7 +428,7 @@ impl CargoAdapter {
         _query: &str,
     ) -> Result<Vec<SearchHit>, AdapterError> {
         Err(AdapterError::Unsupported(
-            "cargo has no search command Canager uses; browse crates.io directly".to_string(),
+            "cargo has no search command Banager uses; browse crates.io directly".to_string(),
         ))
     }
 
@@ -858,7 +858,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_lists_no_cargo_for_a_relative_cargo_home() {
         // cargo itself would join a relative CARGO_HOME onto *its* current
-        // directory (`home` 0.5.12); Canager's is not that, so an instance
+        // directory (`home` 0.5.12); Banager's is not that, so an instance
         // whose prefix were that relative path would read `.crates2.json`
         // from the wrong place and lock a name nothing else uses. No
         // instance is the honest answer (ruling 6).
@@ -880,7 +880,7 @@ mod tests {
         assert!(adapter.detect(&env).await.is_empty());
         assert!(
             runner.calls().is_empty(),
-            "nothing is run for a home Canager cannot name"
+            "nothing is run for a home Banager cannot name"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -910,7 +910,7 @@ mod tests {
         // so this cannot depend on whether the machine running it actually
         // has cargo-binstall installed.
         let dir = std::env::temp_dir().join(format!(
-            "canager-binstall-{}-{}",
+            "banager-binstall-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -942,7 +942,7 @@ mod tests {
 
     fn temp_cargo_home(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-cargo-home-{}-{}-{}",
+            "banager-cargo-home-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -1348,7 +1348,7 @@ mod tests {
         // prefix. This also pins the hand-off detect -> plan: the program the
         // preview names is the path detect resolved, not a fresh guess.
         let dir = std::env::temp_dir().join(format!(
-            "canager-cargo-detect-{}-{}",
+            "banager-cargo-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1402,7 +1402,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_falls_back_to_home_dot_cargo_and_flags_an_unverified_version() {
         let dir = std::env::temp_dir().join(format!(
-            "canager-cargo-detect-default-{}-{}",
+            "banager-cargo-detect-default-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1465,7 +1465,7 @@ mod tests {
     #[tokio::test]
     async fn test_latest_stable_version_percent_encodes_the_crate_name_into_the_url() {
         // The crate name comes off disk, out of `.crates2.json`'s keys —
-        // a file Canager does not write. Interpolated raw, a `/` in it adds
+        // a file Banager does not write. Interpolated raw, a `/` in it adds
         // path segments to crates.io's API and a `?` starts a query string.
         let http = Arc::new(MockHttpClient::new());
         http.respond(

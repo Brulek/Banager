@@ -80,7 +80,7 @@ impl Session {
     /// it still running. An instance whose `status.unavailable` is set is
     /// skipped by the per-instance fetch -- that is a *reported state*, not
     /// a failed refresh (Task 11) -- but it keeps the previous round's
-    /// artifacts and updates, so the "here is what Canager saw last time"
+    /// artifacts and updates, so the "here is what Banager saw last time"
     /// copy its notice carries is true rather than a promise over an empty
     /// group. An adapter whose `detect()` itself panics or is cancelled is
     /// the same story a level up: the instances it reported last time are
@@ -384,7 +384,7 @@ impl Session {
             // its notice and offer to start it -- and it keeps whatever it
             // reported last time, exactly as the error paths below already
             // do. Dropping those rows is what made the unreachable notice's
-            // "below is what Canager saw last time" a lie: a stopped Ollama
+            // "below is what Banager saw last time" a lie: a stopped Ollama
             // rendered a group header, that sentence, and no rows at all.
             // `issue_plan`'s gate (spec §2.5) is what stops those rows
             // offering an Uninstall button that could not possibly work.
@@ -528,7 +528,7 @@ impl Session {
                             // would read "still installed, unchanged" --
                             // true of every uncheckable row that has not
                             // moved -- as "disproved", dropping every
-                            // "Canager couldn't check" row the instant the
+                            // "Banager couldn't check" row the instant the
                             // package sat still. An uncheckable row is
                             // disproved only by absence; whether it is
                             // still unresolved is for the next successful
@@ -659,7 +659,7 @@ impl Session {
         // Stamped because a refresh *ran*, not because it came back
         // perfect. Gated on `stale`, a Mac with one permanently unavailable
         // source carried `refreshed_at: None` for the rest of its life, and
-        // `SnapshotStatus` reads a null timestamp as "Canager has never
+        // `SnapshotStatus` reads a null timestamp as "Banager has never
         // finished a check" -- six healthy sources' worth of real data
         // described as no data at all. What "some of this may be old" means
         // is `stale`, and that is the flag that carries it.
@@ -2019,7 +2019,7 @@ mod tests {
     fn rustup_home() -> (PathBuf, HostEnv) {
         use std::os::unix::fs::PermissionsExt;
         let raw = std::env::temp_dir().join(format!(
-            "canager-refresh-rustup-{}-{}",
+            "banager-refresh-rustup-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2296,7 +2296,7 @@ mod tests {
         }
     }
 
-    /// A "Canager couldn't check" row, shaped the way
+    /// A "Banager couldn't check" row, shaped the way
     /// `adapters::uncheckable_candidate` actually builds one:
     /// `target == current`, since `UpdateCandidate` has no "unknown"
     /// target to put there instead.
@@ -2342,7 +2342,7 @@ mod tests {
     async fn test_a_failed_update_check_keeps_only_candidates_the_fresh_inventory_confirms() {
         // A successful inventory is *evidence*, and a carried-forward
         // update candidate that contradicts it is not "possibly stale
-        // data", it is a row Canager knows is wrong. Uninstall jq and the
+        // data", it is a row Banager knows is wrong. Uninstall jq and the
         // next inventory correctly drops it; if the update check then
         // fails, the old code carried jq's update forward anyway and the
         // Updates page offered to upgrade a package the same snapshot had
@@ -2489,7 +2489,7 @@ mod tests {
     async fn test_a_failed_update_check_keeps_an_uncheckable_candidate_whose_package_is_unchanged()
     {
         // `uncheckable_candidate` sets `target == current` by
-        // construction -- "Canager couldn't check" rows have no "unknown"
+        // construction -- "Banager couldn't check" rows have no "unknown"
         // target to put there instead. Reusing the checkable disproof
         // rule (`a.version != u.target`) for these rows reads "still
         // installed, unchanged" -- true of every uncheckable row whose
@@ -2665,7 +2665,7 @@ mod tests {
         // join branch used to record an error and move on, so an adapter
         // whose `detect` panicked took every instance it had ever
         // reported, and every package under them, off the screen. They
-        // are kept, marked unavailable: Canager could not ask, so it may
+        // are kept, marked unavailable: Banager could not ask, so it may
         // not claim the rows are current, and the actionability gate
         // (spec §2.5) must not offer operations against them.
         let (flaky, flaky_state) = FakeAdapter::new("flaky");
@@ -2713,7 +2713,7 @@ mod tests {
         assert_eq!(
             kept.status.unavailable,
             Some(Unavailable::NotResponding),
-            "kept as history, not as a source Canager can act on"
+            "kept as history, not as a source Banager can act on"
         );
         assert_eq!(
             artifact_names(&second),
@@ -2744,7 +2744,7 @@ mod tests {
     #[tokio::test]
     async fn test_a_source_that_stops_answering_keeps_its_rows_but_offers_no_operations_on_them() {
         // Spec §2.4-3 and §2.5 together, and neither half is optional. The
-        // notice a stopped source renders says "below is what Canager saw
+        // notice a stopped source renders says "below is what Banager saw
         // last time"; before the carry-forward that sentence sat above an
         // empty group. With the rows back, every one of them would sprout
         // an Uninstall button that cannot possibly work -- so the gate in

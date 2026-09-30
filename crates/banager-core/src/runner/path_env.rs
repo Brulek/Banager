@@ -116,8 +116,8 @@ impl HostEnv {
 /// not empty and absolute; `<home>/<default_dir>` when it is unset or
 /// empty (the crate filters an empty value out before it looks at it);
 /// `None` when it is relative. The crate joins a relative value onto the
-/// *tool's* current directory, which Canager neither knows nor shares --
-/// a Finder-launched app's is `/` -- so nothing Canager could read or
+/// *tool's* current directory, which Banager neither knows nor shares --
+/// a Finder-launched app's is `/` -- so nothing Banager could read or
 /// lock would be the directory the tool uses, and "unsupported" is the
 /// only honest answer. Reader: `cargo::cargo_home_of` (cargo's instance;
 /// from this step's Task 4 on also the rustup recipe's `$CARGO_HOME`
@@ -189,8 +189,8 @@ mod tests {
         // (crates/home/src/env.rs:67-79, :101-113): an unset or *empty*
         // variable means `<home>/<default>`; an absolute one is taken as
         // is; a relative one is joined onto the tool's own current
-        // directory, which Canager neither knows nor shares -- so for
-        // Canager it is unsupported, and nothing pretends to know where
+        // directory, which Banager neither knows nor shares -- so for
+        // Banager it is unsupported, and nothing pretends to know where
         // the tool will look.
         let home = Path::new("/Users/someone");
         assert_eq!(
@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(
             tool_home(Some(Path::new("cargo-home")), home, ".rustup"),
             None,
-            "relative: the crate joins it onto the tool's cwd, not Canager's"
+            "relative: the crate joins it onto the tool's cwd, not Banager's"
         );
         assert_eq!(
             tool_home(None, home, ".rustup"),

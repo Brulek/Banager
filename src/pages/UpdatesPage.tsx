@@ -89,7 +89,7 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * How many rows have a checkbox, as the page says it over its list and
  * the window's toolbar under its title (`useUpdatesHeadline`): 「10个可更新」.
  * With none, not "0 updates": the rows under "Can't update here" are real,
- * and simply not Canager's to update. While some are updating, how many,
+ * and simply not Banager's to update. While some are updating, how many,
  * and how many more have a checkbox.
  */
 export function updatesHeadline(t: Translate, updatingCount: number, startableCount: number): string {
@@ -240,7 +240,7 @@ function reusable(item: ListItem): boolean {
 
 /**
  * Whether each note says that typing the tool's name in Terminal may not
- * run this instance's copy: this copy is not on the PATH Canager sees, so
+ * run this instance's copy: this copy is not on the PATH Banager sees, so
  * the name finds nothing there or another program with that name
  * (`NotOnPath`); another program with that name is found there before this
  * copy (`ShadowedBy*`); or the launcher's program files are gone
@@ -369,7 +369,7 @@ export function UpdatesPage() {
   const stateOf = (candidate: UpdateCandidate): UpdateState =>
     updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
 
-  // The rows Canager can update from here: every listed update whose row
+  // The rows Banager can update from here: every listed update whose row
   // has an Update button and a checkbox while no update takes it
   // (`startableUpdates`, below). `actionableUpdatesOf` is
   // `visibleUpdates` filtered by `isUpdateActionable` -- read-only source,
@@ -483,7 +483,7 @@ export function UpdatesPage() {
   // What each source has to say about this check, one compact line each
   // at the top of the page: not running, not answering, a list it could
   // not download, another copy that runs when its name is typed. What a
-  // source lets Canager do at all -- pip being read-only -- is not a
+  // source lets Banager do at all -- pip being read-only -- is not a
   // notice: every row of such a source says it with its own "View only"
   // chip. How many rows a source has is part of what its notice says: a
   // silent source's "what's listed for it is last time's" is true only
@@ -513,7 +513,7 @@ export function UpdatesPage() {
   // Two lines or more fold into one (`SourceNotices`).
   const noticeFold = useNoticeFold(notices.length);
 
-  // How many rows can only say that Canager could not check them, the
+  // How many rows can only say that Banager could not check them, the
   // tool's own words being hidden while "Show technical details" is off:
   // an uncheckable row with a `Message`. The page says once, over those
   // rows, where to see why, counting these rows and no others -- a
@@ -669,7 +669,7 @@ export function UpdatesPage() {
    * until the user undoes it in Settings. Each item's hint -- a tooltip,
    * and its accessible description -- says what it does. A row whose
    * `target` does not name one release gets only "Never remind me"
-   * (`canSkipVersion`): one Canager could not check, whose `target` is its
+   * (`canSkipVersion`): one Banager could not check, whose `target` is its
    * installed version, and a Homebrew cask declared `version :latest`,
    * every release of which is offered as "latest", so that a skip of it
    * would never end. "Copy command" only where the command is known
@@ -744,11 +744,11 @@ export function UpdatesPage() {
   // good news. When a source did not answer, carries a note that means its
   // updates were not fully checked (`NOTE_LEAVES_UPDATES_UNCHECKED`), or
   // had a check fail this round (a `SourceError`), the sentence drops to
-  // what Canager can honestly claim -- nothing to update *in the sources it
+  // what Banager can honestly claim -- nothing to update *in the sources it
   // managed to check*. Not for every notice: one that is information only
   // -- which copy runs when you type a tool's name -- still goes above the
   // sentence, and leaves the sentence alone. A read-only source is one
-  // Canager *can* check. The rule is `everySourceChecked` in
+  // Banager *can* check. The rule is `everySourceChecked` in
   // src/lib/updateState.ts, which the Overview's headline reads too: it
   // may call the Mac up to date only when this page would.
   if (visibleUpdates.length === 0) {

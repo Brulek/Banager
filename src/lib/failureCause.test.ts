@@ -197,10 +197,10 @@ describe("outcomeCause", () => {
     expect(outcomeCause({ Failed: { exit_code: 1, summary: "Error: ffmpeg: SHA256 mismatch" } })).toBeNull();
   });
 
-  it("knows Canager's own wait for brew update, and no other fault", () => {
-    expect(outcomeCause({ CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe("homebrewUpdating");
-    expect(outcomeCause({ CanagerFailed: "Internal" })).toBeNull();
-    expect(outcomeCause({ CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } })).toBeNull();
+  it("knows Banager's own wait for brew update, and no other fault", () => {
+    expect(outcomeCause({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe("homebrewUpdating");
+    expect(outcomeCause({ BanagerFailed: "Internal" })).toBeNull();
+    expect(outcomeCause({ BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } })).toBeNull();
   });
 
   it("gives nothing for an outcome that is not a failure", () => {

@@ -7,7 +7,7 @@ import i18n from "../i18n";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The keys Tauri merges into Canager.app's Info.plist: src-tauri/Info.plist,
+ * The keys Tauri merges into Banager.app's Info.plist: src-tauri/Info.plist,
  * beside tauri.conf.json, where Tauri looks for it. Each value as a string,
  * or an array of strings, the only kinds the file holds.
  */

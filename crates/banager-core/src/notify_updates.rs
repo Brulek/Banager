@@ -29,9 +29,9 @@ pub struct UpdatePair {
     pub target: String,
 }
 
-/// The pairs this run of Canager has told the user about in a
+/// The pairs this run of Banager has told the user about in a
 /// notification, or that the user saw in the window. In memory only: after
-/// Canager is quit and opened again, none has been.
+/// Banager is quit and opened again, none has been.
 #[derive(Debug, Default)]
 pub struct Notified {
     pairs: BTreeSet<UpdatePair>,
@@ -53,9 +53,9 @@ impl Notified {
 /// (`focus` in src-tauri/src/notify.rs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Focus {
-    /// Canager's window has the focus: the user sees what it offers.
+    /// Banager's window has the focus: the user sees what it offers.
     Window,
-    /// Canager is the active app, the one in front, but its window does not
+    /// Banager is the active app, the one in front, but its window does not
     /// have the focus -- it is closed, or in the Dock. macOS shows no
     /// banner for a notification of the app in front, so one posted now
     /// would go unseen; nor does the user see what the window offers.
@@ -91,7 +91,7 @@ pub enum Notice {
     /// when that refresh reports -- the updates offered then, which are
     /// those offered now and those the update's new catalogue adds.
     Deferred,
-    /// A notification was due, but Canager is the app in front without its
+    /// A notification was due, but Banager is the app in front without its
     /// window focused ([`Focus::App`]), where macOS would show no banner:
     /// nothing is posted, and nothing marked, so the next round of the
     /// daily check that offers the same updates posts them.
@@ -123,7 +123,7 @@ pub fn notifications_on(settings: &Settings) -> bool {
 ///   and another app is in front ([`Focus::Away`]).
 /// - `Deferred`, when all that holds but the round awaits such a
 ///   follow-up ([`ReportedRound::awaits_follow_up`]).
-/// - `Withheld`, when all that holds but Canager is the app in front
+/// - `Withheld`, when all that holds but Banager is the app in front
 ///   without its window focused ([`Focus::App`]).
 /// - Nothing otherwise: a round the window asked for, or one no longer
 ///   remembered (`trigger` `None`), never posts; nor does one offering
@@ -297,12 +297,12 @@ mod tests {
     }
 
     #[test]
-    fn test_with_canager_in_front_and_its_window_away_nothing_is_posted_or_marked() {
-        // Canager is the active app, its window closed or in the Dock:
+    fn test_with_banager_in_front_and_its_window_away_nothing_is_posted_or_marked() {
+        // Banager is the active app, its window closed or in the Dock:
         // macOS would show no banner, and the user sees nothing the window
         // offers.
         let mut notified = Notified::default();
-        let never = |_| -> Result<(), String> { panic!("posted while Canager was in front") };
+        let never = |_| -> Result<(), String> { panic!("posted while Banager was in front") };
         assert_eq!(
             report(&mut notified, AUTOMATIC, true, Focus::App, &[jq()], never),
             Ok(Notice::Withheld)
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn test_canager_in_front_withholds_only_a_notification_that_was_due() {
+    fn test_banager_in_front_withholds_only_a_notification_that_was_due() {
         let mut notified = Notified::default();
         assert_eq!(
             decide(WINDOW, true, Focus::App, &[jq()], &notified),

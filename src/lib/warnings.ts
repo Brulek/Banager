@@ -72,7 +72,7 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
  * which name nothing, pluralises on `{{count}}`, and each of those but
  * `RemovesServices` and `QuitsApps` interpolates `{{items}}`. Those two
  * count what they would name: a background service's label and an app
- * Canager did not find on the Mac are reverse-DNS ids
+ * Banager did not find on the Mac are reverse-DNS ids
  * (`com.microsoft.VSCode.ShipIt`) that tell a person nothing, so the line
  * says how many -- unless one of the ids is a pattern
  * (`MATCHING_STEP_KEYS`) -- and the ids are behind its ⓘ
@@ -346,8 +346,8 @@ export function warningText(t: Translate, warning: Warning, subject?: string): s
  * all there is: what a kept path is and why it stays, what rustup's
  * permanent deletions and the line it leaves in a startup file mean for
  * you, which Homebrew setting brings back a clean-up or an autoremove
- * Canager turns off, and the ids a cask's background services and the apps
- * Canager did not find go by, which their lines count, or say a pattern
+ * Banager turns off, and the ids a cask's background services and the apps
+ * Banager did not find go by, which their lines count, or say a pattern
  * matches, instead of naming. The line keeps what decides whether to go
  * on -- "permanently deletes", the path, what goes with it; the ⓘ has the
  * rest. The Cargo folder's line has nothing behind it: that the whole
@@ -417,7 +417,7 @@ export function warningDetailKey(warning: Warning): string | null {
  * about what goes and what stays; `trash`, what a path-list uninstall
  * moves to the Trash, and what it found already gone from there; `keep`,
  * what it leaves where it is; and `note`, everything else -- what to know
- * before you continue, from a dependency Canager could not check to a
+ * before you continue, from a dependency Banager could not check to a
  * cask's extra uninstall steps and rustup deleting a folder for good.
  *
  * Every payload variant is named, so one added to `Warning` fails `tsc`
@@ -535,9 +535,9 @@ export function deletesForGood(warning: Warning): boolean {
  *
  * Not the three cask sentences that cannot see or read everything the
  * uninstall does: a program the cask names or Ruby around the uninstall
- * may move something to the Trash for all Canager knows
+ * may move something to the Trash for all Banager knows
  * (`HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`), and a record
- * Canager could not read may hold a `trash:` step (`HomebrewCask`). A plan
+ * Banager could not read may hold a `trash:` step (`HomebrewCask`). A plan
  * with no sentence -- npm 6, and the tools with their own installer, whose
  * confirmation lists what goes to the Trash or says that rustup's
  * deletions cannot be undone -- says nothing either. A `Record`, so a
@@ -581,7 +581,7 @@ export function skipsTrash(warnings: readonly Warning[]): boolean {
  * Whether a warning's line is a caution -- something a person may not
  * expect and should weigh before going on -- which a confirmation marks
  * with a small ⚠︎ before its words (spec R6): what else goes or stops
- * working, what is deleted for good, a source Canager cannot vouch for, a
+ * working, what is deleted for good, a source Banager cannot vouch for, a
  * dependency it could not check, a cask's extra steps, and anything this
  * build has no words for. Not one that only says how it goes: that it
  * compiles, that a model downloads what changed, where it came from, which line rustup takes out, what moves to

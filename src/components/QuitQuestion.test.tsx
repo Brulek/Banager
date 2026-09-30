@@ -162,7 +162,7 @@ describe("the question before a quit", () => {
       );
       await user.keyboard("{Enter}");
     }],
-  ])("goes away on %s, and Canager stays", async (_how, answer) => {
+  ])("goes away on %s, and Banager stays", async (_how, answer) => {
     const user = userEvent.setup();
     operations = [op(1, "wget", "Running"), op(2, "jq", "Queued")];
     const { rust } = await mounted();
@@ -209,7 +209,7 @@ describe("the question before a quit", () => {
     expect(sent("quit_anyway")).toBe(1);
     expect(within(dialog).getByRole("button", { name: "Quit" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
-    // In the app, Canager is gone by now.
+    // In the app, Banager is gone by now.
     await act(async () => quit());
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(sent("quit_anyway")).toBe(1);
@@ -257,7 +257,7 @@ describe("the question before a quit", () => {
 
     await waitFor(() => expect(sent("quit_anyway")).toBe(1));
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Nothing on screen, and nothing said: Canager is quitting.
+    // Nothing on screen, and nothing said: Banager is quitting.
     expect(sent("quit_question_shown")).toBe(0);
   });
 
@@ -282,7 +282,7 @@ describe("the question before a quit", () => {
 
     await listNow(queryClient, [op(1, "wget", "Done"), op(2, "jq", "Done")]);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // Nothing is left to wait for, and Canager stays, with how they went
+    // Nothing is left to wait for, and Banager stays, with how they went
     // on the operation bar -- Rust told so, once.
     expect(sent("quit_anyway")).toBe(0);
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_kept_waiting")).toEqual([

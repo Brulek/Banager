@@ -28,7 +28,7 @@ fn main() {
         class
             .instance_method(objc2::sel!(applicationShouldTerminate:))
             .is_none(),
-        "tao's delegate class {:?} answers applicationShouldTerminate: now, so Canager's \
+        "tao's delegate class {:?} answers applicationShouldTerminate: now, so Banager's \
          question before quitting stays off (quit::add_should_terminate): look at what tao \
          does there",
         class.name()

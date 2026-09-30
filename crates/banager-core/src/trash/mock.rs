@@ -33,7 +33,7 @@ impl MockTrasher {
         // under one test by the other one's drop.
         static NEXT_BIN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let raw = std::env::temp_dir().join(format!(
-            "canager-mock-trash-{}-{}-{}",
+            "banager-mock-trash-{}-{}-{}",
             std::process::id(),
             NEXT_BIN.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
@@ -157,7 +157,7 @@ mod tests {
     impl Scratch {
         fn new(tag: &str) -> Scratch {
             let dir = std::env::temp_dir().join(format!(
-                "canager-trash-mock-{tag}-{}-{}",
+                "banager-trash-mock-{tag}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

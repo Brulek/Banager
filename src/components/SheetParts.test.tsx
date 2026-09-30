@@ -91,8 +91,8 @@ describe("useToolsInTurn", () => {
 
 describe("SheetLines", () => {
   it("keeps a line's ⓘ on one line with its last word, so it never wraps alone", () => {
-    const english = "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.";
-    const chinese = "开始后无法取消。完成前请不要退出Canager或关机。";
+    const english = "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.";
+    const chinese = "开始后无法取消。完成前请不要退出Banager或关机。";
     const { container } = renderWithProviders(
       <SheetLines
         lines={[

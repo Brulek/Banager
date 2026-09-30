@@ -4,7 +4,7 @@
 //! answers with the icon Finder shows for the item at a path -- for an
 //! app, the one its bundle declares -- and that image is drawn into a
 //! bitmap `ICON_PIXELS` square, which AppKit encodes as PNG
-//! (`NSBitmapImageRep representationUsingType:properties:`). Canager opens
+//! (`NSBitmapImageRep representationUsingType:properties:`). Banager opens
 //! nothing in the bundle itself: macOS finds the icon, in the bundle or in
 //! its own icon cache. The bitmap and the PNG live in memory; the PNG goes
 //! back to `AppIcons`, and nothing is written anywhere.
@@ -113,7 +113,7 @@ impl IconRenderer for RealIconRenderer {
     }
 }
 
-/// No Finder, no icon: Canager v0.1 ships for macOS only (the crate doc in
+/// No Finder, no icon: Banager v0.1 ships for macOS only (the crate doc in
 /// lib.rs), and a row does without one.
 #[cfg(not(target_os = "macos"))]
 impl IconRenderer for RealIconRenderer {

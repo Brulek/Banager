@@ -57,7 +57,7 @@ pub fn manager_instance(adapter_id: &str, id: &str) -> ManagerInstance {
     }
 }
 
-/// `manager_instance`, but for a source Canager may list and never change --
+/// `manager_instance`, but for a source Banager may list and never change --
 /// the capability half of the actionability invariant (spec §2.5).
 pub fn read_only_instance(adapter_id: &str, id: &str, reason: ReadOnlyReason) -> ManagerInstance {
     ManagerInstance {

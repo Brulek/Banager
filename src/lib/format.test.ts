@@ -115,36 +115,36 @@ describe("outcomeKey", () => {
   it("never says a cancelled or crashed operation changed nothing, in either language (T9)", () => {
     // A path-list uninstall cancelled between two of its items has moved
     // the first to the Trash and still ends `Cancelled`
-    // (crates/banager-core/src/events.rs), and an operation Canager lost
+    // (crates/banager-core/src/events.rs), and an operation Banager lost
     // to a panic may have run its command (`Fault::Panicked`,
     // crates/banager-core/src/model.rs). The refusals that stop before
     // anything runs may say nothing changed, and do; these two may not --
     // nor what the drawer says next about a crash, nor the row's own word
     // for a cancelled update.
     const claimsNothingChanged = /nothing (was |has been )?changed|changed nothing|no changes were made|没有改动|未做任何改动/i;
-    const panicked: Outcome = { CanagerFailed: "Panicked" };
+    const panicked: Outcome = { BanagerFailed: "Panicked" };
     expect(outcomeKey("Cancelled")).toBe("Cancelled");
-    expect(outcomeKey(panicked)).toBe("CanagerFailed.Panicked");
-    expect(outcomeDetailKey(panicked)).toBe("operations.outcome.CanagerFailed.PanickedDetail");
+    expect(outcomeKey(panicked)).toBe("BanagerFailed.Panicked");
+    expect(outcomeDetailKey(panicked)).toBe("operations.outcome.BanagerFailed.PanickedDetail");
     for (const locale of [en, zhCN]) {
       for (const sentence of [
         locale.operations.outcome.Cancelled,
-        locale.operations.outcome.CanagerFailed.Panicked,
-        locale.operations.outcome.CanagerFailed.PanickedDetail,
+        locale.operations.outcome.BanagerFailed.Panicked,
+        locale.operations.outcome.BanagerFailed.PanickedDetail,
         locale.updates.progress.cancelled,
       ]) {
         expect(sentence).not.toMatch(claimsNothingChanged);
       }
     }
     // What a crash says instead, in the drawer: look at the list.
-    expect(en.operations.outcome.CanagerFailed.PanickedDetail).toBe("Check the list to see whether anything changed.");
-    expect(zhCN.operations.outcome.CanagerFailed.PanickedDetail).toBe("请查看列表，确认是否有变化。");
+    expect(en.operations.outcome.BanagerFailed.PanickedDetail).toBe("Check the list to see whether anything changed.");
+    expect(zhCN.operations.outcome.BanagerFailed.PanickedDetail).toBe("请查看列表，确认是否有变化。");
     // The guard itself: it does catch the claim an operation that never
     // got to run makes. (The refusals no longer make it: they stop before
     // anything starts, and the polish-3 copy rules keep 「没有改动」 for an
     // operation that had started.)
-    expect(en.operations.outcome.CanagerFailed.Internal).toMatch(claimsNothingChanged);
-    expect(zhCN.operations.outcome.CanagerFailed.Internal).toMatch(claimsNothingChanged);
+    expect(en.operations.outcome.BanagerFailed.Internal).toMatch(claimsNothingChanged);
+    expect(zhCN.operations.outcome.BanagerFailed.Internal).toMatch(claimsNothingChanged);
   });
 
   it("says an update that changed nothing changed nothing, and points to the log", () => {
@@ -208,12 +208,12 @@ describe("outcomeKey", () => {
       { NeedsAttention: "BackAfterUninstall" },
       { Failed: { exit_code: 1, summary: "Error: No such keg" } },
       { Failed: { exit_code: 1, summary: " " } },
-      { CanagerFailed: "Panicked" },
-      { CanagerFailed: { ProgramMissing: { program: "/x/brew" } } },
-      { CanagerFailed: { SpawnFailed: { detail: "EACCES" } } },
-      { CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
-      { CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
-      { CanagerFailed: "Internal" },
+      { BanagerFailed: "Panicked" },
+      { BanagerFailed: { ProgramMissing: { program: "/x/brew" } } },
+      { BanagerFailed: { SpawnFailed: { detail: "EACCES" } } },
+      { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
+      { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
+      { BanagerFailed: "Internal" },
     ];
     const lookup = (locale: unknown, key: string): unknown =>
       key.split(".").reduce<unknown>(
@@ -228,9 +228,9 @@ describe("outcomeKey", () => {
       ["NeedsAttention.UnchangedAfterUpgrade", "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail"],
       ["NeedsAttention.BackAfterUninstall", "operations.outcome.NeedsAttention.BackAfterUninstallDetail"],
       ["FailedSilent", "operations.outcome.FailedSilentDetail"],
-      ["CanagerFailed.Panicked", "operations.outcome.CanagerFailed.PanickedDetail"],
-      ["CanagerFailed.HomebrewStillUpdating", "operations.outcome.CanagerFailed.HomebrewStillUpdatingDetail"],
-      ["CanagerFailed.PathChanged", "operations.outcome.CanagerFailed.PathChangedDetail"],
+      ["BanagerFailed.Panicked", "operations.outcome.BanagerFailed.PanickedDetail"],
+      ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],
+      ["BanagerFailed.PathChanged", "operations.outcome.BanagerFailed.PathChangedDetail"],
     ]);
     for (const [, detail] of withStep) {
       expect(typeof lookup(en, detail as string), detail as string).toBe("string");
@@ -239,9 +239,9 @@ describe("outcomeKey", () => {
   });
 });
 
-describe("outcomeKey for Canager's own failures", () => {
+describe("outcomeKey for Banager's own failures", () => {
   // Every `Fault` variant, as serde sends it (see model.rs's
-  // `test_canager_failed_is_externally_tagged_on_the_wire`).
+  // `test_banager_failed_is_externally_tagged_on_the_wire`).
   const faults: Fault[] = [
     "Panicked",
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
@@ -264,7 +264,7 @@ describe("outcomeKey for Canager's own failures", () => {
   it("gives every Fault its own sentence in both languages", () => {
     const keys = new Set<string>();
     for (const fault of faults) {
-      const key = `operations.outcome.${outcomeKey({ CanagerFailed: fault })}`;
+      const key = `operations.outcome.${outcomeKey({ BanagerFailed: fault })}`;
       keys.add(key);
       expect(typeof lookup(en, key), key).toBe("string");
       expect(typeof lookup(zhCN, key), key).toBe("string");
@@ -273,43 +273,43 @@ describe("outcomeKey for Canager's own failures", () => {
   });
 
   it("passes a fault's data, never a sentence, to its translation", () => {
-    expect(outcomeKey({ CanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toBe(
-      "CanagerFailed.ProgramMissing",
+    expect(outcomeKey({ BanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toBe(
+      "BanagerFailed.ProgramMissing",
     );
-    expect(outcomeArgs({ CanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toEqual({
+    expect(outcomeArgs({ BanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toEqual({
       program: "/x/brew",
     });
-    expect(outcomeArgs({ CanagerFailed: { SpawnFailed: { detail: "EACCES" } } })).toEqual({
+    expect(outcomeArgs({ BanagerFailed: { SpawnFailed: { detail: "EACCES" } } })).toEqual({
       detail: "EACCES",
     });
-    expect(outcomeKey({ CanagerFailed: "Panicked" })).toBe("CanagerFailed.Panicked");
-    expect(outcomeArgs({ CanagerFailed: "Panicked" })).toEqual({});
-    expect(outcomeKey({ CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe(
-      "CanagerFailed.HomebrewStillUpdating",
+    expect(outcomeKey({ BanagerFailed: "Panicked" })).toBe("BanagerFailed.Panicked");
+    expect(outcomeArgs({ BanagerFailed: "Panicked" })).toEqual({});
+    expect(outcomeKey({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe(
+      "BanagerFailed.HomebrewStillUpdating",
     );
     expect(
-      outcomeArgs({ CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } }),
+      outcomeArgs({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } }),
     ).toEqual({ minutes: 10 });
-    expect(en.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
-    expect(zhCN.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
-    expect(en.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
-    expect(zhCN.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
+    expect(en.operations.outcome.BanagerFailed.ProgramMissing).toContain("{{program}}");
+    expect(zhCN.operations.outcome.BanagerFailed.ProgramMissing).toContain("{{program}}");
+    expect(en.operations.outcome.BanagerFailed.SpawnFailed).toContain("{{detail}}");
+    expect(zhCN.operations.outcome.BanagerFailed.SpawnFailed).toContain("{{detail}}");
     // Item (1) of the loose-ends pass: the "10" in these two sentences
     // must come from `BrewAdapter::OP_UPDATE_WAIT`
     // (`Fault::HomebrewStillUpdating`'s `minutes` field), never be a
     // second, independently-typed copy of the number.
-    expect(en.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
-    expect(zhCN.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
+    expect(en.operations.outcome.BanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
+    expect(zhCN.operations.outcome.BanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
     // Phase 4 step C: the path a path-list uninstall stopped at, and the
     // two lines it writes in the log.
-    expect(outcomeKey({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toBe(
-      "CanagerFailed.PathChanged",
+    expect(outcomeKey({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toBe(
+      "BanagerFailed.PathChanged",
     );
-    expect(outcomeArgs({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
+    expect(outcomeArgs({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
       path: "~/.local/bin/claude",
     });
-    expect(en.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
-    expect(zhCN.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
+    expect(en.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
+    expect(zhCN.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(en.operations.logNote.trashFailed).toContain("{{error}}");
