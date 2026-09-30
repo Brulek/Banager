@@ -15,7 +15,7 @@
 | 语言 | 英文默认、内置简体中文，跟随系统 | |
 | 普通人友好 | 依赖库自动标灰 + 精选清单手写中英白话说明 | 不接 AI 解释 |
 | 后台 | 托盘常驻可选，首次启动询问 | |
-| 名字 | Canager | GitHub / npm / brew / PyPI 均未被占 |
+| 名字 | Canager | GitHub / npm / brew / PyPI 均未被占（查的是 Canager；2026-09-30 改名为 Banager） |
 | 竞品 | UniGetUI（2.6 万星，C#/Avalonia，2026 起三平台，被 Devolutions 收购）；mxcl/package-manager-manager（macOS，Swift，2 个月，41 星） | |
 
 ## 1. 定位
