@@ -176,7 +176,7 @@ describe("App", () => {
     // A source's row, as Mail's mailbox: the page on its tools alone,
     // titled with its name and counting its own; that row selected, and
     // Installed's not.
-    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
+    fireEvent.click(await within(sources).findByRole("button", { name: "npm" }));
     expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
     expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();
     expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^npm$/);
@@ -208,7 +208,7 @@ describe("App", () => {
     const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
     const sources = await findByRole("list", { name: "Sources" });
 
-    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
+    fireEvent.click(await within(sources).findByRole("button", { name: "npm" }));
     expect(await findByText("Nothing installed with npm")).toBeInTheDocument();
     expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^npm$/);
     // No count under it: its status says nothing, out of sight.
@@ -226,7 +226,7 @@ describe("App", () => {
     const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
     const sources = await findByRole("list", { name: "Sources" });
 
-    fireEvent.click(within(sources).getByRole("button", { name: "Homebrew (Intel)" }));
+    fireEvent.click(await within(sources).findByRole("button", { name: "Homebrew (Intel)" }));
     expect(await findByText("Nothing installed with Homebrew (Intel)")).toBeInTheDocument();
     expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Homebrew \(Intel\)$/);
     fireEvent.click(within(sources).getByRole("button", { name: "Homebrew (Apple silicon)" }));
@@ -237,13 +237,13 @@ describe("App", () => {
     const { getByRole, findByText, getAllByRole, queryAllByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
 
-    // The pages about the sources check them again; the Unknown page
-    // scans again, and only that; Settings has nothing to look again at.
+    // The pages about the sources check them again; Other Programs scans
+    // again, and only that; Settings has nothing to look again at.
     const actions: Array<[string, string[]]> = [
       ["Overview", ["Check Again"]],
       ["Updates", ["Check Again"]],
       ["Installed", ["Check Again"]],
-      ["Unknown", ["Scan Again"]],
+      ["Other Programs", ["Scan Again"]],
       ["Settings", []],
     ];
     for (const [name, expected] of actions) {
@@ -298,7 +298,7 @@ describe("App", () => {
       ["Overview", [], "Check Again"],
       ["Updates", ["Update All"], "Check Again"],
       ["Installed", ["Sort Order", "Search installed tools"], "Check Again"],
-      ["Unknown", [], "Scan Again"],
+      ["Other Programs", [], "Scan Again"],
     ];
     for (const [page, own, again] of pages) {
       fireEvent.click(getByRole("button", { name: page }));
@@ -306,14 +306,14 @@ describe("App", () => {
     }
   });
 
-  it("says in the Unknown page's toolbar when its scan answered, and never when the sources were checked", async () => {
+  it("says in Other Programs' toolbar when its scan answered, and never when the sources were checked", async () => {
     const { getByRole, findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
     const toolbar = getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
     const checkAgain = within(toolbar).getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(checkAgain.getAttribute("title")).toMatch(/^Check Again \(⌘R\) · Checked /));
 
-    fireEvent.click(getByRole("button", { name: "Unknown" }));
+    fireEvent.click(getByRole("button", { name: "Other Programs" }));
 
     const scanAgain = getByRole("button", { name: "Scan Again" });
     await waitFor(() => expect(scanAgain).toHaveAttribute("title", "Scan Again · Scanned just now"));
@@ -370,7 +370,7 @@ describe("App", () => {
       ["Overview", null],
       ["Updates", "2 updates available"],
       ["Installed", "2 tools"],
-      ["Unknown", "3 programs"],
+      ["Other Programs", "3 programs"],
       ["Settings", null],
     ];
     for (const [name, subtitle] of expected) {
@@ -379,7 +379,7 @@ describe("App", () => {
     }
   });
 
-  it("says the Unknown page's scan under way, then what it found, through the toolbar's one status node", async () => {
+  it("says Other Programs' scan under way, then what it found, through the toolbar's one status node", async () => {
     const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
     let release: (() => void) | undefined;
     const program: UnknownEntry = {
@@ -404,7 +404,7 @@ describe("App", () => {
     const status = getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
     expect(status).toHaveAttribute("role", "status");
 
-    fireEvent.click(getByRole("button", { name: "Unknown" }));
+    fireEvent.click(getByRole("button", { name: "Other Programs" }));
     await waitFor(() => expect(status).toHaveTextContent("Scanning…"));
     expect(getByRole("heading", { level: 1 }).nextElementSibling).toBe(status);
     await waitFor(() => expect(release).toBeDefined());
@@ -630,20 +630,22 @@ describe("App", () => {
     expect(await findByRole("heading", { name: "Settings" })).toBeInTheDocument();
   });
 
-  it("switches to the Unknown page, which lives outside the snapshot's empty states", async () => {
+  it("switches to Other Programs, under 「来源」 with no source, and outside the snapshot's empty states", async () => {
     // A Mac with no source at all: SnapshotStatus shows "Canager found
     // nothing it can manage" for the Installed and Updates pages. That is
-    // exactly where everything on the machine is unknown, so this page
-    // must not be behind that gate.
+    // exactly where no source accounts for anything on the machine, so this
+    // page must not be behind that gate -- nor its row behind the sources'.
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
     await findByText("No tools to manage");
+    const sources = getByRole("list", { name: "Sources" });
 
-    fireEvent.click(getByRole("button", { name: "Unknown" }));
+    fireEvent.click(within(sources).getByRole("button", { name: "Other Programs" }));
 
     // Its title is the page header's; the page adds no second one.
-    expect(await findByRole("heading", { level: 1, name: "Unknown" })).toBeInTheDocument();
-    expect(await findByText("No programs of unknown origin")).toBeInTheDocument();
+    expect(await findByRole("heading", { level: 1, name: "Other Programs" })).toBeInTheDocument();
+    expect(await findByText("No other programs")).toBeInTheDocument();
+    expect(within(sources).getByRole("button", { name: "Other Programs" })).toHaveAttribute("aria-current", "page");
   });
 
   it("shows no browser menu on a right-click in a build, and leaves it to developers in development", async () => {
@@ -845,7 +847,7 @@ describe("the menu bar's items that act in the page", () => {
 
     // From the Overview, where the window opens, to each of the others and back.
     for (const [command, page] of [
-      ["unknown", "Unknown"],
+      ["unknown", "Other Programs"],
       ["installed", "Installed"],
       ["updates", "Updates"],
       ["overview", "Overview"],
@@ -855,6 +857,32 @@ describe("the menu bar's items that act in the page", () => {
       expect(await findByRole("heading", { level: 1, name: page })).toBeInTheDocument();
       expect(getByRole("button", { name: page })).toHaveAttribute("aria-current", "page");
     }
+  });
+
+  it("open Other Programs on ⌘4 from a source's tools: its own page, and its row under 「来源」 selected in the source's place", async () => {
+    const menu = fakeMenuBar();
+    const { findByRole, findByText, getByRole, queryByRole } = renderWithProviders(<App />);
+    const sources = await findByRole("list", { name: "Sources" });
+    const homebrew = await within(sources).findByRole("button", { name: "Homebrew" });
+    fireEvent.click(homebrew);
+    expect(await findByRole("heading", { level: 1, name: "Homebrew" })).toBeInTheDocument();
+    expect(homebrew).toHaveAttribute("aria-current", "page");
+
+    menu.choose("unknown");
+
+    expect(await findByRole("heading", { level: 1, name: "Other Programs" })).toBeInTheDocument();
+    // Its page, with its own list and Scan again, not the Installed page's
+    // search over one source's tools.
+    expect(await findByText("No other programs")).toBeInTheDocument();
+    expect(within(getByRole("banner")).getByRole("button", { name: "Scan Again" })).toBeInTheDocument();
+    expect(queryByRole("searchbox")).toBeNull();
+    expect(queryByRole("textbox", { name: "Search installed tools" })).toBeNull();
+    // The last row under 「来源」 is the one selected, and the source's is not.
+    const other = within(sources).getByRole("button", { name: "Other Programs" });
+    const rows = within(sources).getAllByRole("button");
+    expect(rows[rows.length - 1]).toBe(other);
+    expect([...document.querySelectorAll('[aria-current="page"]')]).toEqual([other]);
+    expect(homebrew).not.toHaveAttribute("aria-current");
   });
 
   it("open Installed on everything on Installed (⌘3), from one source's tools and a search, as the sidebar's Installed does", async () => {
@@ -882,7 +910,7 @@ describe("the menu bar's items that act in the page", () => {
     const menu = fakeMenuBar();
     const { findByRole, findByText, findByLabelText, getByRole, queryByText } = renderWithProviders(<App />);
     const sources = await findByRole("list", { name: "Sources" });
-    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
+    fireEvent.click(await within(sources).findByRole("button", { name: "npm" }));
     fireEvent.change(await findByLabelText("Search installed tools"), { target: { value: "type" } });
     expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
     expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();

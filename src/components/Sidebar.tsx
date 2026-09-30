@@ -2,11 +2,11 @@ import { useId, useMemo, useState } from "react";
 import type { ComponentType, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
-import { useSnapshot, useUnknownScan } from "../lib/queries";
+import { useSnapshot } from "../lib/queries";
 import { instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
-import { InstalledIcon, OverviewIcon, SettingsIcon, UnknownIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
+import { InstalledIcon, OverviewIcon, SettingsIcon, TerminalIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
 
 interface SidebarProps {
   page: Page;
@@ -22,7 +22,11 @@ interface SidebarProps {
   onSelectSource?: (instanceId: string) => void;
 }
 
-/** Each page's name: its entry here, and the title over it (`PageHeader`). */
+/**
+ * Each page's name: its row here, and the title over it (`PageHeader`).
+ * Other Programs' is `nav.unknown`, as the page is `UnknownPage` in the
+ * code: only its words changed when it was renamed.
+ */
 export const PAGE_LABEL_KEYS: Record<Page, string> = {
   overview: "nav.overview",
   updates: "nav.updates",
@@ -31,29 +35,33 @@ export const PAGE_LABEL_KEYS: Record<Page, string> = {
   settings: "nav.settings",
 };
 
-const PAGE_ICONS: Record<Page, ComponentType<{ size?: number; className?: string }>> = {
+/** The pages in the list at the top: every page but Other Programs, whose row is under 「来源」. */
+type ListedPage = Exclude<Page, "unknown">;
+
+const PAGE_ICONS: Record<ListedPage, ComponentType<{ size?: number; className?: string }>> = {
   overview: OverviewIcon,
   updates: UpdatesIcon,
   installed: InstalledIcon,
-  unknown: UnknownIcon,
   settings: SettingsIcon,
 };
 
 /**
  * The entries, in order: the Overview, the pages about the Mac, and
- * Settings fifth, in the same group (spec §3.1) -- until it has a window
- * of its own, opened with ⌘, as a Mac app's settings are.
+ * Settings fourth, in the same group (spec §3.1) -- until it has a window
+ * of its own, opened with ⌘, as a Mac app's settings are. Not Other
+ * Programs: what no source installed is the last row under 「来源」
+ * (`OtherProgramsRow`), after every source, as CleanMyMac lists the apps
+ * it cannot place last, as "Other", under where the rest came from.
  */
-const PAGES: Page[] = ["overview", "updates", "installed", "unknown", "settings"];
+const PAGES: ListedPage[] = ["overview", "updates", "installed", "settings"];
 
 /**
  * What an entry's count means, as a screen reader says it after the
  * entry's name. The number on screen is only a number.
  */
-const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
+const COUNT_DESCRIPTION_KEYS: Partial<Record<ListedPage, string>> = {
   updates: "nav.count.updates",
   installed: "nav.count.installed",
-  unknown: "nav.count.unknown",
 };
 
 /**
@@ -65,22 +73,20 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
  *   Dock's badge shows the same number (`useDockBadge`).
  * - Installed: everything the Installed page lists, components other
  *   software brought in included.
- * - Unknown: what the last scan found, once one has run. Nothing here
- *   starts one; the Unknown page does, when it is opened.
  *
- * Zero shows nothing, like no count at all.
+ * Zero shows nothing, like no count at all. Other Programs has none: its
+ * row stands with the sources', which have none either (`SourceRow`), and
+ * its page says how many in its header's subtitle (「5个程序」).
  */
-function useCounts(): Partial<Record<Page, number>> {
+function useCounts(): Partial<Record<ListedPage, number>> {
   const updates = useUpdateCount();
   const { data: snapshot } = useSnapshot();
-  const { data: scan } = useUnknownScan();
   return useMemo(
     () => ({
       updates,
       installed: snapshot?.artifacts.length,
-      unknown: scan?.entries.length,
     }),
-    [updates, snapshot, scan],
+    [updates, snapshot],
   );
 }
 
@@ -106,7 +112,8 @@ interface SourceRow {
  * The sources under 「来源」, one row per source on this Mac, in the
  * snapshot's order -- the order the Installed page groups them in --
  * including one with nothing installed and one that did not answer, which
- * say so when opened (spec R8). None before the first snapshot.
+ * say so when opened (spec R8). None before the first snapshot. Other
+ * Programs' row follows them, whatever there is.
  */
 function useSourceRows(): SourceRow[] {
   const { t } = useTranslation();
@@ -249,6 +256,29 @@ function SidebarRow({
   );
 }
 
+/**
+ * Other Programs' mark, where a source's is on its row: the tile each of
+ * its programs has on the page (`ProgramAvatar` in
+ * src/pages/UnknownPage.tsx) -- a prompt, white on the neutral grey -- at
+ * a source's 16 (`SourceAvatar`'s `xs`, its corners 4), in the 20px box
+ * every row's glyph has. Neutral, not the accent the pages' glyphs are
+ * drawn in: it is the last of the sources, and has no colour of its own.
+ * In dark mode, the 1px edge of 12% white a source's logo has there
+ * (`PackLogo`): without it, dark mode's grey tile all but vanished into
+ * the selected row's fill.
+ */
+function OtherProgramsMark() {
+  return (
+    <span
+      aria-hidden="true"
+      data-other-programs-mark=""
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-neutral-avatar text-white dark:inset-ring dark:inset-ring-white/12"
+    >
+      <TerminalIcon size={12} />
+    </span>
+  );
+}
+
 /** The keys that move the focus between the sidebar's rows (`Sidebar`), and where each takes it. */
 const ROW_KEYS: Record<string, (at: number, count: number) => number> = {
   ArrowDown: (at, count) => Math.min(at + 1, count - 1),
@@ -270,11 +300,16 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
   // control (a roving tabindex): Tab comes in on the row selected -- or,
   // while the focus is in the sidebar, on the row it was last on -- and
   // the next Tab leaves for the toolbar and the page. ↑ and ↓ move from
-  // row to row, the pages' and the sources' as one list, Home and End to
-  // its ends; Return and Space open a row, as a click does.
+  // row to row, the pages' and the sources' -- Other Programs last -- as
+  // one list, Home and End to its ends; Return and Space open a row, as a
+  // click does.
   const currentKey = sourceShown !== null ? `source:${sourceShown}` : `page:${page}`;
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
-  const rowKeys = [...PAGES.map((p) => `page:${p}`), ...sources.map((row) => `source:${row.id}`)];
+  const rowKeys = [
+    ...PAGES.map((p) => `page:${p}`),
+    ...sources.map((row) => `source:${row.id}`),
+    "page:unknown",
+  ];
   const tabKey = [focusedKey, currentKey].find((key) => key !== null && rowKeys.includes(key)) ?? rowKeys[0];
   const roving = (key: string) => ({
     tabIndex: key === tabKey ? (0 as const) : (-1 as const),
@@ -295,7 +330,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedKey(null);
   };
 
-  const entry = (p: Page) => {
+  const entry = (p: ListedPage) => {
     const active = page === p && !(p === "installed" && sourceShown !== null);
     const Icon = PAGE_ICONS[p];
     const count = counts[p];
@@ -368,24 +403,39 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
               <li key={p}>{entry(p)}</li>
             ))}
           </ul>
-          {sources.length > 0 ? (
-            <>
-              {/* A group's title, as a Mac sidebar sets one: 11 bold in the
-                  secondary colour, 14 from the edge, in a 28-high row whose
-                  words sit at its foot, just over the rows they name. */}
-              <p
-                id={`${idPrefix}-sources`}
-                className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
-              >
-                {t("nav.sources")}
-              </p>
-              <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
-                {sources.map((row, index) => (
-                  <li key={row.id}>{sourceEntry(row, index)}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
+          {/* A group's title, as a Mac sidebar sets one: 11 bold in the
+              secondary colour, 14 from the edge, in a 28-high row whose
+              words sit at its foot, just over the rows they name. There
+              from the start, with Other Programs alone under it until the
+              first snapshot brings the sources -- and on a Mac with no
+              source at all, where every program is one of those. */}
+          <p
+            id={`${idPrefix}-sources`}
+            className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
+          >
+            {t("nav.sources")}
+          </p>
+          <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
+            {sources.map((row, index) => (
+              <li key={row.id}>{sourceEntry(row, index)}</li>
+            ))}
+            {/* The last row: the programs no source installed, whose page
+                it opens -- its own, with its own list, not the Installed
+                page on a source, as the rows above it do. Selected while
+                that page is open, as a source's row is while it shows that
+                source; no count, as none is by a source. */}
+            <li>
+              <SidebarRow
+                glyph={<OtherProgramsMark />}
+                label={t(PAGE_LABEL_KEYS.unknown)}
+                active={page === "unknown"}
+                description={null}
+                descriptionId={`${idPrefix}-unknown`}
+                onPress={() => onSelectPage("unknown")}
+                {...roving("page:unknown")}
+              />
+            </li>
+          </ul>
         </div>
       </div>
     </nav>

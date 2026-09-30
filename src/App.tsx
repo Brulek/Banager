@@ -24,10 +24,10 @@ import { useUiStore, type Page } from "./store/ui";
 
 /**
  * What each page's toolbar has on the right: its own way to look again,
- * or nothing. The pages about the sources check them again; the Unknown
- * page scans again -- only that, never two refresh buttons stacked; and
- * Settings looks at nothing. A `switch` with no default, so a page added
- * to `Page` without an answer here fails `tsc`.
+ * or nothing. The pages about the sources check them again; Other
+ * Programs (`UnknownPage`) scans again -- only that, never two refresh
+ * buttons stacked; and Settings looks at nothing. A `switch` with no
+ * default, so a page added to `Page` without an answer here fails `tsc`.
  */
 function headerActions(page: Page): ReactNode {
   switch (page) {
@@ -52,8 +52,8 @@ function headerActions(page: Page): ReactNode {
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
  * bring up to date. On one source alone, the Installed page counts that
- * source's tools, 「30个工具」, under its name (`useShownSource`). The
- * Unknown page says 「正在扫描…」 while it scans.
+ * source's tools, 「30个工具」, under its name (`useShownSource`). Other
+ * Programs says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
  * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
  * default, so a page added to `Page` without an answer here fails `tsc`.
@@ -185,7 +185,8 @@ function App() {
       <UpdateWatchers />
       {/* The sidebar's Installed opens the page on everything installed,
           which is what its count counts; a source's row, under 「来源」,
-          opens it on that source alone, and is the row selected then. */}
+          opens it on that source alone, and is the row selected then.
+          The last row there, Other Programs, opens that page. */}
       <Sidebar
         page={page}
         source={installedFilter}

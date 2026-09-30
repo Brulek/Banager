@@ -163,6 +163,19 @@ beforeEach(() => {
   });
 });
 
+/**
+ * The 「来源」 list, once the first snapshot has brought its sources: Other
+ * Programs is in it from the start, alone until then.
+ */
+async function listedSources(
+  findByRole: (role: "list", options: { name: string }) => Promise<HTMLElement>,
+  name = "Sources",
+): Promise<HTMLElement> {
+  const list = await findByRole("list", { name });
+  await waitFor(() => expect(within(list).getAllByRole("button").length).toBeGreaterThan(1));
+  return list;
+}
+
 describe("Sidebar", () => {
   it("renders a button for each page, in order, and marks the active one", () => {
     const onSelectPage = vi.fn();
@@ -173,27 +186,28 @@ describe("Sidebar", () => {
     const overviewButton = getByRole("button", { name: "Overview" });
     const installedButton = getByRole("button", { name: "Installed" });
     const updatesButton = getByRole("button", { name: "Updates" });
-    const unknownButton = getByRole("button", { name: "Unknown" });
+    const otherButton = getByRole("button", { name: "Other Programs" });
     const settingsButton = getByRole("button", { name: "Settings" });
 
     expect(installedButton).toHaveAttribute("aria-current", "page");
     expect(overviewButton).not.toHaveAttribute("aria-current");
     expect(updatesButton).not.toHaveAttribute("aria-current");
-    expect(unknownButton).not.toHaveAttribute("aria-current");
+    expect(otherButton).not.toHaveAttribute("aria-current");
     expect(settingsButton).not.toHaveAttribute("aria-current");
     // The Overview first, then the pages about the machine, Updates
-    // leading; Settings fifth, in the same list, with no line above it.
-    expect(getAllByRole("button").map((b) => b.textContent)).toEqual([
+    // leading; Settings fourth, in the same list, with no line above it.
+    // Other Programs is no page of that list: it is under 「来源」.
+    const lists = getAllByRole("list");
+    expect(lists).toHaveLength(2);
+    expect(within(lists[0]).getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Overview",
       "Updates",
       "Installed",
-      "Unknown",
       "Settings",
     ]);
-    const lists = getAllByRole("list");
-    expect(lists).toHaveLength(1);
-    expect(within(lists[0]).getAllByRole("button")).toHaveLength(5);
     expect(settingsButton.closest("li")?.parentElement).toBe(lists[0]);
+    expect(within(lists[0]).queryByRole("button", { name: "Other Programs" })).toBeNull();
+    expect(otherButton.closest("ul")).toBe(getByRole("list", { name: "Sources" }));
   });
 
   it("draws each entry as a Mac sidebar's row: 32 high, its icon in the accent, nothing under the pointer", async () => {
@@ -202,7 +216,7 @@ describe("Sidebar", () => {
     );
     await findByText("5");
 
-    for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
+    for (const name of ["Overview", "Updates", "Installed", "Settings"]) {
       const button = getByRole("button", { name });
       // 32 high, 10 in from either side of the list's own 10 (so the icon's
       // box starts 20 in and the words 46), in the regular weight.
@@ -249,7 +263,7 @@ describe("Sidebar", () => {
     getByRole("button", { name: "Updates" }).click();
     expect(onSelectPage).toHaveBeenCalledWith("updates");
 
-    getByRole("button", { name: "Unknown" }).click();
+    getByRole("button", { name: "Other Programs" }).click();
     expect(onSelectPage).toHaveBeenCalledWith("unknown");
 
     getByRole("button", { name: "Settings" }).click();
@@ -328,24 +342,30 @@ describe("Sidebar", () => {
     expect(installedButton).toHaveAccessibleDescription("5 installed");
   });
 
-  it("counts Unknown only once a scan has run, and never starts one itself", async () => {
+  it("counts nothing on Other Programs, as on a source's row, once a scan has run too, and never starts one", async () => {
     const { getByRole, findByText, queryClient } = renderWithProviders(
       <Sidebar page="updates" onSelectPage={vi.fn()} />,
     );
     await findByText("5");
 
-    const unknownButton = getByRole("button", { name: "Unknown" });
-    expect(unknownButton.textContent).toBe("Unknown");
-    expect(unknownButton).not.toHaveAttribute("aria-describedby");
+    const otherButton = getByRole("button", { name: "Other Programs" });
+    const plain = () => {
+      expect(otherButton.textContent).toBe("Other Programs");
+      expect(otherButton).not.toHaveAttribute("aria-describedby");
+      expect(otherButton.querySelector("[data-count], [data-trailing]")).toBeNull();
+    };
+    plain();
     expect(mockInvoke).not.toHaveBeenCalledWith("scan_unknown");
 
-    // The Unknown page's scan lands in the shared cache.
+    // Its page's scan lands in the shared cache: two programs, which its
+    // header's subtitle says, not the sidebar.
     act(() => {
       queryClient.setQueryData(queryKeys.unknown, scan);
     });
-
-    expect(await within(unknownButton).findByText("2")).toBeInTheDocument();
-    expect(unknownButton).toHaveAccessibleDescription("2 found");
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.unknown)).toBe(scan));
+    plain();
+    expect(within(otherButton).queryByText("2")).toBeNull();
+    expect(mockInvoke).not.toHaveBeenCalledWith("scan_unknown");
   });
 
   it("shows no count once it drops to zero", async () => {
@@ -358,7 +378,7 @@ describe("Sidebar", () => {
     // Every count showing first, so their going away below is the zero
     // and not data that has not arrived yet.
     await waitFor(() => {
-      for (const name of ["Updates", "Installed", "Unknown"]) {
+      for (const name of ["Updates", "Installed"]) {
         expect(getByRole("button", { name })).toHaveAttribute("aria-describedby");
       }
     });
@@ -375,7 +395,7 @@ describe("Sidebar", () => {
     });
 
     await waitFor(() => {
-      for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
+      for (const name of ["Overview", "Updates", "Installed", "Settings", "Other Programs"]) {
         const button = getByRole("button", { name });
         expect(button.textContent).toBe(name);
         expect(button).not.toHaveAttribute("aria-describedby");
@@ -400,13 +420,15 @@ describe("Sidebar", () => {
     // below (`pt-2`): 60 from the top, at the top of what scrolls.
     const scroller = firstRow.nextElementSibling as HTMLElement;
     expect(scroller).toHaveAttribute("data-sidebar-scroller");
-    expect(scroller.firstElementChild?.firstElementChild).toBe(getByRole("list"));
+    expect(scroller.firstElementChild?.firstElementChild).toBe(getAllByRole("list")[0]);
     expect(queryByText("Canager")).toBeNull();
     expect(nav.textContent).not.toContain("Canager");
 
     // Pressing it drags the window; nothing else in the sidebar does.
     expect(dragsWindow(firstRow)).toBe(true);
-    expect(dragsWindow(getByRole("list"))).toBe(false);
+    for (const list of getAllByRole("list")) {
+      expect(dragsWindow(list)).toBe(false);
+    }
     for (const button of getAllByRole("button")) {
       expect(dragsWindow(button)).toBe(false);
     }
@@ -418,13 +440,15 @@ describe("Sidebar", () => {
         <Sidebar page="overview" onSelectPage={vi.fn()} />,
       );
 
-      const list = await findByRole("list", { name: "Sources" });
+      const list = await listedSources(findByRole);
       // In the snapshot's order, a source with nothing installed and one
-      // that is not running as much as the rest (spec R8).
+      // that is not running as much as the rest (spec R8); Other Programs
+      // after them.
       expect(within(list).getAllByRole("button")).toEqual([
         getByRole("button", { name: "Homebrew" }),
         getByRole("button", { name: "pip" }),
         getByRole("button", { name: "Ollama" }),
+        getByRole("button", { name: "Other Programs" }),
       ]);
       // No number by a source: beside 「更新 10」 one read as that
       // source's updates. The page a source opens says how many it has.
@@ -470,7 +494,7 @@ describe("Sidebar", () => {
         ],
       };
       const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
-      await findByRole("list", { name: "Sources" });
+      await listedSources(findByRole);
 
       const homebrew = getByRole("button", { name: "Homebrew" });
       const warning = within(homebrew).getByTitle("Homebrew isn't responding");
@@ -492,11 +516,12 @@ describe("Sidebar", () => {
       };
       const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
 
-      const list = await findByRole("list", { name: "Sources" });
+      const list = await listedSources(findByRole);
       expect(within(list).getAllByRole("button")).toEqual([
         getByRole("button", { name: "Homebrew (Apple silicon)" }),
         getByRole("button", { name: "Homebrew (Intel)" }),
         getByRole("button", { name: "pip" }),
+        getByRole("button", { name: "Other Programs" }),
       ]);
       expect(getByRole("button", { name: "Homebrew (Intel)" })).not.toHaveAttribute("aria-describedby");
       // In sight: the name, and under it which one it is, 11 in the
@@ -524,7 +549,7 @@ describe("Sidebar", () => {
       served = { ...snapshot, instances: [intelOnly, pip], artifacts: [] };
       const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
 
-      await findByRole("list", { name: "Sources" });
+      await listedSources(findByRole);
       const homebrew = getByRole("button", { name: "Homebrew" });
       // Its name alone: no place after it, no tooltip.
       expect(homebrew.querySelector(".truncate")?.textContent).toBe("Homebrew");
@@ -538,7 +563,7 @@ describe("Sidebar", () => {
         instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }, pip, ollama],
       };
       const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
-      await findByRole("list", { name: "Sources" });
+      await listedSources(findByRole);
 
       const warned = getByRole("button", { name: "Homebrew" });
       const plain = getByRole("button", { name: "pip" });
@@ -569,7 +594,7 @@ describe("Sidebar", () => {
 
     it("leaves 12 under the last row inside what scrolls", async () => {
       const { findByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
-      const list = await findByRole("list", { name: "Sources" });
+      const list = await listedSources(findByRole);
       const content = list.parentElement as HTMLElement;
       expect(content.className.split(" ")).toContain("pb-3");
       expect(content.parentElement).toHaveAttribute("data-sidebar-scroller");
@@ -580,7 +605,7 @@ describe("Sidebar", () => {
       const { findByRole, getByRole, rerender } = renderWithProviders(
         <Sidebar page="installed" source={pip.id} onSelectPage={vi.fn()} />,
       );
-      await findByRole("list", { name: "Sources" });
+      await listedSources(findByRole);
       const current = () =>
         [...document.querySelectorAll('[aria-current="page"]')].map(
           (element) => element.querySelector(".truncate")?.textContent,
@@ -604,11 +629,12 @@ describe("Sidebar", () => {
           .filter((row) => row.tabIndex === 0)
           .map((row) => row.getAttribute("aria-label") ?? row.querySelector(".truncate")?.textContent);
 
-      it("is one Tab stop: the row selected, a page's or a source's", async () => {
+      it("is one Tab stop: the row selected, a page's, a source's or Other Programs'", async () => {
         const { findByRole, getAllByRole, rerender } = renderWithProviders(
           <Sidebar page="updates" onSelectPage={vi.fn()} />,
         );
-        await findByRole("list", { name: "Sources" });
+        await listedSources(findByRole);
+        // Four pages, three sources and Other Programs.
         expect(getAllByRole("button")).toHaveLength(8);
         expect(tabbable()).toEqual(["Updates"]);
         for (const row of getAllByRole("button")) {
@@ -618,11 +644,14 @@ describe("Sidebar", () => {
 
         rerender(<Sidebar page="installed" source={pip.id} onSelectPage={vi.fn()} />);
         expect(tabbable()).toEqual(["pip"]);
+
+        rerender(<Sidebar page="unknown" source={pip.id} onSelectPage={vi.fn()} />);
+        expect(tabbable()).toEqual(["Other Programs"]);
       });
 
       it("moves with ↑ and ↓ through the pages and the sources as one list, and Home and End to its ends", async () => {
         const { findByRole, getByRole } = renderWithProviders(<Sidebar page="settings" onSelectPage={vi.fn()} />);
-        await findByRole("list", { name: "Sources" });
+        await listedSources(findByRole);
         const settingsRow = getByRole("button", { name: "Settings" });
         settingsRow.focus();
 
@@ -632,11 +661,18 @@ describe("Sidebar", () => {
         expect(tabbable()).toEqual(["Homebrew"]);
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
         expect(document.activeElement).toBe(settingsRow);
+        // The last row is Other Programs, after the last source.
         fireEvent.keyDown(settingsRow, { key: "End" });
+        const other = getByRole("button", { name: "Other Programs" });
+        expect(document.activeElement).toBe(other);
+        expect(tabbable()).toEqual(["Other Programs"]);
+        fireEvent.keyDown(other, { key: "ArrowUp" });
         expect(document.activeElement).toBe(getByRole("button", { name: "Ollama" }));
-        // No further at either end.
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
-        expect(document.activeElement).toBe(getByRole("button", { name: "Ollama" }));
+        expect(document.activeElement).toBe(other);
+        // No further at either end.
+        fireEvent.keyDown(other, { key: "ArrowDown" });
+        expect(document.activeElement).toBe(other);
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
         expect(document.activeElement).toBe(getByRole("button", { name: "Overview" }));
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
@@ -651,7 +687,7 @@ describe("Sidebar", () => {
             <button type="button">Beyond</button>
           </>,
         );
-        await findByRole("list", { name: "Sources" });
+        await listedSources(findByRole);
         const installed = getByRole("button", { name: "Installed" });
         installed.focus();
         fireEvent.keyDown(installed, { key: "ArrowUp" });
@@ -672,7 +708,7 @@ describe("Sidebar", () => {
 
       it("leaves a key with ⌘ or ⌥ alone, and any key but those four", async () => {
         const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
-        await findByRole("list", { name: "Sources" });
+        await listedSources(findByRole);
         const overview = getByRole("button", { name: "Overview" });
         overview.focus();
         expect(fireEvent.keyDown(overview, { key: "ArrowDown", metaKey: true })).toBe(true);
@@ -686,23 +722,99 @@ describe("Sidebar", () => {
       const { findByRole, getByRole } = renderWithProviders(
         <Sidebar page="overview" onSelectPage={vi.fn()} onSelectSource={onSelectSource} />,
       );
-      await findByRole("list", { name: "Sources" });
+      await listedSources(findByRole);
 
       getByRole("button", { name: "Ollama" }).click();
       expect(onSelectSource).toHaveBeenCalledWith(ollama.id);
     });
 
-    it("scrolls with the pages as one, under the traffic lights' row, and lists nothing before the first snapshot", async () => {
+    describe("Other Programs", () => {
+      it("is the last row under 「来源」, after every source, and opens its own page, not the Installed page on a source", async () => {
+        const onSelectPage = vi.fn();
+        const onSelectSource = vi.fn();
+        const { findByRole, getByRole } = renderWithProviders(
+          <Sidebar page="overview" onSelectPage={onSelectPage} onSelectSource={onSelectSource} />,
+        );
+        const list = await listedSources(findByRole);
+        const other = getByRole("button", { name: "Other Programs" });
+        const rows = within(list).getAllByRole("button");
+        expect(rows[rows.length - 1]).toBe(other);
+        expect(other.closest("li")).toBe(list.lastElementChild);
+
+        other.click();
+        expect(onSelectPage).toHaveBeenCalledTimes(1);
+        expect(onSelectPage).toHaveBeenCalledWith("unknown");
+        expect(onSelectSource).not.toHaveBeenCalled();
+      });
+
+      it("has its programs' tile for a mark, at a source's 16, and no count", async () => {
+        const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+        await listedSources(findByRole);
+        const other = getByRole("button", { name: "Other Programs" });
+        // A source's row: 32 high, the mark in the 20 box every glyph has.
+        expect(other.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-2.5", "gap-1.5", "text-body"]));
+        const box = other.firstElementChild as HTMLElement;
+        expect(box.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5"]));
+        // The page's program tile (`ProgramAvatar`): a prompt, white on the
+        // neutral grey, the size and corners of a source's mark beside it.
+        const mark = box.firstElementChild as HTMLElement;
+        expect(mark).toHaveAttribute("data-other-programs-mark");
+        expect(mark).toHaveAttribute("aria-hidden", "true");
+        expect(mark.className.split(" ")).toEqual(
+          expect.arrayContaining(["h-4", "w-4", "rounded-[4px]", "bg-neutral-avatar", "text-white"]),
+        );
+        // In dark mode, the edge a source's logo has, so the grey tile keeps
+        // its outline on the selected row's fill.
+        expect(mark.className.split(" ")).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-white/12"]));
+        const homebrewMark = getByRole("button", { name: "Homebrew" }).firstElementChild?.firstElementChild as HTMLElement;
+        expect(homebrewMark.className).toContain("h-4 w-4 rounded-[4px]");
+        expect(mark.querySelector("svg path")?.getAttribute("d")).toBe("M5.5 8L9.5 12L5.5 16M12.5 16.5H18.5");
+        // Nothing at its right, and nothing more to say than its name.
+        expect(other.querySelector("[data-trailing]")).toBeNull();
+        expect(other).not.toHaveAttribute("aria-describedby");
+        expect(other).not.toHaveAttribute("title");
+      });
+
+      it("is the one row selected while its page is open, as a source's is while it is shown", async () => {
+        const { findByRole, getByRole, rerender } = renderWithProviders(
+          // The Installed page was left on pip: its row is not selected then.
+          <Sidebar page="unknown" source={pip.id} onSelectPage={vi.fn()} />,
+        );
+        await listedSources(findByRole);
+        const other = getByRole("button", { name: "Other Programs" });
+        expect([...document.querySelectorAll('[aria-current="page"]')]).toEqual([other]);
+        expect(other.className).toContain("bg-sidebar-active");
+        const selected = other.className;
+
+        // Drawn selected as a source's row is: pip's, while it is shown.
+        rerender(<Sidebar page="installed" source={pip.id} onSelectPage={vi.fn()} />);
+        expect(getByRole("button", { name: "pip" }).className).toBe(selected);
+        expect(other).not.toHaveAttribute("aria-current");
+        expect(other.className).not.toContain("bg-sidebar-active");
+      });
+
+      it("stays under 「来源」 on a Mac with no source at all, where every program is one of its", async () => {
+        served = { ...snapshot, instances: [], artifacts: [], updates: [] };
+        const { getByRole, queryClient } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+        await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toBe(served));
+        const list = getByRole("list", { name: "Sources" });
+        expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual(["Other Programs"]);
+      });
+    });
+
+    it("scrolls with the pages as one, under the traffic lights' row, and lists Other Programs alone before the first snapshot", async () => {
       mockInvoke.mockImplementation((cmd: string) =>
         cmd === "get_snapshot" ? new Promise(() => {}) : Promise.resolve(undefined),
       );
-      const { getByRole, queryByRole, queryByText } = renderWithProviders(
+      const { getAllByRole, getByRole, getByText } = renderWithProviders(
         <Sidebar page="overview" onSelectPage={vi.fn()} />,
       );
-      expect(queryByRole("list", { name: "Sources" })).toBeNull();
-      expect(queryByText("Sources")).toBeNull();
+      // No source yet; the page of what none installed is there to open.
+      const list = getByRole("list", { name: "Sources" });
+      expect(getByText("Sources")).toBeInTheDocument();
+      expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual(["Other Programs"]);
 
-      const scroller = getByRole("list").parentElement?.parentElement as HTMLElement;
+      const scroller = getAllByRole("list")[0].parentElement?.parentElement as HTMLElement;
       expect(scroller).toHaveAttribute("data-sidebar-scroller");
       expect(scroller.className.split(" ")).toEqual(expect.arrayContaining(["min-h-0", "flex-1", "overflow-y-auto"]));
       expect(scroller.previousElementSibling).toHaveAttribute("data-tauri-drag-region");
@@ -715,15 +827,29 @@ describe("Sidebar", () => {
         await i18n.changeLanguage("zh-CN");
       });
       try {
-        const { findByRole, getByText, getByRole } = renderWithProviders(
+        const { findByRole, getByText, getByRole, getAllByRole } = renderWithProviders(
           <Sidebar page="overview" onSelectPage={vi.fn()} />,
         );
-        await findByRole("list", { name: "来源" });
+        const list = await listedSources(findByRole, "来源");
         expect(getByText("来源")).toBeInTheDocument();
         // The pages' counts, not the sources'.
         expect(getByRole("button", { name: "已安装" })).toHaveAccessibleDescription(/^已安装\d+个$/);
         expect(getByRole("button", { name: "Homebrew（Apple芯片）" })).not.toHaveAttribute("aria-describedby");
         expect(getByRole("button", { name: "Homebrew（Intel）" })).not.toHaveAttribute("aria-describedby");
+        // 其他程序, the last under 来源, after both Homebrews; the pages
+        // 概览, 更新, 已安装 and 设置 above.
+        expect(within(list).getAllByRole("button").map((row) => row.getAttribute("aria-label") ?? row.textContent)).toEqual([
+          "Homebrew（Apple芯片）",
+          "Homebrew（Intel）",
+          "其他程序",
+        ]);
+        expect(within(getAllByRole("list")[0]).getAllByRole("button").map((row) => row.querySelector(".truncate")?.textContent)).toEqual([
+          "概览",
+          "更新",
+          "已安装",
+          "设置",
+        ]);
+        expect(getByRole("button", { name: "其他程序" })).not.toHaveAttribute("aria-describedby");
       } finally {
         await act(async () => {
           await i18n.changeLanguage("en");

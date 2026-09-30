@@ -454,7 +454,7 @@ describe("UnknownPage", () => {
     scan = { ...baseScan, entries: [], attributed: 7 };
     const { findByText, getByText, queryByText, queryByRole, container } = renderWithProviders(<UnknownPage />);
 
-    const title = await findByText("No programs of unknown origin");
+    const title = await findByText("No other programs");
     // The empty state: a ✓ in a circle, in the tertiary grey, the title
     // 15 semibold under it, and no button.
     const empty = title.closest("[data-empty-state]") as HTMLElement;
@@ -472,9 +472,9 @@ describe("UnknownPage", () => {
   it("vouches only for what it checked when a scan that stopped early found nothing, with no check mark", async () => {
     scan = { ...baseScan, entries: [], stopped: { TimeLimit: { max_secs: 10 } } };
     const stoppedEarly = renderWithProviders(<UnknownPage />);
-    expect(await stoppedEarly.findByText("No programs of unknown origin in the places checked")).toBeInTheDocument();
+    expect(await stoppedEarly.findByText("No other programs in the places checked")).toBeInTheDocument();
     expect(stoppedEarly.getByText("Stopped after 10 seconds; the rest weren't checked.")).toBeInTheDocument();
-    expect(stoppedEarly.queryByText("No programs of unknown origin")).toBeNull();
+    expect(stoppedEarly.queryByText("No other programs")).toBeNull();
     // An ⓘ in a circle, not the ✓.
     const partial = stoppedEarly.container.querySelector("[data-empty-state]") as HTMLElement;
     const partialSymbol = partial.querySelector("svg")?.outerHTML;
@@ -482,7 +482,7 @@ describe("UnknownPage", () => {
 
     scan = { ...baseScan, entries: [] };
     const whole = renderWithProviders(<UnknownPage />);
-    expect(await whole.findByText("No programs of unknown origin")).toBeInTheDocument();
+    expect(await whole.findByText("No other programs")).toBeInTheDocument();
     const wholeSymbol = whole.container.querySelector("[data-empty-state] svg")?.outerHTML;
     expect(wholeSymbol).toBeDefined();
     expect(partialSymbol).toBeDefined();
@@ -495,8 +495,15 @@ describe("UnknownPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       scan = { ...baseScan, entries: [], stopped: { FileLimit: { max_entries: 2000 } } };
-      const { findByText } = renderWithProviders(<UnknownPage />);
-      expect(await findByText("已检查的位置中没有来源不明的程序")).toBeInTheDocument();
+      const stoppedEarly = renderWithProviders(<UnknownPage />);
+      expect(await stoppedEarly.findByText("已检查的位置中没有其他程序")).toBeInTheDocument();
+      stoppedEarly.unmount();
+
+      // A whole scan that found nothing: the page's name, 其他程序, as a
+      // Mac's empty list names what it would list.
+      scan = { ...baseScan, entries: [] };
+      const whole = renderWithProviders(<UnknownPage />);
+      expect(await whole.findByText("没有其他程序")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

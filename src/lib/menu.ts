@@ -1,10 +1,10 @@
 /**
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
- * Settings… (⌘,); the View menu's Overview, Updates, Installed and Unknown
- * (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F). Each does what the page's
- * own control for it does, through the same code, so the two cannot drift
- * apart. The menu bar's other items are macOS's own and never reach the
- * page.
+ * Settings… (⌘,); the View menu's Overview, Updates, Installed and Other
+ * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F). Each does what
+ * the page's own control for it does, through the same code, so the two
+ * cannot drift apart. The menu bar's other items are macOS's own and never
+ * reach the page.
  */
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
@@ -14,8 +14,8 @@ import { useUiStore } from "../store/ui";
 /**
  * Mounted once, by `App`, next to `useOperationEvents`:
  *
- * - Settings… opens Settings, and Overview, Updates, Installed and
- *   Unknown their pages, each as its row in the sidebar does (`openPage`):
+ * - Settings… opens Settings, and Overview, Updates, Installed and Other
+ *   Programs their pages, each as its row in the sidebar does (`openPage`):
  *   Installed on everything installed, whatever source it was showing.
  * - Check Again is the header's Check again (`useCheckAgain`): the one
  *   refresh, and nothing while one runs.

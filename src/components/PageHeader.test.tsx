@@ -75,7 +75,7 @@ describe("PageHeader", () => {
     expect(checks.queryByText(/^Checked /)).toBeNull();
     checks.unmount();
 
-    const own = renderWithProviders(<PageHeader title="Unknown" actions={<button type="button">Scan Again</button>} />);
+    const own = renderWithProviders(<PageHeader title="Other Programs" actions={<button type="button">Scan Again</button>} />);
     expect(own.getAllByRole("button").map((button) => button.textContent)).toEqual(["Scan Again"]);
     own.unmount();
 

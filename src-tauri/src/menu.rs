@@ -45,9 +45,10 @@ pub enum MenuLanguage {
 pub enum PageCommand {
     /// Settings… (⌘,): the Settings page, as the sidebar's Settings opens it.
     Settings,
-    /// Overview (⌘1), Updates (⌘2), Installed (⌘3), Unknown (⌘4): that
-    /// page, as its row in the sidebar opens it -- Installed on everything
-    /// installed, whatever source it was showing.
+    /// Overview (⌘1), Updates (⌘2), Installed (⌘3), Other Programs (⌘4):
+    /// that page, as its row in the sidebar opens it -- Installed on
+    /// everything installed, whatever source it was showing. `Unknown` is
+    /// Other Programs, as the page is `UnknownPage` in src/pages.
     Overview,
     Updates,
     Installed,
@@ -226,7 +227,7 @@ const ENGLISH: Words = Words {
     overview: "Overview",
     updates: "Updates",
     installed: "Installed",
-    unknown: "Unknown",
+    unknown: "Other Programs",
     check_again: "Check Again",
     search: "Search",
     window: "Window",
@@ -257,7 +258,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     overview: "概览",
     updates: "更新",
     installed: "已安装",
-    unknown: "来源不明",
+    unknown: "其他程序",
     check_again: "重新检查",
     search: "搜索",
     window: "窗口",
@@ -270,7 +271,8 @@ const SIMPLIFIED_CHINESE: Words = Words {
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
 /// Settings…, Services, the three Hide items and Quit, each group apart;
 /// File, with Close Window; the Edit menu a text field needs; View with the
-/// sidebar's four pages, ⌘1 to ⌘4 as Finder's and Mail's are, then the
+/// sidebar's Overview, Updates and Installed and the last row under its
+/// 「来源」, Other Programs, ⌘1 to ⌘4 as Finder's and Mail's are, then the
 /// page's Check Again and Search; the Window menu; and Help, which has no
 /// item of Canager's -- only the search field macOS puts there.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
@@ -598,7 +600,7 @@ mod tests {
                         "Overview",
                         "Updates",
                         "Installed",
-                        "Unknown",
+                        "Other Programs",
                         "—",
                         "Check Again",
                         "Search",
@@ -643,7 +645,7 @@ mod tests {
                         "概览",
                         "更新",
                         "已安装",
-                        "来源不明",
+                        "其他程序",
                         "—",
                         "重新检查",
                         "搜索"

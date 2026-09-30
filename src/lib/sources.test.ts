@@ -417,6 +417,11 @@ describe("sourceNoticesFor", () => {
     }
     expect(en.sourceNotice.shadowedByOther.description).toContain("Couldn't identify that program.");
     expect(zhCN.sourceNotice.shadowedByOther.description).toContain("无法识别那个程序。");
+    // Where to look is the page by the name its row in the sidebar has.
+    expect(en.sourceNotice.shadowedByOther.description).toContain(`If it's in ${en.nav.unknown},`);
+    expect(zhCN.sourceNotice.shadowedByOther.description).toContain(`如果它在“${zhCN.nav.unknown}”中`);
+    expect(en.nav.unknown).toBe("Other Programs");
+    expect(zhCN.nav.unknown).toBe("其他程序");
     for (const key of ["notOnPath", "shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
       for (const locale of [en, zhCN]) {
         expect(locale.sourceNotice[key].title).not.toMatch(/another copy|other copy|另一份|多半|probably|likely/i);

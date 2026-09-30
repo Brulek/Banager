@@ -9,15 +9,13 @@
     "overview": "Overview",
     "updates": "Updates",
     "installed": "Installed",
-    "unknown": "Unknown",
+    "unknown": "Other Programs",
     "settings": "Settings",
     "count": {
       "updates_one": "{{count}} can be updated",
       "updates_other": "{{count}} can be updated",
       "installed_one": "{{count}} installed",
-      "installed_other": "{{count}} installed",
-      "unknown_one": "{{count}} found",
-      "unknown_other": "{{count}} found"
+      "installed_other": "{{count}} installed"
     },
     "sources": "Sources"
   },
@@ -427,7 +425,7 @@
     },
     "shadowedByOther": {
       "title": "Typing {{command}} runs another program with the same name first",
-      "description": "Couldn't identify that program. If it's on the Unknown page, you can see where it is there."
+      "description": "Couldn't identify that program. If it's in Other Programs, you can see where it is there."
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
@@ -693,8 +691,8 @@
     "scannedDaysAgo_other": "Scanned {{count}} days ago",
     "scanFailed": "Couldn't scan: {{message}}",
     "scanFailedPlain": "Couldn't scan. Try scanning again later.",
-    "empty": "No programs of unknown origin",
-    "emptyChecked": "No programs of unknown origin in the places checked"
+    "empty": "No other programs",
+    "emptyChecked": "No other programs in the places checked"
   },
   "emptyStates": {
     "loadFailed": {

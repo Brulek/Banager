@@ -9,12 +9,11 @@
     "overview": "概览",
     "updates": "更新",
     "installed": "已安装",
-    "unknown": "来源不明",
+    "unknown": "其他程序",
     "settings": "设置",
     "count": {
       "updates_other": "{{count}}个可更新",
-      "installed_other": "已安装{{count}}个",
-      "unknown_other": "找到{{count}}个"
+      "installed_other": "已安装{{count}}个"
     },
     "sources": "来源"
   },
@@ -390,7 +389,7 @@
     },
     "shadowedByOther": {
       "title": "输入“{{command}}”会先运行另一个同名程序",
-      "description": "无法识别那个程序。如果它在“来源不明”中，可以在那里看到它的位置。"
+      "description": "无法识别那个程序。如果它在“其他程序”中，可以在那里看到它的位置。"
     },
     "launcherOnly": {
       "title": "找不到{{source}}的程序文件",
@@ -638,8 +637,8 @@
     "scannedDaysAgo_other": "上次扫描：{{count}}天前",
     "scanFailed": "无法扫描：{{message}}",
     "scanFailedPlain": "无法扫描。请稍后重新扫描。",
-    "empty": "没有来源不明的程序",
-    "emptyChecked": "已检查的位置中没有来源不明的程序"
+    "empty": "没有其他程序",
+    "emptyChecked": "已检查的位置中没有其他程序"
   },
   "emptyStates": {
     "loadFailed": {

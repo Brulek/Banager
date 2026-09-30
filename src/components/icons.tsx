@@ -67,16 +67,6 @@ export function InstalledIcon(props: IconProps) {
   );
 }
 
-/** Unknown: a question mark, in a circle. */
-export function UnknownIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.6 9.4a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2.2-2.5 3.9M12 17h.01" />
-    </Icon>
-  );
-}
-
 /** A command-line program: a prompt and its cursor. */
 export function TerminalIcon(props: IconProps) {
   return (

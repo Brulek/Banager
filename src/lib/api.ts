@@ -150,8 +150,8 @@ export function setMenuLanguage(language: MenuLanguage): Promise<void> {
 /**
  * The event Rust sends the window when an item of the menu bar that acts in
  * the page is chosen, by what the page does for it: Settings… (⌘,); the
- * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Unknown
- * (⌘4); Check Again (⌘R); Search (⌘F). `PageCommand` in
+ * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Other
+ * Programs (⌘4); Check Again (⌘R); Search (⌘F). `PageCommand` in
  * src-tauri/src/menu.rs sends these seven.
  */
 export const MENU_EVENTS = {
