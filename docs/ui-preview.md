@@ -206,7 +206,6 @@ value falls back to the default and logs a warning in the console.
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `canager` | How every operation ends. Only `succeeded` changes anything. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Unknown page's scan returns. |
-| `sidebar` | `system` (default), `dark` | `dark` draws the sidebar dark whatever the appearance -- the earlier CleanMyMac-like choice -- to compare with the system sidebar the app uses. The preview only; the app has no such setting. |
 
 ## Large list
 
