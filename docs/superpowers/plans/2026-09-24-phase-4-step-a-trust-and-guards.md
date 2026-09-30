@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the three promises phase 4 builds on true *before* any standalone-installer code lands, and make the one trust document honest about the seven sources Canager already manages. Concretely: (1) a test that Homebrew plans never carry `--zap`, `--force` or `--ignore-dependencies`; (2) a compile-time https host allowlist that `RealHttpClient::send` enforces fail-closed, with the stale "four endpoints" comment replaced; (3) `warningKey` in `src/lib/warnings.ts` made exhaustive with a `never` default, so a `Warning` variant added without copy fails `tsc` instead of vanishing from the uninstall dialog; (4) `docs/what-we-run.md` rewritten from its "Phase 0–1: Homebrew only" state to cover Homebrew, npm, pipx, uv, pip, Cargo and Ollama — every command, environment variable, file, host, and what is never done — with a test that pins the parts a test can pin.
+**Goal:** Make the three promises phase 4 builds on true *before* any standalone-installer code lands, and make the one trust document honest about the seven sources Banager already manages. Concretely: (1) a test that Homebrew plans never carry `--zap`, `--force` or `--ignore-dependencies`; (2) a compile-time https host allowlist that `RealHttpClient::send` enforces fail-closed, with the stale "four endpoints" comment replaced; (3) `warningKey` in `src/lib/warnings.ts` made exhaustive with a `never` default, so a `Warning` variant added without copy fails `tsc` instead of vanishing from the uninstall dialog; (4) `docs/what-we-run.md` rewritten from its "Phase 0–1: Homebrew only" state to cover Homebrew, npm, pipx, uv, pip, Cargo and Ollama — every command, environment variable, file, host, and what is never done — with a test that pins the parts a test can pin.
 
 **Architecture:** No new production concept. Task 1 is a test in an existing module. Task 2 adds one `pub const` and one `pub fn` to `crates/banager-core/src/http/real.rs` and calls the function at the top of `send`. Task 3 rewrites two functions in `src/lib/warnings.ts` in the shape `faultKey`/`faultArgs` in `src/lib/format.ts` already have. Task 4 is a document plus an integration test (`crates/banager-core/tests/what_we_run_test.rs`, the same shape as `fixtures_layout_test.rs`) that reads the document and checks it against the registered adapters, `ALLOWED_HTTPS_HOSTS`, `BrewAdapter::ENV`, `NpmAdapter::ENV` and the three flags. This is spec §十 row A: "无，可最先合" — nothing else in phase 4 depends on the order of these four, but steps B–F all depend on A having merged (B reads `ALLOWED_HTTPS_HOSTS`; C adds `Warning` variants that must fail `tsc` when unhandled; every step appends its own section to `what-we-run.md`).
 
@@ -16,15 +16,15 @@ Copied from the spec's binding rules (spec lines 20–23, verbatim), which bind 
 
 > 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 > 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-> 没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+> 没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 > 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 And from spec §十 ("每一步只带**该步有生产者**的变体与字段") and §2.2/§2.3 ("每个新字段点名生产读取方"):
 
-- **Every new field, variant, constant or function names its production reader in the same task.** In this step: `ALLOWED_HTTPS_HOSTS` is read by `host_allowed`, which is read by `RealHttpClient::send`; both are also read by `docs/what-we-run.md` (the "Canager only connects to these hosts" list) and by `tests/what_we_run_test.rs`. Nothing defined here waits for a later step to be used.
+- **Every new field, variant, constant or function names its production reader in the same task.** In this step: `ALLOWED_HTTPS_HOSTS` is read by `host_allowed`, which is read by `RealHttpClient::send`; both are also read by `docs/what-we-run.md` (the "Banager only connects to these hosts" list) and by `tests/what_we_run_test.rs`. Nothing defined here waits for a later step to be used.
 - **Honest outcomes.** Nothing in this step touches `run_operation`; the document describes the existing rules (`ops/mod.rs:677-720`, `:787-799`) and must not overstate them.
 - **Fixtures come from real machines only.** This step records nothing. The tests here use inline data, a loopback socket, or the document itself, none of which is a fixture.
-- **No shell.** The document must state truthfully that the one shell Canager ever runs is `fix-path-env`'s login-shell read at launch (`src-tauri/src/lib.rs:18`), and that no package command goes through one.
+- **No shell.** The document must state truthfully that the one shell Banager ever runs is `fix-path-env`'s login-shell read at launch (`src-tauri/src/lib.rs:18`), and that no package command goes through one.
 - **The UI never offers what Rust refuses.** Not exercised by this step; nothing here changes a gate.
 - **en + zh-CN for all copy.** This step adds no user-visible copy and no i18n key. `docs/what-we-run.md` is an English engineering document, as it is today.
 - **The five gates**, from README.md "Tests — all five must pass before anything is committed" — note the TypeScript gate is now `pnpm typecheck` (two `tsc` programs), not `pnpm exec tsc -p tsconfig.json`:
@@ -41,11 +41,11 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段") 
 
 ## What already exists (do not rebuild)
 
-- `crates/banager-core/src/http/real.rs`: `RealHttpClient` with rustls (`:40`), `canager/{version}` UA (`:38`), no redirects (`:50`, `:87-97`), 30 s default timeout (`:51`), 8 MiB body cap (`:22`, `:115-119`), a test module with loopback servers (`:130-441`). The comment at `:42-49` says "the four endpoints this client talks to (a local Ollama daemon, registry.ollama.ai, crates.io, PyPI)" — a sentence, not a check, and the "four" counts the http Ollama daemon; the https hosts are three. The test comment at `:294-301` repeats the same list.
+- `crates/banager-core/src/http/real.rs`: `RealHttpClient` with rustls (`:40`), `banager/{version}` UA (`:38`), no redirects (`:50`, `:87-97`), 30 s default timeout (`:51`), 8 MiB body cap (`:22`, `:115-119`), a test module with loopback servers (`:130-441`). The comment at `:42-49` says "the four endpoints this client talks to (a local Ollama daemon, registry.ollama.ai, crates.io, PyPI)" — a sentence, not a check, and the "four" counts the http Ollama daemon; the https hosts are three. The test comment at `:294-301` repeats the same list.
 - Three https callers, all `GET`: `CargoAdapter::latest_stable_version` (`adapters/cargo.rs:218-231`, `https://crates.io/api/v1/crates/{name}`), `PipxAdapter::latest_pypi_version` (`adapters/pipx.rs:279-299`, `https://pypi.org/pypi/{name}/json`), `OllamaAdapter::compare_digests` (`adapters/ollama/mod.rs:389-407`, `https://registry.ollama.ai/v2/{ns}/{name}/manifests/{tag}`). One http caller: the Ollama daemon (`adapters/ollama/mod.rs:135`, `:141-145`, `:273-283`, `:331-339`) at `HostEnv::ollama_host` or `http://127.0.0.1:11434`. `url = "2"` is already in `crates/banager-core/Cargo.toml:35` and used at `adapters/ollama/mod.rs:196` and `runner/path_env.rs:2`.
 - `BrewAdapter::plan` (`adapters/brew/mod.rs:1189-1311`): Install argv `["install", flag, name]` (`:1211`), Uninstall `["uninstall", flag, name]` (`:1277`), Upgrade `["upgrade", flag, name]` (`:1300`). `grep -n -- '--zap\|--force' crates/banager-core/src/adapters/brew/mod.rs` is empty; `--ignore-dependencies` appears once, in a doc comment (`:567`). The test module `plan_execute_tests` (`:2239-`) has `test_instance()` (`:2245-2252`) and per-kind plan tests (`:2289-2543`); `MockRunner::respond` (`runner/mock.rs:32-35`) is keyed by the full argv including the program.
 - `src/lib/warnings.ts`: `warningKey` (`:19-35`) with `default: return null` for bare strings and `return null` for unknown objects; `warningArgs` (`:38-47`); `warningText`/`warningTexts` (`:74-84`), the latter dropping `null`. `src/lib/format.ts:77-94` `faultKey` and `:98-105` `faultArgs` are the exhaustive model. `src/lib/types.ts:66-85` documents that a new variant "lands in `warningText`'s default branch rather than failing at compile time"; `src/lib/types.test.ts:197-224` is the wire-shape test; `src/lib/warnings.test.ts` has three tests built on `"SomeFutureVariant" as unknown as Warning` (`:27-32`, `:92-94`, `:97-105`), and `src/components/UninstallDialog.test.tsx:140-155` is a fourth, through the rendered dialog (`"SomeFutureVariant" as unknown as Plan["warnings"][number]`, asserting the "Before you continue:" heading is absent) — four in all; `grep -rn SomeFutureVariant src` finds no fifth. Consumers: `src/components/UninstallDialog.tsx:93` (`warningTexts`, comment at `:88-92`), `src/pages/UpdatesPage.tsx:412-416` and `:947`.
-- `docs/what-we-run.md`: 78 lines, title "What Canager Runs (Phase 0–1: Homebrew only)", Homebrew only. Last touched by `adc8bdb`.
+- `docs/what-we-run.md`: 78 lines, title "What Banager Runs (Phase 0–1: Homebrew only)", Homebrew only. Last touched by `adc8bdb`.
 - `crates/banager-core/tests/fixtures_layout_test.rs:13-27`: the pattern for an integration test that builds `Session::new(Arc::new(VecSink::new()), None)`, calls `session.adapter_ids()`, and reads repo files relative to the crate directory (`../../adapters/...`).
 
 ---
@@ -65,7 +65,7 @@ docs/what-we-run.md                            REWRITE  seven sources, files, ho
 crates/banager-core/tests/what_we_run_test.rs  NEW  the document's checkable claims, checked (Task 4)
 ```
 
-Single responsibility of each: `real.rs` owns *which hosts may be contacted*; `warnings.ts` owns *how a Warning becomes text*; `what-we-run.md` owns *what a person is told Canager does*; `what_we_run_test.rs` owns *that the document and the code agree on the parts a test can compare*.
+Single responsibility of each: `real.rs` owns *which hosts may be contacted*; `warnings.ts` owns *how a Warning becomes text*; `what-we-run.md` owns *what a person is told Banager does*; `what_we_run_test.rs` owns *that the document and the code agree on the parts a test can compare*.
 
 ## Task List
 
@@ -101,7 +101,7 @@ Insert into `crates/banager-core/src/adapters/brew/mod.rs` immediately after the
     /// `--force` and `--ignore-dependencies` override refusals Homebrew makes
     /// on the user's behalf. None of the three has ever been passed here, but
     /// until now that was an absence, not a promise: `docs/what-we-run.md`
-    /// says Canager never passes them, and this is what keeps that sentence
+    /// says Banager never passes them, and this is what keeps that sentence
     /// true when `plan` is next edited. Every plan brew builds, for both
     /// artifact kinds, is exactly the verb, the kind flag and the name.
     #[tokio::test]
@@ -349,7 +349,7 @@ Replace the module doc (`:1-7`) with:
 ```rust
 //! `RealHttpClient` wraps a `reqwest::Client` pinned to the rustls TLS
 //! backend (never native-tls/openssl — Global Constraints). Every request
-//! carries the `canager/{version}` User-Agent and a 30-second client-wide
+//! carries the `banager/{version}` User-Agent and a 30-second client-wide
 //! default timeout; `HttpRequest::timeout` overrides that default on a
 //! per-request basis. Redirects are not followed, a 3xx is an error rather
 //! than a response, a response body is read to a cap instead of being
@@ -375,7 +375,7 @@ After `pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;` (`:22`) and befor
 /// legitimately be any machine the user named.
 ///
 /// Adding a host here is a reviewed change with two other halves: the
-/// adapter that contacts it, and the "Canager only connects to these
+/// adapter that contacts it, and the "Banager only connects to these
 /// hosts" list in `docs/what-we-run.md`, which
 /// `tests/what_we_run_test.rs` checks names every entry.
 pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai"];
@@ -417,7 +417,7 @@ Replace the comment at `:42-49` (inside `with_body_limit`, above `.redirect(...)
             // reqwest's default is `Policy::limited(10)`: up to ten
             // redirects, to any host, with no https-only guard -- so an
             // https request could be walked to plain http, or to a host
-            // Canager never chose, carrying its headers with it. None of
+            // Banager never chose, carrying its headers with it. None of
             // the hosts this client talks to -- `ALLOWED_HTTPS_HOSTS` over
             // https, and the Ollama daemon over http -- ever needs a
             // redirect, so the policy is `none` and `send` below turns a
@@ -445,10 +445,10 @@ Replace the comment at `:294-301` (the first lines of `test_real_http_client_doe
 
 ```rust
         // reqwest's default policy follows up to ten redirects, to any host,
-        // with no https-only guard. None of Canager's requests -- the
+        // with no https-only guard. None of Banager's requests -- the
         // Ollama daemon over http, `ALLOWED_HTTPS_HOSTS` over https -- ever
         // needs one, so a 3xx means something has gone wrong and following
-        // it would carry the request (and its headers) somewhere Canager
+        // it would carry the request (and its headers) somewhere Banager
         // never chose. The destination here is a second, *watched* server:
         // if it is ever contacted, the redirect was followed.
 ```
@@ -801,7 +801,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `banager_core::session::Session::{new, adapter_ids}` (as `tests/fixtures_layout_test.rs:13-16` does), `banager_core::events::VecSink`, `banager_core::adapters::AdapterMeta::from_toml` and `.name` (`adapters/mod.rs:83-96`), `banager_core::adapters::brew::BrewAdapter::ENV` (`brew/mod.rs:127-132`, `pub const`), `banager_core::adapters::npm::NpmAdapter::ENV` (`npm.rs:87-91`, `pub const`), `banager_core::http::real::ALLOWED_HTTPS_HOSTS` (Task 2).
-- Produces: the document, and four tests that hold it to the code: a `## <meta.name>` section per registered adapter and the title line exactly `# What Canager Runs` (not a substring check for "Homebrew only", which the never-list's "passed through to Homebrew only when it was already set" would trip); every host in `ALLOWED_HTTPS_HOSTS` named; every `NAME=value` of `BrewAdapter::ENV` and `NpmAdapter::ENV` shown; the promise that Homebrew is never passed `--zap`, `--force` or `--ignore-dependencies`, on one line that names all three flags, "never" and Homebrew — a plain `doc.contains("--force")` would be satisfied by the Cargo section's `cargo install --force` rows with the Homebrew sentence gone. Production readers of the document: the person spec §12 wrote it for; of the test: `cargo test --workspace`.
+- Produces: the document, and four tests that hold it to the code: a `## <meta.name>` section per registered adapter and the title line exactly `# What Banager Runs` (not a substring check for "Homebrew only", which the never-list's "passed through to Homebrew only when it was already set" would trip); every host in `ALLOWED_HTTPS_HOSTS` named; every `NAME=value` of `BrewAdapter::ENV` and `NpmAdapter::ENV` shown; the promise that Homebrew is never passed `--zap`, `--force` or `--ignore-dependencies`, on one line that names all three flags, "never" and Homebrew — a plain `doc.contains("--force")` would be satisfied by the Cargo section's `cargo install --force` rows with the Homebrew sentence gone. Production readers of the document: the person spec §12 wrote it for; of the test: `cargo test --workspace`.
 
 **How the document was checked.** Every sentence in Step 3's text was written from a line of code read at `26bc640`. The table in Step 5 maps each claim to its `file:line`, so a reviewer can re-verify without re-reading seven adapters; the document itself cites files and function names rather than line numbers, which drift with every commit.
 
@@ -811,7 +811,7 @@ Create `crates/banager-core/tests/what_we_run_test.rs`:
 
 ```rust
 //! `docs/what-we-run.md` is spec §12's trust file: the one place a person
-//! who does not read Rust can see every command Canager runs and every
+//! who does not read Rust can see every command Banager runs and every
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
 //! the https allowlist, every environment variable brew and npm set, and
@@ -865,13 +865,13 @@ fn test_what_we_run_has_a_section_for_every_registered_source() {
             meta.name
         );
     }
-    // The title line, exactly: the phase 0-1 file was headed "What Canager
+    // The title line, exactly: the phase 0-1 file was headed "What Banager
     // Runs (Phase 0–1: Homebrew only)". A substring check for "Homebrew
     // only" would misfire on ordinary prose ("passed through to Homebrew
     // only when it was already set", in the never-list).
     assert_eq!(
         doc.lines().next(),
-        Some("# What Canager Runs"),
+        Some("# What Banager Runs"),
         "docs/what-we-run.md's title still narrows the file to one source"
     );
 }
@@ -937,9 +937,9 @@ Expected: FAIL — 4 failed, each on the first thing the current 78-line documen
 Replace the entire contents of `docs/what-we-run.md` with:
 
 ````markdown
-# What Canager Runs
+# What Banager Runs
 
-Every command Canager runs, every file it reads or writes, every host it
+Every command Banager runs, every file it reads or writes, every host it
 connects to and every environment variable it sets, for the seven sources
 it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo and
 Ollama. Each sentence describes what the code does now and names the
@@ -954,13 +954,13 @@ Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
 command can carry.
 
-## How Canager runs anything
+## How Banager runs anything
 
 **Never through a shell.** Every package-manager command is a fixed argv
 array run directly against an absolute program path by `RealRunner::run`
 (`crates/banager-core/src/runner/real.rs`): `Command::new(program)` with
 the arguments appended one by one. No string is ever handed to `sh`, and
-nothing Canager downloads is ever piped into one.
+nothing Banager downloads is ever piped into one.
 
 **One shell run, at launch, that runs no command.** An app opened from
 Finder starts with a minimal `PATH`, so at startup (`run()` in
@@ -968,12 +968,12 @@ Finder starts with a minimal `PATH`, so at startup (`run()` in
 shell once — `$SHELL -ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
 "_SHELL_ENV_DELIMITER_"; exit'`, with `DISABLE_AUTO_UPDATE=true` in its
 environment and the home folder as its working directory — reads the
-`PATH` that shell exports, and sets it on Canager's own process
+`PATH` that shell exports, and sets it on Banager's own process
 (`fix_vars` in `fix-path-env-rs` at the pinned commit `c4c45d5`). That is
 the only time a shell is involved, and all it does is print the
 environment.
 
-**What a command inherits.** A child gets Canager's own environment — the
+**What a command inherits.** A child gets Banager's own environment — the
 `PATH` above and whatever else the login shell exported — plus the
 variables listed in each source's section below (`RealRunner::run` adds
 them with `envs` and never clears the environment). Its stdin is
@@ -988,7 +988,7 @@ a grace period, and then `SIGKILL` for whatever is left.
 `src-tauri/src/lib.rs`), at the start of every refresh, and when the Open
 Ollama button is pressed, `HostEnv::discover`
 (`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
-`CARGO_HOME` and `OLLAMA_HOST` from Canager's environment and the
+`CARGO_HOME` and `OLLAMA_HOST` from Banager's environment and the
 effective user id from the process. Every source
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
@@ -1007,15 +1007,15 @@ Ollama's model references, which contain a colon
 (`validate_model_reference`). Every other token in every argv below is a
 fixed string.
 
-**Root.** Homebrew refuses to run as root, so Canager never runs a `brew`
+**Root.** Homebrew refuses to run as root, so Banager never runs a `brew`
 command when its effective user ID is 0 (`refuse_if_root`); a Homebrew
 found under root is listed as refusing, not as missing. No other source
 checks.
 
-**Passwords.** Canager never asks for a password and never handles one.
+**Passwords.** Banager never asks for a password and never handles one.
 The only thing it does with one is pass `SUDO_ASKPASS` through, unchanged,
 to Homebrew cask installs and upgrades when the variable is already set
-in Canager's environment (Homebrew's section); it never sets it on its
+in Banager's environment (Homebrew's section); it never sets it on its
 own behalf.
 
 ## When commands run
@@ -1064,7 +1064,7 @@ settles it (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 Adapter: `BrewAdapter` in `crates/banager-core/src/adapters/brew/mod.rs`.
 Verified against Homebrew 7.0.3 (`adapters/meta/brew.toml`).
 
-**Detect.** Canager checks whether `/opt/homebrew/bin/brew`,
+**Detect.** Banager checks whether `/opt/homebrew/bin/brew`,
 `/usr/local/bin/brew` and `/home/linuxbrew/.linuxbrew/bin/brew` exist
 (`BrewAdapter::CANDIDATE_PATHS`) — never a `brew` resolved through `PATH`
 — and runs `<brew> --version` (30 s) for each that does. Each is its own
@@ -1079,7 +1079,7 @@ including `--version`, `update` and every plan:
     NO_COLOR=1
 
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
-already set in Canager's process environment (`askpass_fn`, read per
+already set in Banager's process environment (`askpass_fn`, read per
 plan). It only has any effect for casks whose installer scripts invoke
 `sudo`.
 
@@ -1122,7 +1122,7 @@ preview):
 
 Every one of these argvs is exactly the verb, the kind flag and the name
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in the same
-file). Canager never passes `--zap`, `--force` or `--ignore-dependencies`
+file). Banager never passes `--zap`, `--force` or `--ignore-dependencies`
 to Homebrew, and never runs a bare `brew upgrade`: upgrades are one
 confirmed artifact per invocation. Before a write command starts,
 `execute` waits up to ten minutes (`OP_UPDATE_WAIT`) for a `brew update`
@@ -1140,7 +1140,7 @@ upgrade whose version did not move is not reported as needing attention.
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
 `<prefix>/var/homebrew/locks/update`, to make sure no `brew update` —
-Canager's or anyone's — overlapped its `brew uses` read
+Banager's or anyone's — overlapped its `brew uses` read
 (`probe_homebrew_update_lock`): the directory is `stat`ed, the file is
 opened read-only and never created, and `fcntl(F_GETLK)` asks whether the
 lock is held without taking it.
@@ -1150,7 +1150,7 @@ lock is held without taking it.
 Adapter: `NpmAdapter` in `crates/banager-core/src/adapters/npm.rs`.
 Verified against npm 12.0.2 (`adapters/meta/npm.toml`).
 
-**Detect.** `npm` is the first `npm` on `PATH`. Canager runs `<npm>
+**Detect.** `npm` is the first `npm` on `PATH`. Banager runs `<npm>
 prefix -g` (30 s) to learn the global prefix, which is the instance's
 identity, and `<npm> --version` (30 s), then asks `access(2)` whether the
 current user can write `{prefix}/lib/node_modules` — or, when that does
@@ -1215,11 +1215,11 @@ If `pipx list --outdated` exits non-zero, `<pipx> list --json` is run once
 more so every installed tool can be listed as "could not check", with the
 reason — one more process than the table shows, on that path only.
 
-On a pipx older than 1.16, which has no `list --outdated`, Canager
+On a pipx older than 1.16, which has no `list --outdated`, Banager
 instead asks PyPI about each installed tool: `GET
 https://pypi.org/pypi/{name}/json` (30 s each), the name percent-encoded.
 A tool PyPI does not answer for is listed as "could not check", never as
-an error for the whole source. pipx has no search command Canager uses.
+an error for the whole source. pipx has no search command Banager uses.
 
 **Write commands:**
 
@@ -1235,7 +1235,7 @@ Adapter: `UvAdapter` in `crates/banager-core/src/adapters/uv.rs`.
 Verified against uv 0.12.17 (`adapters/meta/uv.toml`).
 
 **Detect.** `uv` is the first `uv` on `PATH`; `<uv> --version` (30 s). No
-environment variables are added to any uv command, and Canager makes no
+environment variables are added to any uv command, and Banager makes no
 network request of its own for uv: `uv tool list --outdated` reaches PyPI
 itself, under uv's own configuration.
 
@@ -1250,7 +1250,7 @@ itself, under uv's own configuration.
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
 check", with the reason — one more process than the table shows, on that
-path only. uv has no tool-search command Canager uses.
+path only. uv has no tool-search command Banager uses.
 
 **Write commands:**
 
@@ -1267,10 +1267,10 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 
 **Detect.** For each of `python3.14`, `python3.13`, `python3.12`,
 `python3.11`, `python3.10`, `python3` and `python` found on `PATH`
-(`PipAdapter::CANDIDATE_INTERPRETERS`), Canager canonicalises the path so
+(`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
 two names for one interpreter count once, and runs `<python> -m pip
 --version` (30 s). Every pip instance is read-only by design. No
-environment variables are added, and Canager makes no network request of
+environment variables are added, and Banager makes no network request of
 its own for pip: `pip list --outdated` reaches PyPI itself.
 
 **Read-only commands:**
@@ -1285,7 +1285,7 @@ its own for pip: `pip list --outdated` reaches PyPI itself.
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command
 can be previewed, let alone run; the pages show no such button for a pip
-package. pip has no search command Canager uses.
+package. pip has no search command Banager uses.
 
 ## Cargo
 
@@ -1293,7 +1293,7 @@ Adapter: `CargoAdapter` in `crates/banager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
-(30 s). Canager also looks for `cargo-binstall` on the same `PATH` and
+(30 s). Banager also looks for `cargo-binstall` on the same `PATH` and
 remembers the path found for plans. The Cargo home is `CARGO_HOME` from
 the environment, else `~/.cargo`. No environment variables are added to
 any cargo command.
@@ -1305,7 +1305,7 @@ same file and, for each crate installed from the registry, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
 percent-encoded. Crates installed from a git repository or a local path
 are never looked up; they are listed as "could not check" with that
-reason. Cargo has no search command Canager uses.
+reason. Cargo has no search command Banager uses.
 
 **Write commands:**
 
@@ -1319,7 +1319,7 @@ reason. Cargo has no search command Canager uses.
 
 `--force` here is cargo's own flag, meaning "reinstall even though a
 version of this crate is already installed" — it is how cargo upgrades a
-binary. It is the only `--force` Canager passes to any tool, and it never
+binary. It is the only `--force` Banager passes to any tool, and it never
 goes to Homebrew.
 
 ## Ollama
@@ -1333,7 +1333,7 @@ effect, and a background refresh must never launch an application. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
 http(s) URL, or Ollama's default `http://127.0.0.1:11434`
-(`DEFAULT_HOST`). Canager also checks whether `/Applications/Ollama.app`
+(`DEFAULT_HOST`). Banager also checks whether `/Applications/Ollama.app`
 or `~/Applications/Ollama.app` is a directory: a daemon on this Mac that
 does not answer while the app is there is reported as not running, with
 an Open Ollama button; anything else that does not answer is reported as
@@ -1356,7 +1356,7 @@ come out of the daemon's `/api/tags` answer, so before any path is built
 each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
 manifest is always fetched from `registry.ollama.ai`, whatever registry
-the model was pulled from. Ollama has no search command Canager uses.
+the model was pulled from. Ollama has no search command Banager uses.
 
 **Write commands:**
 
@@ -1381,7 +1381,7 @@ whether LaunchServices accepted the request. It is the one launch in the
 app that is not a package-manager command, and it never happens during a
 refresh.
 
-## Files Canager reads
+## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:
 
@@ -1396,20 +1396,20 @@ All read-only, none saved anywhere else, none uploaded:
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
   for each pulled model.
-- Canager's own `settings.json` in its application data directory
+- Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 
-## Files Canager writes
+## Files Banager writes
 
-One: `settings.json` in Canager's application data directory
+One: `settings.json` in Banager's application data directory
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
 directory is created if it is missing). Nothing else on the Mac is
-written, moved or deleted by Canager itself: every change to what is
+written, moved or deleted by Banager itself: every change to what is
 installed is made by the tool named in the preview, running the command
 shown there.
 
-## Network: Canager only connects to these hosts
+## Network: Banager only connects to these hosts
 
 Every request goes through `RealHttpClient`
 (`crates/banager-core/src/http/real.rs`), and it refuses, before opening a
@@ -1427,7 +1427,7 @@ Plain `http` is exempt from the list for one caller: the Ollama daemon at
 a machine the user named.
 
 Every request: TLS through rustls; the header `User-Agent:
-canager/<version>`; no other header of Canager's own, except `Accept` on
+banager/<version>`; no other header of Banager's own, except `Accept` on
 the Ollama registry request — the HTTP library adds what the protocol
 needs, `Host` and `Accept: */*`, and nothing else; no cookies, no
 credentials, nothing about this Mac in the request; a timeout per request
@@ -1446,18 +1446,18 @@ permitted to call it (`opener:default` in
 calls it: no homepage link, no "reveal in Finder"; when one ships, this
 paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint
-`https://github.com/Brulek/Canager/releases/latest/download/latest.json`
-(`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Canager
+`https://github.com/Brulek/Banager/releases/latest/download/latest.json`
+(`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Banager
 calls it yet, so no request to it is made; when app self-update ships,
 this paragraph changes.
 
-The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
+The tools Banager runs make their own connections — `brew`, `npm`, `pip`,
 `pipx`, `uv`, `cargo`, `cargo-binstall` and `ollama pull` each reach
 whatever index or registry they are configured to use. Those are the
-tools' connections, under the tools' configuration; Canager neither
+tools' connections, under the tools' configuration; Banager neither
 chooses nor sees them.
 
-## What Canager never does
+## What Banager never does
 
 - Never runs a shell for any command, and never pipes a download into one
   (`curl … | sh`). The one shell run is the `PATH` read at launch, above.
@@ -1497,7 +1497,7 @@ Each row is a sentence or table cell in Step 3's text and the line(s) at `26bc64
 |---|---|
 | argv array, absolute program, `Command::new` + args, no shell | `runner/real.rs:664-665`; `adapters/mod.rs:487-497` (`run_plan` builds `CommandSpec` from `plan.program`/`plan.args`) |
 | login shell run once at launch, `-ilc`, the exact echo/env string, `DISABLE_AUTO_UPDATE=true`, cwd home, reads PATH only | `src-tauri/src/lib.rs:18`; `src-tauri/Cargo.toml:33` (pinned rev `c4c45d5…`); fix-path-env `src/lib.rs:38-56`, `:91-93` (`fix` = `fix_vars(&["PATH"])`) |
-| child inherits Canager's environment plus listed vars; `envs`, no clear | `runner/real.rs:666` (no `env_clear` anywhere in the file) |
+| child inherits Banager's environment plus listed vars; `envs`, no clear | `runner/real.rs:666` (no `env_clear` anywhere in the file) |
 | stdin `/dev/null`, stdout/stderr piped, own process group | `runner/real.rs:670-673` |
 | write commands streamed line by line; read-only pass `None` | `adapters/mod.rs:478-486`, `:499`; every `run_*` helper passes `None` (`brew/mod.rs:321`, `npm.rs:137`, `pipx.rs:255`, `uv.rs:180`, `pip.rs:192`, `cargo.rs:150`, `ollama/mod.rs:264`) |
 | timeout capped at 24 h; SIGTERM, grace, SIGKILL on the group | `runner/real.rs:417`, `:707`; `:3-4` (module doc) |
@@ -1566,7 +1566,7 @@ Each row is a sentence or table cell in Step 3's text and the line(s) at `26bc64
 | settings.json the only write; tmp + rename; dir created | `crates/banager-core/src/settings.rs:60-72`; `grep -rn 'fs::write\|fs::rename\|remove_file\|remove_dir\|create_dir' crates/banager-core/src src-tauri/src` hits only `settings.rs:62,70,71` outside `#[cfg(test)]` |
 | allowlist, `host_allowed` first in `send`, http exempt | `http/real.rs` (Task 2) |
 | rustls, UA, 8 MiB, no redirects; 30 s is the client-wide default and every request overrides it with its own | `http/real.rs:38-53` (`:51` the default), `:75` (`.timeout(req.timeout)`), `:22`, `:87-97`, `:115-119`; per-request values `adapters/cargo.rs:230`, `pipx.rs:289`, `ollama/mod.rs:279` (10 s, detect), `:338`, `:404` |
-| Canager's own headers: none but UA, except Ollama `Accept`; `GET` only | `adapters/cargo.rs:221,229`; `adapters/pipx.rs:283,288`; `adapters/ollama/mod.rs:276,278`, `:335,337`, `:398,400-403`; `http/mod.rs:14-16` |
+| Banager's own headers: none but UA, except Ollama `Accept`; `GET` only | `adapters/cargo.rs:221,229`; `adapters/pipx.rs:283,288`; `adapters/ollama/mod.rs:276,278`, `:335,337`, `:398,400-403`; `http/mod.rs:14-16` |
 | the library adds `Host` and `Accept: */*`, nothing else | reqwest 0.13 (`crates/banager-core/Cargo.toml:25`): `ClientBuilder::new` seeds `Accept: */*` (`~/.cargo/registry/src/*/reqwest-0.13.5/src/async_impl/client.rs:285`); `Host` is HTTP/1.1's own; `real.rs:39-52` sets only the UA, the redirect policy and the timeout on top, and `send` (`:72-78`) adds only `req.headers` |
 | CSP `connect-src 'self'` | `src-tauri/tauri.conf.json` `app.security.csp` |
 | updater plugin registered, endpoint, never called | `src-tauri/src/lib.rs:26`; `src-tauri/tauri.conf.json` `plugins.updater.endpoints`; `grep -rn updater src src-tauri/src` finds only the registration and an unrelated comment in `src/lib/events.ts:40` |
@@ -1589,7 +1589,7 @@ The file was titled "Phase 0-1: Homebrew only" and said nothing about
 npm, pipx, uv, pip, cargo or Ollama, three of which contact the network.
 It now lists, per source, every command and its timeout, every
 environment variable, every file read, and every host; then what
-Canager writes (its own settings.json), the https allowlist, the one
+Banager writes (its own settings.json), the https allowlist, the one
 shell run at launch, and what it never does. A new integration test
 holds the document to the code: a section per registered adapter, every
 host in ALLOWED_HTTPS_HOSTS, every variable in BrewAdapter::ENV and
@@ -1610,15 +1610,15 @@ EOF
 
 **§6.5 "必须一起改"** — `warningKey` is a `switch` + `never` default for bare strings and a `never` fall-through for objects, modelled on `format.ts:77-94` ✔. `warningArgs` is made exhaustive too (justified in Task 3's scope note; `faultArgs`, `format.ts:98-105`, is the same idiom). The spec's other two halves of that sentence — "`types.test.ts` 与 `model.rs` 的形状测试各加新变体" — are per-variant and land with the variants in step C; this task updates the existing shape test's *comment* only.
 
-**§6.7** — `brew/mod.rs` test module gains one test covering cask and formula × Install/Uninstall/Upgrade, asserting `args` contain none of the three flags ✔ and, stronger, equal exactly `[verb, flag, name]`; `docs/what-we-run.md`「Canager 绝不做的事」names the three flags ✔ (Task 4, checked by `test_what_we_run_promises_the_three_brew_flags_are_never_passed`).
+**§6.7** — `brew/mod.rs` test module gains one test covering cask and formula × Install/Uninstall/Upgrade, asserting `args` contain none of the three flags ✔ and, stronger, equal exactly `[verb, flag, name]`; `docs/what-we-run.md`「Banager 绝不做的事」names the three flags ✔ (Task 4, checked by `test_what_we_run_promises_the_three_brew_flags_are_never_passed`).
 
 **§9.4 (the two lines for this step)** — "`brew/mod.rs` 三种 `plan()` 不含 `--zap`/`--force`/`--ignore-dependencies`" ✔ Task 1; "`http/real.rs` 名单外 https 主机被 `send()` 拒绝、`http://` 放行" ✔ Task 2 (`test_real_http_client_refuses_an_https_host_off_the_list_before_connecting` and `test_host_allowed_exempts_plain_http_whatever_the_host`, plus the seven pre-existing `http://` loopback tests that keep passing).
 
-**§9.5** — "重写成每来源一节（只读表：后台检查、不要密码；写表：先预览后确认），从各适配器的 `plan()`/`detect()` 抄 argv 与超时" ✔ seven sections, each with a read-only table headed "background checks; never need a password" (Homebrew's, then "Read-only commands" for the rest) and a write table headed "only run after the user reviews and confirms a plan preview" (or "none" for pip). Of the spec's five bullets: the standalone-tool sections, the `~/.claude/settings.json` / rc-file reads, the six-host list, the phase-4 lines of the never-list, the step-C FDA result, and the unknown-scan section are each added by the step that produces them (B, C, D, E, F), as the spec says ("本阶段每步各加自己那一节"). What this step's document already carries from those bullets: the "Canager 读的文件" section with `~/.cargo/.crates2.json` ✔ (the one file the spec names that exists today), "Canager 只连接这些主机" with the constant's three entries, "不跟随重定向", "请求里除 UA 外不带本机任何信息" ✔, and the never-list items that are true today (no shell, no `curl | sh`, no installer scripts, the three brew flags, nothing outside the app's own settings written, no rc-file edits, no background writes) ✔. The items "不删 `$HOME` 之外的文件 / 不永久删除任何文件（唯一的进程内文件系统写入就是「移到废纸篓」）" are phrased for the state after step C; today the true sentence is "never writes, moves or deletes a file other than its own settings.json", which is what the document says, and step C rewrites that line when the trasher exists.
+**§9.5** — "重写成每来源一节（只读表：后台检查、不要密码；写表：先预览后确认），从各适配器的 `plan()`/`detect()` 抄 argv 与超时" ✔ seven sections, each with a read-only table headed "background checks; never need a password" (Homebrew's, then "Read-only commands" for the rest) and a write table headed "only run after the user reviews and confirms a plan preview" (or "none" for pip). Of the spec's five bullets: the standalone-tool sections, the `~/.claude/settings.json` / rc-file reads, the six-host list, the phase-4 lines of the never-list, the step-C FDA result, and the unknown-scan section are each added by the step that produces them (B, C, D, E, F), as the spec says ("本阶段每步各加自己那一节"). What this step's document already carries from those bullets: the "Banager 读的文件" section with `~/.cargo/.crates2.json` ✔ (the one file the spec names that exists today), "Banager 只连接这些主机" with the constant's three entries, "不跟随重定向", "请求里除 UA 外不带本机任何信息" ✔, and the never-list items that are true today (no shell, no `curl | sh`, no installer scripts, the three brew flags, nothing outside the app's own settings written, no rc-file edits, no background writes) ✔. The items "不删 `$HOME` 之外的文件 / 不永久删除任何文件（唯一的进程内文件系统写入就是「移到废纸篓」）" are phrased for the state after step C; today the true sentence is "never writes, moves or deletes a file other than its own settings.json", which is what the document says, and step C rewrites that line when the trasher exists.
 
 **Gaps found and fixed while writing:**
 1. The spec's §4.2 says the http caller is "唯一" the Ollama daemon; the code agrees (`grep` finds no other `http://` URL built outside tests), but the `real.rs` loopback tests also depend on the exemption — the plan says so in Task 2's rationale so nobody "tightens" it to loopback-only later and breaks them.
-2. The current document's claim "Canager never passes `--ignore-dependencies` to `brew uninstall`" survives; the new document adds that cargo's `--force` is the only `--force` Canager passes to anything (`cargo.rs:327-329`), because a reader who greps the repo for `--force` will find it and the never-list must not look wrong.
+2. The current document's claim "Banager never passes `--ignore-dependencies` to `brew uninstall`" survives; the new document adds that cargo's `--force` is the only `--force` Banager passes to anything (`cargo.rs:327-329`), because a reader who greps the repo for `--force` will find it and the never-list must not look wrong.
 3. The Tauri updater plugin (`src-tauri/src/lib.rs:26`) and its GitHub endpoint (`tauri.conf.json`) are outside `RealHttpClient` and so outside the allowlist. Nothing calls the plugin today; the document says exactly that rather than omitting the endpoint. Worth flagging to the author: when self-update ships, either the plugin's endpoint joins a documented exception or the allowlist idea is extended to it. The opener plugin (`lib.rs:25`, `opener:default` in `capabilities/default.json`) is in the same position — registered, permitted, never called from `src/` — and is exactly the kind of capability (open a URL or a path in another app) a trust file exists to disclose, so the document names it too.
 4. Spec §8.5 says the Unknown page's "重新扫描" will be "全 app 第一个刷新控件"; the code has a Retry control after a failed refresh (`SnapshotStatus.tsx:23`) and a refresh from a source notice (`SourceNotices.tsx:25`). The document describes those as they are; the spec's sentence is about a *page-level* control and is not contradicted, but step F's author should read it as "first page-level rescan", not "first refresh control".
 
@@ -1634,7 +1634,7 @@ Adversarial review of this plan, 2026-09-24, each point re-verified against `26b
 | # | Verdict | Reason (one line) and where the plan changed |
 |---|---|---|
 | 1 | accepted | `ops/mod.rs:645` `read.ok()` keeps `before` `None` on `IndexUpdating`, `version_change` (`:88-100`) then answers `Unknown`, and `:715-717` reports `Succeeded`; the current doc's `:56-62` exception was dropped by the rewrite. Restored: "When commands run" paragraph, a Homebrew-section paragraph after the `OP_UPDATE_WAIT` one, the never-list's last bullet, and an evidence row citing `:621-625`, `:645`, `:88-100`, `:704-706`, `:715-717`. |
-| 2 | accepted | reqwest 0.13.5 `ClientBuilder::new` seeds `Accept: */*` (`async_impl/client.rs:285` in the local registry) and hyper adds `Host`; the adapters' empty `headers` prove only Canager's half. Network paragraph now says "no other header of Canager's own … the HTTP library adds `Host` and `Accept: */*`, and nothing else"; the evidence row is split into Canager's headers and the library's. |
+| 2 | accepted | reqwest 0.13.5 `ClientBuilder::new` seeds `Accept: */*` (`async_impl/client.rs:285` in the local registry) and hyper adds `Host`; the adapters' empty `headers` prove only Banager's half. Network paragraph now says "no other header of Banager's own … the HTTP library adds `Host` and `Accept: */*`, and nothing else"; the evidence row is split into Banager's headers and the library's. |
 | 3 | accepted | `real.rs:51` is the client default and `:75` overrides it per request; Ollama's detect passes 10 s (`ollama/mod.rs:279`). Network paragraph now says "a timeout per request (30 s unless stated; the daemon check in Ollama's detect is 10 s)"; the `rustls, UA, …` evidence row cites `:51`, `:75` and the five per-request values. |
 | 4 | accepted | The planned Cargo rows carry `cargo install --force`, so `doc.contains("--force")` could not tell the Homebrew promise was gone. The test now requires one line naming all three flags, "never" and "Homebrew" (the never-list bullet); Interfaces and Step 2's expected failure were reworded to match. |
 | 5 | accepted | `grep -c 'host_allowed('` over the Step 1 block is 10 (3 + 3 + 1 + 1 + 2), one E0425 each. Step 2 now says ten, one per call site. |
@@ -1650,6 +1650,6 @@ Adversarial review of this plan, 2026-09-24, each point re-verified against `26b
 | 15 | accepted | `en.json:93-100` and `zh-CN.json:87-93` each hold five `warnings.*` keys (with `wouldBreak` as plural forms), all five referenced in `warningKey`. "three" → "five", keys listed. |
 | 16 | accepted | Duplicate of 5; the one fix in Task 2 Step 2 covers it. |
 | 17 | accepted | `UninstallDialog.tsx:87` is `const hasAffected`, `:88-92` the comment, `:93` `warningTexts`. `:87-91` → `:88-92` in "What already exists", Task 3's Files list and Step 3. |
-| — | found while verifying 4 | Simulating the four `what_we_run_test` assertions over the planned document text (a script over the fenced block, since cargo could not be run) showed `!doc.contains("Homebrew only")` failing on the never-list's own sentence "passed through to Homebrew only when it was already set". The assertion now compares the title line to `# What Canager Runs` exactly; Interfaces says so. The other three assertions pass over the planned text and the flag promise matches exactly one line (the never-list bullet); all four fail over the current file as Step 2 states. |
+| — | found while verifying 4 | Simulating the four `what_we_run_test` assertions over the planned document text (a script over the fenced block, since cargo could not be run) showed `!doc.contains("Homebrew only")` failing on the never-list's own sentence "passed through to Homebrew only when it was already set". The assertion now compares the title line to `# What Banager Runs` exactly; Interfaces says so. The other three assertions pass over the planned text and the flag promise matches exactly one line (the never-list bullet); all four fail over the current file as Step 2 states. |
 
 Remaining risk after this pass: none of the four tasks was run (another process held the tree), so Rust and TypeScript line numbers were read, not compiled, and the `what_we_run_test` assertions were simulated in a script rather than run under cargo. The dialog test's raw-key expectation pins today's runtime behaviour of the `never` default; if step C decides an unmirrored wire value should be rendered differently, that test changes with it.

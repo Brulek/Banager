@@ -50,5 +50,5 @@ Where the edited shape comes from, in pipx 1.17.3's own source
   github.com/pypa/pipx on 2026-09-24.
 
 A really pinned `cowsay` would also say `"pinned": true` in `list.json`. That file was not edited, because
-Canager does not read `pinned` from it: `PipxMainPackage` in `crates/banager-core/src/adapters/pipx.rs` has
+Banager does not read `pinned` from it: `PipxMainPackage` in `crates/banager-core/src/adapters/pipx.rs` has
 only `package` and `package_version`.

@@ -1,11 +1,11 @@
-# Canager 阶段 4 设计规格：独立安装器 + 来源不明扫描（2026-09-24）
+# Banager 阶段 4 设计规格：独立安装器 + 来源不明扫描（2026-09-24）
 
-> 调研原始记录（逐工具事实、代码地图、三份候选设计与评审）未入库，因为含作者本机细节：`~/dev/Canager/.superpowers/phase4/`。下文 `xxx.md §n` 形式的引用都指那里的文件。
+> 调研原始记录（逐工具事实、代码地图、三份候选设计与评审）未入库，因为含作者本机细节：`~/dev/Banager/.superpowers/phase4/`。下文 `xxx.md §n` 形式的引用都指那里的文件。
 
 三份候选设计（`design-safety.md` / `design-reuse.md` / `design-journey.md`）经三位评审独立打分，
 两位判 safety 胜、一位判 journey 胜。本稿以 **safety 为骨架**，删掉三位评审在任一设计里点名的
 每一处致命缺陷，把经得起核对的好想法嫁接进来，并把三份设计互相矛盾的地方逐条定案。
-本稿每一条关于现有代码的断言都由本稿作者在 `~/dev/Canager-polish` 上核过：初稿核对于
+本稿每一条关于现有代码的断言都由本稿作者在 `~/dev/Banager-polish` 上核过：初稿核对于
 `17d8ef7`（2026-09-24 15:07）；评审处理（§十三）后**重新钉到当前 HEAD `8ba6f52`**（分支
 `feat/pre-release-polish`；`17d8ef7` 之后的七个提交里 `99a9d6f` 改了 `NoCancel` 的语义、`201f760`
 改了 `OperationBar` 的按钮规则，本稿据此改写）。行号一律取自 `8ba6f52`，不是从任何一份设计里抄来的。
@@ -19,7 +19,7 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 
 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 ---
@@ -34,7 +34,7 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 | `cancel_policy` 零生产读取方，`NoCancel` 要等一个并行的 ops 改动（三份设计都写成前置依赖） | **已完整落地**（`17d8ef7` 立、`99a9d6f` 改定）：`CancelPolicy` 只剩 `KillThenReconcile \| NoCancel`（`model.rs:356-370`，`SafeKill` 在 Rust 与 TS 里都已删除，只残留在两份旧计划文档里）；`OpSummary.cancel_policy`（`ops/mod.rs:205`，`:295` 抄自 plan）；`OperationManager::cancel` 对 `NoCancel` 的 op **只在 Running 时拒绝，Queued 时照常接受**（`ops/mod.rs:331-332`——什么都还没启动，取消它等于让它永不启动；初稿写的「任何状态都拒绝」是 `17d8ef7` 的旧语义）；IPC 报 `{"kind":"no_cancel"}`（`src-tauri/src/ipc.rs:341`）；`OperationBar.tsx:38` `cancellable = policy !== "NoCancel" \|\| status === "Queued"`；策略矩阵测试在 `tests/ops_cancel_test.rs:736-866` | 阶段 4 **没有**前置依赖。rustup 是第一个生产 `NoCancel` 的适配器，Running-only 语义与它相容（Queued 时没有 spawn 任何东西，`noCancelHint` 说的「一旦开始」也对）。「No adapter produces `NoCancel` yet」一句在**四处**：`model.rs:366-368`、`src/lib/types.ts:157-158`、`OperationBar.tsx:37`、`tests/ops_cancel_test.rs:740-741`，步骤 E 全部改为指向 rustup。 |
 | `/usr/bin/trash` 是 macOS 14 起自带（journey §5.2） | 本机 `man trash` HISTORY：**First appeared in macOS 15.0**（reuse 的说法对） | spec 最低支持 13.3，13.3–14.x 没有 `trash`。本稿不依赖它（§6.2）。 |
 | `mv -n` 遇到同名目标会报错 | 本机实测（评审后补测，§十三 #19/#23）：`mv -n a dest/`（dest 已有 a）**退出 0、源文件原地不动、无任何输出**；**同一次调用里两个源同名也一样**——`mv -n ~/.local/bin/claude ~/.local/share/claude dest/` 先把链接移成 `dest/claude`，第二个源（程序目录）被静默跳过，退出 0；`mv` **单个**源到不存在的目录不是报错，而是把源改名成那个名字、退出 0（≥ 2 个源才报「is not a directory」退出 1）；`mv` 一个符号链接只移链接、目标原样 | claude 的两条路径基名都叫 `claude`，**一条 `mv` 命令根本表达不了这次卸载**（初稿 §6.2 的示例会静默留下 626 MB 的程序目录并报成功）。路径清单卸载改为每条路径一次系统「移到废纸篓」调用（§6.2）；不再有 `mv`、不再有时间戳子目录。 |
-| `/bin/mv … ~/.Trash/…` 从 Canager 里跑得通（三份设计与本稿初稿） | 本稿的 `mv` 实验全部在一个已有「完全磁盘访问权限」（FDA）的终端里做（本会话 `ls ~/Library/Mail` 可读），**没有在 Finder 启动的、无 FDA 的 app 上下文里试过**。`~/.Trash` 自 macOS 10.15 起受 TCC 保护（kTCCServiceSystemPolicyAllFiles）：无 FDA 的进程连 `ls ~/.Trash` 都是 Operation not permitted，子进程 `/bin/mv` 继承 app 的 TCC 身份，而 `access(W_OK)` 不问 TCC——本会话里 **UNVERIFIED**（有 FDA 的进程复现不了），但与 Catalina 起「终端要 FDA 才能进 ~/.Trash」的已知事实一致 | 「进废纸篓」不能建在一次 rename 上。改用系统 API `NSFileManager trashItemAtURL:`（访达与 macOS 15 的 `trash(1)` 用的就是它，不需要 FDA，访达「放回原处」可用），步骤 C 前必须在 Finder 启动的无 FDA 构建上核实（§6.2）。 |
+| `/bin/mv … ~/.Trash/…` 从 Banager 里跑得通（三份设计与本稿初稿） | 本稿的 `mv` 实验全部在一个已有「完全磁盘访问权限」（FDA）的终端里做（本会话 `ls ~/Library/Mail` 可读），**没有在 Finder 启动的、无 FDA 的 app 上下文里试过**。`~/.Trash` 自 macOS 10.15 起受 TCC 保护（kTCCServiceSystemPolicyAllFiles）：无 FDA 的进程连 `ls ~/.Trash` 都是 Operation not permitted，子进程 `/bin/mv` 继承 app 的 TCC 身份，而 `access(W_OK)` 不问 TCC——本会话里 **UNVERIFIED**（有 FDA 的进程复现不了），但与 Catalina 起「终端要 FDA 才能进 ~/.Trash」的已知事实一致 | 「进废纸篓」不能建在一次 rename 上。改用系统 API `NSFileManager trashItemAtURL:`（访达与 macOS 15 的 `trash(1)` 用的就是它，不需要 FDA，访达「放回原处」可用），步骤 C 前必须在 Finder 启动的无 FDA 构建上核实（§6.2）。 |
 | agy 的 `.old` 备份文件常驻（safety §0 观察到 184 MB） | 14:36 `agy` 自更新为 1.2.10 并留下 `agy.<ts>.old`；15:11 目录 mtime 更新，15:17 核实 `.old` **已不在** | 备份是**瞬态**的（约半小时）。卸载清单与扫描归属仍要认得它（碰上那半小时不能漏），但不能把它当稳定事实写进 fixture。 |
 | agy `--version` = `1.2.9` | 本机现为 `1.2.10`（调研到设计之间它自己更新了） | fixture 录 `1.2.10`；「徽章可能过时」这条危害是现场证明的，不是推测。 |
 
@@ -44,7 +44,7 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 
 | 来源 | 采纳 | 删除（评审点名的缺陷） |
 |---|---|---|
-| safety | 单一 `StandaloneAdapter` 类型；`execute()` 前对每条路径**再核一遍**（`Fault::PathChanged`）；rustup 卸载同时持有 cargo 实例的锁；移入废纸篓而不是永久删除（全部支持版本都可逆；机制改为系统调用，§6.2）；`EditsShellConfig` 披露 rustup 改 shell 配置；agy `.old` glob；HTTPS 主机 allowlist 在 `send()` 里失败关闭；附录 B「拒绝清单与执行点」 | 单一 `standalone` 适配器 id + `standalone:<tool>` 实例（评审 1 指出：绕过 `AdapterMeta::unverified_version`，四个工具的录制混在一个 fixture 目录）；自更新工具默认藏在「包含自更新的应用」开关后面（评审 3 指出：Canager 的差异化就是 AI CLI，默认看不见「它落后了」等于自砍第一问）；配方写成 TOML（spec §4.1「TOML 只承载元数据」） |
+| safety | 单一 `StandaloneAdapter` 类型；`execute()` 前对每条路径**再核一遍**（`Fault::PathChanged`）；rustup 卸载同时持有 cargo 实例的锁；移入废纸篓而不是永久删除（全部支持版本都可逆；机制改为系统调用，§6.2）；`EditsShellConfig` 披露 rustup 改 shell 配置；agy `.old` glob；HTTPS 主机 allowlist 在 `send()` 里失败关闭；附录 B「拒绝清单与执行点」 | 单一 `standalone` 适配器 id + `standalone:<tool>` 实例（评审 1 指出：绕过 `AdapterMeta::unverified_version`，四个工具的录制混在一个 fixture 目录）；自更新工具默认藏在「包含自更新的应用」开关后面（评审 3 指出：Banager 的差异化就是 AI CLI，默认看不见「它落后了」等于自砍第一问）；配方写成 TOML（spec §4.1「TOML 只承载元数据」） |
 | reuse | 每工具注册一次、id `standalone-<tool>`（`uv`/`ollama` 不撞、`unverified_version` 零改动、每工具一个 fixture 目录、检测并发免费）；「先共享排除、再各自指纹」的路线归属；版本读取带 `DISABLE_AUTOUPDATER=1` / `AGY_CLI_DISABLE_AUTO_UPDATE=true`；Rust `static` 配方；`what-we-run.md` 单独一步先合 | `trash -s` / `rm -rf` 按 OS 分支（13.3–14.x 永久删除，评审 2 判为更差）；rustup 卸载不持 cargo 锁（评审 1 指出与 `.crates2.json` 竞态）；`execute()` 无 TOCTOU 复核 |
 | journey | 四个区分来源的 PATH 遮蔽通知（`NotOnPath` / `ShadowedByHomebrew` / `ShadowedByNpm` / `ShadowedByOther`）；`LeavesUnmanaged { names }` 点名会失管的 cargo 二进制；「屏幕先行」的双语文案；`.app` 归属；本机现场核实的纪律 | 裸 id（第二批 `uv`、`ollama` 会在 `Session::build` 的断言处 panic）；rustup 工具链行（三个新 trait 方法，超出 spec §13 阶段 4）；agy `.old` 未处理；无 TOCTOU 复核；未披露 rustup 改 rc |
 
@@ -65,10 +65,10 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 | D2 | 实例**就是**那份原生安装：`exe_path` = 安装器写死的启动器（`~/.local/bin/claude` 等），`prefix` = 工具自己的根；唯一制品 = 工具本身，`ArtifactKind::Binary`。 | `ManagerInstance` 已有这两个字段；已安装页按实例分组、按行给按钮，不需要新的分组概念。 |
 | D3 | 本适配器**只认原生/脚本路线**；同一工具的 Homebrew / npm 副本留给 brew/npm 适配器（它们今天已经列出）。探测 = 检查安装器的固定路径，**不用** `resolve_exe`；共享排除（`/Cellar/`、`/Caskroom/`、`/node_modules/`、`/corepack/`）先跑，各工具指纹后跑。 | 双重列出在构造上不可能，不靠跨适配器查表。PATH 只回答「你敲名字时跑哪份」（D7）。 |
 | D4 | 最新版本只用 **VERIFIED** 端点；只有 remote > local（点分整数比较）才建候选；查不到是现有的 `checkable: false` 行。加编译期 `ALLOWED_HTTPS_HOSTS`，在 `RealHttpClient::send` 里失败关闭。 | `UpdateCandidate` + `uncheckable_candidate`（`adapters/mod.rs:269-284`）已能表达「有新版」与「查不到」；主机从 4 个涨到 7 个（第二批 11 个），注释不是检查。 |
-| D5 | **自更新的工具照常给徽章**，不藏在 `include_self_updating` 后面；行描述用 `auto_updates` 说「它平时会自己更新」（该字段第一个非 Pinned 读取方）。首批只有 claude、agy 算自更新；grok 的 `auto_update = true` 只被证实为「启动时检查」，是否静默安装 UNVERIFIED，核实前按不自更新对待（§4.4）。没有可运行更新命令的（agy）候选带 `UpdateBlocked::SelfUpdatesOnly`：无按钮、Rust 闸门同样拒绝。版本读取带停用自更新的环境变量。 | brew 的 `--greedy` 存在是因为 `brew outdated` 查不到 cask 的活版本；这里 Canager 读的就是启动器**此刻**的版本，比较是精确的。徽章说的是「这份比最新版旧」，是真话；点了之后工具已自己更新 → `UnchangedAfterUpgrade`，也是真话。本机 claude 的自更新被环境变量关掉，徽章正是有用的那种信号。 |
+| D5 | **自更新的工具照常给徽章**，不藏在 `include_self_updating` 后面；行描述用 `auto_updates` 说「它平时会自己更新」（该字段第一个非 Pinned 读取方）。首批只有 claude、agy 算自更新；grok 的 `auto_update = true` 只被证实为「启动时检查」，是否静默安装 UNVERIFIED，核实前按不自更新对待（§4.4）。没有可运行更新命令的（agy）候选带 `UpdateBlocked::SelfUpdatesOnly`：无按钮、Rust 闸门同样拒绝。版本读取带停用自更新的环境变量。 | brew 的 `--greedy` 存在是因为 `brew outdated` 查不到 cask 的活版本；这里 Banager 读的就是启动器**此刻**的版本，比较是精确的。徽章说的是「这份比最新版旧」，是真话；点了之后工具已自己更新 → `UnchangedAfterUpgrade`，也是真话。本机 claude 的自更新被环境变量关掉，徽章正是有用的那种信号。 |
 | D6 | 升级 = 工具自己的文档命令，走 `run_plan` 不变；rustup `self update` 为 `NoCancel`（原子性 UNVERIFIED），且与 `self uninstall` 一样同时持 cargo 实例的锁——它替换的是 13 个代理都 exec 的那个二进制（§2.4）；**永不** `rustup update`。 | `ops/mod.rs:676-716` 的前后核对免费给出诚实结果；`NoCancel` 已被 ops 层遵守——Running 时拒绝、Queued 时接受（§0.1）。 |
 | D7 | 「敲名字跑哪份」= 四个无载荷 `InstanceNote` 变体，在 `detect()` 里按 `resolve_exe` 的解析路径分类。「装了 2 份」的合并计数推迟，形状记 §十一。 | `InstanceNote` 是现成的实例级通道，两页都渲染（`sourceNoticesFor`，`sources.ts:123`）；四句各自可行动的话对小白比一句带路径的话有用。 |
-| D8 | 无官方卸载命令的卸载 = 一个 `Plan`，其 `action` 是 `PlanAction::TrashPaths { paths }`：`execute()` 对每条路径**依次**调一次 macOS 的 `NSFileManager trashItemAtURL:`（访达用的那个调用：同卷 rename、瞬间完成、访达「放回原处」可用、不需要完全磁盘访问权限），程序目录在前、**启动器最后**。五条包含性检查在 `plan()` 跑一遍、`execute()` 再跑一遍，且每移一条前核对 `(st_dev, st_ino)`，有差异 → `Fault::PathChanged`。设置、登录、历史默认保留并逐条列出。 | 一条 `mv` 命令装不下两条基名相同的路径（claude 的两条都叫 `claude`），无 FDA 的进程进不了 `~/.Trash`（都在 §0.1）；`/usr/bin/trash` 只在 15.0+ 存在。`Plan` 因此多一个两臂枚举（Q16），`CommandPreview` 多一支「Canager 自己移、不运行命令」，其余执行合同（`execute()` 签名、`run_operation` 的前后核对、锁、取消令牌）不变。 |
+| D8 | 无官方卸载命令的卸载 = 一个 `Plan`，其 `action` 是 `PlanAction::TrashPaths { paths }`：`execute()` 对每条路径**依次**调一次 macOS 的 `NSFileManager trashItemAtURL:`（访达用的那个调用：同卷 rename、瞬间完成、访达「放回原处」可用、不需要完全磁盘访问权限），程序目录在前、**启动器最后**。五条包含性检查在 `plan()` 跑一遍、`execute()` 再跑一遍，且每移一条前核对 `(st_dev, st_ino)`，有差异 → `Fault::PathChanged`。设置、登录、历史默认保留并逐条列出。 | 一条 `mv` 命令装不下两条基名相同的路径（claude 的两条都叫 `claude`），无 FDA 的进程进不了 `~/.Trash`（都在 §0.1）；`/usr/bin/trash` 只在 15.0+ 存在。`Plan` 因此多一个两臂枚举（Q16），`CommandPreview` 多一支「Banager 自己移、不运行命令」，其余执行合同（`execute()` 签名、`run_operation` 的前后核对、锁、取消令牌）不变。 |
 | D9 | rustup 卸载 = 官方 `rustup self uninstall -y`，`NoCancel`，四条固定警告（工具链、Cargo 缓存与记录、失管的 cargo 二进制、改 shell 配置）+ 一条条件警告（rustup 不管的 rc 文件里残留的 `.cargo/env` 行，本机 `~/.zshrc:17` 就是），`Plan.locks` 同时持有 `standalone-rustup` 与 `cargo:<cargo_home>`。 | 它会删 `~/.cargo/.crates2.json`——cargo 适配器 inventory 读的正是这个文件（`cargo.rs:187`），刷新在实例锁下读（`refresh.rs:275-277`）；`run_operation` 一次性取齐 `plan.locks`（`ops/mod.rs:437-450`）。 |
 | D10 | 来源不明扫描 = `crates/banager-core/src/scan/` 里一个纯函数 + `Session::scan_unknown` + 一个 IPC 命令 + 一个新页面；**不是** `Adapter`，不进 `Snapshot`，不进 refresh。 | 归属需要所有其它适配器的实例，`inventory(&self, inst)` 看不到（`adapters/mod.rs:428-431`）；注册成 Adapter 会撞 fixture 集合相等测试、ops 注册与闸门；进 `Snapshot` 会进 `same_content`（`session/mod.rs:122`）或被它忽略。 |
 | D11 | 首批 claude、agy、grok、rustup；其余六个是第二批，每个都等一份真机（CI runner）录制才注册。 | fixture 只收真机录制，且 `fixtures_layout_test.rs` 要求注册 id 与目录集合**完全相等**。 |
@@ -100,7 +100,7 @@ TypeScript、每个新字段点名生产读取方、可独立合并的步骤、�
 | `id` | `"standalone-claude"` 等 | 全工作区；`Settings.ignored_updates` |
 | `adapter_id` | 同 `id` | `ADAPTER_LABEL_KEYS`（`sources.ts:18`，读取点 `InstalledPage.tsx:166`、`UninstallDialog.tsx:50-51`、`UpdatesPage.tsx:518` `sourceLabelFor`）；`ops/mod.rs` 按它找适配器 |
 | `exe_path` | **启动器本身**（`~/.local/bin/claude` 这个符号链接，不是它的目标；agy/rustup 是普通文件），**不是** `resolve_exe` 找到的那份 | `plan()` 的 `program`（同 `uv.rs:170,268` 的做法）；`reconcile()` 的存在性判断（`symlink_metadata` + 指纹，§3.6）；`CommandPreview`；`sourceNoticesFor` 新分支取 `file_name()` 作 `{{command}}`；扫描归属规则 0 与 1（§8.3） |
-| `prefix` | 工具的根：claude `~/.local/share/claude`，agy `~/.gemini/antigravity-cli`，grok `~/.grok`，rustup **`$CARGO_HOME`**（启动器与 13 个代理住在它的 `bin/` 下；Canager 不读 `RUSTUP_HOME` 下的任何东西，`rustup self uninstall` 自己知道它在哪，所以 `HostEnv` 不加 `rustup_home`，§3.2） | 扫描归属规则 3——只对 `prefix` 是「自己拥有的根」的适配器生效（standalone-claude/agy/grok、brew 的 Cellar/Caskroom/opt；**不含** rustup，它的一切都靠规则 1，§8.3）；`SymlinkIntoRoot` 路线的指纹（`canonicalize(launcher)` 必须落在其下）。今天前端不渲染 `prefix`（grep 只命中 `sources.ts` 注释） |
+| `prefix` | 工具的根：claude `~/.local/share/claude`，agy `~/.gemini/antigravity-cli`，grok `~/.grok`，rustup **`$CARGO_HOME`**（启动器与 13 个代理住在它的 `bin/` 下；Banager 不读 `RUSTUP_HOME` 下的任何东西，`rustup self uninstall` 自己知道它在哪，所以 `HostEnv` 不加 `rustup_home`，§3.2） | 扫描归属规则 3——只对 `prefix` 是「自己拥有的根」的适配器生效（standalone-claude/agy/grok、brew 的 Cellar/Caskroom/opt；**不含** rustup，它的一切都靠规则 1，§8.3）；`SymlinkIntoRoot` 路线的指纹（`canonicalize(launcher)` 必须落在其下）。今天前端不渲染 `prefix`（grep 只命中 `sources.ts` 注释） |
 | `scope` | `User`（四条路线全在 `$HOME` 下） | — |
 | `version` | `--version` 解析结果；失败 `None` | `unverified_version`；`refresh.rs` |
 | `unverified_version` | `meta.unverified_version(&version)` | `InstalledPage.tsx:279-281` |
@@ -195,7 +195,7 @@ pub struct Recipe {
 
 /// 配方里的每条路径都以 `~/` 或 `$CARGO_HOME/` 开头，由 `route::expand(&HostEnv, s)` 展开
 /// （`$CARGO_HOME` = env.cargo_home 或 home/.cargo，与 cargo.rs:133-136 同一条规则）。没有 `$RUSTUP_HOME`：
-/// Canager 不读 RUSTUP_HOME 下的任何东西（§十三 #44）。绝不在适配器里读 `std::env::var("HOME")`——
+/// Banager 不读 RUSTUP_HOME 下的任何东西（§十三 #44）。绝不在适配器里读 `std::env::var("HOME")`——
 /// `HostEnv` 存在的理由（runner/path_env.rs:9-13）。一条测试遍历 RECIPES，断言每条路径都以这两者之一开头。
 pub struct Route { pub kind: RouteKind, pub launcher: &'static str, pub root: &'static str }
 pub enum RouteKind {
@@ -297,7 +297,7 @@ rustup 不生效；四条卸载警告不带 `RUSTUP_HOME` 数据），而加一�
 
 双重列出在构造上不可能：brew 列 `brew info --installed` 报的，npm 列 `npm ls -g` 报的，本适配器只列真实路径落在一个**没有任何包管理器会写**的根之下的启动器。同一个**工具**可以合法出现两次（Homebrew 组的 `claude-code` cask 行 + `Claude Code` 组的一行），那正是 spec §4.2 的「检测到 2 个 claude」，§七说清楚哪份在跑。
 
-安装时的环境变量（`GROK_BIN_DIR`、`UV_INSTALL_DIR`……）Canager 无从知道（Finder 启动的进程只有 `fix_path_env` 恢复的 PATH，`src-tauri/src/lib.rs:18`）；首批一律按安装脚本默认路径。自定义路径的安装落到来源不明页——诚实。
+安装时的环境变量（`GROK_BIN_DIR`、`UV_INSTALL_DIR`……）Banager 无从知道（Finder 启动的进程只有 `fix_path_env` 恢复的 PATH，`src-tauri/src/lib.rs:18`）；首批一律按安装脚本默认路径。自定义路径的安装落到来源不明页——诚实。
 
 ### 3.4 版本读取不得触发自更新
 
@@ -312,7 +312,7 @@ rustup 不生效；四条卸载警告不带 `RUSTUP_HOME` 数据），而加一�
 
 这些环境变量只加在 detect/inventory/reconcile 的版本读取上，**不加在 Upgrade plan 的 `env`** 上（`claude update` 不该被要求停用自己）。升级前后的核对用同一读法，`ops/mod.rs:88-100` 比较的是同一解析器的两个字符串。
 
-初稿在 agy 这一格写「即便无效，代价只是它像今天一样自己更新——不会更糟」，评审指出这句是假的（§十三 #10）：今天没有任何东西在后台跑 agy，阶段 4 之后 Canager 的每次刷新跑 `agy --version` 两到三次（detect、inventory、reconcile）。若某个将来版本的 `--version` 又开始派生更新器且变量无效，Canager 自己就成了后台写机器的触发器。处理：每个 agy `verified_versions` 的录制（§9.3）都必须包含「`--version` 后 `log/` 无新文件、`update_status.json` mtime 不变」这一步并写进 README；哪一版做不到，就把那一版的版本读取改成不 spawn（例如读 `~/.gemini/antigravity-cli/updater/` 里安装器记录的清单）或 `version: None` 并在行上说明，不是「不会更糟」。what-we-run.md 照实写：1.2.10 的 `--version` 不写日志；带提示词的运行才写。
+初稿在 agy 这一格写「即便无效，代价只是它像今天一样自己更新——不会更糟」，评审指出这句是假的（§十三 #10）：今天没有任何东西在后台跑 agy，阶段 4 之后 Banager 的每次刷新跑 `agy --version` 两到三次（detect、inventory、reconcile）。若某个将来版本的 `--version` 又开始派生更新器且变量无效，Banager 自己就成了后台写机器的触发器。处理：每个 agy `verified_versions` 的录制（§9.3）都必须包含「`--version` 后 `log/` 无新文件、`update_status.json` mtime 不变」这一步并写进 README；哪一版做不到，就把那一版的版本读取改成不 spawn（例如读 `~/.gemini/antigravity-cli/updater/` 里安装器记录的清单）或 `version: None` 并在行上说明，不是「不会更糟」。what-we-run.md 照实写：1.2.10 的 `--version` 不写日志；带提示词的运行才写。
 
 ### 3.5 四个首批配方（数据）
 
@@ -350,7 +350,7 @@ agy 的 amd64 清单 URL 由安装脚本的 `${os}_${arch}` 拼法推出（VERIF
 
 ### 4.2 HTTPS 主机 allowlist
 
-`RealHttpClient`（`http/real.rs`）今天做对了的：rustls、`canager/{version}` UA、不跟随重定向（3xx 即错，`:50`）、30 s、8 MiB 体上限（`:22`）。它**没有主机名单**；`:43-49` 那段「the four endpoints this client talks to」是注释，不是检查（那个「四」把本机 http 的 Ollama 守护进程也算进去了：HTTPS 主机其实是 3 个）。阶段 4 把 HTTPS 主机从 3 涨到 **6**（连本机 Ollama 的 http 端点算 7 个），第二批 11。
+`RealHttpClient`（`http/real.rs`）今天做对了的：rustls、`banager/{version}` UA、不跟随重定向（3xx 即错，`:50`）、30 s、8 MiB 体上限（`:22`）。它**没有主机名单**；`:43-49` 那段「the four endpoints this client talks to」是注释，不是检查（那个「四」把本机 http 的 Ollama 守护进程也算进去了：HTTPS 主机其实是 3 个）。阶段 4 把 HTTPS 主机从 3 涨到 **6**（连本机 Ollama 的 http 端点算 7 个），第二批 11。
 
 加：
 
@@ -366,7 +366,7 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 
 `send()` 在发请求前解析 `req.url`：scheme 为 `https` 且 host 不在名单 → `HttpError::Network("host not allowed: …")`。`http://` **豁免**：本 crate 里唯一的 http 调用方是 Ollama 守护进程（`HostEnv.ollama_host`，可指向别机）。已知缝隙（记 §十二 Q8）：用户把 `OLLAMA_HOST` 设成 `https://` 指向另一台机器时会被名单挡住——`RealHttpClient::new()` 在 `Session::new`（`session/mod.rs:259`）里不带 `HostEnv`；真要放行需要 `with_extra_host(ollama_host)`，等有人报了再做。
 
-读取方：`send()` 本身；一条单元测试遍历 `RECIPES` 每个 `Latest` 的 URL 断言 host 在名单内（新增配方带新主机 = 两处改动一起审）；`docs/what-we-run.md` 的「Canager 只连接这些主机」一节。同一改动里把 `:43-49` 那段「four endpoints」注释改成指向常量——它是一句会变假的代码断言。
+读取方：`send()` 本身；一条单元测试遍历 `RECIPES` 每个 `Latest` 的 URL 断言 host 在名单内（新增配方带新主机 = 两处改动一起审）；`docs/what-we-run.md` 的「Banager 只连接这些主机」一节。同一改动里把 `:43-49` 那段「four endpoints」注释改成指向常量——它是一句会变假的代码断言。
 
 ### 4.3 版本比较
 
@@ -381,10 +381,10 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 1. `InstalledArtifact.auto_updates` 按配方求值（claude/agy `true`，grok **`false`**，rustup `false`）。grok 是唯一一个事实 UNVERIFIED 的：`auto_update = true` 只被证实为「启动时检查」（grok.md §5 开放问题 2），而 `selfUpdatingHint` 会把「它通常会自己更新」当事实告诉用户——UNVERIFIED 的事实不能在用户看到的句子里成为承重墙（§十三 #25）。核实前 grok 走普通路：徽章 + 「更新」按钮 + `grok update`；哪怕它其实会静默自更新，结果也只是 `UnchangedAfterUpgrade`，准确。CI 录制到静默安装的证据后，把 `self_updates` 改成 `true`、恢复读 `config.toml` 的 `GrokConfig` 形状（§十一），一处改动。
 2. `check_updates` **不看** `CheckOptions.include_self_updating`（`adapters/mod.rs:27-29` 的注释就写着「Homebrew only」，brew 的 `--greedy` 在 `brew/mod.rs:790-791`）。徽章说的是「这份此刻比最新版旧」，由启动器的活版本比出来，不是 `brew outdated` 那种查不到 cask 活版本的噪声。
 3. **`auto_updates` 得到第一个非 Pinned 读取方**：`UpdatesPage.tsx` 的 `rowDescription`（`:444-475`）新增一支——候选可操作（`isActionable`）、`artifactsById` 里该制品 `auto_updates === true`、且 `instance.adapter_id` 以 `standalone-` 开头（不动 `--greedy` 列出的自更新 cask 的描述）→ `updates.selfUpdatingHint`。
-4. 配方 `upgrade: None`（agy：`agy update` 存在但零文档、零选项、未被任何人运行过，agy.md §4）→ 每个候选 `blocked: Some(UpdateBlocked::SelfUpdatesOnly)`（新变体）。读取方：闸门 `blocked_upgrade`（`plans.rs:81`，已通用）在 `:184` 拒绝 Upgrade；`updateStateOf`（`updateState.ts:49`）判为 blocked 隐藏按钮与勾选框；`UPDATE_BLOCKED_KEYS`（`sources.ts:351`，`Record<UpdateBlocked, …>`，漏写编译失败）供徽章/描述/拒绝文案，其 `command` 返回 `instance.exe_path`（在终端里可直接运行的绝对路径——它会打开 agy 的界面，句子照实说「打开一次再退出」；不能改成 `<exe> --version`，本机 1.2.10 实测 `--version` 根本不触发更新器，§3.4），文案加上「它最多每 15 分钟检查一次」（agy.md §4 的节流，否则用户「运行了一次却没更新」是必然的困惑；§十三 #31），`selfUpdatingDescription*` 为 `null`（理由本身就是自更新）。为什么是 blocked 候选而不是「无候选」：无候选让已安装行说「已是最新」（`installed.upToDate`），1.2.11 存在时那是谎话；为什么不是 `checkable: false`：那表示「查不到」，而 Canager 查到了。
+4. 配方 `upgrade: None`（agy：`agy update` 存在但零文档、零选项、未被任何人运行过，agy.md §4）→ 每个候选 `blocked: Some(UpdateBlocked::SelfUpdatesOnly)`（新变体）。读取方：闸门 `blocked_upgrade`（`plans.rs:81`，已通用）在 `:184` 拒绝 Upgrade；`updateStateOf`（`updateState.ts:49`）判为 blocked 隐藏按钮与勾选框；`UPDATE_BLOCKED_KEYS`（`sources.ts:351`，`Record<UpdateBlocked, …>`，漏写编译失败）供徽章/描述/拒绝文案，其 `command` 返回 `instance.exe_path`（在终端里可直接运行的绝对路径——它会打开 agy 的界面，句子照实说「打开一次再退出」；不能改成 `<exe> --version`，本机 1.2.10 实测 `--version` 根本不触发更新器，§3.4），文案加上「它最多每 15 分钟检查一次」（agy.md §4 的节流，否则用户「运行了一次却没更新」是必然的困惑；§十三 #31），`selfUpdatingDescription*` 为 `null`（理由本身就是自更新）。为什么是 blocked 候选而不是「无候选」：无候选让已安装行说「已是最新」（`installed.upToDate`），1.2.11 存在时那是谎话；为什么不是 `checkable: false`：那表示「查不到」，而 Banager 查到了。
 5. 「版本没动」：`claude update` 已最新时打印 `Claude Code is up to date (X)` 退出 0（VERIFIED 文档）。`run_operation` 前后各读一次（`ops/mod.rs:630-639`、`:655`），相等 → `NeedsAttention(UnchangedAfterUpgrade)`（`:697-700`），现有文案「程序并没有更新它，操作日志里也许能看到原因」——准确。真实竞态（检查与点击之间工具自己更新了）同样落到这里，同样准确。中途停止 → `Unconfirmed`（`:774-777`）。阶段 4 在 `ops/` 里不改一行。
 
-已知缺口（记 §十一）：本机 claude 的自更新被 shell 里的 `DISABLE_AUTOUPDATER=1` 关掉，Finder 启动的 Canager 看不见这个变量，所以 `selfUpdatingHint` 说「**通常**会自己更新」；一个后续改进是 claude 专用地读 `~/.claude/.last-update-result.json` 的 `timestamp`（VERIFIED 存在）。
+已知缺口（记 §十一）：本机 claude 的自更新被 shell 里的 `DISABLE_AUTOUPDATER=1` 关掉，Finder 启动的 Banager 看不见这个变量，所以 `selfUpdatingHint` 说「**通常**会自己更新」；一个后续改进是 claude 专用地读 `~/.claude/.last-update-result.json` 的 `timestamp`（VERIFIED 存在）。
 
 ---
 
@@ -417,11 +417,11 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 
 ### 6.2 路径清单卸载 = 一个 `TrashPaths` 计划，`execute()` 逐条调系统「移到废纸篓」
 
-初稿在这里写的是「一条 `/bin/mv -n <路径…> ~/.Trash/Canager – <工具> <时间>/`」，理由是 `Plan` 就是一个程序一个 argv，
+初稿在这里写的是「一条 `/bin/mv -n <路径…> ~/.Trash/Banager – <工具> <时间>/`」，理由是 `Plan` 就是一个程序一个 argv，
 不该在唯一的执行模型旁边再立一个。评审用本机复现推翻了它（§十三 #19、#20、#23、#13）：
 
 - claude 的两条路径基名都是 `claude`：`mv -n` 先把链接移成 `dest/claude`，再遇到同名目录就**静默跳过、退出 0**——626 MB 的 `~/.local/share/claude` 原地不动，`reconcile` 看启动器没了 → `Succeeded`。**一条 argv 表达不了这次卸载**；去掉 `-n` 也只是换成「Not a directory」退出 1。
-- `~/.Trash` 受 TCC 保护：Finder 启动的、没有「完全磁盘访问权限」的 Canager，连它派生的 `/bin/mv` 也会在 rename 时得到 EPERM，而初稿检查 6 的 `access(W_OK)` 不问 TCC（本会话里 UNVERIFIED——这个终端已有 FDA；步骤 C 之前必须核，见下）。
+- `~/.Trash` 受 TCC 保护：Finder 启动的、没有「完全磁盘访问权限」的 Banager，连它派生的 `/bin/mv` 也会在 rename 时得到 EPERM，而初稿检查 6 的 `access(W_OK)` 不问 TCC（本会话里 UNVERIFIED——这个终端已有 FDA；步骤 C 之前必须核，见下）。
 - 单个源 `mv` 到不存在的目录会把源改名成那个名字并退出 0（agy 没有 `.old` 也没有 `~/.cache/antigravity` 时正是一条路径），`create_dir_all` 对已存在目录也成功，同一分钟里第二个 plan 会执行进一个已有内容的目录。
 
 定案：
@@ -444,21 +444,21 @@ pub struct Plan { pub request: OpRequest, pub action: PlanAction, pub needs_pass
 
 **执行**（`execute()`，`removal.rs`）：
 1. 取 `Detected`；把 `plan.action` 解成 `paths`（它就是 `plan()` 时从 `warnings` 里的 `WillTrash` 建出来的同一批，顺序相同）。
-2. 对每条路径重跑 §6.3 检查 1–5，并记下 `(st_dev, st_ino)`；任一差异 → `Ok(Outcome::CanagerFailed(Fault::PathChanged { path }))`，**一条都不移**。
+2. 对每条路径重跑 §6.3 检查 1–5，并记下 `(st_dev, st_ino)`；任一差异 → `Ok(Outcome::BanagerFailed(Fault::PathChanged { path }))`，**一条都不移**。
 3. 逐条：先看 `cancel` 令牌（已取消 → 停，返回 `Ok(Outcome::Unconfirmed)`，`run_operation` 的 stopped 臂（`ops/mod.rs:787-799`）reconcile 后如实报 `Cancelled` 或 `StillInstalledAfterUninstall`）；再 `symlink_metadata` 取一次 `(st_dev, st_ino)`，与第 2 步不同 → `PathChanged`；然后 `trasher.trash(&path)`。成功 → `sink.emit(OperationEvent::Log { stream: Stdout, line: "Moved <path> to the Trash (<新位置>)" })`（`events.rs:50-54`，与 `run_plan` 给命令输出用的同一条通道）；失败 → 一行 NSError 文本进日志，返回 `Ok(Outcome::Failed { exit_code: None, summary })`（`model.rs:407-410`）——前面移走的留在废纸篓，启动器（最后一条）还在，下次刷新行还在，可以重来。
 4. 全部成功 → `Ok(Outcome::Succeeded)`，`run_operation` 再 `reconcile`（`ops/mod.rs:688-691`）。
 
 **`Trasher`**（`crates/banager-core/src/trash/`）：与 `CommandRunner`/`HttpClient` 同一套路。`pub trait Trasher: Send + Sync { fn trash(&self, path: &Path) -> Result<PathBuf, TrashError>; }`（返回项目在废纸篓里的新位置，日志用）；`RealTrasher`（`#[cfg(target_os = "macos")]`，`objc2-foundation` 的 `NSFileManager::trashItemAtURL_resultingItemURL_error`——对符号链接移链接本身、不解析目标，e2e 测试断言这一点）；`MockTrasher`（rename 进一个临时目录，记录调用序列，可注入「第 N 条失败」）。`StandaloneAdapter` 多一个 `trasher: Arc<dyn Trasher>`，`Session::new`（`session/mod.rs:259-271`）注入 `RealTrasher`。这是本稿唯一新增的依赖（`objc2` + `objc2-foundation`，只在 macOS target 下；Q16 列了 `trash` crate 的替代——它的 `DeleteMethod::NsFileManager` 是同一个调用，而它默认的 `Finder` 方法走 AppleScript、会弹「自动化」授权，不可用）。
 
-**顺序**：配方 `remove` 的顺序 = 执行顺序：程序目录、缓存、备份在前，**启动器最后**。中途停下（取消、某条失败、Canager 被杀）的唯一残留形态是「程序目录已进废纸篓、启动器成了悬空链接」——它在下次刷新里仍是一行（§3.3 `LauncherOnly`），再点一次卸载把链接移走（已不在的程序目录列为 `AlreadyGone`，§6.3 检查 2）。反过来（启动器先）会让 626 MB 隐形：detect 找不到启动器，行消失，而 `~/.local/share/claude` 不是 bin 目录，来源不明页也看不到（§十三 #7/#21）。
+**顺序**：配方 `remove` 的顺序 = 执行顺序：程序目录、缓存、备份在前，**启动器最后**。中途停下（取消、某条失败、Banager 被杀）的唯一残留形态是「程序目录已进废纸篓、启动器成了悬空链接」——它在下次刷新里仍是一行（§3.3 `LauncherOnly`），再点一次卸载把链接移走（已不在的程序目录列为 `AlreadyGone`，§6.3 检查 2）。反过来（启动器先）会让 626 MB 隐形：detect 找不到启动器，行消失，而 `~/.local/share/claude` 不是 bin 目录，来源不明页也看不到（§十三 #7/#21）。
 
-**为什么是废纸篓、为什么是系统调用（Q1）**：同卷 rename、瞬间完成；访达「放回原处」可用（初稿的 `mv` 做不到，文案只敢说「拖回去」）；不需要 FDA；`/usr/bin/trash` 只在 15.0+ 存在，`rm -rf` 是终端用户跑的、选了 GUI 的人期望「卸载」像把 app 拖进废纸篓。跨卷不再是问题：系统调用会用那一卷自己的 `.Trashes`，仍是 rename。代价：这是 Canager 第一处进程内文件系统写入——what-we-run.md 与附录 B 都写明；测试断言 `MockTrasher` 的调用序列逐字等于 `plan` 的 `paths`、临时 HOME 里除此之外无变化。
+**为什么是废纸篓、为什么是系统调用（Q1）**：同卷 rename、瞬间完成；访达「放回原处」可用（初稿的 `mv` 做不到，文案只敢说「拖回去」）；不需要 FDA；`/usr/bin/trash` 只在 15.0+ 存在，`rm -rf` 是终端用户跑的、选了 GUI 的人期望「卸载」像把 app 拖进废纸篓。跨卷不再是问题：系统调用会用那一卷自己的 `.Trashes`，仍是 rename。代价：这是 Banager 第一处进程内文件系统写入——what-we-run.md 与附录 B 都写明；测试断言 `MockTrasher` 的调用序列逐字等于 `plan` 的 `paths`、临时 HOME 里除此之外无变化。
 
-**步骤 C 合并前的核实（阻塞）**：用一个 Finder 启动的、无 FDA 的开发构建（从终端 `pnpm tauri dev` 起的进程继承终端的 FDA，不算）：(1) 对临时目录里的一个文件与一个符号链接各调一次 `RealTrasher::trash` → 成功、项目出现在废纸篓、「放回原处」可用、链接移的是链接本身；(2) 同一进程 `std::fs::rename` 进 `~/.Trash/x` → 预期 EPERM（记录下来，证明初稿的 `mv` 方案在真实上下文里不可用；若意外成功，也不回到 `mv`——基名冲突与「放回原处」两条理由仍在）。两条结果写进 `what-we-run.md`。如果 (1) 也失败（不预期），回退是 `Trasher` 的另一个实现（同一 trait、同一 `Plan`、同一预览）：`std::fs::create_dir`（**不是** `create_dir_all`；`AlreadyExists` → `PathChanged` 类拒绝，目标必须是新建的）建 `~/.Trash/Canager – <工具> <时间>/<序号>/` 再逐条 `rename`——那时就得接受一次「完全磁盘访问」之旅，这是 spec §1 不允许的摩擦，由作者拍板。
+**步骤 C 合并前的核实（阻塞）**：用一个 Finder 启动的、无 FDA 的开发构建（从终端 `pnpm tauri dev` 起的进程继承终端的 FDA，不算）：(1) 对临时目录里的一个文件与一个符号链接各调一次 `RealTrasher::trash` → 成功、项目出现在废纸篓、「放回原处」可用、链接移的是链接本身；(2) 同一进程 `std::fs::rename` 进 `~/.Trash/x` → 预期 EPERM（记录下来，证明初稿的 `mv` 方案在真实上下文里不可用；若意外成功，也不回到 `mv`——基名冲突与「放回原处」两条理由仍在）。两条结果写进 `what-we-run.md`。如果 (1) 也失败（不预期），回退是 `Trasher` 的另一个实现（同一 trait、同一 `Plan`、同一预览）：`std::fs::create_dir`（**不是** `create_dir_all`；`AlreadyExists` → `PathChanged` 类拒绝，目标必须是新建的）建 `~/.Trash/Banager – <工具> <时间>/<序号>/` 再逐条 `rename`——那时就得接受一次「完全磁盘访问」之旅，这是 spec §1 不允许的摩擦，由作者拍板。
 
 `needs_password: false`；`timeout_secs: 120`（`execute()` 自己对 `Instant` 计时，超出 → 停下并 `Unconfirmed`）；`cancel_policy: KillThenReconcile`（在这里的含义：条目之间看令牌，没有进程可杀；一次 `trashItemAtURL:` 是一次 rename）；`locks: [inst.id]`；`affected: []`（那个字段表示「会坏掉的依赖方」，非空会禁用确认按钮，`UninstallDialog.tsx:87,209-248`）。
 
-**预览**（`CommandPreview` 的 `TrashPaths` 支）：一句 `uninstall.trashPreview`（「Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。」），项目本身由「继续之前请注意」里的 `WillTrash` 逐条列出（§6.6）。初稿的 `uninstall.trashNote` 并入这句；它的读取方不再是「任一 `WillTrash` 存在」，而是 `plan.action` 的形状。
+**预览**（`CommandPreview` 的 `TrashPaths` 支）：一句 `uninstall.trashPreview`（「Banager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。」），项目本身由「继续之前请注意」里的 `WillTrash` 逐条列出（§6.6）。初稿的 `uninstall.trashNote` 并入这句；它的读取方不再是「任一 `WillTrash` 存在」，而是 `plan.action` 的形状。
 
 ### 6.3 可以移什么：五条运行时检查 + 一条配方测试，`plan()` 一遍、`execute()` 再一遍
 
@@ -466,7 +466,7 @@ pub struct Plan { pub request: OpRequest, pub action: PlanAction, pub needs_pass
 
 | # | 检查 | 失败时（`AdapterError::UninstallUnsafe { path, reason }`，§9.1） |
 |---|---|---|
-| 1 | `canonical_home = canonicalize(home)`；`canonical_parent = canonicalize(path.parent())`——**每种 `Expect` 都做**（初稿只对 `Dir` 再 canonicalize 一次，父目录是链接时 `File`/`SymlinkIntoRoot` 会逃逸，§十三 #26）；`canonical_parent` 以 `canonical_home` 开头，且之下至少两层（永不是 `~`、`~/.local`、`~/.config`、`~/.cache`、`~/Library`、`~/.cargo`）。用户自设的 `~/.local/bin → /Volumes/Data/bin` 因此被拒——不是因为不安全，而是「Canager 只动个人文件夹里的东西」得是真的；`$HOME` 本身是链接时两边都 canonical，不误拒。首批没有一条路径在 `home` 外；这条是防将来配方悄悄扩大爆炸半径 | `outside_home` |
+| 1 | `canonical_home = canonicalize(home)`；`canonical_parent = canonicalize(path.parent())`——**每种 `Expect` 都做**（初稿只对 `Dir` 再 canonicalize 一次，父目录是链接时 `File`/`SymlinkIntoRoot` 会逃逸，§十三 #26）；`canonical_parent` 以 `canonical_home` 开头，且之下至少两层（永不是 `~`、`~/.local`、`~/.config`、`~/.cache`、`~/Library`、`~/.cargo`）。用户自设的 `~/.local/bin → /Volumes/Data/bin` 因此被拒——不是因为不安全，而是「Banager 只动个人文件夹里的东西」得是真的；`$HOME` 本身是链接时两边都 canonical，不误拒。首批没有一条路径在 `home` 外；这条是防将来配方悄悄扩大爆炸半径 | `outside_home` |
 | 2 | `symlink_metadata(path)` 成功。失败时：`optional` → 跳过（`~/.cache/antigravity` 不在不是错）；非 optional、**实例是 `LauncherOnly`**（§3.3）且这条不是启动器 → 跳过并发 `Warning::AlreadyGone { path }`（上次中断留下的状态，这次只剩启动器要移）；否则 | `missing` |
 | 3 | `st_uid == Detected.euid`（`HostEnv.euid`，`path_env.rs:8`）——是用户自己的 | `not_owned_by_you` |
 | 4 | `expect`：`SymlinkIntoRoot` → 是符号链接，且 `canonicalize(path)` 以 `canonicalize(expand(root))` 开头，**或**（悬空时）`read_link` 文本按 §3.3 第 2 步的词法归一后以 `expand(root)` 开头；`File` → 普通文件，非链接；`Dir` → 目录，非链接，且 `canonicalize(path)` 本身也满足 1。**`optional: true` 的路径指纹不符 → 不是拒绝**：跳过并发 `WillKeep { path, what: NotOurs }`（grok 的 `~/.local/bin/agent` 是个通用名，本机就有好几个别的 agent CLI；grok 的安装器只在 `~/.grok/bin` 不在 PATH 上时才放这个回退链接，一个外来的 `agent` 至少和 grok 的一样常见，不该让 grok 永远卸不掉，§十三 #27）；非 optional 才拒绝 | `not_what_instructions_expect` |
@@ -476,9 +476,9 @@ pub struct Plan { pub request: OpRequest, pub action: PlanAction, pub needs_pass
 
 全部跳过后 `remove` 为空 → `AdapterError::Refused`（走通用 `refused`，**有意**不给专门文案：制品在列表上就意味着启动器存在，这条不可达）。`detected` 为 `None` 同样通用 `Refused`（§3.2）。
 
-**`execute()` 对同一批绝对路径再跑 1–5**，并在移每一条之前比对 `(st_dev, st_ino)`，任何与 `plan()` 所见的差异（链接被重指、文件变成目录、属主变了、被替换成同名的另一个 inode）→ `Ok(Outcome::CanagerFailed(Fault::PathChanged { path }))`（新 `Fault` 变体），**一条都不移**（第一条之前）或停在那一条（之后，前面的已在废纸篓）。这是 brew 为 `brew uses` 读取做的 `catalogue_stamp` TOCTOU 防线（`brew/mod.rs:578,1242` 附近）用在真正要紧的地方：路径清单是从文件系统里建出来的，预览到确认之间的几分钟里文件系统会变（`PLAN_LIFETIME` 600 s，`plans.rs:18`）。
+**`execute()` 对同一批绝对路径再跑 1–5**，并在移每一条之前比对 `(st_dev, st_ino)`，任何与 `plan()` 所见的差异（链接被重指、文件变成目录、属主变了、被替换成同名的另一个 inode）→ `Ok(Outcome::BanagerFailed(Fault::PathChanged { path }))`（新 `Fault` 变体），**一条都不移**（第一条之前）或停在那一条（之后，前面的已在废纸篓）。这是 brew 为 `brew uses` 读取做的 `catalogue_stamp` TOCTOU 防线（`brew/mod.rs:578,1242` 附近）用在真正要紧的地方：路径清单是从文件系统里建出来的，预览到确认之间的几分钟里文件系统会变（`PLAN_LIFETIME` 600 s，`plans.rs:18`）。
 
-**在构造上永不上清单的**：`$HOME` 之外的任何东西（grok 安装器可能在 `/usr/local/bin` 放回退链接；存在则作为 `WillKeep { OutsideHome }` 报告，告诉用户它会变成失效链接、可以自己删）；shell 启动文件（Canager 不编辑 `.zshrc`/`.zprofile`，安装器加的行留着，作为 `WillKeep { ShellConfigLines }` 报告）；共享配置与凭据（`~/.claude`、`~/.claude.json`、`~/.grok` 除 `bin/downloads/bundled/completions` 外、`~/.gemini/antigravity-cli`；`~/.gemini` 根与 Gemini CLI 共用，**永不整目录删**）——默认保留，阶段 4 无「全部清除」（Q4）。
+**在构造上永不上清单的**：`$HOME` 之外的任何东西（grok 安装器可能在 `/usr/local/bin` 放回退链接；存在则作为 `WillKeep { OutsideHome }` 报告，告诉用户它会变成失效链接、可以自己删）；shell 启动文件（Banager 不编辑 `.zshrc`/`.zprofile`，安装器加的行留着，作为 `WillKeep { ShellConfigLines }` 报告）；共享配置与凭据（`~/.claude`、`~/.claude.json`、`~/.grok` 除 `bin/downloads/bundled/completions` 外、`~/.gemini/antigravity-cli`；`~/.gemini` 根与 Gemini CLI 共用，**永不整目录删**）——默认保留，阶段 4 无「全部清除」（Q4）。
 
 三个 `Paths` 配方（`remove` 按执行顺序，启动器最后）：
 
@@ -538,7 +538,7 @@ agy 的 `.old`：瞬态（§0.1），`optional` 语义天然覆盖「这半小�
  • 保留：~/.claude（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）
  • 保留：~/.claude.json（你的设置）
 将执行：
- Canager 会自己把上面列出的 3 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。
+ Banager 会自己把上面列出的 3 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。
 [取消] [卸载]
 ```
 
@@ -554,14 +554,14 @@ rustup（本机，含 `~/.zshrc:17` 那条残留引用）：
  • 卸载后 ~/.zshrc 里还有一行会去加载 ~/.cargo/env，每开一个终端窗口都会报一句错，直到你自己把那一行删掉。
 将执行：
  ~/.cargo/bin/rustup self uninstall -y（预览里是展开后的绝对路径）
-运行期间请不要关闭 Canager 或 Mac：中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。
+运行期间请不要关闭 Banager 或 Mac：中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。
 ```
 
 最后那句由 `UninstallDialog` 按 `plan.cancel_policy === "NoCancel"` 渲染（`operations.noCancelHint`，§五）。
 
 ### 6.7 `brew uninstall --zap` 危害
 
-`brew uninstall --zap --cask claude-code` 会连原生安装的 `~/.local/bin/claude`、`~/.local/share/claude` 与共享的 `~/.claude` 一起删（VERIFIED，cask 的 zap stanza，claude.md §2b）；`grok-build` 的 zap 是 `rmdir ~/.grok`；`antigravity-cli` 的 zap trash `~/.gemini/antigravity-cli`。Canager 的 brew 适配器**从不**传 `--zap`：卸载 argv 就是 `["uninstall", flag, name]`（`brew/mod.rs:1277`），全文件 grep `"--zap"`、`"--force"` 零命中，`--ignore-dependencies` 只出现在注释（`:567`）。阶段 4 把这条从「碰巧没写」变成「承诺」：`brew/mod.rs` 测试模块加一条，对 cask/formula 的 Install/Uninstall/Upgrade 三种 `plan()` 断言 `args` 不含这三个标志；`docs/what-we-run.md`「Canager 绝不做的事」写明。
+`brew uninstall --zap --cask claude-code` 会连原生安装的 `~/.local/bin/claude`、`~/.local/share/claude` 与共享的 `~/.claude` 一起删（VERIFIED，cask 的 zap stanza，claude.md §2b）；`grok-build` 的 zap 是 `rmdir ~/.grok`；`antigravity-cli` 的 zap trash `~/.gemini/antigravity-cli`。Banager 的 brew 适配器**从不**传 `--zap`：卸载 argv 就是 `["uninstall", flag, name]`（`brew/mod.rs:1277`），全文件 grep `"--zap"`、`"--force"` 零命中，`--ignore-dependencies` 只出现在注释（`:567`）。阶段 4 把这条从「碰巧没写」变成「承诺」：`brew/mod.rs` 测试模块加一条，对 cask/formula 的 Install/Uninstall/Upgrade 三种 `plan()` 断言 `args` 不含这三个标志；`docs/what-we-run.md`「Banager 绝不做的事」写明。
 
 反向危害不存在：每个 `Paths` 清单都是路线私有的（永不是 `~/.claude`，永不是 Homebrew 前缀），删掉原生副本，共存的 cask 副本与共享配置原样不动。
 
@@ -575,13 +575,13 @@ agy（`# Added by Antigravity CLI installer` + PATH 行）、grok（`# >>> grok 
 
 ```rust
 // model.rs  InstanceNote（今天 IndexMayBeStale | IndexUpdating，:93-105）
-    /// 敲这个工具的名字时找不到它：启动器所在目录不在 Canager 看到的 PATH 里。
+    /// 敲这个工具的名字时找不到它：启动器所在目录不在 Banager 看到的 PATH 里。
     NotOnPath,
     /// 敲名字时跑的是 Homebrew 装的那份（PATH 上先找到的可执行文件解析后含 /Cellar/ 或 /Caskroom/）。
     ShadowedByHomebrew,
     /// 同上，npm 装的那份（含 /node_modules/）。
     ShadowedByNpm,
-    /// 同上，一份 Canager 不认识的。
+    /// 同上，一份 Banager 不认识的。
     ShadowedByOther,
     /// 启动器还在，但它指向的程序目录已不在（上次卸载中途停下，§6.2 的顺序保证这是唯一的残留形态）。
     /// 行保留、闸门放行，卸载会把剩下的链接移走。detect() 在 §3.3 第 2 步填它。
@@ -592,7 +592,7 @@ agy（`# Added by Antigravity CLI installer` + PATH 行）、grok（`# >>> grok 
 
 读取方：`sourceNoticesFor` 的 notes 循环（`sources.ts:198-225`）五个新分支（`:222` 的 `never` 让漏写编译失败），`{{command}}` 取 `instance.exe_path` 的 `file_name()`，`{{source}}` 沿用 `sourceLabel`；PATH 四个 `variant: "info"`、`LauncherOnly` 是 `"warning"`；`axis: "state"`、无按钮；`types.ts:122` 联合；两份 locale；`sources.test.ts`。两页都渲染（`InstalledPage.tsx:181`、`UpdatesPage` 同一规则）。通知的标题与描述经 `SourceNotices.tsx:33` 的 `t(key, values)` 插值，是**纯文本**——`withCommand`/`COMMAND_SLOT` 只用在行描述与对话框上（`UpdatesPage.tsx:466`、`InstalledPage.tsx:330`、`UninstallDialog.tsx:108`），通知里的 `{{command}}` 不渲染成代码，与现有两条通知一致（§十三 #12）。
 
-PATH 语义与免责：Canager 的 PATH 来自 `fix_path_env::fix()` 唤起登录 shell（`src-tauri/src/lib.rs:18`），本机顺序是 `~/.opencode/bin`、`~/.local/bin`、`~/.grok/bin`、…、`/opt/homebrew/bin`、`/usr/local/bin`（现场核实）；从某个终端启动时会继承那个进程特有的临时目录（unknown-scan.md §0 的 23 条会话目录）。文案因此说「**多半**跑的是…」，不点名赢家的路径。本机四个工具都是单副本、无遮蔽，这四个 note 的测试是临时目录上的单元测试，不是录制。
+PATH 语义与免责：Banager 的 PATH 来自 `fix_path_env::fix()` 唤起登录 shell（`src-tauri/src/lib.rs:18`），本机顺序是 `~/.opencode/bin`、`~/.local/bin`、`~/.grok/bin`、…、`/opt/homebrew/bin`、`/usr/local/bin`（现场核实）；从某个终端启动时会继承那个进程特有的临时目录（unknown-scan.md §0 的 23 条会话目录）。文案因此说「**多半**跑的是…」，不点名赢家的路径。本机四个工具都是单副本、无遮蔽，这四个 note 的测试是临时目录上的单元测试，不是录制。
 
 Homebrew 组里的 `claude-code` cask 行**不会**说「还有一份原生的」——那需要给 `InstalledArtifact` 加命令名字段或前端按名字猜（`claude-code` ≠ `claude`）；正确形状记 §十一。
 
@@ -623,7 +623,7 @@ pub struct ScanBudget { pub max_entries: usize /* 2000 */, pub max_duration: Dur
 #[derive(Serialize, Deserialize, …)] pub struct UnknownScan {
     pub scanned: Vec<ScannedDir>,      // 实际读过的目录与条目数 → 页脚「查看了：…」，让空列表显得是「看了七处」而不是「没看」
     pub entries: Vec<UnknownEntry>,    // 没人认领的 → 行
-    pub attributed: u32,               // 被已知来源认领因此不列的数量 → 「另有 N 个来自 Canager 认识的来源」
+    pub attributed: u32,               // 被已知来源认领因此不列的数量 → 「另有 N 个来自 Banager 认识的来源」
     pub stopped: Option<ScanStop>,     // 触到预算 → 横幅「列表可能不完整」，数字来自载荷
 }
 pub struct ScannedDir { pub path: PathBuf, pub entries: u32 }
@@ -668,7 +668,7 @@ export interface UnknownScan { scanned: ScannedDir[]; entries: UnknownEntry[]; a
 3. `canonicalize(entry)` 以某实例**拥有的根**开头 → 取最长者。**不是 `prefix`**（§十三 #1/#22）：uv/pipx/pip/npm 的 `prefix` 是「可执行文件所在目录」（`uv.rs:138-141`、`pipx.rs:213-216`、`pip.rs:125-128`、`npm.rs:194-197` 全是 `exe_path.parent()`）。本机 `~/.local/bin/python3.12 → ~/.local/share/uv/python/…`，而 pip 适配器的 `CANDIDATE_INTERPRETERS` 含 `python3.12`（`pip.rs:68-74`）且 `-m pip --version` 失败也照样推一个 `NotResponding` 实例（`:92-100,153-156`）——于是刷新产出一个 prefix 为 `~/.local/bin` 的 pip 实例，按 `prefix` 归属会把整个 `~/.local/bin`（`agy`、一个第三方 app 放进来的脚本……）都算成 pip 的，这页存在的理由全没了；brew 的 `prefix` 是整个 `/opt/homebrew`/`/usr/local`（`brew/mod.rs:1446,1833`），Intel 机上第三方安装器放进 `/usr/local/bin` 的东西（unknown-scan.md §3.7 记录的那条 root 拥有的第三方链接就是这类）会被算成 brew 的而 `brew info --installed` 永远不会列它。拥有的根按 adapter id 查表（`scan/mod.rs` 的 `owned_roots(inst) -> Vec<PathBuf>`，带测试；§十一 的 `Adapter::owned_roots()` 是它将来的归宿）：`brew` → `<prefix>/Cellar`、`<prefix>/Caskroom`、`<prefix>/opt`；`ollama` → `<prefix>`（`~/.ollama`，bin 目录里没有东西解析到那里，列上只为完整）；`standalone-claude/agy/grok` → `<prefix>`（工具根 `~/.local/share/claude`、`~/.gemini/antigravity-cli`、`~/.grok`）；`standalone-rustup`、`cargo`、`uv`、`pipx`、`pip`、`npm` → **空**（rustup 的一切靠规则 1，cargo 靠规则 1/2，uv 靠规则 2；其余今天没有能归属的东西。永不把 `parent()` 得来的 `prefix` 当拥有）。
 4. （步骤 D 起）文件名匹配某个**有实例的**配方的 `backup_globs`（`agy.<ts>.old` 在 `~/.local/bin`）→ 该工具。实例不存在（agy 已卸载）时留下的 `.old` 是真的来源不明，照列。
 
-其余是 `UnknownEntry`；路径分量含 `.app` 的填 `app_bundle`。本机对照（unknown-scan.md §2 + 本次 `ls -la ~/.local/bin`；实例有 brew、cargo、npm、ollama、pip **两个**（Homebrew 的 python3.14 与 `~/.local/bin/python3.12`，后者 prefix `~/.local/bin`）、pipx、uv，加四个 standalone）：`~/.local/bin/agy`、`claude` → 规则 1；`python3.12` → 规则 0（它就是那个 pip 实例的 `exe_path`）→ 算「认领」——诚实：它确实是 Canager 列出的一个来源的可执行文件，至于它是 uv 管的 Python，是 §十一 `owned_roots` 的事；一个第三方 app 放进来的脚本 → 规则 0–3 全不中（pip 实例的 `~/.local/bin` 不再是根）→ **列出**；一条指向已删除 app 内部的链接 → `BrokenSymlink` + `app_bundle` 为那个 app 的名字。`~/.cargo/bin`：13 个代理 + `rustup` → 规则 1；`hexyl` → 步骤 E 之后规则 2 → cargo；**E 之前**（F 可以先合）它会暂时出现在来源不明页——F 的交付说明写明这一条。`~/.opencode/bin/opencode`（144 MB 独立二进制，无配方——正是这页存在的理由）→ 列出；`~/.grok/bin/{grok,agent}` → 规则 1；`/usr/local/bin` 里一个第三方远程桌面 app 以 root 身份放的链接 → 列出，`app_bundle` 为该 app、`owned_by_me: false`；一个 app 私有 CLI 目录（在 PATH 上）里的链接 → 列出。
+其余是 `UnknownEntry`；路径分量含 `.app` 的填 `app_bundle`。本机对照（unknown-scan.md §2 + 本次 `ls -la ~/.local/bin`；实例有 brew、cargo、npm、ollama、pip **两个**（Homebrew 的 python3.14 与 `~/.local/bin/python3.12`，后者 prefix `~/.local/bin`）、pipx、uv，加四个 standalone）：`~/.local/bin/agy`、`claude` → 规则 1；`python3.12` → 规则 0（它就是那个 pip 实例的 `exe_path`）→ 算「认领」——诚实：它确实是 Banager 列出的一个来源的可执行文件，至于它是 uv 管的 Python，是 §十一 `owned_roots` 的事；一个第三方 app 放进来的脚本 → 规则 0–3 全不中（pip 实例的 `~/.local/bin` 不再是根）→ **列出**；一条指向已删除 app 内部的链接 → `BrokenSymlink` + `app_bundle` 为那个 app 的名字。`~/.cargo/bin`：13 个代理 + `rustup` → 规则 1；`hexyl` → 步骤 E 之后规则 2 → cargo；**E 之前**（F 可以先合）它会暂时出现在来源不明页——F 的交付说明写明这一条。`~/.opencode/bin/opencode`（144 MB 独立二进制，无配方——正是这页存在的理由）→ 列出；`~/.grok/bin/{grok,agent}` → 规则 1；`/usr/local/bin` 里一个第三方远程桌面 app 以 root 身份放的链接 → 列出，`app_bundle` 为该 app、`owned_by_me: false`；一个 app 私有 CLI 目录（在 PATH 上）里的链接 → 列出。
 
 ### 8.4 预算、并发、边界
 
@@ -769,8 +769,8 @@ sourceNotice.shadowedByNpm.title          （同 shadowedByHomebrew.title）
 sourceNotice.shadowedByNpm.description    （同上，Homebrew → npm）
 sourceNotice.shadowedByOther.title        （同 shadowedByHomebrew.title）
 sourceNotice.shadowedByOther.description
-  en "You have {{source}} twice: this copy, and another one Canager doesn't manage. When you type {{command}} in Terminal, that other copy most likely runs, not this one. Updating or removing this one won't change what {{command}} does. The Unknown page may show where it is."
-  zh "{{source}} 装了两份：这一份，和一份 Canager 不管理的。在「终端」里输入 {{command}} 时，多半运行的是那一份，不是这一份。更新或卸载这一份，不会改变 {{command}} 的行为。「来源不明」页可能能看到它在哪。"
+  en "You have {{source}} twice: this copy, and another one Banager doesn't manage. When you type {{command}} in Terminal, that other copy most likely runs, not this one. Updating or removing this one won't change what {{command}} does. The Unknown page may show where it is."
+  zh "{{source}} 装了两份：这一份，和一份 Banager 不管理的。在「终端」里输入 {{command}} 时，多半运行的是那一份，不是这一份。更新或卸载这一份，不会改变 {{command}} 的行为。「来源不明」页可能能看到它在哪。"
 sourceNotice.launcherOnly.title
   en "Only the {{command}} link is left"                      zh "只剩下 {{command}} 这个链接了"
 sourceNotice.launcherOnly.description
@@ -778,33 +778,33 @@ sourceNotice.launcherOnly.description
   zh "程序文件已经不在了（上次卸载中途停下，它们可能在废纸篓里），但 {{command}} 这个链接还在，所以在「终端」里输入 {{command}} 会失败。卸载会把这个链接移走。如果你并不想删掉 {{source}}，把它的文件夹从废纸篓放回去，然后刷新。"
 
 updates.selfUpdatingHint
-  en "This copy is behind ({{current}} → {{target}}). {{source}} usually updates itself the next time you run it; you can update it now with Canager, or just run it."
-  zh "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Canager 更新，也可以直接运行它。"
+  en "This copy is behind ({{current}} → {{target}}). {{source}} usually updates itself the next time you run it; you can update it now with Banager, or just run it."
+  zh "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Banager 更新，也可以直接运行它。"
 operations.noCancelHint      （读取方两处：UpdatesPage 确认框与 UninstallDialog，都在 CommandPreview 之后按 plan.cancel_policy === "NoCancel" 显示，§五）
-  en "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts."
-  zh "运行期间请不要关闭 Canager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。"
+  en "Don't close Banager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts."
+  zh "运行期间请不要关闭 Banager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。"
 
 updates.blocked.SelfUpdatesOnly.badge
   en "Updates itself"                                         zh "自己更新"
 updates.blocked.SelfUpdatesOnly.description
-  en "A newer version of {{source}} is out ({{current}} → {{target}}), and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background."
-  zh "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。"
+  en "A newer version of {{source}} is out ({{current}} → {{target}}), and {{source}} installs updates itself in the background — Banager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background."
+  zh "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Banager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。"
 updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable
-  en "A newer version of {{source}} was seen the last time it answered, and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background."
-  zh "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。"
+  en "A newer version of {{source}} was seen the last time it answered, and {{source}} installs updates itself in the background — Banager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background."
+  zh "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Banager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。"
 updates.blocked.SelfUpdatesOnly.refused
-  en "{{source}} updates itself, so Canager didn't try to update it. Nothing has been changed."
-  zh "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
+  en "{{source}} updates itself, so Banager didn't try to update it. Nothing has been changed."
+  zh "{{source}} 会自己更新，所以 Banager 没有去更新它。什么都没有改动。"
   （UPDATE_BLOCKED_KEYS.SelfUpdatesOnly 的 selfUpdatingDescription / …SourceUnavailable = null）
 
 installed.blocked.NoSafeMethod.badge      en "Can't uninstall here"        zh "无法在这里卸载"
 installed.blocked.NoSafeMethod.description
-  en "{{source}} has no uninstall command, and Canager doesn't yet have a verified list of the files it would need to remove, so it doesn't offer to. The official instructions are on its website."
-  zh "{{source}} 没有卸载命令，Canager 也还没有一份核实过的文件清单，所以不提供卸载。官方说明在它的网站上。"
+  en "{{source}} has no uninstall command, and Banager doesn't yet have a verified list of the files it would need to remove, so it doesn't offer to. The official instructions are on its website."
+  zh "{{source}} 没有卸载命令，Banager 也还没有一份核实过的文件清单，所以不提供卸载。官方说明在它的网站上。"
 installed.blocked.NoSafeMethod.descriptionSourceUnavailable   （同上）
 installed.blocked.NoSafeMethod.refused
-  en "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
-  zh "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
+  en "Banager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
+  zh "Banager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
   （command 返回空串；该句没有 {{command}} 槽）
 
 warnings.willTrash.Launcher   en "Moves to the Trash: {{path}} (the command itself)"                 zh "移到废纸篓：{{path}}（命令本身）"
@@ -814,8 +814,8 @@ warnings.willTrash.Cache      en "Moves to the Trash: {{path}} (downloaded files
 warnings.willKeep.Settings            en "Keeps: {{path}} (your settings)"                            zh "保留：{{path}}（你的设置）"
 warnings.willKeep.SettingsAndHistory  en "Keeps: {{path}} (your settings, login, history and working files — other apps may use it too)"   zh "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）"
 warnings.willKeep.ToolState           en "Keeps: {{path}} (its conversations, history and working files; some of the program's own files are in there too)"   zh "保留：{{path}}（它的对话、历史和工作文件；程序自己的一些文件也在里面）"
-warnings.willKeep.ShellConfigLines    en "Keeps: the lines its installer added to {{path}} (harmless; Canager never edits that file)"   zh "保留：安装程序加进 {{path}} 的几行（无害；Canager 从不改这个文件）"
-warnings.willKeep.OutsideHome         en "Keeps: {{path}} (outside your home folder, so Canager won't touch it; after uninstalling it's a dead link you can delete yourself)"   zh "保留：{{path}}（不在你的个人文件夹里，Canager 不会碰它；卸载后它是个失效的链接，你可以自己删）"
+warnings.willKeep.ShellConfigLines    en "Keeps: the lines its installer added to {{path}} (harmless; Banager never edits that file)"   zh "保留：安装程序加进 {{path}} 的几行（无害；Banager 从不改这个文件）"
+warnings.willKeep.OutsideHome         en "Keeps: {{path}} (outside your home folder, so Banager won't touch it; after uninstalling it's a dead link you can delete yourself)"   zh "保留：{{path}}（不在你的个人文件夹里，Banager 不会碰它；卸载后它是个失效的链接，你可以自己删）"
 warnings.willKeep.NotOurs             en "Keeps: {{path}} (it isn't part of this install — something else put it there)"   zh "保留：{{path}}（它不属于这次安装，是别的东西放在那里的）"
 warnings.alreadyGone                  en "Already gone: {{path}} (nothing left to move)"             zh "已经不在了：{{path}}（没有东西要移）"
 warnings.removesToolchains
@@ -841,38 +841,38 @@ warnings.leavesShellConfigLine
   zh "卸载后 {{path}} 里还有一行会去加载 ~/.cargo/env，每开一个终端窗口都会报一句错，直到你自己把那一行删掉。"
 
 uninstall.trashPreview_one / _other   （CommandPreview 的 TrashPaths 支，§6.2；取代初稿的 uninstall.trashNote）
-  en "Canager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: you can put it back until you empty the Trash." / "…the {{count}} items listed above…put them back…"
-  zh "Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。"
+  en "Banager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: you can put it back until you empty the Trash." / "…the {{count}} items listed above…put them back…"
+  zh "Banager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能放回来。"
 
 planRefused.uninstallUnsafe.outsideHome
-  en "Canager won't remove {{path}}: it's outside your home folder. Nothing was changed."
-  zh "Canager 不会移除 {{path}}：它不在你的个人文件夹里。什么都没有改动。"
+  en "Banager won't remove {{path}}: it's outside your home folder. Nothing was changed."
+  zh "Banager 不会移除 {{path}}：它不在你的个人文件夹里。什么都没有改动。"
 planRefused.uninstallUnsafe.missing
-  en "{{path}} isn't there any more, so Canager stopped. Nothing was changed."
-  zh "{{path}} 已经不在了，Canager 停下了。什么都没有改动。"
+  en "{{path}} isn't there any more, so Banager stopped. Nothing was changed."
+  zh "{{path}} 已经不在了，Banager 停下了。什么都没有改动。"
 planRefused.uninstallUnsafe.notOwnedByYou
-  en "Canager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed."
-  zh "Canager 不会移除 {{path}}：它属于这台 Mac 上的另一个用户。什么都没有改动。"
+  en "Banager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed."
+  zh "Banager 不会移除 {{path}}：它属于这台 Mac 上的另一个用户。什么都没有改动。"
 planRefused.uninstallUnsafe.notWhatInstructionsExpect
-  en "Canager won't remove {{path}}: it isn't what the official instructions describe (a link to somewhere else, or a different kind of file), so removing it could hit the wrong thing. Nothing was changed."
-  zh "Canager 不会移除 {{path}}：它和官方说明描述的不一样（链到了别处，或者不是同一类文件），移除可能误伤别的东西。什么都没有改动。"
+  en "Banager won't remove {{path}}: it isn't what the official instructions describe (a link to somewhere else, or a different kind of file), so removing it could hit the wrong thing. Nothing was changed."
+  zh "Banager 不会移除 {{path}}：它和官方说明描述的不一样（链到了别处，或者不是同一类文件），移除可能误伤别的东西。什么都没有改动。"
   （初稿的 trashUnavailable 随检查 6 删除，§6.3；废纸篓不可用在执行时是 Outcome::Failed 的 summary，不是拒绝）
 
-operations.outcome.CanagerFailed.PathChanged
-  en "Failed: {{path}} changed between the preview and now, so Canager didn't move anything. Look at the preview again."
-  zh "失败：{{path}} 在预览之后有了变化，所以 Canager 什么都没有移动。请重新查看预览。"
+operations.outcome.BanagerFailed.PathChanged
+  en "Failed: {{path}} changed between the preview and now, so Banager didn't move anything. Look at the preview again."
+  zh "失败：{{path}} 在预览之后有了变化，所以 Banager 什么都没有移动。请重新查看预览。"
 
 nav.unknown                  en "Unknown"                              zh "来源不明"
-unknown.title                en "Programs Canager can't place"         zh "Canager 说不清来源的程序"
+unknown.title                en "Programs Banager can't place"         zh "Banager 说不清来源的程序"
 unknown.intro
-  en "These command-line programs are on your Mac, but none of the sources Canager knows installed them. Canager only lists them — it never runs or deletes anything here."
-  zh "这些命令行程序在你的 Mac 上，但 Canager 认识的来源都没有装过它们。Canager 只是列出来——这里什么都不会运行，也不会删除。"
+  en "These command-line programs are on your Mac, but none of the sources Banager knows installed them. Banager only lists them — it never runs or deletes anything here."
+  zh "这些命令行程序在你的 Mac 上，但 Banager 认识的来源都没有装过它们。Banager 只是列出来——这里什么都不会运行，也不会删除。"
 unknown.lookedIn             en "Looked in:"                           zh "查看了："
 unknown.dirCount_one / _other   en "{{path}} ({{count}} item)" / "{{path}} ({{count}} items)"   zh "{{path}}（{{count}} 项）"
-unknown.attributed_one       en "{{count}} more program came from a source Canager knows and is listed under it."   zh "另有 {{count}} 个程序来自 Canager 认识的来源，已列在对应来源下。"
-unknown.attributed_other     en "{{count}} more programs came from sources Canager knows and are listed under them."  zh "另有 {{count}} 个程序来自 Canager 认识的来源，已列在对应来源下。"
-unknown.stopped.FileLimit    en "Canager stopped after looking at {{count}} items, so this list may be incomplete."   zh "Canager 查看 {{count}} 项后停下了，这个列表可能不完整。"   （count = stopped.FileLimit.max_entries）
-unknown.stopped.TimeLimit    en "Canager stopped after {{seconds}} seconds, so this list may be incomplete."          zh "Canager 查看 {{seconds}} 秒后停下了，这个列表可能不完整。"   （seconds = stopped.TimeLimit.max_secs）
+unknown.attributed_one       en "{{count}} more program came from a source Banager knows and is listed under it."   zh "另有 {{count}} 个程序来自 Banager 认识的来源，已列在对应来源下。"
+unknown.attributed_other     en "{{count}} more programs came from sources Banager knows and are listed under them."  zh "另有 {{count}} 个程序来自 Banager 认识的来源，已列在对应来源下。"
+unknown.stopped.FileLimit    en "Banager stopped after looking at {{count}} items, so this list may be incomplete."   zh "Banager 查看 {{count}} 项后停下了，这个列表可能不完整。"   （count = stopped.FileLimit.max_entries）
+unknown.stopped.TimeLimit    en "Banager stopped after {{seconds}} seconds, so this list may be incomplete."          zh "Banager 查看 {{seconds}} 秒后停下了，这个列表可能不完整。"   （seconds = stopped.TimeLimit.max_secs）
 unknown.kind.File            en "Program"                              zh "程序"
 unknown.kind.Symlink         en "Program (link)"                       zh "程序（链接）"
 unknown.kind.BrokenSymlink   en "Broken link"                          zh "失效的链接"
@@ -885,18 +885,18 @@ unknown.scanAgain            en "Scan again"                           zh "重�
 unknown.scanning             en "Scanning…"                            zh "正在扫描…"
 unknown.scanFailed           en "Couldn't scan: {{message}}"           zh "没能扫描：{{message}}"
 unknown.empty
-  en "Nothing unexplained: every command-line program Canager found came from a source it knows."
-  zh "没有说不清的：Canager 找到的命令行程序都来自它认识的来源。"
+  en "Nothing unexplained: every command-line program Banager found came from a source it knows."
+  zh "没有说不清的：Banager 找到的命令行程序都来自它认识的来源。"
 
 emptyStates.noSources.description（改写）
-  en "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and tools that come with their own installer (Claude Code, Antigravity, Grok, rustup). None of them are set up on this Mac yet — Homebrew is the easiest place to start."
-  zh "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及自带安装器的工具（Claude Code、Antigravity、Grok、rustup）。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+  en "Banager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and tools that come with their own installer (Claude Code, Antigravity, Grok, rustup). None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+  zh "Banager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及自带安装器的工具（Claude Code、Antigravity、Grok、rustup）。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
 emptyStates.nothingInstalled.description（改写）
   en "Anything you install with Homebrew, npm, pipx, uv, pip, Cargo or Ollama, or with a tool's own installer, will show up here."
   zh "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用工具自带安装器装的，都会出现在这里。"
 ```
 
-`settings.includeSelfUpdating.*` **不动**（D5：独立安装工具不走那个开关）。`{{command}}` 在行描述与对话框里经现有 `withCommand`/`COMMAND_SLOT` 渲染成代码；在 `sourceNotice.*` 里是纯文本（§七）。`{{size}}` 需要一个 10 行的 `formatBytes`（`format.ts` 今天只有 `displayToken`/`outcomeKey`/`outcomeArgs`）。两个经模板插值到达的新键——`nav.unknown`（`Sidebar.tsx:9` 的 `t(\`nav.${p}\`)`）与 `operations.outcome.CanagerFailed.PathChanged`（`format.ts` 的 `outcomeKey`）——要同时登记进 `completeness.test.ts:187` 的 `INTERPOLATED_SUBTREES`（`nav` 在步骤 F，`operations.outcome` 在步骤 C），否则该测试判它们「无人引用」（§十三 #47）。
+`settings.includeSelfUpdating.*` **不动**（D5：独立安装工具不走那个开关）。`{{command}}` 在行描述与对话框里经现有 `withCommand`/`COMMAND_SLOT` 渲染成代码；在 `sourceNotice.*` 里是纯文本（§七）。`{{size}}` 需要一个 10 行的 `formatBytes`（`format.ts` 今天只有 `displayToken`/`outcomeKey`/`outcomeArgs`）。两个经模板插值到达的新键——`nav.unknown`（`Sidebar.tsx:9` 的 `t(\`nav.${p}\`)`）与 `operations.outcome.BanagerFailed.PathChanged`（`format.ts` 的 `outcomeKey`）——要同时登记进 `completeness.test.ts:187` 的 `INTERPOLATED_SUBTREES`（`nav` 在步骤 F，`operations.outcome` 在步骤 C），否则该测试判它们「无人引用」（§十三 #47）。
 
 ### 9.3 fixtures：只收真机录制
 
@@ -915,11 +915,11 @@ adapters/fixtures/standalone-rustup/1.29.1/    README.md  version.txt（stdout�
 
 **不录制**：`~/.claude/settings.json`（个人配置；`auth.json` 永不）——通道解析用内联 JSON（阶段 3 计划：内联不算 fixture）。`~/.grok/config.toml` 首批不再被读（§4.4）。「有更新」的一对版本本机录不到（四个都是最新）——比较逻辑用内联字符串（Q13），不为了录制而降级作者的 claude。指纹测试在临时目录自建布局，**不得**写进 `adapters/fixtures/`。`scan` 没有 fixture 目录（不是 adapter，且集合相等测试禁止多出一个）。README 按 `uv/0.12.17/README.md` 的格式写明日期、主机、命令、以及本机有哪条路线、没有哪条（读者才知道为什么没有 cask 录制）。
 
-第二批（§十 步骤 G）：一个手动触发的 GitHub Actions 工作流在 `macos-latest` 上用官方脚本把 bun/deno/mise/uv/pnpm 装进一次性 `HOME`（CI runner 是 spec §4.1 允许的录制环境；「不管进 sh」的规则约束的是 Canager），运行版本命令、`curl` 端点、上传目录为 artifact，作者审核后带 README 提交；Ollama.app 在 runner 上装 cask；Intel runner 顺手 `curl` agy 的 `darwin_amd64` 清单。没有一个字节是 AI 写的。
+第二批（§十 步骤 G）：一个手动触发的 GitHub Actions 工作流在 `macos-latest` 上用官方脚本把 bun/deno/mise/uv/pnpm 装进一次性 `HOME`（CI runner 是 spec §4.1 允许的录制环境；「不管进 sh」的规则约束的是 Banager），运行版本命令、`curl` 端点、上传目录为 artifact，作者审核后带 README 提交；Ollama.app 在 runner 上装 cask；Intel runner 顺手 `curl` agy 的 `darwin_amd64` 清单。没有一个字节是 AI 写的。
 
 ### 9.4 测试
 
-Rust，`adapters/standalone/`：每个 `Recipe` 的路径都以 `~/`、`$CARGO_HOME/` 之一开头、`Latest` 主机在 `ALLOWED_HTTPS_HOSTS`、每个 `Paths` 配方里没有一条路径是另一条的前缀且启动器是 `remove` 的最后一条；每个 fixture 的版本解析（rustup 的 stderr 文件）；最新版本解析（TOML/JSON/grok 的 JSON）与比较表（`2.1.273 < 2.1.281`、`1.0.41 == 1.0.41`、`2026.9.9 < 2026.9.12`、`1.2.10 > 1.2.9`、`abc` 不可比）；claude 通道（内联 JSON：缺失、`stable`、畸形）；临时目录上的路线检测（链接进 root → 实例；链接进含 `/Caskroom/` 的路径 → 无；期望链接却是文件 → 无；启动器缺失 → 无；**悬空链接文本指向 root（绝对与相对 `../downloads/…` 各一）→ `LauncherOnly` 实例、`unavailable: None`、`path: None`；悬空链接指向别处 → 无实例**；`MockRunner` 让 `--version` 失败 → `NotResponding`；四种遮蔽各一）；`check_updates`（远端更旧 → 无候选；HTTP 失败 → uncheckable；agy → `SelfUpdatesOnly`；grok `updateAvailable: false` → 无；`include_self_updating` 无论真假结果相同；x86_64 下 agy 为 uncheckable——用 `cfg` 或注入的 arch 常量）；`plan(Upgrade)` 的 argv/env（无 `DISABLE_AUTOUPDATER`）/策略/超时，rustup 的 `locks` 含 cargo 实例 id；`plan(Uninstall)`：五条检查各一个失败用例（属主不匹配用注入错误 `euid` 的 `HostEnv`，测试建不出 root 文件；**父目录是链接指向 HOME 外 → `outside_home`**，每种 `Expect` 各一）、`optional` 缺失跳过、**`optional` 指纹不符（外来的 `~/.local/bin/agent`）→ `WillKeep { NotOurs }` 且计划照常**、`LauncherOnly` 实例上缺失的程序目录 → `AlreadyGone` 且计划只含启动器、glob 只匹配普通文件、`action` 逐字是 `TrashPaths { paths }` 且顺序 = 配方顺序 = `WillTrash` 顺序、rustup 列两把锁且第二把等于 `CargoAdapter::detect` 在同一 `HostEnv`（有/无 `CARGO_HOME`）产出的 id；rustup 的 `LeavesShellConfigLine` 在临时 HOME 里对 `~/.zshrc` 含引用 / 只有 `~/.zshenv` 含引用各一例；`parse_crates2_bins` 对 `adapters/fixtures/cargo/1.98.1/crates2.json` 给 `[("hexyl", ["hexyl"])]`；**TOCTOU**：`plan` 与 `execute` 之间重指链接 → `CanagerFailed(PathChanged)` 且 `MockTrasher.calls()` 为空；**中途停下**：`MockTrasher` 在第二条失败 / 令牌在第一条后取消 → 第一条已在 mock 的废纸篓、启动器仍在、`reconcile.present == true`，随后第二个 `plan(Uninstall)` 给出 `AlreadyGone` + 只含启动器的 `TrashPaths`，`execute` → `Succeeded`；**基名冲突**：真实 claude 布局（两条都叫 `claude`）→ `MockTrasher` 收到两条调用，两项都在。
+Rust，`adapters/standalone/`：每个 `Recipe` 的路径都以 `~/`、`$CARGO_HOME/` 之一开头、`Latest` 主机在 `ALLOWED_HTTPS_HOSTS`、每个 `Paths` 配方里没有一条路径是另一条的前缀且启动器是 `remove` 的最后一条；每个 fixture 的版本解析（rustup 的 stderr 文件）；最新版本解析（TOML/JSON/grok 的 JSON）与比较表（`2.1.273 < 2.1.281`、`1.0.41 == 1.0.41`、`2026.9.9 < 2026.9.12`、`1.2.10 > 1.2.9`、`abc` 不可比）；claude 通道（内联 JSON：缺失、`stable`、畸形）；临时目录上的路线检测（链接进 root → 实例；链接进含 `/Caskroom/` 的路径 → 无；期望链接却是文件 → 无；启动器缺失 → 无；**悬空链接文本指向 root（绝对与相对 `../downloads/…` 各一）→ `LauncherOnly` 实例、`unavailable: None`、`path: None`；悬空链接指向别处 → 无实例**；`MockRunner` 让 `--version` 失败 → `NotResponding`；四种遮蔽各一）；`check_updates`（远端更旧 → 无候选；HTTP 失败 → uncheckable；agy → `SelfUpdatesOnly`；grok `updateAvailable: false` → 无；`include_self_updating` 无论真假结果相同；x86_64 下 agy 为 uncheckable——用 `cfg` 或注入的 arch 常量）；`plan(Upgrade)` 的 argv/env（无 `DISABLE_AUTOUPDATER`）/策略/超时，rustup 的 `locks` 含 cargo 实例 id；`plan(Uninstall)`：五条检查各一个失败用例（属主不匹配用注入错误 `euid` 的 `HostEnv`，测试建不出 root 文件；**父目录是链接指向 HOME 外 → `outside_home`**，每种 `Expect` 各一）、`optional` 缺失跳过、**`optional` 指纹不符（外来的 `~/.local/bin/agent`）→ `WillKeep { NotOurs }` 且计划照常**、`LauncherOnly` 实例上缺失的程序目录 → `AlreadyGone` 且计划只含启动器、glob 只匹配普通文件、`action` 逐字是 `TrashPaths { paths }` 且顺序 = 配方顺序 = `WillTrash` 顺序、rustup 列两把锁且第二把等于 `CargoAdapter::detect` 在同一 `HostEnv`（有/无 `CARGO_HOME`）产出的 id；rustup 的 `LeavesShellConfigLine` 在临时 HOME 里对 `~/.zshrc` 含引用 / 只有 `~/.zshenv` 含引用各一例；`parse_crates2_bins` 对 `adapters/fixtures/cargo/1.98.1/crates2.json` 给 `[("hexyl", ["hexyl"])]`；**TOCTOU**：`plan` 与 `execute` 之间重指链接 → `BanagerFailed(PathChanged)` 且 `MockTrasher.calls()` 为空；**中途停下**：`MockTrasher` 在第二条失败 / 令牌在第一条后取消 → 第一条已在 mock 的废纸篓、启动器仍在、`reconcile.present == true`，随后第二个 `plan(Uninstall)` 给出 `AlreadyGone` + 只含启动器的 `TrashPaths`，`execute` → `Succeeded`；**基名冲突**：真实 claude 布局（两条都叫 `claude`）→ `MockTrasher` 收到两条调用，两项都在。
 
 Rust，`tests/standalone_uninstall_test.rs`：真 `StandaloneAdapter` + `MockTrasher`（rename 进临时目录），在临时 `HOME` 里合成 claude 布局，走 `plan → execute → reconcile`，断言 `Succeeded`、mock 废纸篓里是链接本身（不是目标）与程序目录、临时 HOME 之外无变化。另一个 `#[ignore]` 的用例用 `RealTrasher` 对临时目录里的一个文件和一个链接各调一次（CI 的 macOS runner 跑，它的废纸篓是一次性的；开发机手动跑一次），断言返回的新位置在 `~/.Trash` 下且链接移的是链接本身。
 
@@ -933,10 +933,10 @@ Rust，其它：`brew/mod.rs` 三种 `plan()` 不含 `--zap`/`--force`/`--ignore
 
 现状标题「Phase 0–1: Homebrew only」（`:1`），78 行只写 brew；npm/pipx/uv/pip/cargo/ollama 六个来源上线时没有加节。重写成每来源一节（只读表：后台检查、不要密码；写表：先预览后确认），从各适配器的 `plan()`/`detect()` 抄 argv 与超时，再加：
 
-- **每个独立安装工具一节**：探测命令与环境变量（含 `DISABLE_AUTOUPDATER=1`、`AGY_CLI_DISABLE_AUTO_UPDATE=true` 的理由；agy 1.2.10 的 `--version` 不写日志、带提示词的运行才写）、更新检查（HTTP 主机或子命令）、升级 argv 与取消策略、卸载（路径清单：Canager **自己**逐条调 macOS 的「移到废纸篓」——与访达同一个调用，不运行命令，五条检查，启动器最后；或 `rustup self uninstall -y` 及它会删什么）。
-- **Canager 读的文件**（只读、不保存、不上传）：`~/.claude/settings.json` 的 `autoUpdatesChannel` 一个键；rustup 卸载预览时读 shell 启动文件找 `.cargo/env` 引用（§6.4）；`~/.cargo/.crates2.json`（cargo 适配器今天就读）。
-- **Canager 只连接这些主机**：`ALLOWED_HTTPS_HOSTS` 原文（6 个），每个 URL 取什么，「不跟随重定向」，「请求里除 UA 外不带本机任何信息」（grok 的 `update --check` 是它自己的请求）。
-- **Canager 绝不做的事**：不跑 shell、不 `curl | sh`、不重跑任何安装脚本、不传 `brew … --zap`/`--force`/`--ignore-dependencies`、不删 `$HOME` 之外的文件、不永久删除任何文件（唯一的进程内文件系统写入就是「移到废纸篓」，且只对确认过的卸载）、不编辑 shell 启动文件、不删 `~/.claude`/`~/.gemini`/`~/.grok` 里的设置与登录、永不 `rustup update`、后台刷新不写机器。
+- **每个独立安装工具一节**：探测命令与环境变量（含 `DISABLE_AUTOUPDATER=1`、`AGY_CLI_DISABLE_AUTO_UPDATE=true` 的理由；agy 1.2.10 的 `--version` 不写日志、带提示词的运行才写）、更新检查（HTTP 主机或子命令）、升级 argv 与取消策略、卸载（路径清单：Banager **自己**逐条调 macOS 的「移到废纸篓」——与访达同一个调用，不运行命令，五条检查，启动器最后；或 `rustup self uninstall -y` 及它会删什么）。
+- **Banager 读的文件**（只读、不保存、不上传）：`~/.claude/settings.json` 的 `autoUpdatesChannel` 一个键；rustup 卸载预览时读 shell 启动文件找 `.cargo/env` 引用（§6.4）；`~/.cargo/.crates2.json`（cargo 适配器今天就读）。
+- **Banager 只连接这些主机**：`ALLOWED_HTTPS_HOSTS` 原文（6 个），每个 URL 取什么，「不跟随重定向」，「请求里除 UA 外不带本机任何信息」（grok 的 `update --check` 是它自己的请求）。
+- **Banager 绝不做的事**：不跑 shell、不 `curl | sh`、不重跑任何安装脚本、不传 `brew … --zap`/`--force`/`--ignore-dependencies`、不删 `$HOME` 之外的文件、不永久删除任何文件（唯一的进程内文件系统写入就是「移到废纸篓」，且只对确认过的卸载）、不编辑 shell 启动文件、不删 `~/.claude`/`~/.gemini`/`~/.grok` 里的设置与登录、永不 `rustup update`、后台刷新不写机器。
 - **步骤 C 的核实结果**（§6.2）：无 FDA 的 Finder 启动构建能否 `trashItemAtURL:`、不能 `rename` 进 `~/.Trash`。
 - **来源不明扫描一节**：扫哪些目录、深度 1、预算、只读目录项与元数据、不运行不删除。
 
@@ -964,16 +964,16 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 
 ## 十一、明确不在射程（记 backlog，附正确形状）
 
-- **安装尚未存在的工具**（spec §13：阶段 5）。`plan(Install)` 返回 `Unsupported`；实例不存在时闸门根本到不了（`SourceGone`）。形状：阶段 5 的精选条目指向官方安装命令 + 「打开终端并粘贴」，绝不是 Canager 自己 `curl | sh`。
+- **安装尚未存在的工具**（spec §13：阶段 5）。`plan(Install)` 返回 `Unsupported`；实例不存在时闸门根本到不了（`SourceGone`）。形状：阶段 5 的精选条目指向官方安装命令 + 「打开终端并粘贴」，绝不是 Banager 自己 `curl | sh`。
 - **「也删掉设置」/ 永久删除**。形状：不是同一屏上的复选框——`OpRequest`（`model.rs:345-350`）没有字段能带它，需要新 `OpKind::Purge`、`run_operation` 两处 `match` 各加一臂、`removal.rs` 的 purge 清单、对话框第二步确认并引用厂商自己的警告原文（claude：「Removing configuration files will delete all your settings, allowed tools, MCP server configurations, and session history」）。
 - **清理 shell 启动文件里安装器加的行**。形状：一个按标记块（`# >>> grok installer >>>`…`<<<`；`# Added by Antigravity CLI installer` + 下一行；uv 的 `. "$HOME/.local/bin/env"`）删行的操作，先把原文件备份进废纸篓，预览显示 diff——它不是子进程，是新的 `Plan` 形状。`WillKeep { ShellConfigLines }` 已点名文件。
 - **「装了 2 份」的合并计数 / Homebrew 行上的「还有一份原生的」**。形状：`Snapshot` 级派生视图「命令名 → 提供它的制品列表」，需要每个配方的 `twins`（brew cask/formula 名、npm 包名：`claude-code`/`claude-code@latest`、`@anthropic-ai/claude-code`、`antigravity-cli`、`grok-build`、`rustup`……）——这正是阶段 5 精选清单的 `install: [{adapter_id, key}]`，建两次是错的顺序；或 `InstalledArtifact.command_names: Vec<String>`（45 处构造）。§七的一句话已经回答了更有用的那半个问题。
 - **rustup 工具链行**（`rustup toolchain list` 每行一个 `Tool` 制品，`rustup update <tc>` NoCancel，`rustup toolchain uninstall <tc>`，`check --no-self-update` 的「Update available」行）。journey 的形状可行，但是三个新 trait 方法与 spec §13 之外的范围；`rustup check` 的「Update available」行格式 UNVERIFIED（本机全最新，录不到）。
 - **每工具「自更新已被关掉」检测**。形状：claude 专用读 `~/.claude/.last-update-result.json` 的 `timestamp`，超过一周则把 `selfUpdatingHint` 换成「它已经很久没有自己更新了」；grok 读 `config.toml` 的 `auto_update` 已是模板。
-- **第二批配方**（§9.3 录制后）：uv 本体（`~/.config/uv/uv-receipt.json` 存在且 `install_prefix` 含 `realpath(uv)`——uv 自己的 `check_receipt_is_for_this_executable`，VERIFIED 源码；最新 = `releases.astral.sh/github/versions/main/v1/uv.ndjson` 首行；`uv self update`（它自己重跑安装脚本，VERIFIED，因此是 uv 的行为不是 Canager 的）；卸载 `~/.local/bin/{uv,uvx}`，保留 receipt、`uv tool dir`（Canager 的 uv 适配器列的就是它）、`uv python dir`）；bun（`~/.bun/bin/bun`；只有 GitHub Releases → 1 h 缓存；`bun upgrade` 单次 rename，VERIFIED 源码；卸载 `~/.bun`）；deno（`~/.deno/bin/deno`；`dl.deno.land/release-latest.txt` 去 `v`；`deno upgrade`（`remove_file` 后 `rename`，极短无二进制窗口，VERIFIED 源码 → 记入预览）；卸载 `~/.deno`，保留 `~/Library/Caches/deno`；**永不** `deno uninstall`——那删的是用户脚本）；mise（`~/.local/bin/mise` 且两层上无 `lib/.disable-self-update`；`mise.jdx.dev/VERSION`，calver；`mise self-update -y --no-plugins`；卸载**只删二进制**或 `mise --yes implode` 先 `--dry-run` 预览并警告它会删 `~/.local/share/mise/installs` 里所有语言运行时——到那步再定）；pnpm 独立版（`realpath(pnpm)` 直接在 `~/Library/pnpm` 下且无 `corepack`/`Cellar`/`node_modules` 分量；`registry.npmjs.org/-/package/pnpm/dist-tags`；`pnpm self-update`；卸载只删 `~/Library/pnpm/pnpm`，`store/` 是全机共享的、`bin/` 是用户的全局包）；Ollama.app（`/Applications/Ollama.app` 且不被 brew 列为 `ollama-app` cask——唯一要看 brew inventory 的配方，只能在合并后的快照上判，不在 `detect()`；版本 `defaults read … CFBundleShortVersionString`；`ollama.com/api/update` 204/200；无更新命令 → `SelfUpdatesOnly`；卸载需 `sudo rm -rf /Applications/Ollama.app` 且要退出 app → `NoSafeMethod`，直到有「`$HOME` 外的管理员拥有的 app 包」规则）。
-- **corepack 管的 pnpm**（本机的 pnpm 就是它：`/opt/homebrew/bin/pnpm → corepack/dist/pnpm.js`，既非 brew formula 也非 npm 全局包，Canager 今天看不见）。形状：npm 适配器在 `npm ls -g` 见到 `corepack` 时发 `InstanceNote::CorepackShims`，通知说「pnpm/yarn 由 corepack 管理」。
+- **第二批配方**（§9.3 录制后）：uv 本体（`~/.config/uv/uv-receipt.json` 存在且 `install_prefix` 含 `realpath(uv)`——uv 自己的 `check_receipt_is_for_this_executable`，VERIFIED 源码；最新 = `releases.astral.sh/github/versions/main/v1/uv.ndjson` 首行；`uv self update`（它自己重跑安装脚本，VERIFIED，因此是 uv 的行为不是 Banager 的）；卸载 `~/.local/bin/{uv,uvx}`，保留 receipt、`uv tool dir`（Banager 的 uv 适配器列的就是它）、`uv python dir`）；bun（`~/.bun/bin/bun`；只有 GitHub Releases → 1 h 缓存；`bun upgrade` 单次 rename，VERIFIED 源码；卸载 `~/.bun`）；deno（`~/.deno/bin/deno`；`dl.deno.land/release-latest.txt` 去 `v`；`deno upgrade`（`remove_file` 后 `rename`，极短无二进制窗口，VERIFIED 源码 → 记入预览）；卸载 `~/.deno`，保留 `~/Library/Caches/deno`；**永不** `deno uninstall`——那删的是用户脚本）；mise（`~/.local/bin/mise` 且两层上无 `lib/.disable-self-update`；`mise.jdx.dev/VERSION`，calver；`mise self-update -y --no-plugins`；卸载**只删二进制**或 `mise --yes implode` 先 `--dry-run` 预览并警告它会删 `~/.local/share/mise/installs` 里所有语言运行时——到那步再定）；pnpm 独立版（`realpath(pnpm)` 直接在 `~/Library/pnpm` 下且无 `corepack`/`Cellar`/`node_modules` 分量；`registry.npmjs.org/-/package/pnpm/dist-tags`；`pnpm self-update`；卸载只删 `~/Library/pnpm/pnpm`，`store/` 是全机共享的、`bin/` 是用户的全局包）；Ollama.app（`/Applications/Ollama.app` 且不被 brew 列为 `ollama-app` cask——唯一要看 brew inventory 的配方，只能在合并后的快照上判，不在 `detect()`；版本 `defaults read … CFBundleShortVersionString`；`ollama.com/api/update` 204/200；无更新命令 → `SelfUpdatesOnly`；卸载需 `sudo rm -rf /Applications/Ollama.app` 且要退出 app → `NoSafeMethod`，直到有「`$HOME` 外的管理员拥有的 app 包」规则）。
+- **corepack 管的 pnpm**（本机的 pnpm 就是它：`/opt/homebrew/bin/pnpm → corepack/dist/pnpm.js`，既非 brew formula 也非 npm 全局包，Banager 今天看不见）。形状：npm 适配器在 `npm ls -g` 见到 `corepack` 时发 `InstanceNote::CorepackShims`，通知说「pnpm/yarn 由 corepack 管理」。
 - **自定义安装目录**（`BUN_INSTALL`、`DENO_INSTALL`、`GROK_BIN_DIR`、`MISE_INSTALL_PATH`、`UV_INSTALL_DIR`）。v1 只认默认路径；形状：更多 `HostEnv` 字段，各自以配方为读取方。
-- **来源不明页的每行操作**。形状：「在访达中显示」= `/usr/bin/open -R <path>` 一条命令（`open_ollama_app` 模式，`ipc.rs:421,550`），路径取自同一进程产出的扫描结果、绝不来自客户端；「移到废纸篓」需要 §6.3 全部五条检查与每文件预览——那是它自己的一个阶段，因为「Canager 不知道这是什么」正是不提供的理由。
+- **来源不明页的每行操作**。形状：「在访达中显示」= `/usr/bin/open -R <path>` 一条命令（`open_ollama_app` 模式，`ipc.rs:421,550`），路径取自同一进程产出的扫描结果、绝不来自客户端；「移到废纸篓」需要 §6.3 全部五条检查与每文件预览——那是它自己的一个阶段，因为「Banager 不知道这是什么」正是不提供的理由。
 - **uv 管的 Python 等工具管理的树的归属**（`~/.local/share/uv/python/…`）。形状：`Adapter` trait 加 `owned_roots(&self, env) -> Vec<PathBuf>`（uv：python 与 tool 目录；mise：`~/.local/share/mise`），扫描读它——一个 trait 方法、七个一行实现。阶段 4 已把它的**扫描侧一半**拉进来（§8.3 规则 3 的 `owned_roots(inst)` 查表：brew 的 Cellar/Caskroom/opt、standalone 的工具根），trait 方法是那张表将来的归宿；等真实机器上的来源不明列表显示 uv-python 这个模式常见了再做。
 - **grok 的 `self_updates` 读 `~/.grok/config.toml`**（初稿的 `SelfUpdates::GrokConfig { default: true }`）。形状已在初稿；条件是 CI 录制到「`auto_update = true` 时启动会**静默安装**」的证据（grok.md §5 开放问题 2）。到那时 `self_updates: bool` 变回一个小枚举、`~/.grok/config.toml` 进 what-we-run.md 的「读的文件」。
 - **`Latest::HttpText { url }`**（纯文本端点）与 **agy 的 `url_x86_64`**。前者的生产者是 deno（`dl.deno.land/release-latest.txt`）与 mise（`mise.jdx.dev/VERSION`），随它们的第二批规格加入；后者等 Intel runner `curl` 到 `darwin_amd64.json` 后加为 `HttpJsonField` 的第二个 URL 并把 x86_64 分支从「uncheckable」改成「查」。
@@ -981,9 +981,9 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 - **`HostEnv.arch`**。不需要：agy 的架构分支用 `std::env::consts::ARCH`（§3.1）；只有当某个配方要在**运行时**按架构改行为（而不是编译期）才值得加字段。
 - **`ManagerInstance.display_name`**。考虑过用于分组标签，否决：标签是每工具每语言的，前端已按 id 键文案。将来若需要 Rust 侧的每实例标签（第二个 Homebrew 前缀是唯一另一例），字段加在 `ManagerInstance`，读取方 `InstalledPage`、`UpdatesPage`、`UninstallDialog`、`notActionableMessage` 四处。
 - **`OLLAMA_HOST` 为 https 远端时被 allowlist 挡住**（§4.2）。形状：`RealHttpClient::with_extra_host`，由 `Session::new` 传入。
-- **靠重跑 `curl | sh` 更新的工具**（无自更新命令）。首批十个里没有；出现时答案是 `SelfUpdatesOnly` 式文案指向官网，永不是 Canager 跑安装器。
+- **靠重跑 `curl | sh` 更新的工具**（无自更新命令）。首批十个里没有；出现时答案是 `SelfUpdatesOnly` 式文案指向官网，永不是 Banager 跑安装器。
 - **Homebrew 的「彻底删除」（zap）**。永不（§6.7）。
-- **Canager 自己下载并替换二进制**（替 agy 更新）。永不——那是厂商安装器的事。
+- **Banager 自己下载并替换二进制**（替 agy 更新）。永不——那是厂商安装器的事。
 
 ---
 
@@ -991,12 +991,12 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 
 | # | 问题 | 推荐默认 | 理由 |
 |---|---|---|---|
-| Q1 | 路径清单卸载怎么进废纸篓：(a) `execute()` 逐条调 macOS 的 `NSFileManager trashItemAtURL:`（进程内、不需要 FDA、访达「放回原处」可用）；(b) 初稿的一条 `/bin/mv -n … ~/.Trash/Canager – <工具> <日期>/`（**已被本机复现否决**：基名冲突静默留下程序目录；且 `~/.Trash` 受 TCC 保护，§0.1）；(c) macOS 15+ 用 `/usr/bin/trash`、13.3–14.x 退到 `rm -rf`？ | **(a)。** | (b) 在真实上下文里跑不通也表达不了 claude；(c) 两个机制、一半用户不可逆。(a) 的代价是 `Plan` 多一个枚举臂（Q16）和一个 macOS-only 依赖，换来「放回原处」和无摩擦。步骤 C 合并前的无 FDA 核实是阻塞项（§6.2）；若那次核实意外失败，回退是同一 `Trasher` trait 下的 `create_dir` + `rename` 实现，并接受一次 FDA 之旅——那时再回来拍板。 |
-| Q2 | 自更新的工具（Claude Code、Antigravity CLI；Grok Build 待核实）照常显示更新徽章 + 「它平时会自己更新」，还是像自更新的 cask 一样藏在「包含自更新的应用」开关后面？ | **照常显示。** | 徽章是拿启动器的活版本比出来的，是真话；藏起来等于默认对 AI CLI 说不出「它落后了」——那是 Canager 的第一问；本机 claude 的自更新就是关着的。grok 是否静默安装 UNVERIFIED，核实前不给它这句提示（§4.4）。 |
+| Q1 | 路径清单卸载怎么进废纸篓：(a) `execute()` 逐条调 macOS 的 `NSFileManager trashItemAtURL:`（进程内、不需要 FDA、访达「放回原处」可用）；(b) 初稿的一条 `/bin/mv -n … ~/.Trash/Banager – <工具> <日期>/`（**已被本机复现否决**：基名冲突静默留下程序目录；且 `~/.Trash` 受 TCC 保护，§0.1）；(c) macOS 15+ 用 `/usr/bin/trash`、13.3–14.x 退到 `rm -rf`？ | **(a)。** | (b) 在真实上下文里跑不通也表达不了 claude；(c) 两个机制、一半用户不可逆。(a) 的代价是 `Plan` 多一个枚举臂（Q16）和一个 macOS-only 依赖，换来「放回原处」和无摩擦。步骤 C 合并前的无 FDA 核实是阻塞项（§6.2）；若那次核实意外失败，回退是同一 `Trasher` trait 下的 `create_dir` + `rename` 实现，并接受一次 FDA 之旅——那时再回来拍板。 |
+| Q2 | 自更新的工具（Claude Code、Antigravity CLI；Grok Build 待核实）照常显示更新徽章 + 「它平时会自己更新」，还是像自更新的 cask 一样藏在「包含自更新的应用」开关后面？ | **照常显示。** | 徽章是拿启动器的活版本比出来的，是真话；藏起来等于默认对 AI CLI 说不出「它落后了」——那是 Banager 的第一问；本机 claude 的自更新就是关着的。grok 是否静默安装 UNVERIFIED，核实前不给它这句提示（§4.4）。 |
 | Q3 | agy 不提供「更新」按钮（`SelfUpdatesOnly`），显示新版本号并让用户在终端跑一次？ | **是。** | `agy update` 零文档、零选项、没人跑过（agy.md §4）。Google 一旦有文档，改配方一行。 |
 | Q4 | 卸载默认保留设置、登录、历史（`~/.claude`、`~/.claude.json`、`~/.grok` 的大部分、`~/.gemini/antigravity-cli`），阶段 4 不提供「全部清除」？ | **是。** | `~/.claude` 与 VS Code 扩展、桌面 app 共用（VERIFIED 文档）；`~/.grok` 有 `auth.json`；`~/.gemini` 与 Gemini CLI 共用。清除是另一屏、另一个 `OpKind`（§十一）。 |
 | Q5 | 提供 `rustup self uninstall -y`（`NoCancel`，四条警告，两把锁），还是让 rustup 永远 `NoSafeMethod`？ | **提供。** | 它是官方方法；藏起来意味着想删 Rust 的人没有路。四条警告把它会删什么全说了。觉得首发爆炸半径太大就选 `NoSafeMethod`，同样诚实。 |
-| Q6 | Canager 永不编辑 shell 启动文件；但 rustup 自己的卸载可以（不传 `--no-modify-path`）？ | **两者皆是。** | 编辑 `.zshrc` 是有自己风险的一类改动（§十一）；传 `--no-modify-path` 会留一行每开终端都报错的 `. "$HOME/.cargo/env"`，对小白更糟。`EditsShellConfig` 警告说明。 |
+| Q6 | Banager 永不编辑 shell 启动文件；但 rustup 自己的卸载可以（不传 `--no-modify-path`）？ | **两者皆是。** | 编辑 `.zshrc` 是有自己风险的一类改动（§十一）；传 `--no-modify-path` 会留一行每开终端都报错的 `. "$HOME/.cargo/env"`，对小白更糟。`EditsShellConfig` 警告说明。 |
 | Q7 | 读 `~/.claude/settings.json` 的 `autoUpdatesChannel` 决定查 `/latest` 还是 `/stable`？ | **读。** | 一个 JSON 键；不读的话 stable 频道的用户会被告知一个 `claude update` 装不上的新版——`UnchangedAfterUpgrade` 虽然准确，但徽章误导。读不到按 latest。「键值 → 端点」的映射本身是推断（UNVERIFIED，§3.1），推断错的失败模式无害且已被 §4.4 第 5 条覆盖；这次读取记入 what-we-run.md 的「读的文件」。 |
 | Q8 | 在 `RealHttpClient::send` 里加编译期 HTTPS 主机 allowlist（`http://` 豁免）？ | **加。** | 主机从 4 到 7 到 11；注释不是检查；一个 Cloud Run 长域名写进名单和 what-we-run.md 比藏在代码里让人放心。已知缝隙 `OLLAMA_HOST=https://…` 记 §十一。 |
 | Q9 | 首批只做 claude、agy、grok、rustup？ | **是。** | 只有这四个能从本机录真 fixture；合起来覆盖了阶段 4 的每种机制（自更新、路径清单卸载、官方卸载、`NoCancel`、共享配置、PATH 遮蔽、`--zap` 危害）。 |
@@ -1007,7 +1007,7 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 | Q14 | 注册形状为 `standalone-<tool>` 每工具一个 adapter id（D1），而不是单一 `standalone` + `standalone:<tool>` 实例？ | **每工具一个。** | 前端标签、`unverified_version`、fixture 目录、并发探测零改动；不撞 `uv`/`ollama`。逻辑仍只有一份 `StandaloneAdapter`。 |
 | Q15 | 两条空状态文案（`emptyStates.noSources` / `nothingInstalled`）改写为提到自带安装器的工具？ | **改。** | 一句话，两种语言，让「Claude Code 去哪了」有答案。 |
 | Q16 | `Plan` 的命令部分改成 `action: PlanAction { Command \| TrashPaths }`（32 处构造、四处读取方、TS 镜像），还是保住「一个程序一个 argv」而让 `execute()` 跑 N 条 `/bin/mv`、预览只显示第一条？ | **改 `Plan`。** | N 条命令配一条预览是对「执行前先看到确切命令」撒谎；`mv` 又有 TCC 问题（Q1）。枚举让 `CommandPreview`、`run_plan` 都在编译期被迫处理两臂。改动是机械的，一次改完。依赖二选一：直接 `objc2-foundation`（一个调用、可控）或 `trash` crate 配 `DeleteMethod::NsFileManager`（同一个调用，多一层）；推荐前者。 |
-| Q17 | 悬空但指向工具根的启动器（半卸载态）保留为一行 `LauncherOnly`、闸门放行让用户再点一次卸载；还是按「没应答」处理成 `NotResponding`（闸门拒绝，用户得自己到访达里删那个链接）？ | **`LauncherOnly`。** | 这个状态只会由 Canager 自己的卸载中途停下造成（§6.2 的顺序保证），Canager 得能收尾；一个 `InstanceNote` 变体、一句话、闸门不改。`NotResponding` 留给「程序在但不应答」。 |
+| Q17 | 悬空但指向工具根的启动器（半卸载态）保留为一行 `LauncherOnly`、闸门放行让用户再点一次卸载；还是按「没应答」处理成 `NotResponding`（闸门拒绝，用户得自己到访达里删那个链接）？ | **`LauncherOnly`。** | 这个状态只会由 Banager 自己的卸载中途停下造成（§6.2 的顺序保证），Banager 得能收尾；一个 `InstanceNote` 变体、一句话、闸门不改。`NotResponding` 留给「程序在但不应答」。 |
 
 ---
 
@@ -1024,7 +1024,7 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 | `InstalledArtifact.auto_updates` | `inventory()` | `UpdatesPage.rowDescription` 的 `selfUpdatingHint`（**第一个非 Pinned 读取方**） | 「它平时会自己更新」 |
 | `UpdateBlocked::SelfUpdatesOnly` | `check_updates()`（`upgrade: None`，步骤 D 的 agy） | 闸门 `plans.rs:184`；`updateStateOf`；`UPDATE_BLOCKED_KEYS` | 「自己更新」徽章，无按钮 |
 | `UninstallBlocked::NoSafeMethod` | `inventory()`（无 `uninstall`） | 闸门 `plans.rs:187`；`UNINSTALL_BLOCKED_KEYS`；`InstalledPage.tsx:144,329` | 「无法在这里卸载」+ 一句话，无按钮 |
-| `PlanAction::TrashPaths { paths }` | `plan(Uninstall)`（Paths） | `execute()`（逐条 `Trasher::trash`）；`run_plan`（拒绝）；`OpSummary.argv_preview`（空）；`CommandPreview` 的 `TrashPaths` 支 → `uninstall.trashPreview` | 「Canager 会自己把上面列出的 N 项移到废纸篓……」 |
+| `PlanAction::TrashPaths { paths }` | `plan(Uninstall)`（Paths） | `execute()`（逐条 `Trasher::trash`）；`run_plan`（拒绝）；`OpSummary.argv_preview`（空）；`CommandPreview` 的 `TrashPaths` 支 → `uninstall.trashPreview` | 「Banager 会自己把上面列出的 N 项移到废纸篓……」 |
 | `Trasher` / `RealTrasher` / `MockTrasher` | `Session::new` 注入 | `StandaloneAdapter::execute` | 项目出现在废纸篓、可「放回原处」 |
 | `Warning::WillTrash / WillKeep / AlreadyGone / RemovesToolchains / DeletesCargoCaches / LeavesUnmanaged / EditsShellConfig / LeavesShellConfigLine` | `plan(Uninstall)` | `warningKey/warningArgs` → `UninstallDialog` 列表 | 对话框的项目列表 |
 | `KeptWhat::{ToolState, NotOurs}` | `plan(Uninstall)`（agy 的根；optional 指纹不符） | `warnings.ts` 的 `Record<KeptWhat, string>` | 「它的对话、历史和工作文件……」/「它不属于这次安装」 |
@@ -1059,7 +1059,7 @@ A → B → C → D 串行（共用骨架）；E 在 B 之后；F 在 A 之后�
 | 版本没动却说升级成功 | `run_operation:713`（现有），靠 `reconcile` 对应答的工具总有版本 |
 | 启动器还在却说卸载成功 | `run_operation:688-691`（现有），`reconcile.present` = 启动器的 lstat + 指纹 |
 | 中途停止后假装知道结果 | `run_plan:500-502` → `Unconfirmed`；`run_operation:787-799`；`TrashPaths` 的 `execute()` 在取消/失败时同样返回 `Unconfirmed`/`Failed` 让它 reconcile |
-| 给 Canager 驱动不了的更新一个按钮 | `SelfUpdatesOnly` + 闸门 |
+| 给 Banager 驱动不了的更新一个按钮 | `SelfUpdatesOnly` + 闸门 |
 | 给没有核实方法的卸载一个按钮 | `NoSafeMethod` + 闸门 |
 | 取消**正在运行的** rustup `self update` / `self uninstall` | `NoCancel` + `ops/mod.rs:331`（Queued 时可以取消——什么都还没启动） |
 | 让 rustup 删 `.crates2.json` / 替换 `rustup` 二进制时 cargo 在读 | 两把锁（Upgrade 与 Uninstall）+ `run_operation:437-450` + 锁名相等测试 |

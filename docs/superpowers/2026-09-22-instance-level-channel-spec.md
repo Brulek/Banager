@@ -67,7 +67,7 @@ v1 另有一处事实表述需更正：refresh.rs 的「保留上一轮产物」
 /// 而 Rust 侧拼好的英文句子无法本地化（存量 warnings 就踩了这个坑，见 §6）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReadOnlyReason {
-    /// 这个工具本身没有 Canager 能安全驱动的安装/卸载路径（pip）。
+    /// 这个工具本身没有 Banager 能安全驱动的安装/卸载路径（pip）。
     ByDesign,
     /// 工具能装能卸，但它要写的目录当前用户写不了（nodejs.org 装的 Node）。
     PrefixNotWritable,
@@ -253,7 +253,7 @@ export interface ManagerInstance {
 | 字段 | 生产方 | 生产读取方 | 用户看到什么 |
 |---|---|---|---|
 | `read_only_reason` | 七个 `detect()` | **`session/plans.rs`**（Rust 侧闸门 §2.5）、`src/lib/sources.ts` `canWrite()`、`src/pages/InstalledPage.tsx:178-212`（通知 + 卸载按钮）、**`src/pages/UpdatesPage.tsx:363-374`（按变体分支文案）** | pip：「改用 pipx 或 uv」；npm：「改用 Homebrew 装 Node」。**两条文案必须分开**——今天 `UpdatesPage` 对只读行硬编码 pip 的建议，改成按 `writable` 判断后会让 npm 行也建议用户改用 pipx/uv，对非程序员是纯误导 |
-| `status.unavailable` | `detect()` + `refresh.rs` | `session/plans.rs`（闸门）、`src/lib/sources.ts`、`src/pages/InstalledPage.tsx:178-212`、**`src/pages/UpdatesPage.tsx` 顶部通知区 + 早退条件** | Ollama：「Ollama 没有运行」+ 按钮；其余：「Canager 现在连不上 X，下面是上次查到的内容」 |
+| `status.unavailable` | `detect()` + `refresh.rs` | `session/plans.rs`（闸门）、`src/lib/sources.ts`、`src/pages/InstalledPage.tsx:178-212`、**`src/pages/UpdatesPage.tsx` 顶部通知区 + 早退条件** | Ollama：「Ollama 没有运行」+ 按钮；其余：「Banager 现在连不上 X，下面是上次查到的内容」 |
 | `status.notes` | `adapters/brew/mod.rs` | **`src/pages/UpdatesPage.tsx:307-309` 早退分支 + 顶部横幅**（首要）、`src/pages/InstalledPage.tsx` 分组头 | 「Homebrew 这里的『已是最新』可能不准」+「重试」 |
 | `Snapshot.refreshed_at`（语义变更） | `refresh.rs` | `SnapshotStatus.tsx` | 六好一坏的机器不再永远显示「有来源没有应答」 |
 | `Snapshot.stale`（改为导出） | `refresh.rs` | `SnapshotStatus.tsx:170` | fan-out 失败时横幅仍然出现（不回归） |
@@ -321,39 +321,39 @@ sourceNotice.prefixNotWritable.title
   en: "Read-only: npm packages"
   zh: "只读：npm 包"
 sourceNotice.prefixNotWritable.description
-  en: "Canager can list these but can't update or remove them: npm keeps them in a folder your
+  en: "Banager can list these but can't update or remove them: npm keeps them in a folder your
        account isn't allowed to change. That usually means Node was installed with the installer
-       from nodejs.org. Installing Node with Homebrew instead lets Canager manage them."
-  zh: "Canager 只能列出这些，无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。
-       这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node，Canager 就能管理它们了。"
+       from nodejs.org. Installing Node with Homebrew instead lets Banager manage them."
+  zh: "Banager 只能列出这些，无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。
+       这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node，Banager 就能管理它们了。"
 
 sourceNotice.notRunning.title         en: "{{source}} isn't running"          zh: "{{source}} 没有在运行"
 sourceNotice.notRunning.description
-  en: "Start {{source}}, then come back — Canager will list what's in it."
-  zh: "启动 {{source}} 之后回到这里，Canager 就能列出它里面的内容。"
+  en: "Start {{source}}, then come back — Banager will list what's in it."
+  zh: "启动 {{source}} 之后回到这里，Banager 就能列出它里面的内容。"
   （ollama 沿用现有 sourceNotice.ollamaNotRunning，含「打开 Ollama」按钮；
     按钮条件是 adapter_id === "ollama" && unavailable === "NotRunning"）
 
 sourceNotice.unreachable.description   （改写现有，去掉 {{when}}——本轮无每实例时间戳）
-  en: "{{source}} is installed but didn't answer. Below is what Canager saw last time; anything
-       added or removed since then won't show up. Reopening Canager usually fixes this."
-  zh: "{{source}} 装着，但没有应答。下面是 Canager 上次看到的内容，之后的变化不会显示。
-       重新打开 Canager 通常就能恢复。"
+  en: "{{source}} is installed but didn't answer. Below is what Banager saw last time; anything
+       added or removed since then won't show up. Reopening Banager usually fixes this."
+  zh: "{{source}} 装着，但没有应答。下面是 Banager 上次看到的内容，之后的变化不会显示。
+       重新打开 Banager 通常就能恢复。"
 
 sourceNotice.indexMayBeStale.title
   en: "“Up to date” may not be accurate for Homebrew"
   zh: "Homebrew 这里的「已是最新」可能不准"
 sourceNotice.indexMayBeStale.description
-  en: "Canager couldn't download Homebrew's latest list of software, so there may be updates it
+  en: "Banager couldn't download Homebrew's latest list of software, so there may be updates it
        can't see yet. Check your internet connection, then try again."
-  zh: "Canager 没能下载 Homebrew 最新的软件目录，所以可能有更新它还看不到。检查一下网络连接，然后重试。"
+  zh: "Banager 没能下载 Homebrew 最新的软件目录，所以可能有更新它还看不到。检查一下网络连接，然后重试。"
 sourceNotice.indexMayBeStale.action    en: "Try again"    zh: "重试"
 
 updates.upToDate        （保留，仅当所有实例 available 且无 notes 时才说）
-updates.noneCheckable   en: "No updates in the sources Canager could check"
+updates.noneCheckable   en: "No updates in the sources Banager could check"
                         zh: "已检查的来源里没有可更新的内容"
 updates.countUnmanageable  en: "{{count}} more can't be updated here"   zh: "另有 {{count}} 个无法在这里更新"
-updates.noneActionable  en: "Nothing here can be updated by Canager"    zh: "这里没有 Canager 能更新的内容"
+updates.noneActionable  en: "Nothing here can be updated by Banager"    zh: "这里没有 Banager 能更新的内容"
 ```
 
 **更新页计数改两段式**（B5）：今天 `actionableCount` 把只读行从计数里抹掉，

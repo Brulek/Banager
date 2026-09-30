@@ -1,4 +1,4 @@
-# Canager Phase 0–1 Implementation Plan: Signed Skeleton + Core + Homebrew Adapter
+# Banager Phase 0–1 Implementation Plan: Signed Skeleton + Core + Homebrew Adapter
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,9 +10,9 @@
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-09-17-canager-design.md`. Every task inherits it.
+- Spec: `docs/superpowers/specs/2026-09-17-banager-design.md`. Every task inherits it.
 - Platform: macOS only for v1; universal build (`--target universal-apple-darwin`); minimum macOS 13.3.
-- Tauri version floor: `tauri = "2.11.1"` or newer (CVE-2026-42184). Bundle identifier: `com.brulek.canager`. Product name: `Canager`.
+- Tauri version floor: `tauri = "2.11.1"` or newer (CVE-2026-42184). Bundle identifier: `com.brulek.banager`. Product name: `Banager`.
 - Commands are always argv arrays with an absolute program path; never a shell string. Package names validated against `^[A-Za-z0-9@._+/-]+$` and must not start with `-`.
 - Homebrew environment for every brew invocation: `HOMEBREW_NO_AUTO_UPDATE=1`, `HOMEBREW_NO_ENV_HINTS=1`, `HOMEBREW_NO_INSTALL_CLEANUP=1`, `NO_COLOR=1`. Refuse to run brew when euid is 0.
 - Never pass `--ignore-dependencies` to `brew uninstall`. Never run bare `brew upgrade`; upgrade is always per item.
@@ -28,14 +28,14 @@
 ## File Structure
 
 ```
-Canager/
+Banager/
 ├── Cargo.toml                          workspace: members = ["src-tauri", "crates/banager-core"]
 ├── package.json / pnpm-lock.yaml / vite.config.ts / index.html / tsconfig.json
 ├── src/                                React shell (hello window only in this plan)
 │   ├── main.tsx  App.tsx  index.css (Tailwind v4 import)
 ├── src-tauri/
-│   ├── Cargo.toml                      crate "canager" (bin), depends on banager-core, fix-path-env
-│   ├── tauri.conf.json                 identifier com.brulek.canager, macOS minimumSystemVersion 13.3, updater + bundle config
+│   ├── Cargo.toml                      crate "banager" (bin), depends on banager-core, fix-path-env
+│   ├── tauri.conf.json                 identifier com.brulek.banager, macOS minimumSystemVersion 13.3, updater + bundle config
 │   ├── capabilities/default.json
 │   └── src/main.rs, src/lib.rs         run(): fix_path_env::fix() then tauri::Builder
 ├── crates/banager-core/
@@ -53,10 +53,10 @@ Canager/
 │   ├── src/ops/mod.rs                  OperationManager (queue, resource locks, state machine, cancel, verifying)
 │   ├── examples/brew_smoke.rs          manual end-to-end check on the developer's Mac (read-only)
 │   ├── tests/brew_fixtures.rs          fixture-driven parser + adapter tests (insta snapshots)
-│   └── tests/brew_live.rs              CI-only live smoke test (install/inventory/uninstall hello, gated by CANAGER_LIVE=1)
+│   └── tests/brew_live.rs              CI-only live smoke test (install/inventory/uninstall hello, gated by BANAGER_LIVE=1)
 ├── adapters/meta/brew.toml             adapter metadata (compiled in via include_str!)
 ├── adapters/fixtures/brew/<version>/   info-installed.json, outdated.json, search-jq.txt, search-desc-jq.txt, uses-jq.txt, version.txt
-├── scripts/canager-askpass.sh          SUDO_ASKPASS helper spike (osascript password dialog)
+├── scripts/banager-askpass.sh          SUDO_ASKPASS helper spike (osascript password dialog)
 ├── docs/spikes/2026-09-askpass.md      spike result
 ├── docs/what-we-run.md                 every command the app can execute, per adapter
 └── .github/workflows/ci.yml, release.yml
@@ -292,7 +292,7 @@ impl OperationManager {
 
 | # | Task | Deliverable |
 |---|---|---|
-| 1 | Scaffold Tauri app + Cargo workspace + Tailwind | `pnpm tauri build` produces `Canager.app` locally (unsigned) |
+| 1 | Scaffold Tauri app + Cargo workspace + Tailwind | `pnpm tauri build` produces `Banager.app` locally (unsigned) |
 | 2 | CI workflow | `ci.yml` green on macOS runner: fmt, clippy, cargo test, pnpm build, tauri build |
 | 3 | Release workflow with signing, notarization, updater | tag `v0.0.1` → notarized universal `.dmg` + `latest.json` (needs user-provided secrets) |
 | 4 | `banager-core` crate: model + events | types compile, serde round-trip tests, `VecSink` |
@@ -304,9 +304,9 @@ impl OperationManager {
 | 10 | `BrewAdapter`: detect / inventory / check_updates (with `brew update` TTL) / search, tested with `MockRunner` | euid 0 refused; TTL prevents second `brew update`; casks marked `Cask` |
 | 11 | `BrewAdapter`: plan / execute / reconcile for install, uninstall (with `brew uses --installed` guard), upgrade; `SUDO_ASKPASS` passthrough | argv previews exact; uninstall with dependents lists `affected` and warning; execute streams `Log` events; reconcile re-inventories |
 | 12 | `OperationManager` with resource locks, state machine, cancel, verifying | two plans on the same lock run serially; cancel → `Cancelling` → reconcile → `Unconfirmed`/`Succeeded` |
-| 13 | `SUDO_ASKPASS` spike script + result doc | `scripts/canager-askpass.sh`; `docs/spikes/2026-09-askpass.md` records whether `sudo -A` works without a TTY |
+| 13 | `SUDO_ASKPASS` spike script + result doc | `scripts/banager-askpass.sh`; `docs/spikes/2026-09-askpass.md` records whether `sudo -A` works without a TTY |
 | 14 | `examples/brew_smoke.rs` + `docs/what-we-run.md` | read-only end-to-end run prints instance, counts, outdated list; doc lists every brew command |
-| 15 | CI live Homebrew smoke test | `tests/brew_live.rs` (ignored + `CANAGER_LIVE=1`) installs, inventories and removes `hello`; runs on every CI push |
+| 15 | CI live Homebrew smoke test | `tests/brew_live.rs` (ignored + `BANAGER_LIVE=1`) installs, inventories and removes `hello`; runs on every CI push |
 
 ---
 
@@ -326,7 +326,7 @@ impl OperationManager {
 
 **Interfaces:**
 - Consumes: nothing (first task).
-- Produces: a Cargo workspace with members `["src-tauri", "crates/banager-core"]`; an empty `banager-core` library crate that later tasks fill in; a `canager` Tauri binary crate that depends on `banager-core` (path dependency) and `fix-path-env` (git dependency); a working `pnpm build` / `pnpm tauri build` pipeline that later CI and release tasks reuse verbatim.
+- Produces: a Cargo workspace with members `["src-tauri", "crates/banager-core"]`; an empty `banager-core` library crate that later tasks fill in; a `banager` Tauri binary crate that depends on `banager-core` (path dependency) and `fix-path-env` (git dependency); a working `pnpm build` / `pnpm tauri build` pipeline that later CI and release tasks reuse verbatim.
 
 This task is environment setup and scaffolding, not TDD — there is no behavior to test-drive yet. Its "test" is the build itself succeeding at the end.
 
@@ -350,35 +350,35 @@ Portability note for the whole plan: `crates/banager-core/src/runner/real.rs` us
 
 - [ ] **Step 2: Scaffold a fresh Tauri + React + TypeScript app in a scratch directory**
 
-The repo root (`/Users/brulek/dev/Canager`) already has `.git`, `README.md`, `.gitignore` and `docs/` committed, so `create-tauri-app` cannot target it directly (it refuses non-empty directories, and `--force` silently overwrites `README.md`). Scaffold into `/tmp` instead, using project name `canager` so the generated `package.json` name, `Cargo.toml` package name, and lib name (`banager_lib`) all come out clean:
+The repo root (`/Users/brulek/dev/Banager`) already has `.git`, `README.md`, `.gitignore` and `docs/` committed, so `create-tauri-app` cannot target it directly (it refuses non-empty directories, and `--force` silently overwrites `README.md`). Scaffold into `/tmp` instead, using project name `banager` so the generated `package.json` name, `Cargo.toml` package name, and lib name (`banager_lib`) all come out clean:
 
 Run:
 ```bash
-cd /tmp && rm -rf canager-scaffold && npx --yes create-tauri-app@latest canager-scaffold -m pnpm -t react-ts --identifier com.brulek.canager -y
+cd /tmp && rm -rf banager-scaffold && npx --yes create-tauri-app@latest banager-scaffold -m pnpm -t react-ts --identifier com.brulek.banager -y
 ```
 
 Expected: prints "Template created!" and a tree containing `package.json`, `index.html`, `src/`, `src-tauri/`, `public/`, `.vscode/`, `.gitignore`, `README.md`. Verify with:
 
-Run: `grep -E '"name"|"productName"' /tmp/canager-scaffold/package.json /tmp/canager-scaffold/src-tauri/tauri.conf.json`
-Expected: `"name": "canager"` and `"productName": "canager"`.
+Run: `grep -E '"name"|"productName"' /tmp/banager-scaffold/package.json /tmp/banager-scaffold/src-tauri/tauri.conf.json`
+Expected: `"name": "banager"` and `"productName": "banager"`.
 
 - [ ] **Step 3: Copy the generated files into the repo, keeping the existing README.md**
 
 Run:
 ```bash
-cd /Users/brulek/dev/Canager
-cp -R /tmp/canager-scaffold/.vscode .
-cp /tmp/canager-scaffold/index.html .
-cp /tmp/canager-scaffold/package.json .
-cp -R /tmp/canager-scaffold/public .
-cp -R /tmp/canager-scaffold/src .
-cp -R /tmp/canager-scaffold/src-tauri .
-cp /tmp/canager-scaffold/tsconfig.json .
-cp /tmp/canager-scaffold/tsconfig.node.json .
-cp /tmp/canager-scaffold/vite.config.ts .
+cd /Users/brulek/dev/Banager
+cp -R /tmp/banager-scaffold/.vscode .
+cp /tmp/banager-scaffold/index.html .
+cp /tmp/banager-scaffold/package.json .
+cp -R /tmp/banager-scaffold/public .
+cp -R /tmp/banager-scaffold/src .
+cp -R /tmp/banager-scaffold/src-tauri .
+cp /tmp/banager-scaffold/tsconfig.json .
+cp /tmp/banager-scaffold/tsconfig.node.json .
+cp /tmp/banager-scaffold/vite.config.ts .
 ```
 
-Do **not** copy `/tmp/canager-scaffold/README.md` or `/tmp/canager-scaffold/.gitignore` — the repo's own versions are kept (the `.gitignore` is merged by hand in the next step).
+Do **not** copy `/tmp/banager-scaffold/README.md` or `/tmp/banager-scaffold/.gitignore` — the repo's own versions are kept (the `.gitignore` is merged by hand in the next step).
 
 Run: `find . -maxdepth 1 -not -path './.git' -not -path '.' | sort`
 Expected: `.gitignore`, `.vscode`, `README.md`, `docs`, `index.html`, `package.json`, `public`, `src`, `src-tauri`, `tsconfig.json`, `tsconfig.node.json`, `vite.config.ts`.
@@ -416,7 +416,7 @@ Create `crates/banager-core/Cargo.toml`:
 name = "banager-core"
 version = "0.1.0"
 edition = "2021"
-description = "Pure-Rust core library for Canager: model, adapters, runner, operation engine. Must never depend on tauri."
+description = "Pure-Rust core library for Banager: model, adapters, runner, operation engine. Must never depend on tauri."
 
 [dependencies]
 
@@ -428,7 +428,7 @@ Create `crates/banager-core/src/lib.rs`:
 ```rust
 //! banager-core: pure Rust library with the Homebrew adapter and operation
 //! engine. This crate must never depend on `tauri` — see
-//! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3.
+//! `docs/superpowers/specs/2026-09-17-banager-design.md` section 3.
 ```
 
 - [ ] **Step 6: Wire `src-tauri` to depend on `banager-core` and `fix-path-env`, and pin the Tauri version floor**
@@ -437,7 +437,7 @@ Edit `src-tauri/Cargo.toml` (as generated by Step 2/3, then edited):
 
 ```toml
 [package]
-name = "canager"
+name = "banager"
 version = "0.1.0"
 description = "A friendly manager for everything you installed from the terminal"
 authors = ["Brulek"]
@@ -482,9 +482,9 @@ Replace `src-tauri/tauri.conf.json` in full:
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Canager",
+  "productName": "Banager",
   "version": "0.1.0",
-  "identifier": "com.brulek.canager",
+  "identifier": "com.brulek.banager",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -494,7 +494,7 @@ Replace `src-tauri/tauri.conf.json` in full:
   "app": {
     "windows": [
       {
-        "title": "Canager",
+        "title": "Banager",
         "width": 800,
         "height": 600
       }
@@ -524,7 +524,7 @@ Replace `package.json` in full:
 
 ```json
 {
-  "name": "canager",
+  "name": "banager",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -617,7 +617,7 @@ Edit `src/App.tsx`'s heading to prove Tailwind utility classes are live, and to 
 
 ```diff
 -      <h1>Welcome to Tauri + React</h1>
-+      <h1 className="text-2xl font-bold">Canager</h1>
++      <h1 className="text-2xl font-bold">Banager</h1>
 ```
 
 - [ ] **Step 8: Install JS dependencies and verify the frontend builds**
@@ -631,10 +631,10 @@ Expected: `tsc` reports no type errors, `vite build` exits 0 and writes `dist/in
 - [ ] **Step 9: Verify the full unsigned Tauri build**
 
 Run: `pnpm tauri build`
-Expected: cargo compiles `banager-core` and `canager` in release mode (first run takes several minutes), then bundles; final lines mention `Canager.app` and `Canager_0.1.0_aarch64.dmg` (or `universal`, depending on your Mac's default target) under `src-tauri/target/release/bundle/macos/` and `.../dmg/`. The app is ad-hoc signed (no `APPLE_SIGNING_IDENTITY` set), which is expected and fine for local verification — Task 3 adds real signing in CI.
+Expected: cargo compiles `banager-core` and `banager` in release mode (first run takes several minutes), then bundles; final lines mention `Banager.app` and `Banager_0.1.0_aarch64.dmg` (or `universal`, depending on your Mac's default target) under `src-tauri/target/release/bundle/macos/` and `.../dmg/`. The app is ad-hoc signed (no `APPLE_SIGNING_IDENTITY` set), which is expected and fine for local verification — Task 3 adds real signing in CI.
 
-Run: `open src-tauri/target/release/bundle/macos/Canager.app`
-Expected: a window titled "Canager" opens showing the (still-default) greet demo styled with the Tailwind heading.
+Run: `open src-tauri/target/release/bundle/macos/Banager.app`
+Expected: a window titled "Banager" opens showing the (still-default) greet demo styled with the Tailwind heading.
 
 - [ ] **Step 10: Commit**
 
@@ -784,7 +784,7 @@ Tell the user to run these themselves, in order, and to never paste the actual s
 3. `base64 -i cert.p12 | pbcopy` — this is the value for the `APPLE_CERTIFICATE` secret (base64-encoded .p12).
 4. At https://appleid.apple.com → Sign-In and Security → App-Specific Passwords, generate one — this is `APPLE_PASSWORD`.
 5. At https://developer.apple.com/account → Membership, copy the Team ID — this is `APPLE_TEAM_ID`.
-6. `pnpm tauri signer generate -w ~/.tauri/canager.key` — prints a public key; copy it into `plugins.updater.pubkey` in Step 3 below. The private key file `~/.tauri/canager.key` and the passphrase it asks for are `TAURI_SIGNING_PRIVATE_KEY` (contents of the file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+6. `pnpm tauri signer generate -w ~/.tauri/banager.key` — prints a public key; copy it into `plugins.updater.pubkey` in Step 3 below. The private key file `~/.tauri/banager.key` and the passphrase it asks for are `TAURI_SIGNING_PRIVATE_KEY` (contents of the file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 7. For each secret, run (one at a time, entering the value at the interactive prompt — never `gh secret set NAME --body "value"` inline):
    ```
    gh secret set APPLE_CERTIFICATE
@@ -859,7 +859,7 @@ Edit `src-tauri/capabilities/default.json` to allow the updater's commands:
 +    "updater": {
 +      "pubkey": "REPLACE_WITH_PUBLIC_KEY_FROM_pnpm_tauri_signer_generate",
 +      "endpoints": [
-+        "https://github.com/Brulek/Canager/releases/latest/download/latest.json"
++        "https://github.com/Brulek/Banager/releases/latest/download/latest.json"
 +      ]
 +    }
 +  }
@@ -913,7 +913,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Canager ${{ github.ref_name }}"
+          releaseName: "Banager ${{ github.ref_name }}"
           releaseDraft: true
           includeUpdaterJson: true
           args: --target universal-apple-darwin
@@ -924,7 +924,7 @@ jobs:
 Run: `python3 -c "import yaml, sys; yaml.safe_load(open('.github/workflows/release.yml')); print('ok')"`
 Expected: prints `ok`.
 
-Run: `cargo build -p canager --release` (from repo root; confirms `tauri-plugin-updater` compiles and the plugin registration in `lib.rs` type-checks)
+Run: `cargo build -p banager --release` (from repo root; confirms `tauri-plugin-updater` compiles and the plugin registration in `lib.rs` type-checks)
 Expected: exits 0.
 
 - [ ] **Step 6: Commit**
@@ -951,11 +951,11 @@ Expected: the `Release` workflow runs, produces a draft GitHub Release with a un
 
 Download the `.dmg` from the release, mount it, then run:
 ```bash
-spctl -a -vv -t install /Volumes/Canager/Canager.app
+spctl -a -vv -t install /Volumes/Banager/Banager.app
 ```
 Expected: `accepted` and `source=Notarized Developer ID`.
 
-Run: `xcrun stapler validate /Volumes/Canager/Canager.app`
+Run: `xcrun stapler validate /Volumes/Banager/Banager.app`
 Expected: "The validate action worked!" (the notarization ticket is stapled, so the app opens offline without a Gatekeeper network check).
 ### Task 4: `banager-core` crate: model + events
 
@@ -976,7 +976,7 @@ Edit `crates/banager-core/src/lib.rs`:
 ```rust
 //! banager-core: pure Rust library with the Homebrew adapter and operation
 //! engine. This crate must never depend on `tauri` — see
-//! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3.
+//! `docs/superpowers/specs/2026-09-17-banager-design.md` section 3.
 
 pub mod model;
 pub mod events;
@@ -1969,10 +1969,10 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if fix_path_env::fix().is_err() {
-        eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
+        eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }
     let host_env = banager_core::runner::HostEnv::discover();
-    println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
+    println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1984,9 +1984,9 @@ pub fn run() {
 
 - [ ] **Step 5: Verify the shell logs the discovered PATH**
 
-Run: `cargo run -p canager --bin canager 2>&1 | head -5`
+Run: `cargo run -p banager --bin banager 2>&1 | head -5`
 (Or, if that binary target name doesn't match your Cargo.toml, run `pnpm tauri dev` and watch the terminal it starts in.)
-Expected: a line like `[canager] discovered PATH dirs: ["/opt/homebrew/bin", "/usr/local/bin", ..., "/usr/bin", "/bin", ...]` printed to stdout before the window opens. Quit the app (Cmd+Q) once you've seen the line.
+Expected: a line like `[banager] discovered PATH dirs: ["/opt/homebrew/bin", "/usr/local/bin", ..., "/usr/bin", "/bin", ...]` printed to stdout before the window opens. Quit the app (Cmd+Q) once you've seen the line.
 
 - [ ] **Step 6: Commit**
 
@@ -2533,7 +2533,7 @@ struct OutdatedItem {
 }
 
 /// Parses `brew outdated --json=v2`. Pinned items get a `"pinned"` warning
-/// (Canager can still show them, but shouldn't silently upgrade past a pin).
+/// (Banager can still show them, but shouldn't silently upgrade past a pin).
 pub fn parse_outdated(
     json: &str,
     instance_id: &str,
@@ -2736,7 +2736,7 @@ mod tests {
             euid: 501,
         };
         let instances = adapter.detect(&env).await;
-        // Assumes Homebrew is installed at /opt/homebrew, true for Canager's
+        // Assumes Homebrew is installed at /opt/homebrew, true for Banager's
         // target (Apple Silicon Macs, per the design spec) and for CI's
         // macos-latest runners. /usr/local/bin/brew and the Linux path do
         // not exist on this machine, so exactly one instance is found.
@@ -4210,7 +4210,7 @@ EOF
 ### Task 13: `SUDO_ASKPASS` spike script + result doc
 
 **Files:**
-- Create: `scripts/canager-askpass.sh`
+- Create: `scripts/banager-askpass.sh`
 - Create: `docs/spikes/2026-09-askpass.md`
 
 **Interfaces:**
@@ -4221,31 +4221,31 @@ This is a manual, interactive spike: it requires a real GUI session and your act
 
 - [ ] **Step 1: Write the askpass script**
 
-Create `scripts/canager-askpass.sh`:
+Create `scripts/banager-askpass.sh`:
 
 ```sh
 #!/bin/sh
-osascript -e 'text returned of (display dialog "Canager needs your password to finish this step." default answer "" with hidden answer with title "Canager")'
+osascript -e 'text returned of (display dialog "Banager needs your password to finish this step." default answer "" with hidden answer with title "Banager")'
 ```
 
 - [ ] **Step 2: Make it executable**
 
-Run: `chmod +x scripts/canager-askpass.sh`
-Expected: `ls -l scripts/canager-askpass.sh` shows the `x` bits set (`-rwxr-xr-x`).
+Run: `chmod +x scripts/banager-askpass.sh`
+Expected: `ls -l scripts/banager-askpass.sh` shows the `x` bits set (`-rwxr-xr-x`).
 
 - [ ] **Step 3: Run the correct-password scenario**
 
 Run, from a real Terminal window (not over SSH — `osascript`'s dialog needs a GUI session attached to your login):
 ```bash
-SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k true < /dev/null > /tmp/askpass.log 2>&1; echo exit=$?
+SUDO_ASKPASS="$PWD/scripts/banager-askpass.sh" sudo -A -k true < /dev/null > /tmp/askpass.log 2>&1; echo exit=$?
 ```
-Expected: a native macOS dialog titled "Canager" appears asking for your password. Type your real admin password and click OK. The command should print `exit=0`. `-k` forces `sudo` to ignore any cached credential, so the dialog is guaranteed to appear; `-A` tells `sudo` to use `$SUDO_ASKPASS` instead of a terminal prompt.
+Expected: a native macOS dialog titled "Banager" appears asking for your password. Type your real admin password and click OK. The command should print `exit=0`. `-k` forces `sudo` to ignore any cached credential, so the dialog is guaranteed to appear; `-A` tells `sudo` to use `$SUDO_ASKPASS` instead of a terminal prompt.
 
 - [ ] **Step 4: Run the cancel scenario**
 
 Run the same command again:
 ```bash
-SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k true < /dev/null > /tmp/askpass.log 2>&1; echo exit=$?
+SUDO_ASKPASS="$PWD/scripts/banager-askpass.sh" sudo -A -k true < /dev/null > /tmp/askpass.log 2>&1; echo exit=$?
 ```
 This time click "Cancel" in the dialog instead of entering a password.
 Expected: `exit=1` (or another nonzero code — record the exact value you see).
@@ -4263,7 +4263,7 @@ Create `docs/spikes/2026-09-askpass.md`, filling in the "Observed" column with w
 # Spike: SUDO_ASKPASS for cask installs without a TTY
 
 Date: 2026-09-17
-Command under test: `SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k true < /dev/null`
+Command under test: `SUDO_ASKPASS="$PWD/scripts/banager-askpass.sh" sudo -A -k true < /dev/null`
 
 | Scenario | Expected | Observed |
 |---|---|---|
@@ -4274,7 +4274,7 @@ Command under test: `SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k t
 ## Conclusion
 
 _State plainly here whether `SUDO_ASKPASS` + this `osascript` dialog is
-viable for Canager's cask-install flow without a Terminal window open. If
+viable for Banager's cask-install flow without a Terminal window open. If
 any scenario hung, required a TTY, or silently did nothing, say so — that
 determines whether Task 11's `SUDO_ASKPASS` passthrough is usable as-is or
 whether cask installs needing `sudo` must fall back to "open Terminal and
@@ -4284,7 +4284,7 @@ run this command" (see spec section 14, risk row 1)._
 - [ ] **Step 7: Commit**
 
 ```bash
-git add scripts/canager-askpass.sh docs/spikes/2026-09-askpass.md
+git add scripts/banager-askpass.sh docs/spikes/2026-09-askpass.md
 git commit -m "$(cat <<'EOF'
 docs: record SUDO_ASKPASS spike for cask installs and add the askpass helper script
 
@@ -4363,9 +4363,9 @@ Expected: on a Mac with Homebrew at `/opt/homebrew`, prints `Found instance: bre
 Create `docs/what-we-run.md`:
 
 ```markdown
-# What Canager Runs (Phase 0–1: Homebrew only)
+# What Banager Runs (Phase 0–1: Homebrew only)
 
-Canager never invokes a shell. Every command below is a fixed argv array
+Banager never invokes a shell. Every command below is a fixed argv array
 run directly against the resolved Homebrew binary (one of
 `BrewAdapter::CANDIDATE_PATHS`). The only user-controlled input in any of
 these commands is a single validated argument — a formula/cask name or a
@@ -4380,10 +4380,10 @@ search query, checked by `validate_package_name` against
     NO_COLOR=1
 
 Cask install/upgrade additionally passes through `SUDO_ASKPASS` when that
-variable is already set in Canager's own process environment — Canager
+variable is already set in Banager's own process environment — Banager
 never sets it on its own behalf.
 
-Canager refuses to run any `brew` command at all when the current
+Banager refuses to run any `brew` command at all when the current
 process's effective user ID is 0 (root).
 
 ## Read-only commands (background checks; never require a password)
@@ -4407,7 +4407,7 @@ process's effective user ID is 0 (root).
 | Uninstall a formula or cask | `<brew> uninstall {name}` | 1800 s | No |
 | Upgrade one formula or cask | `<brew> upgrade {name}` | 1800 s | Sometimes (casks only) |
 
-Canager never passes `--ignore-dependencies` to `brew uninstall`, and never
+Banager never passes `--ignore-dependencies` to `brew uninstall`, and never
 runs a bare `brew upgrade` — upgrades are always one invocation per
 confirmed artifact, never "upgrade everything" in a single command.
 
@@ -4446,7 +4446,7 @@ EOF
 - Consumes: `RealRunner`, `HostEnv::discover()` (Tasks 5–6); `BrewAdapter::{new, with_update_ttl}` (Task 10); the `Adapter` trait methods `detect`, `plan`, `execute`, `reconcile`, `inventory` on `BrewAdapter` (Tasks 10–11); `VecSink` (Task 4); `Outcome`, `OpRequest`, `OpKind`, `ArtifactKind`, `ArtifactKey` (Task 4).
 - Produces: nothing later depends on it; it is the release gate that proves the install → inventory → uninstall path against a real Homebrew.
 
-The test is `#[ignore]` and additionally gated on `CANAGER_LIVE=1`, so `cargo test --workspace` never installs anything on a developer machine by accident. GNU `hello` is the smallest well-known formula (one binary, no dependencies), which is why it is the probe package.
+The test is `#[ignore]` and additionally gated on `BANAGER_LIVE=1`, so `cargo test --workspace` never installs anything on a developer machine by accident. GNU `hello` is the smallest well-known formula (one binary, no dependencies), which is why it is the probe package.
 
 - [ ] **Step 1: Write the live test**
 
@@ -4455,7 +4455,7 @@ Create `crates/banager-core/tests/brew_live.rs`:
 ```rust
 //! Live Homebrew smoke test: installs, inventories and removes the tiny GNU
 //! `hello` formula through the real adapter. Runs only when
-//! `CANAGER_LIVE=1` is set AND the test is invoked with `--ignored`, so a
+//! `BANAGER_LIVE=1` is set AND the test is invoked with `--ignored`, so a
 //! plain `cargo test` never touches the machine.
 
 use banager_core::adapters::brew::BrewAdapter;
@@ -4468,10 +4468,10 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
-#[ignore = "installs and removes the `hello` formula; run with CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored"]
+#[ignore = "installs and removes the `hello` formula; run with BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored"]
 async fn live_install_inventory_uninstall_hello() {
-    if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
-        eprintln!("CANAGER_LIVE is not 1; skipping live smoke test");
+    if std::env::var("BANAGER_LIVE").as_deref() != Ok("1") {
+        eprintln!("BANAGER_LIVE is not 1; skipping live smoke test");
         return;
     }
 
@@ -4550,7 +4550,7 @@ Expected: `test live_install_inventory_uninstall_hello ... ignored` and `test re
 
 This installs and then removes GNU `hello` via your own Homebrew (about 2 MB, no dependencies). It is the same thing CI will do on every push.
 
-Run: `CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored --nocapture`
+Run: `BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored --nocapture`
 Expected: brew's own install/uninstall output streams through (`==> Fetching hello`, `🍺  /opt/homebrew/Cellar/hello/...`, `Uninstalling /opt/homebrew/Cellar/hello/...`) and finally `test result: ok. 1 passed`. Afterwards `brew list --formula | grep -x hello` prints nothing (exit 1), proving cleanup.
 
 - [ ] **Step 4: Add the CI step**
@@ -4560,7 +4560,7 @@ Edit `.github/workflows/ci.yml`: insert the following step directly after the ex
 ```yaml
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
-          CANAGER_LIVE: "1"
+          BANAGER_LIVE: "1"
         run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 ```
 

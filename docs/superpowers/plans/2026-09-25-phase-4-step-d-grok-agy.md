@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Put the last two first-batch AI CLIs on the Installed page as data rows of the `StandaloneAdapter` steps B, C and E built — *Antigravity CLI* (`~/.local/bin/agy`, a flat file that updates itself and offers no update command Canager may run) and *Grok Build* (`~/.grok/bin/grok`, a relative link into `~/.grok` whose own read-only `update --check --json` says whether a newer version exists) — each with an honest update row, Grok's `grok update` button, Antigravity's "Updates itself" badge with no button, a path-list uninstall for both that moves only what the installer put there and says what stays, the backup-file pattern check the spec calls check 5, and the Unknown page's rule 4 that stops a fresh `agy.<time>.old` from being listed as a stranger.
+**Goal:** Put the last two first-batch AI CLIs on the Installed page as data rows of the `StandaloneAdapter` steps B, C and E built — *Antigravity CLI* (`~/.local/bin/agy`, a flat file that updates itself and offers no update command Banager may run) and *Grok Build* (`~/.grok/bin/grok`, a relative link into `~/.grok` whose own read-only `update --check --json` says whether a newer version exists) — each with an honest update row, Grok's `grok update` button, Antigravity's "Updates itself" badge with no button, a path-list uninstall for both that moves only what the installer put there and says what stays, the backup-file pattern check the spec calls check 5, and the Unknown page's rule 4 that stops a fresh `agy.<time>.old` from being listed as a stranger.
 
-**Architecture:** Two more `pub static Recipe` rows (`AGY`, `GROK`) and the shapes they are the first to need: `Latest::HttpJsonField` (agy's version manifest, Apple silicon only — an Intel Mac gets an honest "could not check"), `Latest::Command` (grok's own check, trusted as it answers), `Recipe.upgrade: Option<UpgradeCmd>` whose `None` makes every candidate `UpdateBlocked::SelfUpdatesOnly` (gate, `updateStateOf`, copy record), `Recipe.backup_globs: &[Glob]` with `Glob` living in `scan/` so the Unknown page's rule 4 and the removal's check 5 read one type, `Expect::File`, `RemovedWhat::Backups` and five `KeptWhat`s, and the `NotOurs` skip for an optional path Canager cannot confirm is the tool's. Everything runs through C's `removal.rs` and `Trasher` unchanged in contract: `plan_removal` learns to list backup files before the launcher and to keep-and-say instead of refusing for an optional path; `take_turn` looks items up the same way. Recordings are read-only (`--version`, `update --check --json`, `curl`, `ls`), with the home folder abbreviated to `~` and numeric owners, and the version-read-does-not-update observation spec §3.4 demands for agy written into the fixture README.
+**Architecture:** Two more `pub static Recipe` rows (`AGY`, `GROK`) and the shapes they are the first to need: `Latest::HttpJsonField` (agy's version manifest, Apple silicon only — an Intel Mac gets an honest "could not check"), `Latest::Command` (grok's own check, trusted as it answers), `Recipe.upgrade: Option<UpgradeCmd>` whose `None` makes every candidate `UpdateBlocked::SelfUpdatesOnly` (gate, `updateStateOf`, copy record), `Recipe.backup_globs: &[Glob]` with `Glob` living in `scan/` so the Unknown page's rule 4 and the removal's check 5 read one type, `Expect::File`, `RemovedWhat::Backups` and five `KeptWhat`s, and the `NotOurs` skip for an optional path Banager cannot confirm is the tool's. Everything runs through C's `removal.rs` and `Trasher` unchanged in contract: `plan_removal` learns to list backup files before the launcher and to keep-and-say instead of refusing for an optional path; `take_turn` looks items up the same way. Recordings are read-only (`--version`, `update --check --json`, `curl`, `ls`), with the home folder abbreviated to `~` and numeric owners, and the version-read-does-not-update observation spec §3.4 demands for agy written into the fixture README.
 
 **Tech Stack:** Rust (banager-core: `serde_json` for two JSON bodies, `std::fs` for the checks and the glob, the existing `CommandRunner`/`HttpClient`/`Trasher` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
-**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row D and argues from §3.1, §3.3–§3.5 (the agy and grok rows), §4.1/§4.4 (self-updating semantics, `SelfUpdatesOnly`), §6.1–§6.3 (the `Paths` uninstall, the agy and grok rows of the §6.3 table), §8.3 rule 4, §9, 附录 A. Raw research it cites: `~/dev/Canager/.superpowers/phase4/agy.md`, `grok.md`, `architecture.md`, `unknown-scan.md` (VERIFIED/UNVERIFIED per line). This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-d-grok-agy.md`.
+**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row D and argues from §3.1, §3.3–§3.5 (the agy and grok rows), §4.1/§4.4 (self-updating semantics, `SelfUpdatesOnly`), §6.1–§6.3 (the `Paths` uninstall, the agy and grok rows of the §6.3 table), §8.3 rule 4, §9, 附录 A. Raw research it cites: `~/dev/Banager/.superpowers/phase4/agy.md`, `grok.md`, `architecture.md`, `unknown-scan.md` (VERIFIED/UNVERIFIED per line). This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-d-grok-agy.md`.
 
 ## Baseline, and how to read the anchors below
 
-Branch `feat/phase-4-standalone`, worktree `~/dev/Canager-phase4`, first read at HEAD `dc3a979` and re-read at HEAD `db42e79` on 2026-09-25 (A, F and B landed; C's plan committed as `ea30cfb`; C's Tasks 1–7 landed as `d019908`…`db42e79`, so `tests/standalone_uninstall_test.rs` exists; C's Task 8 and all of E not yet landed — `session/mod.rs` still has `test_new_registers_all_eight_adapters`). **The order is A → F → B → C → E → D**, so when this plan executes, all of C (`docs/superpowers/plans/2026-09-25-phase-4-step-c-trash-uninstall.md`) and all of E (`~/dev/Canager/.superpowers/phase4/plan-step-e-rustup.md`, to be committed as `docs/superpowers/plans/2026-09-25-phase-4-step-e-rustup.md`) have landed. **Every shape C and E produce is treated here as existing with the exact names of those two plans' "Core Interfaces" sections**, and every place this plan touches one of them is a row of the "C/E dependency checklist" below, which the executor re-verifies against the landed tree **before Task 1 and again before Task 4** (the first task that edits `removal.rs`). Where the spec and plans C/E disagree, this plan follows C and E (newer, reviewed twice each) and says so in "Rulings" and "Deviations".
+Branch `feat/phase-4-standalone`, worktree `~/dev/Banager-phase4`, first read at HEAD `dc3a979` and re-read at HEAD `db42e79` on 2026-09-25 (A, F and B landed; C's plan committed as `ea30cfb`; C's Tasks 1–7 landed as `d019908`…`db42e79`, so `tests/standalone_uninstall_test.rs` exists; C's Task 8 and all of E not yet landed — `session/mod.rs` still has `test_new_registers_all_eight_adapters`). **The order is A → F → B → C → E → D**, so when this plan executes, all of C (`docs/superpowers/plans/2026-09-25-phase-4-step-c-trash-uninstall.md`) and all of E (`~/dev/Banager/.superpowers/phase4/plan-step-e-rustup.md`, to be committed as `docs/superpowers/plans/2026-09-25-phase-4-step-e-rustup.md`) have landed. **Every shape C and E produce is treated here as existing with the exact names of those two plans' "Core Interfaces" sections**, and every place this plan touches one of them is a row of the "C/E dependency checklist" below, which the executor re-verifies against the landed tree **before Task 1 and again before Task 4** (the first task that edits `removal.rs`). Where the spec and plans C/E disagree, this plan follows C and E (newer, reviewed twice each) and says so in "Rulings" and "Deviations".
 
 The confirm-grep, run at the start of execution and pasted into the branch's handover:
 
@@ -59,7 +59,7 @@ Every point where this plan meets C or E. A row whose landed shape differs from 
 | 20 | `UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy>`, `unpinCommand`, `displayToken` (per-package actionability, B) | Task 1 adds the `SelfUpdatesOnly` row and `launcherCommand` | — |
 | 21 | `ADAPTER_LABEL_KEYS`, `StandaloneAdapterId = "standalone-claude" \| "standalone-rustup"`, `STANDALONE_SUMMARY_KEYS`, `uninstallBlockedCopy`/`UNINSTALL_BLOCKED_OVERRIDES` (B, E Task 11) | Task 7 adds two rows to each of the first three; the overrides are untouched (agy and grok never produce `NoSafeMethod`) | — |
 | 22 | The two `emptyStates` sentences as E worded them (E Task 11) | Task 7 replaces them; E's text is the anchor | Match by words |
-| 23 | `docs/what-we-run.md`: the intro sentence, "Where the program comes from", `## Claude Code` (its check paragraph, landed at lines 585-599: "so a `~/.local/bin` kept as a link to a dotfiles folder refuses the uninstall, and so does a `~/.claude` that is a link when the download cache is inside it" and "If any check fails, the whole uninstall is refused"), `## rustup`, `## Files Canager writes`, "Moving files to the Trash", the never-list bullets C rewrote (the "Never deletes a file" and "Never moves anything outside the home folder" bullets, lines 856-867), the network table and its last paragraph (A, B, C, E) | Tasks 3, 4, 5, 6 edit by quoted words | Match by words |
+| 23 | `docs/what-we-run.md`: the intro sentence, "Where the program comes from", `## Claude Code` (its check paragraph, landed at lines 585-599: "so a `~/.local/bin` kept as a link to a dotfiles folder refuses the uninstall, and so does a `~/.claude` that is a link when the download cache is inside it" and "If any check fails, the whole uninstall is refused"), `## rustup`, `## Files Banager writes`, "Moving files to the Trash", the never-list bullets C rewrote (the "Never deletes a file" and "Never moves anything outside the home folder" bullets, lines 856-867), the network table and its last paragraph (A, B, C, E) | Tasks 3, 4, 5, 6 edit by quoted words | Match by words |
 | 24 | `tests/standalone_uninstall_test.rs`'s `outcome_of(session, op_id)` (C Task 7) | Task 6's new integration test copies it (a `tests/` file is its own crate) | Copy whatever the landed helper is |
 | 25 | `rowDescription`'s blocked branch in `UpdatesPage.tsx`: `t(description, { command: COMMAND_SLOT, source: … })` (B) | Task 1 adds `current`/`target` to that one `t()` call | — |
 
@@ -69,14 +69,14 @@ Copied verbatim from the spec's binding rules (spec lines 20–23):
 
 > 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 > 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-> 没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+> 没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 > 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 And from spec §十 ("每一步只带**该步有生产者**的变体与字段——「先定义、后面某步再用」正是本项目最常见的缺陷") and §2.2/§2.3 ("每个新字段点名生产读取方"), applied to this step:
 
 - **Every new field, variant, constant or function names its production reader in the same task** (doc comment and Interfaces block), and that reader lands within this step. Wire variants whose *producer* is the core task land with their front-end reader in their own task first, as B's Tasks 1–2 and C's Tasks 3–5 did: `UpdateBlocked::SelfUpdatesOnly` (Task 1; producer `check_updates`, Task 5), `RemovedWhat::Backups` and the five `KeptWhat`s (Task 2; producers Tasks 4–5). Declared deferrals inside the step: `Recipe.backup_globs` and `Glob` (Task 3; the first non-empty producer is `AGY`, Task 5; the readers — rule 4 and check 5 — are live from Tasks 3 and 4), `Expect::File` (Task 4; producers `AGY`/`GROK`, Task 5). Nothing here is defined for a later step.
 - **Read-only recordings only.** The recording commands (Task 6) are `AGY_CLI_DISABLE_AUTO_UPDATE=true ~/.local/bin/agy --version` (once), `~/.grok/bin/grok --version` (once), `~/.grok/bin/grok update --check --json` (its `--help` says "Check for updates without installing", grok.md §4, VERIFIED), one `curl` of the agy manifest, `cat` of one state file, `stat`, `readlink`, `ps`, `diff`, and `ls` of the tools' own paths — with `$HOME` replaced by `~` and owners numeric (`ls -lan … | sed "s|$HOME|~|g"`; the README states that exact transformation, since the file is then not byte-for-byte). **Never run, in a recording or a test: `grok update` (without `--check`), `agy update`, bare `agy`, bare `grok`.** No recording or test on this Mac touches the author's installs; every layout a test needs is synthetic, in a temp directory.
-- **Honest outcomes.** Nothing here touches `run_operation`. A `TrashPaths` uninstall keeps C's contract (`Succeeded` only when every path moved, `Failed` with macOS's words, `Unconfirmed` between items, `CanagerFailed(PathChanged)` for anything that changed since the preview). agy's newer version is a real candidate with no button (`SelfUpdatesOnly`), never "up to date" and never `checkable: false`. grok's candidate is what grok itself answered.
+- **Honest outcomes.** Nothing here touches `run_operation`. A `TrashPaths` uninstall keeps C's contract (`Succeeded` only when every path moved, `Failed` with macOS's words, `Unconfirmed` between items, `BanagerFailed(PathChanged)` for anything that changed since the preview). agy's newer version is a real candidate with no button (`SelfUpdatesOnly`), never "up to date" and never `checkable: false`. grok's candidate is what grok itself answered.
 - **No shell.** `PlanAction::Command.program` is only ever the instance's `exe_path`; `Latest::Command` runs the launcher with fixed argv and no shell; a recipe has no field that could name another program.
 - **The UI never offers what Rust refuses.** `SelfUpdatesOnly` is refused by `Session::issue_plan` (`blocked_upgrade`, generic over `UpdateBlocked`) and by `plan(Upgrade)` for a recipe with no `upgrade`; `updateStateOf` hides the button and the checkbox for it.
 - **en + zh-CN for all copy.** Every new key in both `src/i18n/en.json` and `src/i18n/zh-CN.json`; `completeness.test.ts` requires each key to be looked up by a *literal* in non-test source (lookups go through `Record`s of literal keys); `no-literal-strings.test.ts` forbids English literals in JSX; zh-CN prose uses full-width `，：（）——` between CJK characters and carries only `_other` for a plural key.
@@ -93,19 +93,19 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段—
 
   Run `cargo fmt --all` before the `--check` gate: the Rust below is written *for* rustfmt, and rustfmt decides line breaks.
 - **Commits:** `git add <exact paths>` (never `-A`, never `.`), an imperative subject in sentence case, a body that says why, a blank line, then the attribution line. The commit blocks below end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`, the line this plan's author was told to use; an executing session told to use a different attribution replaces that whole line with its own and never adds a second.
-- **Read-only worktree rule for the plan's author** (not the executor): this plan was written without creating, editing or deleting anything under `~/dev/Canager-phase4`, where C's executors work.
+- **Read-only worktree rule for the plan's author** (not the executor): this plan was written without creating, editing or deleting anything under `~/dev/Banager-phase4`, where C's executors work.
 
 ## Rulings this plan makes
 
 Where the spec leaves a choice to the step, or where C's or E's landed shapes changed what the spec drew, the decision is made here so no task has to.
 
-1. **agy's `~/.cache/antigravity` is kept and said, not moved.** Spec §6.3 lists it as `Dir · Cache · optional`; C's check 1 (ruling 5) refuses any path whose resolved folder is `~/.cache` (`recipe::SHARED_FOLDERS`, reason `SharedFolder`), and `recipes::tests` refuses it in the constant. C left the decision to D (backlog): a tested exception, or the list changes. **The list changes.** The exception would have to say "a folder directly in `~/.cache` may be moved when it is named after the tool" — a second rule the never-list exists to not have, for a folder that is empty on this Mac (`~/.cache/antigravity/staging`, 0 entries, 2026-09-25) and at most one interrupted download when it is not. Instead the folder is a `KeepSpec` with a new `KeptWhat::InstallerCache`, listed only when it exists (C ruling 6), whose sentence says what it is, that Canager moves nothing that sits directly in `~/.cache`, and that the user may delete it. **Author-facing consequence:** after an Antigravity uninstall `~/.cache/antigravity` stays (usually empty; up to ~180 MB if an update was interrupted mid-download), the dialog says so, and the Unknown page never shows it (it is not a bin directory). Recorded in the backlog entry C opened (Task 8).
+1. **agy's `~/.cache/antigravity` is kept and said, not moved.** Spec §6.3 lists it as `Dir · Cache · optional`; C's check 1 (ruling 5) refuses any path whose resolved folder is `~/.cache` (`recipe::SHARED_FOLDERS`, reason `SharedFolder`), and `recipes::tests` refuses it in the constant. C left the decision to D (backlog): a tested exception, or the list changes. **The list changes.** The exception would have to say "a folder directly in `~/.cache` may be moved when it is named after the tool" — a second rule the never-list exists to not have, for a folder that is empty on this Mac (`~/.cache/antigravity/staging`, 0 entries, 2026-09-25) and at most one interrupted download when it is not. Instead the folder is a `KeepSpec` with a new `KeptWhat::InstallerCache`, listed only when it exists (C ruling 6), whose sentence says what it is, that Banager moves nothing that sits directly in `~/.cache`, and that the user may delete it. **Author-facing consequence:** after an Antigravity uninstall `~/.cache/antigravity` stays (usually empty; up to ~180 MB if an update was interrupted mid-download), the dialog says so, and the Unknown page never shows it (it is not a bin directory). Recorded in the backlog entry C opened (Task 8).
 2. **agy's launcher is `RemovedWhat::Launcher`, not the spec's `Program`.** Spec §6.3 writes `~/.local/bin/agy · File · Program`; C's invariants test requires the last listed path to be `Launcher`, and "the command itself" is exactly what the 176 MB file is. The sentence the user reads is "Moves to the Trash: ~/.local/bin/agy (the command itself)".
 3. **grok's optional fallback links move first, not after the program folders — a precaution, not a correctness fix.** Spec §6.3 orders `~/.local/bin/grok` and `~/.local/bin/agent` after `~/.grok/downloads`. Either order works with C's code: `take_turn` re-runs `check_item` before each move, check 4 for a `SymlinkIntoRoot` path is `route::probe`, and `probe_strict`'s dangling branch (`route.rs:164-175`) reads the link's own text with `one_hop` and folds only the *existing* prefix of the hop's folder (`canonicalize_existing_prefix`, `route.rs:70`) — so once `~/.grok/downloads` is in the Trash, a fallback whose text names `~/.grok/bin/grok` (two hops) still lands under the root while `~/.grok/bin` exists, and a fallback whose text names the download directly lands there lexically: both answer `LauncherOnly`, which `check_item` accepts (`removal.rs:327-334`). The order is chosen for a different reason: the installer's link text is UNVERIFIED (grok.md §2 says only that it links "into" `~/.local/bin` or `/usr/local/bin`; one hop or two is not known), so the two links go while every folder their text could pass through is still on the disk — check 4 then answers from a link that *resolves* (`Present`), never from its text alone — and a run that stops after them leaves an intact program with no dangling, foreign-looking `~/.local/bin/grok` behind it. The launcher-last rule (spec §6.2) holds: `~/.grok/bin/grok` is the last item (ruling 4), a stopped run leaves it dangling into `~/.grok`, the launcher-only state a second run finishes. `recipes::tests` pins the order. (An earlier draft of this ruling claimed the spec's order would make `probe` answer `Absent` and the turn read as `PathChanged`; that was wrong, and the fixture README, the trust file and the backlog say the reason given here.)
 4. **grok's `~/.grok/bin` is not moved as a folder; its two links are the items, `grok` last.** Spec §6.3 lists `~/.grok/bin · Dir · Launcher` as the last item. The installer puts `~/.grok/bin` on `PATH` (`export PATH="$HOME/.grok/bin:$PATH"`, grok.md §2), so a user's own script dropped in there is a realistic state, and a folder move under the sentence "(the command itself)" would take it without saying so — the "see the exact thing before it moves" rule (spec §1) under strain. So the list names what the installer put there: `~/.grok/bin/agent` (`SymlinkIntoRoot · Launcher · optional`, the second name of the same command) and then `~/.grok/bin/grok` (`SymlinkIntoRoot · Launcher`, last, `route.launcher` itself), and the emptied `~/.grok/bin` stays inside the kept `~/.grok` (harmless: the `PATH` line the installer left points at an existing, empty folder). C's launcher-last invariant (`last.path == route.launcher`) is kept as C wrote it; Task 4 adds only the `expect` per `RouteKind` that agy's `File` needs. **Author-facing consequence:** after a grok uninstall an empty `~/.grok/bin` folder remains inside `~/.grok`; the preview lists two links, not a folder. Recorded as deviation 14.
-5. **An optional path Canager cannot confirm is the tool's is kept and said (`KeptWhat::NotOurs`), for three of the six refusal reasons, not one.** Spec §6.3 check 4 says "指纹不符 → 跳过并发 WillKeep { NotOurs }" (a foreign `~/.local/bin/agent` must not make grok un-uninstallable, §十三 #27). C's `check_item` reports the wrong shape, a link elsewhere and a linked folder on the way all as `NotWhatInstructionsExpect`, and a folder leading out of the home folder or into a shared one as `OutsideHome`/`SharedFolder`. For an *optional* path all three mean the same thing to the user — Canager will not touch it and the uninstall goes on — so all three become the skip (`removal::keeps_instead`); `NotOwnedByYou` and `OverlapsKept` still refuse the whole list, because they are about what the move would do. A dotfiles-linked `~/.config` therefore keeps grok's optional `grok.fish` rather than refusing grok's uninstall, which is the outcome §十三 #27 wanted for the analogous `agent`. The `NotOurs` sentence is widened to cover both cases (deviation 5). Backup files matched by a glob are optional in this sense too.
+5. **An optional path Banager cannot confirm is the tool's is kept and said (`KeptWhat::NotOurs`), for three of the six refusal reasons, not one.** Spec §6.3 check 4 says "指纹不符 → 跳过并发 WillKeep { NotOurs }" (a foreign `~/.local/bin/agent` must not make grok un-uninstallable, §十三 #27). C's `check_item` reports the wrong shape, a link elsewhere and a linked folder on the way all as `NotWhatInstructionsExpect`, and a folder leading out of the home folder or into a shared one as `OutsideHome`/`SharedFolder`. For an *optional* path all three mean the same thing to the user — Banager will not touch it and the uninstall goes on — so all three become the skip (`removal::keeps_instead`); `NotOwnedByYou` and `OverlapsKept` still refuse the whole list, because they are about what the move would do. A dotfiles-linked `~/.config` therefore keeps grok's optional `grok.fish` rather than refusing grok's uninstall, which is the outcome §十三 #27 wanted for the analogous `agent`. The `NotOurs` sentence is widened to cover both cases (deviation 5). Backup files matched by a glob are optional in this sense too.
 6. **A kept path outside the home folder is reported, never protected — and reported only when it is demonstrably this tool's link.** Spec §6.3 lists `/usr/local/bin/grok` and `/usr/local/bin/agent` as `WillKeep { OutsideHome }` "若存在". C's `kept_places` expands every `KeepSpec` with `route::expand` (which panics on a non-`~/` path) and feeds it to `disturbed`, which refuses a listed path that a kept one *leads into* — and a `/usr/local/bin/grok` link leads into `~/.grok/downloads`, so treating it as kept would refuse every grok uninstall it exists for. So a `KeepSpec` whose `what` is `OutsideHome` may (and must) name an absolute path, `kept_places` skips it, and `removal::outside_home_keeps` turns it into a `WillKeep { OutsideHome }` sentence, after the recipe's other kept paths. **Existence is not enough for the sentence.** Its copy says "after uninstalling it's a dead link you can delete yourself", which is true only of a link into this tool's root: on an Intel Mac Homebrew's prefix is `/usr/local`, so with the `grok-build` cask installed `/usr/local/bin/grok` is Homebrew's live link into its Caskroom, and `/usr/local/bin/agent` is a generic name any CLI may own — telling the user to delete either would be a false, safety-relevant sentence. So `outside_home_keeps` reports a path only when `removal::points_into(path, root)` says it is a symbolic link whose target lies under the recipe's root as expanded for this home (`Look.root`): resolved (`canonicalize`) when it resolves, or, dangling, by its own text folded from its folder (`route::lexical_join`). A regular file, a folder, a link elsewhere, or nothing: no sentence. This also keeps every test off the machine's real `/usr/local/bin`: a link there can never point into a test's temp home. `recipes::tests` holds every other `keep` path to `~/`.
-7. **Backup files are listed before the last item, in name order, and are optional.** `Recipe.backup_globs` is separate from `remove` (spec §3.1), so `removal::listed_items` places every match after all listed paths but the last (the launcher) — the launcher stays last (spec §6.2). A match is a regular file (never a link) directly in the pattern's folder whose name is `prefix` + at least one character + `suffix`; `Glob::matches_name` says so, so `agy..old` is not one. A match Canager cannot confirm (ruling 5) is kept and said; one that appears between the preview and the click is `PathChanged` (C's list comparison, unchanged). `take_turn` finds each item through the same `listed_items`, so a backup that vanished by its turn is `Changed`, as C treats every other vanished item.
+7. **Backup files are listed before the last item, in name order, and are optional.** `Recipe.backup_globs` is separate from `remove` (spec §3.1), so `removal::listed_items` places every match after all listed paths but the last (the launcher) — the launcher stays last (spec §6.2). A match is a regular file (never a link) directly in the pattern's folder whose name is `prefix` + at least one character + `suffix`; `Glob::matches_name` says so, so `agy..old` is not one. A match Banager cannot confirm (ruling 5) is kept and said; one that appears between the preview and the click is `PathChanged` (C's list comparison, unchanged). `take_turn` finds each item through the same `listed_items`, so a backup that vanished by its turn is `Changed`, as C treats every other vanished item.
 8. **`Glob` lives in `scan/mod.rs`**, as spec §3.1 says: the scan reads it (rule 4) and `adapters` depends on `scan`, never the reverse. `Glob::dir_under(home)` joins `~/` exactly as `route::expand` does (the scan compares raw spellings, F's rule), and `recipes::tests` holds every glob's `dir` to `~/`.
 9. **Rule 4 claims by name, in the pattern's own directory, for a regular file, while the tool is installed.** `Known::index` indexes each instance's patterns (`globs` keyed by adapter id, filled by `Session::scan_unknown` from `recipes::backup_globs()`), the directory canonical; `claimant` gets the entry's canonical directory and its `EntryKind` and applies rule 4 after rule 3. Without an instance the pattern is not indexed and a leftover `agy.<time>.old` is listed — the spec's own words (§8.3).
 10. **`Latest::Command` trusts the tool's `updateAvailable` and never compares** (spec §4.3): `check_updates` builds a `Native` candidate whose `target` is `latestVersion` as printed when `updateAvailable` is `true`, and nothing when it is `false` — **unless the tool also reports an error.** grok's answer carries an `error` field (`"error":null` on success, grok.md §3, VERIFIED); a check that exits 0 with `updateAvailable:false` and a non-null `error` (the plausible offline shape: it cannot know a newer version exists) would otherwise leave the row saying "up to date" while the check failed, which the honesty rule forbids ("没有证据绝不说成功"). So `Latest::Command` carries `error_field: Option<&'static str>` (grok: `Some("error")`), and `latest::parse_update_check` answers `Err("the update check reported: <text>")` when that field is present and not `null`; the row is then "could not check" with grok's own reason. A recipe may name a `Command` only when its argv carries `--check` and `--json` (`recipes::tests::test_every_command_latest_source_only_checks`), because a `Latest::Command` runs on every refresh.
@@ -113,8 +113,8 @@ Where the spec leaves a choice to the step, or where C's or E's landed shapes ch
 12. **`Recipe.upgrade` becomes `Option<UpgradeCmd>`** (B's ruling 1 anticipated this: "D widens `upgrade` to `Option` with agy"). `None` puts `UpdateBlocked::SelfUpdatesOnly` on every candidate the recipe produces and makes `plan(Upgrade)` refuse with the same reason (the late twin for a stale snapshot). `CLAUDE`, `GROK`, `RUSTUP` and every test recipe say `Some(…)`.
 13. **`SelfUpdatesOnly`'s sentence names the versions**, as spec §9.2 writes it (`({{current}} → {{target}})`); `rowDescription`'s blocked branch interpolates `command` and `source` only, so Task 1 adds `current` and `target` to that one `t()` call (harmless for `Pinned`, whose sentences do not use them).
 14. **`SelfUpdatesOnly`'s command is the launcher, bare** (`instance.exe_path`, through `displayToken` — quoted when the path has a space), never `<launcher> --version`: on 1.2.10 `--version` does not reach the updater (spec §3.4, §十三 #31); opening the tool does. The sentence says to open it once and quit, and that it checks at most every 15 minutes (agy.md §4, VERIFIED).
-15. **`ShellConfigLines` says "any lines its installer added"**, since a `KeepSpec` is listed whenever the file exists (C ruling 6) and Canager does not read the file to find the marker: a `~/.zshrc` with no such line still gets a true sentence. Not reading the file keeps grok's `~/.zshrc` and agy's `~/.zshrc`/`~/.zprofile` out of "Files Canager reads".
-16. **The version-read observation is per recording (spec §3.4), for both tools, and the README carries it.** Task 6's agy recording records the count of `~/.gemini/antigravity-cli/log` files and the mtime of `updater/update_status.json` before and after the one `--version` read that is recorded, and that no new `agy` process appeared (a before/after diff of `ps -axo pid,ppid,comm`, not a name grep — the Antigravity desktop app is also called `antigravity`). If any of the three changes, the executor stops and reports: the recipe's version read must then change (spec §3.4 names the shapes: read the updater's own record, or `version: None` with a sentence), which is the author's call, not this plan's. grok gets the same rule, not a weaker one: whether `grok --version` runs grok's launch-time updater is UNVERIFIED, and whether that updater *installs* or only checks is UNVERIFIED too (grok.md §5, open question 2), while Canager's refresh runs `grok --version` three to four times. So the recording snapshots `~/.grok/bin` and `~/.grok/downloads` (`ls -lan`), `readlink ~/.grok/bin/grok` and `~/.grok/version.json`'s mtime *before and after each* grok invocation. A moved `version.json` mtime after `--version` is recorded as evidence that the launch-time path is reachable from a version read (an open question in `## Grok Build`, not a pre-decided "changes no recipe"); a changed link target or a new entry in `downloads/` is a stop: report, do not commit, the author decides the recipe's version read. After `update --check --json` a moved `version.json` mtime is expected (its `checked_at`) and is recorded as the one write grok makes on every Canager refresh (`## Grok Build`, `## Files Canager writes`, the never-list).
+15. **`ShellConfigLines` says "any lines its installer added"**, since a `KeepSpec` is listed whenever the file exists (C ruling 6) and Banager does not read the file to find the marker: a `~/.zshrc` with no such line still gets a true sentence. Not reading the file keeps grok's `~/.zshrc` and agy's `~/.zshrc`/`~/.zprofile` out of "Files Banager reads".
+16. **The version-read observation is per recording (spec §3.4), for both tools, and the README carries it.** Task 6's agy recording records the count of `~/.gemini/antigravity-cli/log` files and the mtime of `updater/update_status.json` before and after the one `--version` read that is recorded, and that no new `agy` process appeared (a before/after diff of `ps -axo pid,ppid,comm`, not a name grep — the Antigravity desktop app is also called `antigravity`). If any of the three changes, the executor stops and reports: the recipe's version read must then change (spec §3.4 names the shapes: read the updater's own record, or `version: None` with a sentence), which is the author's call, not this plan's. grok gets the same rule, not a weaker one: whether `grok --version` runs grok's launch-time updater is UNVERIFIED, and whether that updater *installs* or only checks is UNVERIFIED too (grok.md §5, open question 2), while Banager's refresh runs `grok --version` three to four times. So the recording snapshots `~/.grok/bin` and `~/.grok/downloads` (`ls -lan`), `readlink ~/.grok/bin/grok` and `~/.grok/version.json`'s mtime *before and after each* grok invocation. A moved `version.json` mtime after `--version` is recorded as evidence that the launch-time path is reachable from a version read (an open question in `## Grok Build`, not a pre-decided "changes no recipe"); a changed link target or a new entry in `downloads/` is a stop: report, do not commit, the author decides the recipe's version read. After `update --check --json` a moved `version.json` mtime is expected (its `checked_at`) and is recorded as the one write grok makes on every Banager refresh (`## Grok Build`, `## Files Banager writes`, the never-list).
 17. **Fixture files carry `~` and numeric owners, and the README says so** (follow-ups-after-C item 4: B's `layout.txt` leaked the home path and hostname). `ls -lan <tool's own paths> | sed "s|$HOME|~|g"`; the version lines, the manifest and the update check are the commands' bytes unchanged. The README names the hostname as `the author's MacBook`, not the machine's name.
 18. **The recorded version is whatever the tools print on the recording day**, and every fixture-backed assertion derives its expectation from the meta file. agy self-updates: this Mac's `~/.local/bin/agy` moved from 1.2.9 (2026-09-24) to 1.2.10 (spec) to a file dated 2026-09-25 12:25 (186,406,752 bytes) while this plan was written. The fixture directory, `verified_versions` and the trust file's "Verified against" sentence must agree, and the recording instructions say what to rename.
 19. **Eleven adapters after this step**: `standalone-agy` and `standalone-grok` sort into the fan-out between `pipx` and `standalone-claude` / after it; the test is renamed `test_new_registers_all_eleven_adapters`.
@@ -126,7 +126,7 @@ Where the spec leaves a choice to the step, or where C's or E's landed shapes ch
 
 ## The author's pre-merge verification (spec §五, §十 row D — for the author on CI, never for the executor on this Mac)
 
-Spec §五 makes merging this step conditional on recording, on a CI runner with stdin closed, how `grok update` and `claude update` behave when nothing can answer a prompt: neither has ever been run by this project ("两个升级命令都没有在调研中被执行过"), `RealRunner` gives a child `stdin(Stdio::null())` (`runner/real.rs`, the `Stdio::null()` line), so a confirmation prompt gets EOF at once — and how each tool takes EOF (exits non-zero, treats it as "no", ignores it, or hangs until Canager's 1800 s timeout) is what decides whether the *Update* button works. **CI minutes for this repository are exhausted until 2026-10-01**, so this runs after that date, and it never runs on the author's Mac: both commands change the machine's installs.
+Spec §五 makes merging this step conditional on recording, on a CI runner with stdin closed, how `grok update` and `claude update` behave when nothing can answer a prompt: neither has ever been run by this project ("两个升级命令都没有在调研中被执行过"), `RealRunner` gives a child `stdin(Stdio::null())` (`runner/real.rs`, the `Stdio::null()` line), so a confirmation prompt gets EOF at once — and how each tool takes EOF (exits non-zero, treats it as "no", ignores it, or hangs until Banager's 1800 s timeout) is what decides whether the *Update* button works. **CI minutes for this repository are exhausted until 2026-10-01**, so this runs after that date, and it never runs on the author's Mac: both commands change the machine's installs.
 
 **What blocks the merge, stated once:** both commands are recorded in the one workflow run below. **grok's result gates this merge** — `GROK.upgrade` is new here, and `docs/what-we-run.md`'s `## Grok Build` says "the author records it on a CI runner before this step merges", which must be literally true. **claude's result does not gate this merge**: B's row already ships the *Update* button, so a prompting or hanging `claude update` is a regression filed for the release (Step 3), recorded here because the run is free once it exists. This is a deviation from spec §五's "步骤 D 之前…各录一次" (both before D), recorded as deviation 13.
 
@@ -220,8 +220,8 @@ jobs:
 |---|---|
 | `*-update.exit`: `exit=0`, seconds well under 1800, and `*-version-after.txt` shows the newer version | The command runs unattended and updates. The recipe stays as it is. |
 | `exit=0`, version unchanged | The tool judged itself current (only possible when no older version was installed). Says nothing about a prompt; re-run with an older version. |
-| `exit≠0`, and `*-update.stdout`/`.stderr` contains a question (`?`, `[y/N]`, `Continue`, `Proceed`, `Press`) | The command prompts and took EOF as "no". Canager's run would be `Failed` with that text — honest, but a button that can never work. |
-| `exit=124` (timeout's own code), seconds ≈ 1800 | The command waited for an answer that never came. Canager's run would be `Unconfirmed` after 30 minutes. |
+| `exit≠0`, and `*-update.stdout`/`.stderr` contains a question (`?`, `[y/N]`, `Continue`, `Proceed`, `Press`) | The command prompts and took EOF as "no". Banager's run would be `Failed` with that text — honest, but a button that can never work. |
+| `exit=124` (timeout's own code), seconds ≈ 1800 | The command waited for an answer that never came. Banager's run would be `Unconfirmed` after 30 minutes. |
 | `exit=127`, or `*-update.exit` reads `no timeout command` | The probe itself did not run (`gtimeout`/`timeout` missing on the image, or the launcher not where the installer was expected to put it). Says nothing about the tool; fix the workflow and re-run. |
 | `*-update.stderr` says stdin is not a terminal / TTY | Same as a prompt: the tool refuses unattended. |
 | `grok-layout-after.txt`: a `*.old` beside `grok`, or a new `downloads/grok-<v>-…` and a re-pointed link | What a grok upgrade leaves behind; `grok-config-after.toml` unchanged means `grok update` does not rewrite the config. Record both in the Grok section. |
@@ -369,7 +369,7 @@ Order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Tasks 1 and 2 are independen
 
 Eight inputs the spec implies, or the research found, that a person is most likely to hit, most likely first. Each has its test in the task named.
 
-1. **Antigravity updates itself between the uninstall preview and the click** — its updater replaces `~/.local/bin/agy` with a new file (this Mac's moved 1.2.9 → 1.2.10 → a 2026-09-25 build inside two days) → `CanagerFailed(PathChanged)` naming `~/.local/bin/agy`, nothing moved, the user previews again (Task 5, `test_execute_for_agy_refuses_a_launcher_its_updater_replaced_after_the_preview`).
+1. **Antigravity updates itself between the uninstall preview and the click** — its updater replaces `~/.local/bin/agy` with a new file (this Mac's moved 1.2.9 → 1.2.10 → a 2026-09-25 build inside two days) → `BanagerFailed(PathChanged)` naming `~/.local/bin/agy`, nothing moved, the user previews again (Task 5, `test_execute_for_agy_refuses_a_launcher_its_updater_replaced_after_the_preview`).
 2. **A `~/.local/bin/agent` that is another CLI's** (the research Mac has several agent CLIs; grok's installer writes that name only as a fallback) → kept with `NotOurs`, grok's uninstall goes ahead (Task 4 `test_plan_removal_keeps_an_optional_path_it_cannot_confirm_is_the_tools_and_says_so`; Task 5 `test_plan_uninstall_for_grok_keeps_a_foreign_agent_link_and_moves_its_own_fallback_links_first`).
 3. **An Intel Mac, or a universal build under Rosetta** → agy's row says the check is not yet verified there, and no request leaves the machine (Task 5, `test_check_updates_for_agy_is_uncheckable_on_an_intel_mac_without_a_request`).
 4. **grok's own check fails, prints something that is not its JSON, or is not grok's format at all** (exit 1, an HTML captive-portal page in stdout, a field renamed) → one uncheckable row with a short reason, never an `Err` that would hold the source stale (Task 5, `test_check_updates_for_grok_lists_nothing_when_it_says_no_update_and_is_uncheckable_when_it_fails`).
@@ -402,7 +402,7 @@ In `crates/banager-core/src/model.rs`, inside `test_update_blocked_is_a_bare_str
 
 ```rust
         // Phase 4 step D: the second reason, a tool that installs its updates
-        // itself and offers no command Canager may run
+        // itself and offers no command Banager may run
         // (`StandaloneAdapter::check_updates` for a recipe with no `upgrade`).
         // `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts indexes
         // this spelling.
@@ -493,7 +493,7 @@ In `src/pages/UpdatesPage.test.tsx`, after the test `it("gives no self-updating 
   it("offers no Update button for a tool that updates itself, and says to open it once", async () => {
     // Spec §4.4, D5 item 4: the newer version is real (read from the
     // launcher's live version), so the row stays and is counted with what
-    // Canager cannot update; the tool has no update command Canager could
+    // Banager cannot update; the tool has no update command Banager could
     // run, so there is no button and no checkbox, and the sentence says
     // what does work -- opening the tool, which checks at most every 15
     // minutes -- with the launcher set apart as code. The claude fixtures
@@ -512,7 +512,7 @@ In `src/pages/UpdatesPage.test.tsx`, after the test `it("gives no self-updating 
     expect(
       getByText(
         wholeSentence(
-          "A newer version of Claude Code is out (2.1.281 → 2.1.290), and Claude Code installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run /Users/someone/.local/bin/claude in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+          "A newer version of Claude Code is out (2.1.281 → 2.1.290), and Claude Code installs updates itself in the background — Banager doesn't have a safe way to do it for you. Open it once (run /Users/someone/.local/bin/claude in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
         ),
       ),
     ).toBeInTheDocument();
@@ -538,13 +538,13 @@ In `crates/banager-core/src/model.rs`, in `pub enum UpdateBlocked`, after the `P
 
 ```rust
     /// The tool installs its updates itself and has no update command
-    /// Canager may run for it, so a newer version is listed with no
+    /// Banager may run for it, so a newer version is listed with no
     /// button. One producer: `StandaloneAdapter::check_updates`
     /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
     /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
     /// no options and has never been run (agy.md §4; spec §4.4). Not "no
     /// candidate": the Installed row would then say "up to date", which is
-    /// false while 1.2.11 exists; not `checkable: false`: Canager did
+    /// false while 1.2.11 exists; not `checkable: false`: Banager did
     /// check. Read by the gate (`blocked_upgrade` in session/plans.rs,
     /// generic over this enum), by `updateStateOf` in
     /// src/lib/updateState.ts (no button, no checkbox) and by
@@ -565,7 +565,7 @@ In `src/lib/types.ts`, replace the `UpdateBlocked` type and its doc comment (fro
  * `pinned: true`) and pipx's (from `pipx list --outdated`'s
  * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
  * `check_updates` for a tool that installs its updates itself and has no
- * update command Canager may run (Antigravity CLI, phase 4 step D). Read
+ * update command Banager may run (Antigravity CLI, phase 4 step D). Read
  * through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over
  * this union, so a variant added here without copy fails `tsc` rather
  * than rendering nothing.
@@ -598,7 +598,7 @@ and in `UPDATE_BLOCKED_KEYS`, after the `Pinned: { … },` entry (its last line 
   SelfUpdatesOnly: {
     badge: "updates.blocked.SelfUpdatesOnly.badge",
     // The tool installs its updates itself (agy: a 15-minute debounce on
-    // its background check, agy.md §4) and offers no command Canager may
+    // its background check, agy.md §4) and offers no command Banager may
     // run, so the sentence says what does work: open it once, then quit.
     // The available sentence names the versions the row compared; the
     // unavailable one cannot promise a current target and says only that
@@ -643,25 +643,25 @@ with
       );
 ```
 
-In `src/i18n/en.json`, under `"updates"` → `"blocked"`, after the `"Pinned": { … }` object (its last key `"refused": "This package has been pinned in {{source}}, so Canager didn't update it. Nothing has been changed."` and its closing `}`), add `,` and:
+In `src/i18n/en.json`, under `"updates"` → `"blocked"`, after the `"Pinned": { … }` object (its last key `"refused": "This package has been pinned in {{source}}, so Banager didn't update it. Nothing has been changed."` and its closing `}`), add `,` and:
 
 ```json
       "SelfUpdatesOnly": {
         "badge": "Updates itself",
-        "description": "A newer version of {{source}} is out ({{current}} → {{target}}), and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
-        "descriptionSourceUnavailable": "A newer version of {{source}} was seen the last time it answered, and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
-        "refused": "{{source}} updates itself, so Canager didn't try to update it. Nothing has been changed."
+        "description": "A newer version of {{source}} is out ({{current}} → {{target}}), and {{source}} installs updates itself in the background — Banager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+        "descriptionSourceUnavailable": "A newer version of {{source}} was seen the last time it answered, and {{source}} installs updates itself in the background — Banager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+        "refused": "{{source}} updates itself, so Banager didn't try to update it. Nothing has been changed."
       }
 ```
 
-In `src/i18n/zh-CN.json`, the same place (after `"Pinned"`'s `"refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Canager 没有更新它。什么都没有改动。"` and its closing `}`), add `,` and:
+In `src/i18n/zh-CN.json`, the same place (after `"Pinned"`'s `"refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Banager 没有更新它。什么都没有改动。"` and its closing `}`), add `,` and:
 
 ```json
       "SelfUpdatesOnly": {
         "badge": "自己更新",
-        "description": "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
-        "descriptionSourceUnavailable": "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
-        "refused": "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
+        "description": "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Banager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
+        "descriptionSourceUnavailable": "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Banager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
+        "refused": "{{source}} 会自己更新，所以 Banager 没有去更新它。什么都没有改动。"
       }
 ```
 
@@ -679,7 +679,7 @@ git add crates/banager-core/src/model.rs src/lib/types.ts src/lib/types.test.ts 
 git commit -m "$(cat <<'EOF'
 Add SelfUpdatesOnly, the update reason for a tool that updates itself
 
-A tool with no update command Canager may run still has a newer version
+A tool with no update command Banager may run still has a newer version
 worth showing: the row keeps the badge and loses the button, and its
 sentence says to open the tool once, since that is what makes it check
 (at most every 15 minutes). The gate and updateStateOf already refuse any
@@ -874,7 +874,7 @@ pub enum KeptWhat {
     /// spec §十三 #24).
     ToolState,
     /// A shell startup file the installer added lines to (`~/.zshrc`,
-    /// `~/.zprofile`): Canager never edits one (spec §6.8), and does not
+    /// `~/.zprofile`): Banager never edits one (spec §6.8), and does not
     /// read it to find the lines, so the sentence says "any lines".
     ShellConfigLines,
     /// A link outside the home folder the installer may have made into the
@@ -885,14 +885,14 @@ pub enum KeptWhat {
     /// Report-only: `kept_places` does not protect it (a link into the
     /// program folder would otherwise refuse the uninstall it exists for).
     OutsideHome,
-    /// An optional listed path that is there but Canager could not confirm
+    /// An optional listed path that is there but Banager could not confirm
     /// is this install's -- the wrong shape, a link elsewhere, a folder on
-    /// the way that is a link, or a place Canager never moves from
+    /// the way that is a link, or a place Banager never moves from
     /// (`~/.local/bin/agent` when another CLI owns it; spec §十三 #27) --
     /// so it stays and the uninstall goes on.
     NotOurs,
     /// The installer's download staging folder, directly in `~/.cache`
-    /// (`~/.cache/antigravity`): Canager moves nothing that sits directly in
+    /// (`~/.cache/antigravity`): Banager moves nothing that sits directly in
     /// a shared folder (check 1's never-list), so it stays, usually empty,
     /// and the user may delete it (phase 4 step D plan, ruling 1).
     InstallerCache,
@@ -964,10 +964,10 @@ and under `"willKeep"`, after `"SettingsAndHistory": "Keeps: {{path}} (your sett
 
 ```json
       "ToolState": "Keeps: {{path}} (its conversations, history and working files; some of the program's own files are in there too)",
-      "ShellConfigLines": "Keeps: {{path}} (any lines its installer added there — harmless, and Canager never edits that file)",
-      "OutsideHome": "Keeps: {{path}} (outside your home folder, so Canager won't touch it; after uninstalling it's a dead link you can delete yourself)",
-      "NotOurs": "Keeps: {{path}} (Canager couldn't confirm it's part of this install — something else may have put it there — so it stays)",
-      "InstallerCache": "Keeps: {{path}} (the installer's download staging folder, usually empty — Canager moves nothing that sits directly in ~/.cache; you can delete it yourself)"
+      "ShellConfigLines": "Keeps: {{path}} (any lines its installer added there — harmless, and Banager never edits that file)",
+      "OutsideHome": "Keeps: {{path}} (outside your home folder, so Banager won't touch it; after uninstalling it's a dead link you can delete yourself)",
+      "NotOurs": "Keeps: {{path}} (Banager couldn't confirm it's part of this install — something else may have put it there — so it stays)",
+      "InstallerCache": "Keeps: {{path}} (the installer's download staging folder, usually empty — Banager moves nothing that sits directly in ~/.cache; you can delete it yourself)"
 ```
 
 In `src/i18n/zh-CN.json`, the same two places: after `"Cache": "移到废纸篓：{{path}}（可重新下载的缓存）"` add `,` and
@@ -980,10 +980,10 @@ and after `"SettingsAndHistory": "保留：{{path}}（你的设置、登录信�
 
 ```json
       "ToolState": "保留：{{path}}（它的对话、历史和工作文件；程序自己的一些文件也在里面）",
-      "ShellConfigLines": "保留：{{path}}（安装程序加进去的那几行，如果有的话——无害；Canager 从不改这个文件）",
-      "OutsideHome": "保留：{{path}}（不在你的个人文件夹里，Canager 不会碰它；卸载后它是个失效的链接，你可以自己删）",
-      "NotOurs": "保留：{{path}}（Canager 无法确认它属于这次安装——可能是别的东西放在那里的——所以不动它）",
-      "InstallerCache": "保留：{{path}}（安装器的下载暂存文件夹，通常是空的——Canager 不会移动直接放在 ~/.cache 里的东西，你可以自己删）"
+      "ShellConfigLines": "保留：{{path}}（安装程序加进去的那几行，如果有的话——无害；Banager 从不改这个文件）",
+      "OutsideHome": "保留：{{path}}（不在你的个人文件夹里，Banager 不会碰它；卸载后它是个失效的链接，你可以自己删）",
+      "NotOurs": "保留：{{path}}（Banager 无法确认它属于这次安装——可能是别的东西放在那里的——所以不动它）",
+      "InstallerCache": "保留：{{path}}（安装器的下载暂存文件夹，通常是空的——Banager 不会移动直接放在 ~/.cache 里的东西，你可以自己删）"
 ```
 
 - [ ] **Step 4: Run to verify they pass**
@@ -1001,7 +1001,7 @@ git commit -m "$(cat <<'EOF'
 Add the kinds the Antigravity and Grok uninstall lists move and keep
 
 Backups (a copy the updater left), a tool's own root, a shell startup
-file, a path outside the home folder, an optional path Canager could not
+file, a path outside the home folder, an optional path Banager could not
 confirm is the tool's, and an installer's staging folder in ~/.cache --
 each with its sentence in both languages, so the dialog can say them
 when the two recipes land in this step's core task.
@@ -1877,7 +1877,7 @@ In `crates/banager-core/src/adapters/standalone/removal.rs`, in `mod tests`:
     }
 ```
 
-(`Job` derives `Clone`, so `..job` struct-update works; `path_changed(path)` is C's helper building `CanagerFailed(PathChanged { path })`; `MockTrasher::kinds()` is C's. `TempHome::new` creates its directory under `std::env::temp_dir()` and canonicalises it (`mod.rs:717-727`), so two homes are siblings and `home.path().file_name()` is the leaf — which is what the relative-text case of `test_points_into_…` relies on.)
+(`Job` derives `Clone`, so `..job` struct-update works; `path_changed(path)` is C's helper building `BanagerFailed(PathChanged { path })`; `MockTrasher::kinds()` is C's. `TempHome::new` creates its directory under `std::env::temp_dir()` and canonicalises it (`mod.rs:717-727`), so two homes are siblings and `home.path().file_name()` is the leaf — which is what the relative-text case of `test_points_into_…` relies on.)
 
 (e) Cut C's `test_plan_removal_refuses_a_path_reached_through_a_linked_folder_inside_home` down to its second half. Its first half (`removal-linked-cache-parent`: `~/.claude -> ~/Documents`, expecting `~/.claude/downloads` refused as `NotWhatInstructionsExpect`) describes an *optional* path, which this task keeps instead; that case now lives in `test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere` above with the opposite expectation. The launcher half still refuses (the launcher is never optional). Replace the whole test, from its `#[test]` through its closing `}`, with:
 
@@ -2119,7 +2119,7 @@ struct Item {
 /// whose name is prefix + something + suffix (`Glob::matches_name`), in
 /// name order so the preview is stable; a folder that cannot be read
 /// matches nothing (the launcher's own check speaks for that folder).
-/// Every match is optional: it may be gone by its turn, and one Canager
+/// Every match is optional: it may be gone by its turn, and one Banager
 /// cannot confirm is the tool's is kept and said, like an optional listed
 /// path.
 fn listed_items(job: &Job) -> Vec<Item> {
@@ -2167,7 +2167,7 @@ fn listed_items(job: &Job) -> Vec<Item> {
 /// elsewhere or a folder on the way that is a link
 /// (`NotWhatInstructionsExpect`), and a folder that leads out of the home
 /// folder or into a shared one (`OutsideHome`, `SharedFolder`) -- all
-/// places Canager will not move from, none of them a reason to leave the
+/// places Banager will not move from, none of them a reason to leave the
 /// tool uninstallable (spec §十三 #27). `NotOwnedByYou` and `OverlapsKept`
 /// still stop the whole list: they are about what the move would do, not
 /// about whose the path is. Read by `plan_removal`.
@@ -2183,7 +2183,7 @@ fn keeps_instead(reason: UninstallUnsafeReason) -> bool {
 /// The kept paths outside the home folder that are this tool's links --
 /// grok's installer may put `/usr/local/bin/grok` and `/usr/local/bin/agent`
 /// there when `~/.grok/bin` is not on PATH (grok.md §2) -- each as a
-/// `WillKeep` sentence: Canager never moves anything outside the home
+/// `WillKeep` sentence: Banager never moves anything outside the home
 /// folder (spec §6.3), so after the uninstall they are dead links the user
 /// can delete. Only a link *into the root* (`points_into`) gets the
 /// sentence: the same path may be Homebrew's live link into its Caskroom
@@ -2377,7 +2377,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
                 identities.push(identity);
                 paths.push(item.path);
             }
-            // An optional path that is there but not, as far as Canager can
+            // An optional path that is there but not, as far as Banager can
             // tell, this install's (spec §6.3 check 4, §十三 #27): kept, and
             // said after the moves. Never the launcher, which is never
             // optional.
@@ -2471,7 +2471,7 @@ with
 along (of `~/.claude`, only `downloads` lies inside it, as listed). If a
 check fails on a path the list requires, the whole uninstall is refused,
 in the user's language, and nothing is moved; an optional path that is
-there but that Canager cannot confirm is the tool's — the wrong kind of
+there but that Banager cannot confirm is the tool's — the wrong kind of
 thing, a link elsewhere, a folder on the way that is a link — stays,
 and the preview lists it among what is kept. Not yours, or would take a
 kept path along, refuses whether the path is optional or not. The
@@ -2497,8 +2497,8 @@ Teach the path-list uninstall backups, regular files and what is not its own
 Check 5: a recipe's backup-file patterns are matched on the disk and each
 match is moved before the launcher, as a file. Expect::File, for a
 launcher that is the whole program and for completion files. An optional
-path Canager cannot confirm is the tool's -- the wrong shape, a link
-elsewhere, a folder on the way that is a link, a place Canager never
+path Banager cannot confirm is the tool's -- the wrong shape, a link
+elsewhere, a folder on the way that is a link, a place Banager never
 moves from -- is kept and said instead of refusing the uninstall a
 stranger's file should not be able to block; not yours and would-take-
 what-stays still refuse, and the Claude Code section of the trust file
@@ -2762,7 +2762,7 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "not yet verified on Intel Macs: this Canager runs as {arch:?}, and the manifest URL is verified for Apple silicon only"
+            "not yet verified on Intel Macs: this Banager runs as {arch:?}, and the manifest URL is verified for Apple silicon only"
         ))
     }
 }
@@ -2809,7 +2809,7 @@ In `crates/banager-core/src/adapters/standalone/recipe.rs`:
 
 ```rust
     /// The tool's own documented update command, or `None` for a tool that
-    /// installs its updates itself and offers nothing Canager may run
+    /// installs its updates itself and offers nothing Banager may run
     /// (agy: `agy update` is undocumented, takes no options and has never
     /// been run, agy.md §4). `None` puts `UpdateBlocked::SelfUpdatesOnly`
     /// on every update candidate the recipe produces and makes
@@ -2827,7 +2827,7 @@ In `crates/banager-core/src/adapters/standalone/mod.rs`:
 (d) In `pub struct StandaloneAdapter`, after `detected: Mutex<Option<Detected>>,` add:
 
 ```rust
-    /// The CPU architecture this Canager runs as (`std::env::consts::ARCH`;
+    /// The CPU architecture this Banager runs as (`std::env::consts::ARCH`;
     /// `with_arch` in tests): a `Latest::HttpJsonField` manifest is fetched
     /// only on the architectures it was verified for
     /// (`latest::manifest_arch_allowed`). Read by `published`.
@@ -2895,7 +2895,7 @@ enum Published {
                 channel,
                 checkable: true,
                 warnings: Vec::new(),
-                // A tool with no update command Canager may run: the newer
+                // A tool with no update command Banager may run: the newer
                 // version is real and has no button (spec §4.4, D5 item 4).
                 blocked: self
                     .recipe
@@ -2949,7 +2949,7 @@ keep B's `Latest::ClaudeChannel { base } => { … }` arm and E's `Latest::HttpTo
                 error_field,
             } => {
                 // The tool's own read-only check, against the launcher, with
-                // no environment of Canager's (spec §3.4's variables are for
+                // no environment of Banager's (spec §3.4's variables are for
                 // the version read).
                 let shown = args.join(" ");
                 let output = self
@@ -2992,7 +2992,7 @@ keep B's `Latest::ClaudeChannel { base } => { … }` arm and E's `Latest::HttpTo
 
 ```rust
                 // A tool that installs its updates itself and offers nothing
-                // Canager may run (agy): the gate refuses this first
+                // Banager may run (agy): the gate refuses this first
                 // (`blocked_upgrade`, from the candidate's `blocked`); this is
                 // its late twin for a stale snapshot (spec §五).
                 let Some(upgrade) = &self.recipe.upgrade else {
@@ -3008,7 +3008,7 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, in `test_every_reci
                 Latest::HttpJsonField { url, .. } => vec![url.to_string()],
                 // The tool's own command makes its own connection, under its
                 // own configuration (docs/what-we-run.md, the network
-                // section's last paragraph): no host of Canager's.
+                // section's last paragraph): no host of Banager's.
                 Latest::Command { .. } => Vec::new(),
 ```
 
@@ -3243,7 +3243,7 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `Glob` (Task 3 
 
 /// Antigravity CLI (`agy`), Google's terminal agent, installed by its own
 /// script (`curl -fsSL https://antigravity.google/cli/install.sh | bash`,
-/// run by the user; Canager never runs it).
+/// run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/agy.md` (VERIFIED on this
 /// Mac, in the install script read in full, or in Google's own
@@ -3343,7 +3343,7 @@ pub static AGY: Recipe = Recipe {
 
 /// Grok Build (`grok`), xAI's terminal agent, installed by its own script
 /// (`curl -fsSL https://x.ai/cli/install.sh | bash`, run by the user;
-/// Canager never runs it).
+/// Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/grok.md` (VERIFIED on
 /// this Mac, in the install script read in full, or in the README the tool
@@ -3371,7 +3371,7 @@ pub static AGY: Recipe = Recipe {
 ///   a non-null `error` makes the row "could not check" with that text
 ///   (ruling 10); 60 s. grok's own check records its time in
 ///   `~/.grok/version.json` (`checked_at`), the one write on the Mac a
-///   Canager refresh causes -- grok's, not Canager's; the trust file says
+///   Banager refresh causes -- grok's, not Banager's; the trust file says
 ///   so;
 /// - `auto_update = true` in its config means "check for updates on
 ///   launch" (§5); whether it *installs* one is UNVERIFIED, so the row is
@@ -3522,10 +3522,10 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 
 and in its doc comment, change E's clause `and static.rust-lang.org (the same, rustup's release file).` to `static.rust-lang.org (the same, rustup's release file) and antigravity-cli-auto-updater-974169037036.us-central1.run.app (the same, Antigravity CLI's version manifest, a Google Cloud Run service; on Apple silicon only).`
 
-In `docs/what-we-run.md`, in the table under `## Network: Canager only connects to these hosts`, after E's `static.rust-lang.org` row add:
+In `docs/what-we-run.md`, in the table under `## Network: Banager only connects to these hosts`, after E's `static.rust-lang.org` row add:
 
 ```markdown
-| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Canager itself runs on Apple silicon — on an Intel Mac no request is made and the row says the check is not yet verified there |
+| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Banager itself runs on Apple silicon — on an Intel Mac no request is made and the row says the check is not yet verified there |
 ```
 
 - [ ] **Step 4: Run to verify they pass**
@@ -3693,7 +3693,7 @@ In `mod.rs`'s `mod tests`, add `use super::recipes::{AGY, GROK};` beside B's `us
     async fn test_check_updates_for_agy_lists_a_newer_manifest_version_with_no_button() {
         // Spec §4.4 D5 item 4: a real candidate (the manifest is newer),
         // `SelfUpdatesOnly` (no `upgrade`), `Registry` channel, one GET with
-        // no header of Canager's.
+        // no header of Banager's.
         let home = TempHome::new("agy-check-newer");
         let http = Arc::new(MockHttpClient::new());
         http.respond(
@@ -4014,7 +4014,7 @@ In `mod.rs`'s `mod tests`, add `use super::recipes::{AGY, GROK};` beside B's `us
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/agy".to_string()
             })
         );
@@ -4147,7 +4147,7 @@ In the same `mod tests`, append before the module's closing `}`:
             }]
         );
         // The check runs against the launcher, with the recipe's argv and
-        // its own timeout, and no environment of Canager's.
+        // its own timeout, and no environment of Banager's.
         let runner = Arc::new(RecordingRunner {
             specs: StdMutex::new(Vec::new()),
             output: exited_0(GROK_VERSION_LINE),
@@ -4512,7 +4512,7 @@ manifest fetched on Apple silicon only (an Intel Mac gets an honest
 "could not check"), a tool's own read-only update check trusted as it
 answers, and an optional upgrade whose None marks every candidate
 SelfUpdatesOnly -- agy installs its updates itself and offers no command
-Canager may run; grok's own error field makes a failed check "could not
+Banager may run; grok's own error field makes a failed check "could not
 check", never "up to date". Both uninstall with a path list: agy's
 launcher is the whole program and goes after any backup its updater
 left; grok's fallback links go first, its folders next and its two bin
@@ -4554,7 +4554,7 @@ Why one task: `tests/fixtures_layout_test.rs` asserts the fixture directory set 
 In the repo root, on the author's Mac. **Never run `agy update`, bare `agy`, or `agy` with a prompt here.** The one `agy` invocation is `--version` under the documented switch, run **once** (its output is the fixture; the version number is read back from the file); everything else is `curl`, `cat`, `stat`, `ls`, `ps`. Spec §3.4 (§十三 #10) requires the observation that this read did not reach the updater, taken *around the very read that is recorded*: the count of files in the tool's log folder and the mtime of its updater's status file before and after, and that no new updater process appeared — as a before/after diff of the process list, not a name grep: the Antigravity desktop app (`antigravity`, `antigravity-ide` casks, agy.md §1) may be open and is called `antigravity` too, and would trip a grep falsely; the log count and the mtime are the primary evidence, the process diff the secondary.
 
 ```bash
-S="${TMPDIR:-/tmp}/canager-agy-recording"; mkdir -p "$S"   # scratch, never committed
+S="${TMPDIR:-/tmp}/banager-agy-recording"; mkdir -p "$S"   # scratch, never committed
 
 # 1. The observation, part one: what the updater's state looks like now,
 #    and which processes exist (pid, parent, name; diffed in step 3).
@@ -4627,7 +4627,7 @@ Commands:
   documents for the background updater)
 - `curl --fail --silent --show-error https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json`
   -> `manifest-darwin_arm64.json` (direct 200, no redirect; the manifest the
-  installer and the updater read; only its `version` is used by Canager)
+  installer and the updater read; only its `version` is used by Banager)
 - `cat ~/.gemini/antigravity-cli/updater/update_status.json` -> `update_status.json`
 - `ls -lan ~/.local/bin/agy | sed "s|$HOME|~|g"` -> `layout.txt` (a regular
   file, not a link: the installer copies the binary there)
@@ -4656,26 +4656,26 @@ is not recorded; the shared-exclusion and PATH cases use synthetic unit tests.
 
 ## Uninstall list
 
-Nothing here was recorded for the uninstall: Canager runs no command for it.
+Nothing here was recorded for the uninstall: Banager runs no command for it.
 The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`AGY.uninstall`, `AGY.backup_globs`) is not a vendor document — Google
 publishes none and there is no `agy uninstall` (agy.md §5). It is the install
 script's own path (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`,
 read from the script) plus the Homebrew cask's `zap` stanza, which trashes only
-`~/.gemini/antigravity-cli`. Canager moves `~/.local/bin/agy` (the whole
+`~/.gemini/antigravity-cli`. Banager moves `~/.local/bin/agy` (the whole
 program) after any `agy.<time>.old` beside it; it keeps `~/.gemini/antigravity-cli`
 (conversations, history and the program's own state together; no vendor list
 separates them), `~/.cache/antigravity` (the installer's staging folder, directly
-in `~/.cache`, which Canager never moves anything out of — spec §6.3 listed it for
+in `~/.cache`, which Banager never moves anything out of — spec §6.3 listed it for
 removal; the step D plan's ruling 1 keeps it), and the two shell files.
 ```
 
 - [ ] **Step 2: Record Grok Build on this Mac (read-only commands only)**
 
-**Never run `grok update` without `--check`, or bare `grok`, here.** The two `grok` invocations are `--version` (run **once**, into the fixture) and `update --check --json`, whose `--help` says "Check for updates without installing" (grok.md §4; run on this Mac during the research). Two things are UNVERIFIED (grok.md §5, open question 2): whether `--version` runs grok's launch-time updater at all, and whether that updater *installs* or only checks — and Canager's refresh runs `grok --version` three to four times. So this recording has agy's stop rule, not a weaker one (ruling 16): a snapshot of `~/.grok/bin` and `~/.grok/downloads` (`ls -lan`), of `readlink ~/.grok/bin/grok`, and of `~/.grok/version.json`'s mtime (it carries `checked_at`) is taken *before and after each* grok invocation. A changed link target or a new entry in either folder is a stop. A moved `version.json` mtime alone is not a stop but is recorded as what it is: after `--version`, evidence that the launch-time path is reachable from a version read (an open question the trust file states, not a pre-decided "changes no recipe"); after the check, expected — grok's own check writing its time, the one write on the Mac a Canager refresh causes.
+**Never run `grok update` without `--check`, or bare `grok`, here.** The two `grok` invocations are `--version` (run **once**, into the fixture) and `update --check --json`, whose `--help` says "Check for updates without installing" (grok.md §4; run on this Mac during the research). Two things are UNVERIFIED (grok.md §5, open question 2): whether `--version` runs grok's launch-time updater at all, and whether that updater *installs* or only checks — and Banager's refresh runs `grok --version` three to four times. So this recording has agy's stop rule, not a weaker one (ruling 16): a snapshot of `~/.grok/bin` and `~/.grok/downloads` (`ls -lan`), of `readlink ~/.grok/bin/grok`, and of `~/.grok/version.json`'s mtime (it carries `checked_at`) is taken *before and after each* grok invocation. A changed link target or a new entry in either folder is a stop. A moved `version.json` mtime alone is not a stop but is recorded as what it is: after `--version`, evidence that the launch-time path is reachable from a version read (an open question the trust file states, not a pre-decided "changes no recipe"); after the check, expected — grok's own check writing its time, the one write on the Mac a Banager refresh causes.
 
 ```bash
-S="${TMPDIR:-/tmp}/canager-grok-recording"; mkdir -p "$S"   # scratch, never committed
+S="${TMPDIR:-/tmp}/banager-grok-recording"; mkdir -p "$S"   # scratch, never committed
 snap() { ls -lan ~/.grok/bin ~/.grok/downloads | sed "s|$HOME|~|g"; readlink ~/.grok/bin/grok; }
 
 # 1. Before: the layout snapshot and version.json's mtime.
@@ -4734,7 +4734,7 @@ Commands:
   second token is the version; no environment variable — none is documented)
 - `~/.grok/bin/grok update --check --json` -> `update-check.json` (grok's own
   read-only check: its `--help` line for `--check` reads `[CHECK_HELP]`; one
-  JSON object whose `updateAvailable` Canager believes and whose
+  JSON object whose `updateAvailable` Banager believes and whose
   `latestVersion` it shows)
 - `ls -lan ~/.grok/bin ~/.grok/downloads | sed "s|$HOME|~|g"` -> `layout.txt`
   (`bin/grok` and `bin/agent` are relative links, `../downloads/grok-<v>-macos-aarch64`,
@@ -4752,7 +4752,7 @@ launch-time updater is UNVERIFIED, and whether that updater installs or only
 checks is UNVERIFIED too (grok.md §5, open question 2): a moved mtime after
 `--version` means the launch-time path was reached by the read, and the
 unchanged layout is the whole of what this recording can say about installing.
-The check's own write to `version.json` is grok's, made on every Canager
+The check's own write to `version.json` is grok's, made on every Banager
 refresh; `docs/what-we-run.md` says so.
 
 The recording ran no `grok update` without `--check` and no bare `grok`. How
@@ -4768,11 +4768,11 @@ installer's marked block ([RC_MARKERS] marker lines).
 
 ## Uninstall list
 
-Nothing here was recorded for the uninstall: Canager runs no command for it.
+Nothing here was recorded for the uninstall: Banager runs no command for it.
 The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`GROK.uninstall`) is not a vendor document — xAI publishes none and there is
 no `grok uninstall` (grok.md §6). It is the README grok ships ("File
-Locations") plus its install script: Canager moves the two optional fallback
+Locations") plus its install script: Banager moves the two optional fallback
 links the installer makes when `~/.grok/bin` is not on PATH (first: their link
 text is unverified, so they go while every folder it could pass through is
 still there — a precaution), `~/.grok/downloads`, `~/.grok/bundled` and
@@ -4933,15 +4933,15 @@ fn test_what_we_run_names_every_path_a_path_list_uninstall_moves_or_keeps() {
     // The lists are the recipes', and a reader deciding whether to press
     // Uninstall reads them here: a path added to or dropped from a
     // recipe's `uninstall` or `backup_globs` without its section changing
-    // is a trust file that no longer says what Canager moves. Every
+    // is a trust file that no longer says what Banager moves. Every
     // `Paths` recipe (Claude Code, Antigravity CLI, Grok Build since step
     // D), by the name its meta gives its section; each section states the
     // uninstall's budget; and every settings-and-state path a list keeps
     // (`Settings`, `SettingsAndHistory`, `ToolState`) is also named in the
     // never-list, whose promise is the one the reader relies on.
     let doc = read_doc();
-    let never = section_body(&doc, "What Canager never does")
-        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## What Canager never does` section"));
+    let never = section_body(&doc, "What Banager never does")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## What Banager never does` section"));
     let budget = format!("{TIMEOUT_SECS} s");
     let mut paths_recipes = 0;
     for recipe in RECIPES {
@@ -4998,7 +4998,7 @@ fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_i
     // refresh (grok's `update --check --json`, which its --help calls a
     // check "without installing"). The section for that tool has to show
     // the argv and say it installs nothing -- a reader who sees `grok
-    // update` in a refresh table and nothing more would think Canager
+    // update` in a refresh table and nothing more would think Banager
     // upgrades grok behind their back.
     use banager_core::adapters::standalone::recipe::Latest;
     use banager_core::adapters::standalone::recipes::RECIPES;
@@ -5062,7 +5062,7 @@ In `docs/what-we-run.md` (hard-wrapped; match by words, keep the wrapping style)
 
 (a) In the opening paragraph, change E's `for the nine sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama, and two tools with their own installer, Claude Code and rustup.` to `for the eleven sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama, and four tools with their own installer: Claude Code, Antigravity CLI, Grok Build and rustup.`
 
-(b) Under `## How Canager runs anything`, in `**Where the program comes from.**`, change E's `Claude Code at the one path its installer writes, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).` to `Claude Code at \`~/.local/bin/claude\`, Antigravity CLI at \`~/.local/bin/agy\`, Grok Build at \`~/.grok/bin/grok\`, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).`
+(b) Under `## How Banager runs anything`, in `**Where the program comes from.**`, change E's `Claude Code at the one path its installer writes, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).` to `Claude Code at \`~/.local/bin/claude\`, Antigravity CLI at \`~/.local/bin/agy\`, Grok Build at \`~/.grok/bin/grok\`, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).`
 
 (c) After the `## Claude Code` section (before `## rustup`) insert the two sections below. Every bracketed value is filled from Steps 1–2 before the commit: `[VERSION_AGY]`/`[VERSION_GROK]` the recorded versions, `[DATE]` the recording date, `[VJSON_VERSION_OBSERVATION: …]` and `[VJSON_CHECK_OBSERVATION: …]` one of the alternatives each bracket offers, chosen by `[VJSON_AFTER_VERSION]`/`[VJSON_AFTER_CHECK]` against their predecessors (the bracket and its alternatives are removed, the chosen words stay). `grep -n '\[' docs/what-we-run.md` after filling must show no bracket that is not a Markdown link:
 
@@ -5077,15 +5077,15 @@ uninstall). Verified against Antigravity CLI [VERSION_AGY] (the version in
 `adapters/meta/standalone-agy.toml` and the name of the recorded fixture
 directory). The row is one tool, installed by Google's own installer
 (`curl -fsSL https://antigravity.google/cli/install.sh | bash`, run by the
-user — Canager never runs it), and the one item under it is the tool
+user — Banager never runs it), and the one item under it is the tool
 itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.local/bin/agy` — never an `agy` found through `PATH` — and checks with
 `lstat` and `realpath` that it is a regular file: the installer copies the
 binary there, and the Homebrew cask's `agy` is a link into its Caskroom
 and is Homebrew's row. There is no launcher-only state: the file *is* the
-program. Canager then runs `<agy> --version` (30 s) with
+program. Banager then runs `<agy> --version` (30 s) with
 `AGY_CLI_DISABLE_AUTO_UPDATE=true` in its environment, the switch Google
 documents for its background updater. On the recorded version, `--version`
 alone did not reach the updater at all — no new log file under
@@ -5095,11 +5095,11 @@ switch is a belt on top of that; a run with a prompt is what writes a log
 and spawns the updater (agy.md §4). The version is the first token of the
 first non-empty line (`[VERSION_AGY]`).
 
-Canager also asks where `agy` would run from if typed in Terminal, as it
+Banager also asks where `agy` would run from if typed in Terminal, as it
 does for Claude Code, and says so under the source. That is a notice, not
 a command.
 
-**Environment Canager adds to version reads** (`AGY.version.env`):
+**Environment Banager adds to version reads** (`AGY.version.env`):
 
     AGY_CLI_DISABLE_AUTO_UPDATE=true
 
@@ -5121,13 +5121,13 @@ is not such a manifest is "could not check", never an error for the source.
 **Write commands**: none. Antigravity CLI installs its updates itself in
 the background (a 15-minute debounce, Google's documentation and this
 Mac's own log), and its `agy update` subcommand is undocumented, has no
-options and has never been run — so Canager offers no Update button: a
+options and has never been run — so Banager offers no Update button: a
 newer version is listed with the badge "Updates itself" and a sentence
 that says to open the tool once and quit it. `Session::issue_plan` refuses
 the upgrade as well, and so does the adapter.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
-command runs): Canager moves to the Trash, in this order, any backup copy
+command runs): Banager moves to the Trash, in this order, any backup copy
 `agy.<time>.old` the updater left in `~/.local/bin` (a regular file with
 that name shape, each listed in the preview), then `~/.local/bin/agy`
 itself — through the same call and the same checks as Claude Code's
@@ -5138,9 +5138,9 @@ together — no vendor list says which of them could go alone, and the
 Homebrew cask's `zap` treats it as one folder; `~/.gemini` itself is shared
 with Gemini CLI and is never touched), `~/.cache/antigravity` (the
 installer's download staging folder, usually empty: it sits directly in
-`~/.cache`, one of the folders Canager never moves anything out of), and
+`~/.cache`, one of the folders Banager never moves anything out of), and
 `~/.zshrc` and `~/.zprofile`, to which the installer added its `PATH` line
-(Canager never edits a startup file, and does not read these to find the
+(Banager never edits a startup file, and does not read these to find the
 line). The whole uninstall has 120 s, as Claude Code's does. There is no
 vendor uninstall document; the list is the installer script's own path
 plus the cask's `zap`, and the fixture README says so.
@@ -5152,10 +5152,10 @@ Adapter: `StandaloneAdapter` over the `GROK` recipe in
 Build [VERSION_GROK] (the version in `adapters/meta/standalone-grok.toml`
 and the name of the recorded fixture directory). The row is one tool,
 installed by xAI's own installer (`curl -fsSL https://x.ai/cli/install.sh
-| bash`, run by the user — Canager never runs it), and the one item under
+| bash`, run by the user — Banager never runs it), and the one item under
 it is the tool itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.grok/bin/grok`, and checks with `lstat`, `readlink` and `realpath` that
 it is a symbolic link — a relative one, `../downloads/grok-<version>-macos-aarch64`
 — whose own text names a place inside `~/.grok` and which resolves there
@@ -5167,7 +5167,7 @@ and is Homebrew's row; the Homebrew *formula* named `grok` is an unrelated
 library. A dangling link whose own text points into `~/.grok` (the
 downloads folder was removed — by an uninstall that stopped partway, or by
 hand) is listed with no version and a notice saying so, and Uninstall
-removes what is left. For a link that resolves, Canager runs `<grok>
+removes what is left. For a link that resolves, Banager runs `<grok>
 --version` (30 s) with no added environment (none is documented). Whether
 `--version` runs grok's launch-time updater, and whether that updater
 installs or only checks, are both unverified; on the recorded version
@@ -5178,7 +5178,7 @@ path was reached by the read; the layout did not change"], as the
 fixture README records around the very read it holds. The version is the
 second token of the first non-empty line (`grok 1.0.41 (4220f3b224a6)`).
 
-Canager also asks where `grok` would run from if typed in Terminal and
+Banager also asks where `grok` would run from if typed in Terminal and
 says so under the source. That is a notice, not a command.
 
 **Read-only commands** (background checks; never need a password):
@@ -5188,19 +5188,19 @@ says so under the source. That is a notice, not a command.
 | Detect, inventory, and the reading before and after an operation | `<grok> --version` | 30 s |
 | Newest published version (`check_updates`) | `<grok> update --check --json` — grok's own check; its `--help` describes `--check` as "Check for updates without installing" | 60 s |
 
-Grok's own check prints one JSON object; Canager believes its
+Grok's own check prints one JSON object; Banager believes its
 `updateAvailable` and shows its `latestVersion`, comparing nothing itself
 (the channel is the tool's own, "Native"). A check that exits non-zero,
 prints something that is not that JSON, does not finish in 60 seconds, or
 answers with a non-null `error` field (grok could not find out — say,
 offline) is "could not check" with grok's own words, never "up to date"
-and never an error for the source. Canager makes no network request of
+and never an error for the source. Banager makes no network request of
 its own for grok; the check's connection is grok's, under grok's
-configuration (`~/.grok/config.toml`, which Canager does not read). The
+configuration (`~/.grok/config.toml`, which Banager does not read). The
 check records its time in `~/.grok/version.json` (`checked_at`): that
 file's timestamp [VJSON_CHECK_OBSERVATION: "moved" | "did not move"] on
-[DATE] after the recorded check — grok's own write, made on every Canager
-refresh, and the one change on the Mac a refresh causes ("Files Canager
+[DATE] after the recorded check — grok's own write, made on every Banager
+refresh, and the one change on the Mac a refresh causes ("Files Banager
 writes"). Whether grok installs updates on its own (`auto_update = true`
 means "check for updates on launch") is unverified, so the row is not
 described as self-updating.
@@ -5215,17 +5215,17 @@ preview):
 `grok update` downloads the new version into `~/.grok/downloads` and
 re-points the `bin/` links, leaving the old download in place (the
 installer's layout; the update's own steps were not read). Cancel: allowed
-(`KillThenReconcile`) — the runner stops the process group, Canager reads
+(`KillThenReconcile`) — the runner stops the process group, Banager reads
 `<grok> --version` again, and the operation is reported as unconfirmed
 regardless of that reading. An update that exits 0 with the version
 unchanged is reported as needing attention, as for every source. **How
-`grok update` behaves when nothing can answer a prompt (Canager gives it
+`grok update` behaves when nothing can answer a prompt (Banager gives it
 no terminal and a closed stdin) has not been observed by this project**;
 the author records it on a CI runner before this step merges, and this
 paragraph then says what was seen.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
-command runs): Canager moves to the Trash, in this order, `~/.local/bin/grok`
+command runs): Banager moves to the Trash, in this order, `~/.local/bin/grok`
 and `~/.local/bin/agent` when the installer made them (it does so only when
 `~/.grok/bin` was not on `PATH`; they go first, while every folder their
 link text could pass through is still there — what that text says has not
@@ -5237,14 +5237,14 @@ the installer put in `~/.grok/bin`: `~/.grok/bin/agent` (when present) and
 last `~/.grok/bin/grok`, the command itself. The folder `~/.grok/bin` is
 not moved: the installer put it on your `PATH`, so a script of your own
 may be in it, and it stays, empty, inside `~/.grok`. Each path passes the
-checks Claude Code's section describes; an optional one Canager cannot
+checks Claude Code's section describes; an optional one Banager cannot
 confirm is grok's own — a `~/.local/bin/agent` that belongs to another
 program, say — stays and the preview says so. The whole uninstall has
 120 s, as Claude Code's does. It keeps `~/.grok` itself (`config.toml`,
 `auth.json` — the login —, `sessions/`, `memory/`, `skills/`, `plugins/`)
 and `~/.zshrc`, to which the installer added its marked block; a
 `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside your home
-folder, so Canager never touches it — and when it is a link into
+folder, so Banager never touches it — and when it is a link into
 `~/.grok` (the installer's fallback), the preview says it becomes a dead
 link; when it is something else (Homebrew's `grok-build` link on an Intel
 Mac, another program's `agent`), the preview says nothing about it. There
@@ -5253,7 +5253,7 @@ grok's own README ("File Locations") plus its install script, and the
 fixture README says so.
 ```
 
-(d) Under `## Files Canager reads`, after the `Claude Code:` bullet (and E's rustup bullet, if it sits there), add:
+(d) Under `## Files Banager reads`, after the `Claude Code:` bullet (and E's rustup bullet, if it sits there), add:
 
 ```markdown
 - Antigravity CLI: whether `~/.local/bin/agy` exists and what it is (`lstat`,
@@ -5273,7 +5273,7 @@ fixture README says so.
   Nothing in `~/.grok/config.toml` or `~/.grok/auth.json` is read.
 ```
 
-(e) Under `## What Canager never does`, three edits. First, in C's bullet beginning `- Never deletes a file and never empties the Trash. Never writes a file`, change `Never writes a file on the Mac itself other than its own \`settings.json\`, and moves files` to `Never writes a file on the Mac itself other than its own \`settings.json\` (the one write a refresh causes is grok's own: its update check records its time in \`~/.grok/version.json\`, Grok Build's section), and moves files`. Second, in C's bullet beginning `- Never moves anything outside the home folder`, replace its last clause
+(e) Under `## What Banager never does`, three edits. First, in C's bullet beginning `- Never deletes a file and never empties the Trash. Never writes a file`, change `Never writes a file on the Mac itself other than its own \`settings.json\`, and moves files` to `Never writes a file on the Mac itself other than its own \`settings.json\` (the one write a refresh causes is grok's own: its update check records its time in \`~/.grok/version.json\`, Grok Build's section), and moves files`. Second, in C's bullet beginning `- Never moves anything outside the home folder`, replace its last clause
 
 ```
   describe; never moves the settings, login and history Claude Code keeps
@@ -5301,13 +5301,13 @@ with
   --json`, which grok's own help describes as checking without
   installing; `grok update` runs only after a confirmed preview.
 - Never opens a tool to make it update itself: a self-updating tool's row
-  tells the user how, and Canager runs nothing.
+  tells the user how, and Banager runs nothing.
 ```
 
-(h) Under `## Files Canager writes`, after the sentence ending `moves the paths its preview listed to the Trash (next section).` (C's; E may have changed `Claude Code, today` — match by words), and before `Every other change to what is installed`, insert:
+(h) Under `## Files Banager writes`, after the sentence ending `moves the paths its preview listed to the Trash (next section).` (C's; E may have changed `Claude Code, today` — match by words), and before `Every other change to what is installed`, insert:
 
 ```
-One write on the Mac is caused by a refresh without being Canager's: Grok
+One write on the Mac is caused by a refresh without being Banager's: Grok
 Build's own update check (`grok update --check --json`, Grok Build's
 section) records the time of the check in `~/.grok/version.json`.
 ```
@@ -5356,7 +5356,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-agy-grok-{tag}-{}-{}",
+            "banager-agy-grok-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5676,10 +5676,10 @@ and append a test to that `describe`:
   });
 ```
 
-In `src/components/SnapshotStatus.test.tsx`, replace E's two expected sentences — `"Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."` and `"Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code and rustup installed at their own installers' default locations."` — with:
+In `src/components/SnapshotStatus.test.tsx`, replace E's two expected sentences — `"Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."` and `"Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code and rustup installed at their own installers' default locations."` — with:
 
 ```ts
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
 ```
 
 and
@@ -5734,7 +5734,7 @@ in `"standalone"` → `"summary"`, after E's rustup line add `,` and
 and in `"emptyStates"`, replace E's `"noSources"` → `"description"` with
 
 ```json
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
 ```
 
 and E's `"nothingInstalled"` → `"description"` with
@@ -5756,7 +5756,7 @@ In `src/i18n/zh-CN.json`, the same four places:
 ```
 
 ```json
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Banager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
 ```
 
 ```json
@@ -5801,7 +5801,7 @@ EOF
 Directly after E's table row that begins `| rustup — the Rust toolchain manager, via its own installer |`, insert:
 
 ```markdown
-| Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs updates itself in the background, so the row shows the newer version with an "Updates itself" badge and says to open the tool once; install no (the installer is Google's, and Canager never runs it); uninstall yes — the `agy` program (and any `agy.<time>.old` backup its updater left beside it) goes to the Trash; its conversations, history and settings in `~/.gemini/antigravity-cli` stay, and so does its staging folder in `~/.cache` |
+| Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs updates itself in the background, so the row shows the newer version with an "Updates itself" badge and says to open the tool once; install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program (and any `agy.<time>.old` backup its updater left beside it) goes to the Trash; its conversations, history and settings in `~/.gemini/antigravity-cli` stay, and so does its staging folder in `~/.cache` |
 | Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how the update behaves unattended is still being recorded on CI); install no (the installer is xAI's); uninstall yes — its downloads, bundled files, completions and the two links in its `bin` folder go to the Trash (the folder itself, which is on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
 ```
 
@@ -5822,7 +5822,7 @@ In `docs/superpowers/backlog.md`, under `## 阶段 4（独立安装工具）进�
 
 ```markdown
   **步骤 D 定案（2026-09-25）：改清单，不改规则。** `~/.cache/antigravity` 不移，列为保留项（新变体
-  `KeptWhat::InstallerCache`，文案说它是安装器的下载暂存文件夹、通常是空的、Canager 不会移动直接放在 `~/.cache`
+  `KeptWhat::InstallerCache`，文案说它是安装器的下载暂存文件夹、通常是空的、Banager 不会移动直接放在 `~/.cache`
   里的东西、可以自己删）。本机它是空的（`staging/` 0 项）；中断的更新最多留一个 ~180 MB 的包。作者可见的后果：
   卸载 Antigravity 后 `~/.cache/antigravity` 留在原地，对话框会说；来源不明页不会列它（不是 bin 目录）。
 ```
@@ -5880,7 +5880,7 @@ EOF
 
 - [ ] **Step 6: Delivery note (goes in the branch's PR description / handover; not a file)**
 
-> **Step D: Antigravity CLI and Grok Build.** A native `agy` (`~/.local/bin/agy`, a flat file) is an *Antigravity CLI (agy)* group with one row; its badge compares the launcher's live version with Google's Apple-silicon manifest (an Intel Mac sees "could not check" and sends nothing) and a newer version shows as *Updates itself* with no button and a sentence saying to open the tool once — `agy update` is undocumented and unrun. *Uninstall* moves any `agy.<time>.old` its updater left and then `agy` itself to the Trash, and keeps `~/.gemini/antigravity-cli`, `~/.cache/antigravity` (directly in `~/.cache`, which Canager never moves from — the list changed, not check 1) and the two shell files, saying so. A native `grok` (`~/.grok/bin/grok`, a relative link into `~/.grok`) is a *Grok Build (grok)* group; its badge is grok's own `update --check --json` (its help calls it a check "without installing"), believed as answered; *Update* runs `grok update`; a check that answers with grok's own `error` set is "could not check", never "up to date"; *Uninstall* moves its fallback links first, then `downloads/`, `bundled/`, `completions/`, the fish completion, then the two links in `~/.grok/bin` (`grok` last; the folder, which is on `PATH`, stays), keeps `~/.grok` (login, sessions, memory) and `~/.zshrc`, keeps-and-says an optional path it cannot confirm is grok's, and reports a `/usr/local/bin/grok` as a dead link only when it is a link into `~/.grok` (never Homebrew's). The Unknown page's rule 4 claims a fresh `agy.<time>.old` for agy while agy is installed. Eleven sources.
+> **Step D: Antigravity CLI and Grok Build.** A native `agy` (`~/.local/bin/agy`, a flat file) is an *Antigravity CLI (agy)* group with one row; its badge compares the launcher's live version with Google's Apple-silicon manifest (an Intel Mac sees "could not check" and sends nothing) and a newer version shows as *Updates itself* with no button and a sentence saying to open the tool once — `agy update` is undocumented and unrun. *Uninstall* moves any `agy.<time>.old` its updater left and then `agy` itself to the Trash, and keeps `~/.gemini/antigravity-cli`, `~/.cache/antigravity` (directly in `~/.cache`, which Banager never moves from — the list changed, not check 1) and the two shell files, saying so. A native `grok` (`~/.grok/bin/grok`, a relative link into `~/.grok`) is a *Grok Build (grok)* group; its badge is grok's own `update --check --json` (its help calls it a check "without installing"), believed as answered; *Update* runs `grok update`; a check that answers with grok's own `error` set is "could not check", never "up to date"; *Uninstall* moves its fallback links first, then `downloads/`, `bundled/`, `completions/`, the fish completion, then the two links in `~/.grok/bin` (`grok` last; the folder, which is on `PATH`, stays), keeps `~/.grok` (login, sessions, memory) and `~/.zshrc`, keeps-and-says an optional path it cannot confirm is grok's, and reports a `/usr/local/bin/grok` as a dead link only when it is a link into `~/.grok` (never Homebrew's). The Unknown page's rule 4 claims a fresh `agy.<time>.old` for agy while agy is installed. Eleven sources.
 >
 > **Open before merge (the author's, on CI after 2026-10-01):** record how `grok update` behaves with stdin closed — the workflow, what to look for and how each result changes the recipes are in this plan's "The author's pre-merge verification"; the Grok section of `docs/what-we-run.md` says "not yet observed" until then. **grok's result gates the merge.** `claude update` is recorded in the same run; a bad result there is a pre-release fix (B's button already shipped), not a gate on this step.
 >
@@ -5937,9 +5937,9 @@ Not in this step, by the spec's own list or this plan's rulings (each with its o
 1. **`~/.cache/antigravity` is kept, not moved** (ruling 1): spec §6.3 lists it for removal; C's check 1 never-list (which the spec's own words gave C) refuses a path directly in `~/.cache`. A new `KeptWhat::InstallerCache` says what it is and that the user may delete it.
 2. **agy's launcher is `RemovedWhat::Launcher`** (ruling 2), where spec §6.3 wrote `Program`.
 3. **grok's fallback links are moved first** (ruling 3), where spec §6.3 orders them after `downloads/`. A precaution, not a correctness fix: C's check 4 would accept them dangling too (`probe_strict`'s dangling branch answers `LauncherOnly` for either link text), so the reordering only makes check 4 answer from a resolving link and keeps a stopped run from leaving a dangling `~/.local/bin/grok`.
-4. **The `NotOurs` skip covers `OutsideHome` and `SharedFolder` as well as the fingerprint** (ruling 5); spec §6.3 names the fingerprint only. And its sentence says Canager "couldn't confirm it's part of this install", not the spec's "it isn't part of this install", since a linked folder on the way is one of the cases. C's `## Claude Code` check paragraph is reworded in the same commit (Task 4), since `~/.claude/downloads` is optional and its "refuses" sentences would otherwise be false.
+4. **The `NotOurs` skip covers `OutsideHome` and `SharedFolder` as well as the fingerprint** (ruling 5); spec §6.3 names the fingerprint only. And its sentence says Banager "couldn't confirm it's part of this install", not the spec's "it isn't part of this install", since a linked folder on the way is one of the cases. C's `## Claude Code` check paragraph is reworded in the same commit (Task 4), since `~/.claude/downloads` is optional and its "refuses" sentences would otherwise be false.
 5. **`OutsideHome` keeps are report-only, absolute, and reported only for a link into the root** (ruling 6); the spec lists them beside the `~/` keeps "若存在" without saying how they are checked, C's `disturbed` would refuse the uninstall for a link into the program folder, and a mere existence test would call Homebrew's `/usr/local/bin/grok` (Intel Macs) a dead link the user should delete.
-6. **`ShellConfigLines` says "any lines its installer added"** (ruling 15); spec §9.2's "the lines its installer added" would be false for a `~/.zshrc` without them, since Canager does not read the file.
+6. **`ShellConfigLines` says "any lines its installer added"** (ruling 15); spec §9.2's "the lines its installer added" would be false for a `~/.zshrc` without them, since Banager does not read the file.
 7. **`Recipe.upgrade` is `Option<UpgradeCmd>` only now** (ruling 12), as B's ruling 1 said it would become with agy.
 8. **`Glob::matches_name` needs a character between prefix and suffix** (ruling 7); the spec's "`prefix` + 任意串 + `suffix`" could read as allowing the empty string.
 9. **The `SelfUpdatesOnly` sentence's `{{current}}`/`{{target}}` need one more line in `rowDescription`'s `t()` call** (ruling 13); the spec's copy assumed they were interpolated.
@@ -5954,14 +5954,14 @@ Not in this step, by the spec's own list or this plan's rulings (each with its o
 
 ## Review log
 
-Adversarial review of this plan, 2026-09-25, 23 points. Each was re-verified against the landed tree at `db42e79` (`~/dev/Canager-phase4`, read only) — `removal.rs`, `route.rs`, `recipes.rs`, `scan/mod.rs`, `tests/unknown_scan_test.rs`, `tests/what_we_run_test.rs`, `docs/what-we-run.md`, the spec's §6.3 grok row — and, for the two compile claims, against scratch `rustc` builds in a temp directory. Every point held; the plan was changed in place as listed. Numbers are the review's.
+Adversarial review of this plan, 2026-09-25, 23 points. Each was re-verified against the landed tree at `db42e79` (`~/dev/Banager-phase4`, read only) — `removal.rs`, `route.rs`, `recipes.rs`, `scan/mod.rs`, `tests/unknown_scan_test.rs`, `tests/what_we_run_test.rs`, `docs/what-we-run.md`, the spec's §6.3 grok row — and, for the two compile claims, against scratch `rustc` builds in a temp directory. Every point held; the plan was changed in place as listed. Numbers are the review's.
 
 | # | Verdict | What was verified, and what changed |
 |---|---|---|
 | 1 | **Accepted** | Scratch build: `2 positional arguments in format string, but there is 1 argument`. Task 3's `test_every_backup_glob_is_under_home_and_names_a_pattern` now passes `glob.dir` as the second argument. |
 | 2 | **Accepted** | Scratch build of the tuple-of-closures array: E0308, "no two closures … have the same type"; the typed `[(&str, fn(&TempHome)); 2]` form compiles and runs. Task 4's `test_plan_removal_keeps_an_optional_path_it_cannot_confirm_is_the_tools_and_says_so` uses the typed array. |
 | 3 | **Accepted** | `recipes.rs:95-98`: `~/.claude/downloads` is `optional: true`; `removal.rs:859-879` (first half of C's linked-folder test) expects `NotWhatInstructionsExpect` for it, which `keeps_instead` turns into a `WillKeep { NotOurs }` and `Ok`. Task 4 now cuts that test down to its launcher half (renamed `…_refuses_a_launcher_reached_through_a_linked_folder_inside_home`), folds the `~/.claude -> ~/Documents` case into `…_keeps_an_optional_path_whose_folder_leads_elsewhere` with the keep expectation, and Step 4 names both changed tests. Checklist row 6 lists the landed test. |
-| 4 | **Accepted** | `docs/what-we-run.md:585-599`: "and so does a `~/.claude` that is a link when the download cache is inside it" and "If any check fails, the whole uninstall is refused" both describe the now-optional-and-kept case. Task 4 gains edit (j) rewording both sentences (required path refuses; optional one Canager cannot confirm stays and is said; not-yours and overlaps-kept refuse either way) and `docs/what-we-run.md` in its `git add`; checklist row 23 and the File Structure name it. |
+| 4 | **Accepted** | `docs/what-we-run.md:585-599`: "and so does a `~/.claude` that is a link when the download cache is inside it" and "If any check fails, the whole uninstall is refused" both describe the now-optional-and-kept case. Task 4 gains edit (j) rewording both sentences (required path refuses; optional one Banager cannot confirm stays and is said; not-yours and overlaps-kept refuse either way) and `docs/what-we-run.md` in its `git add`; checklist row 23 and the File Structure name it. |
 | 5 | **Accepted** | `scan/mod.rs:386-393`: `exe_canonical` is checked before any rule 4 could be; `link(&bin, "agy.2.old", &agy)` resolves to the instance's `exe_path`, so rule 1 claims it and the listed set would be `[agy.old]` with `attributed == 3`. The link now points at an executable in a sibling `elsewhere/` folder that no rule claims, so rule 4's `kind == File` guard is what keeps it listed; the two assertions hold as written. |
 | 6 | **Accepted** | `outside_home_keeps` did `symlink_metadata(spec.path)` on the recipe's absolute `/usr/local/bin/{grok,agent}`, so the grok tests' exact warning lists depended on the host. Fixed together with 12: the sentence is produced only for a symbolic link whose target lies under the recipe's root for *this* home (`points_into`), which a link in the real `/usr/local/bin` can never satisfy for a temp home. Every grok test comment says so; Review Focus 7 and 8 record it. No seam needed. |
 | 7 | **Accepted** | `route.rs:164-175` (dangling branch: `one_hop` + `canonicalize_existing_prefix` on the hop's parent, which exists while `~/.grok/bin` does) and `removal.rs:327-334` (`check_item` accepts `Present \| LauncherOnly`): a two-hop fallback link dangling after `downloads/` moved answers `LauncherOnly`, not `Absent`. Ruling 3 rewritten as a precaution with the correct mechanism stated and the earlier claim retracted in place; the GROK doc comment, the recipes test comment, the 5c test comments, the fixture README, the `## Grok Build` uninstall paragraph, the backlog entry, deviation 3 and the delivery note all carry the new reason. The order itself is kept. |
@@ -5974,7 +5974,7 @@ Adversarial review of this plan, 2026-09-25, 23 points. Each was re-verified aga
 | 14 | **Accepted** | grok.md §3: the answer carries `"error":null`; the parser read only two fields, so exit 0 + `updateAvailable:false` + a non-null `error` would show "up to date" for a failed check. `Latest::Command` gains `error_field: Option<&'static str>` (GROK: `Some("error")`), `parse_update_check` a fourth parameter returning `Err("the update check reported: <text>")` for a present non-null value (string trimmed, other JSON as printed, 80 chars); table rows added to the parser test (string error, object error, `None` ignores the key), a `check_updates` case added to the failing list, the recipe test and the fixture test destructure the new field; ruling 10, Core Interfaces, `## Grok Build` and deviation 15 record it. |
 | 15 | **Accepted** | Spec §6.3 (line 489) lists `~/.grok/bin · Dir · Launcher` last; grok.md §2's rc block puts `~/.grok/bin` on `PATH`, so a user's own script there would go to the Trash under "(the command itself)". The review's first option is taken: `~/.grok/bin/agent` (`SymlinkIntoRoot · Launcher · optional`) and `~/.grok/bin/grok` (`SymlinkIntoRoot · Launcher`, last) are the items, the emptied folder stays inside the kept `~/.grok`, and C's launcher-last invariant (`last.path == route.launcher`) stays as C wrote it — Task 4 adds only the `expect`-per-`RouteKind` assertion agy's `File` needs. Ruling 4 rewritten with the author-facing consequence; the recipe, its test, every 5c/Session path list (with `layout.agent`), the `RemovedWhat::Launcher` doc, `listed_items`' doc, the trust file, the fixture README, the README row, a new backlog entry and deviation 14 follow. A `my-own-script` in `~/.grok/bin` is asserted untouched. |
 | 16 | **Accepted** | Landed never-list bullet (`docs/what-we-run.md:861-867`) names only `~/.claude`/`~/.claude.json`; spec §9.5 promises `~/.grok` and `~/.gemini` too. Task 6 (e) amends that bullet to name `~/.grok` (what of it moves), `~/.gemini/antigravity-cli` and `~/.gemini` itself; the generalized path test (point 11) also asserts every `Settings`/`SettingsAndHistory`/`ToolState` keep path appears in the never-list section. |
-| 17 | **Accepted** | grok's check rewrites `~/.grok/version.json` (`checked_at`) on every Canager refresh — a write the "后台刷新不写机器" promise must name. Task 6 adds a bracketed observation sentence to `## Grok Build`'s check paragraph, a sentence under `## Files Canager writes` (new edit (h)), and the exception to the "Never writes a file" bullet; the GROK doc comment and ruling 16 say it. |
+| 17 | **Accepted** | grok's check rewrites `~/.grok/version.json` (`checked_at`) on every Banager refresh — a write the "后台刷新不写机器" promise must name. Task 6 adds a bracketed observation sentence to `## Grok Build`'s check paragraph, a sentence under `## Files Banager writes` (new edit (h)), and the exception to the "Never writes a file" bullet; the GROK doc comment and ruling 16 say it. |
 | 18 | **Accepted** | `ps -axo comm \| grep -i -E 'agy\|antigravity'` matches the Antigravity desktop app/IDE (agy.md §1) and anything containing "agy". Task 6 Step 1 now takes `ps -axo pid,ppid,comm` before and after and diffs (`comm -13`) for *new* processes, names the false positive, and makes the log count and mtime the primary evidence; ruling 16 and the README wording follow. |
 | 19 | **Accepted** | `--version` ran twice inside one window while the README said "the very `--version` that is recorded". Both recordings now run `--version` once into a scratch file, read the version back from it and move the file into place; the READMEs say "the one `--version` run of this recording, whose output is `version.txt`". Global Constraints say "(once)". |
 | 20 | **Accepted** (same finding as 7) | Verified as under 7; ruling 3 now states the defensible core (UNVERIFIED link text → go while every folder it could pass through exists; a dangling fallback would be accepted as `LauncherOnly`, so the order is a precaution). |

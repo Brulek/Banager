@@ -124,9 +124,9 @@ OwnershipEvidence
 
 **涉及章节：§4.3 pacman、§6、§8、§14。**
 
-**依据：** `pacman -Qu` 查询现有同步数据库本身没有问题；危险的是为了查更新先执行 `pacman -Sy`。它刷新系统仓库数据库却不升级系统，此后用户在 Canager 或终端安装某个包，就可能形成不受支持的部分升级。
+**依据：** `pacman -Qu` 查询现有同步数据库本身没有问题；危险的是为了查更新先执行 `pacman -Sy`。它刷新系统仓库数据库却不升级系统，此后用户在 Banager 或终端安装某个包，就可能形成不受支持的部分升级。
 
-只禁止 Canager 的“单包升级”按钮，防不住这个场景。Arch 官方推荐使用独立检查数据库的 `checkupdates`。[Arch 维护指南](https://wiki.archlinux.org/title/System_maintenance)、[checkupdates 手册](https://man.archlinux.org/man/checkupdates.8)
+只禁止 Banager 的“单包升级”按钮，防不住这个场景。Arch 官方推荐使用独立检查数据库的 `checkupdates`。[Arch 维护指南](https://wiki.archlinux.org/title/System_maintenance)、[checkupdates 手册](https://man.archlinux.org/man/checkupdates.8)
 
 **建议改法：**
 
@@ -199,7 +199,7 @@ OwnershipEvidence
 
 **涉及章节：§3 ops、§6。**
 
-**依据：** brew 升级 Node 时，npm 可以正在安装全局包；rustup 更新工具链时，cargo 可以正在编译；winget 和 choco 可能操作同一应用。用户终端和系统自动更新也完全不受 Canager 队列控制。
+**依据：** brew 升级 Node 时，npm 可以正在安装全局包；rustup 更新工具链时，cargo 可以正在编译；winget 和 choco 可能操作同一应用。用户终端和系统自动更新也完全不受 Banager 队列控制。
 
 **建议改法：** 用资源锁描述冲突，例如安装前缀、Python 环境、系统包数据库、Windows 安装器及具体应用。先保守串行化写操作，再逐项开放确定独立的并行路径。外部锁冲突应进入等待或可重试状态，不能删除管理器锁文件。
 
@@ -394,7 +394,7 @@ OwnershipEvidence
 | winget | `winget search`／`Find-WinGetPackage` | 属实 | 查询仓库候选；保留来源，不按显示名称合并。 |
 | winget | 机器级安装需 UAC（auto） | 有误 | 常见但不能仅由“机器级”或目录可写性决定；具体安装器、策略及现有权限决定授权路径。 |
 | [WinGet 返回码](https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md?plain=1) | 未给退出码合同 | 不确定 | 按返回码表映射无候选、无适用升级、失败、重启等；保留原始 HRESULT，不简化为非零失败。 |
-| UniGetUI | 已放弃 CLI 解析，改用 COM API | 不确定 | 本次未做该实现的完整版本化源码审计；在文档中附具体版本和代码位置，不能靠这句话证明 Canager 的接口选择。 |
+| UniGetUI | 已放弃 CLI 解析，改用 COM API | 不确定 | 本次未做该实现的完整版本化源码审计；在文档中附具体版本和代码位置，不能靠这句话证明 Banager 的接口选择。 |
 | [Scoop export 源码](https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/libexec/scoop-export.ps1) | `scoop export` 为 JSON | 属实 | 输出包含 apps、buckets；可作库存来源，但 schema 必须绑定版本并保留安装范围。 |
 | [Scoop status 源码](https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/libexec/scoop-status.ps1) | `scoop status` 是更新表格 | 有误 | 它还报告失败、废弃、移除、缺依赖及 bucket 状态，不能将每条记录都当可更新。 |
 | Scoop | `scoop install/uninstall/update` | 属实 | 带应用参数；裸 `scoop update` 与更新指定应用语义不同，通配全量更新也需单独处理。 |

@@ -12,11 +12,11 @@ Commands:
 - `AGY_CLI_DISABLE_AUTO_UPDATE=true ~/.local/bin/agy --version < /dev/null`
   -> `version.txt` (one bare version and a newline; the switch is the one
   Google's troubleshooting page documents for the background updater, and
-  standard input is `/dev/null`, as Canager's runner gives it)
+  standard input is `/dev/null`, as Banager's runner gives it)
 - `curl --fail --silent --show-error https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json`
   -> `manifest-darwin_arm64.json` (a direct 200, `application/json`, no
   redirect; the manifest the installer and the updater read; only its
-  `version` is used by Canager)
+  `version` is used by Banager)
 - `cat ~/.gemini/antigravity-cli/updater/update_status.json` -> `update_status.json`
 - `ls -lan ~/.local/bin/agy | sed "s|$HOME|~|g"` -> `layout.txt` (a regular
   file, not a link: the installer copies the binary there). Its date,
@@ -51,15 +51,15 @@ synthetic unit tests.
 
 ## Uninstall list
 
-Nothing here was recorded for the uninstall: Canager runs no command for it.
+Nothing here was recorded for the uninstall: Banager runs no command for it.
 The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`AGY.uninstall`, `AGY.backup_globs`) is not a vendor document — Google
 publishes none and there is no `agy uninstall` (agy.md §5). It is the install
 script's own path (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`,
 read from the script) plus the Homebrew cask's `zap` stanza, which trashes only
-`~/.gemini/antigravity-cli`. Canager moves `~/.local/bin/agy` (the whole
+`~/.gemini/antigravity-cli`. Banager moves `~/.local/bin/agy` (the whole
 program) after any `agy.<time>.old` beside it; it keeps `~/.gemini/antigravity-cli`
 (conversations, history and the program's own state together; no vendor list
 separates them), `~/.cache/antigravity` (the installer's staging folder, directly
-in `~/.cache`, which Canager never moves anything out of — spec §6.3 listed it for
+in `~/.cache`, which Banager never moves anything out of — spec §6.3 listed it for
 removal; the step D plan's ruling 1 keeps it), and the two shell files.

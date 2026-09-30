@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give Canager a fourth page, *Unknown*, that lists the command-line programs on this Mac that none of the registered sources installed — a tool's own installer dropped a binary into `~/.local/bin`, a GUI app put a helper into `/usr/local/bin`, a link whose target has since been deleted — with what each one is, where it points, its size and date, and who put it there. The list is honest about what it did not see (which directories it read, how many programs known sources accounted for, whether it stopped early and at which limit) and it never runs, moves or deletes anything.
+**Goal:** Give Banager a fourth page, *Unknown*, that lists the command-line programs on this Mac that none of the registered sources installed — a tool's own installer dropped a binary into `~/.local/bin`, a GUI app put a helper into `/usr/local/bin`, a link whose target has since been deleted — with what each one is, where it points, its size and date, and who put it there. The list is honest about what it did not see (which directories it read, how many programs known sources accounted for, whether it stopped early and at which limit) and it never runs, moves or deletes anything.
 
 **Architecture:** A read-only pure function in a new `banager-core` module, `scan/`, over a clone of the current `Snapshot`'s instances and artifacts; a one-method `Session::scan_unknown`; one IPC command on Tauri's blocking pool; one TanStack query that only runs when asked; one React page. It is deliberately **not** an `Adapter` (phase 4 spec §8.1): it has no plan, execute, reconcile, instance or recorded fixture, and — decisively — attribution needs every *other* source's instances, which `inventory(&self, inst)` never sees. It does not enter the `Snapshot` and is not part of `refresh`: a ten-second directory walk is not something every refresh should pay, and snapshot data is about the managed sources.
 
@@ -12,7 +12,7 @@
 
 Binding project rules, copied from the phase 4 spec (`docs/superpowers/2026-09-24-phase-4-standalone-spec.md`):
 
-- 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
+- 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 - 每一步只带**该步有生产者**的变体与字段——「先定义、后面某步再用」正是本项目最常见的缺陷（§十）。线格式的每个字段点名读取方（§8.2）。
 - For this step specifically (§8.4, appendix B): `scan_unknown` 是 `read_dir`/`symlink_metadata`/`canonicalize` 上的纯函数，没有 `CommandRunner`、没有 `OperationManager`；不执行（`Executable` 判断只看 mode 位，不跑 `file(1)`）、不写、不读列出目录之外的任何东西；不取资源锁；不并入 `Snapshot`、不并入 `refresh`。
 - What this step is **not** (§8.1, §十 row F): rule 4 (`backup_globs`) and the `globs` parameter arrive with step D; `Glob` is not defined here. No per-row action ("Reveal in Finder", "Move to Trash") — §十一.
@@ -44,7 +44,7 @@ The spec leaves these to the step; each is decided here so no task has to.
 2. **`~` abbreviation happens in Rust, on `ScannedDir.path` and `UnknownEntry.path`.** §8.5 wants the row to show a `~`-abbreviated path and the front end has no `HOME` to strip. The spec's own precedent decides it: `Warning`'s `{{path}}` payloads have `$HOME` replaced by `~` on the Rust side "那是数据不是句子" (§6.5). `resolved` stays canonical and absolute — it is the technical detail. Attribution compares absolute paths; only the output is abbreviated. No field is added to the wire types.
 3. **`scan_dirs` is the testable inner function.** `scan_unknown(env, …)` builds the directory list from `HostEnv` (§8.3's seven fixed directories ∪ `PATH` entries under `home`) and calls `scan_dirs(dirs, env, …)`. The synthetic-tree tests call `scan_dirs` with temp directories, so a *synthetic-tree* test never reads the `/usr/local/bin` of the machine running it. `scan_dirs` does the existence check and canonical de-duplication, so both are covered through the public path. The two tests that go through `scan_unknown` — the session test (Task 4) and the IPC test (Task 5) — do read `/usr/local/bin`, read-only and bounded by the budget, and nothing else of the machine's: both pass a `HostEnv` with no `PATH` entries and a home under the temp directory, so the other six fixed directories do not exist.
 4. **`$CARGO_HOME/bin` joins the fixed list when `HostEnv.cargo_home` is set.** The spec's list is literal (`~/.cargo/bin`), but `HostEnv` carries `cargo_home` for the same reason it carries `path_dirs` (`runner/path_env.rs:9-14`), and with it set the proxies live under the override and `~/.cargo/bin` is usually absent. One `push`, de-duplicated with the rest.
-5. **The Unknown page is routed outside `SnapshotStatus`.** `SnapshotStatus` replaces its children with "Nothing for Canager to manage yet" when `detect === "Missing"` — a Mac with no source at all is exactly where this page is most useful (everything on it is unknown), and the scan is not snapshot data. It is routed like `SettingsPage` (`App.tsx:26-32`).
+5. **The Unknown page is routed outside `SnapshotStatus`.** `SnapshotStatus` replaces its children with "Nothing for Banager to manage yet" when `detect === "Missing"` — a Mac with no source at all is exactly where this page is most useful (everything on it is unknown), and the scan is not snapshot data. It is routed like `SettingsPage` (`App.tsx:26-32`).
 6. **`formatBytes` is 1000-based** (`1 KB = 1000 B`), the convention Finder uses on macOS, so the number on the row matches the one the user sees in Finder's Get Info.
 7. **A broken link has no size and no date.** Both describe the target, and a broken link has none; the link's own `mtime` says when an installer made the link, which is not what the row is about. So `size_bytes` and `modified_at` are `None` for `BrokenSymlink` — a real producer for both `None`s.
 8. **"Scan again" is disabled while a scan is in flight.** §8.4's "连点两次跑两次，页面显示最新" describes what the Rust side tolerates — no lock, so two concurrent scans are safe — not a promise the button makes. While one runs the button reads "Scanning…" and is disabled: a second concurrent scan could only show what the first is about to show. (`useUnknownScan`'s `refetch` would in fact run both — TanStack cancels the first observer-side and the Rust one runs to completion — so dropping `disabled` would also satisfy the spec; this plan keeps it because a button that visibly does nothing on a second press is confusing to exactly the user this app is for.)
@@ -398,7 +398,7 @@ pub struct UnknownEntry {
     /// Formatted with `Intl.DateTimeFormat` (an absolute date; this
     /// repository deliberately has no relative-time formatter).
     pub modified_at: Option<i64>,
-    /// Whether the entry itself belongs to the user Canager runs as
+    /// Whether the entry itself belongs to the user Banager runs as
     /// (`st_uid == euid`, of the entry, not its target: the question is
     /// who put it here). `false` renders "Put here by an installer with
     /// administrator rights".
@@ -423,7 +423,7 @@ pub struct UnknownScan {
     pub entries: Vec<UnknownEntry>,
     /// How many examined programs a registered source accounted for and
     /// are therefore not listed. The page's "N more programs came from
-    /// sources Canager knows" sentence.
+    /// sources Banager knows" sentence.
     pub attributed: u32,
     /// `Some` when the scan hit its budget; the page's banner. What was
     /// scanned before that point is still in the fields above.
@@ -512,7 +512,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-scan-{}-{}-{}",
+            "banager-scan-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -1056,7 +1056,7 @@ Insert after the `UnknownScan` struct, before `#[cfg(test)]`:
 ///
 /// Only `PATH` entries under `home` are taken. The rest --
 /// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
-/// not what this page is for. Which `PATH` that is depends on how Canager
+/// not what this page is for. Which `PATH` that is depends on how Banager
 /// was launched (`fix_path_env` restores a login shell's for a Finder
 /// launch; a terminal launch inherits that terminal's, temporary agent
 /// directories and all); the research machine's `PATH` held 23 entries
@@ -1563,7 +1563,7 @@ Append to `mod tests` in `crates/banager-core/src/scan/mod.rs`:
 
     fn temp_dir(tag: &str) -> PathBuf {
         let raw = std::env::temp_dir().join(format!(
-            "canager-scan-unit-{}-{}-{}",
+            "banager-scan-unit-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2046,7 +2046,7 @@ mod tests {
     /// by the test itself at the end.
     fn temp_home(tag: &str) -> PathBuf {
         let raw = std::env::temp_dir().join(format!(
-            "canager-session-scan-{}-{}-{}",
+            "banager-session-scan-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2224,7 +2224,7 @@ Add to `mod tests` in `src-tauri/src/ipc.rs`, directly after `state_with_fake_ad
         // The command itself passes `HostEnv::discover()`.
         let env = HostEnv {
             path_dirs: Vec::new(),
-            home: std::env::temp_dir().join(format!("canager-ipc-scan-{}", std::process::id())),
+            home: std::env::temp_dir().join(format!("banager-ipc-scan-{}", std::process::id())),
             euid: 0,
             cargo_home: None,
             ollama_host: None,
@@ -2253,7 +2253,7 @@ Add to `mod tests` in `src-tauri/src/ipc.rs`, directly after `state_with_fake_ad
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cargo test -p canager scan_unknown`
+Run: `cargo test -p banager scan_unknown`
 Expected: FAIL to compile — `error[E0425]: cannot find function \`scan_unknown_impl\` in this scope`.
 
 - [ ] **Step 3: Implement the command and register it**
@@ -2294,7 +2294,7 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
         // the text verbatim under `unknown.scanFailed`, the way a failed
         // load shows the backend's own words under
         // `emptyStates.loadFailed`; it is the runtime's sentence, not one
-        // of Canager's to translate.
+        // of Banager's to translate.
         .map_err(|e| e.to_string())
 }
 ```
@@ -2319,7 +2319,7 @@ Modify `src-tauri/src/lib.rs:37-48`:
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p canager scan_unknown`
+Run: `cargo test -p banager scan_unknown`
 Expected: `test ipc::tests::test_scan_unknown_impl_reads_the_session_and_never_refreshes_it ... ok`.
 
 - [ ] **Step 5: Run the gates**
@@ -2959,7 +2959,7 @@ describe("UnknownPage", () => {
 
     expect(
       await findByText(
-        "4 more programs came from sources Canager knows and are listed under them.",
+        "4 more programs came from sources Banager knows and are listed under them.",
       ),
     ).toBeInTheDocument();
     expect(getByText("Looked in:")).toBeInTheDocument();
@@ -2972,7 +2972,7 @@ describe("UnknownPage", () => {
     const byFiles = renderWithProviders(<UnknownPage />);
     expect(
       await byFiles.findByText(
-        "Canager stopped after looking at 2000 items, so this list may be incomplete.",
+        "Banager stopped after looking at 2000 items, so this list may be incomplete.",
       ),
     ).toBeInTheDocument();
     byFiles.unmount();
@@ -2980,7 +2980,7 @@ describe("UnknownPage", () => {
     scan = { ...baseScan, stopped: { TimeLimit: { max_secs: 10 } } };
     const byTime = renderWithProviders(<UnknownPage />);
     expect(
-      await byTime.findByText("Canager stopped after 10 seconds, so this list may be incomplete."),
+      await byTime.findByText("Banager stopped after 10 seconds, so this list may be incomplete."),
     ).toBeInTheDocument();
   });
 
@@ -2990,7 +2990,7 @@ describe("UnknownPage", () => {
 
     expect(
       await findByText(
-        "Nothing unexplained: every command-line program Canager found came from a source it knows.",
+        "Nothing unexplained: every command-line program Banager found came from a source it knows.",
       ),
     ).toBeInTheDocument();
     expect(getByText("~/.local/bin (5 items)")).toBeInTheDocument();
@@ -3045,16 +3045,16 @@ Insert into `src/i18n/en.json` between the `settingsSaveFailed` block and `"empt
 
 ```json
   "unknown": {
-    "title": "Programs Canager can't place",
-    "intro": "These command-line programs are on your Mac, but none of the sources Canager knows installed them. Canager only lists them — it never runs or deletes anything here.",
+    "title": "Programs Banager can't place",
+    "intro": "These command-line programs are on your Mac, but none of the sources Banager knows installed them. Banager only lists them — it never runs or deletes anything here.",
     "lookedIn": "Looked in:",
     "dirCount_one": "{{path}} ({{count}} item)",
     "dirCount_other": "{{path}} ({{count}} items)",
-    "attributed_one": "{{count}} more program came from a source Canager knows and is listed under it.",
-    "attributed_other": "{{count}} more programs came from sources Canager knows and are listed under them.",
+    "attributed_one": "{{count}} more program came from a source Banager knows and is listed under it.",
+    "attributed_other": "{{count}} more programs came from sources Banager knows and are listed under them.",
     "stopped": {
-      "FileLimit": "Canager stopped after looking at {{count}} items, so this list may be incomplete.",
-      "TimeLimit": "Canager stopped after {{seconds}} seconds, so this list may be incomplete."
+      "FileLimit": "Banager stopped after looking at {{count}} items, so this list may be incomplete.",
+      "TimeLimit": "Banager stopped after {{seconds}} seconds, so this list may be incomplete."
     },
     "kind": {
       "File": "Program",
@@ -3069,7 +3069,7 @@ Insert into `src/i18n/en.json` between the `settingsSaveFailed` block and `"empt
     "scanAgain": "Scan again",
     "scanning": "Scanning…",
     "scanFailed": "Couldn't scan: {{message}}",
-    "empty": "Nothing unexplained: every command-line program Canager found came from a source it knows."
+    "empty": "Nothing unexplained: every command-line program Banager found came from a source it knows."
   },
 ```
 
@@ -3077,14 +3077,14 @@ Insert into `src/i18n/zh-CN.json` at the same place (after `:231`):
 
 ```json
   "unknown": {
-    "title": "Canager 说不清来源的程序",
-    "intro": "这些命令行程序在你的 Mac 上，但 Canager 认识的来源都没有装过它们。Canager 只是列出来——这里什么都不会运行，也不会删除。",
+    "title": "Banager 说不清来源的程序",
+    "intro": "这些命令行程序在你的 Mac 上，但 Banager 认识的来源都没有装过它们。Banager 只是列出来——这里什么都不会运行，也不会删除。",
     "lookedIn": "查看了：",
     "dirCount_other": "{{path}}（{{count}} 项）",
-    "attributed_other": "另有 {{count}} 个程序来自 Canager 认识的来源，已列在对应来源下。",
+    "attributed_other": "另有 {{count}} 个程序来自 Banager 认识的来源，已列在对应来源下。",
     "stopped": {
-      "FileLimit": "Canager 查看 {{count}} 项后停下了，这个列表可能不完整。",
-      "TimeLimit": "Canager 查看 {{seconds}} 秒后停下了，这个列表可能不完整。"
+      "FileLimit": "Banager 查看 {{count}} 项后停下了，这个列表可能不完整。",
+      "TimeLimit": "Banager 查看 {{seconds}} 秒后停下了，这个列表可能不完整。"
     },
     "kind": {
       "File": "程序",
@@ -3099,7 +3099,7 @@ Insert into `src/i18n/zh-CN.json` at the same place (after `:231`):
     "scanAgain": "重新扫描",
     "scanning": "正在扫描…",
     "scanFailed": "没能扫描：{{message}}",
-    "empty": "没有说不清的：Canager 找到的命令行程序都来自它认识的来源。"
+    "empty": "没有说不清的：Banager 找到的命令行程序都来自它认识的来源。"
   },
 ```
 
@@ -3347,7 +3347,7 @@ Co-Authored-By: <the executing session's attribution line>"
 - Consumes: `UnknownPage` (Task 8), `Page`, `PAGES`.
 - Produces: `export type Page = "installed" | "updates" | "unknown" | "settings"`; the sidebar entry `nav.unknown` (looked up through `t(\`nav.${p}\`)` at `Sidebar.tsx:31`, which is why the key must be registered in `INTERPOLATED_SUBTREES.nav` — §十三 #47); the route.
 
-The page goes between Updates and Settings: it is about the machine, like the two before it, and Settings stays last. It is routed **outside** `SnapshotStatus` (ruling 5): `SnapshotStatus` would replace it with "Nothing for Canager to manage yet" on a Mac with no source at all, which is exactly where everything is unknown and this page is most useful; and the scan is not snapshot data, so the stale banner has nothing to say about it.
+The page goes between Updates and Settings: it is about the machine, like the two before it, and Settings stays last. It is routed **outside** `SnapshotStatus` (ruling 5): `SnapshotStatus` would replace it with "Nothing for Banager to manage yet" on a Mac with no source at all, which is exactly where everything is unknown and this page is most useful; and the scan is not snapshot data, so the stale banner has nothing to say about it.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3435,19 +3435,19 @@ and append inside `describe("App", …)`, before its closing `});` (`:95`):
 ```tsx
   it("switches to the Unknown page, which lives outside the snapshot's empty states", async () => {
     // A Mac with no source at all: SnapshotStatus shows "Nothing for
-    // Canager to manage yet" for the Installed and Updates pages. That is
+    // Banager to manage yet" for the Installed and Updates pages. That is
     // exactly where everything on the machine is unknown, so this page
     // must not be behind that gate.
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Nothing for Canager to manage yet");
+    await findByText("Nothing for Banager to manage yet");
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
 
-    expect(await findByRole("heading", { name: "Programs Canager can't place" })).toBeInTheDocument();
+    expect(await findByRole("heading", { name: "Programs Banager can't place" })).toBeInTheDocument();
     expect(
       await findByText(
-        "Nothing unexplained: every command-line program Canager found came from a source it knows.",
+        "Nothing unexplained: every command-line program Banager found came from a source it knows.",
       ),
     ).toBeInTheDocument();
   });
@@ -3487,7 +3487,7 @@ import { SettingsPage } from "./pages/SettingsPage";
               was, and the unknown-source scan is judged against the
               snapshot but is not part of it -- on a Mac with no source at
               all, SnapshotStatus would replace it with "Nothing for
-              Canager to manage yet", the one case where every program on
+              Banager to manage yet", the one case where every program on
               the machine belongs on it. */}
           {page === "settings" ? (
             <SettingsPage />
@@ -3549,7 +3549,7 @@ git commit -m "Put the Unknown page in the sidebar, outside the snapshot's empty
 
 Between Updates and Settings, and routed like Settings rather than
 through SnapshotStatus: on a Mac with no source at all that gate shows
-\"Nothing for Canager to manage yet\", which is the one case where every
+\"Nothing for Banager to manage yet\", which is the one case where every
 program on the machine belongs on this page.
 
 Co-Authored-By: <the executing session's attribution line>"
@@ -3611,7 +3611,7 @@ Insert after `README.md:28` (the Ollama row of the "What it manages" table), kee
 
 Programs that none of these sources installed -- a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone -- are
-listed, read-only, on the **Unknown** page. Canager never runs, moves or deletes anything there;
+listed, read-only, on the **Unknown** page. Banager never runs, moves or deletes anything there;
 `docs/what-we-run.md` says exactly what it reads. A program a source installed but reported no
 path for is listed there too (today that is uv's own `uvx`): the gap is the source's, and the
 page says what it sees.
@@ -3620,9 +3620,9 @@ page says what it sees.
 Replace `README.md:53-57` (the "No on-demand refresh" bullet) with:
 
 ```markdown
-- **No on-demand refresh.** Canager checks at launch, after each operation, when a "Try again"
+- **No on-demand refresh.** Banager checks at launch, after each operation, when a "Try again"
   button is pressed for something that already needs one — a failed refresh, or a Homebrew index
-  Canager couldn't update — and on its own when a Homebrew index update left running in the
+  Banager couldn't update — and on its own when a Homebrew index update left running in the
   background finishes (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). None
   of that is a standalone control you can press at any time. The Unknown page's *Scan again*
   button is the one exception, and it is scoped to that page: it re-runs only that page's scan of

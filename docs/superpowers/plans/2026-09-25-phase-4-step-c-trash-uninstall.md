@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let a user uninstall the native Claude Code install from Canager safely: the uninstall dialog lists, in plain words, the three paths Anthropic's own instructions and installer name (`~/.local/share/claude`, `~/.claude/downloads`, `~/.local/bin/claude`) and the two it keeps (`~/.claude`, `~/.claude.json`); on confirmation Canager itself moves each listed path to the Trash with macOS's own `NSFileManager trashItemAtURL:` — no command, nothing deleted, the launcher last — after checks that run at preview time, again at the confirmation against what the preview saw, and once more immediately before each item moves; an uninstall stopped partway leaves exactly one state (program files in the Trash, a dangling launcher shown as a *launcher-only* row) that a second Uninstall finishes; and every sentence the row, the dialog, the trust file and the README say about it is true.
+**Goal:** Let a user uninstall the native Claude Code install from Banager safely: the uninstall dialog lists, in plain words, the three paths Anthropic's own instructions and installer name (`~/.local/share/claude`, `~/.claude/downloads`, `~/.local/bin/claude`) and the two it keeps (`~/.claude`, `~/.claude.json`); on confirmation Banager itself moves each listed path to the Trash with macOS's own `NSFileManager trashItemAtURL:` — no command, nothing deleted, the launcher last — after checks that run at preview time, again at the confirmation against what the preview saw, and once more immediately before each item moves; an uninstall stopped partway leaves exactly one state (program files in the Trash, a dangling launcher shown as a *launcher-only* row) that a second Uninstall finishes; and every sentence the row, the dialog, the trust file and the README say about it is true.
 
 **Architecture:** `Plan` gains a two-arm `PlanAction { Command | TrashPaths }` in place of `program`/`args`/`env` (spec §6.2, Q16), and every construction site, the readers and the TypeScript mirror follow. A `Trasher` trait (`crates/banager-core/src/trash/`) is the seam, like `CommandRunner`/`HttpClient`: `RealTrasher` is `trashItemAtURL:` through `objc2-foundation` (macOS only), `MockTrasher` renames into a temporary directory and records every call. `Recipe` gains `uninstall: Option<Uninstall>` with `Uninstall::Paths`; `adapters/standalone/removal.rs` turns the list into a `TrashPaths` plan under the checks of spec §6.3 and two of this plan's — every folder between the home folder and a listed path is a real folder (Ruling 24), and nothing moved may take a kept path along (Ruling 25) — and records what the preview saw at each path (`ItemIdentity`: `st_dev`, `st_ino` and the kind), which travels with the plan in `PlanAction::TrashPaths.previewed`, a field serde skips so the window never sees it (Ruling 10). It executes the plan item by item: every check again and every identity against the preview's before anything moves; then, for each item on tokio's blocking pool, every check once more and the move with nothing in between (`Fault::PathChanged` otherwise; Rulings 26, 28). `route::probe` now accepts only a launcher one link away from its root, and `run_operation` verifies an uninstall through a new `Adapter::reconcile_after_uninstall` — the operation-aware reading B's plan hands to this step — which the standalone adapter answers with `route::probe_strict`, where "could not tell" is an error and never "gone" (Ruling 27).
 
 **Tech Stack:** Rust (banager-core: `std::fs` lstat/canonicalize/`MetadataExt`, `objc2` 0.6 + `objc2-foundation` 0.3 under `cfg(target_os = "macos")` — both already in `Cargo.lock` through tauri, so no new crate is compiled; `tokio::task::spawn_blocking` for each item's last check and its move, `tokio::select!` for a cancellable pause after each item), TypeScript 5 `strict`, React 19, i18next, vitest.
 
-**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row C and argues from D8, §6.1–§6.3, §6.5 (`WillTrash`/`WillKeep`/`AlreadyGone`), §6.6 (the Claude Code dialog), §九 (9.1 wire, 9.2 copy, 9.4 tests, 9.5 trust file), 附录 A and 附录 B. Ground truth for the pre-merge verification: `~/dev/Canager/.superpowers/phase4/spike-trash-tcc.md`. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-c-trash-uninstall.md`.
+**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row C and argues from D8, §6.1–§6.3, §6.5 (`WillTrash`/`WillKeep`/`AlreadyGone`), §6.6 (the Claude Code dialog), §九 (9.1 wire, 9.2 copy, 9.4 tests, 9.5 trust file), 附录 A and 附录 B. Ground truth for the pre-merge verification: `~/dev/Banager/.superpowers/phase4/spike-trash-tcc.md`. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-c-trash-uninstall.md`.
 
 ## Baseline, and how to read the anchors below
 
-Branch `feat/phase-4-standalone`, worktree `~/dev/Canager-phase4`, read at HEAD `3b5117a` on 2026-09-25: steps **A** (`e985eb8`…`a630222`) and **F** (`f1a246d`…`0c9ead8`, with the follow-up fixes `e67c627`, `d3890f4`, `2bc9371`) have landed, and B's plan is committed (`2a360c8`) with B's Tasks 1 and 2 (`31d756b`, `3b5117a`). **The rest of step B lands before this step executes** — at the time of writing its Task 3 is being built in that worktree (`b-task3-progress.md`). Everything B produces is treated here as existing **with the exact names and signatures of `docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`** (identical to `~/dev/Canager/.superpowers/phase4/plan-step-b-skeleton-claude.md`): `StandaloneAdapter { recipe, meta, runner, http, detected }` with `new(recipe, runner, http)`, `detect`, `read_version`, `artifact_key`, `inventory`, `search`, `check_updates`, `latest_version`, `plan`, `execute`, `reconcile`, `impl Adapter`, `all(runner, http)`; `Detected { home }`; `Recipe { id, meta_toml, route, version, latest, self_updates, upgrade }`, `Route`, `RouteKind::SymlinkIntoRoot`, `VersionCmd`, `VersionParse::FirstToken`, `Latest::ClaudeChannel`, `UpgradeCmd`; `recipes::{CLAUDE, RECIPES}`; `route::{expand, probe, lexical_join, shadow_note, Probe::{Absent, Present { real }, LauncherOnly}}`; `latest::*`; `#[cfg(test)] pub(super) mod testing { TempHome, ClaudeLayout, claude_layout }` in `standalone/mod.rs` (so reachable from `standalone`'s child modules' tests, **not** from `tests/`); the test helpers `exited_0`, `adapter`, `instance_for`, `request`, `detected_adapter` in `standalone/mod.rs`'s `mod tests`; `claude_home`/`claude_upgrade_outputs` in `tests/ops_upgrade_version_test.rs`; `InstanceNote::{NotOnPath, ShadowedByHomebrew, ShadowedByNpm, ShadowedByOther, LauncherOnly}`; `UninstallBlocked::NoSafeMethod` and `UNINSTALL_BLOCKED_KEYS.NoSafeMethod`; `ADAPTER_LABEL_KEYS["standalone-claude"]`; `STANDALONE_SUMMARY_KEYS`/`installedDescription`; `Session::new` extended with `standalone::all(runner, http)`; the `standalone-claude` row of `scan::owned_roots`; the recorded `adapters/fixtures/standalone-claude/<version>/`; the `## Claude Code` section of `docs/what-we-run.md`; the README row. **Where B's plan and the spec disagree, this plan follows B's plan** (it is newer and was reviewed twice) and says so in "Rulings" and "Deviations". All of step B has since landed (2026-09-25): Task 3 as `71eacd0`, Task 10 as `f61cd94`, Task 11 as `dcf0e7c`. Where the landed, rustfmt'd text differs from B's plan, the anchors below quote the landed text — the `reconcile` doc, the launcher-only inventory assertion, `Probe::LauncherOnly`'s doc, two multi-line `StandaloneAdapter::new(` calls in tests, and B's corrected install-test comment; the anchors into Tasks 10 and 11 (the README row and counts, the InstalledPage test comment, the summary sentence, the locale keys) were checked against the landed files and match.
+Branch `feat/phase-4-standalone`, worktree `~/dev/Banager-phase4`, read at HEAD `3b5117a` on 2026-09-25: steps **A** (`e985eb8`…`a630222`) and **F** (`f1a246d`…`0c9ead8`, with the follow-up fixes `e67c627`, `d3890f4`, `2bc9371`) have landed, and B's plan is committed (`2a360c8`) with B's Tasks 1 and 2 (`31d756b`, `3b5117a`). **The rest of step B lands before this step executes** — at the time of writing its Task 3 is being built in that worktree (`b-task3-progress.md`). Everything B produces is treated here as existing **with the exact names and signatures of `docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`** (identical to `~/dev/Banager/.superpowers/phase4/plan-step-b-skeleton-claude.md`): `StandaloneAdapter { recipe, meta, runner, http, detected }` with `new(recipe, runner, http)`, `detect`, `read_version`, `artifact_key`, `inventory`, `search`, `check_updates`, `latest_version`, `plan`, `execute`, `reconcile`, `impl Adapter`, `all(runner, http)`; `Detected { home }`; `Recipe { id, meta_toml, route, version, latest, self_updates, upgrade }`, `Route`, `RouteKind::SymlinkIntoRoot`, `VersionCmd`, `VersionParse::FirstToken`, `Latest::ClaudeChannel`, `UpgradeCmd`; `recipes::{CLAUDE, RECIPES}`; `route::{expand, probe, lexical_join, shadow_note, Probe::{Absent, Present { real }, LauncherOnly}}`; `latest::*`; `#[cfg(test)] pub(super) mod testing { TempHome, ClaudeLayout, claude_layout }` in `standalone/mod.rs` (so reachable from `standalone`'s child modules' tests, **not** from `tests/`); the test helpers `exited_0`, `adapter`, `instance_for`, `request`, `detected_adapter` in `standalone/mod.rs`'s `mod tests`; `claude_home`/`claude_upgrade_outputs` in `tests/ops_upgrade_version_test.rs`; `InstanceNote::{NotOnPath, ShadowedByHomebrew, ShadowedByNpm, ShadowedByOther, LauncherOnly}`; `UninstallBlocked::NoSafeMethod` and `UNINSTALL_BLOCKED_KEYS.NoSafeMethod`; `ADAPTER_LABEL_KEYS["standalone-claude"]`; `STANDALONE_SUMMARY_KEYS`/`installedDescription`; `Session::new` extended with `standalone::all(runner, http)`; the `standalone-claude` row of `scan::owned_roots`; the recorded `adapters/fixtures/standalone-claude/<version>/`; the `## Claude Code` section of `docs/what-we-run.md`; the README row. **Where B's plan and the spec disagree, this plan follows B's plan** (it is newer and was reviewed twice) and says so in "Rulings" and "Deviations". All of step B has since landed (2026-09-25): Task 3 as `71eacd0`, Task 10 as `f61cd94`, Task 11 as `dcf0e7c`. Where the landed, rustfmt'd text differs from B's plan, the anchors below quote the landed text — the `reconcile` doc, the launcher-only inventory assertion, `Probe::LauncherOnly`'s doc, two multi-line `StandaloneAdapter::new(` calls in tests, and B's corrected install-test comment; the anchors into Tasks 10 and 11 (the README row and counts, the InstalledPage test comment, the summary sentence, the locale keys) were checked against the landed files and match.
 
 Anchors: an edit to a file B creates or still changes (`adapters/standalone/*`, `adapters/mod.rs`, `model.rs`, `session/mod.rs`, `scan/mod.rs`, `lib.rs`, `http/real.rs`, `tests/ops_upgrade_version_test.rs`, `src/lib/{types,types.test,sources,sources.test}.ts`, `src/pages/{InstalledPage,UpdatesPage}.{tsx,test.tsx}`, `src/i18n/*.json`, `docs/what-we-run.md`, `README.md`) is anchored by symbol and quoted code, never by a line number alone. An edit to a file A or F touched and B does not (`UninstallDialog.{tsx,test.tsx}`, `warnings.{ts,test.ts}`, `format.{ts,test.ts}`, `completeness.test.ts`, `tests/what_we_run_test.rs`) is anchored by symbol. An edit to a file none of them touches cites `file:line` at `3b5117a`.
 
@@ -24,15 +24,15 @@ Copied verbatim from the spec's binding rules (spec lines 20–23):
 
 > 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 > 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-> 没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+> 没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 > 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 And from spec §十 ("每一步只带**该步有生产者**的变体与字段——「先定义、后面某步再用」正是本项目最常见的缺陷") and §2.2/§2.3 ("每个新字段点名生产读取方"), applied to this step:
 
 - **Every new field, variant, constant or function names its production reader in the same task**, in its doc comment and in the task's Interfaces block, and that reader lands in the same task's commit. A wire variant whose *producer* is the core task (Task 6) lands with its front-end reader in its own task, as B's Tasks 1–2 did with `InstanceNote` and `NoSafeMethod`; anything whose only reader is Rust code of the core task lands in the core task, which is therefore one commit built in stages (B's Task 3 is the precedent: B's review finding 19). What this step does **not** define, because nothing in it produces it: `Uninstall::Command`/`Probe` (rustup, step E), `Expect::File`, `RemovedWhat::Backups`, `KeptWhat::{ToolState, ShellConfigLines, OutsideHome, NotOurs}`, `Recipe.backup_globs`/`Glob` and check 5 (step D), `Warning::{RemovesToolchains, DeletesCargoCaches, LeavesUnmanaged, EditsShellConfig, LeavesShellConfigLine}` and `operations.noCancelHint` (step E).
-- **Honest outcomes.** `execute` for a `TrashPaths` plan returns `Succeeded` only when every listed path was moved; `Failed { exit_code: None, summary }` with macOS's own words when the system refused one; `Unconfirmed` when cancelled or out of time between items; `CanagerFailed(PathChanged)` when a path changed after the preview (a check now fails, the list differs, or a path is no longer the one the preview recorded — at the confirmation, or right before its turn); `CanagerFailed(Internal)` when Canager could not hand an item to the system at all (Ruling 9). `run_operation` then reads the disk again (`reconcile_after_uninstall`) and reports `Succeeded` only when the launcher is gone — `StillInstalledAfterUninstall` or `Cancelled` when it is still there, `Unconfirmed` when Canager cannot tell (Ruling 27) — never success on `execute`'s word alone.
+- **Honest outcomes.** `execute` for a `TrashPaths` plan returns `Succeeded` only when every listed path was moved; `Failed { exit_code: None, summary }` with macOS's own words when the system refused one; `Unconfirmed` when cancelled or out of time between items; `BanagerFailed(PathChanged)` when a path changed after the preview (a check now fails, the list differs, or a path is no longer the one the preview recorded — at the confirmation, or right before its turn); `BanagerFailed(Internal)` when Banager could not hand an item to the system at all (Ruling 9). `run_operation` then reads the disk again (`reconcile_after_uninstall`) and reports `Succeeded` only when the launcher is gone — `StillInstalledAfterUninstall` or `Cancelled` when it is still there, `Unconfirmed` when Banager cannot tell (Ruling 27) — never success on `execute`'s word alone.
 - **Fixtures come from real machines only.** This step records nothing: every layout its tests need is synthetic, built by the test in a temporary directory (spec §9.3: removal tests never write under `adapters/fixtures/`). It appends provenance prose to B's fixture README (spec §3.1 puts the list's source there), leaving every recorded byte as it is.
-- **No shell.** `PlanAction::Command.program` is only ever the instance's `exe_path`; a `TrashPaths` plan spawns nothing. The only file-system write in Canager's own process besides `settings.json` is `Trasher::trash`; the trait has no other method, and no code this step adds to a release build calls `remove_file`, `remove_dir_all`, `rename`, `create_dir` or `create_dir_all`. `MockTrasher` does all of those — it creates a temporary directory, renames items into it and removes it when dropped — so it is compiled only for tests: `#[cfg(any(test, feature = "test-support"))]`, a feature only dev-dependencies turn on (Ruling 20). A debug build — never a release one — also tries to list the Trash after each move and prints whether it may, for the author's pre-merge check (Ruling 30).
+- **No shell.** `PlanAction::Command.program` is only ever the instance's `exe_path`; a `TrashPaths` plan spawns nothing. The only file-system write in Banager's own process besides `settings.json` is `Trasher::trash`; the trait has no other method, and no code this step adds to a release build calls `remove_file`, `remove_dir_all`, `rename`, `create_dir` or `create_dir_all`. `MockTrasher` does all of those — it creates a temporary directory, renames items into it and removes it when dropped — so it is compiled only for tests: `#[cfg(any(test, feature = "test-support"))]`, a feature only dev-dependencies turn on (Ruling 20). A debug build — never a release one — also tries to list the Trash after each move and prints whether it may, for the author's pre-merge check (Ruling 30).
 - **The UI never offers what Rust refuses.** Until Task 6 lands, Claude Code's artifact keeps `NoSafeMethod` and `plan(Uninstall)` keeps refusing it; Task 6 flips the recipe, the inventory, the plan, the `launcherOnly` sentence and every sentence of the trust file and the README that its behaviour makes true or false, in one commit (Ruling 23). The checks refuse at `plan()` with `UninstallUnsafe`, which the dialog words in the user's language (Task 5).
 - **en + zh-CN for all copy.** Every new key in both `src/i18n/en.json` and `src/i18n/zh-CN.json`; `src/i18n/completeness.test.ts` requires each key to be looked up by a *literal* in non-test source (lookups go through `Record`s of literal keys, never assembled strings; the interpolated heads it knows are listed in `INTERPOLATED_SUBTREES`, which Task 4 extends); `src/i18n/no-literal-strings.test.ts` forbids English literals in JSX; zh-CN prose uses full-width `，：（）` between CJK characters; zh-CN carries only `_other` for a plural key, as `warnings.wouldBreak_other` does today.
 - **No author-machine details in tests or source** beyond public tool names; every path in a test is under a temporary directory or a made-up `/Users/someone`.
@@ -51,7 +51,7 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段—
 
 ## The pre-merge verification (spec §6.2, blocking): what the spike settled, and what is left
 
-Spec §6.2 makes step C's merge conditional on a check from a Finder-launched development build **without** Full Disk Access (FDA), with the results written into `docs/what-we-run.md`: (1) `RealTrasher::trash` on a file and on a symbolic link succeeds, the items appear in the Trash, Finder's "Put Back" is available, and the link is moved as a link; (2) a `std::fs::rename` into `~/.Trash` from the same process fails with EPERM (expected). `~/dev/Canager/.superpowers/phase4/spike-trash-tcc.md` (2026-09-25, macOS 27.0 26A428, Apple silicon; objc2 0.6.4 / objc2-foundation 0.3.2 — the versions this repository's `Cargo.lock` already pins) ran an ad-hoc-signed app bundle through LaunchServices (`open -n`: parent `launchd`, its own bundle id — how Finder launches an app) 24 times without FDA, proven by `read_dir(~/.Trash)` answering `EPERM` in every LaunchServices run and `Ok` in every run of the same binary from the FDA shell.
+Spec §6.2 makes step C's merge conditional on a check from a Finder-launched development build **without** Full Disk Access (FDA), with the results written into `docs/what-we-run.md`: (1) `RealTrasher::trash` on a file and on a symbolic link succeeds, the items appear in the Trash, Finder's "Put Back" is available, and the link is moved as a link; (2) a `std::fs::rename` into `~/.Trash` from the same process fails with EPERM (expected). `~/dev/Banager/.superpowers/phase4/spike-trash-tcc.md` (2026-09-25, macOS 27.0 26A428, Apple silicon; objc2 0.6.4 / objc2-foundation 0.3.2 — the versions this repository's `Cargo.lock` already pins) ran an ad-hoc-signed app bundle through LaunchServices (`open -n`: parent `launchd`, its own bundle id — how Finder launches an app) 24 times without FDA, proven by `read_dir(~/.Trash)` answering `EPERM` in every LaunchServices run and `Ok` in every run of the same binary from the FDA shell.
 
 | Spec item | Spike result | What this plan does with it |
 |---|---|---|
@@ -63,13 +63,13 @@ Spec §6.2 makes step C's merge conditional on a check from a Finder-launched de
 **What the spike could not reach**, so the blocking verification is satisfied **except for**:
 
 - **(a) A click on "Put Back".** Only Finder's record was verified; the spike was headless.
-- **(b) A Tauri build of Canager.** The spike bundle had no `NSApplication`; its `M1-runloop`/`W1`/`W2` runs (the trash call on a worker thread while the main thread spun a run loop, which is how Canager's tokio workers sit beside Tauri's main loop) behaved exactly like the plain runs, and an ad-hoc bundle is in the same TCC position as a Developer-ID-signed Canager (spike §7) — reasoning, not a run. Nor did the spike establish anything about Canager's own authorization: it proved "no Full Disk Access" for its own bundle, by that process being refused a listing of `~/.Trash`, and a Canager build the Mac had once been granted Full Disk Access would pass every other step below without testing the no-FDA case at all (Astra finding 8). The check's Step 3 establishes it for the build it runs.
-- **(c) A dangling symbolic link, and a link to a directory.** The spike moved its link while the target was in place. Every Claude Code uninstall moves a *dangling* link — the launcher, last, after the program directory it points into has gone to the Trash — so every uninstall, not only a second one after a stop, depends on `trashItemAtURL:` accepting one. Task 7's `#[ignore]`d `RealTrasher` smoke test — gated on `CANAGER_LIVE=1` as well, like `brew_live`'s install test, because it changes the machine — moves both (plus a file, a directory and a link to a file). **Its dangling-link case is a merge blocker**: the author runs it once on their Mac (below; spec §9.4's "开发机手动跑一次") and CI runs it on every push (Task 7 adds the step). Neither run is the no-FDA context — a terminal with Full Disk Access, and a CI runner — so both verify the move itself, not Put Back without FDA; the author's Finder check below covers that, and the launcher it moves is a dangling link.
+- **(b) A Tauri build of Banager.** The spike bundle had no `NSApplication`; its `M1-runloop`/`W1`/`W2` runs (the trash call on a worker thread while the main thread spun a run loop, which is how Banager's tokio workers sit beside Tauri's main loop) behaved exactly like the plain runs, and an ad-hoc bundle is in the same TCC position as a Developer-ID-signed Banager (spike §7) — reasoning, not a run. Nor did the spike establish anything about Banager's own authorization: it proved "no Full Disk Access" for its own bundle, by that process being refused a listing of `~/.Trash`, and a Banager build the Mac had once been granted Full Disk Access would pass every other step below without testing the no-FDA case at all (Astra finding 8). The check's Step 3 establishes it for the build it runs.
+- **(c) A dangling symbolic link, and a link to a directory.** The spike moved its link while the target was in place. Every Claude Code uninstall moves a *dangling* link — the launcher, last, after the program directory it points into has gone to the Trash — so every uninstall, not only a second one after a stop, depends on `trashItemAtURL:` accepting one. Task 7's `#[ignore]`d `RealTrasher` smoke test — gated on `BANAGER_LIVE=1` as well, like `brew_live`'s install test, because it changes the machine — moves both (plus a file, a directory and a link to a file). **Its dangling-link case is a merge blocker**: the author runs it once on their Mac (below; spec §9.4's "开发机手动跑一次") and CI runs it on every push (Task 7 adds the step). Neither run is the no-FDA context — a terminal with Full Disk Access, and a CI runner — so both verify the move itself, not Put Back without FDA; the author's Finder check below covers that, and the launcher it moves is a dangling link.
 - **(d) Other macOS versions and Intel.** One Mac, macOS 27.0, Apple silicon. The deployment floor is macOS 13.3 (`tauri.conf.json`); `trashItemAtURL:` exists since 10.8 and nothing here needs a newer API, but TCC's behaviour on 13–26 and on Intel was not observed.
 
-**The author's pre-merge check** — closes (a), (b) and (c); not for an agent: it needs a person's eyes on Finder, it changes the author's Trash, and it must never touch the author's real Claude Code install (this very session may be running on it). Its Finder part uses a throwaway home built inside a fresh private folder (`mktemp -d`, never a fixed path that could already exist as a link), confirms that Canager is really using it before anything is pressed, and establishes that the build it runs has no Full Disk Access.
+**The author's pre-merge check** — closes (a), (b) and (c); not for an agent: it needs a person's eyes on Finder, it changes the author's Trash, and it must never touch the author's real Claude Code install (this very session may be running on it). Its Finder part uses a throwaway home built inside a fresh private folder (`mktemp -d`, never a fixed path that could already exist as a link), confirms that Banager is really using it before anything is pressed, and establishes that the build it runs has no Full Disk Access.
 
-**Step 1 — the smoke test**, in the author's own terminal: `CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture`, then `sw_vers -productVersion` and `uname -m`. It leaves five `canager-trash-smoke-…` items in the Trash, and, being a debug build, prints `RealTrasher`'s `[canager] debug: read_dir(…/.Trash) -> …` line after each move. What that line says about a terminal (which often has Full Disk Access) does not count: Step 3 reads the Finder-launched build's own line. **If it fails**, stop: a link moved as its target, or a dangling link refused, means `RealTrasher` needs a different URL construction — a Task 6 fix and an author decision.
+**Step 1 — the smoke test**, in the author's own terminal: `BANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture`, then `sw_vers -productVersion` and `uname -m`. It leaves five `banager-trash-smoke-…` items in the Trash, and, being a debug build, prints `RealTrasher`'s `[banager] debug: read_dir(…/.Trash) -> …` line after each move. What that line says about a terminal (which often has Full Disk Access) does not count: Step 3 reads the Finder-launched build's own line. **If it fails**, stop: a link moved as its target, or a dangling link refused, means `RealTrasher` needs a different URL construction — a Task 6 fix and an author decision.
 
 **Step 2 — a Finder-launched build**, against a throwaway home built inside a fresh private folder, whose fake Claude Code prints a version no real one has. From the worktree's root, in the author's own terminal. The block runs in a subshell, so a stop ends the block and not the terminal; `set -euC` stops it at the first failure and refuses to overwrite any existing file; `mktemp -d` makes a fresh, private (`0700`), unpredictable folder — never a fixed path, never reused — and every file below is created inside it and nowhere else. (No `#` comments inside the block: an interactive zsh would run them as words.)
 
@@ -80,37 +80,37 @@ D=$(mktemp -d)
 H="$D/home"
 mkdir "$H"
 mkdir -p "$H/.local/share/claude/versions" "$H/.local/bin" "$H/.claude/downloads" "$H/.claude/projects"
-printf '#!/bin/sh\necho "0.0.1-canager-check (Claude Code)"\n' > "$H/.local/share/claude/versions/0.0.1-canager-check"
-chmod 755 "$H/.local/share/claude/versions/0.0.1-canager-check"
-ln -s "$H/.local/share/claude/versions/0.0.1-canager-check" "$H/.local/bin/claude"
+printf '#!/bin/sh\necho "0.0.1-banager-check (Claude Code)"\n' > "$H/.local/share/claude/versions/0.0.1-banager-check"
+chmod 755 "$H/.local/share/claude/versions/0.0.1-banager-check"
+ln -s "$H/.local/share/claude/versions/0.0.1-banager-check" "$H/.local/bin/claude"
 printf '{}\n' > "$H/.claude.json"
 pnpm tauri build --debug --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
-open -n --stderr "$D/canager-stderr.log" --env HOME="$H" target/debug/bundle/macos/Canager.app
+open -n --stderr "$D/banager-stderr.log" --env HOME="$H" target/debug/bundle/macos/Banager.app
 sleep 5
-PID=$(pgrep -n -f 'Canager.app/Contents/MacOS/')
+PID=$(pgrep -n -f 'Banager.app/Contents/MacOS/')
 SEEN=$(ps eww -p "$PID" | tr ' ' '\n' | grep '^HOME=' || true)
 if [ "$SEEN" != "HOME=$H" ]; then
-  echo "STOP: Canager (pid $PID) runs with '${SEEN:-no HOME}', not HOME=$H. Quit it without pressing anything."
+  echo "STOP: Banager (pid $PID) runs with '${SEEN:-no HOME}', not HOME=$H. Quit it without pressing anything."
   exit 1
 fi
 PARENT=$(ps -o ppid= -p "$PID" | tr -d ' ')
 if [ "$PARENT" != "1" ]; then
-  echo "STOP: Canager (pid $PID) is a child of pid $PARENT, not of launchd: not a Finder-style launch. Quit it."
+  echo "STOP: Banager (pid $PID) is a child of pid $PARENT, not of launchd: not a Finder-style launch. Quit it."
   exit 1
 fi
-echo "OK: Canager (pid $PID) runs under launchd with HOME=$H; its stderr goes to $D/canager-stderr.log"
+echo "OK: Banager (pid $PID) runs under launchd with HOME=$H; its stderr goes to $D/banager-stderr.log"
 )
 ```
 
-It must end with the `OK:` line; after a `STOP:` line, quit Canager and stop. (`open` hands `--stderr` and `--env` to LaunchServices with the launch; the block checks that the app is still `launchd`'s child, the spike's proof of a Finder-style launch, and Step 3 establishes what that process may read.) In the window: Installed → *Claude Code*: **the row must show version `0.0.1-canager-check`**; if it shows any other version, quit Canager without pressing anything — it is looking at the real home. Then Uninstall → the dialog lists three moves and two kept paths → Uninstall → *Succeeded*. The operation log's three "Moved … (now at …)" lines say where each item went: under your real `~/.Trash`, spelled out in full because it is outside the throwaway home. If they went anywhere else (under the throwaway home's own `.Trash`, say), macOS chose the Trash by `HOME`, and Put Back cannot be checked in Finder this way — stop and report it.
+It must end with the `OK:` line; after a `STOP:` line, quit Banager and stop. (`open` hands `--stderr` and `--env` to LaunchServices with the launch; the block checks that the app is still `launchd`'s child, the spike's proof of a Finder-style launch, and Step 3 establishes what that process may read.) In the window: Installed → *Claude Code*: **the row must show version `0.0.1-banager-check`**; if it shows any other version, quit Banager without pressing anything — it is looking at the real home. Then Uninstall → the dialog lists three moves and two kept paths → Uninstall → *Succeeded*. The operation log's three "Moved … (now at …)" lines say where each item went: under your real `~/.Trash`, spelled out in full because it is outside the throwaway home. If they went anywhere else (under the throwaway home's own `.Trash`, say), macOS chose the Trash by `HOME`, and Put Back cannot be checked in Finder this way — stop and report it.
 
-**Step 3 — no Full Disk Access, for this very build.** (a) In System Settings → Privacy & Security → Full Disk Access, Canager is not listed, or its switch is off. If it is listed and on, turn it off (or remove it), quit Canager, and start again from Step 2 with a new block (a new folder). (b) Read the log the block named (`cat <that path>`): a debug build writes one line to stderr after each move, from `RealTrasher` (`cfg(debug_assertions)`; a release build does not contain it, Ruling 30), saying whether that process may list the Trash it has just used. All three must read `[canager] debug: read_dir(/Users/<you>/.Trash) -> Err: Operation not permitted (os error 1)` — the very process that moved the items was refused a listing of the Trash, which is how the spike proved its own runs had no Full Disk Access. A line ending `-> Ok: …` means this build has Full Disk Access: the check does not count; stop.
+**Step 3 — no Full Disk Access, for this very build.** (a) In System Settings → Privacy & Security → Full Disk Access, Banager is not listed, or its switch is off. If it is listed and on, turn it off (or remove it), quit Banager, and start again from Step 2 with a new block (a new folder). (b) Read the log the block named (`cat <that path>`): a debug build writes one line to stderr after each move, from `RealTrasher` (`cfg(debug_assertions)`; a release build does not contain it, Ruling 30), saying whether that process may list the Trash it has just used. All three must read `[banager] debug: read_dir(/Users/<you>/.Trash) -> Err: Operation not permitted (os error 1)` — the very process that moved the items was refused a listing of the Trash, which is how the spike proved its own runs had no Full Disk Access. A line ending `-> Ok: …` means this build has Full Disk Access: the check does not count; stop.
 
-**Step 4 — Put Back.** In Finder's Trash, right-click each of the three items (`claude`, `downloads`, and the second `claude` — the launcher, a dangling link when it was moved, since the folder it points into had gone first) → **Put Back** → all three are back under the throwaway home. Refresh in Canager → the Claude Code row is back. Quit Canager; the throwaway folder can go to the Trash afterwards.
+**Step 4 — Put Back.** In Finder's Trash, right-click each of the three items (`claude`, `downloads`, and the second `claude` — the launcher, a dangling link when it was moved, since the folder it points into had gone first) → **Put Back** → all three are back under the throwaway home. Refresh in Banager → the Claude Code row is back. Quit Banager; the throwaway folder can go to the Trash afterwards.
 
 **Step 5 — the record.** The author adds one sentence to `docs/what-we-run.md`'s `## Moving files to the Trash`: the date, the macOS version and chip, that the smoke test passed there, that a Finder-launched debug build passed this check without Full Disk Access (not granted in System Settings, and refused a listing of the Trash by its own debug line), and on how many of the three items Put Back worked.
 
-**If Put Back is missing for any item**, raise `PUT_BACK_SETTLE` and repeat; **if the move itself fails**, stop: the fallback spec §6.2 names (a `Trasher` that `create_dir`s a fresh `~/.Trash/Canager – <tool> <time>/` and `rename`s into it) fits the same trait, `Plan` and preview, but is a separate plan and an author decision.
+**If Put Back is missing for any item**, raise `PUT_BACK_SETTLE` and repeat; **if the move itself fails**, stop: the fallback spec §6.2 names (a `Trasher` that `create_dir`s a fresh `~/.Trash/Banager – <tool> <time>/` and `rename`s into it) fits the same trait, `Plan` and preview, but is a separate plan and an author decision.
 
 ## Rulings this plan makes
 
@@ -123,27 +123,27 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 5. **Check 1 applies the spec's never-list as written: the path's canonical parent must start with the canonical home and must be neither the home itself nor one of `~/.local`, `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`** (`recipe::SHARED_FOLDERS`; each compared both as the resolved home spells it and where it resolves, so a shared folder kept elsewhere in the home through a link still counts). Every Claude Code path passes (parents `~/.local/share`, `~/.claude`, `~/.local/bin`), and so does every Grok path spec §6.3 lists; a typo that lists `~/.local/bin` for `~/.local/bin/claude` does not — which is what the never-list is for ("防将来配方悄悄扩大爆炸半径"). The spec's other words, "之下至少两层", are not applied literally: read as "the parent at least two levels below home" they would refuse `~/.claude/downloads`, whose parent is one level down. The one listed path the never-list refuses is agy's `~/.cache/antigravity` (parent `~/.cache`), step D's: D decides it — an explicit, tested exception or a spec amendment — rather than this step widening the rule for a recipe it does not ship (backlog, Task 8). `recipes::tests` holds every `remove` path to the same rule as spelled, and the refusal has a reason of its own, `SharedFolder`, because "outside your home folder" would be false for it (Ruling 21).
 6. **A `KeepSpec` is listed only when the path exists.** "Keeps: ~/.claude.json" on a Mac without that file would be a false sentence; the check is one `lstat`.
 7. **Every path in a sentence (`WillTrash`, `WillKeep`, `AlreadyGone`, `PathChanged`, `UninstallUnsafe`, the two log notes) has `$HOME` abbreviated to `~`** by F's `scan::display_path`, made `pub(crate)` so the crate has one rule for `~` (spec §6.5: data for a sentence, not a path to act on). `PlanAction::TrashPaths.paths` and the trasher's calls stay absolute.
-8. **Canager's two log lines are `LogNote`s, not `OperationEvent::Log`.** Spec §6.2 writes `Log { line: "Moved <path> to the Trash (<new location>)" }`; `events.rs`'s rule for `LogNote` ("travels as a key plus arguments, never as text") and the en + zh-CN constraint are stronger, so this step adds `LogNote::MovedToTrash { path, trashed_to }` and `LogNote::TrashFailed { path, error }` with their `LogDrawer.tsx` cases (Task 4).
-9. **A refused item is `Outcome::Failed { exit_code: None, summary: <macOS's words> }`**, as spec §6.2 step 3 says, with the path in the log through `TrashFailed`. An item Canager cannot hand to the system at all — `TrashError::Unsupported`: not macOS, or a path that is not UTF-8, which `NSString` cannot carry — is `Outcome::CanagerFailed(Fault::Internal)` with no `TrashFailed` note: those are Canager's own words, never to be quoted as the Mac's (`Failed.summary` is another program's words, model.rs). `RealTrasher` answers it for every path alike, so it comes at the first item, before anything moved.
-10. **`execute` reconstructs everything from `Detected` and the recipe, and compares it with what the preview saw** (spec §6.3; Astra finding 2): it re-runs `plan_removal` and refuses with `PathChanged` when a check now fails, when the fresh list differs from the plan's (naming the first path that appeared, else the first that disappeared), or when any path's identity — `st_dev`, `st_ino` and the kind, from `lstat` (`ItemIdentity`) — differs from the one the preview recorded; all of it before anything moves. Then each item's turn runs every check again and compares its identity with the preview's once more (Rulings 24–26). The preview's identities travel with the plan: `PlanAction::TrashPaths { paths, previewed }`, where `previewed` is `#[serde(skip)]` — the `IssuedPlan` the window receives never contains it, the TypeScript mirror does not change, and a plan read back from JSON has none, which `execute_removal` refuses as Canager's own bug (`Fault::Internal`). Checked in a scratch crate on serde 1.0.229, this `Cargo.lock`'s: the externally tagged variant with a skipped `Vec` field serialises as `{"TrashPaths":{"paths":[…]}}`, deserialises with the field empty, ignores the key when a payload names it, and keeps the field through `Clone` — so the stored plan `Session::submit` hands to `OperationManager::submit` still carries it, and `Adapter::execute`'s signature does not change. The alternative the controller named, a table keyed by plan id beside `session/plans.rs`'s `StoredPlan`, would need a new parameter or channel into `execute`: `submit` consumes the `StoredPlan` and passes only the `Plan` on. A Claude Code that updated itself between the preview and the click (its updater re-points the launcher, which makes a new link) therefore stops with `PathChanged`, and the user previews again; the trust file and `PathChanged`'s copy say so.
-11. **`RealTrasher` compiles on every Unix target and moves only on macOS** (elsewhere `TrashError::Unsupported`, so a Linux build, which `lib.rs` says compiles, fails an uninstall honestly at run time). The URL is `NSURL::fileURLWithPath:isDirectory:` with `isDirectory` from the kind the item's last check saw — `Trasher::trash(path, kind)`, the kind from that check's `lstat`, so `RealTrasher` makes no look of its own between the check and the move (Ruling 26); a symlink is never a directory there — rather than the spike's `fileURLWithPath:`, which stats through a link to decide. A path that is not UTF-8 is `TrashError::Unsupported`, not a `Refused` carrying an English sentence of Canager's (Ruling 9).
+8. **Banager's two log lines are `LogNote`s, not `OperationEvent::Log`.** Spec §6.2 writes `Log { line: "Moved <path> to the Trash (<new location>)" }`; `events.rs`'s rule for `LogNote` ("travels as a key plus arguments, never as text") and the en + zh-CN constraint are stronger, so this step adds `LogNote::MovedToTrash { path, trashed_to }` and `LogNote::TrashFailed { path, error }` with their `LogDrawer.tsx` cases (Task 4).
+9. **A refused item is `Outcome::Failed { exit_code: None, summary: <macOS's words> }`**, as spec §6.2 step 3 says, with the path in the log through `TrashFailed`. An item Banager cannot hand to the system at all — `TrashError::Unsupported`: not macOS, or a path that is not UTF-8, which `NSString` cannot carry — is `Outcome::BanagerFailed(Fault::Internal)` with no `TrashFailed` note: those are Banager's own words, never to be quoted as the Mac's (`Failed.summary` is another program's words, model.rs). `RealTrasher` answers it for every path alike, so it comes at the first item, before anything moved.
+10. **`execute` reconstructs everything from `Detected` and the recipe, and compares it with what the preview saw** (spec §6.3; Astra finding 2): it re-runs `plan_removal` and refuses with `PathChanged` when a check now fails, when the fresh list differs from the plan's (naming the first path that appeared, else the first that disappeared), or when any path's identity — `st_dev`, `st_ino` and the kind, from `lstat` (`ItemIdentity`) — differs from the one the preview recorded; all of it before anything moves. Then each item's turn runs every check again and compares its identity with the preview's once more (Rulings 24–26). The preview's identities travel with the plan: `PlanAction::TrashPaths { paths, previewed }`, where `previewed` is `#[serde(skip)]` — the `IssuedPlan` the window receives never contains it, the TypeScript mirror does not change, and a plan read back from JSON has none, which `execute_removal` refuses as Banager's own bug (`Fault::Internal`). Checked in a scratch crate on serde 1.0.229, this `Cargo.lock`'s: the externally tagged variant with a skipped `Vec` field serialises as `{"TrashPaths":{"paths":[…]}}`, deserialises with the field empty, ignores the key when a payload names it, and keeps the field through `Clone` — so the stored plan `Session::submit` hands to `OperationManager::submit` still carries it, and `Adapter::execute`'s signature does not change. The alternative the controller named, a table keyed by plan id beside `session/plans.rs`'s `StoredPlan`, would need a new parameter or channel into `execute`: `submit` consumes the `StoredPlan` and passes only the `Plan` on. A Claude Code that updated itself between the preview and the click (its updater re-points the launcher, which makes a new link) therefore stops with `PathChanged`, and the user previews again; the trust file and `PathChanged`'s copy say so.
+11. **`RealTrasher` compiles on every Unix target and moves only on macOS** (elsewhere `TrashError::Unsupported`, so a Linux build, which `lib.rs` says compiles, fails an uninstall honestly at run time). The URL is `NSURL::fileURLWithPath:isDirectory:` with `isDirectory` from the kind the item's last check saw — `Trasher::trash(path, kind)`, the kind from that check's `lstat`, so `RealTrasher` makes no look of its own between the check and the move (Ruling 26); a symlink is never a directory there — rather than the spike's `fileURLWithPath:`, which stats through a link to decide. A path that is not UTF-8 is `TrashError::Unsupported`, not a `Refused` carrying an English sentence of Banager's (Ruling 9).
 12. **Tests set the pause to zero** with `StandaloneAdapter::with_trash_gap(Duration::ZERO)` (a public builder like `BrewAdapter::with_background_change`, reachable from `tests/`), and the `#[ignore]` smoke test calls `RealTrasher` directly, so no test waits seconds per item.
 13. **Copy.** B's `NoSafeMethod` sentence stays (B's ruling 15): after this step it is produced only for a recipe without an uninstall method, for which it is still true. `sourceNotice.launcherOnly.description` gets back the three promises of spec §9.2 that B withheld (the files may be in the Trash after a stopped uninstall; Uninstall moves the link; put the folder back and refresh) while keeping B's reviewed correction that another installation may still run when the command is typed (B's Astra finding 9), so the sentence says "this link can't run", not "typing claude fails".
 14. **`testing::{command_program, command_args, command_env}`** (Task 1) are how the ~40 existing test assertions read a `Command` plan's parts after the fields move; each panics on a `TrashPaths` plan, saying so. They live in the public `crate::testing` (reachable from `tests/` and `src-tauri`), return `&Path`/`&[String]`/`&[(String, String)]`, and no production code calls them.
 15. **Operation-aware verification (B's deviation 15, "Step C handoff").** `run_operation` reads `Adapter::reconcile_after_uninstall` after an `Uninstall` and `reconcile` after everything else. The new trait method has a default body (`self.reconcile(inst, key).await`), so the seven package-manager adapters and every test fake are unchanged; `StandaloneAdapter` overrides it to answer presence alone, so a launcher-only launcher is "still there" after an uninstall while `reconcile` keeps B's strict refusal for upgrades — and a launcher it cannot look at is an error, never absence (`route::probe_strict`, Ruling 27). No state is kept between `execute` and the reading.
-16. **The `uninstall_unsafe` refusal is shown as its own sentence**, without `uninstall.planError`'s "Couldn't check what this would affect:" frame — Canager did check; the six sentences already say nothing was changed. The same reason the pinned refusal skips the frame (`refusalText`).
-17. **`operations.outcome.CanagerFailed.PathChanged` says what is true for a stop in the middle too**: spec §9.2's "so Canager didn't move anything" is true only when the first item changed; the sentence names the path, says Canager stopped without moving it, and points at the log for anything moved before.
+16. **The `uninstall_unsafe` refusal is shown as its own sentence**, without `uninstall.planError`'s "Couldn't check what this would affect:" frame — Banager did check; the six sentences already say nothing was changed. The same reason the pinned refusal skips the frame (`refusalText`).
+17. **`operations.outcome.BanagerFailed.PathChanged` says what is true for a stop in the middle too**: spec §9.2's "so Banager didn't move anything" is true only when the first item changed; the sentence names the path, says Banager stopped without moving it, and points at the log for anything moved before.
 18. **The end-to-end test runs through `Session`** (`refresh` → `issue_plan`'s gate → `submit` → `run_operation`), not only `OperationManager`, so it also proves the gate lets an unblocked Claude Code uninstall through and that the next refresh shows the launcher-only row.
 19. **The pause is per operation.** Two uninstalls whose moves fall within ~2 s of each other could still lose a Put Back record for the second's first item; a second uninstall needs a fresh preview and a confirmation, which take longer than that. Recorded in the backlog (Task 8), with its shape.
 20. **`MockTrasher` is test-only code.** It creates a temporary directory, renames into it and removes it on drop — a permanent delete of whatever was moved into it — so it is compiled only under `#[cfg(any(test, feature = "test-support"))]`, the crate's existing feature for test code that touches real state (`testing::expire_issued_plans`), and banager-core's own integration tests turn that feature on through a dev-dependency on the crate itself (`banager-core = { path = ".", features = ["test-support"] }`). Checked in a scratch workspace of the same shape on cargo 1.98.1 (a second member that also enables the feature under `[dev-dependencies]`): `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, and a release build does not have the feature.
-21. **Six refusal reasons, not four.** Check 1 has two findings a sentence must keep apart: the folder leads out of the home folder (`OutsideHome`), and the folder is the home folder or a shared one (`SharedFolder`, Ruling 5) — "it's outside your home folder" would be false for `~/.local/bin`. `NotWhatInstructionsExpect`'s sentence says Canager *couldn't confirm* the path is what the instructions describe, naming the usual causes as possibilities — the path, or a folder it is in, may be a link to somewhere else (Ruling 24), or it may be a different kind of file — because it is also the answer for a path that could not be examined at all. The sixth, `OverlapsKept`, is Ruling 25's, and its sentence names the kept path, not a listed one.
-22. **The preview's label follows the arm.** `CommandPreview` shows `commandPreview.label` ("This will run:") above an argv, and `commandPreview.trashLabel` ("What Canager will do:"; zh "将执行：", the label spec §6.6's dialog shows) above the `TrashPaths` sentence, so "no command runs" never sits under "This will run:".
-23. **The documents change in the commit that makes them true.** Task 6's commit (stage 6g) carries every trust-file and README sentence its behaviour makes true or false — the Claude Code section's uninstall, "Files Canager writes", the new Trash section, the never-list, the README row and safety bullets — with the two `what_we_run_test` tests that hold them to the code. Task 7 adds what describes its own test (the smoke test's sentences, the ignored-tests paragraph, "plus 3 more"); Task 8 the backlog, the Language sections and the test counts, which only lag, never contradict.
+21. **Six refusal reasons, not four.** Check 1 has two findings a sentence must keep apart: the folder leads out of the home folder (`OutsideHome`), and the folder is the home folder or a shared one (`SharedFolder`, Ruling 5) — "it's outside your home folder" would be false for `~/.local/bin`. `NotWhatInstructionsExpect`'s sentence says Banager *couldn't confirm* the path is what the instructions describe, naming the usual causes as possibilities — the path, or a folder it is in, may be a link to somewhere else (Ruling 24), or it may be a different kind of file — because it is also the answer for a path that could not be examined at all. The sixth, `OverlapsKept`, is Ruling 25's, and its sentence names the kept path, not a listed one.
+22. **The preview's label follows the arm.** `CommandPreview` shows `commandPreview.label` ("This will run:") above an argv, and `commandPreview.trashLabel` ("What Banager will do:"; zh "将执行：", the label spec §6.6's dialog shows) above the `TrashPaths` sentence, so "no command runs" never sits under "This will run:".
+23. **The documents change in the commit that makes them true.** Task 6's commit (stage 6g) carries every trust-file and README sentence its behaviour makes true or false — the Claude Code section's uninstall, "Files Banager writes", the new Trash section, the never-list, the README row and safety bullets — with the two `what_we_run_test` tests that hold them to the code. Task 7 adds what describes its own test (the smoke test's sentences, the ignored-tests paragraph, "plus 3 more"); Task 8 the backlog, the Language sections and the test counts, which only lag, never contradict.
 24. **The ancestry rule** (Astra findings 1 and 3; the controller's ruling). Every folder between the resolved home folder and a listed path must be a real folder, not a link: for the folder the path is in, `canonicalize(folder)` must equal the resolved home joined with the recipe's own spelling of that folder (`removal::check_item`). The listed path itself may be a link only where the recipe says `Expect::SymlinkIntoRoot` (for `Dir` its `lstat` must say directory). One rule defeats `~/.claude -> ~/.local/share/claude`, `~/.claude -> ~/Documents` (an unrelated `~/Documents/downloads` would otherwise pass as Claude Code's cache) and an ancestor renamed away and replaced by a link between two moves while the item keeps its inode. The home folder itself may still be reached through a link (`HostEnv.home`): both sides are resolved. Check 1 runs first, so a folder that leads outside the home folder keeps its own sentence (`OutsideHome`) and a shared folder its own (`SharedFolder`); a link that stays inside the home folder is refused as `NotWhatInstructionsExpect`, whose sentence now says a folder the path is in may be a link (Ruling 21). Consequence, deliberate: a `~/.local/bin` kept as a link to a dotfiles folder now refuses the uninstall where spec §6.3's check 1 accepted it, and so does a `~/.claude` kept as a link while `~/.claude/downloads` exists inside it (without the cache nothing listed lies under it, and the uninstall goes ahead) — detection still lists the row (route.rs resolves the launcher's folder first), the dialog says why, and the backlog records the shape of a relaxation (Task 8). And because every listed path's folders are real folders, two listed paths can overlap on the disk only as they overlap as spelled, which `recipes::tests` already forbids.
-25. **Kept paths stay kept** (Astra finding 1; the controller's ruling). With every link resolved, a path to be moved must not be a kept path, hold one, or hold what one leads to, and may lie inside a kept path only where the recipe lists it there — `~/.claude/downloads` inside `~/.claude`, and only while `~/.claude` is a real folder (`removal::disturbed`). The controller's words were "no path to be moved lies inside or equals a path to be kept and vice versa"; taken literally they refuse Claude Code's own list, whose cache lies by design inside the kept `~/.claude` (spec §6.3's claude row), so the one nesting the recipe spells is allowed and every other is refused. A kept path that exists but cannot be placed (its folder or its target unreadable) refuses too. The refusal is a sixth reason, `OverlapsKept`, whose sentence names the kept path and says Canager couldn't confirm the moves leave it where it is; none of the five existing sentences would be true of it (with `~/.claude -> ~/.local/share/claude`, no listed path is a link and no folder leads outside the home folder). At run time the same finding is `PathChanged`, naming the kept path. The check runs in `plan_removal` and in every item's turn.
-26. **The last check is immediately before the move** (Astra finding 4; the controller's ruling: not a blocker). What the checks guard against is change by accident — the tool's own updater, the user, another app doing its ordinary work — not a hostile process running as the user, which already has every right Canager has. Each item's turn (`removal::take_turn`, on the blocking pool) runs every check from a fresh look, and the last of them is the item's own `lstat`, whose identity is compared with the preview's and whose kind is handed to `Trasher::trash`; nothing touches the disk between that `lstat` and `trashItemAtURL:`, because `RealTrasher` no longer looks at the path itself (Ruling 11) and building the URL reads nothing. What remains is the gap a pathname call cannot close — the system's move takes a path, and an item swapped between the last check and the call is the item it moves — and the trust file and the code say so in one sentence: "Canager checks each item immediately before moving it; a program running as you that swaps the item in that instant could still race it." Two tests pin the boundary with `MockTrasher`: a substitution before an item's turn is caught; one made inside the move itself is what gets moved (out of scope, documented).
+25. **Kept paths stay kept** (Astra finding 1; the controller's ruling). With every link resolved, a path to be moved must not be a kept path, hold one, or hold what one leads to, and may lie inside a kept path only where the recipe lists it there — `~/.claude/downloads` inside `~/.claude`, and only while `~/.claude` is a real folder (`removal::disturbed`). The controller's words were "no path to be moved lies inside or equals a path to be kept and vice versa"; taken literally they refuse Claude Code's own list, whose cache lies by design inside the kept `~/.claude` (spec §6.3's claude row), so the one nesting the recipe spells is allowed and every other is refused. A kept path that exists but cannot be placed (its folder or its target unreadable) refuses too. The refusal is a sixth reason, `OverlapsKept`, whose sentence names the kept path and says Banager couldn't confirm the moves leave it where it is; none of the five existing sentences would be true of it (with `~/.claude -> ~/.local/share/claude`, no listed path is a link and no folder leads outside the home folder). At run time the same finding is `PathChanged`, naming the kept path. The check runs in `plan_removal` and in every item's turn.
+26. **The last check is immediately before the move** (Astra finding 4; the controller's ruling: not a blocker). What the checks guard against is change by accident — the tool's own updater, the user, another app doing its ordinary work — not a hostile process running as the user, which already has every right Banager has. Each item's turn (`removal::take_turn`, on the blocking pool) runs every check from a fresh look, and the last of them is the item's own `lstat`, whose identity is compared with the preview's and whose kind is handed to `Trasher::trash`; nothing touches the disk between that `lstat` and `trashItemAtURL:`, because `RealTrasher` no longer looks at the path itself (Ruling 11) and building the URL reads nothing. What remains is the gap a pathname call cannot close — the system's move takes a path, and an item swapped between the last check and the call is the item it moves — and the trust file and the code say so in one sentence: "Banager checks each item immediately before moving it; a program running as you that swaps the item in that instant could still race it." Two tests pin the boundary with `MockTrasher`: a substitution before an item's turn is caught; one made inside the move itself is what gets moved (out of scope, documented).
 27. **The launcher is one link into its root, and "could not tell" is not "gone"** (Astra finding 6; the controller's ruling). `route::probe` accepts only a launcher whose own text, taken from its resolved folder, names a place inside the resolved root (`one_hop`), besides resolving there: `claude -> ~/.local/bin/claude-current -> ~/.local/share/claude/versions/<v>` is not the installer's layout and is no instance — the Unknown page lists it — because once the root is in the Trash the middle link dangles, the launcher's own text no longer points into the root, and a stopped uninstall would read as a finished one. A link the tool keeps inside its root (a `current`) is its own business: B's two-hop test stands, and a launcher dangling through such a link is launcher-only. `route::probe_strict` is `probe` keeping its errors — `Ok(Absent)` only when the launcher's `lstat` says it is not there or what is there is not this route's, `Err` for any other error on the way — and `probe` is `probe_strict(..).unwrap_or(Absent)`, B's behaviour for detection and refresh. `StandaloneAdapter::reconcile_after_uninstall` reads presence with `probe_strict` and reads no version, so a permission error during the reading after an uninstall is an `Err`, which `run_operation` already reports as `Unconfirmed`, never `Succeeded`. B's `reconcile` (the upgrade's reading) keeps `probe`; that its `Absent` can hide an error is recorded in the backlog (Task 8), not changed here.
-28. **Each move runs on the blocking pool; the budget stops Canager between items** (Astra finding 7; the controller's ruling). `trashItemAtURL:` blocks; each item's turn — its checks and its move — runs in `tokio::task::spawn_blocking` and is awaited to its end even when Cancel arrives meanwhile: a move already handed to the system finishes and is logged, and only then does the run stop, so nothing is still moving on another thread when `execute_removal` reports. Every pause is cut to what is left of the budget, and the budget is checked before each item. A turn that panics is `Unconfirmed` (whether that item moved is unknown; `run_operation` reads the disk). The trust file says "Canager stops between items once the budget is spent", not "120 s in all".
+28. **Each move runs on the blocking pool; the budget stops Banager between items** (Astra finding 7; the controller's ruling). `trashItemAtURL:` blocks; each item's turn — its checks and its move — runs in `tokio::task::spawn_blocking` and is awaited to its end even when Cancel arrives meanwhile: a move already handed to the system finishes and is logged, and only then does the run stop, so nothing is still moving on another thread when `execute_removal` reports. Every pause is cut to what is left of the budget, and the budget is checked before each item. A turn that panics is `Unconfirmed` (whether that item moved is unknown; `run_operation` reads the disk). The trust file says "Banager stops between items once the budget is spent", not "120 s in all".
 29. **Put Back is observed, not promised; `mv`'s real faults** (Astra finding 9; the controller's ruling). Every sentence about Put Back — code comments, the trust file, the README, the delivery note — says what was observed and that the 3-second pause makes it likely, not certain; an item without Finder's record can still be dragged back out of the Trash. The preview's sentence (`uninstall.trashPreview`, both locales) is reworded the same way, since "put them back" reads as Finder's Put Back: it promises what is certain (the items can be dragged back until the Trash is emptied) and says Finder's Put Back will likely work too. No sentence says `mv` could not reach a TCC-protected Trash — the spike disproved that premise (a rename into `~/.Trash` succeeded without Full Disk Access); the reasons against `mv` are the basename collision and the missing Put Back record.
 30. **A debug-only line tells the pre-merge check what the build itself was allowed** (Astra finding 8; the controller's ruling). After each move, a debug build's `RealTrasher` tries to list the Trash it has just used and prints the answer to stderr (`#[cfg(all(target_os = "macos", debug_assertions))]`): without Full Disk Access macOS refuses with `Operation not permitted`, which is how the spike proved its runs had none. It runs after the move, never between a check and the move, and a release build does not contain it. The author's check launches the debug build with `open --stderr` and reads the line (Step 3 of "The author's pre-merge check").
 
@@ -194,7 +194,7 @@ src/lib/warnings.ts, warnings.test.ts                             MOD  REMOVED_W
 src/lib/format.ts, format.test.ts                                 MOD  faultKey/faultArgs PathChanged (4)
 src/components/LogDrawer.tsx, LogDrawer.test.tsx                  MOD  noteText MovedToTrash / TrashFailed (4)
 src/lib/sources.ts, sources.test.ts                               MOD  UninstallUnsafeReason, UNINSTALL_UNSAFE_KEYS, parseUninstallUnsafe, the switch case (5); the launcherOnly comment and assertions (6f)   [B's file]
-src/i18n/completeness.test.ts                                     MOD  INTERPOLATED_SUBTREES["operations.outcome"] += "CanagerFailed.PathChanged" (4)
+src/i18n/completeness.test.ts                                     MOD  INTERPOLATED_SUBTREES["operations.outcome"] += "BanagerFailed.PathChanged" (4)
 src/i18n/en.json, zh-CN.json                                      MOD  uninstall.trashPreview, commandPreview.trashLabel (1); warnings.* (3); operations.* (4); planRefused.uninstallUnsafe.* (5); sourceNotice.launcherOnly.description (6f)   [B's file]
 docs/what-we-run.md                                               MOD  the intro; when commands run; Claude Code's uninstall; files read/written; the Trash section; the never-list (6g); the smoke test's sentences (7)   [A's + B's + F's file]
 docs/superpowers/backlog.md                                       MOD  four entries: the pause is per operation; check 1's never-list against agy's cache; a linked ~/.local/bin refuses the uninstall; the upgrade's reading still reads a probe error as absence (8)
@@ -240,7 +240,7 @@ pub(crate) fn display_path(path: &Path, home: &Path) -> PathBuf;
 
 // crates/banager-core/src/trash/mod.rs, real.rs, mock.rs
 pub trait Trasher: Send + Sync { fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError>; }   // kind: what the last check's lstat saw
-pub enum TrashError { Refused { detail: String }, Unsupported }   // Debug, thiserror; Refused = the system's words, Unsupported = Canager could not ask (not macOS, not UTF-8)
+pub enum TrashError { Refused { detail: String }, Unsupported }   // Debug, thiserror; Refused = the system's words, Unsupported = Banager could not ask (not macOS, not UTF-8)
 pub struct RealTrasher;  impl RealTrasher { pub fn new() -> RealTrasher }            // + Default
 // `pub mod mock`, `pub use mock::MockTrasher` and everything below: #[cfg(any(test, feature = "test-support"))]
 pub struct MockTrasher;  impl MockTrasher { pub fn new() -> MockTrasher; pub fn bin(&self) -> &Path; pub fn calls(&self) -> Vec<PathBuf>; pub fn kinds(&self) -> Vec<ItemKind>;
@@ -299,18 +299,18 @@ export function parseUninstallUnsafe(message: string): { path: string; reason: U
 
 IPC kind (Task 5): `{"kind":"uninstall_unsafe","path":"~/.local/bin/claude","reason":"not_what_instructions_expect"}`, the reason spelled by an exhaustive `match` in `plan_operation_error`, never by serde. The TypeScript `Plan`/`PlanAction` mirror is Task 1's and never changes for `previewed`, which does not cross the wire.
 
-New locale keys, all in both files: `uninstall.trashPreview_one`/`_other`, `commandPreview.trashLabel` (Task 1); `warnings.willTrash.{Launcher,Program,Cache}`, `warnings.willKeep.{Settings,SettingsAndHistory}`, `warnings.alreadyGone` (Task 3); `operations.outcome.CanagerFailed.PathChanged`, `operations.logNote.{movedToTrash,trashFailed}` (Task 4); `planRefused.uninstallUnsafe.{outsideHome,sharedFolder,missing,notOwnedByYou,notWhatInstructionsExpect,overlapsKept}` (Task 5). Changed: `sourceNotice.launcherOnly.description` (Task 6).
+New locale keys, all in both files: `uninstall.trashPreview_one`/`_other`, `commandPreview.trashLabel` (Task 1); `warnings.willTrash.{Launcher,Program,Cache}`, `warnings.willKeep.{Settings,SettingsAndHistory}`, `warnings.alreadyGone` (Task 3); `operations.outcome.BanagerFailed.PathChanged`, `operations.logNote.{movedToTrash,trashFailed}` (Task 4); `planRefused.uninstallUnsafe.{outsideHome,sharedFolder,missing,notOwnedByYou,notWhatInstructionsExpect,overlapsKept}` (Task 5). Changed: `sourceNotice.launcherOnly.description` (Task 6).
 
 ## Task List
 
 | # | Task | Deliverable |
 |---|---|---|
-| 1 | `PlanAction` in place of `program`/`args`/`env`, everywhere | the plan shape a no-command uninstall needs; `CommandPreview` says "Canager moves … itself" for it |
+| 1 | `PlanAction` in place of `program`/`args`/`env`, everywhere | the plan shape a no-command uninstall needs; `CommandPreview` says "Banager moves … itself" for it |
 | 2 | Operation-aware uninstall verification: `Adapter::reconcile_after_uninstall` | `run_operation` asks only "is it still there?" after an uninstall |
 | 3 | `Warning::{WillTrash, WillKeep, AlreadyGone}`, `RemovedWhat`, `KeptWhat`, their copy | the dialog's item list, in both languages |
 | 4 | `Fault::PathChanged`, `LogNote::{MovedToTrash, TrashFailed}`, their copy | honest words for a changed path and for each move |
 | 5 | `AdapterError::UninstallUnsafe`, `UninstallUnsafeReason`, the IPC kind, the dialog's wording | the six refusals reach the screen in the user's language |
-| 6 | The path-list uninstall: the Trash seam, Claude Code's list, the one-hop launcher, `removal.rs`, the adapter, the row's words, the trust file and the README (one commit, stages 6a–6h) | Claude Code can be uninstalled from Canager, and the documents say so |
+| 6 | The path-list uninstall: the Trash seam, Claude Code's list, the one-hop launcher, `removal.rs`, the adapter, the row's words, the trust file and the README (one commit, stages 6a–6h) | Claude Code can be uninstalled from Banager, and the documents say so |
 | 7 | End to end through `Session`; the `#[ignore]` `RealTrasher` smoke; the CI step; the smoke test's lines in the trust file and the README | the outcome the user sees, and the real call on every CI push |
 | 8 | The backlog, the README's Language sections, the test counts | the documents that only lagged catch up |
 
@@ -321,13 +321,13 @@ Order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Tasks 2–5 are independent 
 Eight inputs the spec implies, or its reviewers found, that a person is most likely to hit, most likely first. Each has its test in the task named.
 
 1. **Two paths with the same basename** (`~/.local/share/claude` and `~/.local/bin/claude`) → both are moved and both are in the Trash as two items; `mv -n` would have skipped the second and reported success (Task 6 `test_execute_moves_every_listed_path_in_order_and_logs_each`; Task 7 `test_uninstalling_claude_code_moves_its_three_paths_and_keeps_its_settings`).
-2. **Something changes between the preview and the click** — the launcher re-pointed at Homebrew's copy (a check fails), the updater creating `~/.claude/downloads` (the list grows), or Claude Code updating itself and re-pointing the launcher at a new version inside its root (every check still passes, but the link is not the one the preview saw) → `CanagerFailed(PathChanged)` naming that path, nothing moved, and the user previews again (Task 6 `test_execute_removal_refuses_when_a_check_now_fails`, `test_execute_removal_refuses_when_the_fresh_list_differs_from_the_preview`, `test_execute_removal_refuses_what_the_preview_did_not_see`, `test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview`; Task 7 `test_a_path_changed_after_the_preview_stops_the_uninstall_before_it_moves_anything`, `test_a_self_update_between_the_preview_and_the_click_stops_the_uninstall_before_it_moves_anything`).
+2. **Something changes between the preview and the click** — the launcher re-pointed at Homebrew's copy (a check fails), the updater creating `~/.claude/downloads` (the list grows), or Claude Code updating itself and re-pointing the launcher at a new version inside its root (every check still passes, but the link is not the one the preview saw) → `BanagerFailed(PathChanged)` naming that path, nothing moved, and the user previews again (Task 6 `test_execute_removal_refuses_when_a_check_now_fails`, `test_execute_removal_refuses_when_the_fresh_list_differs_from_the_preview`, `test_execute_removal_refuses_what_the_preview_did_not_see`, `test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview`; Task 7 `test_a_path_changed_after_the_preview_stops_the_uninstall_before_it_moves_anything`, `test_a_self_update_between_the_preview_and_the_click_stops_the_uninstall_before_it_moves_anything`).
 3. **Something changes during the pauses between moves** — the cache replaced by a folder of the same name, or `~/.claude` renamed out of the home folder and replaced by a link to where it went, the cache keeping its inode → that item's turn runs every check again and stops there; a swap inside the move itself is the documented edge (Task 6 `test_execute_removal_catches_a_substitution_before_an_items_check`, `test_execute_removal_checks_an_items_folders_again_after_the_pause`, `test_a_substitution_inside_the_move_itself_is_beyond_the_last_check`).
 4. **macOS refuses an item after the first, or the user cancels between items** → the launcher stays, the outcome is `Failed`/`Cancelled`, the next refresh shows the launcher-only row with an Uninstall, and a second uninstall lists the program directory as already gone and finishes (a refusal of the first item, or a Cancel before it, moves nothing and leaves the ordinary row); a Cancel while a move is under way waits for that move (Task 2 `test_an_uninstall_is_verified_by_reconcile_after_uninstall_alone`; Task 6 `test_execute_stops_at_a_refused_item_and_leaves_the_launcher`, `test_execute_stops_between_items_when_cancelled`, `test_execute_removal_finishes_a_move_under_way_when_cancel_arrives`; Task 7 `test_an_uninstall_macos_refuses_partway_leaves_a_launcher_only_row_that_a_second_uninstall_finishes`, `test_an_uninstall_cancelled_between_items_is_reported_cancelled_and_a_second_uninstall_finishes`).
 5. **A folder on the way that is a link** — `~/.local/share → /Volumes/Data/share` (`outside_home`), or `~/.claude → ~/Documents` and `~/.local/bin → ~/dotfiles/bin`, links that stay inside the home folder (`not_what_instructions_expect`), while a home folder that is itself reached through a link is accepted (Task 6 `test_plan_removal_refuses_a_parent_that_leads_outside_home`, `test_plan_removal_refuses_a_path_reached_through_a_linked_folder_inside_home`, `test_plan_removal_accepts_a_home_reached_through_a_symlink`).
 6. **A kept path that leads into what would be moved** — `~/.claude → ~/.local/share/claude`, or a `~/.claude.json` that is a link into the program folder → `overlaps_kept` naming the kept path, at the preview and at the confirmation (Task 6 `test_plan_removal_refuses_when_a_kept_path_leads_into_what_it_would_move`, `test_execute_removal_refuses_a_settings_folder_linked_to_the_program_folder_after_the_preview`).
 7. **The reading after an uninstall cannot see** — a permission error on the launcher's folder → `Unconfirmed`, never `Succeeded`; and a launcher that reaches its root through another link is no instance, so no uninstall can stop with that link dangling and read as finished (Task 2 `test_an_uninstall_whose_reading_cannot_tell_is_unconfirmed_never_succeeded`; Task 6 `test_probe_strict_says_it_cannot_tell_where_probe_says_absent`, `test_probe_refuses_a_launcher_that_reaches_the_root_through_a_link_outside_it`, `test_reconcile_after_uninstall_tells_there_gone_and_cannot_tell_apart`; Task 7 `test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_succeeded`).
-8. **The real Trash call on the link kinds this step moves** — a dangling launcher (the last item of every uninstall, and the only item of a second one after a stop) and a link to a directory → the link itself lands in the Trash and its target stays put (Task 7 `test_real_trasher_moves_each_kind_of_item_and_links_as_links`, `#[ignore]` and `CANAGER_LIVE=1`, run once by the author on their Mac and on every CI push; a merge blocker).
+8. **The real Trash call on the link kinds this step moves** — a dangling launcher (the last item of every uninstall, and the only item of a second one after a stop) and a link to a directory → the link itself lands in the Trash and its target stays put (Task 7 `test_real_trasher_moves_each_kind_of_item_and_links_as_links`, `#[ignore]` and `BANAGER_LIVE=1`, run once by the author on their Mac and on every CI push; a merge blocker).
 
 (Ownership — check 3 — is not in the eight because it has its own test: Task 6 `test_plan_removal_refuses_a_path_the_user_does_not_own`, with an injected `euid`, since a test cannot make a file owned by someone else. Nor is check 1's never-list — a path directly in the home folder or in a folder many tools share — which only a recipe typo or an odd link can reach: Task 6 `test_plan_removal_refuses_a_path_whose_folder_is_home_or_shared` and `recipes::tests` pin it.)
 
@@ -598,9 +598,9 @@ describe("CommandPreview", () => {
     expect(getByText("'/Users/Alice Smith/bin/brew' upgrade --cask onyx")).toBeInTheDocument();
   });
 
-  it("says Canager moves the listed items itself, counted, when the plan runs no command", () => {
+  it("says Banager moves the listed items itself, counted, when the plan runs no command", () => {
     // A path-list uninstall (spec §6.2): no argv exists, so the honest
-    // preview is a sentence -- what Canager will do, that no command
+    // preview is a sentence -- what Banager will do, that no command
     // runs, and that nothing is deleted -- under a label of its own, never
     // "This will run:". The items themselves are the dialog's `WillTrash`
     // list above it. No <code>: there is nothing to copy into a terminal.
@@ -618,11 +618,11 @@ describe("CommandPreview", () => {
       />,
     );
 
-    expect(getByText("What Canager will do:")).toBeInTheDocument();
+    expect(getByText("What Banager will do:")).toBeInTheDocument();
     expect(queryByText("This will run:")).toBeNull();
     expect(
       getByText(
-        "Canager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
+        "Banager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
       ),
     ).toBeInTheDocument();
     expect(container.querySelector("code")).toBeNull();
@@ -635,7 +635,7 @@ describe("CommandPreview", () => {
 
     expect(
       getByText(
-        "Canager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
+        "Banager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
       ),
     ).toBeInTheDocument();
   });
@@ -890,7 +890,7 @@ That is 23 `Plan {` literals at `3b5117a` (`grep -rnE '(^|[^A-Za-z_])Plan\s*\{' 
  * does when it runs. Externally tagged single-key objects. `Command` is
  * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
  * path-list uninstall of a tool installed by its own installer, which
- * Canager carries out itself by moving each path to the Trash (phase 4
+ * Banager carries out itself by moving each path to the Trash (phase 4
  * step C) -- no argv exists, so `CommandPreview` shows a sentence for it.
  * `CommandPreview` branches on `"Command" in action` with a `never`
  * default, so a third arm fails `tsc` until it has a preview.
@@ -930,7 +930,7 @@ export interface CommandPreviewProps {
  * `/Users/Alice` with an argument `Smith/bin/brew`; both destructive paths
  * (updates and uninstall) rely on this component as the operator's only
  * view of what is about to run. For a `TrashPaths` plan there is no
- * command to show: the honest preview is one sentence -- Canager moves the
+ * command to show: the honest preview is one sentence -- Banager moves the
  * listed items to the Trash itself, no command runs, nothing is deleted --
  * under a label of its own (`commandPreview.trashLabel`), never "This will
  * run:", and the items are the dialog's `WillTrash` warnings above it
@@ -982,17 +982,17 @@ In `src/components/UninstallDialog.tsx`, replace `<CommandPreview program={plan.
 **3h. The copy.** In `src/i18n/en.json`, inside `"uninstall": { … }`, after `"affectedBlocksConfirm": "…"` add `,` and:
 
 ```json
-    "trashPreview_one": "Canager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
-    "trashPreview_other": "Canager moves the {{count}} items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too."
+    "trashPreview_one": "Banager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
+    "trashPreview_other": "Banager moves the {{count}} items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too."
 ```
 
 In `src/i18n/zh-CN.json`, the same position:
 
 ```json
-    "trashPreview_other": "Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。"
+    "trashPreview_other": "Banager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。"
 ```
 
-And the label above that sentence (Ruling 22): in `src/i18n/en.json`, inside `"commandPreview": { … }`, after `"label": "This will run:",` add `"trashLabel": "What Canager will do:",`; in `src/i18n/zh-CN.json`, after `"label": "将执行：",` add `"trashLabel": "将执行：",` — the label spec §6.6's dialog shows above this sentence, which in Chinese does not say that a command runs.
+And the label above that sentence (Ruling 22): in `src/i18n/en.json`, inside `"commandPreview": { … }`, after `"label": "This will run:",` add `"trashLabel": "What Banager will do:",`; in `src/i18n/zh-CN.json`, after `"label": "将执行：",` add `"trashLabel": "将执行：",` — the label spec §6.6's dialog shows above this sentence, which in Chinese does not say that a command runs.
 
 - [ ] **Step 4: Run to verify they pass**
 
@@ -1011,13 +1011,13 @@ git commit -m "$(cat <<'EOF'
 Give a plan an action: one command, or a list of paths to move to the Trash
 
 Every plan used to be one program and one argv. A path-list uninstall of
-a tool installed by its own installer runs no command: Canager moves each
+a tool installed by its own installer runs no command: Banager moves each
 path to the Trash itself, and one mv could not express two paths with
 the same basename anyway. Plan.program/args/env become
 PlanAction::Command, beside a TrashPaths arm the standalone adapter's
 uninstall will build; run_plan refuses that arm, the argv preview is
 empty for it, and CommandPreview says in one sentence, under a label of
-its own, what Canager will do instead of showing a command that will not
+its own, what Banager will do instead of showing a command that will not
 run.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -1544,7 +1544,7 @@ Inside `describe("warningArgs", …)`, before `it("is empty for every other vari
 In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("pluralises WouldBreak's copy and interpolates every name", …)` and before `it("renders a warning variant the mirror lacks as its raw key rather than dropping it", …)`, insert:
 
 ```tsx
-  it("lists what a path-list uninstall moves, keeps and finds gone, and says Canager does the moving", async () => {
+  it("lists what a path-list uninstall moves, keeps and finds gone, and says Banager does the moving", async () => {
     // Spec §6.6, the Claude Code dialog: every item is a sentence in the
     // user's language, in the order the paths will be moved, the kept
     // paths after them; the preview below is one sentence with the
@@ -1594,7 +1594,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("pl
     ]);
     expect(
       screen.getByText(
-        "Canager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
+        "Banager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
@@ -1622,7 +1622,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("pl
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Canager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
+        "Banager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
       ),
     ).toBeInTheDocument();
   });
@@ -1833,34 +1833,34 @@ EOF
 ### Task 4: `Fault::PathChanged`, `LogNote::{MovedToTrash, TrashFailed}`, their copy
 
 **Files:**
-- Modify: `crates/banager-core/src/model.rs` — inside `Fault`; `test_canager_failed_is_externally_tagged_on_the_wire`  [B's file: anchor by symbol]
+- Modify: `crates/banager-core/src/model.rs` — inside `Fault`; `test_banager_failed_is_externally_tagged_on_the_wire`  [B's file: anchor by symbol]
 - Modify: `crates/banager-core/src/events.rs:26-42` (`LogNote`), `:115-139` (`test_note_wire_shape_is_what_the_typescript_mirror_expects`)
 - Modify: `src/lib/types.ts` — the `Fault` and `LogNote` unions  [B's file]
 - Modify: `src/lib/types.test.ts` — `keeps Outcome's externally tagged variants intact on the wire`, `keeps OperationEvent and UiEvent wire shapes intact`  [B's file]
 - Modify: `src/lib/format.ts` — `faultKey`, `faultArgs`  [F's file: anchor by symbol]
-- Modify: `src/lib/format.test.ts` — the `faults` array in `describe("outcomeKey for Canager's own failures")` and `passes a fault's data, never a sentence, to its translation`
+- Modify: `src/lib/format.test.ts` — the `faults` array in `describe("outcomeKey for Banager's own failures")` and `passes a fault's data, never a sentence, to its translation`
 - Modify: `src/components/LogDrawer.tsx` — `noteText`; `src/components/LogDrawer.test.tsx` — one test after `says which stream a failed read cut short`
-- Modify: `src/i18n/completeness.test.ts` — `INTERPOLATED_SUBTREES["operations.outcome"]`  [anchor: the `"CanagerFailed.HomebrewStillUpdating",` line]
-- Modify: `src/i18n/en.json`, `src/i18n/zh-CN.json` — `operations.outcome.CanagerFailed.PathChanged`, `operations.logNote.movedToTrash`, `operations.logNote.trashFailed`
+- Modify: `src/i18n/completeness.test.ts` — `INTERPOLATED_SUBTREES["operations.outcome"]`  [anchor: the `"BanagerFailed.HomebrewStillUpdating",` line]
+- Modify: `src/i18n/en.json`, `src/i18n/zh-CN.json` — `operations.outcome.BanagerFailed.PathChanged`, `operations.logNote.movedToTrash`, `operations.logNote.trashFailed`
 - Test: the two Rust shape tests, `types.test.ts`, `format.test.ts`, `LogDrawer.test.tsx`, `completeness.test.ts`.
 
 **Interfaces:**
-- Consumes: `Fault`/`Outcome::CanagerFailed` (`model.rs`), `LogNote`/`OperationEvent::Note` (`events.rs`), `faultKey`/`faultArgs` → `outcomeKey`/`outcomeArgs` (`format.ts`) → `OperationBar.tsx` and `LogDrawer.tsx`'s outcome line; `noteText` (`LogDrawer.tsx`); `INTERPOLATED_SUBTREES` (`completeness.test.ts`).
-- Produces (verbatim): `Fault::PathChanged { path: String }` (producer: `removal::execute_removal`, Task 6, stage 6d, when a path is not what the preview saw, `$HOME` abbreviated; readers landing here: `faultKey`/`faultArgs`, the `types.ts` mirror, `INTERPOLATED_SUBTREES`); `LogNote::MovedToTrash { path: String, trashed_to: String }` and `LogNote::TrashFailed { path: String, error: String }` (producer: `execute_removal`, one per item; reader landing here: `noteText`); keys `operations.outcome.CanagerFailed.PathChanged`, `operations.logNote.movedToTrash`, `operations.logNote.trashFailed`.
+- Consumes: `Fault`/`Outcome::BanagerFailed` (`model.rs`), `LogNote`/`OperationEvent::Note` (`events.rs`), `faultKey`/`faultArgs` → `outcomeKey`/`outcomeArgs` (`format.ts`) → `OperationBar.tsx` and `LogDrawer.tsx`'s outcome line; `noteText` (`LogDrawer.tsx`); `INTERPOLATED_SUBTREES` (`completeness.test.ts`).
+- Produces (verbatim): `Fault::PathChanged { path: String }` (producer: `removal::execute_removal`, Task 6, stage 6d, when a path is not what the preview saw, `$HOME` abbreviated; readers landing here: `faultKey`/`faultArgs`, the `types.ts` mirror, `INTERPOLATED_SUBTREES`); `LogNote::MovedToTrash { path: String, trashed_to: String }` and `LogNote::TrashFailed { path: String, error: String }` (producer: `execute_removal`, one per item; reader landing here: `noteText`); keys `operations.outcome.BanagerFailed.PathChanged`, `operations.logNote.movedToTrash`, `operations.logNote.trashFailed`.
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/banager-core/src/model.rs`, inside `test_canager_failed_is_externally_tagged_on_the_wire`, after the `assert_eq!` whose expected string is `r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#` (and its closing `);`), insert:
+In `crates/banager-core/src/model.rs`, inside `test_banager_failed_is_externally_tagged_on_the_wire`, after the `assert_eq!` whose expected string is `r#"{"BanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#` (and its closing `);`), insert:
 
 ```rust
         // Phase 4 step C: a path-list uninstall found a path changed
         // between the preview and the run. `path` has `$HOME` abbreviated.
         assert_eq!(
-            serde_json::to_string(&Outcome::CanagerFailed(Fault::PathChanged {
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             }))
             .unwrap(),
-            r#"{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
+            r#"{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
         );
 ```
 
@@ -1899,9 +1899,9 @@ In `src/lib/types.test.ts`, inside `it("keeps Outcome's externally tagged varian
 
 ```ts
     // Phase 4 step C: a path changed between the preview and the run.
-    const changed: Outcome = { CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } };
+    const changed: Outcome = { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } };
     expect(JSON.stringify(changed)).toBe(
-      '{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
+      '{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
     );
     expect(roundTrip(changed)).toEqual(changed);
 ```
@@ -1928,7 +1928,7 @@ and inside `it("keeps OperationEvent and UiEvent wire shapes intact", …)`, aft
     );
 ```
 
-In `src/lib/format.test.ts`, inside `describe("outcomeKey for Canager's own failures", …)`, replace the `faults` array with:
+In `src/lib/format.test.ts`, inside `describe("outcomeKey for Banager's own failures", …)`, replace the `faults` array with:
 
 ```ts
   const faults: Fault[] = [
@@ -1941,19 +1941,19 @@ In `src/lib/format.test.ts`, inside `describe("outcomeKey for Canager's own fail
   ];
 ```
 
-and in `it("passes a fault's data, never a sentence, to its translation", …)`, after the two `expect(…CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");` lines (for `en` and `zhCN`) and before `expect(en.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");`, insert:
+and in `it("passes a fault's data, never a sentence, to its translation", …)`, after the two `expect(…BanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");` lines (for `en` and `zhCN`) and before `expect(en.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");`, insert:
 
 ```ts
     // Phase 4 step C: the path a path-list uninstall stopped at, and the
     // two lines it writes in the log.
-    expect(outcomeKey({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toBe(
-      "CanagerFailed.PathChanged",
+    expect(outcomeKey({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toBe(
+      "BanagerFailed.PathChanged",
     );
-    expect(outcomeArgs({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
+    expect(outcomeArgs({ BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
       path: "~/.local/bin/claude",
     });
-    expect(en.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
-    expect(zhCN.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
+    expect(en.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
+    expect(zhCN.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(en.operations.logNote.trashFailed).toContain("{{error}}");
@@ -1964,7 +1964,7 @@ In `src/components/LogDrawer.test.tsx`, after the closing `});` of `it("says whi
 
 ```tsx
   it("words each path a path-list uninstall moved, and the one macOS refused", async () => {
-    // Canager's own two lines in an uninstall that runs no command: where
+    // Banager's own two lines in an uninstall that runs no command: where
     // each path went, and the system's words for one it would not move.
     const { findByText } = renderWithProviders(<LogDrawer />);
 
@@ -1989,18 +1989,18 @@ In `src/components/LogDrawer.test.tsx`, after the closing `});` of `it("says whi
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p banager-core --lib model::tests::test_canager_failed_is_externally_tagged_on_the_wire`
+Run: `cargo test -p banager-core --lib model::tests::test_banager_failed_is_externally_tagged_on_the_wire`
 Expected: FAIL to compile — `no variant or associated item named \`PathChanged\` found for enum \`Fault\``.
 
 Run: `cargo test -p banager-core --lib events::tests::test_note_wire_shape_is_what_the_typescript_mirror_expects`
 Expected: FAIL to compile — `no variant or associated item named \`MovedToTrash\` found for enum \`LogNote\`` (and `TrashFailed`).
 
 Run: `pnpm typecheck`
-Expected: FAIL — in `types.test.ts`, `Object literal may only specify known properties, and 'PathChanged' does not exist in type …` (and `MovedToTrash`); in `format.test.ts` the same for the `faults` element, and `Property 'PathChanged' does not exist` on the `en.operations.outcome.CanagerFailed` lookup; in `LogDrawer.test.tsx` the same for `MovedToTrash`.
+Expected: FAIL — in `types.test.ts`, `Object literal may only specify known properties, and 'PathChanged' does not exist in type …` (and `MovedToTrash`); in `format.test.ts` the same for the `faults` element, and `Property 'PathChanged' does not exist` on the `en.operations.outcome.BanagerFailed` lookup; in `LogDrawer.test.tsx` the same for `MovedToTrash`.
 
 - [ ] **Step 3: Add the variants, the mirror, the branches and the copy**
 
-In `crates/banager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdating { minutes: u64 },` and before the doc comment `/// Something on Canager's side did not add up`, insert:
+In `crates/banager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdating { minutes: u64 },` and before the doc comment `/// Something on Banager's side did not add up`, insert:
 
 ```rust
     /// A path a path-list uninstall was about to move is not what the
@@ -2011,7 +2011,7 @@ In `crates/banager-core/src/model.rs`, inside `Fault`, after `HomebrewStillUpdat
     /// preview listed is gone), or it is no longer the file the preview
     /// recorded (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool
     /// that updates itself re-points its launcher -- or replaced by another
-    /// of the same name. Canager stopped without moving that path; whatever
+    /// of the same name. Banager stopped without moving that path; whatever
     /// it moved before is in the Trash, one `LogNote::MovedToTrash` each in
     /// the log. `path` has the home folder abbreviated to `~`; it is the
     /// kept path when a kept path is what changed. Built only by
@@ -2084,10 +2084,10 @@ In `src/components/LogDrawer.tsx`, in `noteText`, after the `if ("ReadFailed" in
   }
 ```
 
-In `src/i18n/completeness.test.ts`, inside `INTERPOLATED_SUBTREES["operations.outcome"]`, after the line `"CanagerFailed.HomebrewStillUpdating",` insert:
+In `src/i18n/completeness.test.ts`, inside `INTERPOLATED_SUBTREES["operations.outcome"]`, after the line `"BanagerFailed.HomebrewStillUpdating",` insert:
 
 ```ts
-    "CanagerFailed.PathChanged",
+    "BanagerFailed.PathChanged",
 ```
 
 In `src/i18n/en.json`, inside `"operations": { "logNote": { … } }`, after `"readFailedStderr": "…"` add `,` and:
@@ -2097,10 +2097,10 @@ In `src/i18n/en.json`, inside `"operations": { "logNote": { … } }`, after `"re
     "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped here. Your Mac gave this reason: {{error}}"
 ```
 
-and inside `"operations": { "outcome": { "CanagerFailed": { … } } }`, after `"HomebrewStillUpdating": "…"` add `,` and (before `"Internal"`):
+and inside `"operations": { "outcome": { "BanagerFailed": { … } } }`, after `"HomebrewStillUpdating": "…"` add `,` and (before `"Internal"`):
 
 ```json
-      "PathChanged": "Failed: {{path}} changed between the preview and now (a tool that updates itself can do that), so Canager stopped without moving it. The operation log says what, if anything, was moved before that. Look at the preview again."
+      "PathChanged": "Failed: {{path}} changed between the preview and now (a tool that updates itself can do that), so Banager stopped without moving it. The operation log says what, if anything, was moved before that. Look at the preview again."
 ```
 
 In `src/i18n/zh-CN.json`, the same two positions:
@@ -2111,15 +2111,15 @@ In `src/i18n/zh-CN.json`, the same two positions:
 ```
 
 ```json
-      "PathChanged": "失败：{{path}} 在预览之后有了变化（会自己更新的工具就可能这样），所以 Canager 停下了，没有移动它。在此之前是否移动过什么，操作日志里能看到。请重新查看预览。"
+      "PathChanged": "失败：{{path}} 在预览之后有了变化（会自己更新的工具就可能这样），所以 Banager 停下了，没有移动它。在此之前是否移动过什么，操作日志里能看到。请重新查看预览。"
 ```
 
-(Spec §9.2's sentence for `PathChanged` says "so Canager didn't move anything"; that is true only when the first item changed. Spec §6.3 has the run stop *at* the changed item with earlier items already in the Trash, so this sentence says what is true in both cases and points at the log, which lists each move — Ruling 17. The parenthesis names the likeliest cause a user can do nothing about: Claude Code re-points its launcher when it updates itself, and a launcher the preview did not see stops the run — Ruling 10.)
+(Spec §9.2's sentence for `PathChanged` says "so Banager didn't move anything"; that is true only when the first item changed. Spec §6.3 has the run stop *at* the changed item with earlier items already in the Trash, so this sentence says what is true in both cases and points at the log, which lists each move — Ruling 17. The parenthesis names the likeliest cause a user can do nothing about: Claude Code re-points its launcher when it updates itself, and a launcher the preview did not see stops the run — Ruling 10.)
 
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `cargo test -p banager-core --lib model::tests` and `cargo test -p banager-core --lib events::tests` and `pnpm typecheck && pnpm exec vitest run src/lib src/components/LogDrawer.test.tsx src/i18n`
-Expected: PASS. `completeness.test.ts` passes because both `operations.logNote.*` keys are literals in `LogDrawer.tsx` and `CanagerFailed.PathChanged` is enumerated in `INTERPOLATED_SUBTREES`.
+Expected: PASS. `completeness.test.ts` passes because both `operations.logNote.*` keys are literals in `LogDrawer.tsx` and `BanagerFailed.PathChanged` is enumerated in `INTERPOLATED_SUBTREES`.
 
 - [ ] **Step 5: Run the gates**
 
@@ -2154,7 +2154,7 @@ EOF
 - Modify: `crates/banager-core/src/model.rs` — after the closing `}` of `pub enum UninstallBlocked`  [B's file: anchor by symbol]
 - Modify: `crates/banager-core/src/adapters/mod.rs` — the `use crate::model::{…}` list; inside `AdapterError`, after `UninstallBlocked { reason: UninstallBlocked },`  [B's file: anchor by symbol]
 - Modify: `crates/banager-core/src/ops/mod.rs:36-62` (`execute_error_outcome`'s doc comment and `match`)
-- Modify: `src-tauri/src/ipc.rs` — `plan_operation_error` (`:184-217`; anchor: the arm `AdapterError::UninstallBlocked { reason } => uninstall_blocked_json(reason),`), `test_plan_operation_error_never_sends_canagers_own_english` (`:1363-1443`), one test after it
+- Modify: `src-tauri/src/ipc.rs` — `plan_operation_error` (`:184-217`; anchor: the arm `AdapterError::UninstallBlocked { reason } => uninstall_blocked_json(reason),`), `test_plan_operation_error_never_sends_banagers_own_english` (`:1363-1443`), one test after it
 - Modify: `src/lib/sources.ts` — after `parseUninstallBlocked`; `planFailureMessage`'s doc and `switch`  [B's file]
 - Modify: `src/lib/sources.test.ts` — the import list, `describe("planErrorMessage")`, one `describe` after `describe("parseUninstallBlocked")`  [B's file]
 - Modify: `src/components/UninstallDialog.tsx` — the import list, `refusalText` and its comment  [A's file: anchor by symbol]
@@ -2168,7 +2168,7 @@ EOF
 
 - [ ] **Step 1: Write the failing tests**
 
-In `src-tauri/src/ipc.rs`, inside `test_plan_operation_error_never_sends_canagers_own_english`, after the `assert_eq!` for `uninstall_blocked` (its expected value is `serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })`) and its closing `);`, and before the comment `// Errors no \`plan()\` returns:`, insert:
+In `src-tauri/src/ipc.rs`, inside `test_plan_operation_error_never_sends_banagers_own_english`, after the `assert_eq!` for `uninstall_blocked` (its expected value is `serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })`) and its closing `);`, and before the comment `// Errors no \`plan()\` returns:`, insert:
 
 ```rust
         // A path-list uninstall's preview refused one of its checks (phase
@@ -2286,7 +2286,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("sa
     // a path (`removal::plan_removal` in
     // crates/banager-core/src/adapters/standalone/removal.rs);
     // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
-    // the reason as data, and the dialog words them. Canager did check,
+    // the reason as data, and the dialog words them. Banager did check,
     // so the sentence is shown on its own, not inside "Couldn't check
     // what this would affect" -- the same reason the pin above skips it.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -2332,7 +2332,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("sa
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Canager won't remove ~/.local/bin/claude: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+        "Banager won't remove ~/.local/bin/claude: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
       ),
     );
     expect(alert.textContent).not.toMatch(/uninstall_unsafe|not_what_instructions_expect|Couldn't check/);
@@ -2343,7 +2343,7 @@ In `src/components/UninstallDialog.test.tsx`, after the closing `});` of `it("sa
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cargo test -p canager --lib ipc::tests::test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case`
+Run: `cargo test -p banager --lib ipc::tests::test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case`
 Expected: FAIL to compile — `no variant or associated item named \`UninstallUnsafe\` found for enum \`AdapterError\``; `cannot find type \`UninstallUnsafeReason\` in module \`banager_core::model\``.
 
 Run: `pnpm typecheck`
@@ -2463,7 +2463,7 @@ In `src-tauri/src/ipc.rs`, in `plan_operation_error`, after the arm `AdapterErro
         }
 ```
 
-and in `plan_operation_error`'s doc comment, in the first bullet (`**Canager's own words** go out with no prose at all, …`), after the phrase `` `output_too_large`, `` add `` `uninstall_unsafe` (the path a path-list uninstall preview refused, and which check refused it), ``.
+and in `plan_operation_error`'s doc comment, in the first bullet (`**Banager's own words** go out with no prose at all, …`), after the phrase `` `output_too_large`, `` add `` `uninstall_unsafe` (the path a path-list uninstall preview refused, and which check refused it), ``.
 
 In `src/lib/sources.ts`, after the closing `}` of `parseUninstallBlocked`, insert:
 
@@ -2529,7 +2529,7 @@ In `src/components/UninstallDialog.tsx`, add `parseUninstallUnsafe,` to the `imp
 ```tsx
   // Two refusals are shown as sentences of their own rather than inside
   // `uninstall.planError`'s "Couldn't check what this would affect", because
-  // Canager did check: the tool will not uninstall this package (a pinned
+  // Banager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
   // crates/banager-core/src/session/plans.rs), which only a stale Installed
   // page can reach and whose sentence carries the unpin command, set apart
@@ -2560,12 +2560,12 @@ In `src/i18n/en.json`, inside `"planRefused": { … }`, after `"refused": "…"`
 
 ```json
     "uninstallUnsafe": {
-      "outsideHome": "Canager won't remove {{path}}: the folder it is in leads outside your home folder. Nothing was changed.",
-      "sharedFolder": "Canager won't remove {{path}}: it sits directly in your home folder or in a folder other apps share, so moving it could take their files with it. Nothing was changed.",
-      "missing": "{{path}} isn't there any more, so Canager stopped. Nothing was changed.",
-      "notOwnedByYou": "Canager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed.",
-      "notWhatInstructionsExpect": "Canager won't remove {{path}}: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
-      "overlapsKept": "Canager won't uninstall this: it couldn't confirm that moving the listed paths leaves {{path}}, which it keeps, where it is — through a link, one of them may be the same thing, hold it, or lie inside it. Nothing was changed."
+      "outsideHome": "Banager won't remove {{path}}: the folder it is in leads outside your home folder. Nothing was changed.",
+      "sharedFolder": "Banager won't remove {{path}}: it sits directly in your home folder or in a folder other apps share, so moving it could take their files with it. Nothing was changed.",
+      "missing": "{{path}} isn't there any more, so Banager stopped. Nothing was changed.",
+      "notOwnedByYou": "Banager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed.",
+      "notWhatInstructionsExpect": "Banager won't remove {{path}}: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+      "overlapsKept": "Banager won't uninstall this: it couldn't confirm that moving the listed paths leaves {{path}}, which it keeps, where it is — through a link, one of them may be the same thing, hold it, or lie inside it. Nothing was changed."
     }
 ```
 
@@ -2573,18 +2573,18 @@ In `src/i18n/zh-CN.json`, the same position:
 
 ```json
     "uninstallUnsafe": {
-      "outsideHome": "Canager 不会移除 {{path}}：它所在的文件夹通向你的个人文件夹之外。什么都没有改动。",
-      "sharedFolder": "Canager 不会移除 {{path}}：它直接放在你的个人文件夹里，或者放在其它应用共用的文件夹里，移走它可能连带别的应用的文件。什么都没有改动。",
-      "missing": "{{path}} 已经不在了，Canager 停下了。什么都没有改动。",
-      "notOwnedByYou": "Canager 不会移除 {{path}}：它属于这台 Mac 上的另一个用户。什么都没有改动。",
-      "notWhatInstructionsExpect": "Canager 不会移除 {{path}}：它无法确认这就是官方说明描述的东西（它本身或它所在的某个文件夹可能链到了别处，或者它不是同一类文件），移除可能误伤别的东西。什么都没有改动。",
-      "overlapsKept": "Canager 不会卸载：它无法确认移走清单上的路径不会动到它要保留的 {{path}}——通过链接，其中某一条可能就是它、装着它，或者在它里面。什么都没有改动。"
+      "outsideHome": "Banager 不会移除 {{path}}：它所在的文件夹通向你的个人文件夹之外。什么都没有改动。",
+      "sharedFolder": "Banager 不会移除 {{path}}：它直接放在你的个人文件夹里，或者放在其它应用共用的文件夹里，移走它可能连带别的应用的文件。什么都没有改动。",
+      "missing": "{{path}} 已经不在了，Banager 停下了。什么都没有改动。",
+      "notOwnedByYou": "Banager 不会移除 {{path}}：它属于这台 Mac 上的另一个用户。什么都没有改动。",
+      "notWhatInstructionsExpect": "Banager 不会移除 {{path}}：它无法确认这就是官方说明描述的东西（它本身或它所在的某个文件夹可能链到了别处，或者它不是同一类文件），移除可能误伤别的东西。什么都没有改动。",
+      "overlapsKept": "Banager 不会卸载：它无法确认移走清单上的路径不会动到它要保留的 {{path}}——通过链接，其中某一条可能就是它、装着它，或者在它里面。什么都没有改动。"
     }
 ```
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cargo test -p canager --lib ipc::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/sources.test.ts src/components/UninstallDialog.test.tsx src/i18n`
+Run: `cargo test -p banager --lib ipc::tests` and `pnpm typecheck && pnpm exec vitest run src/lib/sources.test.ts src/components/UninstallDialog.test.tsx src/i18n`
 Expected: PASS. `completeness.test.ts` passes because the six keys are literals in `UNINSTALL_UNSAFE_KEYS`.
 
 - [ ] **Step 5: Run the gates**
@@ -2606,7 +2606,7 @@ A Refused(String) would reach the dialog as one generic sentence; this
 reason travels as its own error, is spelled on the wire by hand in one
 place, and the dialog words each of the six with the path, in the
 user's language, on its own rather than
-after "Couldn't check what this would affect" -- Canager did check. The
+after "Couldn't check what this would affect" -- Banager did check. The
 producer is the standalone adapter's uninstall, which follows.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -2618,7 +2618,7 @@ EOF
 
 ### Task 6: The path-list uninstall — the Trash seam, Claude Code's list, the one-hop launcher, `removal.rs`, the adapter, the row's words, the trust file and the README
 
-One task, seven stages and a commit stage, **one commit** at the end of stage 6h: every type, field and function below has its production reader in this commit — `Trasher` → `removal::execute_removal` → `StandaloneAdapter::execute`; `RealTrasher` → `Session::new`; `ItemKind` → `Trasher::trash`; `Uninstall::Paths`/`RemoveSpec`/`KeepSpec`/`Expect`/`SHARED_FOLDERS` → `removal::plan_removal` → `StandaloneAdapter::plan`; `ItemIdentity` and `PlanAction::TrashPaths.previewed` → `removal::execute_removal`; `Detected.euid` → check 3; `route::probe_strict` → `route::probe` and `StandaloneAdapter::reconcile_after_uninstall` → `run_operation` (Task 2). A commit after any earlier stage would ship one of these with no reader, which is the defect spec §十 names and B's review refused (B's finding 19). The same commit carries every trust-file and README sentence this behaviour makes true or false (stage 6g, Ruling 23), so no commit says "no uninstall" or "never moves a file" while Canager moves files. Each stage still has its own red → green cycle; the five gates run once, at 6h.
+One task, seven stages and a commit stage, **one commit** at the end of stage 6h: every type, field and function below has its production reader in this commit — `Trasher` → `removal::execute_removal` → `StandaloneAdapter::execute`; `RealTrasher` → `Session::new`; `ItemKind` → `Trasher::trash`; `Uninstall::Paths`/`RemoveSpec`/`KeepSpec`/`Expect`/`SHARED_FOLDERS` → `removal::plan_removal` → `StandaloneAdapter::plan`; `ItemIdentity` and `PlanAction::TrashPaths.previewed` → `removal::execute_removal`; `Detected.euid` → check 3; `route::probe_strict` → `route::probe` and `StandaloneAdapter::reconcile_after_uninstall` → `run_operation` (Task 2). A commit after any earlier stage would ship one of these with no reader, which is the defect spec §十 names and B's review refused (B's finding 19). The same commit carries every trust-file and README sentence this behaviour makes true or false (stage 6g, Ruling 23), so no commit says "no uninstall" or "never moves a file" while Banager moves files. Each stage still has its own red → green cycle; the five gates run once, at 6h.
 
 **Files (whole task):**
 - Modify: `crates/banager-core/Cargo.toml` (a target-specific dependency section after `getrandom = "0.4"`; the `[features]` comment; one `[dev-dependencies]` line), `Cargo.lock` (cargo rewrites banager-core's entry)
@@ -2638,7 +2638,7 @@ One task, seven stages and a commit stage, **one commit** at the end of stage 6h
 - Modify: `crates/banager-core/tests/ops_upgrade_version_test.rs` — imports; the two `StandaloneAdapter::new(` calls in `claude_upgrade_outputs`  [B's file]
 - Modify: `src/lib/types.ts` (`UninstallBlocked`'s doc), `src/lib/sources.ts` (the `LauncherOnly` branch's comment), `src/lib/sources.test.ts` (two `it`s), `src/pages/InstalledPage.test.tsx` (one test added, one comment), `src/i18n/en.json`, `src/i18n/zh-CN.json` (`sourceNotice.launcherOnly.description`)  [B's files]
 - Modify: `crates/banager-core/tests/what_we_run_test.rs` — the module doc, the `use` lines, two tests appended  [A's file: anchor by symbol]
-- Modify: `docs/what-we-run.md` — the intro, `## When commands run`, B's `## Claude Code`, `## Files Canager reads`, `## Files Canager writes`, a new `## Moving files to the Trash`, `## What Canager never does`  [A's + B's + F's file: anchor by quoted text; A hard-wraps the prose, so match a quoted sentence by its words, not as one line, and keep the file's wrapping when rewriting]
+- Modify: `docs/what-we-run.md` — the intro, `## When commands run`, B's `## Claude Code`, `## Files Banager reads`, `## Files Banager writes`, a new `## Moving files to the Trash`, `## What Banager never does`  [A's + B's + F's file: anchor by quoted text; A hard-wraps the prose, so match a quoted sentence by its words, not as one line, and keep the file's wrapping when rewriting]
 - Modify: `README.md` — B's Claude Code row, the exact-command bullet, two new safety bullets  [B's + F's file: anchor by quoted text]
 - Test: `trash/mock.rs`'s, `recipes.rs`'s, `route.rs`'s, `removal.rs`'s, `model.rs`'s and `standalone/mod.rs`'s `mod tests`; `tests/ops_upgrade_version_test.rs`; `tests/ops_summaries_test.rs`; `session/mod.rs`'s `test_new_registers_all_eight_adapters` and `tests/fixtures_layout_test.rs` (unchanged, still green); `tests/what_we_run_test.rs` (two new tests, stage 6g); `sources.test.ts`; `InstalledPage.test.tsx`.
 
@@ -2653,7 +2653,7 @@ One task, seven stages and a commit stage, **one commit** at the end of stage 6h
 In `crates/banager-core/src/lib.rs`, after the line `pub mod testing;` insert:
 
 ```rust
-/// Moving an item to the Trash -- the one change Canager makes to a file
+/// Moving an item to the Trash -- the one change Banager makes to a file
 /// in its own process besides its settings, behind a seam like `runner`
 /// and `http`.
 pub mod trash;
@@ -2678,7 +2678,7 @@ mod tests {
     impl Scratch {
         fn new(tag: &str) -> Scratch {
             let dir = std::env::temp_dir().join(format!(
-                "canager-trash-mock-{tag}-{}-{}",
+                "banager-trash-mock-{tag}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -2909,7 +2909,7 @@ pub enum ItemKind {
 Replace the whole of `crates/banager-core/src/trash/mod.rs` with:
 
 ```rust
-//! Moving files to the Trash: the one change Canager makes to a file in
+//! Moving files to the Trash: the one change Banager makes to a file in
 //! its own process besides its settings (phase 4 spec §6.2, 附录 B).
 //! `Trasher` is the seam, like `CommandRunner` and `HttpClient`:
 //! `RealTrasher` is macOS's own `NSFileManager trashItemAtURL:` -- the call
@@ -2950,18 +2950,18 @@ pub enum TrashError {
     /// and in a `LogNote::TrashFailed`.
     #[error("{detail}")]
     Refused { detail: String },
-    /// Canager could not hand the item to the system at all: not macOS,
-    /// where nothing implements the move (Canager v0.1 ships for macOS
+    /// Banager could not hand the item to the system at all: not macOS,
+    /// where nothing implements the move (Banager v0.1 ships for macOS
     /// only, the crate doc in lib.rs; a build for another Unix reaches this
     /// at run time, honestly, rather than failing to compile), or a path
     /// that is not valid UTF-8, which `NSString` cannot carry (macOS's file
-    /// systems do not create such names). Canager's own limitation, with no
+    /// systems do not create such names). Banager's own limitation, with no
     /// words of the Mac's to quote: `execute_removal` reports it as
     /// `Fault::Internal`, never as `Failed` or `TrashFailed`. Produced by
     /// `RealTrasher`: off macOS for every path, and on macOS only for a
     /// path whose home folder's own name is not UTF-8 -- so, either way,
     /// for every path of one uninstall alike, from the first on.
-    #[error("Canager could not hand this item to the system's Trash")]
+    #[error("Banager could not hand this item to the system's Trash")]
     Unsupported,
 }
 
@@ -3023,7 +3023,7 @@ impl Trasher for RealTrasher {
         use objc2_foundation::{NSFileManager, NSString, NSURL};
 
         // `NSString` carries UTF-8, and macOS's file systems do not create
-        // a name that is not: Canager's limitation, not the system's
+        // a name that is not: Banager's limitation, not the system's
         // answer, so `Unsupported` rather than a `Refused` in its own words.
         let Some(utf8) = path.to_str() else {
             return Err(TrashError::Unsupported);
@@ -3079,10 +3079,10 @@ fn report_trash_access(trashed: &Path) {
     };
     match std::fs::read_dir(trash) {
         Ok(_) => eprintln!(
-            "[canager] debug: read_dir({}) -> Ok: this process can list the Trash (it has Full Disk Access)",
+            "[banager] debug: read_dir({}) -> Ok: this process can list the Trash (it has Full Disk Access)",
             trash.display()
         ),
-        Err(error) => eprintln!("[canager] debug: read_dir({}) -> Err: {error}", trash.display()),
+        Err(error) => eprintln!("[banager] debug: read_dir({}) -> Err: {error}", trash.display()),
     }
 }
 
@@ -3132,7 +3132,7 @@ impl MockTrasher {
         // under one test by the other one's drop.
         static NEXT_BIN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let raw = std::env::temp_dir().join(format!(
-            "canager-mock-trash-{}-{}-{}",
+            "banager-mock-trash-{}-{}-{}",
             std::process::id(),
             NEXT_BIN.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
@@ -3546,7 +3546,7 @@ with
 /// same page's separate, explicitly optional step ("Removing configuration
 /// files will delete all your settings…"; the VS Code extension, the
 /// JetBrains plugin and the desktop app write to `~/.claude/` too, §7):
-/// `~/.claude` and `~/.claude.json`, which Canager keeps (spec Q4) -- of
+/// `~/.claude` and `~/.claude.json`, which Banager keeps (spec Q4) -- of
 /// `~/.claude` it moves only `downloads`, the cache above. Order: program
 /// files, cache, the launcher last (spec §6.2).
 ```
@@ -3594,16 +3594,16 @@ Find the one version directory B recorded (`ls adapters/fixtures/standalone-clau
 
 ## Uninstall list (phase 4 step C)
 
-Nothing here was recorded for the uninstall: Canager runs no command for
+Nothing here was recorded for the uninstall: Banager runs no command for
 it. The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`CLAUDE.uninstall`) comes from Anthropic's "Uninstall Claude Code →
 Native" instructions at <https://code.claude.com/docs/en/setup>, read on
 2026-09-24: `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`
-— moved to the Trash by Canager instead, the launcher last — plus
+— moved to the Trash by Banager instead, the launcher last — plus
 `~/.claude/downloads`, the download staging directory install.sh names
 as `DOWNLOAD_DIR` (read from the script), listed as optional. The same
 page's separate, optional step removes `~/.claude` and `~/.claude.json`;
-Canager keeps both — of `~/.claude` it moves only `downloads`, the cache
+Banager keeps both — of `~/.claude` it moves only `downloads`, the cache
 above — and says so in the preview. No `claude uninstall`
 subcommand exists (`claude --help`, 2026-09-24).
 ```
@@ -4432,7 +4432,7 @@ Prepend to `crates/banager-core/src/adapters/standalone/removal.rs` (above `#[cf
 //! What the checks guard against is change by accident: the tool's own
 //! updater, the user, another app doing its ordinary work between the
 //! preview and the click, or during the pauses between moves. A program
-//! running as the user can do everything Canager can; one that swaps an
+//! running as the user can do everything Banager can; one that swaps an
 //! item in the instant between that item's last check and the system's
 //! move could still race it (`take_turn`; docs/what-we-run.md says so).
 
@@ -4564,7 +4564,7 @@ struct Kept {
 
 /// The kept paths that exist -- a missing one is neither listed nor
 /// protected (ruling 6) -- each placed. One that is there but cannot be
-/// placed refuses the whole list: Canager could not confirm the moves
+/// placed refuses the whole list: Banager could not confirm the moves
 /// leave it alone (`OverlapsKept`).
 fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
@@ -4861,7 +4861,7 @@ and append before the test module's closing `}`:
     }
 
     fn path_changed(path: &str) -> Outcome {
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: path.to_string(),
         })
     }
@@ -5136,7 +5136,7 @@ and append before the test module's closing `}`:
         // the system's call takes a path, so an item swapped between the
         // two -- here, inside the call -- is what gets moved, and the run
         // cannot tell. Out of scope by design (the threat model is change by
-        // accident, and a program running as the user can do all Canager
+        // accident, and a program running as the user can do all Banager
         // can); docs/what-we-run.md says so in one sentence. If this ever
         // fails because the gap was closed, change that sentence too.
         let home = TempHome::new("removal-exec-swapped-in-call");
@@ -5470,8 +5470,8 @@ and append before the test module's closing `}`:
     }
 
     #[tokio::test]
-    async fn test_execute_removal_reports_a_trasher_that_cannot_ask_as_canagers_own_failure() {
-        // Ruling 9: Canager's own limitation is `Fault::Internal` -- never a
+    async fn test_execute_removal_reports_a_trasher_that_cannot_ask_as_banagers_own_failure() {
+        // Ruling 9: Banager's own limitation is `Fault::Internal` -- never a
         // `Failed` whose summary the front end would quote as the Mac's
         // words, and never a `TrashFailed` note. Nothing was moved.
         let home = TempHome::new("removal-exec-unsupported");
@@ -5484,7 +5484,7 @@ and append before the test module's closing `}`:
         let (outcome, notes) =
             run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
 
-        assert_eq!(outcome, Outcome::CanagerFailed(Fault::Internal));
+        assert_eq!(outcome, Outcome::BanagerFailed(Fault::Internal));
         assert!(notes.is_empty());
         assert!(
             layout.root.join("versions/2.1.281").is_file(),
@@ -5496,7 +5496,7 @@ and append before the test module's closing `}`:
     async fn test_execute_removal_refuses_a_plan_that_lost_what_its_preview_saw() {
         // A `TrashPaths` plan read back from JSON carries no identities
         // (`previewed` is skipped by serde); one without them is a bug in
-        // Canager, refused before anything moves.
+        // Banager, refused before anything moves.
         let home = TempHome::new("removal-exec-no-preview");
         let layout = claude_layout(&home, "2.1.281");
         let d = detected(home.path());
@@ -5572,7 +5572,7 @@ pub const TIMEOUT_SECS: u64 = 120;
 
 /// The pause after each item: before the next one, and after the last
 /// before the run is reported finished. From a process without Full Disk
-/// Access -- a Finder-launched Canager -- Finder wrote its "Put Back"
+/// Access -- a Finder-launched Banager -- Finder wrote its "Put Back"
 /// record for only the first of a burst of `trashItemAtURL:` calls up to
 /// 1.5 s apart, and for every item when they were 2 s or more apart
 /// (2026-09-25, one Mac, macOS 27.0: 15/15 and 4/4 runs; the mechanism is
@@ -5618,7 +5618,7 @@ after `shown`'s closing `}` (before `/// A recipe path as the recipe spells it u
 ```rust
 /// A run that stopped at `path` because it is not what was confirmed.
 fn changed(home: &Path, path: &Path) -> Outcome {
-    Outcome::CanagerFailed(Fault::PathChanged {
+    Outcome::BanagerFailed(Fault::PathChanged {
         path: shown(home, path),
     })
 }
@@ -5670,7 +5670,7 @@ enum Turn {
     Changed(PathBuf),
     /// The system refused; its own words. Not moved.
     Refused(String),
-    /// Canager could not ask the system at all (`TrashError::Unsupported`).
+    /// Banager could not ask the system at all (`TrashError::Unsupported`).
     CannotAsk,
 }
 
@@ -5679,7 +5679,7 @@ enum Turn {
 /// item itself), its identity compared with what the preview saw, and then
 /// -- with nothing in between -- the move. `check_item`'s last step is the
 /// `lstat` that produced `seen`, and `Trasher::trash` is handed that
-/// answer's kind rather than looking again: Canager checks each item
+/// answer's kind rather than looking again: Banager checks each item
 /// immediately before moving it; a program running as you that swaps the
 /// item in that instant could still race it (docs/what-we-run.md, "Moving
 /// files to the Trash"). That is the documented edge of the design: the
@@ -5727,8 +5727,8 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
 ///
 /// `Succeeded` only when every path was moved; `Failed` with the system's
 /// own words when it refused one (the launcher, last, is then still there,
-/// and the row comes back as launcher-only); `CanagerFailed(Internal)`
-/// when Canager could not ask the system at all (`TrashError::Unsupported`,
+/// and the row comes back as launcher-only); `BanagerFailed(Internal)`
+/// when Banager could not ask the system at all (`TrashError::Unsupported`,
 /// at the first item); `Unconfirmed` when cancelled or out of time between
 /// items, or when a turn panicked -- `run_operation` then reads the disk
 /// and reports what it finds. Never an `Err` for a state of the Mac: the
@@ -5763,7 +5763,7 @@ pub async fn execute_removal(
         // listed path changed. Not a refusal of a plan (that plan was
         // issued and confirmed) but a run that stopped before moving it.
         Err(AdapterError::UninstallUnsafe { path, .. }) => {
-            return Ok(Outcome::CanagerFailed(Fault::PathChanged { path }));
+            return Ok(Outcome::BanagerFailed(Fault::PathChanged { path }));
         }
         Err(other) => return Err(other),
     };
@@ -5815,19 +5815,19 @@ pub async fn execute_removal(
                     summary: detail,
                 });
             }
-            // Canager could not ask the system at all (not macOS, or a path
+            // Banager could not ask the system at all (not macOS, or a path
             // `NSString` cannot carry): its own limitation, with no words of
             // the Mac's to quote (ruling 9). `RealTrasher` answers it for
             // every path alike, so it comes at the first item, before
             // anything moved.
-            Ok(Turn::CannotAsk) => return Ok(Outcome::CanagerFailed(Fault::Internal)),
+            Ok(Turn::CannotAsk) => return Ok(Outcome::BanagerFailed(Fault::Internal)),
             // The turn panicked: whether this item moved is not known.
             Err(_) => return Ok(Outcome::Unconfirmed),
         }
     }
     // The same pause after the last move: Finder writes the Put Back record
     // after the call returns, so the run is not reported finished -- the cue
-    // a user may quit Canager on -- before it had the time every measured
+    // a user may quit Banager on -- before it had the time every measured
     // run gave it. Everything is in the Trash by now, so a Cancel or the
     // budget only cuts the wait short.
     pause(pacing.settle.min(left()), &cancel).await;
@@ -6232,7 +6232,7 @@ with:
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             })
         );
@@ -6263,7 +6263,7 @@ with:
 
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::PathChanged {
+            Outcome::BanagerFailed(Fault::PathChanged {
                 path: "~/.local/bin/claude".to_string()
             })
         );
@@ -6353,7 +6353,7 @@ with:
         // truthfully (`Cancelled` after a Cancel,
         // `StillInstalledAfterUninstall` after an exit that claimed
         // success) -- while `reconcile` keeps B's strict rule for upgrades;
-        // a launcher that is gone is absent; and one Canager cannot look at
+        // a launcher that is gone is absent; and one Banager cannot look at
         // (its folder unreadable) is neither: an error, which
         // `run_operation` reports as `Unconfirmed`, never as a finished
         // uninstall.
@@ -6584,7 +6584,7 @@ and after `reconcile`'s closing `}` insert:
     /// truthfully (`Cancelled` after the user's Cancel,
     /// `StillInstalledAfterUninstall` after a run that claimed success) and
     /// the next refresh shows the row a second Uninstall finishes; a
-    /// launcher that is gone is absent (spec §3.6); and a launcher Canager
+    /// launcher that is gone is absent (spec §3.6); and a launcher Banager
     /// cannot look at -- a permission error, a loop -- is neither: an
     /// error, which `run_operation` reports as `Unconfirmed`, never as a
     /// finished uninstall (Ruling 27). No version is read: presence is the
@@ -6620,7 +6620,7 @@ and after `reconcile`'s closing `}` insert:
 ```rust
     /// Spec §五: the tool's own documented update command, run against the
     /// launcher through `run_plan` unchanged. `Install` is `Unsupported`
-    /// (the installer is Anthropic's and Canager never runs it; installing
+    /// (the installer is Anthropic's and Banager never runs it; installing
     /// tools is phase 5). `Uninstall` is the recipe's path list as a
     /// `TrashPaths` plan under the removal's checks (spec §6.2-§6.3), with
     /// what the preview saw at each path riding along on this side only
@@ -6637,7 +6637,7 @@ and after `reconcile`'s closing `}` insert:
         }
         match req.kind {
             OpKind::Install => Err(AdapterError::Unsupported(format!(
-                "{} is installed by its own installer, which Canager never runs",
+                "{} is installed by its own installer, which Banager never runs",
                 self.meta.name
             ))),
             OpKind::Uninstall => {
@@ -6913,18 +6913,18 @@ with
       );
 ```
 
-In the same file, B's review added (commit `3e19fd9`) `it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", …)`, which the new sentence below must keep passing — it names `{{source}}'s official documentation` / `{{source}} 官方文档` and neither "website" nor "网站". Only its comment goes stale with this step; replace its two lines
+In the same file, B's review added (commit `3e19fd9`) `it("points at the tool's official documentation, not at a website Banager doesn't show, when only the launcher is left", …)`, which the new sentence below must keep passing — it names `{{source}}'s official documentation` / `{{source}} 官方文档` and neither "website" nor "网站". Only its comment goes stale with this step; replace its two lines
 
 ```ts
     // The same rule as the no-safe-method sentence on this instance's own
-    // row (its artifact carries NoSafeMethod until step C): Canager shows
+    // row (its artifact carries NoSafeMethod until step C): Banager shows
 ```
 
 with
 
 ```ts
     // The same rule as the no-safe-method sentence (the row of a recipe
-    // without an uninstall method; this row's own before step C): Canager shows
+    // without an uninstall method; this row's own before step C): Banager shows
 ```
 
 In `src/pages/InstalledPage.test.tsx`, in B's `it("shows the standalone summary alongside its real uninstall refusal", …)`, replace the comment lines
@@ -7064,7 +7064,7 @@ replace `InstanceNote::LauncherOnly`'s doc comment (B's, from `/// The launcher 
 ```rust
     /// The launcher is still there but points at program files that are
     /// gone: the program directory was removed by hand or by another tool,
-    /// or by a Canager uninstall that stopped after moving it and before
+    /// or by a Banager uninstall that stopped after moving it and before
     /// moving the launcher -- the removal order (`removal::execute_removal`,
     /// launcher last) makes that the only state a stopped run leaves. The
     /// row stays, with no version, so the state is visible, and its
@@ -7074,10 +7074,10 @@ replace `InstanceNote::LauncherOnly`'s doc comment (B's, from `/// The launcher 
     /// answers `LauncherOnly`.
 ```
 
-replace `UninstallBlocked::NoSafeMethod`'s doc comment (from `/// The tool has no uninstall command, and Canager has no safe way yet` through `/// src/lib/sources.ts).`) with
+replace `UninstallBlocked::NoSafeMethod`'s doc comment (from `/// The tool has no uninstall command, and Banager has no safe way yet` through `/// src/lib/sources.ts).`) with
 
 ```rust
-    /// The tool has no uninstall command and Canager has no safe way to
+    /// The tool has no uninstall command and Banager has no safe way to
     /// remove its files -- no verified list of them, or no way yet to move
     /// them to the Trash -- so it does not offer to. Per artifact, not the
     /// instance's `read_only_reason`: that would hide the upgrade too,
@@ -7137,7 +7137,7 @@ No commit: continue to stage 6g.
 
 #### Stage 6g: the trust file and the README say what this commit does
 
-Stages 6a–6f make Canager move files, so this commit is also where the trust file stops saying that Canager never moves a file and that Claude Code has no uninstall, and where the README's row and safety bullets change (Ruling 23). Every sentence below describes code that exists after stages 6a–6f and names the function it describes (the trust file's own rule, its intro); where one rests on the spike, it says so and says what the spike did not reach. The smoke test's sentences wait for the test (Task 7); the pre-merge check's result is the author's to add.
+Stages 6a–6f make Banager move files, so this commit is also where the trust file stops saying that Banager never moves a file and that Claude Code has no uninstall, and where the README's row and safety bullets change (Ruling 23). Every sentence below describes code that exists after stages 6a–6f and names the function it describes (the trust file's own rule, its intro); where one rests on the spike, it says so and says what the spike did not reach. The smoke test's sentences wait for the test (Task 7); the pre-merge check's result is the author's to add.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -7154,7 +7154,7 @@ with
 ```rust
 //! enforces, the one thing the allowlist refuses that a reader would not
 //! expect (an `https://` `OLLAMA_HOST`), every path Claude Code's uninstall
-//! moves or keeps with that uninstall's time budget, and the call Canager
+//! moves or keeps with that uninstall's time budget, and the call Banager
 //! makes to move a file to the Trash with the pause after each such move.
 //! A source, host, variable, limit, path or pause added or changed without
 //! its line in the document fails here.
@@ -7177,7 +7177,7 @@ fn test_what_we_run_names_every_path_claude_codes_uninstall_moves_or_keeps() {
     // The list is the recipe's, and a reader deciding whether to press
     // Uninstall reads it here: a path added to or dropped from
     // `CLAUDE.uninstall` without this section changing is a trust file
-    // that no longer says what Canager moves.
+    // that no longer says what Banager moves.
     let doc = read_doc();
     let body = section_body(&doc, "Claude Code")
         .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## Claude Code` section"));
@@ -7240,20 +7240,20 @@ In `docs/what-we-run.md`:
 (c) In B's `## Claude Code` section:
 
 - In the **Detect.** paragraph, replace `checks with \`lstat\`, \`readlink\` and \`realpath\` that it is a symbolic link resolving into \`~/.local/share/claude\` (the installer's \`versions/<version>\` store).` with `checks with \`lstat\`, \`readlink\` and \`realpath\` that it is a symbolic link whose own text points into \`~/.local/share/claude\` (the installer's \`versions/<version>\` store) and that resolves there; a \`claude\` that reaches that folder only through another link outside it is not the installer's layout and is not listed (the Unknown page shows it).` (`route::probe`, Ruling 27.)
-- In the same paragraph, replace `(the program files were removed by hand or by another tool) is listed with no version and a notice saying so; in this step Canager cannot remove the link either (see the write commands below).` with `(the program files were removed by hand or by another tool, or by an uninstall that stopped partway) is listed with no version and a notice saying so, and its Uninstall moves the link to the Trash (below).`
+- In the same paragraph, replace `(the program files were removed by hand or by another tool) is listed with no version and a notice saying so; in this step Banager cannot remove the link either (see the write commands below).` with `(the program files were removed by hand or by another tool, or by an uninstall that stopped partway) is listed with no version and a notice saying so, and its Uninstall moves the link to the Trash (below).`
 - In the **Write commands** table, after the row `| Upgrade | \`<claude> update\` | 1800 s | No |`, add:
 
 ```markdown
-| Uninstall | none: Canager moves up to three paths to the Trash itself (below) | 120 s; Canager stops between items once it is spent | No |
+| Uninstall | none: Banager moves up to three paths to the Trash itself (below) | 120 s; Banager stops between items once it is spent | No |
 ```
 
-- In the paragraph after that table, replace its last sentence, `There is no install (the installer is Anthropic's, not Canager's) and, in this step, no uninstall: Claude Code has no uninstall command, and until Canager can move its files to the Trash itself (phase 4 step C) the row says it cannot be uninstalled here and offers no button — \`Session::issue_plan\` refuses it as well.`, with `There is no install: the installer is Anthropic's, not Canager's.`, and after that paragraph insert:
+- In the paragraph after that table, replace its last sentence, `There is no install (the installer is Anthropic's, not Banager's) and, in this step, no uninstall: Claude Code has no uninstall command, and until Banager can move its files to the Trash itself (phase 4 step C) the row says it cannot be uninstalled here and offers no button — \`Session::issue_plan\` refuses it as well.`, with `There is no install: the installer is Anthropic's, not Banager's.`, and after that paragraph insert:
 
 ```markdown
 
 **Uninstall.** Claude Code has no uninstall command. Anthropic's own
 instructions ("Uninstall Claude Code → Native" on
-code.claude.com/docs/en/setup) are two `rm` commands; Canager runs
+code.claude.com/docs/en/setup) are two `rm` commands; Banager runs
 neither and instead moves the same paths, plus the installer's download
 cache, to the Trash itself (`CLAUDE.uninstall` in `recipes.rs`; how, in
 "Moving files to the Trash" below), in this order:
@@ -7277,7 +7277,7 @@ folder between the home folder and the path must be a real folder, not
 a link — so a `~/.local/bin` kept as a link to a dotfiles folder
 refuses the uninstall, and so does a `~/.claude` that is a link when
 the download cache is inside it; the path must belong to the user
-Canager runs as; it must be what the instructions describe — the
+Banager runs as; it must be what the instructions describe — the
 program files and the download
 cache real folders, the launcher one symbolic link straight into
 `~/.local/share/claude`; and, with every link resolved, moving it must
@@ -7285,7 +7285,7 @@ not take `~/.claude` or `~/.claude.json` along (of `~/.claude`, only
 `downloads` lies inside it, as listed). If any check fails, the whole
 uninstall is refused, in the user's language, and nothing is moved. The
 preview also records what each path is — its device, inode and kind,
-from `lstat` — and Canager keeps that with the plan it issued, never
+from `lstat` — and Banager keeps that with the plan it issued, never
 sending it to the window. When the preview is confirmed the list is
 built again from the disk (`removal::execute_removal`): if a check now
 fails, if the list is not the one the preview showed, or if any path is
@@ -7297,22 +7297,22 @@ that follows the move before it — every check runs again on that path,
 and it is compared once more with what the preview recorded; if
 anything differs the uninstall stops before moving it
 (`Fault::PathChanged`, naming the path), and the operation log lists
-every path already moved. Canager checks each item immediately before
+every path already moved. Banager checks each item immediately before
 moving it; a program running as you that swaps the item in that instant
 could still race it. The launcher is last, so a stop partway — macOS
-refusing an item (its own words are shown), Cancel, or Canager stopping
+refusing an item (its own words are shown), Cancel, or Banager stopping
 between items once the 120 s budget is spent (a move already under way
 is always finished first) — always leaves it: a stop before the first
 move changes nothing, and the row stays as it was; once the program
 files are in the Trash, the next refresh shows the launcher-only row,
 and its Uninstall lists them as already gone and moves the rest.
-Afterwards Canager looks for the launcher again
+Afterwards Banager looks for the launcher again
 (`reconcile_after_uninstall`): the uninstall is reported as succeeded
-only when it is gone, and as unconfirmed when Canager cannot tell (a
+only when it is gone, and as unconfirmed when Banager cannot tell (a
 folder it may not read, say).
 ```
 
-(d) Under `## Files Canager reads`, at the end of B's bullet `- Claude Code: whether \`~/.local/bin/claude\` exists and where it links to …` (the one that ends `a missing file or key means \`latest\`).`), add a sentence to the same bullet:
+(d) Under `## Files Banager reads`, at the end of B's bullet `- Claude Code: whether \`~/.local/bin/claude\` exists and where it links to …` (the one that ends `a missing file or key means \`latest\`).`), add a sentence to the same bullet:
 
 ```markdown
   For an uninstall preview, when it is confirmed, and again right before
@@ -7324,10 +7324,10 @@ folder it may not read, say).
   of the launcher, and nothing else.
 ```
 
-(e) Under `## Files Canager writes`, replace the sentence `Nothing else on the Mac is written, moved or deleted by Canager itself: every change to what is installed is made by the tool named in the preview, running the command shown there.` with:
+(e) Under `## Files Banager writes`, replace the sentence `Nothing else on the Mac is written, moved or deleted by Banager itself: every change to what is installed is made by the tool named in the preview, running the command shown there.` with:
 
 ```markdown
-Nothing else on the Mac is written or deleted by Canager itself. It
+Nothing else on the Mac is written or deleted by Banager itself. It
 moves files in one case: a confirmed uninstall of a tool that has no
 uninstall command (Claude Code, today) moves the paths its preview
 listed to the Trash (next section). Every other change to what is
@@ -7335,13 +7335,13 @@ installed is made by the tool named in the preview, running the command
 shown there.
 ```
 
-(f) After the `## Files Canager writes` section (before `## Network: Canager only connects to these hosts`), insert:
+(f) After the `## Files Banager writes` section (before `## Network: Banager only connects to these hosts`), insert:
 
 ```markdown
 ## Moving files to the Trash
 
 `RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
-in Canager that changes a file on the Mac other than its own settings.
+in Banager that changes a file on the Mac other than its own settings.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by
@@ -7352,16 +7352,16 @@ itself, and a symbolic link is moved as the link, never its target: the
 item's kind comes from the `lstat` that ends its last check, so a link is
 never handed to the system as a folder, and nothing else looks at the
 path between that check and the call. The call itself takes a path, so
-one gap remains: Canager checks each item immediately before moving it;
+one gap remains: Banager checks each item immediately before moving it;
 a program running as you that swaps the item in that instant could still
 race it. Each move is written to the operation log with where the item
 now is (`LogNote::MovedToTrash`); an item macOS refuses stops the
 uninstall there, with macOS's own reason (`LogNote::TrashFailed`).
-After each move Canager waits 3 seconds
+After each move Banager waits 3 seconds
 (`removal::PUT_BACK_SETTLE`) — before the next one, and before it
 reports the uninstall finished; Cancel ends the wait, and no wait
 outlasts the uninstall's time budget — and the second finding below says
-why. A debug build of Canager, never a release one, also tries to list
+why. A debug build of Banager, never a release one, also tries to list
 the Trash after each move and prints whether it may; that is how the
 pre-merge check learns the build it ran had no Full Disk Access.
 
@@ -7385,26 +7385,26 @@ a listing of `~/.Trash`:
   runs that recorded every item also kept running for 3 seconds after the
   last call, and the record is written after the call returns — with Full
   Disk Access, a process that quit at once lost the later records — so
-  Canager waits after the last move too, and quitting Canager while an
+  Banager waits after the last move too, and quitting Banager while an
   uninstall is still running may leave the item it moved last without
   Put Back. Why macOS behaves this way is not known: the pause is a
   measurement on one Mac, not a documented guarantee.
 - A plain `rename` into `~/.Trash` from the same process succeeded too
   (24 runs out of 24), where the design had expected it to be refused:
   the Trash's protection covers listing it, not adding to it, so a `mv`
-  could have reached it. Canager does not use one anyway: a renamed item
+  could have reached it. Banager does not use one anyway: a renamed item
   gets no Put Back record, and one `mv` of Claude Code's two paths named
   `claude` collides on the name — `mv -n` skips the second and still
   reports success.
 
 Not verified by that app: a click on Put Back itself (the records were
-checked, not used), a build of Canager itself, a symbolic link whose
+checked, not used), a build of Banager itself, a symbolic link whose
 target is gone — which is what every Claude Code uninstall moves last:
 the launcher, after the program files it points to — other macOS
 versions, and Intel Macs.
 ```
 
-(g) Under `## What Canager never does`, replace the bullet `- Never writes, moves or deletes a file on the Mac itself, other than its own \`settings.json\`; never edits a shell startup file.` with:
+(g) Under `## What Banager never does`, replace the bullet `- Never writes, moves or deletes a file on the Mac itself, other than its own \`settings.json\`; never edits a shell startup file.` with:
 
 ```markdown
 - Never deletes a file and never empties the Trash. Never writes a file
@@ -7439,29 +7439,29 @@ In `README.md`:
 (a) Replace B's row
 
 ```markdown
-| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall not yet — the row says so and offers no button |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Banager never runs it); uninstall not yet — the row says so and offers no button |
 ```
 
 with
 
 ```markdown
-| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Banager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
 ```
 
 (b) Under `## What makes it safe to point at your machine`, in the bullet `**You see the exact command before it runs.**`, change `Every update and uninstall shows its real argv and whether it needs your password.` to `Every update and uninstall shows its real argv and whether it needs your password — or, for the one uninstall that runs no command, the exact paths it will move to the Trash.` Then, after the bullet `- **Nothing is deleted quietly.** An uninstall that would break other packages says which ones, in your language.`, add:
 
 ```markdown
 - **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
-  its removal as a list of paths. Canager moves those paths, plus its installer's download cache,
+  its removal as a list of paths. Banager moves those paths, plus its installer's download cache,
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
   back — and Finder's Put Back will likely work too; the preview lists each path it will move and
   each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). It is the
-  only change Canager makes to a file itself besides saving its own settings, and
+  only change Banager makes to a file itself besides saving its own settings, and
   `docs/what-we-run.md` says how.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never
   directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and never
   through a folder that is a link — yours, what the instructions describe, and clear of what it
-  keeps. Canager remembers what each path was when you saw the preview; when you confirm, and
+  keeps. Banager remembers what each path was when you saw the preview; when you confirm, and
   again right before each path moves, it checks everything once more, and if anything differs it
   stops before moving that path, and the operation log lists anything it had already moved.
 ```
@@ -7510,7 +7510,7 @@ Session::new injects the real Trash; the test Trash is compiled only for
 tests. The launcher-only notice, the
 trust file and the README say what Uninstall now does, in this same
 commit: what is moved and kept, the checks, what a stop partway leaves,
-the one call that moves a file and the pause after it, and what Canager
+the one call that moves a file and the pause after it, and what Banager
 still never does.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -7533,7 +7533,7 @@ EOF
 
 **Interfaces:**
 - Consumes (all public, from Task 6 and B): `banager_core::adapters::standalone::{StandaloneAdapter, recipes::CLAUDE}`, `StandaloneAdapter::{new, with_trash_gap}`, `banager_core::trash::{MockTrasher, RealTrasher, TrashError, Trasher}`, `banager_core::model::ItemKind` (`MockTrasher` reaches `tests/` through the crate's dev-dependency on itself with `test-support`, stage 6a), `banager_core::session::Session::{with_adapters, refresh, issue_plan, submit, cancel, operations}`, `banager_core::runner::{HostEnv, MockRunner, CommandOutput}`, `banager_core::http::{MockHttpClient, HttpResponse}`, `banager_core::model::*`.
-- Produces: tests only (no production item); a CI step that runs the `#[ignore]`d smoke with `CANAGER_LIVE=1`, the gate `brew_live`'s install test uses for a test that changes the machine; the trust file's and the README's sentences about that test (Ruling 23).
+- Produces: tests only (no production item); a CI step that runs the `#[ignore]`d smoke with `BANAGER_LIVE=1`, the gate `brew_live`'s install test uses for a test that changes the machine; the trust file's and the README's sentences about that test (Ruling 23).
 
 The home builder is this file's own: B's `standalone::testing::TempHome` is `#[cfg(test)] pub(super)`, invisible to `tests/`. It follows `tests/unknown_scan_test.rs`'s `Home` (canonical temp dir, `euid` from the home's owner).
 
@@ -7548,7 +7548,7 @@ Create `crates/banager-core/tests/standalone_uninstall_test.rs`:
 //! `issue_plan` (the actionability gate), `submit`, `run_operation`
 //! (`execute`, then the reading after an uninstall) -- with `MockTrasher`
 //! standing in for the Trash, so nothing here touches anyone's Trash. The
-//! last test is the exception, `#[ignore]`d and gated on `CANAGER_LIVE=1`
+//! last test is the exception, `#[ignore]`d and gated on `BANAGER_LIVE=1`
 //! like `brew_live`'s install test: `RealTrasher` moving five throwaway
 //! items it makes into the real Trash of the Mac running it (CI's runner,
 //! whose Trash is discarded with it; on a developer's Mac, once, by hand).
@@ -7585,7 +7585,7 @@ struct Home(PathBuf);
 impl Home {
     fn new(tag: &str) -> Home {
         let raw = std::env::temp_dir().join(format!(
-            "canager-uninstall-{tag}-{}-{}",
+            "banager-uninstall-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -7815,7 +7815,7 @@ async fn test_a_path_changed_after_the_preview_stops_the_uninstall_before_it_mov
 
     assert_eq!(
         outcome_of(&session, op_id).await,
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: "~/.local/bin/claude".to_string()
         })
     );
@@ -7850,7 +7850,7 @@ async fn test_a_self_update_between_the_preview_and_the_click_stops_the_uninstal
 
     assert_eq!(
         outcome_of(&session, op_id).await,
-        Outcome::CanagerFailed(Fault::PathChanged {
+        Outcome::BanagerFailed(Fault::PathChanged {
             path: "~/.local/bin/claude".to_string()
         })
     );
@@ -8095,23 +8095,23 @@ async fn test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_suc
 /// the same from `$TMPDIR`). Each call is told the item's kind, as the
 /// removal's last check tells it -- a link as `Symlink` whatever it points
 /// at. It changes the machine -- it leaves five
-/// throwaway items, named `canager-trash-smoke-…`, in the Trash of the Mac
+/// throwaway items, named `banager-trash-smoke-…`, in the Trash of the Mac
 /// running it -- so, like `brew_live`'s install test, it also requires
-/// `CANAGER_LIVE=1` and skips loudly without it.
+/// `BANAGER_LIVE=1` and skips loudly without it.
 #[cfg(target_os = "macos")]
 #[test]
-#[ignore = "moves five throwaway items into the real Trash; run with CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored"]
+#[ignore = "moves five throwaway items into the real Trash; run with BANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored"]
 fn test_real_trasher_moves_each_kind_of_item_and_links_as_links() {
     use banager_core::trash::RealTrasher;
 
-    if std::env::var("CANAGER_LIVE").as_deref() != Ok("1") {
-        eprintln!("CANAGER_LIVE is not 1; skipping the real Trash smoke test");
+    if std::env::var("BANAGER_LIVE").as_deref() != Ok("1") {
+        eprintln!("BANAGER_LIVE is not 1; skipping the real Trash smoke test");
         return;
     }
     let trash = PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".Trash");
     let scratch = Home::new("real-trash");
     let stem = format!(
-        "canager-trash-smoke-{}-{}",
+        "banager-trash-smoke-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -8179,7 +8179,7 @@ In `.github/workflows/ci.yml`, after the step
 ```yaml
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
-          CANAGER_LIVE: "1"
+          BANAGER_LIVE: "1"
         run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 ```
 
@@ -8192,7 +8192,7 @@ insert:
       # link) into the runner's Trash, which is discarded with the runner.
       - name: real Trash smoke (moves five throwaway items)
         env:
-          CANAGER_LIVE: "1"
+          BANAGER_LIVE: "1"
         run: cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture
 ```
 
@@ -8204,9 +8204,9 @@ Expected: PASS — 6 tests, 1 ignored. (These are the first tests to drive `Sess
 - [ ] **Step 3: Check the smoke test's gate — and leave the real run to the author**
 
 Run: `cargo test -p banager-core --test standalone_uninstall_test -- --ignored --nocapture`, without the variable.
-Expected: PASS, printing `CANAGER_LIVE is not 1; skipping the real Trash smoke test` — the gate works.
+Expected: PASS, printing `BANAGER_LIVE is not 1; skipping the real Trash smoke test` — the gate works.
 
-Do **not** run it with `CANAGER_LIVE=1` here. It moves five items into the real Trash of the Mac it runs on, and spec §9.4 makes the development machine's run a manual one: it is the first step of the author's pre-merge check ("The pre-merge verification"), beside CI's run on every push. Neither is the Finder-launched, no-Full-Disk-Access case — a terminal here has Full Disk Access, and CI is a runner — so either run verifies the move itself (each kind of item, links as links, the dangling one included), not Put Back without FDA; the author's Finder check covers that.
+Do **not** run it with `BANAGER_LIVE=1` here. It moves five items into the real Trash of the Mac it runs on, and spec §9.4 makes the development machine's run a manual one: it is the first step of the author's pre-merge check ("The pre-merge verification"), beside CI's run on every push. Neither is the Finder-launched, no-Full-Disk-Access case — a terminal here has Full Disk Access, and CI is a runner — so either run verifies the move itself (each kind of item, links as links, the dangling one included), not Put Back without FDA; the author's Finder check covers that.
 
 - [ ] **Step 4: Say so in the trust file and the README**
 
@@ -8229,13 +8229,13 @@ In `README.md`, replace the paragraph that begins `` `cargo test --workspace` ha
 in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
 running it, the other installs and removes the `hello` formula. The third, in
 `crates/banager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
-(named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
-The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI runs all
+(named `banager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
+The two that change the machine refuse to touch anything without `BANAGER_LIVE=1`. CI runs all
 three; run them yourself with:
 
 ```bash
-CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
-CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
+BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
+BANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
 ```
 ````
 
@@ -8262,7 +8262,7 @@ copy, or at a new version by Claude Code's own updater -- stops the run
 before anything moves; a refusal or a Cancel partway leaves the
 launcher-only row, reported as Failed or Cancelled, and a second
 uninstall finishes it; and a reading after the uninstall that cannot see
-the launcher's folder is unconfirmed, not success. One ignored test, gated on CANAGER_LIVE=1 like
+the launcher's folder is unconfirmed, not success. One ignored test, gated on BANAGER_LIVE=1 like
 brew_live's install test, calls macOS's real move-to-Trash on a file, a
 directory and three kinds of link -- including the dangling one every
 uninstall moves last, which the spike did not try -- and CI runs it on
@@ -8300,7 +8300,7 @@ In `docs/superpowers/backlog.md`, at the end of the section `## 阶段 4（独�
   （spike：15/15 与 4/4，一台 Mac、macOS 27.0，机制不明；记录在调用返回之后才写）。`removal::execute_removal`
   在同一次卸载里每移一项之后停 `PUT_BACK_SETTLE` = 3 秒（最后一项之后也停，再报告完成），但这个停顿**只管一次操作之内**：
   操作管理器同时跑最多 3 个操作（`ops/mod.rs` 的 `Semaphore::new(3)`），两个 path-list 卸载并发时，两边的移动仍可能挤进
-  2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Canager，刚移的那一项也可能丢掉记录。
+  2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Banager，刚移的那一项也可能丢掉记录。
   即使在一次卸载之内，3 秒也只是让每一项「多半」有记录（四次观察），不是保证；文案与信任文件都这样说（裁定 29）。
   **修法的形状**：把「上一次移到废纸篓的时刻」放进全进程共享的一处（`Session::new` 交给所有独立安装工具适配器的是同一个
   `Arc<RealTrasher>`），每次移动前补足到 3 秒，而不是只在 `execute_removal` 的循环里停；`MockTrasher` 与测试不受影响。
@@ -8339,14 +8339,14 @@ In `README.md`:
 - change `(the program was removed between the check and the run, say)` to `(the program was removed between the check and the run, say, or a path changed between the preview and the click)`
 - change `(waiting for Homebrew to finish updating, a stream it could no longer read)` to `(waiting for Homebrew to finish updating, a stream it could no longer read, each item it moved to the Trash)`
 
-and in the bullet `- **Another program's own words.**`, change `or can't save Canager's settings for a cause Canager doesn't recognise.` to `can't save Canager's settings for a cause Canager doesn't recognise, or refuses to move an item to the Trash.`
+and in the bullet `- **Another program's own words.**`, change `or can't save Banager's settings for a cause Banager doesn't recognise.` to `can't save Banager's settings for a cause Banager doesn't recognise, or refuses to move an item to the Trash.`
 
 (b) Under `## 中文`, in the paragraph beginning `Rust 侧返回的拒绝理由也会翻译`:
-- change `（某个名字 Canager 不肯交给工具、某个程序不见了）` to `（某个名字 Canager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、放在其它应用共用的文件夹里、不存在、不属于你或者和说明写的不一样）`
+- change `（某个名字 Banager 不肯交给工具、某个程序不见了）` to `（某个名字 Banager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、放在其它应用共用的文件夹里、不存在、不属于你或者和说明写的不一样）`
 - change `（比如程序在检查之后、运行之前被删掉了）` to `（比如程序在检查之后、运行之前被删掉了，或者某条路径在预览之后、点击之前变了）`
 - change `（等待 Homebrew 更新完毕、某个输出流读不下去了）` to `（等待 Homebrew 更新完毕、某个输出流读不下去了、把哪一项移到了废纸篓）`
 
-and in the bullet `- **其他程序自己的话。**`, change `或因为 Canager 不认识的原因无法保存设置时给出的原因。` to `或因为 Canager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。`
+and in the bullet `- **其他程序自己的话。**`, change `或因为 Banager 不认识的原因无法保存设置时给出的原因。` to `或因为 Banager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。`
 
 - [ ] **Step 3: The counts**
 
@@ -8370,7 +8370,7 @@ git add docs/superpowers/backlog.md README.md
 git commit -m "$(cat <<'EOF'
 Record what the Trash pause does not cover, and bring the README's counts up
 
-The backlog records that the pause Canager takes after each move to the
+The backlog records that the pause Banager takes after each move to the
 Trash holds within one operation only, with the shape of the fix and the
 two things still unverified; that check 1's never-list refuses the cache
 path spec lists for Antigravity, which step D must decide; that a
@@ -8387,13 +8387,13 @@ EOF
 
 - [ ] **Step 6: Delivery note (goes in the branch's PR description / handover; not a file)**
 
-> **Step C: path-list uninstall (move to Trash).** Claude Code's row now offers Uninstall. The dialog lists in plain words the paths Canager will move to the Trash — `~/.local/share/claude`, `~/.claude/downloads` when it exists, and the launcher `~/.local/bin/claude` last — and the two it keeps, `~/.claude` and `~/.claude.json`, and says under "What Canager will do:" that no command runs and nothing is deleted. On confirmation Canager checks everything again and compares every path with what the preview recorded (device, inode, kind — kept with the issued plan, never sent to the window), then, for each path on the blocking pool, runs every check once more and calls macOS's `trashItemAtURL:` with nothing in between, waiting 3 seconds after each move so that Finder is likely to record Put Back for it (observed, not guaranteed; an item without it can be dragged back). The checks: inside the home folder, not directly in it or in a shared folder such as `~/.local`, reached only through real folders, yours, what Anthropic's instructions describe, and clear of the kept paths. A path that changed stops the run (`PathChanged`) — including a launcher Claude Code re-pointed by updating itself between the preview and the click; a refusal or a Cancel after the first move leaves the launcher-only row, which a second Uninstall finishes; the launcher must be one link into its root, and the outcome is verified by looking for it again — unconfirmed, never success, when Canager cannot tell. The trust file and the README say all of this in the same commit as the code.
+> **Step C: path-list uninstall (move to Trash).** Claude Code's row now offers Uninstall. The dialog lists in plain words the paths Banager will move to the Trash — `~/.local/share/claude`, `~/.claude/downloads` when it exists, and the launcher `~/.local/bin/claude` last — and the two it keeps, `~/.claude` and `~/.claude.json`, and says under "What Banager will do:" that no command runs and nothing is deleted. On confirmation Banager checks everything again and compares every path with what the preview recorded (device, inode, kind — kept with the issued plan, never sent to the window), then, for each path on the blocking pool, runs every check once more and calls macOS's `trashItemAtURL:` with nothing in between, waiting 3 seconds after each move so that Finder is likely to record Put Back for it (observed, not guaranteed; an item without it can be dragged back). The checks: inside the home folder, not directly in it or in a shared folder such as `~/.local`, reached only through real folders, yours, what Anthropic's instructions describe, and clear of the kept paths. A path that changed stops the run (`PathChanged`) — including a launcher Claude Code re-pointed by updating itself between the preview and the click; a refusal or a Cancel after the first move leaves the launcher-only row, which a second Uninstall finishes; the launcher must be one link into its root, and the outcome is verified by looking for it again — unconfirmed, never success, when Banager cannot tell. The trust file and the README say all of this in the same commit as the code.
 >
-> **Before merging (blocking, the author's own):** the check in this plan's section "The pre-merge verification": the `#[ignore]`d smoke test with `CANAGER_LIVE=1` in the author's own terminal — its dangling-link case is what every uninstall's last move depends on — then a Finder-launched debug build against a throwaway home made inside a fresh `mktemp -d` folder, after confirming `HOME` and the row's `0.0.1-canager-check` version; an uninstall; that the build has no Full Disk Access (not granted in System Settings, and its own debug line saying it was refused a listing of the Trash); and Put Back on the three items in Finder; then one sentence with the date and the results in `docs/what-we-run.md`'s "Moving files to the Trash". Never run it against the real `~/.local/bin/claude`.
+> **Before merging (blocking, the author's own):** the check in this plan's section "The pre-merge verification": the `#[ignore]`d smoke test with `BANAGER_LIVE=1` in the author's own terminal — its dangling-link case is what every uninstall's last move depends on — then a Finder-launched debug build against a throwaway home made inside a fresh `mktemp -d` folder, after confirming `HOME` and the row's `0.0.1-banager-check` version; an uninstall; that the build has no Full Disk Access (not granted in System Settings, and its own debug line saying it was refused a listing of the Trash); and Put Back on the three items in Finder; then one sentence with the date and the results in `docs/what-we-run.md`'s "Moving files to the Trash". Never run it against the real `~/.local/bin/claude`.
 >
 > **What later steps change** — honest, not bugs: **D** adds Grok's and Antigravity's lists, check 5 (backup files), `Expect::File`, the `NotOurs` skip for an optional path that is not the tool's, `RemovedWhat::Backups` and the other `KeptWhat`s, widens the launcher-last test for Grok's `~/.grok/bin`, and decides agy's `~/.cache/antigravity` against check 1's never-list (backlog); **E** adds rustup's `Uninstall::Command`. The Put Back pause holds within one operation only; a `~/.local/bin` kept as a link refuses the uninstall; the upgrade's reading still reads "could not tell" as gone (backlog).
 >
-> **Rulings taken** (see "Rulings this plan makes"): the enums sliced to Claude Code's producers; `Recipe.uninstall: Option<Uninstall>`; `Detected.euid`; the launcher-only state re-probed from disk; check 1's never-list, with a refusal reason of its own; `KeepSpec` listed only when present; `~` in every sentence; log notes, not log lines; a refused item is `Failed`, a trasher that cannot ask is `CanagerFailed(Internal)`; `execute` rebuilds the list from disk; `RealTrasher` on every Unix, moving only on macOS; the pause is zero in tests, and follows the last move too; operation-aware verification through a trait method with a default; the `uninstall_unsafe` refusal without a frame; `PathChanged` copy true for a stop in the middle; the end-to-end test through `Session`; the pause per operation; `MockTrasher` test-only; the preview's label per arm; the documents in the commit that makes them true; the ancestry rule; kept paths stay kept (`OverlapsKept`); the last check immediately before the move; the one-hop launcher and `probe_strict`; the blocking pool and a between-items budget; Put Back observed, not promised; a debug-only Full Disk Access line.
+> **Rulings taken** (see "Rulings this plan makes"): the enums sliced to Claude Code's producers; `Recipe.uninstall: Option<Uninstall>`; `Detected.euid`; the launcher-only state re-probed from disk; check 1's never-list, with a refusal reason of its own; `KeepSpec` listed only when present; `~` in every sentence; log notes, not log lines; a refused item is `Failed`, a trasher that cannot ask is `BanagerFailed(Internal)`; `execute` rebuilds the list from disk; `RealTrasher` on every Unix, moving only on macOS; the pause is zero in tests, and follows the last move too; operation-aware verification through a trait method with a default; the `uninstall_unsafe` refusal without a frame; `PathChanged` copy true for a stop in the middle; the end-to-end test through `Session`; the pause per operation; `MockTrasher` test-only; the preview's label per arm; the documents in the commit that makes them true; the ancestry rule; kept paths stay kept (`OverlapsKept`); the last check immediately before the move; the one-hop launcher and `probe_strict`; the blocking pool and a between-items budget; Put Back observed, not promised; a debug-only Full Disk Access line.
 
 ---
 
@@ -8436,23 +8436,23 @@ Not in this step, by the spec's own slicing or this plan's rulings (each with it
 3. **Put Back needs spacing, which the spec does not know.** Back-to-back `trashItemAtURL:` calls from a process without FDA record Put Back for the first item only. `PUT_BACK_SETTLE` = 3 s after each item, the last included, is author decision 1 (default taken; deviation 19 for the last); the pause holds within one operation (ruling 19, backlog).
 4. **Check 1's never-list is applied to the resolved parent, and "之下至少两层" is not applied literally** (ruling 5): read literally, "at least two levels below home" would refuse `~/.claude/downloads`, which the spec's own list contains. The never-list refuses agy's `~/.cache/antigravity`, which spec §6.3 also lists — step D's decision (backlog). The refusal has its own reason, `SharedFolder` (deviation 21).
 5. **Check 5, `Expect::File`, and the `NotOurs` skip move to step D** with their only producers (ruling 1); in this step an `optional` path of the wrong shape is refused. Spec §十 row C lists "五条检查"; four run here.
-6. **Log lines are `LogNote::{MovedToTrash, TrashFailed}`, not `OperationEvent::Log { line: "Moved … " }`** (ruling 8): `events.rs` sends Canager's own words as a key plus arguments, and all copy is en + zh-CN.
+6. **Log lines are `LogNote::{MovedToTrash, TrashFailed}`, not `OperationEvent::Log { line: "Moved … " }`** (ruling 8): `events.rs` sends Banager's own words as a key plus arguments, and all copy is en + zh-CN.
 7. **The reading after an uninstall is `Adapter::reconcile_after_uninstall`, not `reconcile`** — B's deviation 15 made `reconcile` refuse a launcher-only launcher (right for upgrades), so the operation-aware reading B handed to this step is a trait method with a default body (ruling 15). Where B and the spec differ, this plan follows B.
 8. **Spec §6.2 step 3 says a cancelled run is reported "`Cancelled` or `StillInstalledAfterUninstall`".** The code at `3b5117a` (`run_operation`'s `Ok(Outcome::Unconfirmed)` arm) gives `Succeeded` when the launcher is gone, `Cancelled` when it is there and the user pressed Cancel, and `Unconfirmed` otherwise (the budget ran out) — never `StillInstalledAfterUninstall`, which is the exit-0 arm's. The plan follows the code; Task 7 pins `Cancelled`.
 9. **`execute()` rebuilds the list from the disk, compares it with the plan's, and compares every identity with what the preview saw** (ruling 10). Spec §6.3's comparison with what `plan()` saw — "与 `plan()` 所见的差异（链接被重指…被替换成同名的另一个 inode）" — is implemented; the spec names no carrier for the identities, and this plan carries them in `PlanAction::TrashPaths.previewed`, a field serde skips, so neither the wire nor the TypeScript mirror changes and `Adapter::execute` keeps its signature. The identity is `st_dev`, `st_ino` and the kind (the controller's words), not the pair spec §6.2 names. And the plan goes past spec §6.2 step 3, which compares only the identity before each move: each item's turn runs every check again (rulings 24–26). A same-shape change between the preview and the click that every check still passes — Claude Code's updater re-pointing its launcher — is therefore refused, and the user previews again. (The revision before the Astra review dropped this comparison; it is restored.)
 10. **`AlreadyGone` is decided by re-probing the disk, not by the instance's `LauncherOnly` note** (ruling 4); check 4's `SymlinkIntoRoot` is `route::probe`'s answer, B's implementation of §3.3 including B's deviation 17.
 11. **`RealTrasher` compiles on every Unix and moves only on macOS** (`TrashError::Unsupported` elsewhere), where the spec cfg-gates the type; and it builds the URL with `fileURLWithPath:isDirectory:` from the kind the caller's last check saw rather than the spike's `fileURLWithPath:` (ruling 11) — so `Trasher::trash` takes that kind, where spec §6.2's trait takes the path alone (ruling 26).
-12. **The `#[ignore]` smoke test does more than the spec asks and is gated like `brew_live`**: five item kinds instead of a file and a link (the dangling link and the link to a directory are the two the spike did not try), and `CANAGER_LIVE=1`, this repository's rule for a test that changes the machine. CI sets the variable. Its run on a development machine is the author's (deviation 24).
+12. **The `#[ignore]` smoke test does more than the spec asks and is gated like `brew_live`**: five item kinds instead of a file and a link (the dangling link and the link to a directory are the two the spike did not try), and `BANAGER_LIVE=1`, this repository's rule for a test that changes the machine. CI sets the variable. Its run on a development machine is the author's (deviation 24).
 13. **The end-to-end test drives `Session`** (refresh → the gate → submit → `run_operation`) instead of calling `plan`/`execute`/`reconcile` directly (ruling 18), so it also proves the gate lets the uninstall through and the launcher-only row comes back.
 14. **The `uninstall_unsafe` payload's shape test lives in `sources.test.ts`**, where the payload is decoded (`parseUninstallUnsafe`, beside `parseErrorPayload`), and in `src-tauri`'s test of `plan_operation_error`, rather than in `types.test.ts`: it is an IPC error payload, not a type `types.ts` mirrors.
 15. **`sourceNotice.launcherOnly.description` restores the spec's three promises with B's correction kept** (ruling 13): "this link can't run", not "typing claude fails", since another installation may still run (B's finding 9).
-16. **`operations.outcome.CanagerFailed.PathChanged`** does not say "so Canager didn't move anything" (spec §9.2): that is false for a stop after the first item. It names the path, says Canager stopped without moving it, and points at the log (ruling 17).
+16. **`operations.outcome.BanagerFailed.PathChanged`** does not say "so Banager didn't move anything" (spec §9.2): that is false for a stop after the first item. It names the path, says Banager stopped without moving it, and points at the log (ruling 17).
 17. **Recorded but not decided here:** the Put Back click, a Tauri build and that build's lack of Full Disk Access are unverified until the author's check; macOS 13–26 and Intel are unobserved; the pause is a four-run measurement that makes Put Back likely, not certain. The trust file and the backlog say so in those words.
 18. **`MockTrasher` is compiled only for tests** (ruling 20). Spec §6.2 describes it beside `RealTrasher` with no gate; it deletes its bin when dropped, so it sits behind `test-support`, which banager-core's own integration tests turn on through a dev-dependency on the crate itself.
 19. **The Put Back pause also follows the last move** (author decision 1, extended). Spec §6.2 step 4 returns `Succeeded` right after the last move; this plan waits `PUT_BACK_SETTLE` first, because every run that recorded all items stayed alive 3 s after its last call and the record is written after the call returns. Claude Code's uninstall spends 9 s in pauses, not 6.
-20. **`TrashError::Unsupported` is `CanagerFailed(Internal)`, not `Failed`** (ruling 9). Spec §6.2 step 3 sends every trash failure to `Failed { summary }`, whose summary the front end quotes as another program's words; "Canager could not ask the system" is Canager's own.
-21. **Six refusal reasons, and two sentences reworded** (rulings 21, 25). Spec §9.1/§9.2 have four reasons, and check 1's never-list refusal would have used `outsideHome`, whose sentence ("it's outside your home folder") is false for `~/.local/bin`. `outsideHome` now says the folder leads outside the home folder, and `notWhatInstructionsExpect` says Canager couldn't confirm the path is what the instructions describe — the path, or a folder it is in, may be a link to somewhere else — since it is also the answer for a path that could not be examined and for the ancestry rule. The sixth, `overlapsKept`, names a kept path that a listed one would disturb (ruling 25).
-22. **`commandPreview.trashLabel`** (ruling 22). Spec §6.6's dialog keeps "将执行：" above the `TrashPaths` sentence; that stays the zh label, and English says "What Canager will do:" rather than "This will run:" above "no command runs".
+20. **`TrashError::Unsupported` is `BanagerFailed(Internal)`, not `Failed`** (ruling 9). Spec §6.2 step 3 sends every trash failure to `Failed { summary }`, whose summary the front end quotes as another program's words; "Banager could not ask the system" is Banager's own.
+21. **Six refusal reasons, and two sentences reworded** (rulings 21, 25). Spec §9.1/§9.2 have four reasons, and check 1's never-list refusal would have used `outsideHome`, whose sentence ("it's outside your home folder") is false for `~/.local/bin`. `outsideHome` now says the folder leads outside the home folder, and `notWhatInstructionsExpect` says Banager couldn't confirm the path is what the instructions describe — the path, or a folder it is in, may be a link to somewhere else — since it is also the answer for a path that could not be examined and for the ancestry rule. The sixth, `overlapsKept`, names a kept path that a listed one would disturb (ruling 25).
+22. **`commandPreview.trashLabel`** (ruling 22). Spec §6.6's dialog keeps "将执行：" above the `TrashPaths` sentence; that stays the zh label, and English says "What Banager will do:" rather than "This will run:" above "no command runs".
 23. **The documents land with the code** (ruling 23). Spec §十 row C puts the trust file in step C without naming a commit; this plan puts every sentence Task 6 makes true or false into Task 6's commit and the smoke test's into Task 7's, and leaves Task 8 only what lags.
 24. **The development machine's smoke run is the author's** — spec §9.4's "开发机手动跑一次" — as the first step of the pre-merge check, not an executor's step: it changes that Mac's Trash, and a terminal here has Full Disk Access, so it would not observe the no-FDA context anyway.
 25. **The ancestry rule is stricter than spec §6.3's check 1** (ruling 24). Check 1 accepts any folder whose resolved path is inside the home folder; this plan also refuses one reached through a link inside the home folder (`~/.claude -> ~/Documents`, a `~/.local/bin` kept in a dotfiles folder), because such a link is exactly how an unrelated folder passes as the tool's or how settings alias the program folder (Astra findings 1, 3). A dotfiles-linked `~/.local/bin` therefore refuses the uninstall, and so does a linked `~/.claude` with the download cache inside (backlog).
@@ -8464,41 +8464,41 @@ Not in this step, by the spec's own slicing or this plan's rulings (each with it
 
 ## Review log
 
-Adversarial review of this plan, 23 points, each checked against the worktree (`~/dev/Canager-phase4`, read only; the rest of step B landed during the check — `71eacd0`, `f61cd94`, `dcf0e7c` — and every anchor into it was re-checked against the landed files), the spec, `spike-trash-tcc.md`, `b-task3-progress.md`, and — where a claim was about the toolchain — scratch crates built outside the worktree with the repository's toolchain (rustc/cargo/clippy 1.98.1). 22 accepted, 1 rejected.
+Adversarial review of this plan, 23 points, each checked against the worktree (`~/dev/Banager-phase4`, read only; the rest of step B landed during the check — `71eacd0`, `f61cd94`, `dcf0e7c` — and every anchor into it was re-checked against the landed files), the spec, `spike-trash-tcc.md`, `b-task3-progress.md`, and — where a claim was about the toolchain — scratch crates built outside the worktree with the repository's toolchain (rustc/cargo/clippy 1.98.1). 22 accepted, 1 rejected.
 
 | # | Point | Verdict | Reason and change |
 |---|---|---|---|
 | 1 | Task 1 step 3g misses the retarget test's `args` override in `UninstallDialog.test.tsx` | **Accepted** | Confirmed at `UninstallDialog.test.tsx:641-652`: the reply spreads `issuedPlanFor()` and overrides the top-level `args`; after `PlanAction` that key is ignored and `findByText("… --formula yq")` (`:688`, `:697`) times out. 3g now converts that override to `action: { Command: { … planned.name … } }`, and Task 1's Files line names the test. |
 | 2 | clippy `needless_borrows_for_generic_args` fails the gate on six `&owned` arguments | **Rejected** | False on this toolchain. A scratch crate with each flagged line copied exactly (`symlink(&real, outside_bin.join("claude"))`, `symlink(&elsewhere, &layout.launcher)`, `symlink_metadata(&link)`, each referent used once) is clean under `cargo clippy --all-targets -- -D warnings` on clippy 0.1.98, while the lint is demonstrably active (it flags `Command::args(&["-a", "-l"])` in the same crate). Clippy 0.1.98 does not fire it for an owned `PathBuf`/`String` local. The by-value form was adopted at the six sites anyway, at no cost, because CI's `dtolnay/rust-toolchain@stable` could pick up a clippy that does. |
-| 3 | `MockTrasher` bins and three `TempHome` tags can collide in parallel tests | **Accepted** | Confirmed: bin name `canager-mock-trash-{pid}-{nanos}` with a 1 µs clock (B's deviation 4 measured 6/30 failures for the same shape), and `execute-refused`/`-cancel`/`-budget` used by both `removal.rs` and `mod.rs`. `MockTrasher::new` now adds a process-wide `AtomicUsize` sequence number; every `removal.rs` tag is `removal-exec-*`. A scan of the plan's and B's landed tags finds no duplicate. |
+| 3 | `MockTrasher` bins and three `TempHome` tags can collide in parallel tests | **Accepted** | Confirmed: bin name `banager-mock-trash-{pid}-{nanos}` with a 1 µs clock (B's deviation 4 measured 6/30 failures for the same shape), and `execute-refused`/`-cancel`/`-budget` used by both `removal.rs` and `mod.rs`. `MockTrasher::new` now adds a process-wide `AtomicUsize` sequence number; every `removal.rs` tag is `removal-exec-*`. A scan of the plan's and B's landed tags finds no duplicate. |
 | 4 | Task 8's `grep "no uninstall…"` "prints nothing" is false | **Accepted** | The new text says "Claude Code has no uninstall command", and B's phrases are hard-wrapped, so the old grep matched the wrong line and missed the right ones. Now (stage 6g Step 4) the file is folded first and the check greps only B-era phrases: `in this step, no uninstall`, `cannot be uninstalled here`, `cannot remove the link either`, `offers no button` (all four verified present in the landed file today). |
 | 5 | Trust file: "a stop partway … leaves the launcher-only row" is false for a refusal of the first item | **Accepted** | `execute_removal` returns at the first refused item; the program directory is first. The sentence (now in stage 6g) says a stop before the first move changes nothing and the row stays as it was, and only once the program files are in the Trash does the launcher-only row appear. |
 | 6 | Two anchors quote B's plan, not the landed code | **Accepted** | Confirmed in `71eacd0`: `reconcile`'s doc begins `/// Step B only executes upgrades` and is six lines; the launcher-only assertion is rustfmt'd over four lines. Both are now anchored by symbol with the landed text quoted. Checking every other anchor into B's landed files found three more differences, fixed the same way: `Probe::LauncherOnly`'s doc (landed wording includes "or by another tool"), and the multi-line `StandaloneAdapter::new(` calls in `test_the_adapter_trait_delegates_to_the_inherent_methods` and `claude_upgrade_outputs`. The Baseline records `71eacd0`. |
 | 7 | The replacement install test restores a comment B already corrected | **Accepted** | Confirmed (B deviation 1; landed `mod.rs:1545-1550`): the gate has no install rule. The test now carries B's corrected sentence. |
 | 8 | Check 1 weakened: the never-list is gone, so `~/.local/bin` could be moved whole | **Accepted, with a different reason** | Confirmed: `parent == canonical_home` alone lets a typo'd `~/.local/bin` (Dir, Launcher) pass check 1, check 4 and both recipe tests; Ruling 5's "only reading" claim was wrong. Now `plan_removal` refuses a canonical parent that is home or one of `recipe::SHARED_FOLDERS` (`.local`, `.config`, `.cache`, `Library`, `.cargo`), each compared as spelled and as resolved; `recipes::tests` holds every `remove` path to the same rule as spelled; the launcher-last test is `last.path == route.launcher` (D widens it for `~/.grok/bin`); a refusal test covers `~/claude-thing`, `~/.local/bin` and a dotfiles-linked `~/.config/fish`. The refusal is a new fifth reason, `SharedFolder` (Task 5: Rust variant, IPC spelling `shared_folder`, TS union, keys and copy in both locales, tests), not `outside_home`, whose sentence would be false for it (point 14). agy's `~/.cache/antigravity` conflicts and is left to D, recorded in the backlog. Ruling 5 and deviation 4 rewritten; Rulings 21, deviation 21 added. |
-| 9 | Never-list says Canager never touches `~/.claude`, yet it moves `~/.claude/downloads` | **Accepted** | Reworded as proposed. The same overclaim was also in `CLAUDE`'s doc comment ("which Canager never touches") and the fixture README ("keeps both"); both now say that of `~/.claude` only `downloads` is moved. |
-| 10 | The author's check never confirms the throwaway home is in effect | **Accepted** | The fake install now prints `0.0.1-canager-check`; the check reads `HOME` from the launched process (`ps eww … | grep '^HOME='`) and requires the row to show that version before anything is pressed, quitting otherwise. It also has the author read the log's "now at …" lines, since where `trashItemAtURL:` puts items under an overridden `HOME` was never observed. |
+| 9 | Never-list says Banager never touches `~/.claude`, yet it moves `~/.claude/downloads` | **Accepted** | Reworded as proposed. The same overclaim was also in `CLAUDE`'s doc comment ("which Banager never touches") and the fixture README ("keeps both"); both now say that of `~/.claude` only `downloads` is moved. |
+| 10 | The author's check never confirms the throwaway home is in effect | **Accepted** | The fake install now prints `0.0.1-banager-check`; the check reads `HOME` from the launched process (`ps eww … | grep '^HOME='`) and requires the row to show that version before anything is pressed, quitting otherwise. It also has the author read the log's "now at …" lines, since where `trashItemAtURL:` puts items under an overridden `HOME` was never observed. |
 | 11 | Every uninstall moves a dangling link last; the spike never tried one | **Accepted** | Confirmed: the launcher is an absolute link into `~/.local/share/claude`, which moves first; the spike moved its link while the target existed. The table row (1) now says "satisfied for a link whose target exists", (c) says every uninstall depends on a dangling link and makes the smoke test's dangling case a merge blocker, and the author's check names the launcher as a dangling link. |
-| 12 | No pause after the last move; Put Back registration is asynchronous | **Accepted, both fixes** | Confirmed (spike §5 reading 4; every no-FDA run that recorded all items lingered 3 s). `execute_removal` now waits `PUT_BACK_SETTLE` after the last move too (a Cancel there only cuts the wait; everything is moved), through a `settle` helper; the pacing test expects three pauses; the trust file adds that quitting Canager mid-uninstall may lose the last item's record. Claude Code's pauses are 9 s of 120. |
-| 13 | Canager's own English reaches `Failed.summary` and `TrashFailed` as "Your Mac gave this reason" | **Accepted** | `TrashError::Unsupported` (off macOS) and the non-UTF-8 path (now also `Unsupported`) become `CanagerFailed(Fault::Internal)` with no `TrashFailed` note; only `Refused` (NSError text) goes to `Failed`/`TrashFailed`. A new test pins it. `Internal`'s copy ("didn't start and nothing was changed") is true: `RealTrasher` answers it for every path of one uninstall alike, so at the first item. |
-| 14 | Two refusal sentences can be false for the path they name | **Accepted, fix partly different** | `outsideHome` now reads "the folder it is in leads outside your home folder" and is no longer returned for a parent that is home (that is `SharedFolder`'s, point 8 — the proposed rewording alone would still be false there). `notWhatInstructionsExpect` now says Canager "couldn't confirm" the path is what the instructions describe and gives the causes as "may be", true for an unreadable path too; no sixth reason. Both locales and the Task 5 dialog test updated. |
+| 12 | No pause after the last move; Put Back registration is asynchronous | **Accepted, both fixes** | Confirmed (spike §5 reading 4; every no-FDA run that recorded all items lingered 3 s). `execute_removal` now waits `PUT_BACK_SETTLE` after the last move too (a Cancel there only cuts the wait; everything is moved), through a `settle` helper; the pacing test expects three pauses; the trust file adds that quitting Banager mid-uninstall may lose the last item's record. Claude Code's pauses are 9 s of 120. |
+| 13 | Banager's own English reaches `Failed.summary` and `TrashFailed` as "Your Mac gave this reason" | **Accepted** | `TrashError::Unsupported` (off macOS) and the non-UTF-8 path (now also `Unsupported`) become `BanagerFailed(Fault::Internal)` with no `TrashFailed` note; only `Refused` (NSError text) goes to `Failed`/`TrashFailed`. A new test pins it. `Internal`'s copy ("didn't start and nothing was changed") is true: `RealTrasher` answers it for every path of one uninstall alike, so at the first item. |
+| 14 | Two refusal sentences can be false for the path they name | **Accepted, fix partly different** | `outsideHome` now reads "the folder it is in leads outside your home folder" and is no longer returned for a parent that is home (that is `SharedFolder`'s, point 8 — the proposed rewording alone would still be false there). `notWhatInstructionsExpect` now says Banager "couldn't confirm" the path is what the instructions describe and gives the causes as "may be", true for an unreadable path too; no sixth reason. Both locales and the Task 5 dialog test updated. |
 | 15 | `launcherOnly.description` says the files *are* in the Trash | **Accepted** | Restored "may be" / "可能" as spec §9.2 has it. The old regex already matched either wording, so it was tightened rather than loosened: it now pins `may be in the Trash|可能在废纸篓里`. |
 | 16 | Two README sentences overstate | **Accepted** | "moves exactly those" → "moves those paths, plus its installer's download cache"; "the only change … itself" → "… besides saving its own settings". The second bullet's heading "Nothing is moved that isn't what you were shown" also overstated after point 21 (a same-shape replacement before the click is moved): it is now "Only the paths you were shown are moved", which the list comparison guarantees, and it names the shared-folder rule. |
 | 17 | Same as 5, and Review Focus 3 generalises it | **Accepted** | Same fix as 5; Review Focus 3 now reads "an item after the first" and says a refusal of the first item leaves the ordinary row. |
-| 18 | "This will run:" above "no command runs" | **Accepted** | New key `commandPreview.trashLabel`: en "What Canager will do:", zh "将执行：" (the label spec §6.6's dialog shows, which does not say a command runs). `CommandPreview` picks the label per arm; its test asserts the new label and that "This will run:" is absent (Ruling 22). |
+| 18 | "This will run:" above "no command runs" | **Accepted** | New key `commandPreview.trashLabel`: en "What Banager will do:", zh "将执行：" (the label spec §6.6's dialog shows, which does not say a command runs). `CommandPreview` picks the label per arm; its test asserts the new label and that "This will run:" is absent (Ruling 22). |
 | 19 | `MockTrasher` (whose drop deletes) is compiled into release builds | **Accepted** | `pub mod mock` and `pub use mock::MockTrasher` are now `#[cfg(any(test, feature = "test-support"))]` — the crate's existing feature for test code that touches real state — and banager-core gains a dev-dependency on itself with that feature so `tests/` still see it. Verified in a scratch workspace of the same shape on cargo 1.98.1: `cargo test --workspace` sees the type in unit and integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean, release builds lack it. The claims at Global Constraints and in `trash/mod.rs` corrected (Ruling 20). |
-| 20 | Task 6 turns uninstall on while the docs say "no uninstall" until Task 8 | **Accepted, broadened** | Not only the "no uninstall" sentences: after Task 6 the trust file's "Files Canager writes" and never-list ("never … moves a file") and the README's "shows its real argv" were false too. All of Task 8's trust-file edits and the README row and safety bullets moved into Task 6 as stage 6g (with the two `what_we_run_test` tests; the commit is 6h); the smoke test's sentences, the ignored-tests paragraph and "plus 3 more" moved to Task 7; Task 8 keeps the backlog, the Language sections and the counts, which only lag (Ruling 23). Task list, File Structure, self-review and delivery note follow. |
+| 20 | Task 6 turns uninstall on while the docs say "no uninstall" until Task 8 | **Accepted, broadened** | Not only the "no uninstall" sentences: after Task 6 the trust file's "Files Banager writes" and never-list ("never … moves a file") and the README's "shows its real argv" were false too. All of Task 8's trust-file edits and the README row and safety bullets moved into Task 6 as stage 6g (with the two `what_we_run_test` tests; the commit is 6h); the smoke test's sentences, the ignored-tests paragraph and "plus 3 more" moved to Task 7; Task 8 keeps the backlog, the Language sections and the counts, which only lag (Ruling 23). Task list, File Structure, self-review and delivery note follow. |
 | 21 | `Identity`'s doc is false; the plan-to-execute identity comparison is silently dropped | **Accepted** | A re-pointed link is a new link, a new inode; the doc now says so. Deviation 9 states that spec §6.3's comparison with what `plan()` saw is not implemented between preview and click, why (the identities would have to cross IPC in `TrashPaths` or live in the adapter between calls), and where the comparison is made (fresh look → each move). `Fault::PathChanged`'s doc now describes exactly the three findings the code makes. |
 | 22 | No test for Ruling 1's "optional path of the wrong shape is refused" | **Accepted** | `test_plan_removal_refuses_an_optional_path_of_the_wrong_shape`: `~/.claude/downloads` as a link and as a file → `NotWhatInstructionsExpect`. Ruling 1 names it. |
 | 23 | The executor runs the real-Trash smoke test on the author's Mac, in an FDA terminal | **Accepted** | The development machine's run is now the first step of the author's pre-merge check (spec §9.4 "开发机手动跑一次"); Task 7 Step 3 runs only the skip check and says why. The plan says in (c), Task 7 and the trust file that the terminal and CI runs verify the move, not Put Back without FDA (deviation 24). |
 
-**Also fixed while verifying** (not raised by the review): stage 6e (i) told the executor to add `PlanAction` to `standalone/mod.rs`'s imports a second time after Task 1 had added it — a duplicate import that does not compile; the Detect sentence of the trust file now includes "or by an uninstall that stopped partway"; the Global "Honest outcomes" line names `CanagerFailed(Internal)` and describes `PathChanged` as the code does; the trust file's "Files Canager reads" names the shared folders it resolves; stale "four" counts (Ruling 16, the task list, Task 5 Step 4) and "between items" pause wording (Tech Stack, docs of `trash_gap`, `with_trash_gap`, test helpers, deviation 3) updated; Task 7's commit subject no longer says the real Trash is called "once"; Task 6's heading, Files list (five items appended to `recipe.rs`, the docs, the `Cargo.toml` changes) and test counts (11 in 6c, 21 after 6d) follow the changes.
+**Also fixed while verifying** (not raised by the review): stage 6e (i) told the executor to add `PlanAction` to `standalone/mod.rs`'s imports a second time after Task 1 had added it — a duplicate import that does not compile; the Detect sentence of the trust file now includes "or by an uninstall that stopped partway"; the Global "Honest outcomes" line names `BanagerFailed(Internal)` and describes `PathChanged` as the code does; the trust file's "Files Banager reads" names the shared folders it resolves; stale "four" counts (Ruling 16, the task list, Task 5 Step 4) and "between items" pause wording (Tech Stack, docs of `trash_gap`, `with_trash_gap`, test helpers, deviation 3) updated; Task 7's commit subject no longer says the real Trash is called "once"; Task 6's heading, Files list (five items appended to `recipe.rs`, the docs, the `Cargo.toml` changes) and test counts (11 in 6c, 21 after 6d) follow the changes.
 
 **Remaining risks after this review:**
-- The author's check rests on two things nobody has observed: that `open -n --env HOME=…` sets `HOME` for a LaunchServices-launched Canager, and that `trashItemAtURL:` still uses the real `~/.Trash` under an overridden `HOME`. The check now detects both and stops rather than proceeding, but if either fails it cannot close (a)/(b) as written and needs another harness (a throwaway macOS user, say).
+- The author's check rests on two things nobody has observed: that `open -n --env HOME=…` sets `HOME` for a LaunchServices-launched Banager, and that `trashItemAtURL:` still uses the real `~/.Trash` under an overridden `HOME`. The check now detects both and stops rather than proceeding, but if either fails it cannot close (a)/(b) as written and needs another harness (a throwaway macOS user, say).
 - The pause after the last move is inferred from the spike's 3 s linger, not measured with an immediate exit without FDA; the whole pause is still four runs on one Mac.
 - A dangling link moved without FDA is covered only by the author's Finder check; the smoke test (author's terminal, CI) covers it with FDA or on a runner.
-- The crate's dev-dependency on itself was verified in a scratch workspace of the same shape, not in the Canager workspace (cargo must not run there during review); the first executor run of stage 6a is the real check.
+- The crate's dev-dependency on itself was verified in a scratch workspace of the same shape, not in the Banager workspace (cargo must not run there during review); the first executor run of stage 6a is the real check.
 - Clippy's behaviour can change under CI's floating `stable`; the flagged sites are by value now, but new code in future steps is not.
 - Agy's `~/.cache/antigravity` contradicts check 1's never-list; step D must decide it explicitly (backlog).
 - Deliberate deviations the author may overrule: a fifth refusal reason (`SharedFolder`) and reworded `outsideHome`/`notWhatInstructionsExpect` copy; `MockTrasher` behind a feature with a self dev-dependency; the 3 s pause after the last move; `commandPreview.trashLabel`. (The preview-to-click identity comparison this revision dropped is restored by the Astra review below; its own risks are listed there.)
@@ -8512,19 +8512,19 @@ Independent review by GPT-6 Astra (`.superpowers/phase4/astra/review-plan-c.md`,
 | # | Finding (Astra) | Ruling | Applied, and how |
 |---|---|---|---|
 | 1 | **breaks** — runtime aliases defeat ownership and preservation: `~/.claude → ~/.local/share/claude` moves the settings the preview keeps; `~/.claude → ~/Documents` passes an unrelated `downloads` as the cache (Task 6, 6b/6c) | Ancestry rule; kept paths checked at run time after canonicalization; the counterexamples as tests | **Applied** (Rulings 24, 25). `removal::check_item` requires the resolved folder of every listed path to equal the resolved home joined with the recipe's spelling (every folder between them real), and the item itself a link only for `Expect::SymlinkIntoRoot`; `disturbed`/`kept_places` refuse a listed path that is, holds, or (other than as spelled) lies inside a kept path or what one leads to — at the preview, at the confirmation and in every item's turn. Tests: `test_plan_removal_refuses_a_path_reached_through_a_linked_folder_inside_home` (cache parent aliased to `~/Documents`; a dotfiles-linked `~/.local/bin`), `test_plan_removal_refuses_when_a_kept_path_leads_into_what_it_would_move` (settings folder aliased to the program folder; `~/.claude.json` into it), `test_execute_removal_refuses_a_settings_folder_linked_to_the_program_folder_after_the_preview`. **Decided here:** the ruling's "and vice versa", read literally, refuses Claude Code's own list — its cache lies by design inside the kept `~/.claude` — so the one nesting the recipe spells, inside a real folder, is allowed and every other is refused (Ruling 25); and since none of the five sentences is true of a kept path leading into a moved one, the refusal is a sixth reason, `OverlapsKept`, naming the kept path (Task 5, both locales). |
-| 2 | **breaks** — the confirmation discards the preview's identities, so a retargeted home or a replaced cache is moved uninspected (Task 6, 6e Step 3(v)) | Carry the identities (`st_dev`, `st_ino`, kind) with the plan, off the wire; compare in `execute()`; remove the deviation | **Applied** (Ruling 10). `PlanAction::TrashPaths { paths, #[serde(skip)] previewed: Vec<ItemIdentity> }`, filled by `StandaloneAdapter::plan` from `plan_removal`; `execute_removal` compares all of them with a fresh look before anything moves, and each again in its item's turn. **Decided here:** the serde-skipped field, not a table beside `StoredPlan` — a scratch crate on this lockfile's serde 1.0.229 showed the externally tagged variant serialises without the field, deserialises it empty, ignores it in a payload and keeps it through `Clone`, so it rides from `issue_plan` through `StoredPlan` and `submit` to `execute` with `Adapter::execute` unchanged, while a table would need a new path into `execute` (`submit` consumes the `StoredPlan`). The TS mirror is untouched; a plan read back from JSON has no identities and `execute_removal` refuses it as Canager's own bug. The canonical home needs no separate carrier: a retargeted home yields other inodes. Deviation 9 rewritten; the trust file and `PathChanged`'s copy say a self-update between the preview and the click stops the run. Tests at three levels: `test_execute_removal_refuses_what_the_preview_did_not_see`, `test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview`, `test_a_self_update_between_the_preview_and_the_click_stops_the_uninstall_before_it_moves_anything` (through `Session`, so it proves the field survives `StoredPlan`); the wire test in `model.rs`. |
+| 2 | **breaks** — the confirmation discards the preview's identities, so a retargeted home or a replaced cache is moved uninspected (Task 6, 6e Step 3(v)) | Carry the identities (`st_dev`, `st_ino`, kind) with the plan, off the wire; compare in `execute()`; remove the deviation | **Applied** (Ruling 10). `PlanAction::TrashPaths { paths, #[serde(skip)] previewed: Vec<ItemIdentity> }`, filled by `StandaloneAdapter::plan` from `plan_removal`; `execute_removal` compares all of them with a fresh look before anything moves, and each again in its item's turn. **Decided here:** the serde-skipped field, not a table beside `StoredPlan` — a scratch crate on this lockfile's serde 1.0.229 showed the externally tagged variant serialises without the field, deserialises it empty, ignores it in a payload and keeps it through `Clone`, so it rides from `issue_plan` through `StoredPlan` and `submit` to `execute` with `Adapter::execute` unchanged, while a table would need a new path into `execute` (`submit` consumes the `StoredPlan`). The TS mirror is untouched; a plan read back from JSON has no identities and `execute_removal` refuses it as Banager's own bug. The canonical home needs no separate carrier: a retargeted home yields other inodes. Deviation 9 rewritten; the trust file and `PathChanged`'s copy say a self-update between the preview and the click stops the run. Tests at three levels: `test_execute_removal_refuses_what_the_preview_did_not_see`, `test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview`, `test_a_self_update_between_the_preview_and_the_click_stops_the_uninstall_before_it_moves_anything` (through `Session`, so it proves the field survives `StoredPlan`); the wire test in `model.rs`. |
 | 3 | **breaks** — later items re-check only the inode, so an ancestor renamed out of home and replaced by a link carries the move outside it (Task 6, 6d) | Run the full per-item checks immediately before each trash call, after any pause | **Applied** (Rulings 24, 26). Each item's turn (`take_turn`) takes a fresh look — home resolved, kept paths placed — and runs check 1, the ancestry rule, the kept-path rule, the launcher's probe, ownership, the kind and the identity before its move. Test: `test_execute_removal_checks_an_items_folders_again_after_the_pause` renames `~/.claude` out of the home folder and leaves a link in its place during the first pause, asserts the cache kept its identity, and that the run stops at it with nothing moved there. |
 | 4 | **breaks** — the final check and the move are separate pathname operations; `RealTrasher`'s extra `lstat` adds a race (6a/6d) | Not a blocker (accidental-change threat model); narrow the window; drop the extra `lstat`; state the residual gap; a deterministic substitution test | **Applied as ruled** (Ruling 26). The checks and the move run in one closure on the blocking pool; the last check is the item's own `lstat`, whose kind is handed to `Trasher::trash(path, kind)`, and `RealTrasher` no longer looks at the path (building the URL reads nothing). The controller's sentence is in the trust file and in `take_turn`'s doc. Tests with `MockTrasher`: a same-name substitution before an item's turn is caught (`test_execute_removal_catches_a_substitution_before_an_items_check`); one made inside the move itself is what gets moved, pinned as the documented edge (`test_a_substitution_inside_the_move_itself_is_beyond_the_last_check`). The review's object-bound mechanism was not pursued: `trashItemAtURL:` takes a URL, and whether a file-reference URL would bind it to the checked object is untried (remaining risks). |
 | 5 | **breaks** — the author's throwaway home at a fixed `/tmp` path can overwrite real settings through a pre-existing link (pre-merge Step 2) | `mktemp -d`; build only inside it; refuse if the app's `HOME` differs | **Applied.** Step 2 runs in a subshell with `set -euC`, makes `D=$(mktemp -d)` and the home inside it only, never reuses a path, and prints `STOP` and exits unless `ps eww` shows exactly that `HOME` and the app's parent is `launchd` (the spike's own proof of a Finder-style launch). No `#` comments inside the block: an interactive zsh, the author's shell, would run them as words. |
-| 6 | **wrong** — a partial uninstall can read as `Succeeded` (a launcher chained through `~/.local/bin/claude-current`; a permission error collapsing into absence), with no row to retry from (Task 2, 6e) | (a) Single-hop launcher in detection, coordinated with B's `route.rs`, with a test; (b) "could not tell" is an error, so `Unconfirmed`; tests for cancel-then-retry and a permission error in the post-uninstall probe | **Applied** (Ruling 27). (a) `route.rs`: B's `probe` becomes `probe_strict` (errors kept) plus a one-line `probe` over it; `one_hop` reads the launcher's text from its resolved folder and must land inside the resolved root, in the present and the dangling arm alike. B's two-hop test still passes (its first hop is the root's own `current`), and a launcher dangling through such an inside link is now launcher-only where B said absent — deviation 27. Tests: `test_probe_refuses_a_launcher_that_reaches_the_root_through_a_link_outside_it`, `test_probe_counts_a_launcher_dangling_through_the_roots_own_link_as_launcher_only`, `test_detect_lists_nothing_for_a_launcher_that_reaches_the_root_through_another_link`. (b) `reconcile_after_uninstall` reads presence with `probe_strict` and no version; an `Err` reaches `run_operation`, which already makes it `Unconfirmed`. Tests: Task 2's `test_an_uninstall_whose_reading_cannot_tell_is_unconfirmed_never_succeeded`, `test_probe_strict_says_it_cannot_tell_where_probe_says_absent`, `test_reconcile_after_uninstall_tells_there_gone_and_cannot_tell_apart`, and end to end `test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_succeeded` (a `chmod 000` on `~/.local/bin` after the last move; skipped as root) and `test_an_uninstall_cancelled_between_items_is_reported_cancelled_and_a_second_uninstall_finishes` (the retry). **Decided here:** no per-item completion record — with the launcher last and presence read strictly, "gone" after a Canager run means every earlier item moved, unless something outside Canager removed the launcher meanwhile; and B's upgrade reading, which still collapses a probe error into absence (`GoneAfterUpgrade`), is recorded in the backlog, not changed in this step. |
-| 7 | **wrong** — "120 s in all, pauses included" is not enforced: settling ignores the budget and a blocking Foundation call can hold a Tokio worker (6d/6g) | `spawn_blocking` per trash call; bound every pause by the remaining budget; check the budget before each item; await a move under way on Cancel; describe it as a stop between items | **Applied** (Ruling 28). Each turn is `spawn_blocking`'d and awaited to its end whatever the token says; each pause is `min(PUT_BACK_SETTLE, budget left)`; the budget is checked before each item; a panicked turn is `Unconfirmed`. Tests: `test_execute_removal_cuts_a_pause_to_what_is_left_of_the_budget`, `test_execute_removal_finishes_a_move_under_way_when_cancel_arrives`. The trust file's row and prose say "Canager stops between items once it is spent". |
-| 8 | **gap** — the real Canager build's lack of Full Disk Access is never established (pre-merge Steps 2–3) | The author confirms Canager is not listed / off in System Settings, and the app records what it observes (debug-only), kept out of release builds | **Applied** (Ruling 30). New Step 3: the System Settings check, and `RealTrasher`'s `#[cfg(all(target_os = "macos", debug_assertions))]` line — after each move it tries `read_dir` on the Trash it used and prints the answer — read from the log `open --stderr` captured; all three must say `Operation not permitted`. The record (Step 5) names both. A clean macOS account, the review's preference, is the fallback if `--stderr` shows nothing (remaining risks). |
+| 6 | **wrong** — a partial uninstall can read as `Succeeded` (a launcher chained through `~/.local/bin/claude-current`; a permission error collapsing into absence), with no row to retry from (Task 2, 6e) | (a) Single-hop launcher in detection, coordinated with B's `route.rs`, with a test; (b) "could not tell" is an error, so `Unconfirmed`; tests for cancel-then-retry and a permission error in the post-uninstall probe | **Applied** (Ruling 27). (a) `route.rs`: B's `probe` becomes `probe_strict` (errors kept) plus a one-line `probe` over it; `one_hop` reads the launcher's text from its resolved folder and must land inside the resolved root, in the present and the dangling arm alike. B's two-hop test still passes (its first hop is the root's own `current`), and a launcher dangling through such an inside link is now launcher-only where B said absent — deviation 27. Tests: `test_probe_refuses_a_launcher_that_reaches_the_root_through_a_link_outside_it`, `test_probe_counts_a_launcher_dangling_through_the_roots_own_link_as_launcher_only`, `test_detect_lists_nothing_for_a_launcher_that_reaches_the_root_through_another_link`. (b) `reconcile_after_uninstall` reads presence with `probe_strict` and no version; an `Err` reaches `run_operation`, which already makes it `Unconfirmed`. Tests: Task 2's `test_an_uninstall_whose_reading_cannot_tell_is_unconfirmed_never_succeeded`, `test_probe_strict_says_it_cannot_tell_where_probe_says_absent`, `test_reconcile_after_uninstall_tells_there_gone_and_cannot_tell_apart`, and end to end `test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_succeeded` (a `chmod 000` on `~/.local/bin` after the last move; skipped as root) and `test_an_uninstall_cancelled_between_items_is_reported_cancelled_and_a_second_uninstall_finishes` (the retry). **Decided here:** no per-item completion record — with the launcher last and presence read strictly, "gone" after a Banager run means every earlier item moved, unless something outside Banager removed the launcher meanwhile; and B's upgrade reading, which still collapses a probe error into absence (`GoneAfterUpgrade`), is recorded in the backlog, not changed in this step. |
+| 7 | **wrong** — "120 s in all, pauses included" is not enforced: settling ignores the budget and a blocking Foundation call can hold a Tokio worker (6d/6g) | `spawn_blocking` per trash call; bound every pause by the remaining budget; check the budget before each item; await a move under way on Cancel; describe it as a stop between items | **Applied** (Ruling 28). Each turn is `spawn_blocking`'d and awaited to its end whatever the token says; each pause is `min(PUT_BACK_SETTLE, budget left)`; the budget is checked before each item; a panicked turn is `Unconfirmed`. Tests: `test_execute_removal_cuts_a_pause_to_what_is_left_of_the_budget`, `test_execute_removal_finishes_a_move_under_way_when_cancel_arrives`. The trust file's row and prose say "Banager stops between items once it is spent". |
+| 8 | **gap** — the real Banager build's lack of Full Disk Access is never established (pre-merge Steps 2–3) | The author confirms Banager is not listed / off in System Settings, and the app records what it observes (debug-only), kept out of release builds | **Applied** (Ruling 30). New Step 3: the System Settings check, and `RealTrasher`'s `#[cfg(all(target_os = "macos", debug_assertions))]` line — after each move it tries `read_dir` on the Trash it used and prints the answer — read from the log `open --stderr` captured; all three must say `Operation not permitted`. The record (Step 5) names both. A clean macOS account, the review's preference, is the fallback if `--stderr` shows nothing (remaining risks). |
 | 9 | **minor** — unconditional claims survived: Put Back "left"/"ensured"; `mv` "cannot reach the TCC-protected Trash" (6a, delivery note, Task 1) | Put Back as observed and likely, not guaranteed, dragging back always possible; remove the disproved TCC claim; both locales | **Applied** (Ruling 29). Reworded: the `Cargo.toml` comment, `trash/mod.rs` and `real.rs` docs, `PUT_BACK_SETTLE`'s doc, `pause`'s doc, the trust file's Put Back and `rename` bullets, the README bullet, the delivery note; `uninstall.trashPreview` in en and zh-CN ("…until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too" / "……清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。") with the four test strings that assert it (Tasks 1 and 3); `PlanAction`'s doc now gives `mv`'s real faults — the basename collision and no Put Back record — and says the spike found a rename does reach `~/.Trash`. |
 | — | **checked, clean** — Category 4 (the `PlanAction` refactor) and Category 3 (objc2 0.6.4 / objc2-foundation 0.3.2 signatures, the self dev-dependency) | — | Unchanged, with two knock-ons: Task 1's four `TrashPaths` literals gain `previewed: Vec::new()` in stage 6e, and the revised `RealTrasher` body (kind parameter, typed `autoreleasepool` result, debug line) was compiled and linted again against the same crate versions. |
 
 **Also changed while applying the rulings:** Review Focus has eight inputs; Rulings 24–30 and deviations 25–30 are new, and Rulings 10, 11, 16, 21 and deviations 9, 11, 17, 21 are rewritten; `removal::Job` is owned (a `Detected` copy and `'static` recipe data) so a turn can run on the blocking pool, and `Confirmed` bundles the plan's paths with `previewed`, keeping `execute_removal` at seven parameters; `Trasher::trash` takes the kind and `MockTrasher` records it (`kinds()`); `testing::Unreadable` (stage 6c) and Task 7's `LockingTrasher` produce the permission errors; the `PathChanged` doc and copy name the self-update case; the backlog gains two entries (a dotfiles-linked `~/.local/bin`; the upgrade reading's collapse); the pre-merge Step 1 says the smoke test's debug lines from a terminal do not count; stage 6f's `launcherOnly` sentence names `{{source}}`'s official documentation instead of a website, as a test B's review added (`3e19fd9`) now requires, and fixes that test's comment; the Global Constraints, Architecture, Core Interfaces, File Structure, Task 6's Files and Interfaces, stage titles, the stage 6h clippy notes and `git add` list, both commit messages and the delivery note follow.
 
-**How this revision was checked.** A scratch mirror of the crate's module paths (`scratchpad/c-rev-removal`: real `trash/`, `route.rs`, `removal.rs`, the `testing` module and the recipe additions; stubs for `model`, `events`, `AdapterError`, `HostEnv`), with the code exactly as the plan writes it: 63 tests green (30 in `removal`, 27 in `route` — B's 24 as of `cf7a955` and the 3 new — 5 in `trash::mock`, 1 wire test), `cargo clippy --all-targets -- -D warnings` clean, rustfmt-stable. Stage 6c alone compiles and passes its tests; stage 6d's instructions applied to it reproduce the checked file byte for byte after `cargo fmt`; stage 6c's `route.rs` instructions were applied to B's landed `route.rs`, at `dcf0e7c` and again at `cf7a955`, and pass. `RealTrasher` was compiled and linted against objc2 0.6.4 / objc2-foundation 0.3.2 in debug and release (never run: it would move files into this Mac's Trash). The serde skip was checked on serde 1.0.229, and the adapter glue of stage 6e (`match *uninstall`, the `let … else` on `self.recipe.uninstall`, `Confirmed` from the plan's vectors, `probe_strict`'s arms) was compiled against the mirror. Not run: the workspace, the TypeScript gates, anything in `~/dev/Canager-phase4`.
+**How this revision was checked.** A scratch mirror of the crate's module paths (`scratchpad/c-rev-removal`: real `trash/`, `route.rs`, `removal.rs`, the `testing` module and the recipe additions; stubs for `model`, `events`, `AdapterError`, `HostEnv`), with the code exactly as the plan writes it: 63 tests green (30 in `removal`, 27 in `route` — B's 24 as of `cf7a955` and the 3 new — 5 in `trash::mock`, 1 wire test), `cargo clippy --all-targets -- -D warnings` clean, rustfmt-stable. Stage 6c alone compiles and passes its tests; stage 6d's instructions applied to it reproduce the checked file byte for byte after `cargo fmt`; stage 6c's `route.rs` instructions were applied to B's landed `route.rs`, at `dcf0e7c` and again at `cf7a955`, and pass. `RealTrasher` was compiled and linted against objc2 0.6.4 / objc2-foundation 0.3.2 in debug and release (never run: it would move files into this Mac's Trash). The serde skip was checked on serde 1.0.229, and the adapter glue of stage 6e (`match *uninstall`, the `let … else` on `self.recipe.uninstall`, `Confirmed` from the plan's vectors, `probe_strict`'s arms) was compiled against the mirror. Not run: the workspace, the TypeScript gates, anything in `~/dev/Banager-phase4`.
 
 **Remaining risks after this review:**
 - Stage 6e's adapter code, B's updated tests, Task 7's end-to-end tests and every TypeScript change were written against the landed files but compiled only in part (the glue above); the executor's first runs of stages 6e and 7 are the real check.

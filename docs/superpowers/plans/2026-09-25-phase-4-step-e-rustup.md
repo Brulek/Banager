@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give Canager a *rustup* group: the native `$CARGO_HOME/bin/rustup` install as one row with an honest update badge against `static.rust-lang.org/rustup/release-stable.toml`, an *Update* button that runs `rustup self update` (the first `NoCancel` plan any adapter produces, holding the cargo instance's lock as well as its own), and an *Uninstall* that runs rustup's official `rustup self uninstall -y` — offered only when Rust lives in its standard folders, `~/.cargo` and `~/.rustup`, computed exactly as rustup computes them — after a preview that names both folders by path and says, from rustup 1.29.1's own source, that they are deleted permanently and not moved to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, every program in its `bin` folder by name where known, whether a Homebrew rustup loses its toolchains too, and which shell startup file will be left loading Cargo's env file once it is gone. The preview runs no command at all. A refresh that lands while rustup's update or uninstall is running leaves rustup and cargo alone. Plus the cargo adapter learning where each `cargo install`ed program lives, so the Unknown page stops listing `hexyl`.
+**Goal:** Give Banager a *rustup* group: the native `$CARGO_HOME/bin/rustup` install as one row with an honest update badge against `static.rust-lang.org/rustup/release-stable.toml`, an *Update* button that runs `rustup self update` (the first `NoCancel` plan any adapter produces, holding the cargo instance's lock as well as its own), and an *Uninstall* that runs rustup's official `rustup self uninstall -y` — offered only when Rust lives in its standard folders, `~/.cargo` and `~/.rustup`, computed exactly as rustup computes them — after a preview that names both folders by path and says, from rustup 1.29.1's own source, that they are deleted permanently and not moved to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, every program in its `bin` folder by name where known, whether a Homebrew rustup loses its toolchains too, and which shell startup file will be left loading Cargo's env file once it is gone. The preview runs no command at all. A refresh that lands while rustup's update or uninstall is running leaves rustup and cargo alone. Plus the cargo adapter learning where each `cargo install`ed program lives, so the Unknown page stops listing `hexyl`.
 
-**Architecture:** One more data row for the `StandaloneAdapter` step B built — the `RUSTUP` recipe — with the three shapes rustup is the first to need: a `FlatFile` route under `$CARGO_HOME`, a `SecondToken` version read, a `HttpTomlVersion` endpoint. Its uninstall is the new `Uninstall::Command` arm: a gate (`blocked`) that refuses any layout but the standard one, and a warnings function that reads `~/.rustup/toolchains/`, `~/.cargo/bin`, `.crates2.json`, Homebrew's Cellar and eight shell startup files — read-only, no command — and answers six `Warning` variants the uninstall dialog lists; the command itself runs through `run_plan` unchanged. Both of rustup's plans carry a second lock, built by the one function that spells the cargo instance's id (`cargo::instance_id_for`), because `self update` unlinks and re-copies the binary all thirteen `~/.cargo/bin` proxies exec and `self uninstall` deletes the file cargo's inventory reads. Every version read of rustup — its own and the cargo proxy's — carries `RUSTUP_AUTO_INSTALL=0`, and `refresh_round` skips the detection of any adapter whose instance an operation is holding, so no read of Canager's ever runs the rustup binary while an operation replaces or removes it. `HostEnv` learns `RUSTUP_HOME` and `ZDOTDIR`, the two variables rustup's own uninstall reads that Canager did not. `NoCancel` gets its first producer, and `operations.noCancelHint` its two readers.
+**Architecture:** One more data row for the `StandaloneAdapter` step B built — the `RUSTUP` recipe — with the three shapes rustup is the first to need: a `FlatFile` route under `$CARGO_HOME`, a `SecondToken` version read, a `HttpTomlVersion` endpoint. Its uninstall is the new `Uninstall::Command` arm: a gate (`blocked`) that refuses any layout but the standard one, and a warnings function that reads `~/.rustup/toolchains/`, `~/.cargo/bin`, `.crates2.json`, Homebrew's Cellar and eight shell startup files — read-only, no command — and answers six `Warning` variants the uninstall dialog lists; the command itself runs through `run_plan` unchanged. Both of rustup's plans carry a second lock, built by the one function that spells the cargo instance's id (`cargo::instance_id_for`), because `self update` unlinks and re-copies the binary all thirteen `~/.cargo/bin` proxies exec and `self uninstall` deletes the file cargo's inventory reads. Every version read of rustup — its own and the cargo proxy's — carries `RUSTUP_AUTO_INSTALL=0`, and `refresh_round` skips the detection of any adapter whose instance an operation is holding, so no read of Banager's ever runs the rustup binary while an operation replaces or removes it. `HostEnv` learns `RUSTUP_HOME` and `ZDOTDIR`, the two variables rustup's own uninstall reads that Banager did not. `NoCancel` gets its first producer, and `operations.noCancelHint` its two readers.
 
 **Tech Stack:** Rust (banager-core: `std::fs`, `toml` (already a dependency) for the release file, the existing `CommandRunner`/`HttpClient` seams; no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
-**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row E and argues from §0.1 (the four "No adapter produces `NoCancel` yet" sites), §一 D6/D9, §2.2–2.4, §3.1–3.5 (rustup's column), §4.1–4.3, §五 (rustup's row), §6.1, §6.4–6.6, §9.1–9.5 and 附录 A/B. Raw research: `~/dev/Canager/.superpowers/phase4/rustup.md` (tool facts) and `unknown-scan.md` (the thirteen proxies are relative symlinks). rustup's source was read at tag `1.29.1` and the `home` crate's at `home-0.5.12` (the version rustup 1.29.1 and cargo pin), both with `curl -sS https://raw.githubusercontent.com/…`, read-only. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-e-rustup.md`.
+**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row E and argues from §0.1 (the four "No adapter produces `NoCancel` yet" sites), §一 D6/D9, §2.2–2.4, §3.1–3.5 (rustup's column), §4.1–4.3, §五 (rustup's row), §6.1, §6.4–6.6, §9.1–9.5 and 附录 A/B. Raw research: `~/dev/Banager/.superpowers/phase4/rustup.md` (tool facts) and `unknown-scan.md` (the thirteen proxies are relative symlinks). rustup's source was read at tag `1.29.1` and the `home` crate's at `home-0.5.12` (the version rustup 1.29.1 and cargo pin), both with `curl -sS https://raw.githubusercontent.com/…`, read-only. This plan will live at `docs/superpowers/plans/2026-09-25-phase-4-step-e-rustup.md`.
 
 ## Baseline, and how to read the anchors below
 
-Branch `feat/phase-4-standalone`, worktree `~/dev/Canager-phase4`. First written at HEAD `f7e2917`, re-baselined at `3b5117a`, and **revised at HEAD `ea30cfb`** (2026-09-25: A and F landed; **all of B landed** — `71eacd0` the adapter, `f61cd94`, `dcf0e7c` and the follow-up wording fixes through `306dd57`; C's plan committed as `ea30cfb`, C's code not yet landed; working tree clean). Every `file:line` below is `ea30cfb`'s unless a table row says otherwise; C will move lines in the files it touches, which is why edits in those files are anchored by symbol or quoted text, never by number alone. **At execution time**, before Task 1, re-run `git log --oneline | head` and the confirm-grep in the table below, and treat a line number as a hint next to its textual anchor, not as the anchor. The chosen order is **A → F → B → C → E → D**, so when this plan executes:
+Branch `feat/phase-4-standalone`, worktree `~/dev/Banager-phase4`. First written at HEAD `f7e2917`, re-baselined at `3b5117a`, and **revised at HEAD `ea30cfb`** (2026-09-25: A and F landed; **all of B landed** — `71eacd0` the adapter, `f61cd94`, `dcf0e7c` and the follow-up wording fixes through `306dd57`; C's plan committed as `ea30cfb`, C's code not yet landed; working tree clean). Every `file:line` below is `ea30cfb`'s unless a table row says otherwise; C will move lines in the files it touches, which is why edits in those files are anchored by symbol or quoted text, never by number alone. **At execution time**, before Task 1, re-run `git log --oneline | head` and the confirm-grep in the table below, and treat a line number as a hint next to its textual anchor, not as the anchor. The chosen order is **A → F → B → C → E → D**, so when this plan executes:
 
-- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`, landed): `ALLOWED_HTTPS_HOSTS` and `host_allowed` in `crates/banager-core/src/http/real.rs`; `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive over `Warning` with `never` defaults; `docs/what-we-run.md` rewritten with one `## <meta.name>` section per registered source, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`; `crates/banager-core/tests/what_we_run_test.rs` holding it to the code.
+- **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`, landed): `ALLOWED_HTTPS_HOSTS` and `host_allowed` in `crates/banager-core/src/http/real.rs`; `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive over `Warning` with `never` defaults; `docs/what-we-run.md` rewritten with one `## <meta.name>` section per registered source, `## Files Banager reads`, `## Network: Banager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Banager never does`; `crates/banager-core/tests/what_we_run_test.rs` holding it to the code.
 - **F** (`…-step-f-unknown-scan.md`, landed): `crates/banager-core/src/scan/mod.rs` with `owned_roots` and `Known::index` (rules 0–3; rule 2 reads `InstalledArtifact.path`, "starts with"); `crates/banager-core/tests/unknown_scan_test.rs` whose `test_rule_1_claims_everything_that_resolves_to_an_instances_launcher` says in its comment that `hexyl` is listed "until step E fills `InstalledArtifact.path` for cargo binaries" (`:409`); the Unknown page.
 - **B** (`docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`, landed in full): everything under "What already exists" below, **as it stands in the tree at `ea30cfb`** — `crates/banager-core/src/adapters/standalone/{mod,recipe,recipes,route,latest}.rs`, `adapters/meta/standalone-claude.toml`, `adapters/fixtures/standalone-claude/`, the `## Claude Code` section of `docs/what-we-run.md`, the README row. Where this plan modifies a B file it quotes the tree's text (rustfmt'd) and says what it becomes.
-- **C** (path-list uninstall; plan `~/dev/Canager/.superpowers/phase4/plan-step-c-trash-uninstall.md`, committed as `ea30cfb` at `docs/superpowers/plans/…step-c…`; **being revised by another agent as this plan is revised**): lands before this step. This plan takes C's shapes from C's plan's Core Interfaces (which spell them in Rust) and, where those disagree with the spec, from C: `PlanAction::{Command { program, args, env }, TrashPaths { paths, previewed }}` and `Plan.action`; `Recipe.uninstall: Option<Uninstall>` with `Uninstall::Paths { remove, keep }`; `Detected { home, euid }` with `#[derive(Clone, Debug)]`; `Warning::{WillTrash, WillKeep, AlreadyGone}`; `Adapter::reconcile_after_uninstall` with `StandaloneAdapter`'s override over `route::probe_strict`; `route::probe_strict` with `probe = probe_strict(..).unwrap_or(Absent)`; `StandaloneAdapter::new(recipe, runner, http, trasher: Arc<dyn Trasher>)` with `standalone::all(runner, http, trasher)` and `banager_core::trash::MockTrasher`; `scan::display_path` made `pub(crate)`; `crate::testing::{command_program, command_args, command_env}`; `removal.rs` calling B's two-argument `route::expand`; a test-only `Recipe` literal with `uninstall: None` (C's ruling 2); `CommandPreview` taking `action={plan.action}`. **Every place this plan touches one of those is listed in "C dependency checklist" below, which the executor re-verifies against the landed C before Task 1 and again before Task 4.** The confirm-grep: `git log --oneline | head`, then `grep -n "enum PlanAction\|pub action:\|pub uninstall:\|pub euid\|WillTrash\|pub fn new(\|trasher\|fn probe_strict\|fn reconcile_after_uninstall\|fn display_path" crates/banager-core/src/model.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/scan/mod.rs` and `grep -rn "Recipe {$\|route::expand(\|Detected {" crates/banager-core/src/adapters/standalone/`.
+- **C** (path-list uninstall; plan `~/dev/Banager/.superpowers/phase4/plan-step-c-trash-uninstall.md`, committed as `ea30cfb` at `docs/superpowers/plans/…step-c…`; **being revised by another agent as this plan is revised**): lands before this step. This plan takes C's shapes from C's plan's Core Interfaces (which spell them in Rust) and, where those disagree with the spec, from C: `PlanAction::{Command { program, args, env }, TrashPaths { paths, previewed }}` and `Plan.action`; `Recipe.uninstall: Option<Uninstall>` with `Uninstall::Paths { remove, keep }`; `Detected { home, euid }` with `#[derive(Clone, Debug)]`; `Warning::{WillTrash, WillKeep, AlreadyGone}`; `Adapter::reconcile_after_uninstall` with `StandaloneAdapter`'s override over `route::probe_strict`; `route::probe_strict` with `probe = probe_strict(..).unwrap_or(Absent)`; `StandaloneAdapter::new(recipe, runner, http, trasher: Arc<dyn Trasher>)` with `standalone::all(runner, http, trasher)` and `banager_core::trash::MockTrasher`; `scan::display_path` made `pub(crate)`; `crate::testing::{command_program, command_args, command_env}`; `removal.rs` calling B's two-argument `route::expand`; a test-only `Recipe` literal with `uninstall: None` (C's ruling 2); `CommandPreview` taking `action={plan.action}`. **Every place this plan touches one of those is listed in "C dependency checklist" below, which the executor re-verifies against the landed C before Task 1 and again before Task 4.** The confirm-grep: `git log --oneline | head`, then `grep -n "enum PlanAction\|pub action:\|pub uninstall:\|pub euid\|WillTrash\|pub fn new(\|trasher\|fn probe_strict\|fn reconcile_after_uninstall\|fn display_path" crates/banager-core/src/model.rs crates/banager-core/src/adapters/standalone/recipe.rs crates/banager-core/src/adapters/standalone/mod.rs crates/banager-core/src/adapters/standalone/route.rs crates/banager-core/src/adapters/mod.rs crates/banager-core/src/scan/mod.rs` and `grep -rn "Recipe {$\|route::expand(\|Detected {" crates/banager-core/src/adapters/standalone/`.
 
 In files A, F, B or C touch, **every edit below is anchored by a symbol, function, type or quoted line, never by a line number alone**. In files none of them touch (`session/refresh.rs`, `ops/mod.rs`'s lock set, `runner/path_env.rs`, `adapters/cargo.rs`, `tests/ops_cancel_test.rs`, `tests/ops_upgrade_version_test.rs`), `file:line` is cited at `ea30cfb`.
 
@@ -51,7 +51,7 @@ Copied verbatim from the spec's binding rules (spec lines 20–23):
 
 > 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 > 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-> 没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+> 没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 > 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 And from spec §十 ("每一步只带**该步有生产者**的变体与字段——「先定义、后面某步再用」正是本项目最常见的缺陷") and §2.2/§2.3 ("每个新字段点名生产读取方"), applied to this step:
@@ -60,7 +60,7 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段—
 - **Honest outcomes.** Nothing here touches `run_operation`'s outcome arms. `rustup self update` that exits 0 with the version unchanged is `NeedsAttention(UnchangedAfterUpgrade)`; one stopped by the timeout is `Unconfirmed` whatever the two version readings say (`ops/mod.rs:787-799`: the `Ok(Outcome::Unconfirmed)` arm keeps an `Upgrade` `Unconfirmed` unconditionally); `rustup self uninstall -y` is judged by presence of the launcher after the run — exit 0 with the launcher gone is `Succeeded`, exit 0 with it still there is `NeedsAttention(StillInstalledAfterUninstall)`, a timeout is `Succeeded` only when the launcher is gone and `Unconfirmed` while it is there (Task 8 has one test per outcome). Both of rustup's commands are `NoCancel`, so the only stop is the timeout. The uninstall's preview lists what rustup 1.29.1 actually deletes (Ruling 1), not what its newer source does.
 - **Fixtures come from real machines only.** The one fixture directory this step adds, `adapters/fixtures/standalone-rustup/<version>/`, is recorded on the author's Mac by the read-only commands in Task 10 and nothing else, every rustup invocation among them carrying `RUSTUP_AUTO_INSTALL=0` (Ruling 20). **Never run** `rustup update`, `rustup self update`, `rustup self uninstall`, `rustup toolchain install/uninstall`, or `rustup check`. Synthetic layouts live in temp directories the tests build; inline strings in tests are not fixtures.
 - **No shell.** `PlanAction::Command.program` is only ever the instance's `exe_path` (the launcher); the recipe has no field that could name another program; the uninstall preview runs nothing at all.
-- **No read of Canager's runs rustup while an operation is replacing or removing it.** `RUSTUP_AUTO_INSTALL=0` on every version read of the rustup binary (rustup's own `--version` and the cargo proxy's, Ruling 20); `refresh_round` skips the detection of an adapter whose instance an operation is holding and carries it forward (Ruling 19, Task 7). Residual windows are stated in Task 7, not hidden.
+- **No read of Banager's runs rustup while an operation is replacing or removing it.** `RUSTUP_AUTO_INSTALL=0` on every version read of the rustup binary (rustup's own `--version` and the cargo proxy's, Ruling 20); `refresh_round` skips the detection of an adapter whose instance an operation is holding and carries it forward (Ruling 19, Task 7). Residual windows are stated in Task 7, not hidden.
 - **The UI never offers what Rust refuses.** rustup's upgrade is refused nowhere; its uninstall is offered only when both roots are the standard ones (Ruling 18; the artifact carries `NoSafeMethod` otherwise, with a sentence saying why); a Running `NoCancel` op is refused a cancel by `OperationManager::cancel` (`ops/mod.rs:317-353`) and offered no Cancel button by `OperationBar.tsx` — both already at HEAD — and now told to the user in the preview by `operations.noCancelHint`.
 - **en + zh-CN for all copy.** Every new key in both `src/i18n/en.json` and `src/i18n/zh-CN.json`; `src/i18n/completeness.test.ts` requires each key to be looked up by a *literal* in non-test source (lookups go through `Record`s of literal keys or literal `t("…")` calls, never assembled strings); `src/i18n/no-literal-strings.test.ts` forbids English literals in JSX; zh-CN prose uses full-width `，：（）` between CJK characters.
 - **No author-machine details in tests or source** beyond public tool names the spec itself uses (`rustup`, `hexyl`, `ripgrep`/`rg`, the thirteen proxy names, `stable-aarch64-apple-darwin`); recorded fixtures carry what the commands printed.
@@ -82,11 +82,11 @@ And from spec §十 ("每一步只带**该步有生产者**的变体与字段—
 Facts were checked against rustup's source at the tag the installed binary was built from: `rustup --version` on this Mac prints `rustup 1.29.1 (d95a37b6a 2026-08-13)`, GitHub's tag `1.29.1` is an annotated tag whose commit is `d95a37b6ab92cc1e455d1576039333c97ca3e2c5`, and that tag's `Cargo.toml` says `version = "1.29.1"`. Every rustup line number below is that tag's, read on 2026-09-25 with `curl -sS https://raw.githubusercontent.com/rust-lang/rustup/1.29.1/<path>`; every `home` line number is `home-0.5.12`'s `crates/home/src/env.rs`.
 
 1. **rustup 1.29.1's `self uninstall` deletes `cargo install`ed programs too; the spec's `LeavesUnmanaged` is replaced by `RemovesCargoInstalled`.** rustup.md §8 quoted `clean_cargo_home` with an `is_same_file` check that keeps non-proxy binaries — that function exists on `master` and **not in 1.29.1**. The tag's `uninstall()` (`src/cli/self_update.rs:924-1032`): removes every toolchain (`:955-958`), `$RUSTUP_HOME` (`:960-966`), the shell lines (`:971-973`, before anything in `$CARGO_HOME`), everything in `$CARGO_HOME` except `bin/` (`:977-993`), then **everything in `bin/` that is not one of `TOOLS`/`DUP_TOOLS`/`rustup`** (`:996-1022`: `if file_is_tool == Some(false) { … remove_file … }`), and finally `delete_rustup_and_cargo_home` (`:1029`), which is `utils::remove_dir("cargo_home", &cargo_home)` — the whole directory, every entry in it, whatever its name (`src/cli/self_update/unix.rs:50-53`). Its own doc comment (`:915-922`, "Try to remove $CARGO_HOME/bin directory if it's empty") describes the newer behaviour, not the body. So on this Mac `hexyl` goes with `~/.cargo`, and "it stays on your Mac" would be a data-loss lie in the one sentence that matters. The variant is `Warning::RemovesCargoInstalled { names }` with copy that says the programs are deleted and can be reinstalled with `cargo install` afterwards; the unconditional Cargo sentence is `DeletesCargoHome { path }` (ruling 16). A newer rustup that keeps them makes this warning over-cautious, never false in the dangerous direction; `verified_versions` is `["1.29.1"]`, the trust file says which version the sentence was read from, and re-verifying it is part of bumping that list.
-2. **The startup files rustup 1.29.1 edits are VERIFIED, and the model is rustup's own sequence of visits, not a count per file name.** `do_remove_from_path` (`unix.rs:55-77`) iterates `get_available_shells` in `enumerate_shells` order (`shell.rs:63-74`: Posix, Bash, Zsh, Fish, Nu, Tcsh, Pwsh, Xonsh) and, for each shell's `rcfiles()` that `is_file()`, removes the first exact `<source_string>\n` (`find_exact_line`, `unix.rs:164-172`: the line together with its newline, at a line start, byte for byte, first match only) from the file as it stands at that visit; then `remove_legacy_paths` (`unix.rs:174-194`) does the same for `export PATH="<S>/bin:$PATH"` and then for `source "<S>/env"` over `legacy_paths` (`shell.rs:564-574`: `~/.bash_profile`, `~/.profile`, `$ZDOTDIR/.zprofile` when `Zsh::zdotdir` answers, `~/.zprofile`). The shells and their `rcfiles` (`shell.rs`): Posix, always (`:154-168`) → `~/.profile`; Bash, when any of its files exists (`:179-195`) → `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`; Zsh, when `$SHELL` contains `zsh` or `zsh` is on `PATH` (`:229-245`) → `$ZDOTDIR/.zshenv` and `~/.zshenv`, **with no deduplication, so `ZDOTDIR=$HOME` visits `~/.zshenv` twice and removes two copies**; Fish (`:265-290`) → `…/fish/conf.d/rustup.fish`; Nu, Tcsh, Pwsh, Xonsh → files Canager does not read. `<S>` is `$HOME/.cargo` when the Cargo home is `<home>/.cargo` (compared lexically, `cargo_home_str_with_home`, `:43-58`) and the absolute path otherwise; the line each of sh/bash/zsh writes is `. "<S>/env"` (`source_string`, `:138-140`). `Zsh::zdotdir` (`:207-225`) reads `ZDOTDIR` from the environment when `SHELL` contains `zsh`, else asks `zsh -c 'echo -n $ZDOTDIR'`. So `rustup::rustup_rc_visits(home, zdotdir, S)` lists the visits in that order, `rustup::shell_config_leftovers` applies them to in-memory copies of the eight files Canager reads and looks at what is left; Canager runs no `zsh` and reads `ZDOTDIR` from `HostEnv.zdotdir` (ruling 20) — a `ZDOTDIR` rustup would learn only by asking zsh is not modelled, and the trust file says so. What is left is classified in two tiers (ruling 22).
+2. **The startup files rustup 1.29.1 edits are VERIFIED, and the model is rustup's own sequence of visits, not a count per file name.** `do_remove_from_path` (`unix.rs:55-77`) iterates `get_available_shells` in `enumerate_shells` order (`shell.rs:63-74`: Posix, Bash, Zsh, Fish, Nu, Tcsh, Pwsh, Xonsh) and, for each shell's `rcfiles()` that `is_file()`, removes the first exact `<source_string>\n` (`find_exact_line`, `unix.rs:164-172`: the line together with its newline, at a line start, byte for byte, first match only) from the file as it stands at that visit; then `remove_legacy_paths` (`unix.rs:174-194`) does the same for `export PATH="<S>/bin:$PATH"` and then for `source "<S>/env"` over `legacy_paths` (`shell.rs:564-574`: `~/.bash_profile`, `~/.profile`, `$ZDOTDIR/.zprofile` when `Zsh::zdotdir` answers, `~/.zprofile`). The shells and their `rcfiles` (`shell.rs`): Posix, always (`:154-168`) → `~/.profile`; Bash, when any of its files exists (`:179-195`) → `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`; Zsh, when `$SHELL` contains `zsh` or `zsh` is on `PATH` (`:229-245`) → `$ZDOTDIR/.zshenv` and `~/.zshenv`, **with no deduplication, so `ZDOTDIR=$HOME` visits `~/.zshenv` twice and removes two copies**; Fish (`:265-290`) → `…/fish/conf.d/rustup.fish`; Nu, Tcsh, Pwsh, Xonsh → files Banager does not read. `<S>` is `$HOME/.cargo` when the Cargo home is `<home>/.cargo` (compared lexically, `cargo_home_str_with_home`, `:43-58`) and the absolute path otherwise; the line each of sh/bash/zsh writes is `. "<S>/env"` (`source_string`, `:138-140`). `Zsh::zdotdir` (`:207-225`) reads `ZDOTDIR` from the environment when `SHELL` contains `zsh`, else asks `zsh -c 'echo -n $ZDOTDIR'`. So `rustup::rustup_rc_visits(home, zdotdir, S)` lists the visits in that order, `rustup::shell_config_leftovers` applies them to in-memory copies of the eight files Banager reads and looks at what is left; Banager runs no `zsh` and reads `ZDOTDIR` from `HostEnv.zdotdir` (ruling 20) — a `ZDOTDIR` rustup would learn only by asking zsh is not modelled, and the trust file says so. What is left is classified in two tiers (ruling 22).
 3. **`extra_locks` lives on `Recipe`, not on `Uninstall::Command`.** Spec §3.1 puts `extra_locks: fn(&Detected) -> Vec<ResourceLock>` inside `Uninstall::Command`, but §2.4 and §五 require the cargo lock on the *Upgrade* plan too, and `UpgradeCmd` has no slot. One field on the recipe, read by both plans through `StandaloneAdapter::locks`, is one declaration for one fact; claude's (and, in D, agy's and grok's) is `recipe::no_extra_locks`.
 4. **`Uninstall::Command` is a tuple variant over `CommandUninstall { args, timeout_secs, cancel, blocked, warnings }`, and there is no probe.** Spec §3.1's `Probe { args, timeout_secs }` (`rustup toolchain list`) is dropped: the preview must not run rustup at all (Astra finding 3 and the controller's ruling — `rustup_mode::main` and `proxy_mode::main` both begin with `cleanup_self_updater` (`rustup_mode.rs:669`, `proxy_mode.rs:15`), which deletes `$CARGO_HOME/bin/rustup-init` (`self_update.rs:1314-1323`), the updater a running `self update` has just downloaded there (`prepare_update`, `:1165-1225`) and is about to run (`run_update`, `unix.rs:120-131`)). The toolchain names come from a read-only listing of `<rustup_home>/toolchains/` (`rustup::toolchain_names`), which is also what `uninstall()`'s `cfg.list_toolchains()` removes. `blocked: fn(&Detected) -> Option<UninstallBlocked>` is the gate (ruling 18); `warnings: fn(&Detected) -> Vec<Warning>` the preview.
 5. **`route::expand` keeps B's two-argument signature; `route::expand_route(home, cargo_home: Option<&Path>, spec) -> Option<PathBuf>` is the function that knows `$CARGO_HOME`.** B's `expand(home, spec)` joins `~/` only, and C's `removal.rs` calls it at five sites for `Uninstall::Paths` recipes, whose paths are all `~/`. Changing its signature would break C for nothing (Astra finding 5); a `$CARGO_HOME` recipe with a `Paths` uninstall is a programming error that `recipes::tests::test_a_paths_recipe_names_only_home_paths` turns into a red build. `expand_route` answers `None` for a `$CARGO_HOME` path when the Cargo home is unsupported (ruling 6), and `detect` then lists nothing; `~/` paths always expand.
-6. **One rule for the Cargo home — the `home` crate's — one producer for the cargo instance id, and `RUSTUP_AUTO_INSTALL=0` on the cargo proxy's version read.** `path_env::tool_home(setting, home, default_dir)` is `home-0.5.12`'s `cargo_home_with_cwd_env`/`rustup_home_with_cwd_env` (`env.rs:67-79`, `:101-113`): an empty variable is ignored (`filter(|h| !h.is_empty())`), an absolute one is taken as is, a relative one is joined onto the *tool's* current directory — which Canager neither knows nor shares, so for Canager a relative value is **unsupported** (`None`): `cargo::cargo_home_of(&HostEnv) -> Option<PathBuf>` is `tool_home(env.cargo_home, env.home, ".cargo")`, `CargoAdapter::detect` lists nothing for `None` (today it would name an instance whose `prefix` is a relative path joined onto Canager's own cwd, and read `.crates2.json` from there — a wrong answer, not a missing one), and `StandaloneAdapter::detect` seats it. `cargo::instance_id_for(&Path)` is `model::instance_id("cargo", Some(<path>))`, used by `CargoAdapter::detect` and by `rustup::extra_locks` (spec §2.4, §十三 #42). And `CargoAdapter::detect`'s `cargo --version` carries `RUSTUP_AUTO_INSTALL=0` (`cargo::RUSTUP_AUTO_INSTALL_OFF`): on a rustup Mac `cargo` is the rustup binary in proxy mode, whose `Cfg::from_env(…, allow_auto_install = true, …)` and `local_toolchain(None)` → `maybe_ensure_active_toolchain` (`proxy_mode.rs:48-56`, `config.rs:555-578`, `:771-790`) install a toolchain when none is active unless that variable is `0` (`should_auto_install`, `config.rs:435-441`). A Homebrew or distro cargo ignores the variable. All `pub(crate)`.
+6. **One rule for the Cargo home — the `home` crate's — one producer for the cargo instance id, and `RUSTUP_AUTO_INSTALL=0` on the cargo proxy's version read.** `path_env::tool_home(setting, home, default_dir)` is `home-0.5.12`'s `cargo_home_with_cwd_env`/`rustup_home_with_cwd_env` (`env.rs:67-79`, `:101-113`): an empty variable is ignored (`filter(|h| !h.is_empty())`), an absolute one is taken as is, a relative one is joined onto the *tool's* current directory — which Banager neither knows nor shares, so for Banager a relative value is **unsupported** (`None`): `cargo::cargo_home_of(&HostEnv) -> Option<PathBuf>` is `tool_home(env.cargo_home, env.home, ".cargo")`, `CargoAdapter::detect` lists nothing for `None` (today it would name an instance whose `prefix` is a relative path joined onto Banager's own cwd, and read `.crates2.json` from there — a wrong answer, not a missing one), and `StandaloneAdapter::detect` seats it. `cargo::instance_id_for(&Path)` is `model::instance_id("cargo", Some(<path>))`, used by `CargoAdapter::detect` and by `rustup::extra_locks` (spec §2.4, §十三 #42). And `CargoAdapter::detect`'s `cargo --version` carries `RUSTUP_AUTO_INSTALL=0` (`cargo::RUSTUP_AUTO_INSTALL_OFF`): on a rustup Mac `cargo` is the rustup binary in proxy mode, whose `Cfg::from_env(…, allow_auto_install = true, …)` and `local_toolchain(None)` → `maybe_ensure_active_toolchain` (`proxy_mode.rs:48-56`, `config.rs:555-578`, `:771-790`) install a toolchain when none is active unless that variable is `0` (`should_auto_install`, `config.rs:435-441`). A Homebrew or distro cargo ignores the variable. All `pub(crate)`.
 7. **`parse_crates2_bins` reads the `bins` arrays; the artifact's `path` is one binary per crate.** `InstalledArtifact.path` is a single `Option<PathBuf>`; a crate with several binaries gets the one named after the crate when there is one, else the first the record lists (`cargo-binstall` → `cargo-binstall`; `ripgrep` → `rg`). The remaining binaries of a multi-binary crate stay on the Unknown page until `path` can hold several — a backlog note in Task 1's doc comment, in the delivery note and in the README row, not a lie in the code.
 8. **This step introduces `RouteKind::FlatFile` and `VersionParse::SecondToken`** (B's ruling 1 expected D to, "with agy" / "with grok"); in the chosen order E precedes D, and rustup is a flat file read with the second token. D finds them present. **A flat-file route has no launcher-only state.** B's `probe` answers a dangling launcher from its link text alone — `LauncherOnly` whenever the text lands under `root`, whatever the route kind — and rustup's root is the whole Cargo home, so a dangling `$CARGO_HOME/bin/rustup -> rustup.old` would be listed as a rustup with no version, the launcher-only notice, and plans whose program is a dangling link. `probe_strict`'s dangling branch therefore decides by kind first, with an exhaustive `match` so a future kind must decide too: `SymlinkIntoRoot` keeps B's rule, `FlatFile` is `Absent` (Task 4).
 9. **`plan` and `inventory` read the seat through `seated_detected_for(inst)`, which binds the seat to the instance.** The seat is one mutable slot that the latest `detect` overwrites; `plan` receives an instance and would otherwise run *that* instance's launcher with the *latest* seat's locks and warnings — detect home A, then home B, then plan for A's instance runs A's binary under B's cargo lock and B's startup files (Astra finding 6). The accessor expands the recipe's launcher and root against the seat and refuses (`AdapterError::Refused`) unless both equal `inst.exe_path` and `inst.prefix`; it also refuses before any detect, which `Session` never does (spec §3.2). `inventory` uses it for the gate (a mismatched or missing seat reads as blocked). C's `Paths` arm goes through the same accessor (C checklist row 16). B's refusal tests (wrong instance, wrong name, `Install`) still pass without a detect; B's two Upgrade-success tests gain a detect (Task 4 quotes them).
@@ -97,8 +97,8 @@ Facts were checked against rustup's source at the tag the installed binary was b
 14. **The two empty-state sentences name Claude Code *and* rustup, in B's wording, not the spec's.** B's landed sentences (`src/i18n/en.json:310`, `:321` at `ea30cfb`) both name Claude Code "at its native installer's default location"; this step edits both to name Claude Code and rustup (Task 11 quotes them), and D adds Antigravity and Grok with their recipes.
 15. **`RemovesToolchains { path, names }` is built from the entry names of `<rustup_home>/toolchains/`**, sorted, hidden names skipped; an empty `names` (no directory, an unreadable one, or none installed) makes the front end pick `warnings.removesToolchainsUnlisted`, as the spec says for a failed probe. That directory is what `uninstall()` removes toolchain by toolchain (`cfg.list_toolchains()`, `:955-958`) before deleting `$RUSTUP_HOME` whole, so its names are the toolchains that go.
 16. **The unconditional Cargo sentence names the folder by path and says it is deleted permanently; the programs sentence follows rustup's own `bin/` rule, read-only.** 1.29.1's `uninstall()` removes everything in `$CARGO_HOME` except `bin/` (`self_update.rs:977-993`: `registry/`, `git/`, `.crates.toml`, `.crates2.json`, and also `config.toml`, `credentials.toml` — the crates.io login token — and `env`), then every entry of `bin/` whose *name* is not `rustup` or one of the thirteen proxies (`:996-1022`, `file_is_tool` compares names only, so a program copied into `bin/` by hand goes too, recorded or not), then the directory (`:1029`). The spec's `DeletesCargoCaches` ("Cargo's downloaded packages and its list of programs") omitted the settings, the login, the folder itself and the fact that nothing goes to the Trash. The variant is renamed **`DeletesCargoHome { path }`** — the spec's name no longer described the sentence, and a variant whose name contradicts its copy is the kind of drift this project refuses — and the copy names the path, says "permanently — not to the Trash", and lists what the folder holds (Task 2). The names in `RemovesCargoInstalled` come from `rustup::bin_programs_rustup_removes`: the union of `.crates2.json`'s `bins` and a read-only listing of `<cargo_home>/bin` minus `rustup` and `RUSTUP_PROXIES` (the same thirteen names, `TOOLS` + `DUP_TOOLS` at `src/lib.rs:16-32` of the tag), sorted, deduplicated, hidden entries (`.DS_Store`: deleted with the folder, but no program to name) skipped, and names that are not UTF-8 skipped — **not because rustup keeps them**: `file_is_tool` is `None` for such a name so the by-name loop (`:1009-1019`) skips it, but `remove_dir` on the whole folder (`:1029`) deletes it with everything else; a name that cannot be spelled in a sentence is simply not named, and `DeletesCargoHome` says the whole folder goes. The listing is what rustup acts on; the record is the spec's named source (§6.4) and still names what cargo installed when the directory cannot be listed. A record entry whose file is already gone is named although nothing is left to delete — an over-statement in the safe direction, never an omission.
-17. **The uninstall acts on the Rust that Canager's own process environment sees, and the trust file says so.** `fix_path_env::fix()` (`src-tauri/src/lib.rs:18`) is `fix_vars(&["PATH"])` at the pinned rev `c4c45d5` (its `src/lib.rs:91-92`): it restores `PATH` from the login shell and nothing else. `HostEnv::discover` reads `CARGO_HOME`, and from this step `RUSTUP_HOME` and `ZDOTDIR`, from the process environment (`runner/path_env.rs`), `RealRunner` hands the child the inherited environment plus `spec.env` (`runner/real.rs:666`), and rustup's `uninstall()` reads `RUSTUP_HOME`/`CARGO_HOME` from its own environment (`home::rustup_home()`, `self_update.rs:963`; `process.cargo_home()`, `:932`). A variable exported only in a shell startup file is therefore invisible to Canager and to the rustup it runs — the two agree, which is what the gate (ruling 18) relies on. For `RUSTUP_HOME` that means both look at the default `~/.rustup`; toolchains kept in a directory only the shell names are left behind, not deleted. For `CARGO_HOME` it means Canager looks for rustup under `~/.cargo` and lists no rustup installed elsewhere, so nothing is offered for it. Both are the safe direction (nothing extra goes), but without the disclosure the preview's "every toolchain" would overstate. This step adds one sentence to the `RUSTUP` recipe doc (Task 6) and the `## rustup` section (Task 10).
-18. **The uninstall is offered only for the standard layout** (Astra findings 2 and 4; the controller's ruling). `rustup::standard_roots(&Detected) -> Option<StandardRoots>` answers `Some { cargo_home: <home>/.cargo, rustup_home: <home>/.rustup }` only when: `Detected.cargo_home` and `Detected.rustup_home` are `Some` (a relative `CARGO_HOME`/`RUSTUP_HOME` is unsupported, ruling 6); each equals `<home>/<default>` lexically — the same comparison rustup itself makes when it decides how to spell the Cargo home in the shell line (`cargo_home_str_with_home`, `shell.rs:43-58`), over the same `HOME` (`HostEnv.home` is the process's `HOME`, `home::home_dir` is `std::env::home_dir`, which reads `HOME` first); `<home>/.cargo` is a directory and not a symbolic link (`symlink_metadata`); `<home>/.rustup` is a directory and not a symbolic link, or does not exist. Anything else — a custom absolute home, an empty-but-set variable that resolves elsewhere (it does not: empty means default, ruling 6), a root that is a link to somewhere else — and `rustup::uninstall_blocked` answers `Some(UninstallBlocked::NoSafeMethod)`: `inventory` puts it on the artifact (the gate in `session/plans.rs` then refuses, the Installed page hides the button), `plan(Uninstall)` refuses with the same reason, and the row's sentence says Canager only removes Rust from its standard folders (Task 11, both locales; the variant is C's/B's, the sentence is rustup's row's). With `RUSTUP_HOME=~/Documents`, `uninstall()` would `remove_dir` the user's documents (`:960-966`); this gate is why it cannot be asked to. The upgrade is not gated: `self update` touches only `$CARGO_HOME/bin`.
+17. **The uninstall acts on the Rust that Banager's own process environment sees, and the trust file says so.** `fix_path_env::fix()` (`src-tauri/src/lib.rs:18`) is `fix_vars(&["PATH"])` at the pinned rev `c4c45d5` (its `src/lib.rs:91-92`): it restores `PATH` from the login shell and nothing else. `HostEnv::discover` reads `CARGO_HOME`, and from this step `RUSTUP_HOME` and `ZDOTDIR`, from the process environment (`runner/path_env.rs`), `RealRunner` hands the child the inherited environment plus `spec.env` (`runner/real.rs:666`), and rustup's `uninstall()` reads `RUSTUP_HOME`/`CARGO_HOME` from its own environment (`home::rustup_home()`, `self_update.rs:963`; `process.cargo_home()`, `:932`). A variable exported only in a shell startup file is therefore invisible to Banager and to the rustup it runs — the two agree, which is what the gate (ruling 18) relies on. For `RUSTUP_HOME` that means both look at the default `~/.rustup`; toolchains kept in a directory only the shell names are left behind, not deleted. For `CARGO_HOME` it means Banager looks for rustup under `~/.cargo` and lists no rustup installed elsewhere, so nothing is offered for it. Both are the safe direction (nothing extra goes), but without the disclosure the preview's "every toolchain" would overstate. This step adds one sentence to the `RUSTUP` recipe doc (Task 6) and the `## rustup` section (Task 10).
+18. **The uninstall is offered only for the standard layout** (Astra findings 2 and 4; the controller's ruling). `rustup::standard_roots(&Detected) -> Option<StandardRoots>` answers `Some { cargo_home: <home>/.cargo, rustup_home: <home>/.rustup }` only when: `Detected.cargo_home` and `Detected.rustup_home` are `Some` (a relative `CARGO_HOME`/`RUSTUP_HOME` is unsupported, ruling 6); each equals `<home>/<default>` lexically — the same comparison rustup itself makes when it decides how to spell the Cargo home in the shell line (`cargo_home_str_with_home`, `shell.rs:43-58`), over the same `HOME` (`HostEnv.home` is the process's `HOME`, `home::home_dir` is `std::env::home_dir`, which reads `HOME` first); `<home>/.cargo` is a directory and not a symbolic link (`symlink_metadata`); `<home>/.rustup` is a directory and not a symbolic link, or does not exist. Anything else — a custom absolute home, an empty-but-set variable that resolves elsewhere (it does not: empty means default, ruling 6), a root that is a link to somewhere else — and `rustup::uninstall_blocked` answers `Some(UninstallBlocked::NoSafeMethod)`: `inventory` puts it on the artifact (the gate in `session/plans.rs` then refuses, the Installed page hides the button), `plan(Uninstall)` refuses with the same reason, and the row's sentence says Banager only removes Rust from its standard folders (Task 11, both locales; the variant is C's/B's, the sentence is rustup's row's). With `RUSTUP_HOME=~/Documents`, `uninstall()` would `remove_dir` the user's documents (`:960-966`); this gate is why it cannot be asked to. The upgrade is not gated: `self update` touches only `$CARGO_HOME/bin`.
 19. **A refresh does not run an adapter's detect while an operation holds one of its instances' locks, and carries the locked instances forward unchanged** (Astra finding 3; the controller's option (a), chosen over the rustup-only (b) because the hazard is not rustup's alone). `refresh_round` (`session/refresh.rs:156-167` at `ea30cfb`) spawns every adapter's `detect` before any lock is taken (`:274-277`); `CargoAdapter::detect` runs `cargo --version` (`cargo.rs:129-150`), and on a rustup Mac `cargo` *is* the rustup binary, whose `proxy_mode::main` begins with `cleanup_self_updater` (ruling 4) — so during `rustup self update`, which holds `standalone-rustup` and `cargo:<home>`, a refresh's cargo detect could delete the updater the operation is about to run, and its rustup detect could read the unlinked binary (ruling 11). Moving rustup's version read under its lock (option b) would leave cargo's. So: `OperationManager::locks_held()` snapshots the `held` set; `refresh_round`, before the detection fan-out, skips every adapter one of whose previous-round instance ids is a held lock and reuses that adapter's previous instances **unchanged** (no `Unavailable`, no note, not `stale`), and the per-instance fan-out carries forward the artifacts and updates of every instance whose lock is held instead of waiting for the lock; instances of a skipped adapter whose own lock is free are still inventoried under it. This replaces the previous behaviour for every adapter — a refresh used to *wait* on the instance's lock until the operation ended (`test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others`, `refresh.rs:1395-1465`), which for a `brew install` was minutes — and Task 7 renames and re-asserts that test. **Residual, stated honestly:** the check is a snapshot at the start of the round, so an operation submitted after it can start while a detect's command is still running (the window is one `--version`); an operation still Queued behind another holds nothing and skips nothing; an operation holding only the cargo lock (a `cargo install`) does not skip rustup's detect, whose `rustup --version` is then harmless (`RUSTUP_AUTO_INSTALL=0`; `rustup-init` exists only during a self update, whose operation holds rustup's lock too); the operation's own `reconcile` readings run under its locks, as today; the front end refreshes when an operation finishes, as today, so the carried-forward rows are replaced then.
 20. **`HostEnv` gains `rustup_home: Option<PathBuf>` (`RUSTUP_HOME`) and `zdotdir: Option<PathBuf>` (`ZDOTDIR`), both read by `HostEnv::discover` exactly as `cargo_home` is; every `HostEnv {` literal in the tree gains the two lines.** Spec §3.2 refused `HostEnv.rustup_home` because nothing read it (§十三 #16/#44); ruling 18's gate and ruling 2's visit model are its readers, so the spec's own rule admits it. `grep -rn --include='*.rs' "HostEnv {" crates src-tauri` finds 40 literals at `ea30cfb` (one the definition), in `runner/path_env.rs` (5), `adapters/{brew/mod,cargo,npm,ollama/mod,pip,pipx}.rs` (4, 4, 4, 6, 2, 2), `adapters/standalone/mod.rs` (2), `scan/mod.rs` (2), `session/scan.rs` (1), `session/test_support.rs` (4), `tests/unknown_scan_test.rs` (2), `src-tauri/src/ipc.rs` (1); none uses struct-update syntax, so each gets `rustup_home: None,` and `zdotdir: None,` after its `cargo_home: …,` line, and `missing field` names any the grep missed. And **`RUSTUP_AUTO_INSTALL=0` goes on every version read of the rustup binary** (Astra finding 1): `display_version` (`rustup_mode.rs:1819-1837`) calls `maybe_ensure_active_toolchain(None)`, which with no active toolchain and auto-install on (the default: `should_auto_install`, `config.rs:435-441`, is `true` unless the variable is `0` or `rustup set auto-install disable` was run) *installs* the default toolchain — a download and a write during a refresh, cut off by the 30 s timeout. With the variable set, `active_toolchain()` alone runs and rustup prints `info: no \`rustc\` is currently active` on stderr and exits 0; the version line on stdout is unchanged. The variable goes on `RUSTUP.version.env` (Task 6), on `CargoAdapter::detect`'s `cargo --version` (ruling 6, Task 1) and on the recording commands (Task 10). Two side effects of *any* rustup invocation remain and are disclosed in the trust file, not hidden: `Cfg::from_env` creates `$RUSTUP_HOME` when it is missing (`config.rs:321-323`, `ensure_dir_exists`) and `cleanup_self_updater` deletes a leftover `$CARGO_HOME/bin/rustup-init` from an earlier self update (ruling 4); the refresh skip (ruling 19) keeps the second away from a running self update.
 21. **A Homebrew rustup is detected by a read-only look at Homebrew's Cellar, and the toolchain sentence always says other rustups lose theirs too.** rustup's homes depend only on `RUSTUP_HOME`/`CARGO_HOME`/`HOME` (`home::rustup_home_with_cwd_env`, `env.rs:101-113`), never on where the binary sits, so Homebrew's keg-only `rustup` formula shares `~/.rustup` with the native install — VERIFIED from source, where the spec (§十一) had it UNVERIFIED by test. `plan()` sees no snapshot, but `<prefix>/Cellar/rustup` existing under Homebrew's two default prefixes (`rustup::HOMEBREW_PREFIXES = ["/opt/homebrew", "/usr/local"]`; a custom prefix is unsupported by Homebrew itself on Apple Silicon) is a local, read-only signal (`rustup::homebrew_rustup_present`): when it is there the preview adds `Warning::HomebrewRustupLosesToolchains`; the `removesToolchains` sentence ends "Any other rustup that uses this folder loses its toolchains too" in every case. `uninstall_warnings` reads the real prefixes; `warnings_with(d, prefixes)` is the same function over a caller-given list, so its tests are hermetic and the adapter-level test filters the conditional line out (Task 6).
@@ -154,7 +154,7 @@ docs/what-we-run.md                                                MOD   Cargo s
 README.md                                                          MOD   the source row; the two test counts (12)                          [B's file]
 ```
 
-Single responsibility: `rustup.rs` owns *what rustup's uninstall does, when Canager may offer it, and what to say about it* (data and pure functions over files); `recipe.rs` the shapes; `recipes.rs` the data; `latest.rs` versions; `route.rs` recognition; `mod.rs` the `Adapter` contract; `cargo.rs` everything about `.crates2.json` and the cargo instance's identity; `path_env.rs` what the host environment says and the `home` crate's rule for reading it; `refresh.rs` which adapters a round asks.
+Single responsibility: `rustup.rs` owns *what rustup's uninstall does, when Banager may offer it, and what to say about it* (data and pure functions over files); `recipe.rs` the shapes; `recipes.rs` the data; `latest.rs` versions; `route.rs` recognition; `mod.rs` the `Adapter` contract; `cargo.rs` everything about `.crates2.json` and the cargo instance's identity; `path_env.rs` what the host environment says and the `home` crate's rule for reading it; `refresh.rs` which adapters a round asks.
 
 ## Core Interfaces (authoritative — every task uses these names verbatim)
 
@@ -246,13 +246,13 @@ export function uninstallBlockedCopy(reason: UninstallBlocked, adapterId: string
 
 | # | Task | Deliverable |
 |---|---|---|
-| 1 | The host environment rustup reads: `HostEnv.{rustup_home, zdotdir}`, `tool_home`, cargo's home rule and id producer, `RUSTUP_AUTO_INSTALL=0` on cargo's read, `.crates2.json`'s binaries, `path` on every cargo artifact | `hexyl` leaves the Unknown page; the two names the rustup lock and gate will use exist once; no read of Canager's installs a toolchain |
+| 1 | The host environment rustup reads: `HostEnv.{rustup_home, zdotdir}`, `tool_home`, cargo's home rule and id producer, `RUSTUP_AUTO_INSTALL=0` on cargo's read, `.crates2.json`'s binaries, `path` on every cargo artifact | `hexyl` leaves the Unknown page; the two names the rustup lock and gate will use exist once; no read of Banager's installs a toolchain |
 | 2 | Six `Warning` variants, their mirror, keys and copy | the wire contract for what rustup's uninstall does, both locales |
 | 3 | `SecondToken`, `HttpTomlVersion`, `parse_release_stable_toml` | rustup's version line and release file parse |
 | 4 | `FlatFile`, `expand_route`, the seat bound to its instance, `Recipe.extra_locks`, the Upgrade plan's locks | the shapes rustup's route, gate and locks need, with claude unchanged in behaviour |
 | 5 | `rustup.rs`: the roots gate, toolchains, cargo-installed programs, the Homebrew signal, the startup-file visit model, the warnings, the lock | every sentence of the uninstall preview and the gate that decides whether there is one, tested on synthetic files |
 | 6 | `Uninstall::Command`, the `RUSTUP` recipe and meta, the Uninstall plan and the gate in `inventory`, the host on the allowlist | rustup as a recipe: detect, badge, both plans, the cross-lock equality test, the seat test |
-| 7 | A refresh leaves an adapter alone while an operation holds its instance | no read of Canager's runs rustup during `rustup self update`; the concurrency tests |
+| 7 | A refresh leaves an adapter alone while an operation holds its instance | no read of Banager's runs rustup during `rustup self update`; the concurrency tests |
 | 8 | End to end through `OperationManager`: the upgrade's two outcomes, the uninstall's four, the lock cases | honest outcomes proven against the engine, not described |
 | 9 | `NoCancel`'s first producer and `operations.noCancelHint`'s two readers | the four sentences point at rustup; the preview warns before the click |
 | 10 | Recording, registration, the trust file | rustup is a source: fixtures, nine adapters, `## rustup` in what-we-run.md |
@@ -305,8 +305,8 @@ In `crates/banager-core/src/runner/path_env.rs`, inside `mod tests`, append afte
         // (crates/home/src/env.rs:67-79, :101-113): an unset or *empty*
         // variable means `<home>/<default>`; an absolute one is taken as
         // is; a relative one is joined onto the tool's own current
-        // directory, which Canager neither knows nor shares -- so for
-        // Canager it is unsupported, and nothing pretends to know where
+        // directory, which Banager neither knows nor shares -- so for
+        // Banager it is unsupported, and nothing pretends to know where
         // the tool will look.
         let home = Path::new("/Users/someone");
         assert_eq!(
@@ -325,7 +325,7 @@ In `crates/banager-core/src/runner/path_env.rs`, inside `mod tests`, append afte
         assert_eq!(
             tool_home(Some(Path::new("cargo-home")), home, ".rustup"),
             None,
-            "relative: the crate joins it onto the tool's cwd, not Canager's"
+            "relative: the crate joins it onto the tool's cwd, not Banager's"
         );
         assert_eq!(
             tool_home(None, home, ".rustup"),
@@ -562,7 +562,7 @@ In `crates/banager-core/src/adapters/cargo.rs`, inside `mod tests`, replace `tes
     #[tokio::test]
     async fn test_detect_lists_no_cargo_for_a_relative_cargo_home() {
         // cargo itself would join a relative CARGO_HOME onto *its* current
-        // directory (`home` 0.5.12); Canager's is not that, so an instance
+        // directory (`home` 0.5.12); Banager's is not that, so an instance
         // whose prefix were that relative path would read `.crates2.json`
         // from the wrong place and lock a name nothing else uses. No
         // instance is the honest answer (ruling 6).
@@ -582,7 +582,7 @@ In `crates/banager-core/src/adapters/cargo.rs`, inside `mod tests`, replace `tes
             ollama_host: None,
         };
         assert!(adapter.detect(&env).await.is_empty());
-        assert!(runner.calls().is_empty(), "nothing is run for a home Canager cannot name");
+        assert!(runner.calls().is_empty(), "nothing is run for a home Banager cannot name");
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -718,8 +718,8 @@ and in the `HostEnv { … }` it returns, add `rustup_home,` and `zdotdir,` after
 /// not empty and absolute; `<home>/<default_dir>` when it is unset or
 /// empty (the crate filters an empty value out before it looks at it);
 /// `None` when it is relative. The crate joins a relative value onto the
-/// *tool's* current directory, which Canager neither knows nor shares --
-/// a Finder-launched app's is `/` -- so nothing Canager could read or
+/// *tool's* current directory, which Banager neither knows nor shares --
+/// a Finder-launched app's is `/` -- so nothing Banager could read or
 /// lock would be the directory the tool uses, and "unsupported" is the
 /// only honest answer. Readers: `cargo::cargo_home_of` (cargo's instance,
 /// and the rustup recipe's `$CARGO_HOME` paths and cargo lock) and
@@ -758,7 +758,7 @@ fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, Ad
     Ok(entries)
 }
 
-/// The one field of an `installs` *value* Canager reads: the programs the
+/// The one field of an `installs` *value* Banager reads: the programs the
 /// crate put in `<cargo_home>/bin`.
 #[derive(Debug, Deserialize)]
 struct Crates2Install {
@@ -859,7 +859,7 @@ pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL",
 /// disagree about it, and so the lock name `instance_id_for` builds is
 /// built from the same path `detect` names cargo's instance by. `None`
 /// for a relative `CARGO_HOME`, which cargo resolves against a current
-/// directory Canager does not share: `detect` then lists no cargo
+/// directory Banager does not share: `detect` then lists no cargo
 /// instance rather than one whose prefix is somewhere cargo never looks.
 pub(crate) fn cargo_home_of(env: &HostEnv) -> Option<PathBuf> {
     crate::runner::path_env::tool_home(env.cargo_home.as_deref(), &env.home, ".cargo")
@@ -891,7 +891,7 @@ with
 
 ```rust
         // The `home` crate's rule; `None` is a relative CARGO_HOME, which
-        // names a directory relative to cargo's own cwd, not Canager's:
+        // names a directory relative to cargo's own cwd, not Banager's:
         // no instance, rather than one that reads the wrong place.
         let Some(cargo_home) = cargo_home_of(env) else {
             return Vec::new();
@@ -936,7 +936,7 @@ one, else the first the record lists), which the Unknown page uses to place
 that program under Cargo rather than list it.
 ```
 
-and in the same section's description of `cargo --version` (the detect row or sentence — match by the argv `cargo --version`), add after it: `, with \`RUSTUP_AUTO_INSTALL=0\` in its environment: on a Mac with rustup, \`cargo\` is rustup's own binary standing in for cargo, and without that switch a version read with no Rust toolchain active would install one. A cargo that is not rustup's ignores it. \`CARGO_HOME\` is read as cargo itself reads it: an empty value means the default \`~/.cargo\`; a relative value names a folder relative to cargo's own working directory, which Canager cannot know, so Canager then lists no Cargo source rather than guess.`
+and in the same section's description of `cargo --version` (the detect row or sentence — match by the argv `cargo --version`), add after it: `, with \`RUSTUP_AUTO_INSTALL=0\` in its environment: on a Mac with rustup, \`cargo\` is rustup's own binary standing in for cargo, and without that switch a version read with no Rust toolchain active would install one. A cargo that is not rustup's ignores it. \`CARGO_HOME\` is read as cargo itself reads it: an empty value means the default \`~/.cargo\`; a relative value names a folder relative to cargo's own working directory, which Banager cannot know, so Banager then lists no Cargo source rather than guess.`
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -957,7 +957,7 @@ Read the Rust host the way rustup does, and record which program each cargo crat
 The host environment now carries RUSTUP_HOME and ZDOTDIR beside
 CARGO_HOME, and all three are interpreted by the rule the home crate
 gives rustup and cargo: empty means the default, relative means a place
-Canager cannot name. cargo's version read runs with rustup's auto-install
+Banager cannot name. cargo's version read runs with rustup's auto-install
 switch off, because on a rustup Mac cargo is the rustup binary and a
 read with no toolchain active would install one. .crates2.json keeps a
 crate's binaries in the value of each record, which the inventory used to
@@ -1159,7 +1159,7 @@ In `crates/banager-core/src/model.rs`, inside `enum Warning`, before `/// Not ye
 
 ```rust
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
-    /// `~/.rustup`; the standard layout is the only one Canager offers
+    /// `~/.rustup`; the standard layout is the only one Banager offers
     /// the uninstall for, `rustup::standard_roots`) permanently -- not
     /// to the Trash -- with every toolchain in it: `names` are the entry
     /// names of its `toolchains/` directory when the preview was built,
@@ -1195,7 +1195,7 @@ In `crates/banager-core/src/model.rs`, inside `enum Warning`, before `/// Not ye
     /// only when the Cellar directory is there.
     HomebrewRustupLosesToolchains,
     /// rustup's `self uninstall` edits the shell startup files it added
-    /// its `. "$HOME/.cargo/env"` line to. Canager itself never edits one.
+    /// its `. "$HOME/.cargo/env"` line to. Banager itself never edits one.
     EditsShellConfig,
     /// After rustup's own cleanup, `path` (`$HOME` spelled `~`) will still
     /// hold a line about Cargo's env file, which is then gone. `certain`
@@ -2150,7 +2150,7 @@ with
 
 ```rust
         // The Cargo home by the `home` crate's rule (`None`: a relative
-        // CARGO_HOME, which no path of Canager's can stand for). A recipe
+        // CARGO_HOME, which no path of Banager's can stand for). A recipe
         // under `$CARGO_HOME` then has no launcher to look for; a `~/`
         // recipe is unaffected and seats `None`.
         let cargo_home = crate::adapters::cargo::cargo_home_of(env);
@@ -2404,7 +2404,7 @@ mod tests {
         // Ruling 18: both roots as rustup computes them (`home` 0.5.12),
         // both exactly `<home>/.cargo` and `<home>/.rustup`, the Cargo
         // home a real directory, the rustup home a real directory or not
-        // there yet. Anything else is a layout Canager will not offer to
+        // there yet. Anything else is a layout Banager will not offer to
         // delete: rustup's `uninstall()` removes `$RUSTUP_HOME` and
         // `$CARGO_HOME` whole (self_update.rs:960-966, :1029), wherever
         // they point.
@@ -2447,7 +2447,7 @@ mod tests {
         };
         assert!(standard_roots(&d).is_none());
 
-        // A root that is a link: the path Canager would list is not the
+        // A root that is a link: the path Banager would list is not the
         // directory that would go.
         let home = TempHome::new("roots-linked-cargo");
         let elsewhere = home.dir("Volumes/Data/cargo");
@@ -2652,7 +2652,7 @@ mod tests {
         // and then the `source` line, each over `legacy_paths`
         // (shell.rs:564-574: `.bash_profile`, `.profile`,
         // `$ZDOTDIR/.zprofile`, `~/.zprofile`). Fish, Nu, Tcsh, Pwsh and
-        // Xonsh edit files Canager does not read, so they have no visit
+        // Xonsh edit files Banager does not read, so they have no visit
         // here. `.zshrc` and fish's `config.fish` are visited by nothing.
         let home = Path::new("/Users/someone");
         let current = rc_line();
@@ -2694,7 +2694,7 @@ mod tests {
         // `$ZDOTDIR/.zprofile` before `~/.zprofile` (shell.rs:564-574):
         // with `ZDOTDIR=$HOME` the same file is visited twice per line,
         // and each visit removes one exact copy. Another ZDOTDIR is a
-        // file Canager does not read: the visit is there, and
+        // file Banager does not read: the visit is there, and
         // `shell_config_leftovers` has no contents for it. An empty
         // ZDOTDIR is no ZDOTDIR (shell.rs:213).
         let home = Path::new("/Users/someone");
@@ -3078,7 +3078,7 @@ Expected: FAIL to compile — `cannot find function \`standard_roots\`` (and the
 Prepend to `crates/banager-core/src/adapters/standalone/rustup.rs` (above `#[cfg(test)]`):
 
 ```rust
-//! What `rustup self uninstall` does, when Canager may offer it, and what
+//! What `rustup self uninstall` does, when Banager may offer it, and what
 //! to tell the user before it runs (phase 4 spec §6.4): the facts here
 //! were read from rustup's source at the tag the installed binary was
 //! built from -- `1.29.1`, commit d95a37b6, the `d95a37b6a` in `rustup
@@ -3093,14 +3093,14 @@ Prepend to `crates/banager-core/src/adapters/standalone/rustup.rs` (above `#[cfg
 //! `uninstall()` (self_update.rs:924-1032): removes every toolchain
 //! (:955-958, the entries of `$RUSTUP_HOME/toolchains`), then
 //! `$RUSTUP_HOME` (:960-966), then -- unless `--no-modify-path`, which
-//! Canager does not pass -- the line it added to the shell startup files
+//! Banager does not pass -- the line it added to the shell startup files
 //! (:971-973, `do_remove_from_path`), then everything in `$CARGO_HOME`
 //! except `bin/` (:977-993), then everything in `bin/` that is not one of
 //! its own proxies or `rustup` itself (:996-1022), and finally the whole
 //! `$CARGO_HOME` directory (`delete_rustup_and_cargo_home`, :1029;
 //! unix.rs:50-53). Both homes come from `RUSTUP_HOME`/`CARGO_HOME` or
 //! default under `HOME` (env.rs:67-79, :101-113) -- wherever they point,
-//! and permanently: nothing here goes to the Trash. So Canager offers the
+//! and permanently: nothing here goes to the Trash. So Banager offers the
 //! command only for the standard layout (`standard_roots`, ruling 18) and
 //! the preview names both folders by path.
 //!
@@ -3117,7 +3117,7 @@ use crate::model::{ResourceLock, UninstallBlocked, Warning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// The startup files Canager reads (never writes) for a line about the
+/// The startup files Banager reads (never writes) for a line about the
 /// Cargo env file, home-relative, in the order they are reported (spec
 /// §6.4). `$ZDOTDIR/.zshenv` and `$ZDOTDIR/.zprofile` are read only when
 /// `ZDOTDIR` is the home (then they are these files); a zsh whose files
@@ -3327,7 +3327,7 @@ pub struct RcVisit {
 /// `~/.bash_login`, `~/.bashrc` (:188-195), Zsh's `$ZDOTDIR/.zshenv`
 /// when there is a ZDOTDIR and `~/.zshenv` (:240-245, no deduplication
 /// -- `ZDOTDIR=$HOME` visits the same file twice); Fish, Nu, Tcsh, Pwsh
-/// and Xonsh visit files Canager does not read. Then
+/// and Xonsh visit files Banager does not read. Then
 /// `remove_legacy_paths` (unix.rs:174-194) removes the pre-1.23 line
 /// `export PATH="<S>/bin:$PATH"` and then `source "<S>/env"`, each from
 /// `legacy_paths` (shell.rs:564-574): `~/.bash_profile`, `~/.profile`,
@@ -3335,7 +3335,7 @@ pub struct RcVisit {
 /// and Zsh's availability checks are folded in: a Bash file that is not
 /// there is a no-op visit, and on a Mac zsh is at `/bin/zsh`. `zdotdir`
 /// is `HostEnv.zdotdir` -- rustup itself asks `zsh -c 'echo -n $ZDOTDIR'`
-/// when `SHELL` is not zsh (shell.rs:207-225), which Canager does not
+/// when `SHELL` is not zsh (shell.rs:207-225), which Banager does not
 /// (it runs nothing), so a ZDOTDIR set only inside a zsh startup file is
 /// not modelled; an empty one is none (shell.rs:213). `~/.zshrc` and
 /// fish's `config.fish` are visited by nothing.
@@ -3472,7 +3472,7 @@ pub fn classify_leftover(contents: &str, patterns: &LeftoverPatterns) -> Option<
 /// One `LeavesShellConfigLine` per startup file under `home` that will
 /// still speak of the Cargo env file after `rustup self uninstall`, in
 /// `SHELL_RC_CANDIDATES` order, `path` spelled `~/<file>`, `certain` by
-/// tier. The eight files are read once (read-only: Canager never edits
+/// tier. The eight files are read once (read-only: Banager never edits
 /// a startup file, spec §6.8), rustup's visits (`rustup_rc_visits`) are
 /// replayed on the copies -- so a second visit to the same file sees
 /// the first's result, as rustup's does -- and what is left is
@@ -3599,7 +3599,7 @@ If Step 3 changed `display_path`'s visibility, append `crates/banager-core/src/s
 ```bash
 git add crates/banager-core/src/adapters/standalone/rustup.rs crates/banager-core/src/adapters/standalone/mod.rs
 git commit -m "$(cat <<'EOF'
-Say what rustup 1.29.1's self uninstall removes, and when Canager may offer it, from its source
+Say what rustup 1.29.1's self uninstall removes, and when Banager may offer it, from its source
 
 Before rustup self uninstall runs, the preview names ~/.rustup with every
 toolchain in it (the entries of its toolchains directory -- no command is
@@ -3632,14 +3632,14 @@ EOF
 - Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` — `pub static RUSTUP` (not yet in `RECIPES`: Task 10 registers it with its recording); tests
 - Modify: `crates/banager-core/src/adapters/standalone/mod.rs` — `inventory`'s `uninstall_blocked`, `plan`'s `OpKind::Uninstall` arm (one arm in C's match), new `command_uninstall_plan`; C's other branches on `recipe.uninstall` only where Step 3's list says so (`execute`'s dispatch); tests
 - Modify: `crates/banager-core/src/http/real.rs` — `ALLOWED_HTTPS_HOSTS`, its doc comment, one test  [A's file: anchor by the constant and the test names]
-- Modify: `docs/what-we-run.md` — the table under `## Network: Canager only connects to these hosts`  [A's file: anchor by the heading and B's `downloads.claude.ai` row, `:652` at `ea30cfb`]
+- Modify: `docs/what-we-run.md` — the table under `## Network: Banager only connects to these hosts`  [A's file: anchor by the heading and B's `downloads.claude.ai` row, `:652` at `ea30cfb`]
 - Test: `recipes.rs`'s, `mod.rs`'s and `real.rs`'s test modules; A's `what_we_run_test` keeps passing.
 
 **Interfaces:**
 - Consumes: `rustup::{uninstall_blocked, uninstall_warnings, extra_locks, HOMEBREW_PREFIXES}` (Task 5); `Latest::HttpTomlVersion`, `VersionParse::SecondToken` (Task 3); `RouteKind::FlatFile`, `Recipe.extra_locks`, `seated_detected_for`, `locks`, `testing::rustup_layout` (Task 4); `cargo::{instance_id_for, cargo_home_of, RUSTUP_AUTO_INSTALL_OFF}` and `CargoAdapter::new`/`detect` (Task 1, `cargo.rs`); C's `Uninstall`, `Recipe.uninstall`, `PlanAction::Command`, `StandaloneAdapter::new`'s `trasher` argument and `crate::trash::MockTrasher`; A's `host_allowed`; B's `RecordingRunner`.
 - Produces (verbatim): `pub struct CommandUninstall { pub args, pub timeout_secs, pub cancel: CancelPolicy, pub blocked: fn(&Detected) -> Option<UninstallBlocked>, pub warnings: fn(&Detected) -> Vec<Warning> }`; `Uninstall::Command(CommandUninstall)` (readers: `plan`'s Uninstall arm, `inventory`; producer: `RUSTUP`); `pub static RUSTUP: Recipe` (readers: `RECIPES` in Task 10, the tests here, Tasks 7 and 8's tests); `fn command_uninstall_plan(&self, inst, req, detected: &Detected, cmd: &CommandUninstall) -> Result<Plan, AdapterError>` (reader: `plan`); `"static.rust-lang.org"` in `ALLOWED_HTTPS_HOSTS` (readers: A's `host_allowed` in `send`, the doc table, A's `what_we_run_test`, `test_every_recipe_latest_url_is_an_allowed_https_host` once `RUSTUP` is in `RECIPES`); `adapters/meta/standalone-rustup.toml` (readers: `RUSTUP.meta_toml`; A's `what_we_run_test` once registered).
 
-The recipe's every value and its source (rustup.md, VERIFIED unless said, and this Mac re-checked read-only on 2026-09-25): launcher `$CARGO_HOME/bin/rustup`, a regular Mach-O file of 11,319,056 bytes (§2, `ls -la`, `file`); root `$CARGO_HOME` (spec §2.2: the proxies live in its `bin/`, Canager reads nothing under `RUSTUP_HOME` but its `toolchains/` names during the preview); `rustup --version` → stdout `rustup 1.29.1 (d95a37b6a 2026-08-13)`, two `info:` lines on stderr (§3; re-run 2026-09-25 with `2>/dev/null` and `2>&1 >/dev/null` to split them), **with `RUSTUP_AUTO_INSTALL=0`** (ruling 20: `display_version` resolves the active toolchain and, with none and the switch on, installs one); newest version `https://static.rust-lang.org/rustup/release-stable.toml` → `schema-version = '1'` / `version = '1.29.1'` (§6, curl, and rustup's `DEFAULT_UPDATE_ROOT`); `self_updates: false` (spec §3.5; rustup updates itself only inside `rustup update`/`rustup toolchain install`, which Canager never runs — `rustup_mode.rs:1042-1090`, `SelfUpdateMode::update`); upgrade `self update`, 600 s, **`NoCancel`** (Ruling 11: `install_bins` unlinks then copies, self_update.rs:779-782); **never `rustup update`** (touches toolchains; rust-lang/rustup#4724, §7); uninstall `self uninstall -y` (§8: `-y` skips the confirmation the `/dev/null` stdin would otherwise answer with EOF), 600 s, `NoCancel`, **no probe** (ruling 4), `blocked: rustup::uninstall_blocked` (ruling 18), `warnings: rustup::uninstall_warnings`; `--no-modify-path` is *not* passed (spec Q6: rustup removing its own line beats leaving one that errors on every terminal); `extra_locks: rustup::extra_locks` (spec §2.4).
+The recipe's every value and its source (rustup.md, VERIFIED unless said, and this Mac re-checked read-only on 2026-09-25): launcher `$CARGO_HOME/bin/rustup`, a regular Mach-O file of 11,319,056 bytes (§2, `ls -la`, `file`); root `$CARGO_HOME` (spec §2.2: the proxies live in its `bin/`, Banager reads nothing under `RUSTUP_HOME` but its `toolchains/` names during the preview); `rustup --version` → stdout `rustup 1.29.1 (d95a37b6a 2026-08-13)`, two `info:` lines on stderr (§3; re-run 2026-09-25 with `2>/dev/null` and `2>&1 >/dev/null` to split them), **with `RUSTUP_AUTO_INSTALL=0`** (ruling 20: `display_version` resolves the active toolchain and, with none and the switch on, installs one); newest version `https://static.rust-lang.org/rustup/release-stable.toml` → `schema-version = '1'` / `version = '1.29.1'` (§6, curl, and rustup's `DEFAULT_UPDATE_ROOT`); `self_updates: false` (spec §3.5; rustup updates itself only inside `rustup update`/`rustup toolchain install`, which Banager never runs — `rustup_mode.rs:1042-1090`, `SelfUpdateMode::update`); upgrade `self update`, 600 s, **`NoCancel`** (Ruling 11: `install_bins` unlinks then copies, self_update.rs:779-782); **never `rustup update`** (touches toolchains; rust-lang/rustup#4724, §7); uninstall `self uninstall -y` (§8: `-y` skips the confirmation the `/dev/null` stdin would otherwise answer with EOF), 600 s, `NoCancel`, **no probe** (ruling 4), `blocked: rustup::uninstall_blocked` (ruling 18), `warnings: rustup::uninstall_warnings`; `--no-modify-path` is *not* passed (spec Q6: rustup removing its own line beats leaving one that errors on every terminal); `extra_locks: rustup::extra_locks` (spec §2.4).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3906,7 +3906,7 @@ Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs
         };
         let before = runner.calls().len();
         assert!(adapter.detect(&env).await.is_empty());
-        assert_eq!(runner.calls().len(), before, "nothing run for a home Canager cannot name");
+        assert_eq!(runner.calls().len(), before, "nothing run for a home Banager cannot name");
     }
 
     #[tokio::test]
@@ -4343,7 +4343,7 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `CommandUninsta
 
 /// rustup, the Rust toolchain installer, installed by its own script
 /// (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`,
-/// run by the user; Canager never runs it).
+/// run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/rustup.md` (VERIFIED on
 /// this Mac or in rustup's own source at tag 1.29.1, 2026-09-24/25,
@@ -4353,7 +4353,7 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `CommandUninsta
 ///   on this Mac); the thirteen proxies beside it (`cargo`, `rustc`,
 ///   `rustfmt`, …) are relative symlinks to it (§2; unknown-scan.md §2),
 ///   which the Unknown page's rule 1 attributes. The root is the Cargo
-///   home: Canager reads nothing under `RUSTUP_HOME` except, during the
+///   home: Banager reads nothing under `RUSTUP_HOME` except, during the
 ///   uninstall preview, the names in its `toolchains/` (spec §2.2, §3.2);
 /// - `rustup --version` prints `rustup <version> (<hash> <date>)` on
 ///   stdout, and two `info:` lines on stderr that are never read (§3;
@@ -4375,7 +4375,7 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `CommandUninsta
 /// - it does not update itself on its own (spec §3.5): rustup updates
 ///   itself only as part of `rustup update` and `rustup toolchain
 ///   install` (`SelfUpdateMode::update`, rustup_mode.rs:1042-1090), which
-///   Canager never runs;
+///   Banager never runs;
 /// - `rustup self update` (never `rustup update`, which updates the
 ///   toolchains and, interrupted, leaves them half installed:
 ///   rust-lang/rustup#4724, §7) is `NoCancel` with the cargo instance's
@@ -4399,10 +4399,10 @@ In `crates/banager-core/src/adapters/standalone/recipes.rs`, add `CommandUninsta
 ///   lines). `--no-modify-path` is not passed (spec Q6): rustup removing
 ///   its own startup line beats leaving one that errors on every new
 ///   terminal;
-/// - both commands run with Canager's own environment: `fix_path_env`
+/// - both commands run with Banager's own environment: `fix_path_env`
 ///   restores only `PATH` from the login shell, and the runner passes the
 ///   rest as inherited. A `RUSTUP_HOME` or `CARGO_HOME` exported only in
-///   a shell startup file is not seen by Canager or by the rustup it
+///   a shell startup file is not seen by Banager or by the rustup it
 ///   runs -- the two agree, which is what the gate relies on -- so the
 ///   preview and the uninstall act on the default folders, and a Rust
 ///   kept only where the shell says is left alone, not deleted (plan
@@ -4529,7 +4529,7 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 
 and in its doc comment, change B's clause `and downloads.claude.ai (\`StandaloneAdapter::check_updates\`, Claude Code's channel pointer).` to `, downloads.claude.ai (\`StandaloneAdapter::check_updates\`, Claude Code's channel pointer) and static.rust-lang.org (the same, rustup's release file).`
 
-In `docs/what-we-run.md`, under `## Network: Canager only connects to these hosts`, after B's row that begins `| \`downloads.claude.ai\` |`, add:
+In `docs/what-we-run.md`, under `## Network: Banager only connects to these hosts`, after B's row that begins `| \`downloads.claude.ai\` |`, add:
 
 ```markdown
 | `static.rust-lang.org` | `GET /rustup/release-stable.toml` — the newest published rustup version, a two-line TOML file (`version = '…'`) | rustup's `check_updates` (`StandaloneAdapter`) |
@@ -4752,7 +4752,7 @@ In `crates/banager-core/src/session/refresh.rs`, inside `mod tests`, replace `te
     fn rustup_home() -> (PathBuf, HostEnv) {
         use std::os::unix::fs::PermissionsExt;
         let raw = std::env::temp_dir().join(format!(
-            "canager-refresh-rustup-{}-{}",
+            "banager-refresh-rustup-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5150,7 +5150,7 @@ async fn rustup_home_and_instance(
 ) -> (PathBuf, Arc<StandaloneAdapter>, ManagerInstance) {
     use std::os::unix::fs::PermissionsExt;
     let home = std::env::temp_dir().join(format!(
-        "canager-ops-rustup-{}-{}",
+        "banager-ops-rustup-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -5342,7 +5342,7 @@ impl RustupHome {
     fn new(tag: &str) -> RustupHome {
         use std::os::unix::fs::PermissionsExt;
         let raw = std::env::temp_dir().join(format!(
-            "canager-ops-rustup-uninstall-{tag}-{}-{}",
+            "banager-ops-rustup-uninstall-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5639,7 +5639,7 @@ EOF
 - Consumes: `RUSTUP` (Task 6) as the producer the sentences name; `Plan.cancel_policy` on the wire (`types.ts`); C's `CommandPreview action={…}` element in both readers (C checklist row 10); C's `issuedPlanFor` harnesses (row 11). The end-to-end proof that the plans are `NoCancel` and honest is Task 8's.
 - Produces (verbatim): the key `operations.noCancelHint` (readers: `UninstallDialog.tsx` and `UpdatesPage.tsx`, both under the condition `plan.cancel_policy === "NoCancel"`); the four sentences now naming rustup; the renamed tests `test_cancel_operation_impl_refuses_a_running_no_cancel_op_such_as_rustup_self_update` and `test_cancel_operation_impl_cancels_a_queued_no_cancel_op_such_as_rustup_self_update`.
 
-The hint is spec §9.2's: "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts." It is true of both rustup plans (Ruling 11 for `self update`; a directory-by-directory removal for `self uninstall`), and consistent with the Running-only rule: while the op is still Queued nothing has started, and `OperationBar` keeps its Cancel button.
+The hint is spec §9.2's: "Don't close Banager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts." It is true of both rustup plans (Ruling 11 for `self update`; a directory-by-directory removal for `self uninstall`), and consistent with the Running-only rule: while the op is still Queued nothing has started, and `OperationBar` keeps its Cancel button.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -5734,7 +5734,7 @@ In `src/components/UninstallDialog.test.tsx`, append inside `describe("Uninstall
 
     expect(
       await screen.findByText(
-        "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+        "Don't close Banager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
       ),
     ).toBeInTheDocument();
 
@@ -5788,7 +5788,7 @@ in `beforeEach`, after `needsPassword = new Set();` add `noCancel = new Set();`,
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
 
     const hints = within(dialog).getAllByText(
-      "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+      "Don't close Banager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
     );
     expect(hints).toHaveLength(1);
     expect(hints[0].closest("div")?.textContent).toContain("onyx");
@@ -5897,18 +5897,18 @@ In `src/pages/UpdatesPage.tsx`, after the `{item.issued !== null ? (<CommandPrev
 In `src/i18n/en.json`, in the `"operations"` object, after `"cancel": "Cancel",` add:
 
 ```json
-    "noCancelHint": "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+    "noCancelHint": "Don't close Banager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
 ```
 
 In `src/i18n/zh-CN.json`, after `"cancel": "取消",` in `"operations"`:
 
 ```json
-    "noCancelHint": "运行期间请不要关闭 Canager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。",
+    "noCancelHint": "运行期间请不要关闭 Banager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。",
 ```
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cargo test -p banager-core --test ops_cancel_test`, `cargo test -p canager --lib` (the Tauri crate's tests, renamed), `pnpm typecheck && pnpm test`
+Run: `cargo test -p banager-core --test ops_cancel_test`, `cargo test -p banager --lib` (the Tauri crate's tests, renamed), `pnpm typecheck && pnpm test`
 Expected: PASS — including `completeness.test.ts` (`operations.noCancelHint` is a literal in two components) and `no-literal-strings.test.ts` (the new JSX carries `t()` only).
 
 - [ ] **Step 5: Run the gates**
@@ -5947,7 +5947,7 @@ EOF
 - Modify: `crates/banager-core/src/session/mod.rs` — `test_new_registers_all_eight_adapters` (`:508` at `ea30cfb`) → nine  [B's file]
 - Modify: `crates/banager-core/src/scan/mod.rs` — the comment on B's `("standalone-rustup", …)` tuple in `test_owned_roots_table` (`:810-812`), and the `standalone-rustup` clause of `owned_roots`'s doc comment (`:257-258`); the `_` arm's comment about it (`:291-292`, "`standalone-rustup` never joins: everything of rustup's resolves to its launcher") stays true — `hexyl` is cargo's, not rustup's — and is not touched  [F's/B's file]
 - Modify: `crates/banager-core/src/lib.rs` — the crate doc's list of sources  [F's/B's file]
-- Modify: `docs/what-we-run.md` — intro (`:4`), "Where the program comes from", a `## rustup` section after `## Claude Code` (`:460`), "Files Canager reads" (`:602`), "What Canager never does" (`:693`)  [A's/B's file]
+- Modify: `docs/what-we-run.md` — intro (`:4`), "Where the program comes from", a `## rustup` section after `## Claude Code` (`:460`), "Files Banager reads" (`:602`), "What Banager never does" (`:693`)  [A's/B's file]
 - Test: `fixtures_layout_test.rs`, `what_we_run_test.rs` (both existing), the session test, the three fixture tests, `recipes` tests.
 
 **Interfaces:**
@@ -6014,7 +6014,7 @@ parser is wrong.
 Commands (all read-only; `rustup update`, `rustup self update`, `rustup self
 uninstall`, `rustup toolchain list` and `rustup check` were **not** run — the
 only rustup invocation is `--version`, under `RUSTUP_AUTO_INSTALL=0`, the
-switch every version read Canager makes carries):
+switch every version read Banager makes carries):
 - `RUSTUP_AUTO_INSTALL=0 ~/.cargo/bin/rustup --version` -> `version.txt`
   (stdout: `rustup <version> (<hash> <date>)`; the version is the second
   token) and `version-stderr.txt` (stderr: the two `info:` lines rustup
@@ -6036,7 +6036,7 @@ switch every version read Canager makes carries):
   where `.crates2.json` records them, what cargo's own inventory places)
 
 Layout on this Mac: [ROOTS] — the standard one, which is the only one
-Canager offers the uninstall for (`rustup::standard_roots`); [ENV_COUNT] of
+Banager offers the uninstall for (`rustup::standard_roots`); [ENV_COUNT] of
 `CARGO_HOME`, `RUSTUP_HOME` and `ZDOTDIR` were set in the recording shell.
 Homebrew's rustup formula (`Cellar/rustup` under `/opt/homebrew` or
 `/usr/local`, the signal `rustup::homebrew_rustup_present` reads): [BREW —
@@ -6044,7 +6044,7 @@ Homebrew's rustup formula (`Cellar/rustup` under `/opt/homebrew` or
 Homebrew line was not exercised on this Mac; otherwise, which prefix has it].
 
 Shell startup files on the recording day (`grep -n 'cargo/env'` over the
-eight files Canager reads, home spelled `~`): [RC_LINES, one per line]. The
+eight files Banager reads, home spelled `~`): [RC_LINES, one per line]. The
 files themselves are personal and are not recorded; the startup-file rule is
 tested on synthetic files (`adapters/standalone/rustup.rs`).
 
@@ -6248,7 +6248,7 @@ In `docs/what-we-run.md` (both sentences below are hard-wrapped in the file; mat
 
 (a) In the opening paragraph (`:4-5`), change B's `for the eight sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama, and Claude Code (a tool with its own installer).` to `for the nine sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama, and two tools with their own installer, Claude Code and rustup.`
 
-(b) Under `## How Canager runs anything`, in `**Where the program comes from.**`, change B's `and so is a tool with its own installer: Claude Code at the one path its installer writes (its section).` to `and so is a tool with its own installer: Claude Code at the one path its installer writes, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).`
+(b) Under `## How Banager runs anything`, in `**Where the program comes from.**`, change B's `and so is a tool with its own installer: Claude Code at the one path its installer writes (its section).` to `and so is a tool with its own installer: Claude Code at the one path its installer writes, rustup at \`$CARGO_HOME/bin/rustup\` (their sections).`
 
 (c) After B's `## Claude Code` section (its last paragraph begins `\`claude update\` runs *without* \`DISABLE_AUTOUPDATER\``; C may have added paragraphs after it — insert after the whole section, before the next `## ` heading) insert:
 
@@ -6258,21 +6258,21 @@ In `docs/what-we-run.md` (both sentences below are hard-wrapped in the file; mat
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
 `crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
-`rustup.rs` what its uninstall does, when Canager may offer it, and what to
+`rustup.rs` what its uninstall does, when Banager may offer it, and what to
 say about it). Verified against rustup 1.29.1 (the version in
 `adapters/meta/standalone-rustup.toml` and the name of the recorded fixture
 directory; write the recording day's number here). The Rust toolchain
 installer, installed by its own script (`curl … https://sh.rustup.rs | sh`,
-run by the user — Canager never runs it); the one item under it is rustup
+run by the user — Banager never runs it); the one item under it is rustup
 itself. The toolchains it manages, and the programs `cargo install`
 installs, are not rows of this source: the first are outside phase 4, the
 second are Cargo's.
 
-**Detect.** Canager looks at the fixed path the installer writes,
-`$CARGO_HOME/bin/rustup` — `CARGO_HOME` from the environment Canager was
+**Detect.** Banager looks at the fixed path the installer writes,
+`$CARGO_HOME/bin/rustup` — `CARGO_HOME` from the environment Banager was
 started with (see "Which Rust" below), read the way rustup and cargo read
 it: an empty value means the default `~/.cargo`, a relative value names a
-folder relative to the tool's own working directory, which Canager cannot
+folder relative to the tool's own working directory, which Banager cannot
 know, so it then lists no rustup rather than guess — never a `rustup`
 found through `PATH` — and checks with `lstat` and `realpath` that it is a
 regular file, not a link: the installer's copy is an executable of its own,
@@ -6288,7 +6288,7 @@ output (`rustup 1.29.1 (d95a37b6a 2026-08-13)`); the two `info:` lines
 rustup prints on standard error are not read. Two things rustup itself
 does on *any* invocation, this read included: it creates `~/.rustup` if it
 is missing, and it deletes a leftover `~/.cargo/bin/rustup-init` from an
-earlier self update, if there is one. Canager also asks where `rustup`
+earlier self update, if there is one. Banager also asks where `rustup`
 would run from if typed in Terminal and says so under the source when it
 is not this copy (as for Claude Code); that is a notice, not a command.
 
@@ -6306,9 +6306,9 @@ comparing the dot-separated integers; a request that fails, answers
 anything but 200, or answers something that is not a versioned TOML file is
 listed as "could not check", never as an error for the source. rustup does
 not update itself on its own: it updates itself only as part of `rustup
-update` and `rustup toolchain install`, which Canager never runs.
+update` and `rustup toolchain install`, which Banager never runs.
 
-**While rustup is being updated or uninstalled, Canager does not run it.**
+**While rustup is being updated or uninstalled, Banager does not run it.**
 Both write commands hold rustup's own lock and the Cargo source's (the
 `cargo` command is rustup's binary under another name), and a refresh that
 arrives while an operation holds a source's lock skips that source
@@ -6341,14 +6341,14 @@ called done on the strength of a version number.
 
 `rustup self uninstall -y` is rustup's official uninstall (`-y` skips its
 own confirmation prompt, which would otherwise read end-of-file from the
-`/dev/null` standard input and stop). **Canager offers it only when Rust
+`/dev/null` standard input and stop). **Banager offers it only when Rust
 lives in its standard folders**: `CARGO_HOME` and `RUSTUP_HOME` (from the
-environment Canager was started with, read as rustup reads them) resolve to
+environment Banager was started with, read as rustup reads them) resolve to
 `~/.cargo` and `~/.rustup`, `~/.cargo` is a real folder and not a link, and
 `~/.rustup` is a real folder, not a link, or not there yet. Any other
 layout — a custom folder, a relative variable, a linked folder — gets no
 Uninstall button, and the row says why: rustup's uninstall deletes both
-folders whole, wherever they point, and Canager will not ask it to delete a
+folders whole, wherever they point, and Banager will not ask it to delete a
 folder the preview did not name. Read from rustup 1.29.1's source
 (`uninstall()` in `src/cli/self_update.rs`, lines 924–1032 at tag
 `1.29.1`), it removes, **permanently — nothing goes to the Trash**: every
@@ -6379,18 +6379,18 @@ gone is reported as done, still there as unconfirmed. `--no-modify-path`
 is not passed: rustup removing its own line beats leaving one that prints
 an error in every new terminal.
 
-**Which Rust.** rustup runs with the environment Canager itself was
-started with: at launch Canager restores only `PATH` from your login shell,
-and every command it runs inherits the rest. Canager reads `CARGO_HOME`,
+**Which Rust.** rustup runs with the environment Banager itself was
+started with: at launch Banager restores only `PATH` from your login shell,
+and every command it runs inherits the rest. Banager reads `CARGO_HOME`,
 `RUSTUP_HOME` and `ZDOTDIR` from that same environment — the one the
 rustup it runs will see, so the two always agree about which folders are
 meant. A `RUSTUP_HOME` or `CARGO_HOME` exported only in a shell startup
 file is therefore not seen by either: the preview and the uninstall act on
 the default folders, and a Rust kept only where the shell says is left
-alone, not deleted; a `CARGO_HOME` exported only there also means Canager
+alone, not deleted; a `CARGO_HOME` exported only there also means Banager
 looks for rustup under `~/.cargo` and does not list one installed elsewhere.
 
-**Shell startup files.** Canager never edits one. rustup's uninstall removes
+**Shell startup files.** Banager never edits one. rustup's uninstall removes
 exactly the line it wrote, `. "$HOME/.cargo/env"` (the absolute path when
 `CARGO_HOME` is set), from `~/.profile`, `~/.bash_profile`, `~/.bash_login`,
 `~/.bashrc`, `$ZDOTDIR/.zshenv` and `~/.zshenv`, in that order, and then the
@@ -6400,7 +6400,7 @@ two lines rustup wrote before version 1.23 from `~/.bash_profile`,
 the first line that matches byte for byte, newline included; when
 `ZDOTDIR` is your home folder the same file is visited twice and two copies
 go. It never edits `~/.zshrc` or fish's `config.fish`. So before the
-uninstall Canager reads those eight files — `~/.zshenv`, `~/.zprofile`,
+uninstall Banager reads those eight files — `~/.zshenv`, `~/.zprofile`,
 `~/.zshrc`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.profile`,
 `~/.config/fish/config.fish` — replays rustup's removals on copies in
 memory, and names each file that still speaks of Cargo's env file: "will
@@ -6411,13 +6411,13 @@ any other mention rustup will not remove (a guarded line such as
 `[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`, an `echo`, another
 spelling such as `source ~/.cargo/env`, a `$CARGO_HOME/env`); a comment
 counts for nothing. rustup learns `ZDOTDIR` by asking `zsh` when your
-login shell is not zsh; Canager runs nothing and reads only the variable
+login shell is not zsh; Banager runs nothing and reads only the variable
 it was started with, so a `ZDOTDIR` set only inside a zsh startup file is
 not modelled, and a zsh whose files live under such a `ZDOTDIR` is not
 read.
 ```
 
-(d) Under `## Files Canager reads`, after B's `- Claude Code: …` bullet, add:
+(d) Under `## Files Banager reads`, after B's `- Claude Code: …` bullet, add:
 
 ```markdown
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
@@ -6431,7 +6431,7 @@ read.
   env file; nothing else under `RUSTUP_HOME` is ever read.
 ```
 
-(e) Under `## What Canager never does`, after the bullet `- Never runs an installer script, and never reruns one to update a tool.`, add:
+(e) Under `## What Banager never does`, after the bullet `- Never runs an installer script, and never reruns one to update a tool.`, add:
 
 ```markdown
 - Never runs `rustup update`: rustup's own update of its toolchains, which
@@ -6441,7 +6441,7 @@ read.
   cargo install a toolchain (`RUSTUP_AUTO_INSTALL=0`).
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
-  Canager offers that only when the preview can name exactly those two.
+  Banager offers that only when the preview can name exactly those two.
 ```
 
 and in the bullet `- Never writes, moves or deletes a file on the Mac itself, other than its own \`settings.json\`; never edits a shell startup file.` (or C's rewording of it, which adds the move-to-Trash exception), append the clause ` — rustup's own uninstall edits its startup line and deletes its two folders permanently, and the preview says so.`
@@ -6473,7 +6473,7 @@ preview lists, and the bin directory's layout. The trust file gains the
 section that says every command, request and file this source involves
 -- when the uninstall is offered and when it is not, that it deletes two
 folders permanently and never to the Trash, which startup files rustup's
-own cleanup visits and in what order, and that nothing of Canager's runs
+own cleanup visits and in what order, and that nothing of Banager's runs
 rustup while rustup is being replaced.
 
 Co-Authored-By: <the executing session's attribution line>
@@ -6540,10 +6540,10 @@ describe("uninstallBlockedCopy", () => {
     expect(rustup.refused).toBe("installed.blocked.NoSafeMethod.standalone-rustup.refused");
     expect(rustup.command({ instance_id: "standalone-rustup", kind: "Binary", name: "rustup" }, undefined)).toBe("");
     expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+      "Banager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
     );
     expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+      "Banager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
     );
     // Everyone else: B's copy, whatever the adapter.
     expect(uninstallBlockedCopy("NoSafeMethod", "standalone-claude")).toBe(
@@ -6561,13 +6561,13 @@ describe("uninstallBlockedCopy", () => {
 In `src/components/SnapshotStatus.test.tsx`, replace B's two expected sentences (B wrote them at the lines that were `:57` and `:242` before B; match by text). The one that reads
 
 ```ts
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Banager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
 ```
 
 becomes
 
 ```ts
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
 ```
 
 and the one that reads
@@ -6673,10 +6673,10 @@ in `"standalone"` → `"summary"`, after `"standalone-claude": "…"` add `,` an
       "standalone-rustup": "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo."
 ```
 
-and in `"emptyStates"`, replace B's two descriptions: `"noSources"` → `"description"` (B's `"Canager works with …, and Claude Code at its native installer's default location. None of them …"`) with
+and in `"emptyStates"`, replace B's two descriptions: `"noSources"` → `"description"` (B's `"Banager works with …, and Claude Code at its native installer's default location. None of them …"`) with
 
 ```json
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
 ```
 
 and `"nothingInstalled"` → `"description"` (B's `"Items installed with … appear here, along with Claude Code installed at its native installer's default location."`) with
@@ -6689,8 +6689,8 @@ and in `"installed"` → `"blocked"` → `"NoSafeMethod"` (B's object with `badg
 
 ```json
         "standalone-rustup": {
-          "description": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
-          "refused": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else, so it didn't. Nothing has been changed."
+          "description": "Banager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+          "refused": "Banager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else, so it didn't. Nothing has been changed."
         }
 ```
 
@@ -6704,10 +6704,10 @@ In `src/i18n/zh-CN.json`, the same five places:
       "standalone-rustup": "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。"
 ```
 
-`"noSources"` → `"description"` (B's `"Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。…"`):
+`"noSources"` → `"description"` (B's `"Banager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。…"`):
 
 ```json
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Banager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
 ```
 
 `"nothingInstalled"` → `"description"` (B's `"用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用 Claude Code 原生安装器装在默认位置的 Claude Code，会出现在这里。"`):
@@ -6720,8 +6720,8 @@ and under `"installed"` → `"blocked"` → `"NoSafeMethod"`:
 
 ```json
         "standalone-rustup": {
-          "description": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
-          "refused": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处，所以没有卸载。什么都没有改动。"
+          "description": "Banager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+          "refused": "Banager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处，所以没有卸载。什么都没有改动。"
         }
 ```
 
@@ -6743,11 +6743,11 @@ Name rustup on the pages, and say why a non-standard layout gets no Uninstall
 
 Its group label, the one-sentence summary the Installed page shows in
 place of a description, and both empty states, which named Claude Code
-as the one tool Canager finds at its own installer's location and now
+as the one tool Banager finds at its own installer's location and now
 name rustup beside it, in both locales. A rustup whose folders are not
 the standard ones carries the same refusal claude used to -- no safe
 method -- but the sentence for it said the tool has no uninstall
-command, which rustup has; rustup's row now says Canager only removes
+command, which rustup has; rustup's row now says Banager only removes
 Rust from its standard folders, and every other row keeps its words.
 
 Co-Authored-By: <the executing session's attribution line>
@@ -6771,7 +6771,7 @@ EOF
 Directly after B's table row that begins `| Claude Code — the native install, via its own installer |`, insert:
 
 ```markdown
-| rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Canager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known. Neither can be cancelled once it is running, and the preview says so |
+| rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known. Neither can be cancelled once it is running, and the preview says so |
 ```
 
 - [ ] **Step 2: Update the two test counts**
@@ -6813,11 +6813,11 @@ EOF
 >
 > **What later steps change** — honest, not bugs: until **D**, `agy` and `grok` are not sources and the empty-state copy names Claude Code and rustup only. D's recipes need `extra_locks: no_extra_locks` (Task 4's field) and, if D lands after this, `RUSTUP` needs D's `backup_globs: &[]`; a route kind D adds must take an arm in `probe_strict`'s dangling-branch `match` (Task 4).
 >
-> **Rulings taken** (see "Rulings this plan makes"): `RemovesCargoInstalled` replaces the spec's `LeavesUnmanaged` (ruling 1, the one user-visible fact the spec had wrong); the verified startup-file visits, replayed in order, and the two-tier sentence (2, 22); `extra_locks` on `Recipe` (3); `CommandUninstall` with a gate and no probe (4); `expand_route` beside B's `expand` (5); the `home` crate's rule, one id producer, `RUSTUP_AUTO_INSTALL=0` on cargo's read (6); one binary per cargo artifact (7); `FlatFile`/`SecondToken` introduced here, and no launcher-only state for a flat file (8); the seat bound to its instance (9); read-only recording (10); `self update` is unlink-then-copy (11); nine adapters (13); B's empty-state wording, both sentences (14); toolchains from the directory (15); `DeletesCargoHome` by path (16); what Canager's own environment means for `RUSTUP_HOME`/`CARGO_HOME` (17); the standard-folders gate (18); the refresh skip (19); `HostEnv.{rustup_home, zdotdir}` (20); the Homebrew signal (21).
+> **Rulings taken** (see "Rulings this plan makes"): `RemovesCargoInstalled` replaces the spec's `LeavesUnmanaged` (ruling 1, the one user-visible fact the spec had wrong); the verified startup-file visits, replayed in order, and the two-tier sentence (2, 22); `extra_locks` on `Recipe` (3); `CommandUninstall` with a gate and no probe (4); `expand_route` beside B's `expand` (5); the `home` crate's rule, one id producer, `RUSTUP_AUTO_INSTALL=0` on cargo's read (6); one binary per cargo artifact (7); `FlatFile`/`SecondToken` introduced here, and no launcher-only state for a flat file (8); the seat bound to its instance (9); read-only recording (10); `self update` is unlink-then-copy (11); nine adapters (13); B's empty-state wording, both sentences (14); toolchains from the directory (15); `DeletesCargoHome` by path (16); what Banager's own environment means for `RUSTUP_HOME`/`CARGO_HOME` (17); the standard-folders gate (18); the refresh skip (19); `HostEnv.{rustup_home, zdotdir}` (20); the Homebrew signal (21).
 >
 > **Recorded on this Mac**: `adapters/fixtures/standalone-rustup/<version>/` — the version line (under `RUSTUP_AUTO_INSTALL=0`) and its stderr, the release file, the toolchain directory's names, the bin layout; read-only commands only; `rustup update`, `self update`, `self uninstall`, `toolchain list` and `check` were never run.
 >
-> **UNVERIFIED, left as such**: the exact text `rustup self update` prints when nothing changes (the ops test's outcome depends on the exit code and the two readings only); a `ZDOTDIR` rustup would learn only by asking `zsh` (Canager reads the variable it was started with); rustup's behaviour with no active toolchain under `RUSTUP_AUTO_INSTALL=0` is read from `display_version`'s source and mocked, not recorded.
+> **UNVERIFIED, left as such**: the exact text `rustup self update` prints when nothing changes (the ops test's outcome depends on the exit code and the two readings only); a `ZDOTDIR` rustup would learn only by asking `zsh` (Banager reads the variable it was started with); rustup's behaviour with no active toolchain under `RUSTUP_AUTO_INSTALL=0` is read from `display_version`'s source and mocked, not recorded.
 
 ---
 
@@ -6884,9 +6884,9 @@ Not in E, by the spec's own list: `UpdateBlocked::SelfUpdatesOnly`, `Glob`/`back
 13. **§9.2's `leavesShellConfigLine` sentence hard-codes `~/.cargo/env`**; with `CARGO_HOME` set the leftover line loads `<CARGO_HOME>/env`, which the Rust side matches. The sentence says "Cargo's env file" in both locales, and has a qualified twin (Task 2).
 14. **§9.2's two `emptyStates` sentences were rewritten by B's plan** (both name Claude Code "at its native installer's default location"); this step extends B's two, not the spec's, to name rustup (ruling 14).
 15. **§3.3's dangling-link rule (`LauncherOnly`) is the link-shaped route's only**: a flat-file launcher that is a dangling link is `Absent` (ruling 8), or rustup's Cargo-home root would make any dangling name under it a rustup row.
-16. **§3.2's "`rustup self uninstall` 自己知道它在哪"** holds for the environment Canager was started with, not the shell's: `fix_path_env` restores `PATH` only, so a `RUSTUP_HOME` set in a startup file is seen by neither Canager nor the rustup it runs — the two agree, which the gate relies on (ruling 17, 18). `HostEnv.rustup_home` is added for the gate, not to override that.
+16. **§3.2's "`rustup self uninstall` 自己知道它在哪"** holds for the environment Banager was started with, not the shell's: `fix_path_env` restores `PATH` only, so a `RUSTUP_HOME` set in a startup file is seen by neither Banager nor the rustup it runs — the two agree, which the gate relies on (ruling 17, 18). `HostEnv.rustup_home` is added for the gate, not to override that.
 17. **§6.4's "not in rustup's managed set" is per visit, first match, newline included**: rustup removes the first exact copy of its line (with its newline) at each visit, so a second copy or a last line without a newline stays and is reported — unless `ZDOTDIR=$HOME` gives `.zshenv` a second visit (ruling 2).
-18. **§6.4 offers the uninstall for every native rustup; this plan offers it only for the standard layout** (ruling 18). §6.4 also says Canager reads nothing under `RUSTUP_HOME`; the preview now reads the *names* in `~/.rustup/toolchains` (ruling 15), and the trust file says so.
+18. **§6.4 offers the uninstall for every native rustup; this plan offers it only for the standard layout** (ruling 18). §6.4 also says Banager reads nothing under `RUSTUP_HOME`; the preview now reads the *names* in `~/.rustup/toolchains` (ruling 15), and the trust file says so.
 19. **§3.4's "版本读取不得触发自更新" reaches further for rustup than the spec knew**: `--version` can install a *toolchain* (ruling 20), and the cargo proxy's `--version` can too; both carry `RUSTUP_AUTO_INSTALL=0`. And two side effects of any rustup invocation cannot be switched off (`~/.rustup` created if missing; a leftover `rustup-init` deleted) — disclosed, and the second kept away from a running self update by the refresh skip (ruling 19).
 20. **§2.4's locking model assumed detection is safe to run concurrently with an operation**; for rustup it is not, and the refresh now skips an adapter whose instance an operation holds (ruling 19) — a change for every source: a refresh no longer waits out an operation, it carries the instance forward.
 21. **§十一 left the Homebrew twin UNVERIFIED and unwarned**; that rustup's homes are independent of the binary is now VERIFIED from `home` 0.5.12's source, and the preview warns conditionally on a local read-only signal (ruling 21).
@@ -6908,7 +6908,7 @@ Adversarial review of this plan, 2026-09-25, 13 points. Each was checked against
 | 9 | **Accepted** | Tag `1.29.1` `uninstall()`: `:977-993` removes everything in `$CARGO_HOME` except `bin/`, which includes `config.toml`, `credentials.toml` and `env`. `:996-1022` removes every `bin/` entry whose UTF-8 name is not `rustup` or one of `TOOLS`+`DUP_TOOLS` (`src/lib.rs:16-32`, 13 names), recorded or not. `:1029` → `unix.rs:50-53` removes the directory. The unconditional sentence named only packages and the record, and the names came from `.crates2.json` alone. | The unconditional Cargo sentence says the whole Cargo folder goes, settings and login included (en and zh) — since renamed `DeletesCargoHome { path }` and made to say "permanently" by the Astra review. `removesCargoInstalled` says the programs in the folder's `bin` go, which is also true of a hand-placed one. `rustup::bin_programs_rustup_removes` replaces `cargo_installed_bins`: a read-only `read_dir` of `bin/` united with the record's `bins`, minus `rustup` and `RUSTUP_PROXIES`, skipping hidden names and non-UTF-8 names, sorted and deduplicated. `RUSTUP_PROXIES` moved into `rustup.rs`, where it has a production reader. Five tests. Also updated: Review Focus, Interfaces, recipe doc, trust-file section and files-read bullet, README row, Goal and Architecture, delivery note, commit bodies, self-review, ruling 16. Compiled: 17 tests pass, clippy clean. |
 | 10 | **Partly accepted** | *Accepted:* re-pinning the baseline and re-running the confirm-grep (as point 4); the wrapped `scan/mod.rs` text in Task 1, and in the registration task, whose `standalone-rustup` clause spans `:257-258`; counts taken from the suites (unchanged). *Rejected:* "`Ordering::Less` needs `use std::cmp::Ordering;` in the test imports." `Ordering` reaches the test module through `use super::*`: B's `mod.rs` imports `std::cmp::Ordering` for `check_updates` (B plan `:3491`), and B's own `test_the_recorded_channel_pointers_are_bare_versions` in the same module uses `Ordering::Greater` with no import. A glob import brings a parent's private `use` into a child module (RFC 1560); this was checked with rustc 1.98.1 in a scratch crate. | The registration task matches the wrapped clause by its words. A comment in the fixture test says where `Ordering` comes from, so no executor adds a redundant import. No import was added. |
 | 11 | **Accepted** (the "declare" option) | Both deferrals are real: `Detected.cargo_home` and all of `rustup.rs` have only test readers until Task 6. The spec's rule (§十) is per step and is met. | Task 4's and Task 5's Interfaces blocks each carry a **Declared deferral** naming the reader and the task that wires it. The Global Constraints bullet names both (and, since the Astra review, `HostEnv`'s two fields). Task 5 was not merged into Task 6: merging would make one very large commit that mixes the preview logic with the recipe and the plan arm, and it buys no check the declared deferral lacks. |
-| 12 | **Accepted, refined** | `fix_path_env::fix()` is `fix_vars(&["PATH"])` at `c4c45d5` (`src/lib.rs:91-92`), called at `src-tauri/src/lib.rs:18`. `HostEnv::discover` reads `CARGO_HOME` from the process (`path_env.rs:75`), `RealRunner` inherits the environment (`real.rs:666`), and rustup reads `home::rustup_home()` (`:963`) and `process.cargo_home()` (`:932`). The reviewer's wording holds for `RUSTUP_HOME`. For `CARGO_HOME` set only in a shell file, Canager does not find a rustup installed there at all, so nothing is offered. It removes the default `~/.cargo` only if a rustup also sits there. | Ruling 17 rewritten with both cases. The `RUSTUP` recipe doc has a bullet on it. The trust file gets a **Which Rust** paragraph, and the Detect sentence points to it. Spec-deviation 16 added. |
+| 12 | **Accepted, refined** | `fix_path_env::fix()` is `fix_vars(&["PATH"])` at `c4c45d5` (`src/lib.rs:91-92`), called at `src-tauri/src/lib.rs:18`. `HostEnv::discover` reads `CARGO_HOME` from the process (`path_env.rs:75`), `RealRunner` inherits the environment (`real.rs:666`), and rustup reads `home::rustup_home()` (`:963`) and `process.cargo_home()` (`:932`). The reviewer's wording holds for `RUSTUP_HOME`. For `CARGO_HOME` set only in a shell file, Banager does not find a rustup installed there at all, so nothing is offered. It removes the default `~/.cargo` only if a rustup also sits there. | Ruling 17 rewritten with both cases. The `RUSTUP` recipe doc has a bullet on it. The trust file gets a **Which Rust** paragraph, and the Detect sentence points to it. Spec-deviation 16 added. |
 | 13 | **Accepted** (the "reword" option) | With `CARGO_HOME` set, the leftover line loads `<CARGO_HOME>/env`; Task 5's needles already match that spelling, but the copy said `~/.cargo/env`. | `leavesShellConfigLine` says "Cargo's env file, which will be gone" in en and zh-CN. Updated to match: trust-file text, Goal, commit bodies, `uninstall_warnings` doc and spec-deviation 13. No payload was added then; the Astra review added `certain: bool` for a different reason (the two tiers). |
 
 **Found while verifying (not raised by the review), fixed:**
@@ -6920,21 +6920,21 @@ Adversarial review of this plan, 2026-09-25, 13 points. Each was checked against
 
 ## Review log (Astra, 2026-09-25)
 
-Independent review by GPT-6 Astra (`~/dev/Canager/.superpowers/phase4/astra/review-plan-e.md`), eleven findings and one "checked, clean" note; the controller ruled on each. Every ruling was applied against the sources named below, re-read read-only on 2026-09-25: rustup at tag `1.29.1` (`src/cli/rustup_mode.rs`, `src/cli/proxy_mode.rs`, `src/bin/rustup-init.rs`, `src/config.rs`, `src/cli/self_update.rs`, `src/cli/self_update/{shell,unix}.rs`, `src/lib.rs`), the `home` crate at `home-0.5.12` (`crates/home/src/{env,lib}.rs`), and the worktree `~/dev/Canager-phase4` at `ea30cfb` (never modified; no cargo or pnpm run there). Nothing in this revision was compiled: the shapes it depends on — C's — are not in the tree yet. The plan's first Task 5 module had been compiled in a scratch crate at the earlier review; the rewritten one has not, and Task 5's Step 4 is where that is found out.
+Independent review by GPT-6 Astra (`~/dev/Banager/.superpowers/phase4/astra/review-plan-e.md`), eleven findings and one "checked, clean" note; the controller ruled on each. Every ruling was applied against the sources named below, re-read read-only on 2026-09-25: rustup at tag `1.29.1` (`src/cli/rustup_mode.rs`, `src/cli/proxy_mode.rs`, `src/bin/rustup-init.rs`, `src/config.rs`, `src/cli/self_update.rs`, `src/cli/self_update/{shell,unix}.rs`, `src/lib.rs`), the `home` crate at `home-0.5.12` (`crates/home/src/{env,lib}.rs`), and the worktree `~/dev/Banager-phase4` at `ea30cfb` (never modified; no cargo or pnpm run there). Nothing in this revision was compiled: the shapes it depends on — C's — are not in the tree yet. The plan's first Task 5 module had been compiled in a scratch crate at the earlier review; the rewritten one has not, and Task 5's Step 4 is where that is found out.
 
 | # | Finding | Ruling | Applied — and what the evidence decided where the ruling left it open |
 |---|---|---|---|
-| 1 | `rustup --version` with an empty environment can install a toolchain (`display_version` → `maybe_ensure_active_toolchain`; auto-install on by default). | `RUSTUP_AUTO_INSTALL=0` on every rustup read Canager makes and on the recording commands; replace the empty-env test; an isolated missing-toolchain test with a mocked runner. | **Applied.** Confirmed at `rustup_mode.rs:1819-1837`, `config.rs:435-441`, `:555-578`: `should_auto_install` is `true` unless the variable is `0` or the setting is `disable`. `RUSTUP.version.env = &[RUSTUP_AUTO_INSTALL_OFF]` (Task 6), asserted by `test_rustup_is_the_flat_file_route_…_with_auto_install_off` (which replaced the `env.is_empty()` assertion) and end to end by `test_detect_reads_rustups_version_with_auto_install_off_and_a_thirty_second_timeout`; `test_detect_reads_the_version_of_a_rustup_with_no_active_toolchain_without_running_anything_else` mocks the stderr 1.29.1 prints on that path (quoted from source; a recording would need a Mac with no toolchain). The recording commands in Task 10 carry the variable. **Extended, on evidence the ruling's own words cover:** `proxy_mode::main` (`proxy_mode.rs:14-59`) calls `Cfg::from_env(…, allow_auto_install = true, …)` and `local_toolchain(None)` → `maybe_ensure_active_toolchain`, so `cargo --version` on a rustup Mac is a rustup invocation that installs a toolchain under the same conditions; `CargoAdapter::detect` gets the same variable (Task 1, `test_detect_reads_cargos_version_with_rustups_auto_install_off`), from one constant `cargo::RUSTUP_AUTO_INSTALL_OFF`. Two side effects the variable does not stop are disclosed instead (ruling 20): `Cfg::from_env` creates `$RUSTUP_HOME` (`config.rs:321-323`) and `cleanup_self_updater` deletes a leftover `rustup-init`. |
+| 1 | `rustup --version` with an empty environment can install a toolchain (`display_version` → `maybe_ensure_active_toolchain`; auto-install on by default). | `RUSTUP_AUTO_INSTALL=0` on every rustup read Banager makes and on the recording commands; replace the empty-env test; an isolated missing-toolchain test with a mocked runner. | **Applied.** Confirmed at `rustup_mode.rs:1819-1837`, `config.rs:435-441`, `:555-578`: `should_auto_install` is `true` unless the variable is `0` or the setting is `disable`. `RUSTUP.version.env = &[RUSTUP_AUTO_INSTALL_OFF]` (Task 6), asserted by `test_rustup_is_the_flat_file_route_…_with_auto_install_off` (which replaced the `env.is_empty()` assertion) and end to end by `test_detect_reads_rustups_version_with_auto_install_off_and_a_thirty_second_timeout`; `test_detect_reads_the_version_of_a_rustup_with_no_active_toolchain_without_running_anything_else` mocks the stderr 1.29.1 prints on that path (quoted from source; a recording would need a Mac with no toolchain). The recording commands in Task 10 carry the variable. **Extended, on evidence the ruling's own words cover:** `proxy_mode::main` (`proxy_mode.rs:14-59`) calls `Cfg::from_env(…, allow_auto_install = true, …)` and `local_toolchain(None)` → `maybe_ensure_active_toolchain`, so `cargo --version` on a rustup Mac is a rustup invocation that installs a toolchain under the same conditions; `CargoAdapter::detect` gets the same variable (Task 1, `test_detect_reads_cargos_version_with_rustups_auto_install_off`), from one constant `cargo::RUSTUP_AUTO_INSTALL_OFF`. Two side effects the variable does not stop are disclosed instead (ruling 20): `Cfg::from_env` creates `$RUSTUP_HOME` (`config.rs:321-323`) and `cleanup_self_updater` deletes a leftover `rustup-init`. |
 | 2 | Custom deletion roots are never shown; `uninstall()` removes `$RUSTUP_HOME` whole; `RUSTUP_HOME=~/Documents` puts documents in scope; the command bypasses C's path safeguards. | Offer the uninstall only when both roots, computed as rustup computes them, are exactly `~/.cargo` and `~/.rustup` (a symlinked root refuses); otherwise `NoSafeMethod` with copy in both locales; the preview names both roots and says PERMANENTLY, not to the Trash, with settings/logins/packages/programs; conditional Homebrew wording on a local read-only signal, else a general clause. | **Applied.** The gate is `rustup::standard_roots` (Task 5, ruling 18): both `Detected` roots `Some`, lexically `<home>/.cargo` and `<home>/.rustup` (the comparison rustup itself makes in `cargo_home_str_with_home`, `shell.rs:43-58`), `~/.cargo` a directory and not a link, `~/.rustup` a directory and not a link or absent. `CommandUninstall.blocked` carries it; `inventory` puts `NoSafeMethod` on the artifact, `plan(Uninstall)` refuses with it (Task 6, `test_inventory_and_plan_refuse_the_uninstall_for_a_non_standard_layout`, `test_standard_roots_accepts_only_the_default_layout_of_real_directories`). The row's sentence is rustup's own for that variant (Task 11, `uninstallBlockedCopy`, both locales) — the controller said `NoSafeMethod`, and B's sentence for it ("has no uninstall command") is false of rustup, so the copy is keyed by adapter id for that one reason. The preview: `RemovesToolchains { path, names }` and `DeletesCargoHome { path }` name the roots (`~/.rustup`, `~/.cargo` through `scan::display_path`) and both sentences say "permanently — not to the Trash", the Cargo one listing downloads, the record, settings and saved login (`config.toml`, `credentials.toml`); `RemovesCargoInstalled { names }` names the programs where known. **Homebrew:** a local read-only signal exists — `<prefix>/Cellar/rustup` under `/opt/homebrew` or `/usr/local` (`rustup::homebrew_rustup_present`, `HOMEBREW_PREFIXES`) — so `HomebrewRustupLosesToolchains` is conditional on it, and the `removesToolchains` sentence always ends "Any other rustup that uses this folder loses its toolchains too" (ruling 21; that rustup's homes are independent of the binary is now VERIFIED from `env.rs:101-113`). **Decided on evidence:** to read `RUSTUP_HOME` at all, `HostEnv` gains `rustup_home` (and `zdotdir`, finding 8) — the spec refused it for want of a reader; the gate is one (ruling 20; 39 literal sites, mechanical). |
 | 3 | The locks do not protect detection; `rustup --version` and the preview's `toolchain list` run unlocked; every rustup invocation runs `cleanup_self_updater`, which deletes `bin/rustup-init`. | The preview must not run rustup at all (read `~/.rustup/toolchains/`); for the version read choose (a) a generic refresh-level skip with carry-forward or (b) rustup's read under its lock — with a concurrency test showing a refresh during a running `self update` never invokes rustup, and the residual stated. | **Applied — (a).** The probe is gone (`CommandUninstall` has no `probe`; `rustup::toolchain_names` lists the directory; `test_plan_uninstall_for_rustup_runs_nothing_and_lists_the_warnings` asserts zero runner calls). **Why (a) and not (b):** `proxy_mode::main` begins with `self_update::cleanup_self_updater(process)?` (`proxy_mode.rs:15`) exactly as `rustup_mode::main` does (`rustup_mode.rs:669`), so the cargo adapter's `cargo --version` — `refresh.rs:167`, unlocked — deletes a running self update's `rustup-init` (`prepare_update` puts it at `$CARGO_HOME/bin/rustup-init`, `self_update.rs:1165-1225`; `run_update` runs it, `unix.rs:120-131`) just as `rustup --version` would; (b) would have left that. (a) is Task 7: `OperationManager::locks_held()`; `refresh_round` skips the detection of every adapter one of whose previous-round instance ids is a held lock, keeps that adapter's instances unchanged, and carries the held instances' rows forward instead of waiting on their lock — per instance in the fan-out, so the existing "but not others" guarantee holds; that test (`refresh.rs:1395-1465`) is renamed and re-asserted because the refresh no longer *waits*. Concurrency tests: `test_a_refresh_during_rustups_self_update_runs_neither_rustup_nor_cargo` (real adapters over one `MockRunner` with a delayed `self update`: zero new calls during, rows equal, reads resume after), `test_refresh_carries_an_instance_under_an_operation_forward_and_still_refreshes_the_others`, `test_an_operation_on_another_adapters_instance_does_not_skip_this_adapters_detect`. **Residual, stated in ruling 19, Task 7 and the trust file:** the held set is a snapshot at the round's start (an operation submitted after it can overlap one `--version`); a Queued operation skips nothing; a `cargo install` alone does not skip rustup's detect (harmless under the switch, and `rustup-init` exists only during a self update, which holds rustup's lock). |
-| 4 | The Cargo-home rule differs from rustup's: empty and relative `CARGO_HOME` are taken as paths; `home` 0.5.12 ignores empty and resolves relative against cwd. | Match `home` 0.5.12: empty ignored, relative unsupported for Canager; use the normalized value for discovery, locks and warnings; bind commands to the previewed environment. | **Applied.** `path_env::tool_home` (Task 1) implements `env.rs:67-79`/`:101-113`: empty → default, absolute → itself, relative → `None`; `cargo::cargo_home_of` returns `Option<PathBuf>` and `CargoAdapter::detect` lists nothing for `None` (today it would name an instance whose prefix is relative to Canager's own cwd — a wrong answer, not a missing one); `StandaloneAdapter::detect` seats the same value and `expand_route` answers `None` for a `$CARGO_HOME` path without a Cargo home, so rustup is not listed either (tests in Tasks 1, 4, 6). Locks and warnings read `Detected.cargo_home`, the same normalized value. Binding to the previewed environment: `PlanAction::Command.env` is empty and the runner inherits Canager's process environment — the environment `detect` read `CARGO_HOME`/`RUSTUP_HOME` from (`HostEnv::discover`), so the rustup that runs computes the same roots the gate checked (ruling 17, 18); the seat binding (finding 6) refuses a plan whose seat was read under another home. |
+| 4 | The Cargo-home rule differs from rustup's: empty and relative `CARGO_HOME` are taken as paths; `home` 0.5.12 ignores empty and resolves relative against cwd. | Match `home` 0.5.12: empty ignored, relative unsupported for Banager; use the normalized value for discovery, locks and warnings; bind commands to the previewed environment. | **Applied.** `path_env::tool_home` (Task 1) implements `env.rs:67-79`/`:101-113`: empty → default, absolute → itself, relative → `None`; `cargo::cargo_home_of` returns `Option<PathBuf>` and `CargoAdapter::detect` lists nothing for `None` (today it would name an instance whose prefix is relative to Banager's own cwd — a wrong answer, not a missing one); `StandaloneAdapter::detect` seats the same value and `expand_route` answers `None` for a `$CARGO_HOME` path without a Cargo home, so rustup is not listed either (tests in Tasks 1, 4, 6). Locks and warnings read `Detected.cargo_home`, the same normalized value. Binding to the previewed environment: `PlanAction::Command.env` is empty and the runner inherits Banager's process environment — the environment `detect` read `CARGO_HOME`/`RUSTUP_HOME` from (`HostEnv::discover`), so the rustup that runs computes the same roots the gate checked (ruling 17, 18); the seat binding (finding 6) refuses a plan whose seat was read under another home. |
 | 5 | E changes `expand`'s signature and misses C's `removal.rs` callers and C's `Detected` literal. | Explicitly migrate every `expand` call and `Detected` literal after C lands; include `removal.rs`; a C dependency checklist. | **Applied, by not changing `expand`.** B's `expand(home, spec)` keeps its signature; `route::expand_route(home, cargo_home, spec)` is the new function `detect` and `seated_detected_for` use (ruling 5), so C's five `removal.rs` calls compile untouched, and `recipes::tests::test_a_paths_recipe_names_only_home_paths` pins that a `Paths` recipe never names `$CARGO_HOME`. `Detected` literals: `detect`'s write (Task 4), `testing::detected` (Task 4), C's `removal.rs` test helper `detected(home)` (Task 4 edits it; checklist row 2), with `grep -rn "Detected {"` as the net and `missing field` as the compiler's. The **C dependency checklist** (17 rows, before the Global Constraints) lists every touch point with what E does if C spelled it differently; the executor re-verifies it before Task 1 and before Task 4. |
 | 6 | The seat is not tied to the planned instance: detect A, detect B, plan A uses A's launcher with B's warnings and lock. | `plan()` verifies the seat's launcher/roots match the instance (`exe_path`, `prefix`); mismatch → `Refused`; test the A/B/A sequence. | **Applied.** `seated_detected_for(inst)` (Task 4, ruling 9) expands the recipe's launcher and root against the seat and refuses unless both equal `inst.exe_path` and `inst.prefix`; `plan`'s Upgrade and Command arms and `inventory`'s gate read the seat through it (a mismatched seat reads as blocked in `inventory`); C's `Paths` arm is routed through it too (checklist row 16). Tests: `test_plan_refuses_an_instance_the_seat_no_longer_describes` (Task 4, claude, A/B/A with a re-detect of A) and `test_a_plan_for_an_instance_from_another_home_is_refused_and_a_redetect_restores_it` (Task 8, rustup, asserting the restored plan's cargo lock names A's home). |
-| 7 | Substring matching does not establish terminal errors: comments, `echo`, guarded sourcing are flagged as errors; `. "$CARGO_HOME/env"` is missed; with a custom home the `.cargo/env` needle flags an unrelated default install. | Recognise only rustup's own sourcing forms, resolve their target against the real `CARGO_HOME`, skip comments; omit or qualify other mentions; test the counterexamples in both locales. | **Applied — qualify.** `rustup::leftover_patterns` builds the certain forms (`. "<X>/env"`, `source "<X>/env"`, fish's `source "<X>/env.fish"`, `<X>` a spelling whose target is this Cargo home: `$HOME/.cargo` and the absolute default for the default home, the absolute custom path otherwise) and the needles (`.cargo/env` only for the default home; `<custom>/env`; `$CARGO_HOME/env`, `${CARGO_HOME}/env`); `classify_leftover` skips comments, answers `Sources` for a trimmed line equal to a certain form and `Mentions` for any other line with a needle; `LeavesShellConfigLine { path, certain }` keys `warnings.leavesShellConfigLine` ("will print an error") or `warnings.leavesShellConfigLineMaybe` ("may") in both locales (Tasks 2, 5; ruling 22). Every counterexample is a test line: the comment (nothing), `echo` (may), the guard (may), `source ~/.cargo/env` (may), `. "$CARGO_HOME/env"` (may), and with a custom home `. "$HOME/.cargo/env"` (nothing — the file survives) and the absolute custom line (will). Omission was not chosen: a guarded line is harmless, but an unguarded `source ~/.cargo/env` is not, and the two are told apart only by running the shell, which Canager does not; "may" is what is known. |
-| 8 | "First match once per file" is not rustup's behaviour: Zsh's `rcfiles()` returns `$ZDOTDIR/.zshenv` and `~/.zshenv` without deduplication, so `ZDOTDIR=$HOME` visits the file twice and removes two copies; legacy `.zprofile` likewise. | Model rustup's actual ordered file visits (including `ZDOTDIR == HOME` visiting `.zshenv` twice, and the legacy `.zprofile` handling) instead of a per-filename removal count. | **Applied.** `rustup::rustup_rc_visits(home, zdotdir, S)` (Task 5, ruling 2) lists the visits in rustup's order — `do_remove_from_path` over `enumerate_shells` (`shell.rs:63-74`): Posix, Bash's three, `$ZDOTDIR/.zshenv`, `~/.zshenv`; then `remove_legacy_paths`'s two lines over `legacy_paths` (`shell.rs:564-574`: `.bash_profile`, `.profile`, `$ZDOTDIR/.zprofile`, `~/.zprofile`) — and `shell_config_leftovers` replays them on in-memory copies keyed by path, so `ZDOTDIR=$HOME` visits the same copy twice (`test_rustup_rc_visits_visit_zshenv_twice_when_zdotdir_is_home`, `test_shell_config_leftovers_removes_two_copies_when_zdotdir_is_home_and_one_otherwise`). Shell availability: Bash's check is "any of its files exists", which the per-file `is_file` visit already encodes; Zsh's is `SHELL` contains `zsh` or `zsh` on `PATH` — on a Mac `/bin/zsh` is always there, and a zsh that were not available would also never run `.zshenv`, so no leftover in it could print; the doc says so. **Decided on evidence:** `ZDOTDIR` must be an input, so `HostEnv.zdotdir` is added (ruling 20); rustup itself asks `zsh -c 'echo -n $ZDOTDIR'` when `SHELL` is not zsh (`shell.rs:207-225`), which Canager does not run — a `ZDOTDIR` set only inside a zsh startup file is not modelled, and the trust file says so (an `rc` under such a `ZDOTDIR` is a file Canager does not read; a visit to it has no copy to act on). |
+| 7 | Substring matching does not establish terminal errors: comments, `echo`, guarded sourcing are flagged as errors; `. "$CARGO_HOME/env"` is missed; with a custom home the `.cargo/env` needle flags an unrelated default install. | Recognise only rustup's own sourcing forms, resolve their target against the real `CARGO_HOME`, skip comments; omit or qualify other mentions; test the counterexamples in both locales. | **Applied — qualify.** `rustup::leftover_patterns` builds the certain forms (`. "<X>/env"`, `source "<X>/env"`, fish's `source "<X>/env.fish"`, `<X>` a spelling whose target is this Cargo home: `$HOME/.cargo` and the absolute default for the default home, the absolute custom path otherwise) and the needles (`.cargo/env` only for the default home; `<custom>/env`; `$CARGO_HOME/env`, `${CARGO_HOME}/env`); `classify_leftover` skips comments, answers `Sources` for a trimmed line equal to a certain form and `Mentions` for any other line with a needle; `LeavesShellConfigLine { path, certain }` keys `warnings.leavesShellConfigLine` ("will print an error") or `warnings.leavesShellConfigLineMaybe` ("may") in both locales (Tasks 2, 5; ruling 22). Every counterexample is a test line: the comment (nothing), `echo` (may), the guard (may), `source ~/.cargo/env` (may), `. "$CARGO_HOME/env"` (may), and with a custom home `. "$HOME/.cargo/env"` (nothing — the file survives) and the absolute custom line (will). Omission was not chosen: a guarded line is harmless, but an unguarded `source ~/.cargo/env` is not, and the two are told apart only by running the shell, which Banager does not; "may" is what is known. |
+| 8 | "First match once per file" is not rustup's behaviour: Zsh's `rcfiles()` returns `$ZDOTDIR/.zshenv` and `~/.zshenv` without deduplication, so `ZDOTDIR=$HOME` visits the file twice and removes two copies; legacy `.zprofile` likewise. | Model rustup's actual ordered file visits (including `ZDOTDIR == HOME` visiting `.zshenv` twice, and the legacy `.zprofile` handling) instead of a per-filename removal count. | **Applied.** `rustup::rustup_rc_visits(home, zdotdir, S)` (Task 5, ruling 2) lists the visits in rustup's order — `do_remove_from_path` over `enumerate_shells` (`shell.rs:63-74`): Posix, Bash's three, `$ZDOTDIR/.zshenv`, `~/.zshenv`; then `remove_legacy_paths`'s two lines over `legacy_paths` (`shell.rs:564-574`: `.bash_profile`, `.profile`, `$ZDOTDIR/.zprofile`, `~/.zprofile`) — and `shell_config_leftovers` replays them on in-memory copies keyed by path, so `ZDOTDIR=$HOME` visits the same copy twice (`test_rustup_rc_visits_visit_zshenv_twice_when_zdotdir_is_home`, `test_shell_config_leftovers_removes_two_copies_when_zdotdir_is_home_and_one_otherwise`). Shell availability: Bash's check is "any of its files exists", which the per-file `is_file` visit already encodes; Zsh's is `SHELL` contains `zsh` or `zsh` on `PATH` — on a Mac `/bin/zsh` is always there, and a zsh that were not available would also never run `.zshenv`, so no leftover in it could print; the doc says so. **Decided on evidence:** `ZDOTDIR` must be an input, so `HostEnv.zdotdir` is added (ruling 20); rustup itself asks `zsh -c 'echo -n $ZDOTDIR'` when `SHELL` is not zsh (`shell.rs:207-225`), which Banager does not run — a `ZDOTDIR` set only inside a zsh startup file is not modelled, and the trust file says so (an `rc` under such a `ZDOTDIR` is a file Banager does not read; a visit to it has no copy to act on). |
 | 9 | The timeout sentence contradicts the engine: a timed-out upgrade stays `Unconfirmed` whatever the readings; uninstall is reconciled by presence. | Fix the sentence; distinguish the uninstall's absence-based reconciliation. | **Applied.** `ops/mod.rs:787-800`: `Ok(Outcome::Unconfirmed)` with `OpKind::Upgrade` → `Unconfirmed` unconditionally; `OpKind::Uninstall` → `Succeeded` when `!r.present`, `Cancelled` when the user cancelled (impossible for `NoCancel`), else `Unconfirmed`. The `## rustup` section's update paragraph now says a timed-out run is unconfirmed "whatever the version reads before and after say", and the uninstall paragraph says a timed-out run "is judged by whether `~/.cargo/bin/rustup` is still there: gone is reported as done, still there as unconfirmed". The Global Constraints' honest-outcomes bullet says the same with the line numbers; Task 8's tests pin each arm. |
 | 10 | The uninstall lacks end-to-end coverage: the test asserts `execute` succeeds while the launcher remains, never exercising `OperationManager` or `reconcile_after_uninstall`. | End-to-end tests through `OperationManager`: launcher gone with other `bin/` files left → `Succeeded`; launcher present after exit 0 → `StillInstalledAfterUninstall`; timeout before/after removal; the cargo-absent and mismatched-home lock cases. | **Applied.** New `tests/ops_rustup_uninstall_test.rs` (Task 8) with `UninstallingRunner` mutating the disk as the command returns: `…launcher_gone_and_other_bin_files_left_succeeded` (hexyl stays, `Succeeded`), `…launcher_still_there_needs_attention` (`StillInstalledAfterUninstall`), `…timeout_before_the_launcher_went_is_unconfirmed`, `…timeout_after_the_launcher_went_succeeded`, `…no_cargo_instance_registered_still_holds_the_cargo_lock_by_name` (only the rustup adapter registered; both names acquired and released), `test_a_plan_for_an_instance_from_another_home_is_refused_and_a_redetect_restores_it`. The upgrade's two tests moved from the NoCancel task into Task 8, and a third (`…stopped_by_the_timeout_is_unconfirmed_whatever_the_readings_say`) pins finding 9. `test_execute_runs_rustups_uninstall_through_run_plan` (Task 6) keeps asserting `execute`'s own exit only, and says so. All rest on C's `reconcile_after_uninstall` reading the launcher's presence through `probe_strict` (checklist row 6). |
-| 11 | Overreaching claims: non-UTF-8 names "survive" (the final `remove_dir` deletes them); README's "each named"; the handover's multi-binary claim; "rustup does not update itself". | Correct every sentence, in both locales and the trust file. | **Applied.** Non-UTF-8: ruling 16, `bin_programs_rustup_removes`'s doc and `RemovesCargoInstalled`'s doc now say such a name is deleted with the folder (`remove_dir`, `:1029`) and merely cannot be spelled in a sentence. "Each named" → "named where known" (README row, `RemovesCargoInstalled`'s doc, the trust file's "the programs in its `bin/` by name where known"). Multi-binary: `parse_crates2`'s doc, Task 1's test comment, the delivery note and spec-deviation 9 say the other binaries of a multi-binary crate stay on the Unknown page. "rustup does not update itself" → `rustup_mode.rs:1042-1090`: `update()` (the toolchain update) and `toolchain install` call `SelfUpdateMode::update`, so the recipe doc, the trust file and the README now say rustup updates itself only as part of `rustup update`/`rustup toolchain install`, which Canager never runs. Locale copy: none of the four sentences was locale copy; the locale sentences touched by findings 2 and 7 are in Task 2, both languages. |
+| 11 | Overreaching claims: non-UTF-8 names "survive" (the final `remove_dir` deletes them); README's "each named"; the handover's multi-binary claim; "rustup does not update itself". | Correct every sentence, in both locales and the trust file. | **Applied.** Non-UTF-8: ruling 16, `bin_programs_rustup_removes`'s doc and `RemovesCargoInstalled`'s doc now say such a name is deleted with the folder (`remove_dir`, `:1029`) and merely cannot be spelled in a sentence. "Each named" → "named where known" (README row, `RemovesCargoInstalled`'s doc, the trust file's "the programs in its `bin/` by name where known"). Multi-binary: `parse_crates2`'s doc, Task 1's test comment, the delivery note and spec-deviation 9 say the other binaries of a multi-binary crate stay on the Unknown page. "rustup does not update itself" → `rustup_mode.rs:1042-1090`: `update()` (the toolchain update) and `toolchain install` call `SelfUpdateMode::update`, so the recipe doc, the trust file and the README now say rustup updates itself only as part of `rustup update`/`rustup toolchain install`, which Banager never runs. Locale copy: none of the four sentences was locale copy; the locale sentences touched by findings 2 and 7 are in Task 2, both languages. |
 | — | Checked, clean: the deletion correction, lock identity, cancellation semantics, test isolation, the already-passing Task 7 tests. | — | Kept. The already-passing tests are still labelled as regressions (Task 8 Step 1's heading says they pass against the engine as it stands). |
 
 **Remaining risks (after this revision):**
@@ -6943,7 +6943,7 @@ Independent review by GPT-6 Astra (`~/dev/Canager/.superpowers/phase4/astra/revi
 2. **Nothing in this revision was compiled.** The earlier Task 5 module was compiled in a scratch crate; the rewritten one (the visit model, the tiers, the gate) has not been, nor have Tasks 6–8. The plan's red → green steps are where a slip shows; the most likely one is a borrow in `remove_first_exact_line` (the index is computed in a block so the `as_bytes` borrow ends before `replace_range`) or a `HashSet`/`InstanceId` import in `refresh.rs`.
 3. **`HostEnv` grows by two fields across 39 literals in 13 files**, one of them in `src-tauri`. Mechanical, and the compiler names every miss, but it is the widest edit in the plan and touches files no other task does.
 4. **The refresh skip changes behaviour for every source** (ruling 19): a refresh no longer waits out an operation on an instance; it carries the instance forward. The renamed test pins the new behaviour; whether any front-end flow relied on the refresh *waiting* (and so returning post-operation data) was not checked here — the front end refreshes on the operation's `Finished` event, which is the path that replaces the carried rows.
-5. **`ZDOTDIR` is modelled from the variable Canager was started with**; rustup asks `zsh` when `SHELL` is not zsh, and a `ZDOTDIR` set only inside a zsh startup file is invisible to Canager. Disclosed in the trust file; a zsh whose files live there is not read at all.
+5. **`ZDOTDIR` is modelled from the variable Banager was started with**; rustup asks `zsh` when `SHELL` is not zsh, and a `ZDOTDIR` set only inside a zsh startup file is invisible to Banager. Disclosed in the trust file; a zsh whose files live there is not read at all.
 6. **The Homebrew signal is a directory under two hard-coded prefixes.** A Homebrew at a custom prefix (unsupported by Homebrew on Apple Silicon) would not be seen; the general "any other rustup" clause still covers the consequence.
 7. **Only 1.29.1 is verified.** If the recording Mac's rustup is newer, Task 10 Step 1 requires re-reading `uninstall()`, `shell.rs`, `unix.rs`, `display_version` and `should_auto_install` at the installed tag. The Cargo-folder copy would then over-warn: newer rustup keeps programs and possibly config, and the plan has no second copy set for that.
 8. **The per-adapter skip in the detect phase is coarser than per instance.** An npm with two instances, one under `npm install -g`, has both instances' *detection* carried forward for that round (their inventories still run); a stale version on the other instance for one round is the cost, stated in ruling 19.

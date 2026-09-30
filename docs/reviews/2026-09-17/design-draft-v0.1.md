@@ -1,4 +1,4 @@
-# Canager 设计文档（草案 v0.1，2026-09-17，待多方评审）
+# Banager 设计文档（草案 v0.1，2026-09-17，待多方评审）
 
 > 状态：草案。本文用于评审，尚未开始任何编码。评审目标：找出会让项目失败、返工或拿不到 star 的问题。
 
@@ -20,7 +20,7 @@
 
 ## 1. 定位
 
-> **Canager：一个 10 MB、长得像原生应用、普通人也看得懂的包管理器管家。** 顺带做 UniGetUI 不做的 ollama 模型、AI CLI、脚本安装的游离工具。
+> **Banager：一个 10 MB、长得像原生应用、普通人也看得懂的包管理器管家。** 顺带做 UniGetUI 不做的 ollama 模型、AI CLI、脚本安装的游离工具。
 
 三个刀刃：**更轻**（Tauri，安装包 ≈10 MB，UniGetUI macOS 版 50 MB）、**更好看**（原生质感、留白、系统字体、深色模式，不是 Fluent 密集表格）、**更懂普通人**（依赖标灰、白话说明、"能不能删"、精选商店）。
 
@@ -37,7 +37,7 @@
 ## 3. 架构
 
 ```
-canager/
+banager/
 ├── crates/
 │   ├── banager-core/        纯 Rust 库，不依赖 Tauri
 │   │   ├── adapter/          TOML 适配器加载、命令模板、解析器（json/lines/table/native）
@@ -47,7 +47,7 @@ canager/
 │   │   ├── catalog/          精选商店清单加载、与已装匹配
 │   │   ├── store/            SQLite：包缓存、历史、设置、忽略列表
 │   │   └── model.rs          Source / Package / Operation / CatalogEntry / UnknownBinary
-│   └── canager-cli/          （v1.1）薄命令行壳：canager list / outdated / doctor
+│   └── banager-cli/          （v1.1）薄命令行壳：banager list / outdated / doctor
 ├── src-tauri/                Tauri 壳：IPC 命令、托盘、通知、定时器、自启动
 ├── src/                      React 前端
 ├── adapters/                 每个包管理器一个 TOML + fixtures/（真实输出样本 + 期望结果）
@@ -189,7 +189,7 @@ SQLite 表：sources、packages（缓存，带 fetched_at）、operations、oper
 
 - **命令预览**：任何操作执行前展示将运行的确切命令；卸载与"全部更新"需确认。高级模式可复制命令。
 - **队列**：同一来源串行（brew/apt 不允许并发），不同来源并行，最多 3 路。
-- **流式日志**：逐行推送到界面；操作历史保留最近 500 条，日志落盘 `~/.canager/logs/`（Windows `%APPDATA%\Canager\logs`）。
+- **流式日志**：逐行推送到界面；操作历史保留最近 500 条，日志落盘 `~/.banager/logs/`（Windows `%APPDATA%\Banager\logs`）。
 - **取消**：杀进程树（Unix 进程组 kill；Windows Job Object）。
 - **提权**（永不接触密码）：
   - macOS：v1 不需要（brew/npm/pip/ollama 均为用户级）。

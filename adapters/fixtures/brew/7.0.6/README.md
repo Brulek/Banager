@@ -39,7 +39,7 @@ which is what a pin holds: the formula's pin is a symlink to its installed
 keg (`formula_pin.rb:14-16`), and the cask's to its Caskroom version
 directory (`cask/cask.rb:318-357`).
 
-Canager reads `pinned` and nothing else from these two fields
+Banager reads `pinned` and nothing else from these two fields
 (`OutdatedItem` in `crates/banager-core/src/adapters/brew/parse.rs`).
 
 ## `receipts/` — cask install receipts (`INSTALL_RECEIPT.json`)
@@ -50,7 +50,7 @@ installed the cask: `Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, whose
 `{ "<stanza>": [<its arguments>] }` object per artifact that has an
 uninstall phase, plus `zap` — and whose `uninstall_flight_blocks` says whether
 the cask has Ruby that runs around its uninstall (Homebrew 7.0.6-70,
-`cask/tab.rb:31-45`, `cask/cask.rb:709-732`). Canager reads these in the
+`cask/tab.rb:31-45`, `cask/cask.rb:709-732`). Banager reads these in the
 uninstall preview (`crates/banager-core/src/adapters/brew/cask_receipt.rs`).
 
 **Recorded, unedited** (copied on 2026-09-28 from this Mac's
@@ -86,7 +86,7 @@ above have:
   a cask from the catalogue (`api/cask_struct.rb:264-267`): `/$HOME` with
   the made-up home folder `/Users/someone`, `$HOMEBREW_PREFIX` with
   `/opt/homebrew`, `$APPDIR` with `/Applications`.
-- The fields Canager does not read (`homebrew_version`, `time`, `source`,
+- The fields Banager does not read (`homebrew_version`, `time`, `source`,
   `built_on`, …) are filled in for shape only; `source.tap_git_head` is all
   zeros.
 
@@ -128,4 +128,4 @@ and `source`) changed:
   name only (`{ "uninstall_preflight": null }`, `artifacts_list`), with
   `uninstall_flight_blocks: true`.
 - `unknown-stanza.json`: an `app` and `future_stanza`, a stanza no Homebrew
-  has — what a newer Homebrew's record would look like to this Canager.
+  has — what a newer Homebrew's record would look like to this Banager.

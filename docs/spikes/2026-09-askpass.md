@@ -1,7 +1,7 @@
 # Spike: SUDO_ASKPASS for cask installs without a TTY
 
 Date: 2026-09-18
-Command under test: `SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k true < /dev/null`
+Command under test: `SUDO_ASKPASS="$PWD/scripts/banager-askpass.sh" sudo -A -k true < /dev/null`
 
 | Scenario | Expected | Observed |
 |---|---|---|
@@ -11,4 +11,4 @@ Command under test: `SUDO_ASKPASS="$PWD/scripts/canager-askpass.sh" sudo -A -k t
 
 ## Conclusion
 
-_To be completed after the user runs Steps 3–5. State plainly whether `SUDO_ASKPASS` + this `osascript` dialog is viable for Canager's cask-install flow without a Terminal window open. If any scenario hung, required a TTY, or silently did nothing, that determines whether Task 11's `SUDO_ASKPASS` passthrough is usable as-is or whether cask installs needing `sudo` must fall back to "open Terminal and run this command" (see spec section 14, risk row 1)._
+_To be completed after the user runs Steps 3–5. State plainly whether `SUDO_ASKPASS` + this `osascript` dialog is viable for Banager's cask-install flow without a Terminal window open. If any scenario hung, required a TTY, or silently did nothing, that determines whether Task 11's `SUDO_ASKPASS` passthrough is usable as-is or whether cask installs needing `sudo` must fall back to "open Terminal and run this command" (see spec section 14, risk row 1)._

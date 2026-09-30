@@ -1,4 +1,4 @@
-# Canager 阶段 5 提案：发现页与空机器正门（2026-09-29）
+# Banager 阶段 5 提案：发现页与空机器正门（2026-09-29）
 
 > 提案，不是规格。对应 spec §13 的阶段 5（发现页 + 空机器首启 + Homebrew 安装引导）。请作者先拍板 §四 的五条，再据此写规格与分步计划；本稿只动文档。
 > 代码断言核对于 `feat/ui-round-2` 的 `5f53098`，Rust 路径相对 `crates/banager-core/src/`；外部事实给出处，GitHub 上的源码按提交或标签钉住；**未核**的写明在哪一步核。
@@ -50,14 +50,14 @@
 - 正门的条件不用 `detect === Missing`（第零节第 2 条让它几乎不成立），改为：没有 Homebrew，且除系统 Python 的 pip 以外什么都没列出。精确规则在步骤 C 定。其它没有 Homebrew 的 Mac，发现页顶部同样有这张第一步卡，只是启动时不自动跳到这一页。
 - 第二步的条目灰着，写「需先装 Homebrew」；macOS 14 以下的 Ollama 写「需要 macOS 14」（cask 的 `depends_on`）。
 - 「更新」「已安装」两页在空 Mac 上各一句话，加一个「去发现页」。
-- macOS 15 以下照实多一句：Homebrew 官方已不支持这些版本，装得上但可能出问题（`Homebrew/install@0a396a4` 的 install.sh:267、:618-640）。Intel Mac 更进一步：官方脚本直接拒绝（:169-173），pkg 也只装 Apple Silicon，所以第一步卡在 Intel 上只写「Homebrew 已不支持这台 Mac」，没有按钮。Canager 自己仍是 universal、最低 13.3（spec §0、§2），管 Intel 上已有的 Homebrew 不受影响。
+- macOS 15 以下照实多一句：Homebrew 官方已不支持这些版本，装得上但可能出问题（`Homebrew/install@0a396a4` 的 install.sh:267、:618-640）。Intel Mac 更进一步：官方脚本直接拒绝（:169-173），pkg 也只装 Apple Silicon，所以第一步卡在 Intel 上只写「Homebrew 已不支持这台 Mac」，没有按钮。Banager 自己仍是 universal、最低 13.3（spec §0、§2），管 Intel 上已有的 Homebrew 不受影响。
 
 ### 1.2 点「安装 Homebrew」
 
 ```
 ┌─ 安装 Homebrew ─────────────────────────────────────────────────────┐
 │                                                                    │
-│  Homebrew 要在「终端」里安装，Canager 不运行它，也不经手密码。     │
+│  Homebrew 要在「终端」里安装，Banager 不运行它，也不经手密码。     │
 │                                                                    │
 │  1  点「打开终端」，安装命令会先拷贝好                             │
 │  2  在终端里按 ⌘V，再按回车                                        │
@@ -71,8 +71,8 @@
 ```
 
 - 「这条命令会做什么」展开是 §三.1 的五行白话；「查看命令原文」是 brew.sh 上那一行，与放进剪贴板的逐字相同；打开「显示技术细节」时默认展开。
-- 表开着时，Canager 每 2 秒查一次 `/opt/homebrew/bin/brew` 在不在（只查文件，不运行）。brew 出现、且 Homebrew 的更新锁空着（脚本最后那次 `brew update` 持这把锁，本机 Homebrew 源码 `cmd/update.sh:680`；探测已有，`adapters/brew/mod.rs:1210`）才算装好：表变成「Homebrew 已装好」和「继续」，刷新，第一步打勾，第二步的按钮亮起。表关了也没关系，下一次「重新检查」同样会发现它。
-- Canager 的 PATH 是启动时读的，那时还没有 Homebrew。装好后要把 `<prefix>/bin` 补进 Canager 自己的 PATH，否则之后用 Homebrew 装的 Node.js 带来的 npm 在重启 Canager 之前不出现：npm 按 PATH 找（`what-we-run.md:82-84`），它自己也要从 PATH 上找到 node。
+- 表开着时，Banager 每 2 秒查一次 `/opt/homebrew/bin/brew` 在不在（只查文件，不运行）。brew 出现、且 Homebrew 的更新锁空着（脚本最后那次 `brew update` 持这把锁，本机 Homebrew 源码 `cmd/update.sh:680`；探测已有，`adapters/brew/mod.rs:1210`）才算装好：表变成「Homebrew 已装好」和「继续」，刷新，第一步打勾，第二步的按钮亮起。表关了也没关系，下一次「重新检查」同样会发现它。
+- Banager 的 PATH 是启动时读的，那时还没有 Homebrew。装好后要把 `<prefix>/bin` 补进 Banager 自己的 PATH，否则之后用 Homebrew 装的 Node.js 带来的 npm 在重启 Banager 之前不出现：npm 按 PATH 找（`what-we-run.md:82-84`），它自己也要从 PATH 上找到 node。
 
 ### 1.3 已经有工具的 Mac
 
@@ -121,14 +121,14 @@
 
 | 条目 | 为什么收 | 从哪来 | 点「安装」后运行 |
 |---|---|---|---|
-| Homebrew | spec §1 点名；其余条目都靠它安装和更新；Canager 管得最全的来源 | brew.sh 的官方命令，脚本在 GitHub `Homebrew/install` | Canager 只拷贝命令、运行 `/usr/bin/open -a Terminal`，由用户在终端里跑（§三.1、Q1） |
+| Homebrew | spec §1 点名；其余条目都靠它安装和更新；Banager 管得最全的来源 | brew.sh 的官方命令，脚本在 GitHub `Homebrew/install` | Banager 只拷贝命令、运行 `/usr/bin/open -a Terminal`，由用户在终端里跑（§三.1、Q1） |
 | Claude Code | spec §1 点名；阶段 4 已认得它的三种装法 | cask `claude-code`（稳定通道；下载 downloads.claude.ai 上同一个二进制，cask 记着 sha256） | `<brew> install --cask claude-code` |
 | Codex | spec §7「AI 助手」一类点名；OpenAI 出品 | cask `codex`（GitHub `openai/codex` 的发布包，带 sha256） | `<brew> install --cask codex` |
 | Gemini CLI | spec §7「AI 助手」一类点名；Google 出品 | formula `gemini-cli`（依赖 Node.js，空 Homebrew 上连带 25 个） | `<brew> install --formula gemini-cli` |
-| Ollama | spec §1 点名；Canager 已经能管模型 | cask `ollama-app`（GitHub 发布包，带 sha256；要 macOS 14；App 自己更新） | `<brew> install --cask ollama-app`，之后用现有的「打开 Ollama」 |
+| Ollama | spec §1 点名；Banager 已经能管模型 | cask `ollama-app`（GitHub 发布包，带 sha256；要 macOS 14；App 自己更新） | `<brew> install --cask ollama-app`，之后用现有的「打开 Ollama」 |
 | 推荐模型 | 装了 Ollama 没有模型等于没装 | registry.ollama.ai；按本机内存挑一个，名字与大小在步骤 D 核 | `<ollama> pull <模型>`（现有计划，`what-we-run.md:923-929`） |
 | Node.js | npm 上的工具都靠它运行；装好后 npm 来源自己出现 | formula `node`（直接依赖 19 个，连带 24 个） | `<brew> install --formula node` |
-| uv | Python 写的工具该用它装：Canager 对 pip 只读 | formula `uv`（无依赖） | `<brew> install --formula uv` |
+| uv | Python 写的工具该用它装：Banager 对 pip 只读 | formula `uv`（无依赖） | `<brew> install --formula uv` |
 | ffmpeg | 转换、剪切音频和视频，用途不限于写代码 | formula `ffmpeg`（直接依赖 11 个，连带 14 个） | `<brew> install --formula ffmpeg` |
 
 - 「怎么认」要列全，例如 Claude Code = cask `claude-code` 与 `claude-code@latest`、`standalone-claude`、npm `@anthropic-ai/claude-code`；Ollama = cask `ollama-app` 与 `ollama-binary`、formula `ollama`。阶段 4 规格 §十一 说过，这张表就是「装了 2 份」合并计数要的那份对照，只建一次。
@@ -150,10 +150,10 @@
 4. 从 GitHub 取 Homebrew 放进 `/opt/homebrew`，写 `/etc/paths.d/homebrew` 让新终端找得到 brew（:1082）。
 5. 跑 `brew update --force --quiet`（:1090）；装完 Homebrew 默认开着匿名统计（:1106）。
 
-- 这些都在用户自己的终端里，由 sudo 要密码。从按下按钮到装好，Canager 只做三件事：把命令原文放进剪贴板；运行 `/usr/bin/open -a Terminal`（同 `open -a Ollama`，只在按按钮时，`what-we-run.md:938-944`）；查 brew 在不在、更新锁空不空。信任文件里「不跑安装脚本」「不碰密码」两条保持为真。
-- 核不了的照实说：命令取的是 GitHub 上 `HEAD` 的脚本，没有校验值可比。上面五件事是按某一次提交读的，每次 Canager 发版前重读一遍（发布清单加一项）；界面只写这五件事。
-- 匿名统计：Canager 不替用户改 Homebrew 的设置，只在「这条命令会做什么」里说一句；要不要给开关，规格阶段再定。
-- 官方 pkg（Q1 的 b）能核得更多，限制也都已核。签名与公证：Homebrew 的 `release.yml` 用 `pkgbuild`/`productbuild --sign` 签名、`notarytool` 公证（`7.0.7` 标签 :181-202、:357）；Canager 可把版本、sha256 与签名的 Team ID 钉在代码里，下载后逐项比对，再交给系统安装器，密码由 macOS 要。限制：只装 Apple Silicon、只装 macOS 15 以上（`package/Distribution.xml:4-8`）；不带 Xcode 命令行工具（`package/scripts/postinstall:8`、`:139-153`），之后第一次 `brew update` 会绕开那个弹窗的桩、先自己 `brew install git`（本机 Homebrew 源码 `shims/shared/git:43-64`、`cmd/update.sh:607-617`），即一次刷新会多装一个包；下载地址 302 跳到 `release-assets.githubusercontent.com`，文件 149,550,332 字节，而今天的 HTTP 客户端不跟随跳转、上限 8 MiB，要另开一条下载路径；Homebrew 自己只把 pkg 推荐给 Apple Silicon 上的 MDM 批量部署（README.md:11）。
+- 这些都在用户自己的终端里，由 sudo 要密码。从按下按钮到装好，Banager 只做三件事：把命令原文放进剪贴板；运行 `/usr/bin/open -a Terminal`（同 `open -a Ollama`，只在按按钮时，`what-we-run.md:938-944`）；查 brew 在不在、更新锁空不空。信任文件里「不跑安装脚本」「不碰密码」两条保持为真。
+- 核不了的照实说：命令取的是 GitHub 上 `HEAD` 的脚本，没有校验值可比。上面五件事是按某一次提交读的，每次 Banager 发版前重读一遍（发布清单加一项）；界面只写这五件事。
+- 匿名统计：Banager 不替用户改 Homebrew 的设置，只在「这条命令会做什么」里说一句；要不要给开关，规格阶段再定。
+- 官方 pkg（Q1 的 b）能核得更多，限制也都已核。签名与公证：Homebrew 的 `release.yml` 用 `pkgbuild`/`productbuild --sign` 签名、`notarytool` 公证（`7.0.7` 标签 :181-202、:357）；Banager 可把版本、sha256 与签名的 Team ID 钉在代码里，下载后逐项比对，再交给系统安装器，密码由 macOS 要。限制：只装 Apple Silicon、只装 macOS 15 以上（`package/Distribution.xml:4-8`）；不带 Xcode 命令行工具（`package/scripts/postinstall:8`、`:139-153`），之后第一次 `brew update` 会绕开那个弹窗的桩、先自己 `brew install git`（本机 Homebrew 源码 `shims/shared/git:43-64`、`cmd/update.sh:607-617`），即一次刷新会多装一个包；下载地址 302 跳到 `release-assets.githubusercontent.com`，文件 149,550,332 字节，而今天的 HTTP 客户端不跟随跳转、上限 8 MiB，要另开一条下载路径；Homebrew 自己只把 pkg 推荐给 Apple Silicon 上的 MDM 批量部署（README.md:11）。
 
 ### 3.2 执行前看清会运行什么
 
@@ -165,28 +165,28 @@
 ### 3.3 下载校验
 
 - Homebrew 装的条目由 Homebrew 按索引里的 sha256 核对下载（本机源码 `downloadable.rb:91-99`）。清单规则：不收 `sha256 :no_check` 的 cask；第一批三个 cask 本机已核都带 sha256；清单测试在 CI 的 macOS runner 上对每条跑一次 `brew info --json=v2` 查这一项。
-- 模型按层的 sha256 digest 寻址；Canager 查更新比的就是这些 digest（`what-we-run.md:914-921`）。
+- 模型按层的 sha256 digest 寻址；Banager 查更新比的就是这些 digest（`what-we-run.md:914-921`）。
 - Homebrew 本身：终端路线只有 HTTPS；pkg 路线见 §三.1。
-- Canager 自己签名并公证（已定）；清单编译在签过名的应用里，改清单就破签名（Q5）。
+- Banager 自己签名并公证（已定）；清单编译在签过名的应用里，改清单就破签名（Q5）。
 
 ### 3.4 安装入口只收清单里的东西
 
-第零节第 6 条的口子在阶段 5 堵上：`plan_operation` 拒收 `Install`；新命令 `plan_install(catalog_id)` 由 Rust 查清单得出来源与名字；搜索结果也只发会话内的不透明 id（同 `PlanId` 的做法，`session/plans.rs:27-41`）。窗口永远不能自己报一个包名让 Canager 装。
+第零节第 6 条的口子在阶段 5 堵上：`plan_operation` 拒收 `Install`；新命令 `plan_install(catalog_id)` 由 Rust 查清单得出来源与名字；搜索结果也只发会话内的不透明 id（同 `PlanId` 的做法，`session/plans.rs:27-41`）。窗口永远不能自己报一个包名让 Banager 装。
 
 ### 3.5 `what-we-run.md` 要改的地方
 
 - 新增「发现」一节：清单在应用里，读它不联网、不跑命令；安装跑的就是各来源写命令表里已有的命令；新增的只读读取（`--dry-run` 或 `brew deps`）。
-- 新增「Homebrew 本身」一节：Canager 不运行安装脚本；按钮做的三件事；怎么判断装好；补 PATH 的做法。若补法是再读一次登录 shell，:50-60「启动时只跑一次 shell」要改成两次；直接补 `<prefix>/bin` 则不用改。
-- 「What Canager never does」加一条：只安装清单与本次搜索结果里的东西。
+- 新增「Homebrew 本身」一节：Banager 不运行安装脚本；按钮做的三件事；怎么判断装好；补 PATH 的做法。若补法是再读一次登录 shell，:50-60「启动时只跑一次 shell」要改成两次；直接补 `<prefix>/bin` 则不用改。
+- 「What Banager never does」加一条：只安装清单与本次搜索结果里的东西。
 - pip 一节：若 S0 证实会弹框，写明没有命令行工具时不运行 `/usr/bin/python3`。
-- 只有 Q1 选 b 才改：Network 节加两个主机与唯一一次跳转；「Files Canager writes」加下载的 pkg 与何时删除；加 `pkgutil --check-signature`、`spctl -a -t install`、`open <pkg>` 三条命令。
+- 只有 Q1 选 b 才改：Network 节加两个主机与唯一一次跳转；「Files Banager writes」加下载的 pkg 与何时删除；加 `pkgutil --check-signature`、`spctl -a -t install`、`open <pkg>` 三条命令。
 
 ## 四、请作者拍板
 
 | # | 问题 | 推荐 | 代价 |
 |---|---|---|---|
-| Q1 | Homebrew 怎么装：(a) 拷贝官方命令、打开终端，用户自己粘贴并输入密码；(b) Canager 下载官方 pkg、核对后交给系统安装器；(c) Canager 在后台跑官方脚本、弹自己的密码框 | **先做 (a)**，Apple Silicon 都能用（macOS 15 以下有 Homebrew 自己的警告）；S0 通过后，在 macOS 15 以上把 (b) 做成主按钮，(a) 作 14 及以下与失败时的退路；不做 (c) | (a) 小白要自己粘贴、输入看不见的密码、按回车，出错时 Canager 只知道「还没装好」。(b) 一键、密码交给系统，但信任文件要新开四个口子（新主机、一次跳转、写一个 150 MB 的文件、拉起安装器），只覆盖 15 以上，不带命令行工具。(c) 违背「不跑安装脚本」「不碰密码」两条，askpass spike 至今没做完（`docs/spikes/2026-09-askpass.md`）。三条在 Intel Mac 上都走不通：Homebrew 官方已不装 Intel（§1.1） |
-| Q2 | AI 助手（Claude Code、Codex、Gemini CLI）从哪装 | **Homebrew** | 一种机制、预览完整、Homebrew 核校验值、更新走 Canager 的更新页；但 Homebrew 版不会自己更新，而 Anthropic 文档写明原生安装会在后台自动更新（阶段 4 调研记录 `claude.md` §2b、§5，文档原文，未入库）。另一条路是像 Q1(a) 那样把厂商脚本交给终端：每个工具一套说明，Canager 看不到过程；但 Intel 空 Mac 上只剩这条路（前提是厂商还出 Intel 版） |
+| Q1 | Homebrew 怎么装：(a) 拷贝官方命令、打开终端，用户自己粘贴并输入密码；(b) Banager 下载官方 pkg、核对后交给系统安装器；(c) Banager 在后台跑官方脚本、弹自己的密码框 | **先做 (a)**，Apple Silicon 都能用（macOS 15 以下有 Homebrew 自己的警告）；S0 通过后，在 macOS 15 以上把 (b) 做成主按钮，(a) 作 14 及以下与失败时的退路；不做 (c) | (a) 小白要自己粘贴、输入看不见的密码、按回车，出错时 Banager 只知道「还没装好」。(b) 一键、密码交给系统，但信任文件要新开四个口子（新主机、一次跳转、写一个 150 MB 的文件、拉起安装器），只覆盖 15 以上，不带命令行工具。(c) 违背「不跑安装脚本」「不碰密码」两条，askpass spike 至今没做完（`docs/spikes/2026-09-askpass.md`）。三条在 Intel Mac 上都走不通：Homebrew 官方已不装 Intel（§1.1） |
+| Q2 | AI 助手（Claude Code、Codex、Gemini CLI）从哪装 | **Homebrew** | 一种机制、预览完整、Homebrew 核校验值、更新走 Banager 的更新页；但 Homebrew 版不会自己更新，而 Anthropic 文档写明原生安装会在后台自动更新（阶段 4 调研记录 `claude.md` §2b、§5，文档原文，未入库）。另一条路是像 Q1(a) 那样把厂商脚本交给终端：每个工具一套说明，Banager 看不到过程；但 Intel 空 Mac 上只剩这条路（前提是厂商还出 Intel 版） |
 | Q3 | 搜索开放到哪 | **只搜 Homebrew**，先修 backlog 那两条 | 比 spec §0 的「brew、npm 都能搜」窄。npm 上名字相近的仿冒包多，小白分不清官方包名；Homebrew 的包有人审、带校验值 |
 | Q4 | 首批多少条 | **先上 §二 的 9 条**，之后每条一个 PR | 少于 spec §13 的 ≥ 30 条；但每条要三句双语文案和一次真机装卸记录，30 条会拖住首发，也要等 CI 额度 |
 | Q5 | 清单怎么更新 | **编译进应用，随版本更新** | 新条目要等发版；换来不加主机、清单跟应用一起签名，没人能远程改「一键装什么」。联网清单更新快，但要新主机、清单签名与离线回退 |
@@ -197,7 +197,7 @@
 
 | 步 | 内容 | 用户看得到 | 依赖 |
 |---|---|---|---|
-| **S0** | 核实，不合代码，也不在作者本机装任何东西。干净的 macOS 虚拟机（Apple Silicon，15 以上与 14 各一台）：① 终端走一遍官方命令，记下每个提示并截图，给 §1.2 的文案用；② 空机器上 Canager 刷新一次，看 `/usr/bin/python3` 会不会弹框；③ 下载 Homebrew.pkg，记签名的 Team ID 与 `spctl -a -t install` 的结果，装好后不装命令行工具，看 `brew update`、`brew install node`、`brew install --cask claude-code` 的表现；④ `brew install --dry-run` 是否只读，录 fixture。结果写进 `docs/spikes/` | 无（给 Q1、C、F 用的事实） | 无 |
+| **S0** | 核实，不合代码，也不在作者本机装任何东西。干净的 macOS 虚拟机（Apple Silicon，15 以上与 14 各一台）：① 终端走一遍官方命令，记下每个提示并截图，给 §1.2 的文案用；② 空机器上 Banager 刷新一次，看 `/usr/bin/python3` 会不会弹框；③ 下载 Homebrew.pkg，记签名的 Team ID 与 `spctl -a -t install` 的结果，装好后不装命令行工具，看 `brew update`、`brew install node`、`brew install --cask claude-code` 的表现；④ `brew install --dry-run` 是否只读，录 fixture。结果写进 `docs/spikes/` | 无（给 Q1、C、F 用的事实） | 无 |
 | **A** | 清单与发现页（只读）：`catalog/` 数据与双语文案，编译进应用；清单测试（来源已注册、名字过 `validate_package_name`、双语齐全、每条有「怎么认」）；Rust 按快照算每条状态（已安装、可安装、需先装 Homebrew、需要 macOS 14）；IPC `get_catalog`；侧栏「发现」；`what-we-run.md`「发现」节 | 发现页：9 条、分类、哪些已经有了；还没有安装按钮 | 无 |
 | **B** | 从清单安装：`plan_install(catalog_id)`；`plan_operation` 拒收 `Install`（加测试）；确认表 = 现有预览加「会一起装、会一起升级」；行内进度、完成态与「怎么用」 | 有 Homebrew 的 Mac 上一键装 6 条：Claude Code、Codex、Gemini CLI、Node.js、uv、ffmpeg | A；S0 ④ |
 | **C** | 空机器正门与装 Homebrew（终端交接）：正门条件（§1.1）；打开即发现页；第一步卡与安装表；剪贴板、`open -a Terminal`、查路径与更新锁；装好后补 PATH 并刷新；macOS 15 以下的提醒；pip 探测按 S0 ② 改；`what-we-run.md`「Homebrew 本身」节。**合并前**：作者在干净虚拟机上亲手走一遍（中文清单，同阶段 4 步骤 C 的访达检查） | 空 Mac 从装 Homebrew 到装上第一个工具 | B；S0 ①② |
@@ -208,7 +208,7 @@
 
 ## 六、明确不在本阶段
 
-- Canager 自己运行安装脚本或 `curl | sh`，或代收、转交密码。
+- Banager 自己运行安装脚本或 `curl | sh`，或代收、转交密码。
 - 需要密码的 cask（等 `SUDO_ASKPASS` 拍板）；用 pip 安装（已定只读）。
 - 一次勾选多条连装；装完 Homebrew 自动接着装别的。
 - 历史页、菜单栏（阶段 6）；远程清单（Q5）、npm 搜索（Q3），视拍板而定。

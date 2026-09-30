@@ -1,6 +1,6 @@
-# Canager 审美规格（polish 3）
+# Banager 审美规格（polish 3）
 
-> 2026-09-29。依据：`apple-guidance.md`（HIG + 本机实测）、`app-patterns.md`（7 个成熟 App）、`current-audit.md`（现状 25 条）、`~/dev/Canager-polish3/src` 现有代码。本文件只定规格，不改代码。
+> 2026-09-29。依据：`apple-guidance.md`（HIG + 本机实测）、`app-patterns.md`（7 个成熟 App）、`current-audit.md`（现状 25 条）、`~/dev/Banager-polish3/src` 现有代码。本文件只定规格，不改代码。
 > 单位：Tauri 窗口里 1 CSS px = 1 macOS pt。来源标注：〔实测〕= `refs/apple-native/` 下本机 macOS 27 的 AppKit 读数或渲染图取样（本文用 PIL 复量过像素）；〔HIG〕= Apple 人机界面指南；〔取值〕= Apple 没给数字，本规格的选择。
 > 本文取代 `docs/superpowers/2026-09-27-ui-redesign.md` 的「视觉」一节（深色侧栏、自定主色）。360 的操作逻辑（每行一个按钮、进度在行内、⋯ 收次要操作、勾选后批量更新）全部保留，本轮只换外观和文案。
 
@@ -34,7 +34,7 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
 5. **macOS 控件尺寸**：按钮高只有 20 / 24 / 28 三档（现 24/28/30/32/40）；圆角只用 6 / 10 / 全圆，图标方块按边长 22%。
 6. **列表优先**：内容左右边距 20；工具栏 52 高，标题和页面操作都放在里面；更新页和已安装页列表首行 y ≤ 80（现 128 / 162）；960×640 窗口至少显示 11 行（现 8 / 7）。
 7. **没有网页式悬停**：列表行、侧栏和链接都不加悬停底色或下划线，只有工具栏图标按钮和菜单项有悬停反馈；动效只用于「点了之后」，≤ 200 ms。验收：`hover:bg-` ≤ 4（现 37），`transition-colors` 0（现 34），`hover:underline` 0（现 6）。
-8. **文案像 Apple 的简体中文**：「Canager」不作句子主语，不承诺「没做什么」，不对冲；中英/中数之间不打空格，交给 `text-autospace`；名称用“ ”；句式为「正在…」「已…」「无法…/未能…」「要…吗？」。验收：4.3 的新测试全绿。
+8. **文案像 Apple 的简体中文**：「Banager」不作句子主语，不承诺「没做什么」，不对冲；中英/中数之间不打空格，交给 `text-autospace`；名称用“ ”；句式为「正在…」「已…」「无法…/未能…」「要…吗？」。验收：4.3 的新测试全绿。
 
 ## 2 设计令牌（旧 → 新）
 
@@ -126,7 +126,7 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
 
 ### 3.1 侧栏 `Sidebar.tsx`（参照 native-sui-sidebar-light/dark.png、appstore-updates.png）
 - **底色**：常驻深色渐变 → #F0F0F0 / #282828，跟随外观；右边加 1px 分隔线。宽 208 不变。
-- **顶部**：52 的拖动区保留给红绿灯；删掉「Canager」字标（12/600）。第一行从 y=60 开始。
+- **顶部**：52 的拖动区保留给红绿灯；删掉「Banager」字标（12/600）。第一行从 y=60 开始。
 - **行**：34 高、13/500、左右内缩 12、悬停加白 5% → 32 高、13/400、左右内缩 10、无悬停；选中底为黑/白 10%、圆角 6，文字颜色不变〔实测〕。
 - **图标**：灰色描边、18 → 放在 20×20 框里，框在 x=20，文字从 x=46 开始；图标用强调色（窗口失焦时变 muted，可选）〔HIG SB-3〕。形状向 SF Symbols 靠：「更新」用向下箭头圆，「已安装」用纸箱，「设置」用齿轮形；描边 1.75/24（约 1.3pt）不变。
 - **计数**：「更新」原来是强调色实心胶囊、其余是 12 灰字 → 全部改成 11/14 muted 纯数字，右缘距侧栏右边 20〔实测〕21。Dock 角标不变。
@@ -228,7 +228,7 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
 ## 4 去 AI 味文案规则
 
 ### 4.1 禁用与替换
-1. **App 不自述**：「Canager 认不出 / 看不出 / 开着时 / 没有去…」→ 省掉主语，或改成「无法…」。例外：设置说明里 App 是做事的一方（像 Apple 的「App Store将自动…」）、退出询问、关于。
+1. **App 不自述**：「Banager 认不出 / 看不出 / 开着时 / 没有去…」→ 省掉主语，或改成「无法…」。例外：设置说明里 App 是做事的一方（像 Apple 的「App Store将自动…」）、退出询问、关于。
 2. **不承诺没做的事**：「不运行也不删除」「都不安装」「退出后不检查」→ 删除；只有用户会以为相反时才写一次。「没有改动」只在**已经开始**的操作失败时说（现在有 22 处）。
 3. **不对冲、不安抚、不劝**：「请注意」「需要留意」「信任它再继续」「问题出在…不在你的…」→ 删掉标题，改成事实句，放到对应的那一行下面。
 4. **所有格和人称**：「你的」只保留「你的Mac」；「你的工具」「你的设置」→ 删。不用「您」「我们」「！」（现在都是 0 处，用测试守住）。
@@ -236,39 +236,39 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
 6. **标点和用词**：名称和界面词用“ ”（「设置」→ “设置”）；菜单路径写成“系统设置”>“通知”；省略号只用「…」（U+2026）；「其它」→「其他」，「点」→「点按」。
 7. **句式**：确认用「要…吗？」；失败标题用「无法 + 动词」，行内结果用「未能 + 动词」（代替「没能」「失败：」）；进行时用「正在…」（代替「加载中」「进行中」）；完成用「已…」；「此操作无法撤销。」只用于永久删除。
 8. **长度**：标题不加句号，≤15 字；按钮是 2–4 个字的动词，会先弹确认的加「…」（如「卸载…」）；取消按钮一律叫「取消」；行内说明不超过 1 行（约 30 字），详情和气泡不超过 2 句。
-9. **英文同理**：按钮和菜单用 Title Case（Update All、Check Again），消息用 Sentence case；错误写「Couldn't …」；删掉「Invert」；不以「Canager」作主语。
+9. **英文同理**：按钮和菜单用 Title Case（Update All、Check Again），消息用 Sentence case；错误写「Couldn't …」；删掉「Invert」；不以「Banager」作主语。
 
 ### 4.2 前后对照（取自 `src/i18n/zh-CN.json`）
 | 键 | 旧 | 新 | 规则 |
 |---|---|---|---|
-| unknown.intro | Canager 认不出这些程序的来历。这里只列出，不运行也不删除。 | 无法确定以下程序是用什么安装的。 | 1、2 |
-| settings.autoCheck.description | Canager 开着时每天检查一次，查到的更新都不安装。退出后不检查。 | Canager运行时每天检查一次更新，不会自动安装。 | 2（只留用户会误会的那个否定）、5 |
-| app.failed | Canager 内部出错，窗口没法显示这一页。 | 无法显示此页面。 | 1、7 |
-| common.canagerFaultDetail | 问题出在 Canager，不在你的 Mac。 | （删除） | 3 |
+| unknown.intro | Banager 认不出这些程序的来历。这里只列出，不运行也不删除。 | 无法确定以下程序是用什么安装的。 | 1、2 |
+| settings.autoCheck.description | Banager 开着时每天检查一次，查到的更新都不安装。退出后不检查。 | Banager运行时每天检查一次更新，不会自动安装。 | 2（只留用户会误会的那个否定）、5 |
+| app.failed | Banager 内部出错，窗口没法显示这一页。 | 无法显示此页面。 | 1、7 |
+| common.banagerFaultDetail | 问题出在 Banager，不在你的 Mac。 | （删除） | 3 |
 | overview.updatesAvailable_other | 有 {{count}} 个工具可更新 | {{count}}个工具可以更新 | 5 |
 | updates.cantUpdateHere | 不能在这里更新的（{{number}}） | 另有{{number}}个无法在这里更新 | 7（Cork 的说法） |
 | updates.cannotCheckSummary_other | 这里有 {{count}} 个工具没能检查更新。想看原因，请在「设置」里打开「{{setting}}」。 | {{count}}个工具无法检查更新。＋小号按钮「显示原因」（直接打开这个设置）；第 4 步之前暂写「…打开“{{setting}}”可查看原因。」 | 6、7；HIG：给按钮，别描述设置在哪 |
 | updates.selfUpdating / selfUpdatingDetail | 平时自动更新 / 它平时会自己更新，也可以现在更新。 | 会自行更新 / （删除：只是复述标签） | 3 |
 | warnings.thirdPartyRegistry | 这个模型从 {{host}} 下载，不是 Ollama 官方库。信任它再继续。 | 此模型来自{{host}}，不是Ollama官方模型库。 | 3、5 |
-| updates.blocked.SelfUpdatesOnly.refused | {{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。 | {{source}}会自行更新，无法在这里更新。 | 1、2 |
+| updates.blocked.SelfUpdatesOnly.refused | {{source}} 会自己更新，所以 Banager 没有去更新它。什么都没有改动。 | {{source}}会自行更新，无法在这里更新。 | 1、2 |
 | planRefused.invalidName | “{{name}}”不能交给 {{source}}，已停下，没有改动。 | 无法用{{source}}处理“{{name}}”。 | 2、7（操作还没开始，不说「没有改动」） |
 | sourceNotice.notOnPath.title | {{source}} 已安装，但在终端输入 {{command}} 打不开它 | 终端找不到“{{command}}” | 8（标题 ≤15 字） |
 | sourceNotice.unreachable.description | {{source}} 没有响应，所以看不到它装了什么。稍后点「重新检查」再试。 | {{source}}没有响应，无法列出它安装的内容。请稍后点按“重新检查”。 | 6、7 |
-| sourceNotice.shadowedByNpm.description | Canager 看不出它是不是 {{source}}。可以到「已安装」的 npm 下查看。 | 无法确认它是否就是{{source}}。可在“已安装”的npm中查看。 | 1、6 |
+| sourceNotice.shadowedByNpm.description | Banager 看不出它是不是 {{source}}。可以到「已安装」的 npm 下查看。 | 无法确认它是否就是{{source}}。可在“已安装”的npm中查看。 | 1、6 |
 | overview.attentionLabel / updates.warningsTitle / updates.notesSummary_other | 需要留意 / 请注意 / 有 {{count}} 条需要留意 | （删除，说明放到对应行下） | 3 |
 | updates.progress.check | 需要留意 | 结果不符 | 3 |
 | overview.yourTools / warnings.willKeep.Settings | 你的工具 / 你的设置：{{path}} | （删除，由侧栏「来源」取代）/ 设置：{{path}} | 4 |
 | common.loading / operations.status.Running | 加载中… / 进行中 | 正在载入… / 正在处理… | 7 |
 | common.copyFailed / header.checkFailed | 没能拷贝 / 没能检查 | 无法拷贝 / 无法完成检查 | 7 |
-| settings.notifyUpdates.refused | 在系统设置 → 通知里允许 Canager | 请在“系统设置”>“通知”中允许Canager发送通知。 | 6（这是指令，可以用「请」） |
+| settings.notifyUpdates.refused | 在系统设置 → 通知里允许 Banager | 请在“系统设置”>“通知”中允许Banager发送通知。 | 6（这是指令，可以用「请」） |
 | uninstall.title / updates.confirmTitle_other | 卸载 {{name}}？ / 更新 {{count}} 个工具？ | 要卸载“{{name}}”吗？ / 要更新{{count}}个工具吗？ | 7 |
 | installed.showDependencies_other | 另有 {{count}} 个被其它软件带来的组件 | 另有{{count}}个随其他软件安装的组件 | 5、6 |
-| operations.noCancelHint | 开始后不能取消，完成前请别关 Canager 或 Mac。 | 开始后无法取消。完成前请勿退出Canager或关机。 | 7 |
+| operations.noCancelHint | 开始后不能取消，完成前请别关 Banager 或 Mac。 | 开始后无法取消。完成前请勿退出Banager或关机。 | 7 |
 | quit.keepWaiting / quit.quitAnyway | 继续等待 / 仍然退出 | 取消 / 退出 | 8 |
 
 ### 4.3 写进测试（在 `src/i18n/copy-rules.test.ts` 新增）
 - zh 中「汉字 + 空格 + 拉丁字母/数字/`{`」以及「拉丁字母/数字/`}` + 空格 + 汉字」都是 0 处；不出现「」、ASCII 双引号、「...」「……」；不出现「您」「我们」「！」「请注意」「需要留意」「加载中」「其它」。
-- zh 中「Canager」≤ 6 处，只出现在白名单键里（设置说明、退出、关于、图标来源）；「没有改动」只出现在 `operations.*` 下。
+- zh 中「Banager」≤ 6 处，只出现在白名单键里（设置说明、退出、关于、图标来源）；「没有改动」只出现在 `operations.*` 下。
 - 注意：`UpdatesPage.test.tsx` 第 1709–1712 行断言了旧中文，要跟文案一起改；删掉的键要在两种语言和代码里同时删（completeness.test.ts 会查）。
 
 ## 5 分步（风险从小到大；每步能单独提交、能截图验收）
@@ -281,7 +281,7 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
    - 重拍：01 02 03 05b 09 09b 12 16。
 2. **文案**。
    - 改：`zh-CN.json`、`en.json` 按 4.1、4.2 全部过一遍；`copy-rules.test.ts` 加入 4.3。
-   - 验收：4.3 全绿；zh 里「Canager」39 → ≤6；「没有改动」22 → 只剩 `operations.*` 下的。
+   - 验收：4.3 全绿；zh 里「Banager」39 → ≤6；「没有改动」22 → 只剩 `operations.*` 下的。
    - 重拍：04 05b 10c 10d 11 12 16 18。
    - 风险：只动字符串。macOS 13.3 上如果 WebKit 早于 Safari 18.4，自动间距不生效，中英文会挨在一起。这可以接受：Apple 自己的字符串原文就是这样写的。
 3. **窗口骨架与按钮**。
@@ -302,7 +302,7 @@ Astra 的意见见 `astra-spec.md`。采纳如下；下文与此冲突处以本�
 
 **不在本轮**（记进 backlog）：
 - 真正的毛玻璃侧栏：Tauri 要求窗口 `transparent` 并开启 `macOSPrivateApi`，只能在真机上验收；本轮用实测的不透明色。
-- 独立的设置窗口：用 ⌘, 打开，标题「Canager设置」，从侧栏移出。
+- 独立的设置窗口：用 ⌘, 打开，标题「Banager设置」，从侧栏移出。
 - SF Symbols 原图：许可只限 Apple 平台，而 Windows/Linux 在路线图上；本轮只按它的比例重画。
 - 原生右键菜单（Tauri `Menu.popup`）：本轮右键先复用网页菜单。
 - 其他：侧栏可隐藏（显示边栏 / 隐藏边栏）、窗口失焦时整体变灰、Windows/Linux 的字体栈。

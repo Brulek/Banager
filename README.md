@@ -1,13 +1,16 @@
-# Canager
+# Banager
 
 **A Mac app for everything you installed from the terminal and then forgot about.**
+
+Banager (formerly Canager) is short for bao-manager: bao is the pinyin of 包, Chinese for
+"package". It also sounds like banana.
 
 If you've followed a few tutorials, you probably have Homebrew formulae, a couple of global npm
 packages, some Python tools, a Rust binary and an Ollama model or two scattered across your Mac.
 Each was installed with a different command. Updating them needs a different command again.
 Removing them needs a third. Most people never do either, and the tools quietly rot.
 
-Canager puts all of it in one window: what you have, what has an update, and a button for each.
+Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 1079 Rust tests (plus 4 more
 > that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1496
@@ -23,30 +26,30 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | Homebrew — formulae and casks | yes | yes |
 | npm — global packages | yes | yes, when the prefix is yours to write |
 | pipx | yes | yes |
-| uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Canager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so |
-| pip | yes | **no** — Canager will not drive pip's installer; it points you at pipx or uv |
+| uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Banager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so |
+| pip | yes | **no** — Banager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes | yes |
-| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
-| rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Canager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program `cargo install` recorded (`jj-cli`, not `jj`), else by its file name. Neither can be cancelled once it is running, and the preview says so |
-| Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Open to update", whose ⓘ says to open the tool once (Canager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Canager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
-| Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how `grok update` behaves when nothing can answer a prompt is yet to be recorded on CI); install no (the installer is xAI's, and Canager never runs it); uninstall yes — its downloaded versions, its bundled agents and shell completions, any fallback links its installer made in `~/.local/bin`, and the two links in its `bin` folder go to the Trash (the folder itself, which its installer put on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Banager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
+| rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program `cargo install` recorded (`jj-cli`, not `jj`), else by its file name. Neither can be cancelled once it is running, and the preview says so |
+| Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Open to update", whose ⓘ says to open the tool once (Banager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
+| Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how `grok update` behaves when nothing can answer a prompt is yet to be recorded on CI); install no (the installer is xAI's, and Banager never runs it); uninstall yes — its downloaded versions, its bundled agents and shell completions, any fallback links its installer made in `~/.local/bin`, and the two links in its `bin` folder go to the Trash (the folder itself, which its installer put on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
 listed, read-only, on the **Other Programs** page, the last row under the sidebar's Sources.
-Canager never runs, moves or deletes anything there; `docs/what-we-run.md` says exactly what it
+Banager never runs, moves or deletes anything there; `docs/what-we-run.md` says exactly what it
 reads. A program a source installed but reported no path for is listed there too (uv's own `uvx`,
 for one): the gap is the source's, and the page says what it sees. Cargo reports one program per
 crate — the one named after the crate, else the first its record lists — so the other programs of
 a crate that installs several (`cargo-binstall`'s `detect-targets`) stay on that page until it can
 report them all.
 
-Canager checks every source when it opens, after each operation, and whenever you press **Check
+Banager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
 last check finished, or choose **Check Again** (⌘R) in the menu bar's View menu, on any page; while
-a check runs, neither starts another. The **Check Again** on the page Canager shows when it couldn't
-load installed tools, and the one on the notice of a Homebrew index Canager couldn't update, run the
+a check runs, neither starts another. The **Check Again** on the page Banager shows when it couldn't
+load installed tools, and the one on the notice of a Homebrew index Banager couldn't update, run the
 same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
@@ -57,19 +60,19 @@ asleep counts, and a clock set back to before it ended counts as the six hours g
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
 the one its end sets off. With **Check for updates every day** turned on in Settings — it is off
 until you turn it
-on — Canager also runs the same check once a day while it is running, installs none of the updates
+on — Banager also runs the same check once a day while it is running, installs none of the updates
 it finds, and checks nothing after you quit. A daily check in which every source failed — a
 Homebrew whose index couldn't be updated counting as failed — doesn't count: the next runs 15
 minutes later, and each more that fails in a row doubles the wait (30, 60, 120, 240 minutes) up to
 six hours. A check of yours, or a daily one in which not every source failed, counts, and starts
 the waits over (`docs/what-we-run.md`, "The daily check"). Turn on **Notify me when there are
 updates** under that switch as well, and a daily check that finds an update you haven't been
-shown, while another app is in front, not Canager, posts a notification saying how many tools can
-be updated. A click on it brings Canager
-to the front, and if Canager's window is closed or minimized into the Dock and hasn't been in front
-since the notification, the window comes back on the Updates page. Canager isn't told of the click
+shown, while another app is in front, not Banager, posts a notification saying how many tools can
+be updated. A click on it brings Banager
+to the front, and if Banager's window is closed or minimized into the Dock and hasn't been in front
+since the notification, the window comes back on the Updates page. Banager isn't told of the click
 itself, only that it has come to the front, so until the window has been in front again, anything
-else that brings Canager to the front with the window closed or minimized — ⌘-Tab, its Dock icon —
+else that brings Banager to the front with the window closed or minimized — ⌘-Tab, its Dock icon —
 does the same. The Other Programs page's header has *Scan Again* in its place, with how long ago
 that page last scanned: it re-runs only that page's scan of your bin folders, against the sources'
 last known state — it does not refresh the sources. Settings' header has neither.
@@ -77,20 +80,20 @@ last known state — it does not refresh the sources. Settings' header has neith
 The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open theirs: Overview
 (⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it)
 and Other Programs (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
-page with its search box focused, and Settings… (⌘,) is in the Canager menu. With the window closed
+page with its search box focused, and Settings… (⌘,) is in the Banager menu. With the window closed
 or minimized, each of these brings it back first.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
-Canager running, and an operation under way carries on; its icon in the Dock brings the window back
+Banager running, and an operation under way carries on; its icon in the Dock brings the window back
 as you left it — or on the Updates page after a notification, as above — without a new check. Quit
-Canager (⌘Q) quits it. While an update or uninstall is still queued or running, though, quitting —
+Banager (⌘Q) quits it. While an update or uninstall is still queued or running, though, quitting —
 ⌘Q, Quit in the Dock icon's menu, or logging out, restarting or shutting down — first brings the
 window back and asks: *2 operations haven't finished*, since quitting now stops them and a tool that
 is being updated can be left half-updated, and it says so of one that has started and can't be
-cancelled, such as rustup's self update. *Cancel* leaves Canager running, and *Quit*
-quits. Canager answers macOS at once, so a logout, restart or shutdown is called off rather than
+cancelled, such as rustup's self update. *Cancel* leaves Banager running, and *Quit*
+quits. Banager answers macOS at once, so a logout, restart or shutdown is called off rather than
 kept waiting, and after *Quit* you start it again (`src-tauri/src/quit.rs`). Should the window
-be unable to ask — it stopped working, or doesn't show the question within 2 seconds — Canager quits
+be unable to ask — it stopped working, or doesn't show the question within 2 seconds — Banager quits
 rather than hold the quit with nobody there to answer. Force Quit still quits at once.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
@@ -105,7 +108,7 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall lets you see the exact
-  command before it runs, with the variables Canager sets for it — one press on "Show Command"
+  command before it runs, with the variables Banager sets for it — one press on "Show Command"
   in its confirmation, or open from the start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
@@ -116,17 +119,17 @@ This app runs package managers on your behalf, so the boundary matters more than
   autoremove back on too, that periodic clean-up also uninstalls the packages that were installed
   only as dependencies and that nothing needs any more.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
-  in your language. Canager runs Homebrew with its autoremove off, so a Homebrew uninstall does
+  in your language. Banager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
   needs any more; when a `brew.env` file turns autoremove back on, the preview says Homebrew will.
 - **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
-  its removal as a list of paths. Canager moves those paths, plus its installer's download cache,
+  its removal as a list of paths. Banager moves those paths, plus its installer's download cache,
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
   back — and Finder's Put Back will likely work too; the preview lists each path it will move and
   each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). Antigravity
-  CLI and Grok Build publish no removal instructions at all, so their lists are Canager's own
+  CLI and Grok Build publish no removal instructions at all, so their lists are Banager's own
   reading of how each was installed, and their paths go to the Trash the same way. Moving files to
-  the Trash is the only change Canager makes to a file itself besides saving its own settings and
+  the Trash is the only change Banager makes to a file itself besides saving its own settings and
   its window's size and position;
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
@@ -134,7 +137,7 @@ This app runs package managers on your behalf, so the boundary matters more than
   directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and with no
   folder that is a link between where your home folder really is and the path (the home folder
   itself may be reached through a link) — yours, what that tool's uninstall list describes, and
-  clear of what it keeps. Canager remembers what each path was when you saw the preview; when you
+  clear of what it keeps. Banager remembers what each path was when you saw the preview; when you
   confirm, and again right before each path moves, it checks everything once more, and if anything
   differs it stops before moving that path, and the operation log lists anything it had already
   moved.
@@ -144,7 +147,7 @@ This app runs package managers on your behalf, so the boundary matters more than
 Being honest about this is part of the point:
 
 - **No search and no catalogue, and no way to install something new.** You can manage what you
-  already have; you cannot yet discover or add new things through Canager.
+  already have; you cannot yet discover or add new things through Banager.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -161,7 +164,7 @@ pnpm tauri dev
 To look at the UI in an ordinary browser instead, with a mock backend in place of Tauri (for
 screenshots; development only, never in a build), run `pnpm dev:mock` and open
 <http://localhost:1430/> — [docs/ui-preview.md](docs/ui-preview.md) has the rest. `pnpm tauri:mock`
-puts the same mock front end in the app's real window, title bar and all, and Canager runs no
+puts the same mock front end in the app's real window, title bar and all, and Banager runs no
 command for it; the same page says why.
 
 Tests — all five must pass before anything is committed:
@@ -184,14 +187,14 @@ through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
 in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
 running it, the other installs and removes the `hello` formula. The third, in
 `crates/banager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
-(named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
+(named `banager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
 The fourth, in `crates/banager-core/src/icon/real.rs`, has AppKit draw Calculator's icon and
-only reads. The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI
+only reads. The two that change the machine refuse to touch anything without `BANAGER_LIVE=1`. CI
 runs the first three; run them yourself with:
 
 ```bash
-CANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
-CANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
+BANAGER_LIVE=1 cargo test -p banager-core --test brew_live -- --ignored
+BANAGER_LIVE=1 cargo test -p banager-core --test standalone_uninstall_test -- --ignored
 cargo test -p banager-core --lib icon::real -- --ignored
 ```
 
@@ -204,12 +207,12 @@ choice included. Its words are Rust's (`src-tauri/src/menu.rs`), macOS's own for
 app has, and a test there keeps its two languages in step too.
 
 Rust's refusals are translated too, not just the frames around them. A plan built against a source
-that is read-only, unavailable or gone, an operation Canager can't prepare (a name it won't pass to
+that is read-only, unavailable or gone, an operation Banager can't prepare (a name it won't pass to
 a tool, a program that has gone missing, a path on an uninstall list that is outside your home
 folder, in a folder other apps share, missing, not yours or not what that list describes), a
 preview that has expired or already been used, a settings change it couldn't save, an operation
-Canager itself couldn't carry out (the program was removed between the check and the run, say, or a
-path changed between the preview and the click), Canager's own remarks in the operation log
+Banager itself couldn't carry out (the program was removed between the check and the run, say, or a
+path changed between the preview and the click), Banager's own remarks in the operation log
 (waiting for Homebrew to finish updating, a stream it could no longer read, each item it moved to
 the Trash) and its verdicts on a result (the command said it worked but the package isn't there)
 each arrive as a small structured payload the front end renders in the user's language.
@@ -218,29 +221,29 @@ Three kinds of text are shown as-is:
 
 - **Another program's own words.** Every line `brew` or `npm` prints in the operation log, and
   the last lines of its stderr when an operation fails; the reason macOS gives when it can't start
-  a tool, whether Canager is preparing an operation or running one, can't save Canager's settings
-  for a cause Canager doesn't recognise, or refuses to move an item to the Trash.
+  a tool, whether Banager is preparing an operation or running one, can't save Banager's settings
+  for a cause Banager doesn't recognise, or refuses to move an item to the Trash.
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
-  rest of Canager at all while loading the list, or refreshing it before any check has found
+  rest of Banager at all while loading the list, or refreshing it before any check has found
   anything — its own text is shown untranslated, next to the Check Again button (after that, the
-  header says only "Couldn't check"). Short of that, Canager itself never fails a refresh as a whole, but not
-  every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
+  header says only "Couldn't check"). Short of that, Banager itself never fails a refresh as a whole, but not
+  every source with trouble gets a notice of its own. A source that has gone unavailable to Banager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
-  notice. A source that Canager could still reach, but whose software list or update check failed,
+  notice. A source that Banager could still reach, but whose software list or update check failed,
   gets no notice of its own: the "Some checks didn't finish" banner names it, and says it didn't
   finish checking this time.
-- **A number of technical details that are still Canager's own**, which appear in English inside an
+- **A number of technical details that are still Banager's own**, which appear in English inside an
   otherwise translated sentence. This is a known gap, not a design choice, and it is not just the
   one case the wording used to name: with "Show technical details" turned on, whenever a package
-  can't be checked for updates Canager's own explanation of why is shown as plain English rather
+  can't be checked for updates Banager's own explanation of why is shown as plain English rather
   than translated — with the switch off you see only a short generic sentence instead. There are
   more than a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
   "... did not finish", or the tool's own first line of stderr) from any lookup that runs a
   command, Grok Build's own update check among them (which has a few more of its own: a check
-  Canager could not run, an answer that is not grok's JSON, or an error grok itself reported); from
-  the six lookups Canager makes over HTTP instead of a command line, that request's own wording —
+  Banager could not run, an answer that is not grok's JSON, or an error grok itself reported); from
+  the six lookups Banager makes over HTTP instead of a command line, that request's own wording —
   pipx's PyPI lookup ("PyPI request failed: ...", "PyPI returned status 503", "could not parse PyPI
   response: ..."), Cargo's equivalent for crates.io, Ollama's for its own registry, Claude Code's
   for its release channel, rustup's for its release file, and Antigravity CLI's for its manifest
@@ -259,12 +262,12 @@ documents rather than polished writing, but they record why things are the way t
 
 ## Logos
 
-The logos Canager shows for tools and sources are trademarks of their owners, shown only to
+The logos Banager shows for tools and sources are trademarks of their owners, shown only to
 identify the tool or source each stands for; a tool may show its maker's logo in place of one of
 its own. Those drawn in white or near-black on their brand's colour come from
 [Simple Icons](https://simpleicons.org/), which is released under CC0 — though, as Simple Icons
 says, not every icon in it is: an icon under a license of its own has that license named in
-Simple Icons' data. Such a logo keeps its license. Canager ships it unmodified, its path exactly
+Simple Icons' data. Such a logo keeps its license. Banager ships it unmodified, its path exactly
 as Simple Icons has it, and credits it in Settings, under About → Icon credits, with its license
 and the addresses of the license's text and of the page Simple Icons took the logo from. The
 logos not from Simple Icons are the GitHub avatar of the organization or account behind the
@@ -272,7 +275,7 @@ project, or behind its maker. All of them are built into the app, from `src/asse
 and showing one makes no network request. `pnpm icons:build` regenerates that folder from
 `scripts/tool-icons/mapping.json`, taking Simple Icons' logos from the pinned `simple-icons`
 package and downloading the avatars from GitHub. It fails if the mapping names a logo under a
-license Canager does not ship — it ships CC0-1.0, MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
+license Banager does not ship — it ships CC0-1.0, MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
 ISC, CC-BY and CC-BY-SA, and no other: nothing noncommercial, no-derivatives, GPL-family or
 custom — and if the folder comes to more than 5 MB, the limit a test holds it to as well. Neither
 the app nor the tests run it.
@@ -281,16 +284,16 @@ the app nor the tests run it.
 
 Under a tool's name, its row says in one line what the tool is: the description the tool's source
 gives it, such as Homebrew's for a formula or a cask; where the source gives none, what kind of
-thing that source lists ("npm package"); and for a tool with its own installer, a line of Canager's
+thing that source lists ("npm package"); and for a tool with its own installer, a line of Banager's
 own, in both languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
-or crates.io package says a line in English instead wherever Canager has one: about 600 of them,
+or crates.io package says a line in English instead wherever Banager has one: about 600 of them,
 each rewritten, shorter, from the description the package's own registry gives it. In Chinese, a
-row says a line in Chinese instead wherever Canager has one: about 2,000 of them, for Homebrew's
+row says a line in Chinese instead wherever Banager has one: about 2,000 of them, for Homebrew's
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
 the tool's own source gives it. Both are built into the app, in
 `src/assets/tool-descriptions/en.json` and `zh-CN.json`, each read only once the window is in its
 language, and fetched from nowhere: showing one makes no network request. A tool's details show that
-one line too, without its source's own description beside it; a tool Canager has no line for in the
+one line too, without its source's own description beside it; a tool Banager has no line for in the
 window's language reads as it did before.
 
 ## License
@@ -304,13 +307,15 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 **把你在终端里装过、然后忘掉的东西管起来。**
 
+Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起来也像 banana。
+
 跟着几篇教程走下来，Mac 上多半散落着一些 Homebrew 软件、几个全局 npm 包、几个 Python 工具、
 一个 Rust 编译出来的命令，还有一两个 Ollama 模型。每样都是用不同的命令装的，更新要换一条命令，
 卸载又要换一条。大多数人两件都不做，这些东西就在那儿慢慢烂掉。
 
-Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
+Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
+每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1079 个 Rust 测试（另有 4 个要连着真实的
@@ -322,30 +327,30 @@ Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1496 �
 （`src-tauri/src/menu.rs`），每个 Mac 应用都有的菜单项用 macOS 自己的叫法，那里也有测试保证两种语言同步。
 
 Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所针对的来源只读、连不上或已不存在，操作无法
-准备（某个名字 Canager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、
+准备（某个名字 Banager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、
 放在其它应用共用的文件夹里、不存在、不属于你或者和说明写的不一样），预览已过期或已用过，设置没能保存，
-操作因为 Canager 自己这边的原因没能执行（比如程序在检查之后、运行之前被删掉了，或者某条路径在预览之后、
-点击之前变了），Canager 自己在操作日志里说的话（等待 Homebrew 更新完毕、某个输出流读不下去了、
+操作因为 Banager 自己这边的原因没能执行（比如程序在检查之后、运行之前被删掉了，或者某条路径在预览之后、
+点击之前变了），Banager 自己在操作日志里说的话（等待 Homebrew 更新完毕、某个输出流读不下去了、
 把哪一项移到了废纸篓），以及它对结果的判断（命令说成功了，但那个包并不在），
 都以一个结构化的小数据传到前端，用你选的语言显示。
 
 有三类文字会原样显示：
 
 - **别的程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
-  几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
-  或因为 Canager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
+  几行；以及 macOS 无法启动某个工具（不论 Banager 是在准备操作还是在执行操作）、
+  或因为 Banager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
 - **应用框架自己的报错**，只出现在一种情况：加载列表时，或在还没有任何检查结果时刷新列表，窗口完全联系不上
-  Canager 的其余部分——这时它自己的文字会原样显示在“重新检查”按钮旁边（有了检查结果之后，页头只说
-  “无法完成检查”）。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
-  来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
+  Banager 的其余部分——这时它自己的文字会原样显示在“重新检查”按钮旁边（有了检查结果之后，页头只说
+  “无法完成检查”）。除此之外，Banager 自己从不会让整次刷新失败，但不是每个出问题的
+  来源都有自己的提示。一个来源如果对 Banager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
   运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
   检查失败了，就没有自己的提示——只会由“部分检查未完成”横幅点名，说它这次没检查完。
-- **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
-  为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
+- **还有几处技术细节仍属于 Banager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
+  为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Banager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
   有十几处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
   finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源，Grok Build 用它自己的命令检查更新也在其中
-  （它还另有几句：Canager 没能运行这个检查、回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
+  （它还另有几句：Banager 没能运行这个检查、回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
   pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的发布通道、rustup 查它的发布文件、
   Antigravity CLI 查它的版本清单（在 Intel Mac 上则是它为什么没发请求）——各自请求失败、返回状态异常、
   解析失败时的原文提示；还有两句关于已安装版本的原文提示：读不到已安装版本，出自 Claude Code、
@@ -354,10 +359,10 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，中文用户在开关打开时看到的，就是英文。
 
 每个软件名下那一行简介，默认是它所在来源自己给的说明（比如 Homebrew 给 formula 和 cask 写的那句英文）；
-来源没给的，写这个来源列出的是什么（“npm软件包”）；自带安装器的工具，是 Canager 自己写的一句，
+来源没给的，写这个来源列出的是什么（“npm软件包”）；自带安装器的工具，是 Banager 自己写的一句，
 中英文都有。npm、pip、pipx、uv 和 Cargo 都不给说明，所以英文界面里，npm、PyPI、crates.io 上的包只要
-Canager 有它的英文说明，就改显示这一句：约 600 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
-更简短。中文界面里，只要 Canager 有这个软件的中文说明，就改显示中文：约 2,000 条，涵盖 Homebrew 的
+Banager 有它的英文说明，就改显示这一句：约 600 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
+更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：约 2,000 条，涵盖 Homebrew 的
 formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
 （`src/assets/tool-descriptions/en.json` 与 `zh-CN.json`），界面是哪种语言才读取哪一份，不从任何地方下载，
 显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
@@ -365,7 +370,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
 
-Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
+Banager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
 再按也不会多查一遍。没能读取已安装的工具时页面上的“重新检查”，和 Homebrew 软件清单没更新成功时提示里的“重新检查”，做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
@@ -376,15 +381,15 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。
 在“设置”里打开“每天自动检查”后（默认关闭），
-Canager 开着时还会每天做一次同样的检查，查到的更新都不安装，退出后不检查。
+Banager 开着时还会每天做一次同样的检查，查到的更新都不安装，退出后不检查。
 所有来源都失败的那次每天检查——Homebrew 的索引没能更新也算失败——不算数：15 分钟后再查，
 之后每连续失败一次，等的时间就翻一倍（30、60、120、240 分钟），最长六小时。你自己检查一次，
 或者某次每天检查不是所有来源都失败，就算数，等待也从头算起（见 `docs/what-we-run.md` 的“The daily check”一节）。
 再打开“每天自动检查”下面的“有更新时通知我”，
-每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Canager 时，会发一条通知，说有几个
-工具可更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
-而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了
-最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Canager 切到前面——⌘-Tab、
+每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Banager 时，会发一条通知，说有几个
+工具可更新。点这条通知会把 Banager 切到最前面；如果 Banager 的窗口关着或最小化在程序坞里，
+而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Banager 收不到点击本身，只知道自己到了
+最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Banager 切到前面——⌘-Tab、
 点程序坞图标——也会这样。
 “其他程序”页（边栏“来源”下的最后一行）的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
@@ -395,14 +400,14 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 
 菜单栏的“显示”菜单像访达和邮件的一样，能打开边栏里的各页：“概览”（⌘1）、“更新”（⌘2）、“已安装”
 （⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“其他程序”（⌘4）。下面是“重新检查”（⌘R）和
-“搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Canager”菜单里。窗口关着或最小化时，
+“搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。
 
-关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Canager 仍在运行，进行中的操作照常
+关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。
-选“退出 Canager”（⌘Q）才会退出。不过，还有更新或卸载在排队或进行时，退出——⌘Q、程序坞图标菜单里的“退出”，
+选“退出 Banager”（⌘Q）才会退出。不过，还有更新或卸载在排队或进行时，退出——⌘Q、程序坞图标菜单里的“退出”，
 或者退出登录、重新启动、关机——会先把窗口叫回来问一句「还有2个操作未完成」：现在退出会中断它们，正在更新的工具
-有只更新一半的风险；已经开始、不能取消的（比如 rustup 的自我更新）也会点名。选「取消」，Canager 接着运行；
-选「退出」才退出。Canager 当场回答 macOS，所以退出登录、重新启动或关机会被取消，而不是一直等着，选了
+有只更新一半的风险；已经开始、不能取消的（比如 rustup 的自我更新）也会点名。选「取消」，Banager 接着运行；
+选「退出」才退出。Banager 当场回答 macOS，所以退出登录、重新启动或关机会被取消，而不是一直等着，选了
 「退出」之后要再操作一次（`src-tauri/src/quit.rs`）。窗口要是问不了——出错停了，或者 2 秒内没把这句问话
-显示出来——Canager 就直接退出，不会在没人能回答时拦着不退。强制退出仍会立刻退出。
+显示出来——Banager 就直接退出，不会在没人能回答时拦着不退。强制退出仍会立刻退出。

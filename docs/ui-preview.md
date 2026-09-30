@@ -1,9 +1,9 @@
 # UI preview in a browser
 
-A development-only way to look at Canager's real front end in an ordinary
+A development-only way to look at Banager's real front end in an ordinary
 browser, with no Tauri window and no backend: every IPC call is answered by
 a mock that pretends to be a Mac with every kind of source, update and
-notice Canager can show. It exists so the UI can be screenshotted state by
+notice Banager can show. It exists so the UI can be screenshotted state by
 state while it is being redesigned. It is never part of the app.
 
 ## Run it
@@ -26,15 +26,15 @@ lives in the page's memory and nowhere else.
 pnpm tauri:mock
 ```
 
-The same mock front end in Canager's real window, for what a browser
+The same mock front end in Banager's real window, for what a browser
 cannot show: the title bar drawn over the page, the traffic lights in the
 sidebar, dragging the window by its top, the size it opens at and the one
 it remembers. It is `pnpm tauri dev` with `src-tauri/tauri.mock.conf.json5`
 merged over the app's config: the page is Vite in mock mode on port 1440
 (so a preview on 1430 can stay open beside it), and the app has an
-identifier of its own, `com.brulek.canager.mock`, so it keeps its window's
+identifier of its own, `com.brulek.banager.mock`, so it keeps its window's
 size apart from the app's and never reads the app's settings. The Rust
-side is the app's own, but none of Canager's commands reach it:
+side is the app's own, but none of Banager's commands reach it:
 `src/lib/api.ts`, the page's only way to them, talks to the mock. And it
 starts nothing by itself -- the one refresh it runs unasked follows a
 `brew update` that a refresh left running, and only the page starts a
@@ -55,7 +55,7 @@ never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
 Again or Search, which Rust sends only to a page that asked it to listen:
 in this window those items do nothing but bring the window back when it
 is closed or minimized. Nor does the page
-badge Canager's icon in the Dock with its count of updates, as the app
+badge Banager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
 `src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Other
 Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
@@ -84,8 +84,8 @@ Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
 - Nothing outside `src/dev/` imports anything in it, so a production
   build never contains it; `src/dev/mockBackend.test.ts` checks that for
   every module under `src/`. Every page of the preview logs a line starting
-  with `[canager-ui-preview-mock]` to the console; to check a build, run
-  `pnpm build` and then `grep -r canager-ui-preview-mock dist`, which
+  with `[banager-ui-preview-mock]` to the console; to check a build, run
+  `pnpm build` and then `grep -r banager-ui-preview-mock dist`, which
   finds nothing.
 - The mock is typed against `src/lib/types.ts` and checked by
   `pnpm typecheck` like the rest of `src/`; `src/dev/mockBackend.test.ts`
@@ -200,11 +200,11 @@ value falls back to the default and logs a warning in the console.
 | | `stale` | The last refresh could not finish for two sources. |
 | | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program, and a second Homebrew, the Intel one in `/usr/local`, that does not answer (so the sidebar names the two "Apple silicon" and "Intel"). The Updates and Installed pages fold them into one line, the first warning, with "N more issues" at its end to show them all. |
 | | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |
-| | `many` | About 800 things installed, as on a Mac that has used Homebrew for a while: the Mac above, every source answering, and 741 more real tools (`src/dev/mockManyNames.ts`) -- 580 Homebrew formulae, 40 of them libraries it installed for the others; 70 casks, 25 of them apps; 40 npm packages, 13 pipx and 12 uv tools, 20 crates and 6 Ollama models -- each one the logo pack and the description tables have. About one in seven has an update: 121 rows on the Updates page have one Canager can install. Each tool's version, install day and update come from a seeded stream of its own, so every run shows the same list. In English, those formulae and casks read "Homebrew package" or "App installed with Homebrew": the preview has no Homebrew catalogue to take their descriptions from. |
+| | `many` | About 800 things installed, as on a Mac that has used Homebrew for a while: the Mac above, every source answering, and 741 more real tools (`src/dev/mockManyNames.ts`) -- 580 Homebrew formulae, 40 of them libraries it installed for the others; 70 casks, 25 of them apps; 40 npm packages, 13 pipx and 12 uv tools, 20 crates and 6 Ollama models -- each one the logo pack and the description tables have. About one in seven has an update: 121 rows on the Updates page have one Banager can install. Each tool's version, install day and update come from a seeded stream of its own, so every run shows the same list. In English, those formulae and casks read "Homebrew package" or "App installed with Homebrew": the preview has no Homebrew catalogue to take their descriptions from. |
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
-| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `canager` | How every operation ends. Only `succeeded` changes anything. |
+| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager` | How every operation ends. Only `succeeded` changes anything. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
 
 ## Large list

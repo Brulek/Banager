@@ -43,8 +43,8 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
   列在已安装页的 pip 下。pip 的制品没有 `path`（`pip list --format=json` 不给脚本位置），pip 也没有「拥有的根」。
   整体复审确认为真（important）；修复做到一半时额度耗尽，**没有收下**：它给所有适配器共用的 `ManagerInstance`
   加了一个只有 pip 用的线格式字段 `user_scripts_dir`，并让 pip 的 detect 多跑一条 `python -c` 探测命令。未提交的
-  改动存在 `~/dev/Canager/.superpowers/phase4/abandoned-pip-user-scheme-fix/`（补丁 + 一份录制，含本机路径）。
-  已做的：页面导语不再断言「Canager 认识的来源都没有装过它们」，改成「没能对应到任何一个它认识的来源」
+  改动存在 `~/dev/Banager/.superpowers/phase4/abandoned-pip-user-scheme-fix/`（补丁 + 一份录制，含本机路径）。
+  已做的：页面导语不再断言「Banager 认识的来源都没有装过它们」，改成「没能对应到任何一个它认识的来源」
   （`uvx` 同样认不出，阶段 4 步骤 F 的交付说明已写）。正确形状：spec §十一 的 `Adapter::owned_roots(&self, env)`
   trait 方法——pip 的实现调用一次 `sysconfig.get_path("scripts", "osx_framework_user")`，结果只进扫描，不上线格式。
 
@@ -154,7 +154,7 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 - ~~**升级途中取消仍报「结果未确认」而不是「你已取消」。** 这是有意的：升级后包仍在，证明不了新版本
   没在 kill 之前装上。真修需要在执行前先 reconcile 一次记下旧版本。~~ —— 2026-09-24 `c6ecf5b` 曾改成按
   执行前后两次读到的版本判：没变且是用户取消的报「你已取消」，变了报「已成功」。**同日撤回**，原来的判断是对的：
-  命令中途被停下（取消或超时）的升级一律报「结果未确认」，不看版本。工具是在升级中途、不是结束时写下 Canager
+  命令中途被停下（取消或超时）的升级一律报「结果未确认」，不看版本。工具是在升级中途、不是结束时写下 Banager
   读的版本，被 `SIGTERM` 停下时又不回滚，所以版本变了不等于装完（brew 公式新 keg 已倒入、还没 link；cask 在
   `stage` 写了新版本元数据、新 app 还没装上），没变也不等于没动（pipx 先装包、最后才写元数据；cask 先把旧 app
   移出 /Applications、之后才写元数据）。Homebrew 与 pipx 的出处逐行写在 `run_operation`（`ops/mod.rs`）
@@ -190,17 +190,17 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 更新页 `isActionable` 多一个条件，按钮、勾选、「更新所选」和两个计数一起去掉；行上写「已固定」
 并给出 `<该 brew 的绝对路径> unpin <名字>`（cask 为 `--cask`；路径取自该实例的 `exe_path`，
 以代码样式显示）；pipx 的行写 `<该 pipx 的绝对路径> unpin <名字>`，说明句里的来源名按实例给（Homebrew / pipx）。
-自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Canager 不代为解除固定。
+自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Banager 不代为解除固定。
 pipx 被固定的例子是改过的录制（`adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt`，只插了 ` [pinned]`，
 README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一样，与设计文档「只收真机录制」的字面冲突，
 放哪儿仍待作者拍板。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
 - **pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
-  （pipx 1.17.3 `commands/pin.py:82-92`，没有只解主包的选项）。Canager 不列注入包（不传
+  （pipx 1.17.3 `commands/pin.py:82-92`，没有只解主包的选项）。Banager 不列注入包（不传
   `--include-injected`），行上的说明没提这一点。
 - ~~**假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
-  brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。~~
+  brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Banager 报「成功」而什么都没变。~~
   —— **已于 2026-09-24 在 `c6ecf5b` 修复**，走的是「核对版本真的变了」这条路：升级前后各用同一个
   `reconcile` 读一次版本，退出 0 而版本没变时报新结果 `NeedsAttention(UnchangedAfterUpgrade)`
   （「更新命令显示成功，但版本和更新前一样……」，指向操作日志，四种情况工具都在日志里说了原因）。
@@ -215,14 +215,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   `issue_plan` 与 `submit` 复检里拒绝 `Uninstall`，按实例、类型、名字三者匹配；IPC 报
   `{"kind":"uninstall_blocked"}`。已安装页该行没有「卸载」按钮，说明句替换简介，给出由该实例 `exe_path`
   拼的 `unpin` 命令（与更新页共用 `unpinCommand`，以代码样式显示）；卸载确认框遇到这条拒绝时单独措辞。
-  说明句原本一律承诺「下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候」，可 Homebrew 没应答时
+  说明句原本一律承诺「下次检查时就会提供卸载，最晚在你下次启动 Banager 的时候」，可 Homebrew 没应答时
   这一行是结转下来的，Homebrew 再次应答之前不会有「卸载」按钮；同日改成：来源没应答的行换用
-  `descriptionSourceUnavailable`，只说「之后 Canager 检查时只要 Homebrew 有应答，就会提供卸载」。
+  `descriptionSourceUnavailable`，只说「之后 Banager 检查时只要 Homebrew 有应答，就会提供卸载」。
   更新页被固定的行（`updates.blocked.Pinned.description` 与 `descriptionSelfUpdating`）当时对没应答的来源
   也作同样的假承诺，已在分支 feat/per-package-actionability 上同样补了
   `descriptionSourceUnavailable` / `descriptionSelfUpdatingSourceUnavailable` 修掉：`UpdatesPage.tsx` 的
   `rowDescription` 按候选自己实例（`snapshot.instances.find`，与其命令用的是同一份查找）是否应答挑选句子。
-  Canager 不传 `--force`，也不代为解除固定。pipx 不产生它：`pipx uninstall` 照样删除被固定的工具
+  Banager 不传 `--force`，也不代为解除固定。pipx 不产生它：`pipx uninstall` 照样删除被固定的工具
   （pipx 1.17.3 `commands/uninstall.py` 不读 `pinned`）。
 - ~~**已安装页的「有更新」徽标**~~ —— **已于 2026-09-24 修复**：原先 `updatableIds` 把 `snapshot.updates`
   里每一条都算作有更新，包括被固定的、`checkable: false` 的和被忽略的。现在两页共用
@@ -240,7 +240,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   里的、或（键，目标版本）在 `Settings.skipped_versions` 里且能跳过的（`canSkipVersion`），都不列出。已安装页
   对前者写「不再提醒更新」，对后者写「已跳过 {{version}}」（Ollama 模型写「已跳过新版本」，不印摘要）；逐行对照的
   测试也加上了跳过的行。能跳过，指目标版本只代表一个版本。查不了的行不算（它的目标版本就是已装版本）；声明为
-  `version :latest` 的 Homebrew cask 也不算：`brew outdated` 对它贪婪时（Canager 在「包含自更新的应用」打开时传
+  `version :latest` 的 Homebrew cask 也不算：`brew outdated` 对它贪婪时（Banager 在「包含自更新的应用」打开时传
   `--greedy`，Homebrew 自己的 HOMEBREW_UPGRADE_GREEDY、HOMEBREW_UPGRADE_GREEDY_CASKS 也能让它贪婪），下载一变
   就把它列出来，目标版本却永远是 latest，跳过 latest 等于永不提醒，按钮说的「下个版本发布时再提醒你」
   做不到。这两种行只给「不再提醒」，已存下的跳过也不隐藏它们。
@@ -255,7 +255,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 ## 阶段 4（独立安装工具）进行中的遗留（2026-09-25 立，分支 feat/phase-4-standalone）
 
-- **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/banager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Canager 自己拒绝的。用户于是去查自己的反向代理而不是 Canager。
+- **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/banager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Banager 自己拒绝的。用户于是去查自己的反向代理而不是 Banager。
   **现状已写明**（2026-09-25）：`docs/what-we-run.md` 的 Ollama 与 Network 两节各有一段说 `https://` 的 `OLLAMA_HOST` 会被拒绝；`crates/banager-core/tests/what_we_run_test.rs` 的 `test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is` 把这两句话钉在 `host_allowed` 的实际行为上——修掉缝隙时测试与两句话要一起改。
   **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
   **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
@@ -268,7 +268,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   （spike：15/15 与 4/4，一台 Mac、macOS 27.0，机制不明；记录在调用返回之后才写）。`removal::execute_removal`
   原先在同一次卸载里每移一项之后停 `PUT_BACK_SETTLE` = 3 秒（最后一项之后也停，再报告完成），但这个停顿**只管一次操作之内**：
   操作管理器同时跑最多 3 个操作（`ops/mod.rs` 的 `Semaphore::new(3)`），两个 path-list 卸载并发时，两边的移动仍可能挤进
-  2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Canager，刚移的那一项也可能丢掉记录。
+  2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Banager，刚移的那一项也可能丢掉记录。
   即使在一次卸载之内，3 秒也只是让每一项「多半」有记录（四次观察），不是保证；文案与信任文件都这样说（裁定 29）。
   **修法的形状**：把「上一次移到废纸篓的时刻」放进全进程共享的一处（`Session::new` 交给所有独立安装工具适配器的是同一个
   `Arc<RealTrasher>`），每次移动前补足到 3 秒，而不是只在 `execute_removal` 的循环里停；`MockTrasher` 与测试不受影响。
@@ -297,7 +297,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **步骤 D 要做的决定**：给这一条路径一个有测试的明确例外（只对 optional 的 `Cache`），或者改 spec 的清单——不要悄悄放宽整条规则。
   **步骤 D 定案：改清单，不改规则**（步骤 D 计划裁定 1；`314b093`、`13cf03d` 于 2026-09-26 落地，本条关闭）。
   `~/.cache/antigravity` 不移，列为保留项（新变体 `KeptWhat::InstallerCache`，文案说它是安装器的下载暂存文件夹、通常是空的、
-  Canager 不会移动直接放在 `~/.cache` 里的东西、可以自己删），只在它存在时列出；检查 1 与 `SHARED_FOLDERS` 一字未改。
+  Banager 不会移动直接放在 `~/.cache` 里的东西、可以自己删），只在它存在时列出；检查 1 与 `SHARED_FOLDERS` 一字未改。
   本机它是空的（2026-09-26 录制时 `staging/` 0 项，见 fixture README）；安装脚本先把下载放在这里、校验后才复制到位
   （agy.md §3a），所以中断的安装可能在里面留下下载到一半的文件（程序本体约 176 MB）；后台更新器是否也在这里暂存没有核实。
   作者可见的后果：卸载 Antigravity CLI 后 `~/.cache/antigravity` 留在原地，对话框会说；来源不明页不会列它（它不在那一页扫描的
@@ -361,7 +361,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   `verified_versions` 都照做：链接或 `downloads/` 变了就停，由作者决定版本读取怎么改；只有 mtime 动了，照实写进 fixture
   README 与 `## Grok Build`。这条没关之前，grok 的 `self_updates` 不能改成 true。另：grok 自己的检查每次刷新都会在
   `~/.grok` 里写东西（替换 `version.json`、往 `logs/unified.jsonl` 加两行、刷新它自带的用户指南 27 个文件的修改时间），
-  `docs/what-we-run.md` 已写明那是 grok 的写入，不是 Canager 的。
+  `docs/what-we-run.md` 已写明那是 grok 的写入，不是 Banager 的。
 
 ## 阶段 5（发现页）之前必须处理
 
@@ -443,7 +443,7 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 ## 界面重构终审推迟项（2026-09-28 立，分支 feat/ui-redesign）
 
-来源：GPT-6 Astra 的小白视角复审（`~/dev/Canager/.superpowers/phase4/astra/review-ui.md`）与 Claude 的行为/文案复审。
+来源：GPT-6 Astra 的小白视角复审（`~/dev/Banager/.superpowers/phase4/astra/review-ui.md`）与 Claude 的行为/文案复审。
 下面几条是核实过、但这一轮没做的：
 
 - **npm 等卸载确认没说删什么、留什么**（Astra 2）。npm 的计划没有任何 warnings，确认框只有名字、版本和折叠的命令。
@@ -464,19 +464,19 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
   `pack.json` 的 `version` 区分版本——现在 `icons:build` 固定写 1，应用还不读它。做的时候要动的：应用现在两条路都到不了
   一台 https 服务器（Rust 的 `RealHttpClient` 拒绝 `ALLOWED_HTTPS_HOSTS` 以外的 https 主机，窗口的内容安全策略是
   `connect-src 'self'`），主机加进名单后 `what_we_run_test` 要求 `docs/what-we-run.md` 写上它；下载的包若存到磁盘上，
-  那份文件的「Files Canager writes」一节（现在只有 `settings.json`）也要改。
+  那份文件的「Files Banager writes」一节（现在只有 `settings.json`）也要改。
 
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
-- 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/canager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
+- 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/banager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
 - 任务 1：在 Terminal.app 里跑一次 `pnpm tauri build` 确认 .dmg 打包（自动化会话里 Finder AppleEvent 超时 -1712，属 TCC 自动化权限问题）。
-- 任务 6：`pnpm tauri dev` 目视确认窗口打开且日志里 `[canager] discovered PATH dirs` 含 `/opt/homebrew/bin`。
+- 任务 6：`pnpm tauri dev` 目视确认窗口打开且日志里 `[banager] discovered PATH dirs` 含 `/opt/homebrew/bin`。
 - 任务 13：按 `docs/spikes/2026-09-askpass.md` 亲自跑 `sudo -A` 对话框试验并填结果表。
 
 ## 卸载说明的残留边角（2026-09-29 立，分支 feat/ui-round-2）
 
 三轮对抗式核对后仍剩的少见情况，都不会把"会删"说成"不删"，只是说得不够全（证据见
-`~/dev/Canager/.superpowers/round2/uninstall-scope.md` 与各轮 review）：
+`~/dev/Banager/.superpowers/round2/uninstall-scope.md` 与各轮 review）：
 - 第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
   （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。
 - 旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，
@@ -488,16 +488,16 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 ## 第二轮推迟项（2026-09-29 立，分支 feat/ui-round-2）
 
-- **菜单栏图标、登录时启动**：按 Astra 对后台检查规格的建议推迟（`~/dev/Canager/.superpowers/round2/astra-bg.md`）。
+- **菜单栏图标、登录时启动**：按 Astra 对后台检查规格的建议推迟（`~/dev/Banager/.superpowers/round2/astra-bg.md`）。
   菜单栏图标要先定：数量为 0 / 检查中 / 检查失败各显示什么，「立即检查」要不要弹窗，退出时有操作在跑怎么办。
   登录启动用 SMAppService（macOS 13+），读系统的真实授权状态，登录启动时不弹窗口。
-- **点通知真正打开「更新」页**：现在靠"通知在等 + Canager 被带到前台 + 窗口隐藏"来推断（`src-tauri/src/window.rs`），
+- **点通知真正打开「更新」页**：现在靠"通知在等 + Banager 被带到前台 + 窗口隐藏"来推断（`src-tauri/src/window.rs`），
   窗口只是被别的 App 挡住时点通知不会切页，⌘Tab 也会误触发。要用 UNUserNotificationCenter 的点击回调才能分清，
   它需要打包后的 app（开发版没有 bundle），见 Astra 第二轮复审第 4 条。
 - **英文描述**：npm/PyPI/cargo 以外的来源在英文界面用的是来源自己的描述（Homebrew 的 desc），风格与中文表不完全一致。
 - **长列表**：`VirtualList` 复用已画好的行，前提是页面每次都传新的内联 `renderItem`；以后若改成 `useCallback`，
   要同时把行依赖的数据放进 key，否则会显示旧内容（`src/components/VirtualList.tsx:62`）。
-- **Astra 第二轮复审**：`~/dev/Canager/.superpowers/round2/astra-round2.md`，第 1、2、3、5 条已修，第 4 条见上。
+- **Astra 第二轮复审**：`~/dev/Banager/.superpowers/round2/astra-round2.md`，第 1、2、3、5 条已修，第 4 条见上。
 
 ## 整体小白走查（2026-09-29 中午）
 
@@ -513,7 +513,7 @@ app 或更多工作。
   那一版（Homebrew `cmd/uninstall.rb:45`、`uninstall.rb:63-69`），剩下的旧版本又出现在已安装里。定一条规则：(a) 更新时
   删掉它所更新的那个包的旧版本，并在更新确认框里说（「会删除旧版本 1.25.0」），autoremove 与定期全面清理仍然关着；
   (b) 保留旧版本，但「卸载」删掉所有已装版本，确认框逐个列出（「删除 wget 的 2 个版本：1.25.0、1.26.0」），另加
-  「清理旧版本」并显示能腾出多少空间。无论哪条，Canager 自己造成的状态都不能落到「显示卸载了，但它还在」。
+  「清理旧版本」并显示能腾出多少空间。无论哪条，Banager 自己造成的状态都不能落到「显示卸载了，但它还在」。
 - 【可先做】**更新失败只给英文原始报错、没有下一步，操作条还把失败叫「需要留意」**（`operations.batch.needsAttention`）：
   先做——有更新失败时操作条说「N 个更新失败，M 个已成功」，「需要留意」只留给 NeedsAttention 与 Unconfirmed；每个
   Failed 结果在工具原话下面加一句固定的中文下一步，如：上面是 wget 自己的报错。可以稍后点「重试」；还是失败，就点
@@ -522,7 +522,7 @@ app 或更多工作。
 - 【待作者定】**管理员密码的承诺兑现不了：要 sudo 的 App 直接失败**（`commandPreview.needsPassword`「部分 App 在这一步
   会要求输入 Mac 密码。」）：先做完搁着的 askpass 试验（`docs/spikes/2026-09-askpass.md`，上文「需要作者本人操作的
   事项」任务 13），再二选一：(1) 带一个 askpass 助手，让 macOS 真的弹出密码框；(2) 说实话：只在 cask 记录里有 pkg 或
-  sudo 步骤时才显示提示，大意是「这个 App 要管理员密码，Canager 不能代你输入；到时这一项会失败，并给出在终端运行的
+  sudo 步骤时才显示提示，大意是「这个 App 要管理员密码，Banager 不能代你输入；到时这一项会失败，并给出在终端运行的
   命令」（原则 3 不写"可能"）。失败确实来自 sudo 时，用中文说明，并给出确切命令和「拷贝」按钮。
 - ~~【大改动】**更新进行中退出没有任何提醒，确认框却叫人别退出**（`operations.noCancelHint`）：有操作在排队或运行时
   拦下退出（`RunEvent::ExitRequested` → `prevent_exit`；现在 `src-tauri/src/window.rs:164` 的 `on_run_event` 只处理
@@ -540,7 +540,7 @@ app 或更多工作。
   第二次复审（`.superpowers/round2/astra-quit.md`）后又补了三条：(a)「仍然退出」和 2 秒兜底退出前，先像操作栏
   「全部取消」那样取消能取消的（排队中的、运行中且可取消的），等它们的命令停下，最多 7 秒，再退出（`quit_now`），
   等待期间再退出（⌘Q、程序坞、退出登录）会被拦下，不打断等待；
-  取消不了的 rustup 不停，Canager 退出后它的命令照常运行，输出管道没人读（`docs/what-we-run.md`）；问话正文只说退出会
+  取消不了的 rustup 不停，Banager 退出后它的命令照常运行，输出管道没人读（`docs/what-we-run.md`）；问话正文只说退出会
   中断的那些。(b) delegate 的类（含父类）已经回答 `applicationShouldTerminate:` 时不补，守卫保持关闭并记一行日志；
   `src-tauri/tests/tao_delegate.rs` 在主线程建 tao 的事件循环，检查 tao 的 delegate 没有这个方法，tao 升级加了就失败。
   (c)「继续等待」、Esc、全部完成后自动关闭时告诉 Rust（`quit_kept_waiting`），这个问话的 2 秒兜底不再退出；问话还没
@@ -548,15 +548,15 @@ app 或更多工作。
 - 【待作者定】**2 秒兜底仍会在页面慢或回执两次都失败时替用户退出**（`quit_unless_shown`）：更完整的做法是兜底时不直接
   退出，改弹原生 NSAlert（「还有 N 个操作没完成」，「继续等待」/「仍然退出」），页面死了也能问、也能回答。要在主线程
   另起一个模态框，和 AppKit 的退出流程交织，测试跑不到，这次没做。
-- 【待作者定】**概览几乎到不了明确的「都好了」，还怪到不点名的「来源」头上**：按 Canager 能动手的来判断圆环。没有可更新
+- 【待作者定】**概览几乎到不了明确的「都好了」，还怪到不点名的「来源」头上**：按 Banager 能动手的来判断圆环。没有可更新
   的、每个来源都回答了，就显示绿勾和「能在这里更新的都已是最新」，其余放进一行安静的小字（「1 个已隐藏、1 个只能
   查看」）。有来源没回答时点它的名，不说「来源」：「uv 这次没检查，其余都是最新的」或「Ollama 没有运行，没检查」。
   更新页的 `updates.noneCheckable`（与 `overview.nothingToUpdateChecked` 同为「已检查的来源里没有可更新的工具」）用
   同样的说法。
 - 【可先做】**每天自动检查和通知会悄悄停掉**（`settings.autoCheck.description`）：先做——说明改成「关掉窗口也会每天
-  检查；退出 Canager 或重启 Mac 后不再检查，直到你再打开它。」，开关下显示「上次自动检查：今天 9:12」（或「还没自动
+  检查；退出 Banager 或重启 Mac 后不再检查，直到你再打开它。」，开关下显示「上次自动检查：今天 9:12」（或「还没自动
   检查过」）。以后——在打包后的 app 里读真实的通知权限（UNUserNotificationCenter 的设置），关着时就显示
-  `settings.notifyUpdates.refused` 那行「在系统设置 → 通知里允许 Canager」。
+  `settings.notifyUpdates.refused` 那行「在系统设置 → 通知里允许 Banager」。
 - 【大改动】**第一次检查要等每个来源都答完才显示任何东西**（今天只补了说明：三页同一个圆环和「第一次检查要联网查每个
   工具的新版本，有时要一两分钟。」）：清单一读到就先提交一版快照，让「已安装」马上有内容，更新随各来源回答陆续补上。
   现在一轮只在末尾提交一次（`crates/banager-core/src/session/refresh.rs:681`），Homebrew 一轮最多等 `brew update`

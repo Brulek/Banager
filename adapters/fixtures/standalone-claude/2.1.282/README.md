@@ -10,7 +10,7 @@ else in it changed: the permissions, the link counts, the group `staff`, the siz
 and the names are as recorded. The recording itself upgraded nothing.
 
 Why 2.1.282: minutes before these commands ran, a scheduled job on this Mac (the owner's
-own daily updater, not Canager and not this recording) ran `claude update` at 06:00 local
+own daily updater, not Banager and not this recording) ran `claude update` at 06:00 local
 time, which moved the launcher from 2.1.281 to 2.1.282 at 06:00:16 (its log: "Successfully
 updated from 2.1.281 to version 2.1.282"). Every file here was recorded after that and agrees
 on 2.1.282: the version line, the launcher's link text, `layout.txt` (where the 06:00 entries
@@ -23,7 +23,7 @@ Commands:
 - `ls -la ~/.local/bin/claude ~/.local/share/claude/versions` -> `layout.txt`
 
 Both pointers answered direct HTTP 200; curl's checked status trailer is excluded from the saved bodies.
-Canager adds the documented background-check switch to version reads. Whether bare --version starts that check was not observed. Manual updates work with the switch set.
+Banager adds the documented background-check switch to version reads. Whether bare --version starts that check was not observed. Manual updates work with the switch set.
 The recording ran no claude update, claude install, or bare claude.
 Launcher link text: '~/.local/share/claude/versions/2.1.282', written with the same home-prefix substitution as `layout.txt` (the recorded text was absolute).
 brew list --cask claude-code: exit=1; stdout=''.
@@ -34,15 +34,15 @@ The dotted comparison decides whether either pointer is newer; no channel orderi
 
 ## Uninstall list (phase 4 step C)
 
-Nothing here was recorded for the uninstall: Canager runs no command for
+Nothing here was recorded for the uninstall: Banager runs no command for
 it. The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`CLAUDE.uninstall`) comes from Anthropic's "Uninstall Claude Code →
 Native" instructions at <https://code.claude.com/docs/en/setup>, read on
 2026-09-24: `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`
-— moved to the Trash by Canager instead, the launcher last — plus
+— moved to the Trash by Banager instead, the launcher last — plus
 `~/.claude/downloads`, the download staging directory install.sh names
 as `DOWNLOAD_DIR` (read from the script), listed as optional. The same
 page's separate, optional step removes `~/.claude` and `~/.claude.json`;
-Canager keeps both — of `~/.claude` it moves only `downloads`, the cache
+Banager keeps both — of `~/.claude` it moves only `downloads`, the cache
 above — and says so in the preview. No `claude uninstall`
 subcommand exists (`claude --help`, 2026-09-24).

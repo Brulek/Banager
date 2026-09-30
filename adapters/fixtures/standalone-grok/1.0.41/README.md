@@ -7,7 +7,7 @@ folder's absolute path replaced by `~` (`sed "s|$HOME|~|g"`) — the only two
 edits. The recording installed nothing and changed no link and no download;
 grok's own check wrote inside `~/.grok` (below).
 
-Commands (both grok runs with standard input `/dev/null`, as Canager's runner
+Commands (both grok runs with standard input `/dev/null`, as Banager's runner
 gives it):
 - `~/.grok/bin/grok --version` -> `version.txt` (`grok <version> (<hash>)`; the
   second token is the version; no environment variable — none is documented)
@@ -15,7 +15,7 @@ gives it):
   read-only check: its `--help` line for `--check` reads "Check for updates
   without installing" — read during the phase 4 research, grok.md §4, and not
   run again for this recording; one JSON object whose `updateAvailable`
-  Canager believes and whose `latestVersion` it shows)
+  Banager believes and whose `latestVersion` it shows)
 - `ls -lan ~/.grok/bin ~/.grok/downloads | sed "s|$HOME|~|g"` -> `layout.txt`
   (`bin/grok` and `bin/agent` are relative links,
   `../downloads/grok-1.0.41-macos-aarch64`, into the root; 3 downloads were
@@ -41,7 +41,7 @@ What the check wrote, all inside `~/.grok` and all grok's own: it replaced
 lines to its log, `~/.grok/logs/unified.jsonl`, which by their own words are
 about loading its saved login, `~/.grok/auth.json`; and the modification times
 of the 27 files of the user guide it ships, `~/.grok/docs/user-guide/*.md`,
-moved to the moment it started (the files were not recreated). Canager runs
+moved to the moment it started (the files were not recreated). Banager runs
 this check on every refresh, so every refresh causes these writes;
 `docs/what-we-run.md` says so.
 
@@ -61,11 +61,11 @@ marked block (2 marker lines).
 
 ## Uninstall list
 
-Nothing here was recorded for the uninstall: Canager runs no command for it.
+Nothing here was recorded for the uninstall: Banager runs no command for it.
 The list in `crates/banager-core/src/adapters/standalone/recipes.rs`
 (`GROK.uninstall`) is not a vendor document — xAI publishes none and there is
 no `grok uninstall` (grok.md §6). It is the README grok ships ("File
-Locations") plus its install script: Canager moves the two optional fallback
+Locations") plus its install script: Banager moves the two optional fallback
 links the installer makes when `~/.grok/bin` is not on PATH (first: their link
 text is unverified, so they go while every folder it could pass through is
 still there — a precaution), `~/.grok/downloads`, `~/.grok/bundled` and

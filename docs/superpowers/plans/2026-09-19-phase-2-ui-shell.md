@@ -1,4 +1,4 @@
-# Canager Phase 2 Implementation Plan: UI Shell (Installed / Updates / Operations / Settings)
+# Banager Phase 2 Implementation Plan: UI Shell (Installed / Updates / Operations / Settings)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-09-17-canager-design.md`. §3 (data flow), §5 (data model), §6 (execution and safety), §7 (UI), §9 (i18n), §11 (testing) bind this phase. Read §7 in full before Task 6.
+- Spec: `docs/superpowers/specs/2026-09-17-banager-design.md`. §3 (data flow), §5 (data model), §6 (execution and safety), §7 (UI), §9 (i18n), §11 (testing) bind this phase. Read §7 in full before Task 6.
 - Backlog: `docs/superpowers/backlog.md`. Every item under "阶段 2（界面 / IPC）之前必须处理" is implemented by Task 1 or Task 4 of this plan and must not be deferred again.
 - macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1; universal build unchanged.
 - `banager-core` must never depend on `tauri` and must never create a tokio runtime.
@@ -1164,7 +1164,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-settings-{}-{}-{}",
+            "banager-settings-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2708,7 +2708,7 @@ fn greet(name: &str) -> String {
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib events::`
+Run: `cargo test -p banager --lib events::`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (the module is now part of the crate via `pub mod events;`, so this is a real compile failure — the referenced types simply do not exist yet; Step 3 implements them).
 
 - [ ] **Step 3: Implement `UiEvent` and `ChannelSink`**
@@ -2756,7 +2756,7 @@ impl EventSink for ChannelSink {
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib events::`
+Run: `cargo test -p banager --lib events::`
 Expected: `test result: ok. 3 passed; 0 failed; ...`
 
 - [ ] **Step 5: Commit**
@@ -2810,7 +2810,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-appstate-{}-{}-{}",
+            "banager-appstate-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2911,7 +2911,7 @@ This has to happen now, not after `AppState` exists: `state.rs` must actually be
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib state::`
+Run: `cargo test -p banager --lib state::`
 Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `AppState`` (the module is now part of the crate via `mod state;`, so this is a real compile failure — the struct simply does not exist yet; Step 3 implements it).
 
 - [ ] **Step 3: Implement `AppState`**
@@ -2969,7 +2969,7 @@ impl AppState {
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib state::`
+Run: `cargo test -p banager --lib state::`
 Expected: `test result: ok. 4 passed; 0 failed; ...`
 
 - [ ] **Step 5: Commit**
@@ -3004,10 +3004,10 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if fix_path_env::fix().is_err() {
-        eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
+        eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }
     let host_env = banager_core::runner::HostEnv::discover();
-    println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
+    println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -3045,7 +3045,7 @@ import "./App.css";
 function App() {
   return (
     <main className="container">
-      <h1 className="text-2xl font-bold">Canager</h1>
+      <h1 className="text-2xl font-bold">Banager</h1>
     </main>
   );
 }
@@ -3055,7 +3055,7 @@ export default App;
 
 - [ ] **Step 7: Run and confirm both the Rust and the front-end sides still build, then manually verify the CSP against real styling and IPC**
 
-Run: `cargo build -p canager 2>&1 | tail -20`
+Run: `cargo build -p banager 2>&1 | tail -20`
 Expected: ends with `Finished` and no errors (the `greet` command and its `invoke_handler` registration are gone, `AppState` is built and managed in `.setup`, and `tauri.conf.json`'s new CSP parses — `tauri-build` re-parses `tauri.conf.json` at compile time and would fail the build on invalid JSON or an unrecognised CSP shape). This only proves the CSP string is syntactically acceptable to `tauri-build`; it says nothing about whether real styling, hot reload, or IPC actually work under it.
 
 Run: `pnpm exec tsc -p tsconfig.json`
@@ -3100,7 +3100,7 @@ EOF
 
 - [ ] **Step 1: Add the test-only dependencies this task's tests need**
 
-Task 8's tests are the first in `src-tauri` to use `#[tokio::test]`, `async_trait`, and `tokio_util::sync::CancellationToken`. `banager-core` depends on `tokio`, `tokio-util` and `async-trait`, but a dependency of `banager-core` is not usable directly from the `canager` (src-tauri) crate — each crate must declare what it imports itself (M2 in the design review). Add to `src-tauri/Cargo.toml`:
+Task 8's tests are the first in `src-tauri` to use `#[tokio::test]`, `async_trait`, and `tokio_util::sync::CancellationToken`. `banager-core` depends on `tokio`, `tokio-util` and `async-trait`, but a dependency of `banager-core` is not usable directly from the `banager` (src-tauri) crate — each crate must declare what it imports itself (M2 in the design review). Add to `src-tauri/Cargo.toml`:
 
 ```toml
 [dev-dependencies]
@@ -3239,7 +3239,7 @@ mod tests {
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-ipc-{}-{}-{}",
+            "banager-ipc-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -3562,7 +3562,7 @@ This has to happen now, not after the `..._impl` functions exist: `ipc.rs` must 
 
 - [ ] **Step 3: Run the tests and confirm they fail to compile**
 
-Run: `cargo test -p canager --lib ipc::`
+Run: `cargo test -p banager --lib ipc::`
 Expected: FAIL to compile — `error[E0425]: cannot find function `get_snapshot_impl` in this scope` and similarly for every other `..._impl` function referenced by the test module (the module is now part of the crate via `mod ipc;`, and `AppState` itself resolves fine via the existing `use crate::state::AppState;` — it is only the `..._impl` functions and command wrappers that do not exist yet).
 
 - [ ] **Step 4: Implement all nine `..._impl` functions and their thin `#[tauri::command]` wrappers**
@@ -3695,7 +3695,7 @@ pub async fn subscribe_events(
 
 - [ ] **Step 5: Run the tests and confirm they pass**
 
-Run: `cargo test -p canager --lib ipc::`
+Run: `cargo test -p banager --lib ipc::`
 Expected: `test result: ok. 10 passed; 0 failed; ...`
 
 - [ ] **Step 6: Commit**
@@ -3765,7 +3765,7 @@ EOF
 - [ ] **Step 10: Run the full workspace definition-of-done check**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `banager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (12 tests, new — refresh/snapshot/issue_plan/submit plus the M5 unchanged-content-coalescing and M8 same-instance-lock regression tests), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (5 tests, including N4's multiple-waiters regression test); in `canager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (4 tests, new — including the M7 concurrent-save regression test) and `ipc::` (10 tests, new — including the three F1 plan-rejection tests) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
+Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `banager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (12 tests, new — refresh/snapshot/issue_plan/submit plus the M5 unchanged-content-coalescing and M8 same-instance-lock regression tests), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (5 tests, including N4's multiple-waiters regression test); in `banager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (4 tests, new — including the M7 concurrent-save regression test) and `ipc::` (10 tests, new — including the three F1 plan-rejection tests) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
 
 ---
 
@@ -3801,7 +3801,7 @@ Replace `package.json` with:
 
 ```json
 {
-  "name": "canager",
+  "name": "banager",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -3859,7 +3859,7 @@ Create `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -4136,7 +4136,7 @@ describe("App", () => {
 - [ ] **Step 9: Run the test, verify it fails**
 
 Run: `pnpm exec vitest run src/App.test.tsx`
-Expected: FAIL — the current `src/App.tsx` still renders the create-tauri-app template (a "Canager" `h1`, Vite/Tauri/React logos and a greet form), so no heading named "Installed" exists yet.
+Expected: FAIL — the current `src/App.tsx` still renders the create-tauri-app template (a "Banager" `h1`, Vite/Tauri/React logos and a greet form), so no heading named "Installed" exists yet.
 
 - [ ] **Step 10: Rewrite the shell, delete template leftovers**
 
@@ -5895,7 +5895,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -6426,7 +6426,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -7564,7 +7564,7 @@ Replace `src/i18n/en.json`:
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -9023,7 +9023,7 @@ Add these top-level keys to `src/i18n/en.json`:
   "loading": "Loading settings…",
   "showTechnicalDetails": {
     "label": "Show technical details",
-    "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+    "description": "Reveal version numbers, file paths, and the exact commands Banager runs."
   },
   "language": {
     "label": "Language",
@@ -9416,7 +9416,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
 ```json
 {
   "app": {
-    "title": "Canager",
+    "title": "Banager",
     "operationBarRegion": "操作状态"
   },
   "nav": {
@@ -9508,7 +9508,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
     "loading": "正在加载设置…",
     "showTechnicalDetails": {
       "label": "显示技术细节",
-      "description": "显示版本号、文件路径,以及 Canager 实际执行的命令。"
+      "description": "显示版本号、文件路径,以及 Banager 实际执行的命令。"
     },
     "language": {
       "label": "语言",
@@ -9999,7 +9999,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(
-      await screen.findByText("Canager can't run as an administrator"),
+      await screen.findByText("Banager can't run as an administrator"),
     ).toBeInTheDocument();
   });
 
@@ -10212,11 +10212,11 @@ Add this top-level key to `src/i18n/en.json` (the loading branch reuses the exis
   },
   "noHomebrew": {
     "title": "Homebrew isn't installed yet",
-    "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
+    "description": "Banager manages tools installed through Homebrew. Install Homebrew first, then come back here."
   },
   "refusedAsRoot": {
-    "title": "Canager can't run as an administrator",
-    "description": "Homebrew refuses to run under the root user for safety. Quit Canager, then open it again from your normal user account."
+    "title": "Banager can't run as an administrator",
+    "description": "Homebrew refuses to run under the root user for safety. Quit Banager, then open it again from your normal user account."
   },
   "refreshFailed": {
     "title": "Some data might be out of date",
@@ -10242,11 +10242,11 @@ And this matching top-level key to `src/i18n/zh-CN.json` (this keeps Task 16's k
   },
   "noHomebrew": {
     "title": "还没有安装 Homebrew",
-    "description": "Canager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
+    "description": "Banager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
   },
   "refusedAsRoot": {
-    "title": "Canager 不能以管理员身份运行",
-    "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Canager,改用你平时的用户账户重新打开。"
+    "title": "Banager 不能以管理员身份运行",
+    "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Banager,改用你平时的用户账户重新打开。"
   },
   "refreshFailed": {
     "title": "部分数据可能不是最新的",
@@ -10495,7 +10495,7 @@ jobs:
 
       - name: live homebrew smoke (install/inventory/uninstall hello)
         env:
-          CANAGER_LIVE: "1"
+          BANAGER_LIVE: "1"
         run: cargo test -p banager-core --test brew_live -- --ignored --nocapture
 
       - name: pnpm install
@@ -10519,7 +10519,7 @@ Expected: one match — `        run: pnpm test` — on the line just added betw
 - [ ] **Step 6: Confirm the whole workflow still passes, command by command**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm install --frozen-lockfile && pnpm test && pnpm build && pnpm tauri build --target universal-apple-darwin --no-bundle`
-Expected: PASS end to end, exit code 0 — this is the exact command sequence `ci.yml` now runs (minus the `CANAGER_LIVE` smoke test, which needs a real Homebrew and is optional here), so a clean local pass is strong evidence the workflow will pass in CI too.
+Expected: PASS end to end, exit code 0 — this is the exact command sequence `ci.yml` now runs (minus the `BANAGER_LIVE` smoke test, which needs a real Homebrew and is optional here), so a clean local pass is strong evidence the workflow will pass in CI too.
 
 - [ ] **Step 7: Commit**
 

@@ -9,7 +9,7 @@ disagrees with one of these files, the parser is wrong.
 Commands (all read-only; `rustup update`, `rustup self update`, `rustup self
 uninstall`, `rustup toolchain list` and `rustup check` were **not** run — the
 only rustup invocation is `--version`, run once, under
-`RUSTUP_AUTO_INSTALL=0`, the switch every version read Canager makes
+`RUSTUP_AUTO_INSTALL=0`, the switch every version read Banager makes
 carries):
 - `RUSTUP_AUTO_INSTALL=0 ~/.cargo/bin/rustup --version` -> `version.txt`
   (stdout: `rustup <version> (<hash> <date>)`; the version is the second
@@ -40,7 +40,7 @@ carries):
   link text is relative, `cargo -> rustup`).
 
 Layout on this Mac: `drwxr-xr-x@ ~/.cargo` and `drwxr-xr-x@ ~/.rustup` —
-both real directories, the standard layout, which is the only one Canager
+both real directories, the standard layout, which is the only one Banager
 offers the uninstall for (`rustup::standard_roots`); 0 of `CARGO_HOME`,
 `RUSTUP_HOME` and `ZDOTDIR` were set in the recording shell. Homebrew's
 rustup formula (`Cellar/rustup` under `/opt/homebrew` or `/usr/local`, the
@@ -49,7 +49,7 @@ for both, so it is not installed, and the preview's Homebrew line was not
 exercised on this Mac.
 
 Shell startup files on the recording day (`grep -n 'cargo/env'` over the
-eight files Canager reads, home spelled `~`):
+eight files Banager reads, home spelled `~`):
 - `~/.zshenv:1:. "$HOME/.cargo/env"`
 - `~/.profile:1:. "$HOME/.cargo/env"`
 - `~/.zshrc:17:. "$HOME/.cargo/env"`

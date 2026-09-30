@@ -1,8 +1,8 @@
-# Canager Phase 3 Implementation Plan: The Other Sources
+# Banager Phase 3 Implementation Plan: The Other Sources
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Canager see everything a neglected Mac actually accumulated, not just Homebrew: global npm packages, pipx and uv tools, pip packages (read-only), cargo binaries, and Ollama models — each with the same guarantees Homebrew already has (an exact command preview before anything destructive, a live log, a working cancel, and a post-execution check that the machine really changed).
+**Goal:** Make Banager see everything a neglected Mac actually accumulated, not just Homebrew: global npm packages, pipx and uv tools, pip packages (read-only), cargo binaries, and Ollama models — each with the same guarantees Homebrew already has (an exact command preview before anything destructive, a live log, a working cancel, and a post-execution check that the machine really changed).
 
 **Architecture:** Six new adapters behind the existing `Adapter` trait. Two of them need the network, so this phase adds an `HttpClient` trait with a real and a mock implementation, mirroring how `CommandRunner` already makes subprocess work testable. The trait gains a `CheckOptions` parameter so a setting can reach `check_updates` (the change `greedy_casks` needed). Everything destructive still flows through a subprocess `Plan`, including Ollama — see the ruling below.
 
@@ -18,12 +18,12 @@ Recorded as a deliberate deviation. If a later phase needs byte-level progress b
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-09-17-canager-design.md`. §3 (data flow), §4.1–4.2 (adapters, per-source commands), §5 (data model), §6 (execution and safety), §7 (UI), §11 (testing) bind this phase.
+- Spec: `docs/superpowers/specs/2026-09-17-banager-design.md`. §3 (data flow), §4.1–4.2 (adapters, per-source commands), §5 (data model), §6 (execution and safety), §7 (UI), §11 (testing) bind this phase.
 - Backlog: `docs/superpowers/backlog.md`. Everything under "阶段 3（其余来源）/ 存储与刷新层" is implemented here and must not be deferred again. The phase-2 deferrals named in Task 13 are also in scope.
 - macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1. `banager-core` never depends on `tauri` and never creates a tokio runtime.
 - Commands are argv arrays with an absolute program path, never a shell string. Package names pass `validate_package_name` before they reach any argv.
 - Every destructive action previews its exact command before running. Operations that need a password say so first. The front end never builds an argv, never decides what is safe to remove, and never guesses an outcome.
-- Network access is confined to the `HttpClient` trait. No adapter calls reqwest directly, so every network path has a mock in tests. Requests carry a `canager/{version}` User-Agent and a 30-second timeout.
+- Network access is confined to the `HttpClient` trait. No adapter calls reqwest directly, so every network path has a mock in tests. Requests carry a `banager/{version}` User-Agent and a 30-second timeout.
 - A background refresh never launches an application, never prompts for a password, and never writes to the machine.
 - No business logic in TypeScript. Components never call `invoke`; only `src/lib/api.ts` does. No hard-coded user-visible strings — every one goes through `t()`, with matching keys in `en.json` and `zh-CN.json` (the parity test enforces this).
 - Colours use `bg-[var(--color-x)]` arbitrary values only; never bare semantic classes, never hex.
@@ -47,7 +47,7 @@ Recorded as a deliberate deviation. If a later phase needs byte-level progress b
 ```
 crates/banager-core/src/
 ├── http/mod.rs             NEW  HttpClient trait, HttpRequest/HttpResponse, HttpError
-├── http/real.rs            NEW  RealHttpClient (reqwest, rustls, 30s timeout, canager UA)
+├── http/real.rs            NEW  RealHttpClient (reqwest, rustls, 30s timeout, banager UA)
 ├── http/mock.rs            NEW  MockHttpClient (url -> canned response, records calls)
 ├── adapters/mod.rs         MOD  CheckOptions; Adapter::check_updates gains it; AdapterMeta::unverified_version; shared run_plan + second_token helpers
 ├── adapters/brew/mod.rs    MOD  honour CheckOptions.include_self_updating (--greedy); degrade a failed `brew update` to a warning instead of failing the whole check; serialise maybe_update per instance
@@ -103,7 +103,7 @@ pub trait HttpClient: Send + Sync {
 }
 
 pub struct RealHttpClient { /* private */ }
-impl RealHttpClient { pub fn new() -> RealHttpClient; }   // rustls, 30s default, UA "canager/{CARGO_PKG_VERSION}"
+impl RealHttpClient { pub fn new() -> RealHttpClient; }   // rustls, 30s default, UA "banager/{CARGO_PKG_VERSION}"
 
 pub struct MockHttpClient { /* private */ }
 impl MockHttpClient {
@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_real_http_client_sends_the_canager_user_agent() {
+    async fn test_real_http_client_sends_the_banager_user_agent() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -683,8 +683,8 @@ mod tests {
 
         let request_text = captured.await.expect("server task panicked");
         assert!(
-            request_text.contains(&format!("canager/{}", env!("CARGO_PKG_VERSION"))),
-            "expected the canager User-Agent in the request, got: {request_text}"
+            request_text.contains(&format!("banager/{}", env!("CARGO_PKG_VERSION"))),
+            "expected the banager User-Agent in the request, got: {request_text}"
         );
     }
 
@@ -742,7 +742,7 @@ Rewrite `crates/banager-core/src/http/real.rs` (keeping the `tests` module from 
 ```rust
 //! `RealHttpClient` wraps a `reqwest::Client` pinned to the rustls TLS
 //! backend (never native-tls/openssl — Global Constraints). Every request
-//! carries the `canager/{version}` User-Agent and a 30-second client-wide
+//! carries the `banager/{version}` User-Agent and a 30-second client-wide
 //! default timeout; `HttpRequest::timeout` overrides that default on a
 //! per-request basis.
 
@@ -755,7 +755,7 @@ pub struct RealHttpClient {
 
 impl RealHttpClient {
     pub fn new() -> RealHttpClient {
-        let user_agent = format!("canager/{}", env!("CARGO_PKG_VERSION"));
+        let user_agent = format!("banager/{}", env!("CARGO_PKG_VERSION"));
         let client = reqwest::Client::builder()
             .tls_backend_rustls()
             .user_agent(user_agent)
@@ -854,7 +854,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_real_http_client_sends_the_canager_user_agent() {
+    async fn test_real_http_client_sends_the_banager_user_agent() {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -892,8 +892,8 @@ mod tests {
 
         let request_text = captured.await.expect("server task panicked");
         assert!(
-            request_text.contains(&format!("canager/{}", env!("CARGO_PKG_VERSION"))),
-            "expected the canager User-Agent in the request, got: {request_text}"
+            request_text.contains(&format!("banager/{}", env!("CARGO_PKG_VERSION"))),
+            "expected the banager User-Agent in the request, got: {request_text}"
         );
     }
 
@@ -1064,7 +1064,7 @@ Modify `crates/banager-core/src/session/mod.rs`:
 
           if BrewAdapter::refuses_as_root(env) {
               // This refresh ran to completion: it did not fail, it answered
-              // "Canager cannot run as root", which is a definitive result
+              // "Banager cannot run as root", which is a definitive result
               // about the host and not a missing one. So it stamps
               // `refreshed_at` like any other completed refresh. Carrying
               // `previous.refreshed_at` forward instead left it `None` on a
@@ -1361,7 +1361,7 @@ Modify `crates/banager-core/src/settings.rs`:
       /// Feeds CheckOptions.include_self_updating. Default false: most people
       /// do not want Chrome and Docker listed as updatable when those apps
       /// update themselves. `#[serde(default)]` so a settings.json written by
-      /// an older Canager version (or a front end not yet sending this field)
+      /// an older Banager version (or a front end not yet sending this field)
       /// still deserializes instead of losing every other field to
       /// `Settings::default()` in `load()`.
       #[serde(default)]
@@ -2748,7 +2748,7 @@ Modify `crates/banager-core/src/adapters/npm.rs` — add these tests inside the 
     #[tokio::test]
     async fn test_detect_finds_npm_on_path_and_resolves_its_global_prefix() {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-detect-{}-{}",
+            "banager-npm-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2802,7 +2802,7 @@ Modify `crates/banager-core/src/adapters/npm.rs` — add these tests inside the 
     #[tokio::test]
     async fn test_detect_flags_an_unverified_version() {
         let dir = std::env::temp_dir().join(format!(
-            "canager-npm-detect-unverified-{}-{}",
+            "banager-npm-detect-unverified-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -4112,7 +4112,7 @@ Append to the `#[cfg(test)] mod tests` block in `crates/banager-core/src/adapter
         // a real system path — so this test cannot collide with, depend on,
         // or modify anything actually installed on the machine running it.
         let tmp_dir = std::env::temp_dir().join(format!(
-            "canager-pipx-detect-{}-{}",
+            "banager-pipx-detect-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5465,7 +5465,7 @@ impl PipAdapter {
     /// that is not the same as "the user asked for this", so packages in
     /// that set map to `InstallReason::Unknown`, and everything else (something
     /// depends on it) maps to `InstallReason::Dependency`. pip never tells
-    /// Canager what the user explicitly typed `pip install` for, so
+    /// Banager what the user explicitly typed `pip install` for, so
     /// `InstallReason::Requested` is never used here (this phase's documented
     /// trap for pip).
     pub async fn inventory(
@@ -5812,7 +5812,7 @@ Append to `impl PipAdapter { ... }` in `crates/banager-core/src/adapters/pip.rs`
         ))
     }
 
-    /// pip is read-only in Canager (contract: "capabilities() returns false
+    /// pip is read-only in Banager (contract: "capabilities() returns false
     /// for per_item_upgrade, upgrade_all and uninstall, and plan() must
     /// refuse those kinds with a clear AdapterError::Unsupported rather than
     /// building an argv nobody should run"). Every `OpKind` refuses here,
@@ -5820,7 +5820,7 @@ Append to `impl PipAdapter { ... }` in `crates/banager-core/src/adapters/pip.rs`
     /// affordances for a pip-backed artifact never reach a working `Plan`.
     pub async fn plan(&self, _inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
         Err(AdapterError::Unsupported(format!(
-            "pip is read-only in Canager; use pipx or uv to manage {}",
+            "pip is read-only in Banager; use pipx or uv to manage {}",
             req.name
         )))
     }
@@ -5839,7 +5839,7 @@ Append to `impl PipAdapter { ... }` in `crates/banager-core/src/adapters/pip.rs`
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         Err(AdapterError::Unsupported(
-            "pip is read-only in Canager".to_string(),
+            "pip is read-only in Banager".to_string(),
         ))
     }
 
@@ -5959,7 +5959,7 @@ git add crates/banager-core/src/adapters/pip.rs crates/banager-core/src/adapters
 git commit -m "$(cat <<'EOF'
 feat(adapters): add read-only pip adapter
 
-pip is read-only in Canager: capabilities() reports no write
+pip is read-only in Banager: capabilities() reports no write
 operations and plan() refuses every OpKind with a clear
 AdapterError::Unsupported before any argv is built, pointing at
 pipx/uv instead. execute() is therefore unreachable and says so
@@ -6054,7 +6054,7 @@ mod tests {
         // so this cannot depend on whether the machine running it actually
         // has cargo-binstall installed.
         let dir = std::env::temp_dir().join(format!(
-            "canager-binstall-{}-{}",
+            "banager-binstall-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -6373,7 +6373,7 @@ impl CargoAdapter {
 
     /// Registry-sourced crates are checked one at a time against crates.io.
     /// Git and path sources are `checkable: false` with a reason
-    /// unconditionally — Canager has no way to check those for updates at
+    /// unconditionally — Banager has no way to check those for updates at
     /// all, so every such crate always gets a row explaining why, not just
     /// the ones that happen to be outdated (contract: "git and path sources
     /// are checkable: false with a reason").
@@ -6445,7 +6445,7 @@ Append inside the `#[cfg(test)] mod tests { use super::*; ... }` block in `crate
 
     fn temp_cargo_home(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "canager-cargo-home-{}-{}-{}",
+            "banager-cargo-home-{}-{}-{}",
             tag,
             std::process::id(),
             std::time::SystemTime::now()
@@ -6726,7 +6726,7 @@ Append to `impl CargoAdapter { ... }` in `crates/banager-core/src/adapters/cargo
         _query: &str,
     ) -> Result<Vec<SearchHit>, AdapterError> {
         Err(AdapterError::Unsupported(
-            "cargo has no search command Canager uses; browse crates.io directly".to_string(),
+            "cargo has no search command Banager uses; browse crates.io directly".to_string(),
         ))
     }
 
@@ -6914,7 +6914,7 @@ feat(adapters): add cargo adapter over .crates2.json and crates.io
 .crates2.json carries name/version/source in the installs object's
 JSON key, not its value. Registry-sourced crates are checked against
 crates.io; git and path sources are always checkable:false with a
-reason, since Canager cannot check either for updates. Installing
+reason, since Banager cannot check either for updates. Installing
 or upgrading without cargo-binstall present warns that it compiles
 locally; when it is present, the path previewed is the one detect
 resolved through HostEnv, so the preview cannot name a program the
@@ -7227,7 +7227,7 @@ mod tests {
         .expect("read registry manifest fixture");
 
         let tmp_root = std::env::temp_dir().join(format!(
-            "canager-ollama-manifests-{}-{}",
+            "banager-ollama-manifests-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -7287,7 +7287,7 @@ mod tests {
         .expect("read registry manifest fixture");
 
         let home = std::env::temp_dir().join(format!(
-            "canager-ollama-home-{}-{}",
+            "banager-ollama-home-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -7320,11 +7320,11 @@ mod tests {
     #[tokio::test]
     async fn test_check_updates_marks_a_model_uncheckable_when_the_local_manifest_is_missing() {
         // Edge case the fixture cannot show directly: the local manifest
-        // file is absent (e.g. deleted out from under Canager).
+        // file is absent (e.g. deleted out from under Banager).
         let tags_json = std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
             .expect("read ollama api-tags.json fixture");
         let home = std::env::temp_dir().join(format!(
-            "canager-ollama-missing-manifest-{}-{}",
+            "banager-ollama-missing-manifest-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -7822,7 +7822,7 @@ Append to `impl OllamaAdapter { ... }` in `crates/banager-core/src/adapters/olla
         _query: &str,
     ) -> Result<Vec<SearchHit>, AdapterError> {
         Err(AdapterError::Unsupported(
-            "Ollama has no search command Canager uses; browse the model library directly".to_string(),
+            "Ollama has no search command Banager uses; browse the model library directly".to_string(),
         ))
     }
 
@@ -8338,7 +8338,7 @@ Expected: PASS — the new test, plus every pre-existing `session::tests::*` tes
 - [ ] **Step 11: Run the full gate**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: all clean; the full `banager-core` and `canager` test suites pass, including every pre-existing `session::tests::*` test unchanged.
+Expected: all clean; the full `banager-core` and `banager` test suites pass, including every pre-existing `session::tests::*` test unchanged.
 
 - [ ] **Step 12: Commit**
 
@@ -8469,7 +8469,7 @@ describe("SourceNotice", () => {
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `cargo test -p canager ipc::tests::open_ollama_app`
+Run: `cargo test -p banager ipc::tests::open_ollama_app`
 Expected: FAIL to compile — `cannot find function 'open_ollama_app_argv' in this scope` (and the same for `open_ollama_app_impl_with`).
 
 Run: `pnpm exec vitest run src/components/SourceNotice.test.tsx src/components/ArtifactRow.test.tsx`
@@ -8662,7 +8662,7 @@ export function ArtifactRow({
 
 - [ ] **Step 4: Run them to verify they pass**
 
-Run: `cargo test -p canager ipc::tests::open_ollama_app`
+Run: `cargo test -p banager ipc::tests::open_ollama_app`
 Expected: PASS (3 tests), and no application launches.
 
 Run: `pnpm exec vitest run src/components/SourceNotice.test.tsx src/components/ArtifactRow.test.tsx`
@@ -8938,7 +8938,7 @@ const ADAPTER_LABEL_KEYS: Record<string, string> = {
 };
 
 // pip can only report what is installed; it offers no install/uninstall
-// path Canager could safely drive (spec's per-adapter contract table).
+// path Banager could safely drive (spec's per-adapter contract table).
 // Read-only here is a presentational fact about that one source, not a
 // judgement call the UI is making on its own.
 const READ_ONLY_ADAPTER_IDS = new Set(["pip"]);
@@ -9343,7 +9343,7 @@ Add a new top-level key, after `"commandPreview": { ... },`:
   "sourceNotice": {
     "pipReadOnly": {
       "title": "Read-only: pip packages",
-      "description": "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
+      "description": "Banager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
     },
     "ollamaNotRunning": {
       "title": "Ollama isn't running",
@@ -9385,7 +9385,7 @@ Add a new top-level key, after `"commandPreview": { ... },`:
   "sourceNotice": {
     "pipReadOnly": {
       "title": "只读:pip 包",
-      "description": "Canager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
+      "description": "Banager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
     },
     "ollamaNotRunning": {
       "title": "Ollama 没有运行",
@@ -10111,7 +10111,7 @@ and, in `state_with_fake_adapter_and_now`, add the new field to the existing `Fa
         });
 ```
 
-Run: `cargo test -p canager ipc::tests::test_refresh_impl_broadcasts_snapshot_changed_exactly_once_when_two_calls_coalesce`
+Run: `cargo test -p banager ipc::tests::test_refresh_impl_broadcasts_snapshot_changed_exactly_once_when_two_calls_coalesce`
 Expected: FAIL — `broadcasts` is `[N, N]` (two identical broadcasts) instead of `[N]`.
 
 - [ ] **Step 8: no double `SnapshotChanged` — implement and confirm it passes**
@@ -10215,7 +10215,7 @@ In `state_with_fake_adapter_and_now`, add the new field to its `AppState { ... }
         };
 ```
 
-Run: `cargo test -p canager ipc::tests::`
+Run: `cargo test -p banager ipc::tests::`
 Expected: PASS — every `ipc::tests::*` test, including the new one, the two pre-existing `SnapshotChanged` tests (`test_refresh_impl_broadcasts_snapshot_changed_when_the_generation_moves`, `test_refresh_impl_does_not_rebroadcast_when_the_generation_is_unchanged`), and Task 2's two `include_self_updating` end-to-end tests, all unchanged.
 
 - [ ] **Step 9: Run the full gate**

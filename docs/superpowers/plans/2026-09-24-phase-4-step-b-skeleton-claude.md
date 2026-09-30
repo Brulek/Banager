@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give Canager its first source that is not a package manager: a *Claude Code* group on the Installed page for the native install (`~/.local/bin/claude` → `~/.local/share/claude/versions/<v>`), an honest update badge read from the launcher's live version against Anthropic's channel pointer, a working `claude update` button, five notices that say which copy of `claude` runs when the user types its name (or that only a dangling launcher is left), and a row that truthfully says it cannot be uninstalled here yet — with the `StandaloneAdapter` skeleton every later standalone tool (agy, grok, rustup) is a data row for.
+**Goal:** Give Banager its first source that is not a package manager: a *Claude Code* group on the Installed page for the native install (`~/.local/bin/claude` → `~/.local/share/claude/versions/<v>`), an honest update badge read from the launcher's live version against Anthropic's channel pointer, a working `claude update` button, five notices that say which copy of `claude` runs when the user types its name (or that only a dangling launcher is left), and a row that truthfully says it cannot be uninstalled here yet — with the `StandaloneAdapter` skeleton every later standalone tool (agy, grok, rustup) is a data row for.
 
 **Architecture:** One Rust type, `StandaloneAdapter`, driven by a `&'static Recipe`, registered once per tool under the adapter id `standalone-<tool>` (spec D1); the instance *is* the native install (`exe_path` = the launcher symlink, `prefix` = the tool root, one `ArtifactKind::Binary` artifact, spec D2). Detection checks the installer's fixed path, never `PATH` (D3); the newest version comes from a VERIFIED endpoint and a candidate exists only when remote > local by dotted-integer comparison (D4); a self-updating tool is badged as usual and its row says it usually updates itself (D5); upgrade is the tool's own `claude update` through the unchanged `run_plan` (D6); "which copy runs" is four payload-free `InstanceNote`s plus `LauncherOnly` (D7). No uninstall in this step: the artifact carries `UninstallBlocked::NoSafeMethod`, which the gate in `Session::issue_plan` refuses and both pages hide (spec §6.1, §十 row B).
 
 **Tech Stack:** Rust (banager-core: `std::fs` symlink/canonicalize, `serde_json` for one settings key, the existing `CommandRunner`/`HttpClient` seams, no new crate), TypeScript 5 `strict`, React 19, i18next, vitest.
 
-**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row B and argues from §一 D1–D7, §二, §三 (3.1–3.6), §四 (4.1, 4.3, 4.4), §五, §6.1, §七, §9.1–9.5 and 附录 A. Raw research it cites: `~/dev/Canager/.superpowers/phase4/claude.md` (tool facts, VERIFIED/UNVERIFIED per line) and `architecture.md` (code map). This plan will live at `docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`.
+**Spec:** `docs/superpowers/2026-09-24-phase-4-standalone-spec.md` (authoritative; Chinese). This plan implements §十 row B and argues from §一 D1–D7, §二, §三 (3.1–3.6), §四 (4.1, 4.3, 4.4), §五, §6.1, §七, §9.1–9.5 and 附录 A. Raw research it cites: `~/dev/Banager/.superpowers/phase4/claude.md` (tool facts, VERIFIED/UNVERIFIED per line) and `architecture.md` (code map). This plan will live at `docs/superpowers/plans/2026-09-24-phase-4-step-b-skeleton-claude.md`.
 
 ## Baseline, and how to read the anchors below
 
-Branch `feat/phase-4-standalone`. Originally written at `f574d9f`, 2026-09-24. Astra re-verified the findings on 2026-09-25 against `/Users/brulek/dev/Canager-phase4` at HEAD `d3890f4` plus uncommitted edits that were later abandoned (a pip-only `ManagerInstance.user_scripts_dir`; the controller removed every reference to it from this plan — the field does not exist). The worktree and spec were read only; this revision changes only this plan. Symbol anchors take precedence over historical line numbers. **Steps A and F land before this step executes**, so this plan treats their output as existing:
+Branch `feat/phase-4-standalone`. Originally written at `f574d9f`, 2026-09-24. Astra re-verified the findings on 2026-09-25 against `/Users/brulek/dev/Banager-phase4` at HEAD `d3890f4` plus uncommitted edits that were later abandoned (a pip-only `ManagerInstance.user_scripts_dir`; the controller removed every reference to it from this plan — the field does not exist). The worktree and spec were read only; this revision changes only this plan. Symbol anchors take precedence over historical line numbers. **Steps A and F land before this step executes**, so this plan treats their output as existing:
 
 - **A** (`docs/superpowers/plans/2026-09-24-phase-4-step-a-trust-and-guards.md`) adds `ALLOWED_HTTPS_HOSTS` and `host_allowed` to `crates/banager-core/src/http/real.rs`, makes `warningKey`/`warningArgs` in `src/lib/warnings.ts` exhaustive, and rewrites `docs/what-we-run.md` as one section per source with `crates/banager-core/tests/what_we_run_test.rs` holding it to the code (a `## <meta.name>` section per registered adapter; every host in `ALLOWED_HTTPS_HOSTS` named).
 - **F** (`docs/superpowers/plans/2026-09-24-phase-4-step-f-unknown-scan.md`) adds `crates/banager-core/src/scan/mod.rs` with `pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf>` whose standalone rows were explicitly deferred to this step, the Unknown page, `nav.unknown`, and pipx's `InstalledArtifact.path`.
@@ -25,7 +25,7 @@ Copied verbatim from the spec's binding rules (spec lines 20–23):
 
 > 产品规则一条不让（spec §1、§6）：每一步说人话；后台工作绝不问密码；执行前先看到确切命令；
 > 结果诚实——版本没动是 `NeedsAttention(UnchangedAfterUpgrade)`，中途停止是 `Unconfirmed`，
-> 没有证据绝不说成功；fixture 只收真机录制；Canager 不跑 shell、不把下载管进 `sh`；
+> 没有证据绝不说成功；fixture 只收真机录制；Banager 不跑 shell、不把下载管进 `sh`；
 > 界面绝不提供 Rust 会拒绝的操作；所有文案 en + zh-CN。
 
 And from spec §十 ("每一步只带**该步有生产者**的变体与字段——「先定义、后面某步再用」正是本项目最常见的缺陷") and §2.2/§2.3 ("每个新字段点名生产读取方"), applied to this step:
@@ -67,7 +67,7 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 11. **`parse_version` reads the first *non-empty* line's first token**, not literally "the first line" (spec §3.1): a leading blank line would otherwise make a perfectly working tool `NotResponding`. Recorded output has no such line; the rule costs nothing and is tested.
 12. **The `--version` environment is asserted with a spec-recording runner** defined in the adapter's test module: `MockRunner` keys and records argv only, and `DISABLE_AUTOUPDATER=1` is the whole point of spec §3.4.
 13. **Recorded values may differ from 2.1.281 on the recording day.** Every fixture-backed assertion derives its expectation from the meta file and the recorded files (Task 3, stage 9), and the recording instructions say what to rename if the installed version has moved. `2.1.281`, `/latest` → `2.1.281`, `/stable` → `2.1.273` are what this Mac answered on 2026-09-24 (re-checked read-only while writing this plan).
-14. **`sourceNotice.launcherOnly.description` is B-true copy, not spec §9.2's sentence.** The spec's sentence says "an earlier uninstall stopped partway; they may be in the Trash" and "Uninstall removes the link", written for the phase with step C's uninstall. In B no Canager uninstall exists (the state can only come from a manual or third-party removal of `~/.local/share/claude`), the `LauncherOnly` row's artifact carries `NoSafeMethod` (Task 3, stage 6), the gate refuses and the Installed page shows no Uninstall button on that very row — so the spec's sentence would tell the user to press a button that is not there. B's sentence (Task 1) says the link is left, that Canager cannot remove it yet, and points at the official install and uninstall instructions; `sources.test.ts` asserts it promises no uninstall. Step C restores the spec's sentence together with the uninstall that makes it true. The Rust and TS doc comments on `LauncherOnly` say the same.
+14. **`sourceNotice.launcherOnly.description` is B-true copy, not spec §9.2's sentence.** The spec's sentence says "an earlier uninstall stopped partway; they may be in the Trash" and "Uninstall removes the link", written for the phase with step C's uninstall. In B no Banager uninstall exists (the state can only come from a manual or third-party removal of `~/.local/share/claude`), the `LauncherOnly` row's artifact carries `NoSafeMethod` (Task 3, stage 6), the gate refuses and the Installed page shows no Uninstall button on that very row — so the spec's sentence would tell the user to press a button that is not there. B's sentence (Task 1) says the link is left, that Banager cannot remove it yet, and points at the official install and uninstall instructions; `sources.test.ts` asserts it promises no uninstall. Step C restores the spec's sentence together with the uninstall that makes it true. The Rust and TS doc comments on `LauncherOnly` say the same.
 15. **`installed.blocked.NoSafeMethod.description` says "can't yet move its files to the Trash safely", not spec §9.2's "doesn't yet have a verified list of the files".** For Claude Code the two-path list *is* verified (claude.md §7); what B lacks is C's Trasher. The sentence B ships is true for both cases §6.1's "Neither" covers (a second-batch tool before its list is verified; Claude Code before C), keeps `{{source}}` and no `{{command}}`, and changes no test but the exact-sentence assertion in `InstalledPage.test.tsx`, which Task 2 writes against it.
 
 ## What already exists (do not rebuild)
@@ -80,7 +80,7 @@ Where the spec leaves a choice to the step, or where this step's slice of the sp
 - `merge_instance_notes` is `extend` (`session/refresh.rs:589-600`), so detect's notes survive `check_updates`'s `CheckOutcome.notes`.
 - Front end: `ADAPTER_LABEL_KEYS` (`src/lib/sources.ts:18-26`) read at `InstalledPage.tsx:166`, `UpdatesPage.tsx:207`, `UpdatesPage.tsx:521`, `UninstallDialog.tsx:50`; `sourceNoticesFor`'s notes loop with its `never` (`sources.ts:198-225`); `UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCopy>` (`sources.ts:451-475`) read at `InstalledPage.tsx:144-146`, `:329-345` and `UninstallDialog.tsx:102-114`; `rowDescription` in `UpdatesPage.tsx:444-475` with `artifactsById` (`:335-341`), `isActionable` (`:287-288`), `sourceLabelFor` (`:518-523`); the description fallback `item.artifact.description ?? t("installed.noDescription")` at `InstalledPage.tsx:343`; `withCommand`/`COMMAND_SLOT` (`src/components/withCommand.tsx`: a sentence without the slot is returned unchanged, so a copy with no `{{command}}` renders as plain text); `updateStateOf` (`src/lib/updateState.ts:43-52`).
 - Test harnesses: `src/lib/sources.test.ts` (`fakeT`, `instance()`), `src/pages/InstalledPage.test.tsx` (`snapshot`, `settings`, the virtualizer stubs in `beforeEach`), `src/pages/UpdatesPage.test.tsx` (`snapshot`, the `updates`/`instances`/`artifacts` knobs in `beforeEach`, `wholeSentence`), `crates/banager-core/tests/ops_upgrade_version_test.rs` (`ScriptedRunner::script`, `exited_0`, `upgrade(&runner, adapter, inst, kind, name) -> Outcome`).
-- From A: `banager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}`; `docs/what-we-run.md` with `## Homebrew` … `## Ollama`, `## Files Canager reads`, `## Network: Canager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Canager never does`. From F: `owned_roots` in `scan/mod.rs` with `test_owned_roots_table` in its `mod tests`; `Known::index` reading `InstalledArtifact.path` (rule 2) and `ManagerInstance.exe_path` (rules 0/1).
+- From A: `banager_core::http::real::{ALLOWED_HTTPS_HOSTS, host_allowed}`; `docs/what-we-run.md` with `## Homebrew` … `## Ollama`, `## Files Banager reads`, `## Network: Banager only connects to these hosts` (a table `| Host | What is fetched | By |`), `## What Banager never does`. From F: `owned_roots` in `scan/mod.rs` with `test_owned_roots_table` in its `mod tests`; `Known::index` reading `InstalledArtifact.path` (rule 2) and `ManagerInstance.exe_path` (rules 0/1).
 
 ## File Structure
 
@@ -141,7 +141,7 @@ Execute 1 → 2 → 3 (stages 3 → 4 → 5 → 6 → 7 → 8 → 9) → 10 → 
 
 Five inputs the spec implies but no test would otherwise exercise, most likely to bite first. Each has its test in the task named.
 
-1. **`claude --version` prints a leading blank line or trailing whitespace** → the version must still parse, not turn the row into "Canager can't reach Claude Code" (Task 3, stage 3, `test_parse_version_skips_leading_blank_lines_and_trailing_space`).
+1. **`claude --version` prints a leading blank line or trailing whitespace** → the version must still parse, not turn the row into "Banager can't reach Claude Code" (Task 3, stage 3, `test_parse_version_skips_leading_blank_lines_and_trailing_space`).
 2. **`claude --version` hangs** (a pre-2.1.214 build scanning a directory named `.zshrc`, or a locked keychain prompt) → the 30 s runner timeout makes the instance `NotResponding`, no refresh hangs (Task 3, stage 6, `test_detect_marks_a_timed_out_version_read_as_not_responding`).
 3. **The channel endpoint answers with something that is not a version** (an HTML error page, a `v`-prefixed string) or `~/.claude/settings.json` carries `autoUpdatesChannel` as a non-string → an uncheckable row, resp. the `latest` channel; never a candidate built from garbage (Task 3, stage 3, `test_parse_channel_body_refuses_anything_that_is_not_a_version` and `test_claude_channel_from_json_defaults_to_latest_for_anything_but_stable`; Task 3, stage 7, `test_check_updates_marks_a_non_version_answer_uncheckable`).
 4. **`$HOME` is itself reached through a symlink** (a home on another volume, `/Users/x` → `/Volumes/…`) → the launcher still resolves *into* the root, because both sides are canonicalised before comparison, and the instance's `exe_path`/`prefix` keep the non-canonical spelling `HostEnv.home` gave (which is what the Unknown page's rule 0 compares raw) (Task 3, stage 5, `test_probe_accepts_a_home_reached_through_a_symlink`). The half-uninstalled twin — the same home, the program directory gone, the link text spelled through the real home — must still be `LauncherOnly`, not a row that vanishes and reappears as a broken link on the Unknown page; neither side canonicalises whole then, so `probe` canonicalises the deepest surviving ancestor of each (Task 3, stage 5, `test_probe_reports_launcher_only_under_a_home_reached_through_a_symlink`).
@@ -369,7 +369,7 @@ pub enum InstanceNote {
     /// again (see `Session::background_change`), so this clears by itself.
     IndexUpdating,
     /// Typing this tool's name in Terminal would not find it: the
-    /// directory its launcher lives in is not on the `PATH` Canager sees.
+    /// directory its launcher lives in is not on the `PATH` Banager sees.
     /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for
     /// a tool installed by its own installer; read by `sourceNoticesFor`
     /// in src/lib/sources.ts.
@@ -382,12 +382,12 @@ pub enum InstanceNote {
     /// As `ShadowedByHomebrew`, for a copy npm installed (it resolves under
     /// a `node_modules` directory).
     ShadowedByNpm,
-    /// As `ShadowedByHomebrew`, for a copy Canager does not recognise; the
+    /// As `ShadowedByHomebrew`, for a copy Banager does not recognise; the
     /// Unknown page may show where it is.
     ShadowedByOther,
     /// The launcher is still there but points at program files that are
     /// gone: the program directory was removed by hand or by another
-    /// tool (from step C on, also by a Canager uninstall that stopped
+    /// tool (from step C on, also by a Banager uninstall that stopped
     /// after moving it and before moving the launcher -- C's removal
     /// order makes that the only such state). The row stays, with no
     /// version, so the state is visible. In this step its artifact still
@@ -536,23 +536,23 @@ In `src/i18n/en.json`, inside `"sourceNotice": { … }`, after the `"indexUpdati
     },
     "shadowedByHomebrew": {
       "title": "Another copy runs when you type {{command}}",
-      "description": "Canager found this native copy of {{source}} and an executable in a Homebrew directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
+      "description": "Banager found this native copy of {{source}} and an executable in a Homebrew directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Banager may not list its installation."
     },
     "shadowedByNpm": {
       "title": "Another copy runs when you type {{command}}",
-      "description": "Canager found this native copy of {{source}} and an executable in a npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
+      "description": "Banager found this native copy of {{source}} and an executable in a npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Banager may not list its installation."
     },
     "shadowedByOther": {
       "title": "Another copy runs when you type {{command}}",
-      "description": "Canager found another executable earlier in its PATH than this copy of {{source}}. Typing {{command}} in Terminal will likely run that other copy. The Unknown page may show where it is."
+      "description": "Banager found another executable earlier in its PATH than this copy of {{source}}. Typing {{command}} in Terminal will likely run that other copy. The Unknown page may show where it is."
     },
     "launcherOnly": {
       "title": "Only the {{command}} link is left",
-      "description": "The program files targeted by this {{command}} link are missing, so this launcher cannot run. Another installation may still work in Terminal. Canager can't remove the link yet. To get {{source}} back, reinstall it following the official instructions on its website; to finish removing it, follow the uninstall steps on the same page."
+      "description": "The program files targeted by this {{command}} link are missing, so this launcher cannot run. Another installation may still work in Terminal. Banager can't remove the link yet. To get {{source}} back, reinstall it following the official instructions on its website; to finish removing it, follow the uninstall steps on the same page."
     }
 ```
 
-(Not spec §9.2's sentence, which says "an earlier uninstall stopped partway; they may be in the Trash" and "Uninstall removes the link": in this step no Canager uninstall exists, the row's artifact carries `NoSafeMethod`, and the Installed page shows no Uninstall button on it, so both clauses would be false. Step C restores the spec's sentence with the uninstall that makes it true -- ruling 14.)
+(Not spec §9.2's sentence, which says "an earlier uninstall stopped partway; they may be in the Trash" and "Uninstall removes the link": in this step no Banager uninstall exists, the row's artifact carries `NoSafeMethod`, and the Installed page shows no Uninstall button on it, so both clauses would be false. Step C restores the spec's sentence with the uninstall that makes it true -- ruling 14.)
 
 In `src/i18n/zh-CN.json`, the same position:
 
@@ -563,19 +563,19 @@ In `src/i18n/zh-CN.json`, the same position:
     },
     "shadowedByHomebrew": {
       "title": "输入 {{command}} 时运行的是另一份",
-      "description": "Canager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 Homebrew 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。可以在「已安装」页找找，但 Canager 不一定能列出那份安装。"
+      "description": "Banager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 Homebrew 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。可以在「已安装」页找找，但 Banager 不一定能列出那份安装。"
     },
     "shadowedByNpm": {
       "title": "输入 {{command}} 时运行的是另一份",
-      "description": "Canager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 npm 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。可以在「已安装」页找找，但 Canager 不一定能列出那份安装。"
+      "description": "Banager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 npm 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。可以在「已安装」页找找，但 Banager 不一定能列出那份安装。"
     },
     "shadowedByOther": {
       "title": "输入 {{command}} 时运行的是另一份",
-      "description": "Canager 在它的 PATH 中找到了比这份 {{source}} 更靠前的另一个可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。「来源不明」页可能能看到它在哪。"
+      "description": "Banager 在它的 PATH 中找到了比这份 {{source}} 更靠前的另一个可执行文件。在「终端」里输入 {{command}} 时，多半运行的是另一份。「来源不明」页可能能看到它在哪。"
     },
     "launcherOnly": {
       "title": "只剩下 {{command}} 这个链接了",
-      "description": "这个 {{command}} 链接指向的程序文件已经不在了，这个启动器无法运行。另一份安装在「终端」里可能仍然可用。Canager 还不能移走这个链接。想把 {{source}} 装回来，按它网站上的官方说明重新安装；想彻底删掉，按同一页的卸载说明做。"
+      "description": "这个 {{command}} 链接指向的程序文件已经不在了，这个启动器无法运行。另一份安装在「终端」里可能仍然可用。Banager 还不能移走这个链接。想把 {{source}} 装回来，按它网站上的官方说明重新安装；想彻底删掉，按同一页的卸载说明做。"
     }
 ```
 
@@ -662,7 +662,7 @@ In `crates/banager-core/src/session/plans.rs`, after the closing `}` of `test_is
     #[tokio::test]
     async fn test_issue_plan_refuses_an_uninstall_with_no_safe_method_but_plans_its_upgrade() {
         // `UninstallBlocked::NoSafeMethod`: the tool has no uninstall
-        // command and Canager has no safe way yet to remove its files, so
+        // command and Banager has no safe way yet to remove its files, so
         // its inventory entry carries the refusal (phase 4 step B: Claude
         // Code, whose two-path list is verified but which nothing can move
         // to the Trash until step C). Per package, like `Pinned`: the same
@@ -719,7 +719,7 @@ In `src/lib/sources.test.ts`, append inside `describe("UNINSTALL_BLOCKED_KEYS", 
 ```ts
 
   it("carries no command for a tool with no safe uninstall method: there is nothing to run first", () => {
-    // Unlike a pin, nothing the user runs can make Canager able to
+    // Unlike a pin, nothing the user runs can make Banager able to
     // uninstall it; the sentence points at the tool's own instructions
     // and has no `{{command}}` slot, so `withCommand` renders it as plain
     // text and `InstalledPage` sets no `<code>`.
@@ -767,7 +767,7 @@ In `src/pages/InstalledPage.test.tsx`, after the closing `});` of `it("promises 
 ```tsx
   it("offers no Uninstall on a tool with no safe uninstall method, and says so without a command", async () => {
     // `UninstallBlocked::NoSafeMethod` (phase 4): the tool has no
-    // uninstall command and Canager has no safe way yet to remove its
+    // uninstall command and Banager has no safe way yet to remove its
     // files, so the row explains itself in place of its blurb and hides
     // the button -- and, unlike a pin, sets no command as code, because
     // there is nothing to run first. `Session::issue_plan` refuses it in
@@ -818,7 +818,7 @@ In `src/pages/InstalledPage.test.tsx`, after the closing `});` of `it("promises 
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
     expect(
       getByText(
-        "Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
+        "Claude Code has no uninstall command, and Banager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
       ),
     ).toBeInTheDocument();
     expect(container.querySelector("code")).toBeNull();
@@ -842,17 +842,17 @@ In `crates/banager-core/src/model.rs`, replace the `UninstallBlocked` enum (`:22
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UninstallBlocked {
     /// `brew pin`, for a formula or a cask. Without `--force`, which
-    /// Canager never passes, `brew uninstall` prints "Error: <name> is
+    /// Banager never passes, `brew uninstall` prints "Error: <name> is
     /// pinned. You must unpin it to uninstall." and skips it
     /// (`uninstall.rb:48-49`, `cask/uninstall.rb:40-44` in Homebrew 7.0.6).
     /// For a formula it still exits 0, because that message goes through
-    /// `onoe`, not `ofail`, so without this Canager ran the command and
+    /// `onoe`, not `ofail`, so without this Banager ran the command and
     /// then reported `StillInstalledAfterUninstall`. Read by
     /// `parse_info_installed` in `adapters/brew/parse.rs`, from the
     /// `pinned` key `brew info --installed --json=v2` writes for every
     /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
     Pinned,
-    /// The tool has no uninstall command, and Canager has no safe way yet
+    /// The tool has no uninstall command, and Banager has no safe way yet
     /// to remove its files -- no verified list of them (a second-batch
     /// tool before verification), or a verified list but not yet the
     /// path-list uninstall that moves them to the Trash (Claude Code
@@ -910,7 +910,7 @@ and, inside `UNINSTALL_BLOCKED_KEYS` (`:451-475`), after the `Pinned: { … },` 
   NoSafeMethod: {
     badge: "installed.blocked.NoSafeMethod.badge",
     // No command: unlike a pin there is nothing the user can run to make
-    // Canager able to uninstall it, so the sentence has no `{{command}}`
+    // Banager able to uninstall it, so the sentence has no `{{command}}`
     // slot and `withCommand` returns it as plain text. It promises
     // nothing about when a button returns, so a silent source gets the
     // same sentence rather than a second key with the same words.
@@ -932,12 +932,12 @@ and in `"installed"` → `"blocked"`, after the `"Pinned": { … }` block add `,
 ```json
       "NoSafeMethod": {
         "badge": "Can't uninstall here",
-        "description": "{{source}} has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
-        "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
+        "description": "{{source}} has no uninstall command, and Banager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
+        "refused": "Banager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
       }
 ```
 
-(Not spec §9.2's sentence, which says "Canager doesn't yet have a verified list of the files it would need to remove": for Claude Code the two-path list *is* verified (claude.md §7), and what this step lacks is step C's way of moving them to the Trash. The sentence above is true for both cases §6.1's "Neither" covers -- a second-batch tool before its list is verified, and Claude Code before C -- and keeps `{{source}}` and no `{{command}}`, so the tests above hold. Ruling 15.)
+(Not spec §9.2's sentence, which says "Banager doesn't yet have a verified list of the files it would need to remove": for Claude Code the two-path list *is* verified (claude.md §7), and what this step lacks is step C's way of moving them to the Trash. The sentence above is true for both cases §6.1's "Neither" covers -- a second-batch tool before its list is verified, and Claude Code before C -- and keeps `{{source}}` and no `{{command}}`, so the tests above hold. Ruling 15.)
 
 In `src/i18n/zh-CN.json`, the same two positions:
 
@@ -948,8 +948,8 @@ In `src/i18n/zh-CN.json`, the same two positions:
 ```json
       "NoSafeMethod": {
         "badge": "无法在这里卸载",
-        "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。官方说明在它的网站上。",
-        "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
+        "description": "{{source}} 没有卸载命令，Banager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。官方说明在它的网站上。",
+        "refused": "Banager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
       }
 ```
 
@@ -970,7 +970,7 @@ git commit -m "$(cat <<'EOF'
 Add NoSafeMethod, the uninstall refusal for a tool with no verified way out
 
 A tool with no uninstall command and no safe way yet to remove its
-files cannot be uninstalled from Canager; the honest row says so and
+files cannot be uninstalled from Banager; the honest row says so and
 offers no button, and the gate in Session::issue_plan refuses it as it
 refuses a pinned package. Per artifact, not the instance's read-only
 reason, so the same tool's upgrade still works. The first producer is
@@ -1100,7 +1100,7 @@ mod tests {
         assert_eq!(compare_dotted("abc", "2.1.281"), None);
         assert_eq!(compare_dotted("2.1.281", "latest"), None);
         assert_eq!(compare_dotted("", ""), None);
-        // A component too large for an integer is not a version Canager
+        // A component too large for an integer is not a version Banager
         // will reason about either.
         assert_eq!(compare_dotted("1.99999999999999999999999", "2"), None);
     }
@@ -1145,7 +1145,7 @@ mod tests {
     #[test]
     fn test_claude_channel_reads_the_settings_file_under_home_and_defaults_when_absent() {
         let home = std::env::temp_dir().join(format!(
-            "canager-standalone-channel-{}-{}",
+            "banager-standalone-channel-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1451,8 +1451,8 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 }
 
 /// `claude_channel_from_json` over `<home>/.claude/settings.json`, the one
-/// file Canager reads for Claude Code (`docs/what-we-run.md`, "Files
-/// Canager reads"): read-only, and `latest` when it cannot be read.
+/// file Banager reads for Claude Code (`docs/what-we-run.md`, "Files
+/// Banager reads"): read-only, and `latest` when it cannot be read.
 pub fn claude_channel(home: &Path) -> &'static str {
     match std::fs::read_to_string(home.join(".claude").join("settings.json")) {
         Ok(json) => claude_channel_from_json(&json),
@@ -1500,7 +1500,7 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 - Consumes: the Task 3, stage 3 types; `AdapterMeta::from_toml` (`adapters/mod.rs:94-96`); `CancelPolicy::KillThenReconcile`.
 - Produces (verbatim): `pub static CLAUDE: Recipe`, `pub static RECIPES: &[&Recipe]` (readers: `StandaloneAdapter::new`/`all()`, Task 3, stages 6 and 8; the invariants tests here); `pub fn expand(home: &Path, spec: &str) -> PathBuf` (reader: `detect`, Task 3, stage 6); `adapters/meta/standalone-claude.toml` (readers: `CLAUDE.meta_toml` via `include_str!`; A's `what_we_run_test` once the id is registered, Task 3, stage 9).
 
-The recipe's every value and its source (claude.md, VERIFIED unless said): launcher `~/.local/bin/claude`, a symlink → `~/.local/share/claude/versions/2.1.281` (§2a, `ls -la`); root `~/.local/share/claude` (§2a); `--version` → `2.1.281 (Claude Code)` (§1); Anthropic documents that Claude Code checks for updates on startup, and `DISABLE_AUTOUPDATER=1` as stopping only that background check (§5, doc text) — whether a bare `--version` reaches the updater was not observed (the agy research found the opposite for that tool, spec §3.4), so the variable goes on every version read regardless; channel base `https://downloads.claude.ai/claude-code-releases`, `/latest` → `2.1.281`, `/stable` → `2.1.273`, both 200 without redirect (§4, and re-checked read-only on 2026-09-24 while writing this plan); self-updates in the background (§5, doc text); `claude update` is the documented updater, aliases `upgrade`, no options (§6); 1800 s is spec §4.1's install/upgrade budget and the binary is about 220 MB; `KillThenReconcile` stops the command and then reads current state, but a stopped upgrade stays `Unconfirmed` regardless of that reading: install.sh (read directly, §4) downloads each version to a new file under `versions/` and re-points the link only afterwards, but `claude update` is a compiled program whose steps were not read (§6 "No direct official statement", §8 open item), so Canager assumes nothing about interruption, the preview claims nothing, and the reading after (`--version`) gates success after exit 0; cancellation or timeout remains `Unconfirmed` as for every upgrade (spec §五 and `ops/mod.rs`).
+The recipe's every value and its source (claude.md, VERIFIED unless said): launcher `~/.local/bin/claude`, a symlink → `~/.local/share/claude/versions/2.1.281` (§2a, `ls -la`); root `~/.local/share/claude` (§2a); `--version` → `2.1.281 (Claude Code)` (§1); Anthropic documents that Claude Code checks for updates on startup, and `DISABLE_AUTOUPDATER=1` as stopping only that background check (§5, doc text) — whether a bare `--version` reaches the updater was not observed (the agy research found the opposite for that tool, spec §3.4), so the variable goes on every version read regardless; channel base `https://downloads.claude.ai/claude-code-releases`, `/latest` → `2.1.281`, `/stable` → `2.1.273`, both 200 without redirect (§4, and re-checked read-only on 2026-09-24 while writing this plan); self-updates in the background (§5, doc text); `claude update` is the documented updater, aliases `upgrade`, no options (§6); 1800 s is spec §4.1's install/upgrade budget and the binary is about 220 MB; `KillThenReconcile` stops the command and then reads current state, but a stopped upgrade stays `Unconfirmed` regardless of that reading: install.sh (read directly, §4) downloads each version to a new file under `versions/` and re-points the link only afterwards, but `claude update` is a compiled program whose steps were not read (§6 "No direct official statement", §8 open item), so Banager assumes nothing about interruption, the preview claims nothing, and the reading after (`--version`) gates success after exit 0; cancellation or timeout remains `Unconfirmed` as for every upgrade (spec §五 and `ops/mod.rs`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1689,7 +1689,7 @@ use super::recipe::{Latest, Recipe, Route, RouteKind, UpgradeCmd, VersionCmd, Ve
 use crate::model::CancelPolicy;
 
 /// Claude Code, the native install (`curl -fsSL https://claude.ai/install.sh
-/// | bash`, run by the user; Canager never runs it).
+/// | bash`, run by the user; Banager never runs it).
 ///
 /// Every value here is from `.superpowers/phase4/claude.md` (VERIFIED on
 /// this Mac or in Anthropic's own documentation, 2026-09-24, unless
@@ -1716,7 +1716,7 @@ use crate::model::CancelPolicy;
 ///   updater (§6). The install script downloads each version to a new
 ///   file under `versions/` and re-points the link only afterwards
 ///   (install.sh, read directly, §4); `claude update` itself is compiled
-///   and its steps were not read (§6, §8), so Canager assumes nothing
+///   and its steps were not read (§6, §8), so Banager assumes nothing
 ///   about interruption: `KillThenReconcile`, no claim in the preview,
 ///   and stopped upgrades remain `Unconfirmed` even if the version
 ///   changes. After exit 0, a readable version gates success. 1800 s
@@ -1845,7 +1845,7 @@ pub(super) mod testing {
     impl TempHome {
         pub fn new(tag: &str) -> TempHome {
             let raw = std::env::temp_dir().join(format!(
-                "canager-standalone-{tag}-{}-{}",
+                "banager-standalone-{tag}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -3126,14 +3126,14 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 - Modify: `crates/banager-core/src/adapters/standalone/mod.rs` (`check_updates`, `latest_version`; tests)]` line on `http`, now that this task reads the field)
 - Modify: `crates/banager-core/src/adapters/standalone/recipes.rs` (one test)
 - Modify: `crates/banager-core/src/http/real.rs` — A's `ALLOWED_HTTPS_HOSTS` constant, its doc comment, and one new test in `mod tests`  [A's file: anchor by the constant and the test names]
-- Modify: `docs/what-we-run.md` — the table under `## Network: Canager only connects to these hosts`  [A's file: anchor by the heading and the `registry.ollama.ai` row]
+- Modify: `docs/what-we-run.md` — the table under `## Network: Banager only connects to these hosts`  [A's file: anchor by the heading and the `registry.ollama.ai` row]
 - Test: `mod tests` in `standalone/mod.rs`, `recipes.rs`, `real.rs`; A's `tests/what_we_run_test.rs` (`test_what_we_run_names_every_allowed_https_host`) keeps passing.
 
 **Interfaces:**
 - Consumes: `Latest::ClaudeChannel`, `latest::{claude_channel, CHANNEL_LATEST, parse_channel_body, compare_dotted}` (Task 3, stage 3), `Detected.home` (Task 3, stage 6), `HttpClient::send`/`HttpRequest` (`http/mod.rs:18-46`), `uncheckable_candidate` (`adapters/mod.rs:269-284`), `UpdateCandidate`/`UpdateChannel::Registry` (`model.rs:313-327`, `:235-240`), `CheckOptions`/`CheckOutcome` (`adapters/mod.rs:26-80`), A's `host_allowed` (`banager_core::http::real::host_allowed`).
 - Produces (verbatim): `pub async fn check_updates(&self, inst: &ManagerInstance, opts: &CheckOptions) -> Result<CheckOutcome, AdapterError>` (reader: `impl Adapter`, Task 3, stage 8 → `Session::refresh`); `"downloads.claude.ai"` in `ALLOWED_HTTPS_HOSTS` (readers: A's `host_allowed` in `send`, the doc table, A's `what_we_run_test`, and `recipes::tests::test_every_recipe_latest_url_is_an_allowed_https_host` here).
 
-Rules (spec §4.1, §4.3, §4.4, D4, D5): the request goes to `{base}/{channel}`, 30 s, `GET`, no headers of Canager's own; a candidate only when `compare_dotted(current, remote) == Less`, with `channel: Registry`, `checkable: true`, `warnings: []`, `blocked: None`, `key` equal to the artifact's; equal or older remote → no candidate (never "everything is up to date" from a `stable` pointer that is behind); a network failure, a non-200, a body that is not a version, or an incomparable pair → one `uncheckable_candidate` naming the reason (never an `Err`, which would mark the whole source stale); `CheckOptions.include_self_updating` is not read (that switch is Homebrew's `--greedy`; the badge here is read from the launcher's live version and is true either way); `notes` empty.
+Rules (spec §4.1, §4.3, §4.4, D4, D5): the request goes to `{base}/{channel}`, 30 s, `GET`, no headers of Banager's own; a candidate only when `compare_dotted(current, remote) == Less`, with `channel: Registry`, `checkable: true`, `warnings: []`, `blocked: None`, `key` equal to the artifact's; equal or older remote → no candidate (never "everything is up to date" from a `stable` pointer that is behind); a network failure, a non-200, a body that is not a version, or an incomparable pair → one `uncheckable_candidate` naming the reason (never an `Err`, which would mark the whole source stale); `CheckOptions.include_self_updating` is not read (that switch is Homebrew's `--greedy`; the badge here is read from the launcher's live version and is true either way); `notes` empty.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3270,7 +3270,7 @@ Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs
         assert_eq!(http.calls(), vec![LATEST_URL.to_string()]);
         let request = &http.requests()[0];
         assert_eq!(request.method, "GET");
-        assert!(request.headers.is_empty(), "nothing of Canager's own but the client's UA");
+        assert!(request.headers.is_empty(), "nothing of Banager's own but the client's UA");
         assert_eq!(request.timeout, Duration::from_secs(30));
     }
 
@@ -3328,7 +3328,7 @@ Append inside `mod tests` in `crates/banager-core/src/adapters/standalone/mod.rs
 
     #[tokio::test]
     async fn test_check_updates_marks_a_failed_request_uncheckable_never_an_error() {
-        // A network failure is "Canager could not find out", not a failed
+        // A network failure is "Banager could not find out", not a failed
         // source (which would hold the snapshot stale): one row at the
         // installed version, `checkable: false`, with the reason.
         let home = TempHome::new("check-network");
@@ -3640,7 +3640,7 @@ to
 /// `send` refuses any other https host
 ```
 
-In `docs/what-we-run.md`, under `## Network: Canager only connects to these hosts`, after the table row that begins `| \`registry.ollama.ai\` |`, add:
+In `docs/what-we-run.md`, under `## Network: Banager only connects to these hosts`, after the table row that begins `| \`registry.ollama.ai\` |`, add:
 
 ```markdown
 | `downloads.claude.ai` | `GET /claude-code-releases/latest` or `/stable` — the newest published Claude Code version on that channel, answered as one bare version number | Claude Code's `check_updates` (`StandaloneAdapter`) |
@@ -3850,7 +3850,7 @@ Append to `crates/banager-core/tests/ops_upgrade_version_test.rs` (at the end of
 /// scripts only the two commands.
 fn claude_home(version: &str) -> (PathBuf, ManagerInstance) {
     let home = std::env::temp_dir().join(format!(
-        "canager-ops-claude-{}-{}",
+        "banager-ops-claude-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -4027,7 +4027,7 @@ In `crates/banager-core/src/adapters/standalone/mod.rs`, add to the imports `use
 
     /// Spec §五: the tool's own documented update command, run against the
     /// launcher through `run_plan` unchanged. `Install` is `Unsupported`
-    /// (the installer is Anthropic's and Canager never runs it; installing
+    /// (the installer is Anthropic's and Banager never runs it; installing
     /// tools is phase 5). `Uninstall` is refused with the artifact's own
     /// reason -- the gate (`blocked_uninstall`) refuses it first; this is
     /// its late twin for a stale snapshot. The one artifact is
@@ -4041,7 +4041,7 @@ In `crates/banager-core/src/adapters/standalone/mod.rs`, add to the imports `use
         }
         match req.kind {
             OpKind::Install => Err(AdapterError::Unsupported(format!(
-                "{} is installed by its own installer, which Canager never runs",
+                "{} is installed by its own installer, which Banager never runs",
                 self.meta.name
             ))),
             OpKind::Uninstall => Err(AdapterError::UninstallBlocked {
@@ -4176,7 +4176,7 @@ Continue to the next stage. The complete core task runs `cargo fmt --all` and al
 - Modify: `crates/banager-core/src/session/mod.rs:30-36` (imports), `:253-273` (`Session::new`), `:499-515` (`test_new_registers_all_seven_adapters`)
 - Modify: `crates/banager-core/src/scan/mod.rs` — `owned_roots` and `test_owned_roots_table`  [F's file]
 - Modify: `crates/banager-core/src/lib.rs` — the crate doc's list of sources  [F's file]
-- Modify: `docs/what-we-run.md` — intro, "Where the program comes from", a `## Claude Code` section, "Files Canager reads"  [A's and F's file]
+- Modify: `docs/what-we-run.md` — intro, "Where the program comes from", a `## Claude Code` section, "Files Banager reads"  [A's and F's file]
 - Test: `fixtures_layout_test.rs`, `what_we_run_test.rs` (both existing), the session test, the three fixture tests, `scan::tests::test_owned_roots_table`.
 
 **Interfaces:**
@@ -4260,7 +4260,7 @@ readme = "\n".join([
     "- `ls -la ~/.local/bin/claude ~/.local/share/claude/versions` -> `layout.txt`",
     "",
     "Both pointers answered direct HTTP 200; curl's checked status trailer is excluded from the saved bodies.",
-    "Canager adds the documented background-check switch to version reads. Whether bare --version starts that check was not observed. Manual updates work with the switch set.",
+    "Banager adds the documented background-check switch to version reads. Whether bare --version starts that check was not observed. Manual updates work with the switch set.",
     "No claude update, claude install, or bare claude was run.",
     f"Launcher link text: {link_text!r}.",
     f"brew list --cask claude-code: {brew}.",
@@ -4530,9 +4530,9 @@ The two sentences below are quoted on one line each, but in the file A hard-wrap
 
 (a) In the opening paragraph, change `for the seven sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo and Ollama.` to `for the eight sources it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama, and Claude Code (a tool with its own installer).`
 
-(b) Under `## How Canager runs anything`, in the paragraph `**Where the program comes from.**`, change the sentence `Every source but Homebrew finds its executable with \`resolve_exe\`: the first directory on that \`PATH\` containing a regular file of that name. Homebrew is looked for at three fixed paths instead (its section).` to `Every package manager but Homebrew finds its executable with \`resolve_exe\`: the first directory on that \`PATH\` containing a regular file of that name. Homebrew is looked for at three fixed paths instead (its section), and so is a tool with its own installer: Claude Code at the one path its installer writes (its section).`
+(b) Under `## How Banager runs anything`, in the paragraph `**Where the program comes from.**`, change the sentence `Every source but Homebrew finds its executable with \`resolve_exe\`: the first directory on that \`PATH\` containing a regular file of that name. Homebrew is looked for at three fixed paths instead (its section).` to `Every package manager but Homebrew finds its executable with \`resolve_exe\`: the first directory on that \`PATH\` containing a regular file of that name. Homebrew is looked for at three fixed paths instead (its section), and so is a tool with its own installer: Claude Code at the one path its installer writes (its section).`
 
-(c) After the `## Ollama` section's last paragraph (the one beginning `**The Open Ollama button** runs \`/usr/bin/open -a Ollama\``), and before whatever follows it (`## Files Canager reads`, or F's `## Unknown-source scan …` section if it landed there), insert:
+(c) After the `## Ollama` section's last paragraph (the one beginning `**The Open Ollama button** runs \`/usr/bin/open -a Ollama\``), and before whatever follows it (`## Files Banager reads`, or F's `## Unknown-source scan …` section if it landed there), insert:
 
 ```markdown
 
@@ -4546,10 +4546,10 @@ and the name of the recorded fixture directory; write the recording day's
 number here). The first
 source that is not a package manager: the row is one tool, installed by
 its own installer (`curl -fsSL https://claude.ai/install.sh | bash`, run by
-the user — Canager never runs it), and the one item under it is the tool
+the user — Banager never runs it), and the one item under it is the tool
 itself.
 
-**Detect.** Canager looks at the fixed path the installer writes,
+**Detect.** Banager looks at the fixed path the installer writes,
 `~/.local/bin/claude` — never a `claude` found through `PATH`, which on a
 Mac with the Homebrew cask earlier on `PATH` would be that copy instead —
 and checks with `lstat`, `readlink` and `realpath` that it is a symbolic
@@ -4560,7 +4560,7 @@ or npm's and is left to that source; a plain file at that path is not this
 route and is not listed. A dangling link whose own text points into
 `~/.local/share/claude` (the program files were removed by hand, or by an
 uninstall that stopped partway) is listed with no version and a notice
-saying so; in this step Canager cannot remove the link either (see the
+saying so; in this step Banager cannot remove the link either (see the
 write commands below). Then `<claude> --version` (30 s) with
 `DISABLE_AUTOUPDATER=1` in its environment: Anthropic documents that Claude
 Code checks for updates on startup, and the variable as stopping only that
@@ -4570,12 +4570,12 @@ a download, so the variable is set on every version read regardless. The
 version is the first token of the first non-empty line (`2.1.281 (Claude
 Code)`).
 
-Canager also asks where `claude` would run from if typed in Terminal
-(the first regular file with executable bits in Canager's `PATH`) and, when that is not this copy, says
+Banager also asks where `claude` would run from if typed in Terminal
+(the first regular file with executable bits in Banager's `PATH`) and, when that is not this copy, says
 so under the source: not on `PATH`, or shadowed by a Homebrew, npm or
 unknown copy. That is a notice, not a command.
 
-**Environment Canager adds to version reads** (`CLAUDE.version.env`;
+**Environment Banager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):
 
     DISABLE_AUTOUPDATER=1
@@ -4604,15 +4604,15 @@ preview):
 |---|---|---|---|
 | Upgrade | `<claude> update` | 1800 s | No |
 
-Canager adds no environment override to `claude update`; the runner
+Banager adds no environment override to `claude update`; the runner
 inherits the app's ambient environment. `DISABLE_AUTOUPDATER=1` stops the
 background check, and manual updates still work with it set. Anthropic's install script
 downloads each version to a new file under
 `~/.local/share/claude/versions/` and re-points the link only afterwards
 (install.sh, read directly); `claude update` itself is a compiled program
-whose steps were not read, so Canager assumes nothing about what a run
+whose steps were not read, so Banager assumes nothing about what a run
 stopped partway leaves behind, and its preview promises nothing. Cancel:
-allowed (`KillThenReconcile`) — the runner stops the process group, Canager
+allowed (`KillThenReconcile`) — the runner stops the process group, Banager
 reads `<claude> --version` again, and the operation is reported as
 unconfirmed regardless of that reading (the same rule as every stopped
 upgrade). If it exits 0 but the launcher is dangling or its version cannot
@@ -4620,14 +4620,14 @@ be read, verification fails and the outcome is also unconfirmed. If it exits 0 a
 version did not move (Claude
 Code already updated itself, or reports "up to date"), the operation is
 reported as needing attention, as for every source. There is no install
-(the installer is Anthropic's, not Canager's) and, in this step, no
-uninstall: Claude Code has no uninstall command, and until Canager can move
+(the installer is Anthropic's, not Banager's) and, in this step, no
+uninstall: Claude Code has no uninstall command, and until Banager can move
 its files to the Trash itself (phase 4 step C) the row says it cannot be
 uninstalled here and offers no button — `Session::issue_plan` refuses it as
 well.
 ```
 
-(d) Under `## Files Canager reads`, after the `- Ollama: …` bullet, add:
+(d) Under `## Files Banager reads`, after the `- Ollama: …` bullet, add:
 
 ```markdown
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
@@ -4770,7 +4770,7 @@ Append to `src/pages/InstalledPage.test.tsx`, after Task 2's test (before `descr
       ),
     ).toBeInTheDocument();
     expect(getByText("No description available")).toBeInTheDocument();
-    expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.")).toBeInTheDocument();
+    expect(getByText("Claude Code has no uninstall command, and Banager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.")).toBeInTheDocument();
     // Only the Homebrew artifact may offer Uninstall; B's actual Claude
     // artifact is NoSafeMethod and must still show both sentences.
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
@@ -4829,7 +4829,7 @@ Append inside `describe("UpdatesPage", …)` in `src/pages/UpdatesPage.test.tsx`
 
     expect(
       await findByText(
-        "This copy is behind (2.1.281 → 2.1.290). Claude Code usually updates itself the next time you run it; you can update it now with Canager, or just run it.",
+        "This copy is behind (2.1.281 → 2.1.290). Claude Code usually updates itself the next time you run it; you can update it now with Banager, or just run it.",
       ),
     ).toBeInTheDocument();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
@@ -4875,7 +4875,7 @@ Append inside `describe("UpdatesPage", …)` in `src/pages/UpdatesPage.test.tsx`
     artifacts = [claudeArtifact];
     const { findByText, queryByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
 
-    expect(await findByText("Canager couldn't check this one for updates just now.")).toBeInTheDocument();
+    expect(await findByText("Banager couldn't check this one for updates just now.")).toBeInTheDocument();
     expect(queryByText(/usually updates itself/)).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
@@ -4884,13 +4884,13 @@ Append inside `describe("UpdatesPage", …)` in `src/pages/UpdatesPage.test.tsx`
 In `src/components/SnapshotStatus.test.tsx`, replace the two expected sentences: at `:57`,
 
 ```ts
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Banager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
 ```
 
 becomes
 
 ```ts
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Banager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
 ```
 
 and at `:242`,
@@ -4997,7 +4997,7 @@ In `src/pages/UpdatesPage.tsx`, in `rowDescription` (`:444-475`), replace its la
     // by the standalone adapter from its recipe): the row is real -- it
     // compares the launcher's live version with the published one -- and
     // keeps its button, but the honest sentence says the tool usually
-    // does this itself and offers Canager's button as the other way
+    // does this itself and offers Banager's button as the other way
     // (spec D5). Only for the standalone adapters: a self-updating
     // Homebrew cask listed by --greedy keeps its blurb, since Homebrew,
     // not the app, is what the button drives. Only for an actionable
@@ -5021,7 +5021,7 @@ In `src/pages/UpdatesPage.tsx`, in `rowDescription` (`:444-475`), replace its la
 In `src/i18n/en.json`: in `"updates"`, after `"noneCheckable": "…",` add
 
 ```json
-    "selfUpdatingHint": "This copy is behind ({{current}} → {{target}}). {{source}} usually updates itself the next time you run it; you can update it now with Canager, or just run it.",
+    "selfUpdatingHint": "This copy is behind ({{current}} → {{target}}). {{source}} usually updates itself the next time you run it; you can update it now with Banager, or just run it.",
 ```
 
 (before the `"blocked": {` key); add a top-level object after `"warnings": { … },` (or anywhere at the top level):
@@ -5037,7 +5037,7 @@ In `src/i18n/en.json`: in `"updates"`, after `"noneCheckable": "…",` add
 and replace the two `emptyStates` descriptions:
 
 ```json
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Banager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
 ```
 
 ```json
@@ -5047,7 +5047,7 @@ and replace the two `emptyStates` descriptions:
 In `src/i18n/zh-CN.json`, the same four places:
 
 ```json
-    "selfUpdatingHint": "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Canager 更新，也可以直接运行它。",
+    "selfUpdatingHint": "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Banager 更新，也可以直接运行它。",
 ```
 
 ```json
@@ -5059,7 +5059,7 @@ In `src/i18n/zh-CN.json`, the same four places:
 ```
 
 ```json
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Banager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
 ```
 
 ```json
@@ -5111,7 +5111,7 @@ EOF
 Directly after the table row `| Ollama — models | yes | yes |` (and before F's paragraph about the Unknown page, if it follows the table), insert:
 
 ```markdown
-| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall not yet — the row says so and offers no button |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Banager never runs it); uninstall not yet — the row says so and offers no button |
 ```
 
 - [ ] **Step 2: Update the two test counts**
@@ -5178,7 +5178,7 @@ EOF
 10. **Line numbers**: the spec pins `8ba6f52`; HEAD is `f574d9f` (= `8ba6f52` + two commits touching only `docs/`), so every `file:line` the spec cites in files A and F do not touch was re-read at `f574d9f` and holds (`sources.ts:222`, `InstalledPage.tsx:343-344`, `UpdatesPage.tsx:444-475`, `session/mod.rs:500`, `model.rs:93-105`, `plans.rs:187`, `types.ts:122`, `refresh.rs:598`). At review time A and F had landed (`eb254ef`): their diff touches `brew/mod.rs`, `pipx.rs`, `http/real.rs`, `lib.rs`, `scan/mod.rs`, `tests/unknown_scan_test.rs`, `tests/what_we_run_test.rs`, `docs/what-we-run.md`, `UninstallDialog.{tsx,test.tsx}`, `types.{ts,test.ts}`, `warnings.{ts,test.ts}` — not yet `src/i18n/*.json`, `README.md` or `src/lib/sources.ts`, so the "F's file" cautions on those stay, and the `sources.test.ts` line numbers above were re-read at `eb254ef`.
 11. **§9.2's `launcherOnly` sentence and §6.1's `NoSafeMethod` for pre-C Claude Code contradict each other within B.** The sentence promises an Uninstall on a row whose artifact §6.1 makes `NoSafeMethod`; §十 row B asks only that "半卸载态有一行会说话", and a sentence that names a missing button does not. B ships true copy and C restores the spec's (ruling 14). The spec's §9.2 entry should say the sentence is C's.
 12. **§9.2's `NoSafeMethod` sentence ("no verified list of the files") is false for the tool B first produces it for**: claude.md §7 verifies Claude Code's two-path list. B's sentence names what is actually missing — a safe way to move the files — which holds for both cases §6.1's "Neither" covers (ruling 15). The spec's §9.2 entry should be reworded the same way, since C does not change it.
-13. **claude.md §6 does not verify how `claude update` writes.** The research verifies install.sh's download-then-relink order and says outright that the compiled updater's steps were not read and that "Canager should not claim this is officially guaranteed"; 附录 B refuses UNVERIFIED facts in user-visible sentences. The `CLAUDE` doc, the Task 3, stage 4 provenance paragraph and the `## Claude Code` section therefore attribute the mechanism to install.sh only; the reading gates exit-0 success, and stopped upgrades remain unconfirmed, and the section states the cancel policy (`KillThenReconcile`) as §9.5 asks. Likewise nothing verifies that a bare `claude --version` reaches the updater (claude.md §5 quotes only the doc's startup sentence; spec §3.4 says only 启动时); the variable is set on every version read regardless, and the copy says so rather than the stronger claim.
+13. **claude.md §6 does not verify how `claude update` writes.** The research verifies install.sh's download-then-relink order and says outright that the compiled updater's steps were not read and that "Banager should not claim this is officially guaranteed"; 附录 B refuses UNVERIFIED facts in user-visible sentences. The `CLAUDE` doc, the Task 3, stage 4 provenance paragraph and the `## Claude Code` section therefore attribute the mechanism to install.sh only; the reading gates exit-0 success, and stopped upgrades remain unconfirmed, and the section states the cancel policy (`KillThenReconcile`) as §9.5 asks. Likewise nothing verifies that a bare `claude --version` reaches the updater (claude.md §5 quotes only the doc's startup sentence; spec §3.4 says only 启动时); the variable is set on every version read regardless, and the copy says so rather than the stronger claim.
 
 
 14. **§3.1's numeric-only extraction contradicts §4.3's incomparable-pair behavior.** Keep the full selected token, including prerelease/build suffixes; `compare_dotted` alone decides whether the local/remote pair is comparable. A successful `--version` returning a prerelease is available, and an incomparable pair becomes the existing `uncheckable_candidate`, with both strings in its reason. No suffix stripping and no semver ordering is added. Endpoint parsing checks only that its body is one non-empty token.
@@ -5227,7 +5227,7 @@ Adversarial review of this plan, 2026-09-25, verified against the worktree at `e
 | 6 | accepted | `sources.test.ts:204-219` is the `hasSourceNotice` `it`, its array `:209-216`; `:99-112` is the stopped-Ollama test; `what-we-run.md` wraps both quoted sentences (lines 4-5, 54-55) | Task 1 Step 1 line reference corrected; Task 9 Step 4 says the sentences wrap and to match by words |
 | 7 | accepted | Task 4's route.rs test module used `Path::new` with only `use super::*; use std::path::PathBuf;` in a file that had no imports yet | Task 4: test module imports `std::path::{Path, PathBuf}` |
 | 8 | accepted (same defect as 2, more evidence) | As 2; also the state is reachable in B by a manual `rm -rf ~/.local/share/claude`, and the "earlier uninstall / Trash" cause was false in B | As 2 |
-| 9 | accepted | claude.md §6: "No direct official statement was found", "UNVERIFIED as an explicit official guarantee", "Canager should not claim this is officially guaranteed"; §8 lists the compiled updater as not decompiled; 附录 B refuses UNVERIFIED facts in user-visible sentences; the plan cited install.sh as if it were `claude update` | Task 4 provenance paragraph and `CLAUDE` doc; Task 9 `## Claude Code` write paragraph; deviation 13 |
+| 9 | accepted | claude.md §6: "No direct official statement was found", "UNVERIFIED as an explicit official guarantee", "Banager should not claim this is officially guaranteed"; §8 lists the compiled updater as not decompiled; 附录 B refuses UNVERIFIED facts in user-visible sentences; the plan cited install.sh as if it were `claude update` | Task 4 provenance paragraph and `CLAUDE` doc; Task 9 `## Claude Code` write paragraph; deviation 13 |
 | 10 | accepted | The README asserted three recording-day facts (no channel key, no cask, no npm copy) that none of the five recording commands observes; they came from the 2026-09-24 research and the plan author's check | Task 9 Step 1: three read-only commands added (`grep -c`, `brew list --cask`, `ls "$(npm root -g)/@anthropic-ai"`); README brackets `[CASK]`, `[NPM]`, `[CHANNEL_KEY_COUNT]` with two wordings; self-review counts seven values |
 | 11 | accepted | Spec §9.5 requires each standalone section to state "升级 argv 与取消策略"; the section had argv/timeout/password only; A's sections established no cancel column, so B is the first the spec asks it of | Task 9 section: a Cancel sentence under the write table (`KillThenReconcile`, `--version` re-read, `Unconfirmed` unless settled) |
 | 12 | accepted | claude.md §5 quotes only the doc's startup sentence and spec §3.4 says only 启动时; nothing observed `--version` reaching the updater (the agy research found the opposite for that tool) | Task 4 provenance paragraph and `CLAUDE` doc; Task 9 Detect paragraph: "whether `--version` alone triggers the check was not observed; set on every version read regardless" |
@@ -5243,7 +5243,7 @@ Rejected: none. Points 8, 14, 15 and 18 restate 2, 6a, 6b and 1 with more eviden
 
 ## Review log (Astra, 2026-09-25)
 
-Re-verified all 12 findings from `astra/review-plan-b.md` against the actual `/Users/brulek/dev/Canager-phase4` worktree (HEAD `d3890f4` plus current uncommitted edits), the standalone spec, and the cited local research. **Accepted: 12. Rejected: 0.** Stage numbers retain the original core task numbers.
+Re-verified all 12 findings from `astra/review-plan-b.md` against the actual `/Users/brulek/dev/Banager-phase4` worktree (HEAD `d3890f4` plus current uncommitted edits), the standalone spec, and the cited local research. **Accepted: 12. Rejected: 0.** Stage numbers retain the original core task numbers.
 
 | # | Finding | Decision | One-line reason |
 |---|---|---|---|

@@ -1,4 +1,4 @@
-# Canager 设计文档（spec v0.2，2026-09-17，作者已通过）
+# Banager 设计文档（spec v0.2，2026-09-17，作者已通过）
 
 > v0.1 经 Gemini / Grok / Codex / Claude 六视角评审后重写。改动依据见同目录 `REVIEW-合并报告.md`。本版待作者审阅通过后进入实施计划。
 
@@ -15,11 +15,11 @@
 | 分发 | GitHub Releases（.dmg + updater 清单）+ 自建 brew tap；知名度达标后提交官方 homebrew-cask | |
 | 语言 | 英文默认、内置简体中文，跟随系统 | |
 | 后台 | 菜单栏常驻可选，首次进入"更新"页时询问；macOS 上所有后台检查都不需要密码 | |
-| 名字 | Canager | 保留 |
+| 名字 | Canager | 保留；2026-09-30 改名为 Banager |
 
 ## 1. 定位
 
-> **Canager：把 Mac 上用命令行装的东西管起来。** 你跟着教程装了 Homebrew、Ollama、Claude Code、一堆 npm 和 pip 工具，然后就忘了它们。Canager 让你看见它们、知道它们是什么、一键更新、放心删除；什么都没装的 Mac 也能从这里一键装好第一批工具。
+> **Banager：把 Mac 上用命令行装的东西管起来。** 你跟着教程装了 Homebrew、Ollama、Claude Code、一堆 npm 和 pip 工具，然后就忘了它们。Banager 让你看见它们、知道它们是什么、一键更新、放心删除；什么都没装的 Mac 也能从这里一键装好第一批工具。
 
 面向小白意味着四条产品硬规则：
 
@@ -30,7 +30,7 @@
 
 与竞品的诚实差异：
 
-| | UniGetUI（macOS 版） | Applite | mxcl PMM | Canager |
+| | UniGetUI（macOS 版） | Applite | mxcl PMM | Banager |
 |---|---|---|---|---|
 | 定位 | Windows-first 的跨平台移植，功能密集 | 只管 brew cask | 开发者的清单与占用盘点 | 小白的工具管家 |
 | ollama 模型 | 无 | 无 | 有（盘点） | 有（列出 / 查更新 / 拉取 / 删除） |
@@ -51,7 +51,7 @@ README 不再用"10 MB vs 50 MB"做首屏；体积只在下载页按事实写，
 ## 3. 架构
 
 ```
-canager/
+banager/
 ├── crates/banager-core/        纯 Rust 库，不依赖 Tauri
 │   ├── model.rs                ManagerInstance / InstalledArtifact / UpdateCandidate / Operation / …
 │   ├── adapters/               每个来源一个 Rust 模块，实现 Adapter trait
@@ -75,7 +75,7 @@ canager/
 
 1. **事件出口**：core 通过 `EventSink` trait 推送 `OperationEvent`（状态变化、日志块、进度）；Tauri 壳实现它并转成 **Channel**（不是全局 emit），按 50 ms 时间片合并日志块。
 2. **运行时归属**：core 只写 async 函数，不创建 tokio Runtime；由 Tauri 的 `async_runtime` 驱动；SQLite 调用经 `spawn_blocking`，`Connection` 由单个专用线程持有（`Send + !Sync` 约束）。
-3. **路径注入**：core 接收 `Paths { data_dir, log_dir, cache_dir }`；壳用 Tauri path API 填 `~/Library/Application Support/Canager/`、`~/Library/Logs/Canager/`。
+3. **路径注入**：core 接收 `Paths { data_dir, log_dir, cache_dir }`；壳用 Tauri path API 填 `~/Library/Application Support/Banager/`、`~/Library/Logs/Banager/`。
 
 数据流：界面读缓存立即渲染 → core 后台刷新（带代际号，单事务写入）→ Channel 通知 → 界面按代际号接受最新快照；刷新失败保留旧数据并标"可能过期"。
 
