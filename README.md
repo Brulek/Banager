@@ -34,12 +34,13 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
-listed, read-only, on the **Unknown** page. Canager never runs, moves or deletes anything there;
-`docs/what-we-run.md` says exactly what it reads. A program a source installed but reported no
-path for is listed there too (uv's own `uvx`, for one): the gap is the source's, and the page
-says what it sees. Cargo reports one program per crate — the one named after the crate, else the
-first its record lists — so the other programs of a crate that installs several
-(`cargo-binstall`'s `detect-targets`) stay on that page until it can report them all.
+listed, read-only, on the **Other Programs** page, the last row under the sidebar's Sources.
+Canager never runs, moves or deletes anything there; `docs/what-we-run.md` says exactly what it
+reads. A program a source installed but reported no path for is listed there too (uv's own `uvx`,
+for one): the gap is the source's, and the page says what it sees. Cargo reports one program per
+crate — the one named after the crate, else the first its record lists — so the other programs of
+a crate that installs several (`cargo-binstall`'s `detect-targets`) stay on that page until it can
+report them all.
 
 Canager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
@@ -69,15 +70,15 @@ to the front, and if Canager's window is closed or minimized into the Dock and h
 since the notification, the window comes back on the Updates page. Canager isn't told of the click
 itself, only that it has come to the front, so until the window has been in front again, anything
 else that brings Canager to the front with the window closed or minimized — ⌘-Tab, its Dock icon —
-does the same. The Unknown page's header has *Scan Again* in its place, with how long ago that page
-last scanned: it re-runs only that page's scan of your bin folders, against the sources' last known
-state — it does not refresh the sources. Settings' header has neither.
+does the same. The Other Programs page's header has *Scan Again* in its place, with how long ago
+that page last scanned: it re-runs only that page's scan of your bin folders, against the sources'
+last known state — it does not refresh the sources. Settings' header has neither.
 
 The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open theirs: Overview
 (⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it)
-and Unknown (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed page
-with its search box focused, and Settings… (⌘,) is in the Canager menu. With the window closed or
-minimized, each of these brings it back first.
+and Other Programs (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
+page with its search box focused, and Settings… (⌘,) is in the Canager menu. With the window closed
+or minimized, each of these brings it back first.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Canager running, and an operation under way carries on; its icon in the Dock brings the window back
@@ -385,7 +386,7 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了
 最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Canager 切到前面——⌘-Tab、
 点程序坞图标——也会这样。
-“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
+“其他程序”页（边栏“来源”下的最后一行）的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo
@@ -393,7 +394,7 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 其余的（如 `cargo-binstall` 的 `detect-targets`）会留在那一页，直到它能把全部报出来。）
 
 菜单栏的“显示”菜单像访达和邮件的一样，能打开边栏里的各页：“概览”（⌘1）、“更新”（⌘2）、“已安装”
-（⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“来源不明”（⌘4）。下面是“重新检查”（⌘R）和
+（⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“其他程序”（⌘4）。下面是“重新检查”（⌘R）和
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Canager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。
 

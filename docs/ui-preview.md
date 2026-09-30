@@ -57,8 +57,8 @@ in this window those items do nothing but bring the window back when it
 is closed or minimized. Nor does the page
 badge Canager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
-`src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Unknown
-page's Show in Finder reach this Mac's Finder: it asks the stand-in in
+`src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Other
+Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
 `src/dev/mockTauriOpener.ts`, which shows nothing.
 
 ## How it works, and why it never ships
@@ -67,8 +67,8 @@ page's Show in Finder reach this Mac's Finder: it asks the stand-in in
   (`invoke` and `Channel` from `@tauri-apps/api/core`, `listen` from
   `@tauri-apps/api/event` for the menu bar's items,
   `getCurrentWindow` from `@tauri-apps/api/window` for the Dock's badge,
-  and `revealItemInDir` from `@tauri-apps/plugin-opener` for the Unknown
-  page's Show in Finder).
+  and `revealItemInDir` from `@tauri-apps/plugin-opener` for the Other
+  Programs page's Show in Finder).
 - `vite.config.ts` aliases `@tauri-apps/api/core` to
   `src/dev/mockTauri.ts`, `@tauri-apps/api/event` to
   `src/dev/mockTauriEvent.ts`, `@tauri-apps/api/window` to
@@ -145,7 +145,7 @@ Paths are under a generic home folder, `/Users/you`.
   an update), rustup (an update that cannot be cancelled once it starts),
   Antigravity CLI (a newer version it can only install itself) and Grok
   Build (an update, and a notice that it is not on the PATH).
-- **Unknown page**: five programs no source accounts for -- two plain
+- **Other Programs page**: five programs no source accounts for -- two plain
   files, two links an installer with administrator rights put there (one
   into an app), and a broken link to an app that was deleted.
 
@@ -176,7 +176,7 @@ Paths are under a generic home folder, `/Users/you`.
   does not have. Notify me when there are updates turns on without
   asking anything, as where permission is granted, and nothing is ever
   notified: the page's report after each check reaches no Rust.
-- On the Unknown page, a row's Show in Finder opens nothing: the console
+- On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
   says it couldn't.
@@ -190,7 +190,7 @@ value falls back to the default and logs a warning in the console.
 | Switch | Values | What you get |
 |---|---|---|
 | `state` | `full` (default) | The Mac above. |
-| | `loading` | The first refresh and the Unknown page's scan never finish. |
+| | `loading` | The first refresh and the Other Programs page's scan never finish. |
 | | `error` | Loading what is installed fails. The failure screen appears once the app gives up retrying, about 7 seconds later, and only while the tab is visible. |
 | | `refresh-error` | The same failure screen at once: the first refresh fails. |
 | | `empty` | No source is set up on this Mac. |
@@ -203,9 +203,9 @@ value falls back to the default and logs a warning in the console.
 | | `many` | About 800 things installed, as on a Mac that has used Homebrew for a while: the Mac above, every source answering, and 741 more real tools (`src/dev/mockManyNames.ts`) -- 580 Homebrew formulae, 40 of them libraries it installed for the others; 70 casks, 25 of them apps; 40 npm packages, 13 pipx and 12 uv tools, 20 crates and 6 Ollama models -- each one the logo pack and the description tables have. About one in seven has an update: 121 rows on the Updates page have one Canager can install. Each tool's version, install day and update come from a seeded stream of its own, so every run shows the same list. In English, those formulae and casks read "Homebrew package" or "App installed with Homebrew": the preview has no Homebrew catalogue to take their descriptions from. |
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
-| `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on. |
+| `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `canager` | How every operation ends. Only `succeeded` changes anything. |
-| `scan` | `found` (default), `stopped`, `empty`, `error` | What the Unknown page's scan returns. |
+| `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
 
 ## Large list
 

@@ -75,7 +75,7 @@ a grace period, and then `SIGKILL` for whatever is left.
 
 **Where the program comes from.** At launch (`run()` in
 `src-tauri/src/lib.rs`), at the start of every refresh, when the Open
-Ollama button is pressed, and at the start of every Unknown-page scan,
+Ollama button is pressed, and at the start of every Other Programs scan,
 `HostEnv::discover`
 (`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
@@ -958,7 +958,7 @@ starts inherits the switch. A cargo that is not rustup's ignores it.
 in (a missing file means nothing is installed). For each crate it also
 records the program the crate installed, `<CARGO_HOME>/bin/<binary>` (the
 binary named after the crate when there is one, else the first the record
-lists), which the Unknown page uses to place that program under Cargo
+lists), which the Other Programs page uses to place that program under Cargo
 rather than list it. `check_updates` reads the
 same file and, for each crate installed from the registry, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
@@ -1071,7 +1071,7 @@ and checks with `lstat`, `readlink` and `realpath` that it is a symbolic
 link whose own text points into `~/.local/share/claude` (the installer's
 `versions/<version>` store) and that resolves there; a `claude` that
 reaches that folder only through another link outside it is not the
-installer's layout and is not listed (the Unknown page shows it). A
+installer's layout and is not listed (the Other Programs page shows it). A
 `claude` there that resolves into a `Cellar`, `Caskroom`, `node_modules`
 or `corepack` directory is a package manager's copy (Homebrew's, npm's or
 corepack's) and is not listed here; a plain file at that path is not this
@@ -1714,10 +1714,11 @@ whose files live under such a `ZDOTDIR` is not read.
 
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
-The *Unknown* page lists command-line programs that none of the sources
-above installed. Producing that list runs no command at all.
-`scan_unknown` (`crates/canager-core/src/scan/mod.rs`) reads directory
-entries and file metadata and nothing else:
+The *Other Programs* page -- the last row under the sidebar's *Sources* --
+lists command-line programs that none of the sources above installed.
+Producing that list runs no command at all. `scan_unknown`
+(`crates/canager-core/src/scan/mod.rs`) reads directory entries and file
+metadata and nothing else:
 
 | It looks at | How |
 |---|---|
@@ -1729,7 +1730,7 @@ says so on the page, with the number it stopped at. It never runs, opens,
 moves or deletes anything it finds. It takes no lock and is not part of a
 refresh (`Session::scan_unknown` in
 `crates/canager-core/src/session/scan.rs`): it runs when the page opens
-(from the sidebar, or Unknown, ⌘4, in the menu bar's View menu),
+(from the sidebar, or Other Programs, ⌘4, in the menu bar's View menu),
 again when the sources' state changes while the page is open, and when
 you press *Scan Again* — always against the sources' last known state —
 and its result is not stored.
@@ -1877,7 +1878,7 @@ All read-only, none saved anywhere else, none uploaded:
   it is confirmed, and again right before each path is moved: the same
   reads as for Claude Code's list, for `~/.local/bin/agy` and every
   `agy.<time>.old` backup, which Canager finds among the names in
-  `~/.local/bin` (the Unknown page's rule 4 goes by the same names); and
+  `~/.local/bin` (the Other Programs page's rule 4 goes by the same names); and
   whether `~/.gemini/antigravity-cli`, `~/.cache/antigravity`, `~/.zshrc`
   and `~/.zprofile` exist and where they lead (`lstat`, `realpath`;
   nothing in them is read). After an uninstall: the same look at the
@@ -1918,7 +1919,7 @@ All read-only, none saved anywhere else, none uploaded:
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.
-- The Unknown page's scan: the entries of the bin directories its section
+- The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents. A row's Show in Finder: where the path it shows
   leads (`realpath`), and nothing else (Unknown-source scan, above).
@@ -2084,7 +2085,7 @@ plugin — the one that opens a URL or a path in another application — is
 registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
 call one of its commands and no other: `reveal_item_in_dir`
 (`opener:allow-reveal-item-in-dir` in
-`src-tauri/capabilities/default.json`), the Unknown page's Show in Finder,
+`src-tauri/capabilities/default.json`), the Other Programs page's Show in Finder,
 which asks Finder to show a file and connects to nothing (Unknown-source
 scan, above). The window cannot have it open a URL: there is no homepage
 link; when one ships, this paragraph changes. And the Tauri updater
