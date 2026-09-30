@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ComponentType, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { Page } from "../store/ui";
+import { useUiStore, type Page } from "../store/ui";
 import { useSnapshot } from "../lib/queries";
+import { isStartupSnapshot } from "../lib/events";
 import { instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
@@ -113,7 +114,8 @@ interface SourceRow {
  * snapshot's order -- the order the Installed page groups them in --
  * including one with nothing installed and one that did not answer, which
  * say so when opened (spec R8). None before the first snapshot. Other
- * Programs' row follows them, whatever there is.
+ * Programs' row follows them, whatever there is, while 「来源」 is drawn
+ * (`useSourcesShown`).
  */
 function useSourceRows(): SourceRow[] {
   const { t } = useTranslation();
@@ -142,6 +144,25 @@ function useSourceRows(): SourceRow[] {
       };
     });
   }, [snapshot, t]);
+}
+
+/**
+ * Whether 「来源」 is drawn, Other Programs' row with it: once the first
+ * check has answered -- with the sources, or with none, where every
+ * program is one of Other Programs' -- or failed, and then that row is
+ * the one way to its page there is in the sidebar; and whenever that page
+ * is open, so its row is there, selected. Not while the first check runs,
+ * the placeholder the backend starts from in hand (`isStartupSnapshot`):
+ * for the minute or two that can take, 「来源」 with Other Programs alone
+ * under it read as "no source found", and the sources then arriving above
+ * it moved the row down from under the pointer. The View menu (⌘4) opens
+ * the page meanwhile.
+ */
+function useSourcesShown(page: Page): boolean {
+  const { data: snapshot, isError } = useSnapshot();
+  const checkFailed = useUiStore((s) => s.startupRefreshError !== null);
+  if (page === "unknown" || isError || checkFailed) return true;
+  return snapshot !== undefined && !isStartupSnapshot(snapshot);
 }
 
 /**
@@ -294,6 +315,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
   const { t } = useTranslation();
   const counts = useCounts();
   const sources = useSourceRows();
+  const sourcesShown = useSourcesShown(page);
   const idPrefix = useId();
   // A source's row stands for the Installed page on that source alone:
   // while it is selected, 「已安装」 is not.
@@ -310,8 +332,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rowKeys = [
     ...PAGES.map((p) => `page:${p}`),
-    ...sources.map((row) => `source:${row.id}`),
-    "page:unknown",
+    ...(sourcesShown ? [...sources.map((row) => `source:${row.id}`), "page:unknown"] : []),
   ];
   const tabKey = [focusedKey, currentKey].find((key) => key !== null && rowKeys.includes(key)) ?? rowKeys[0];
   const roving = (key: string) => ({
@@ -423,37 +444,42 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
           </ul>
           {/* A group's title, as a Mac sidebar sets one: 11 bold in the
               secondary colour, 14 from the edge, in a 28-high row whose
-              words sit at its foot, just over the rows they name. There
-              from the start, with Other Programs alone under it until the
-              first snapshot brings the sources -- and on a Mac with no
-              source at all, where every program is one of those. */}
-          <p
-            id={`${idPrefix}-sources`}
-            className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
-          >
-            {t("nav.sources")}
-          </p>
-          <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
-            {sources.map((row, index) => (
-              <li key={row.id}>{sourceEntry(row, index)}</li>
-            ))}
-            {/* The last row: the programs no source installed, whose page
-                it opens -- its own, with its own list, not the Installed
-                page on a source, as the rows above it do. Selected while
-                that page is open, as a source's row is while it shows that
-                source; no count, as none is by a source. */}
-            <li>
-              <SidebarRow
-                glyph={<OtherProgramsMark />}
-                label={t(PAGE_LABEL_KEYS.unknown)}
-                active={page === "unknown"}
-                description={null}
-                descriptionId={`${idPrefix}-unknown`}
-                onPress={() => onSelectPage("unknown")}
-                {...roving("page:unknown")}
-              />
-            </li>
-          </ul>
+              words sit at its foot, just over the rows they name. Drawn
+              once the first check has answered or failed, or with Other
+              Programs' page open (`useSourcesShown`) -- on a Mac with no
+              source at all too, Other Programs alone under it, where
+              every program is one of those. */}
+          {sourcesShown ? (
+            <>
+              <p
+                id={`${idPrefix}-sources`}
+                className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
+              >
+                {t("nav.sources")}
+              </p>
+              <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
+                {sources.map((row, index) => (
+                  <li key={row.id}>{sourceEntry(row, index)}</li>
+                ))}
+                {/* The last row: the programs no source installed, whose page
+                    it opens -- its own, with its own list, not the Installed
+                    page on a source, as the rows above it do. Selected while
+                    that page is open, as a source's row is while it shows that
+                    source; no count, as none is by a source. */}
+                <li>
+                  <SidebarRow
+                    glyph={<OtherProgramsMark />}
+                    label={t(PAGE_LABEL_KEYS.unknown)}
+                    active={page === "unknown"}
+                    description={null}
+                    descriptionId={`${idPrefix}-unknown`}
+                    onPress={() => onSelectPage("unknown")}
+                    {...roving("page:unknown")}
+                  />
+                </li>
+              </ul>
+            </>
+          ) : null}
         </div>
       </div>
     </nav>

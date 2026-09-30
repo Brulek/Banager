@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { UpdatesPage } from "../pages/UpdatesPage";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { queryKeys } from "../lib/queries";
+import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import type {
   ArtifactKey,
@@ -164,8 +165,8 @@ beforeEach(() => {
 });
 
 /**
- * The 「来源」 list, once the first snapshot has brought its sources: Other
- * Programs is in it from the start, alone until then.
+ * The 「来源」 list, once the first snapshot has brought it, the sources
+ * in it before Other Programs.
  */
 async function listedSources(
   findByRole: (role: "list", options: { name: string }) => Promise<HTMLElement>,
@@ -177,16 +178,16 @@ async function listedSources(
 }
 
 describe("Sidebar", () => {
-  it("renders a button for each page, in order, and marks the active one", () => {
+  it("renders a button for each page, in order, and marks the active one", async () => {
     const onSelectPage = vi.fn();
-    const { getByRole, getAllByRole } = renderWithProviders(
+    const { getByRole, getAllByRole, findByRole } = renderWithProviders(
       <Sidebar page="installed" onSelectPage={onSelectPage} />,
     );
 
+    const otherButton = await findByRole("button", { name: "Other Programs" });
     const overviewButton = getByRole("button", { name: "Overview" });
     const installedButton = getByRole("button", { name: "Installed" });
     const updatesButton = getByRole("button", { name: "Updates" });
-    const otherButton = getByRole("button", { name: "Other Programs" });
     const settingsButton = getByRole("button", { name: "Settings" });
 
     expect(installedButton).toHaveAttribute("aria-current", "page");
@@ -199,7 +200,7 @@ describe("Sidebar", () => {
     // Other Programs is no page of that list: it is under 「来源」.
     const lists = getAllByRole("list");
     expect(lists).toHaveLength(2);
-    expect(within(lists[0]).getAllByRole("button").map((b) => b.textContent)).toEqual([
+    expect(within(lists[0]).getAllByRole("button").map((b) => b.querySelector(".truncate")?.textContent)).toEqual([
       "Overview",
       "Updates",
       "Installed",
@@ -254,16 +255,16 @@ describe("Sidebar", () => {
     }
   });
 
-  it("calls onSelectPage with the clicked page", () => {
+  it("calls onSelectPage with the clicked page", async () => {
     const onSelectPage = vi.fn();
-    const { getByRole } = renderWithProviders(
+    const { getByRole, findByRole } = renderWithProviders(
       <Sidebar page="installed" onSelectPage={onSelectPage} />,
     );
 
     getByRole("button", { name: "Updates" }).click();
     expect(onSelectPage).toHaveBeenCalledWith("updates");
 
-    getByRole("button", { name: "Other Programs" }).click();
+    (await findByRole("button", { name: "Other Programs" })).click();
     expect(onSelectPage).toHaveBeenCalledWith("unknown");
 
     getByRole("button", { name: "Settings" }).click();
@@ -856,22 +857,102 @@ describe("Sidebar", () => {
       });
     });
 
-    it("scrolls with the pages as one, under the traffic lights' row, and lists Other Programs alone before the first snapshot", async () => {
-      mockInvoke.mockImplementation((cmd: string) =>
-        cmd === "get_snapshot" ? new Promise(() => {}) : Promise.resolve(undefined),
-      );
-      const { getAllByRole, getByRole, getByText } = renderWithProviders(
-        <Sidebar page="overview" onSelectPage={vi.fn()} />,
-      );
-      // No source yet; the page of what none installed is there to open.
-      const list = getByRole("list", { name: "Sources" });
-      expect(getByText("Sources")).toBeInTheDocument();
-      expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual(["Other Programs"]);
+    it("scrolls with the pages as one, under the traffic lights' row", async () => {
+      const { findByRole, getAllByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+      await listedSources(findByRole);
 
       const scroller = getAllByRole("list")[0].parentElement?.parentElement as HTMLElement;
       expect(scroller).toHaveAttribute("data-sidebar-scroller");
       expect(scroller.className.split(" ")).toEqual(expect.arrayContaining(["min-h-0", "flex-1", "overflow-y-auto"]));
       expect(scroller.previousElementSibling).toHaveAttribute("data-tauri-drag-region");
+      // 「来源」 in it, under the pages.
+      expect(scroller.contains(getAllByRole("list")[1])).toBe(true);
+    });
+
+    describe("while the first check runs", () => {
+      // What the backend holds before the startup refresh answers
+      // (`Snapshot::empty()`): no source, and never checked.
+      const placeholder: Snapshot = {
+        ...snapshot,
+        generation: 0,
+        detect: "Missing",
+        instances: [],
+        artifacts: [],
+        updates: [],
+        refreshed_at: null,
+      };
+
+      it("draws no 「来源」, not even Other Programs alone, before the first snapshot", () => {
+        mockInvoke.mockImplementation((cmd: string) =>
+          cmd === "get_snapshot" ? new Promise(() => {}) : Promise.resolve(undefined),
+        );
+        const { queryByRole, queryByText, getAllByRole } = renderWithProviders(
+          <Sidebar page="overview" onSelectPage={vi.fn()} />,
+        );
+        expect(queryByText("Sources")).toBeNull();
+        expect(queryByRole("button", { name: "Other Programs" })).toBeNull();
+        expect(getAllByRole("list")).toHaveLength(1);
+      });
+
+      it("nor with the placeholder in hand, the pages' rows alone", async () => {
+        served = placeholder;
+        const { queryByRole, queryByText, getAllByRole, queryClient } = renderWithProviders(
+          <Sidebar page="overview" onSelectPage={vi.fn()} />,
+        );
+        await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toBe(placeholder));
+        expect(queryByText("Sources")).toBeNull();
+        expect(queryByRole("button", { name: "Other Programs" })).toBeNull();
+        // The pages' rows alone, the Overview's the one Tab reaches.
+        const rows = getAllByRole("button");
+        expect(rows.map((row) => row.textContent)).toEqual(["Overview", "Updates", "Installed", "Settings"]);
+        expect(rows.filter((row) => row.tabIndex === 0).map((row) => row.textContent)).toEqual(["Overview"]);
+      });
+
+      it("draws it all at once, the sources and Other Programs after them, when the check answers", async () => {
+        served = placeholder;
+        const { findByRole, getByRole, queryByRole, queryClient } = renderWithProviders(
+          <Sidebar page="overview" onSelectPage={vi.fn()} />,
+        );
+        await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toBe(placeholder));
+        expect(queryByRole("list", { name: "Sources" })).toBeNull();
+
+        act(() => queryClient.setQueryData(queryKeys.snapshot, snapshot));
+        const list = await findByRole("list", { name: "Sources" });
+        expect(within(list).getAllByRole("button")).toEqual([
+          getByRole("button", { name: "Homebrew" }),
+          getByRole("button", { name: "pip" }),
+          getByRole("button", { name: "Ollama" }),
+          getByRole("button", { name: "Other Programs" }),
+        ]);
+      });
+
+      it("draws Other Programs alone under 「来源」 once the check has failed: the way to its page", async () => {
+        served = placeholder;
+        useUiStore.getState().setStartupRefreshError("brew: command not found");
+        const { findByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+        const list = await findByRole("list", { name: "Sources" });
+        expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual(["Other Programs"]);
+      });
+
+      it("draws Other Programs alone under 「来源」 once the snapshot cannot be read", async () => {
+        mockInvoke.mockImplementation((cmd: string) =>
+          cmd === "get_snapshot" ? Promise.reject(new Error("no snapshot")) : Promise.resolve(undefined),
+        );
+        const { findByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+        const list = await findByRole("list", { name: "Sources" });
+        expect(within(list).getAllByRole("button").map((row) => row.textContent)).toEqual(["Other Programs"]);
+      });
+
+      it("draws Other Programs' row, selected, with its page open (⌘4)", async () => {
+        served = placeholder;
+        const { getByRole, queryClient } = renderWithProviders(<Sidebar page="unknown" onSelectPage={vi.fn()} />);
+        await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toBe(placeholder));
+        const list = getByRole("list", { name: "Sources" });
+        const other = within(list).getByRole("button", { name: "Other Programs" });
+        expect(within(list).getAllByRole("button")).toEqual([other]);
+        expect(other).toHaveAttribute("aria-current", "page");
+        expect(other.tabIndex).toBe(0);
+      });
     });
 
     it("titles the group 来源 and counts the pages in Chinese, with which Homebrew it is in full-width brackets", async () => {
