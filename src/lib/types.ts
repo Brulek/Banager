@@ -334,12 +334,15 @@ export type Warning =
  * `pinned: true`) and pipx's (from `pipx list --outdated`'s
  * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
  * `check_updates` for a tool that installs its updates itself and has no
- * update command Banager may run (Antigravity CLI, phase 4 step D). Read
- * through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over
- * this union, so a variant added here without copy fails `tsc` rather
- * than rendering nothing.
+ * update command Banager may run (Antigravity CLI, phase 4 step D);
+ * `Disabled` by brew's `check_updates` for a formula or cask whose `brew
+ * info --installed --json=v2` entry carries Homebrew's `disabled` mark
+ * (`facts.homebrew.disabled`), which `brew outdated` still lists but
+ * `brew upgrade` will not update. Read through `UPDATE_BLOCKED_KEYS` in
+ * src/lib/sources.ts, a `Record` over this union, so a variant added here
+ * without copy fails `tsc` rather than rendering nothing.
  */
-export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly";
+export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly" | "Disabled";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

@@ -57,9 +57,11 @@ import {
   blockedDetail,
   cannotCheckDetail,
   readOnlyDetail,
+  sharedCannotCheckCause,
   unavailableDetail,
   updateVersionColumn,
 } from "../components/updateDetails";
+import { FAILURE_CAUSE_KEYS, type FailureCause } from "../lib/failureCause";
 import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
@@ -178,7 +180,7 @@ type ListItem =
   | { type: "justUpdated"; count: number }
   | { type: "update"; candidate: UpdateCandidate; updatable: boolean }
   | { type: "section"; count: number; expanded: boolean }
-  | { type: "summary"; count: number };
+  | { type: "summary"; count: number; cause: FailureCause | null };
 
 /**
  * A slot's identity: its React key, and the key the virtualizer files the
@@ -633,18 +635,22 @@ export function UpdatesPage() {
   // tool's own words being hidden while "Show technical details" is off:
   // an uncheckable row with a `Message`. The page says once, over those
   // rows, where to see why, counting these rows and no others -- a
-  // `NonRegistrySource` row already says its own reason. It claims no
-  // diagnosis: the first line of the tool's stderr is the only thing that
-  // tells "this Mac is offline" from "that index is refusing you"
+  // `NonRegistrySource` row already says its own reason. It claims a
+  // diagnosis only where the tool's own words give one a person knows, the
+  // same for every one of these rows (`sharedCannotCheckCause`): no
+  // network, a full disk. Any other words are the only thing that tells
+  // "this Mac is offline" from "that index is refusing you"
   // (`lookup_failure_reason`, crates/banager-core/src/adapters/mod.rs),
-  // and it is precisely what is hidden.
-  const hiddenReasonCount = settings?.show_technical_details
-    ? 0
+  // and they are precisely what is hidden.
+  const hiddenReasonRows = settings?.show_technical_details
+    ? []
     : otherRows.filter(
         (candidate) =>
           !candidate.checkable &&
           candidate.warnings.some((warning) => warningMessage(warning) !== null),
-      ).length;
+      );
+  const hiddenReasonCount = hiddenReasonRows.length;
+  const hiddenReasonCause = sharedCannotCheckCause(hiddenReasonRows);
 
   // 「最近的更新记录」 comes after the updates still to install, as the App
   // Store's Update History comes under Pending: what is to be done
@@ -669,7 +675,7 @@ export function UpdatesPage() {
         ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
         : []),
       ...(showCantUpdate && hiddenReasonCount > 0
-        ? [{ type: "summary", count: hiddenReasonCount } as const]
+        ? [{ type: "summary", count: hiddenReasonCount, cause: hiddenReasonCause } as const]
         : []),
       ...(showCantUpdate
         ? otherRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: false }))
@@ -805,7 +811,15 @@ export function UpdatesPage() {
       case "blocked":
         return {
           label: t(UPDATE_BLOCKED_KEYS[state.reason].badge),
-          detail: blockedDetail(t, candidate, state.reason, instance, source, showTechnicalDetails),
+          detail: blockedDetail(
+            t,
+            candidate,
+            state.reason,
+            instance,
+            source,
+            showTechnicalDetails,
+            artifactsById.get(artifactKeyId(candidate.key)),
+          ),
         };
       case "sourceUnavailable":
         return { label: t("updates.sourceUnavailable"), detail: unavailableDetail(t, instance, source) };
@@ -905,8 +919,11 @@ export function UpdatesPage() {
       disabled: saveSettings.isPending,
       onSelect: () => neverRemind(candidate),
     });
-    if (settings?.show_technical_details && state.kind === "blocked") {
-      const command = UPDATE_BLOCKED_KEYS[state.reason].command(candidate.key, instance);
+    const blockedCommand =
+      state.kind === "blocked" ? UPDATE_BLOCKED_KEYS[state.reason].command(candidate.key, instance) : "";
+    // A reason with nothing to run (`Disabled`) has nothing to copy.
+    if (settings?.show_technical_details && blockedCommand !== "") {
+      const command = blockedCommand;
       items.push({
         id: "copy",
         label: t("common.copyCommand"),
@@ -1261,7 +1278,10 @@ export function UpdatesPage() {
             // Where the rows' names start, over the rows it is about.
             <div className="px-5">
               <div className={`flex min-h-8 items-center gap-2 text-small text-muted ${NOTICE_GRID.checkbox.inset}`}>
-                <p className="min-w-0">{t("updates.cannotCheckSummary", { count: item.count })}</p>
+                <p className="min-w-0">
+                  {t("updates.cannotCheckSummary", { count: item.count })}
+                  {item.cause !== null && ` ${t(FAILURE_CAUSE_KEYS[item.cause].line)}`}
+                </p>
                 <button
                   type="button"
                   disabled={saveSettings.isPending}

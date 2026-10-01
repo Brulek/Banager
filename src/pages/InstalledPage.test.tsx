@@ -896,6 +896,48 @@ describe("InstalledPage", () => {
     expect((await findRow("glib")).querySelector("[data-status-column]")?.childElementCount).toBe(0);
   });
 
+  it("says 「已停用」 once on a package Homebrew disabled that has a newer version held back", async () => {
+    // Homebrew's own line ("Disabled ... won't provide more updates")
+    // already says why no update comes, so the held-back update
+    // (`UpdateBlocked::Disabled`) adds no second "Disabled".
+    const jqKey = snapshot.artifacts[0].key;
+    served = {
+      ...snapshot,
+      artifacts: [
+        {
+          ...snapshot.artifacts[0],
+          facts: {
+            ...NO_FACTS,
+            homebrew: {
+              deprecated: null,
+              disabled: { date: null, reason: null, replacement: null },
+              caveats: null,
+              other_versions: [],
+            },
+          },
+        },
+      ],
+      updates: [
+        {
+          key: jqKey,
+          current: snapshot.artifacts[0].version,
+          target: "9.9",
+          channel: "Native",
+          checkable: true,
+          warnings: [],
+          blocked: "Disabled",
+        },
+      ],
+    };
+    const { queryAllByRole } = renderInstalled();
+    await findRow("jq");
+    expect(queryAllByRole("button", { name: /^Update/ })).toHaveLength(0);
+    expect(chipsOf(await findRow("jq"))).toEqual(["Disabled"]);
+    // The details' status list leaves Homebrew's mark to its own group, so
+    // with no second chip it lists nothing.
+    expect(await drawerChips("jq")).toEqual([]);
+  });
+
   it("promises nothing about when Uninstall comes back on a silent source's pinned row", async () => {
     // A row carried forward from a Homebrew that did not answer has no
     // Uninstall button until Homebrew answers a check again, pinned or

@@ -36,6 +36,7 @@ import {
   uninstallHoldKey,
   unfinishedChecksNotice,
   UPDATE_BLOCKED_KEYS,
+  typedLauncherName,
 } from "./sources";
 import type { DescribedTool } from "./sources";
 import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError } from "./types";
@@ -1506,12 +1507,145 @@ describe("UPDATE_BLOCKED_KEYS", () => {
   });
 });
 
+describe("UPDATE_BLOCKED_KEYS.Disabled", () => {
+  const key = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "quickjot" } satisfies ArtifactKey;
+  const artifact = (replacement: string | null): InstalledArtifact => ({
+    key,
+    display_name: "QuickJot",
+    version: "2.3.1",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: {
+      ...NO_FACTS,
+      homebrew: {
+        deprecated: null,
+        disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement },
+        caveats: null,
+        other_versions: [],
+      },
+    },
+  });
+
+  it("has nothing to run: Homebrew will not update it, and Banager does not force it", () => {
+    expect(UPDATE_BLOCKED_KEYS.Disabled.command(key, instance())).toBe("");
+    expect(UPDATE_BLOCKED_KEYS.Disabled.commandInDetail).toBe(false);
+    expect(UPDATE_BLOCKED_KEYS.Disabled.typed).toBeNull();
+  });
+
+  it("uses Homebrew's own word for the mark, as the Installed page does", () => {
+    expect(UPDATE_BLOCKED_KEYS.Disabled.badge).toBe("brewStatus.disabledWord");
+    expect(en.brewStatus.disabledWord).toBe("Disabled");
+    expect(zhCN.brewStatus.disabledWord).toBe("已停用");
+  });
+
+  it("says why there is no button, in both locales, and promises nothing about the copy installed", () => {
+    expect(en.updates.disabledBlocked.detail).toBe("{{source}} has disabled it and won't provide more updates.");
+    expect(zhCN.updates.disabledBlocked.detail).toBe("{{source}}已停用它，以后不再提供更新。");
+    expect(en.updates.disabledBlocked.refused).toBe("Couldn't update it because {{source}} has disabled it.");
+    expect(zhCN.updates.disabledBlocked.refused).toBe("无法更新，因为{{source}}已停用它。");
+    for (const copy of [en.updates.disabledBlocked.detail, zhCN.updates.disabledBlocked.detail]) {
+      expect(copy).not.toMatch(/still works|继续使用|仍可使用|{{command}}/);
+    }
+  });
+
+  it("adds Homebrew's suggested replacement where it gives one", () => {
+    expect(UPDATE_BLOCKED_KEYS.Disabled.note(key, instance(), artifact("quickjot-ng"))).toEqual({
+      key: "brewStatus.replacement",
+      options: { name: "quickjot-ng" },
+    });
+    expect(UPDATE_BLOCKED_KEYS.Disabled.note(key, instance(), artifact(null))).toBeNull();
+    expect(UPDATE_BLOCKED_KEYS.Disabled.note(key, instance(), undefined)).toBeNull();
+  });
+
+  it("is what a stale page's refusal says", () => {
+    const raw = JSON.stringify({ kind: "update_blocked", reason: "Disabled" });
+    expect(planErrorMessage(i18n.getFixedT("en"), raw, "Homebrew", false)).toBe(
+      "Couldn't update it because Homebrew has disabled it.",
+    );
+  });
+});
+
+describe("UPDATE_BLOCKED_KEYS.Pinned's note", () => {
+  it("says on a pinned pipx tool that pipx's unpin also unpins what was injected, and nothing on Homebrew's", () => {
+    const pipxKey = { instance_id: "pipx", kind: "Tool", name: "poetry" } satisfies ArtifactKey;
+    const pipx = instance({ id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx" });
+    expect(UPDATE_BLOCKED_KEYS.Pinned.note(pipxKey, pipx, undefined)).toEqual({ key: "updates.pinnedPipxInjected" });
+    // An instance the snapshot lacks: the adapter from the key.
+    expect(UPDATE_BLOCKED_KEYS.Pinned.note(pipxKey, undefined, undefined)).toEqual({
+      key: "updates.pinnedPipxInjected",
+    });
+    const brewKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" } satisfies ArtifactKey;
+    expect(UPDATE_BLOCKED_KEYS.Pinned.note(brewKey, instance(), undefined)).toBeNull();
+    // What the command does, not how many: Banager does not list injected
+    // packages.
+    expect(en.updates.pinnedPipxInjected).toBe("This command also unpins any packages injected into its environment.");
+    expect(zhCN.updates.pinnedPipxInjected).toBe("这条命令也会解除注入到它环境里的包的固定。");
+    expect(zhCN.updates.pinnedPipxInjected).not.toMatch(/\d|{{count}}/);
+  });
+});
+
+describe("typedLauncherName", () => {
+  const agy = instance({
+    id: "standalone-agy",
+    adapter_id: "standalone-agy",
+    exe_path: "/Users/Alice Smith/.local/bin/agy",
+    prefix: "/Users/Alice Smith/.gemini/antigravity-cli",
+  });
+  const agyArtifact = (commands: InstalledArtifact["facts"]["commands"]): InstalledArtifact => ({
+    key: { instance_id: "standalone-agy", kind: "Binary", name: "agy" },
+    display_name: "Antigravity CLI",
+    version: "1.2.11",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: "/Users/Alice Smith/.local/bin/agy",
+    auto_updates: true,
+    uninstall_blocked: null,
+    facts: { ...NO_FACTS, commands },
+  });
+
+  it("is the launcher's own name, not its path, while typing it runs this copy", () => {
+    expect(typedLauncherName(agyArtifact([{ name: "agy", state: "Runs" }]), agy)).toBe("agy");
+  });
+
+  it("is null where typing it would not open this copy, or Banager did not judge it", () => {
+    expect(typedLauncherName(agyArtifact([{ name: "agy", state: { NotOnPath: { dir: "~/.local/bin" } } }]), agy)).toBeNull();
+    expect(typedLauncherName(agyArtifact([{ name: "agy", state: { ShadowedBy: { by: null } } }]), agy)).toBeNull();
+    expect(typedLauncherName(agyArtifact([{ name: "agy", state: null }]), agy)).toBeNull();
+    expect(typedLauncherName(agyArtifact([]), agy)).toBeNull();
+    // Another command of the artifact's does not stand in for the launcher.
+    expect(typedLauncherName(agyArtifact([{ name: "agent", state: "Runs" }]), agy)).toBeNull();
+    expect(typedLauncherName(undefined, agy)).toBeNull();
+    expect(typedLauncherName(agyArtifact([{ name: "agy", state: "Runs" }]), undefined)).toBeNull();
+  });
+
+  it("is said in a sentence that names the Terminal and sets the name as {{command}}, in both locales", () => {
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.typed?.detail).toBe("updates.selfUpdatesTyped");
+    expect(en.updates.selfUpdatesTyped).toBe(
+      "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
+    );
+    expect(zhCN.updates.selfUpdatesTyped).toBe(
+      "它会自行更新，无法在这里更新。在终端里输入{{command}}打开它一次，就会检查新版本。",
+    );
+  });
+});
+
 describe("the Updates page's chip details", () => {
   // Every sentence behind a status chip on the Updates page, in both
   // locales: the redesign's rule is at most two short sentences.
   interface ChipCopy {
     updates: {
       blocked: { Pinned: { detail: string }; SelfUpdatesOnly: { detail: string } };
+      selfUpdatesTyped: string;
+      disabledBlocked: { detail: string };
       cannotCheckShort: string;
       unavailableDetail: Record<string, string>;
     };
@@ -1523,6 +1657,8 @@ describe("the Updates page's chip details", () => {
   const details = (locale: ChipCopy) => [
     locale.updates.blocked.Pinned.detail,
     locale.updates.blocked.SelfUpdatesOnly.detail,
+    locale.updates.selfUpdatesTyped,
+    locale.updates.disabledBlocked.detail,
     locale.updates.cannotCheckShort,
     locale.sourceNotice.pipReadOnly.description,
     locale.sourceNotice.prefixNotWritable.description,

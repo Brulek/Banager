@@ -6,6 +6,7 @@
 import type {
   ArtifactKey,
   ArtifactKind,
+  InstalledArtifact,
   InstanceNote,
   ManagerInstance,
   ReadOnlyReason,
@@ -588,6 +589,64 @@ function launcherCommand(key: ArtifactKey, instance: ManagerInstance | undefined
   return displayToken(instance?.exe_path ?? key.name);
 }
 
+/**
+ * The name to type in Terminal to open a `SelfUpdatesOnly` row's tool --
+ * `agy`, not `~/.local/bin/agy` -- or null when typing it would not open
+ * this copy: the name is the launcher's own file name (the standalone
+ * instance's `exe_path`), and only while the artifact's command of that
+ * name is one Terminal runs (`CommandState` `"Runs"`, judged against the
+ * login shell's `PATH` by `commands::judge`). Not on `PATH`, behind
+ * another copy of the same name, or not judged at all (`state: null`, a
+ * `PATH` that is not the login shell's): null, and the sentence says
+ * "open it once" without saying how, as it did before.
+ */
+export function typedLauncherName(
+  artifact: InstalledArtifact | undefined,
+  instance: ManagerInstance | undefined,
+): string | null {
+  const exe = instance?.exe_path;
+  if (artifact === undefined || exe === undefined) return null;
+  const name = exe.slice(exe.lastIndexOf("/") + 1);
+  if (name === "") return null;
+  const fact = artifact.facts.commands.find((command) => command.name === name);
+  return fact?.state === "Runs" ? name : null;
+}
+
+/**
+ * pipx's `unpin` releases every pinned package in the tool's environment,
+ * the packages injected into it (`pipx inject`) as well as the tool --
+ * pipx 1.17.3's `unpin` loops over all of the venv's `package_metadata`
+ * (`commands/pin.py:75-92`) and has no option to unpin the tool alone.
+ * Banager does not list injected packages (it never passes
+ * `--include-injected`), so it cannot say whether there are any: the
+ * line is said on every pinned pipx row, and says what the command does,
+ * not how many.
+ */
+function pinnedNote(key: ArtifactKey, instance: ManagerInstance | undefined): BlockedNote | null {
+  const adapterId = instance?.adapter_id ?? adapterIdOf(key.instance_id);
+  return adapterId === "pipx" ? { key: "updates.pinnedPipxInjected" } : null;
+}
+
+/**
+ * Homebrew's suggested replacement for a package it disabled, said as
+ * the Installed page's Homebrew line says it (`brewStatus.replacement`).
+ * Nothing when Homebrew suggests none, or the inventory row is missing.
+ */
+function disabledNote(
+  _key: ArtifactKey,
+  _instance: ManagerInstance | undefined,
+  artifact: InstalledArtifact | undefined,
+): BlockedNote | null {
+  const replacement = artifact?.facts.homebrew?.disabled?.replacement ?? null;
+  return replacement === null ? null : { key: "brewStatus.replacement", options: { name: replacement } };
+}
+
+/** A quieter line under a blocked row's sentence: an i18n key and what fills it. */
+export interface BlockedNote {
+  key: string;
+  options?: Record<string, string>;
+}
+
 /** What `UPDATE_BLOCKED_KEYS` holds for one reason. */
 interface UpdateBlockedCopy {
   /** The row's status chip on the Updates page, where "Update" would be. */
@@ -615,8 +674,26 @@ interface UpdateBlockedCopy {
   /** The command, from the row's own key and the instance that key's
    *  `instance_id` names (`undefined` only if the snapshot lacks it, which
    *  `refresh` never produces: it builds `updates` only from instances it
-   *  also puts in `instances`). Also what the row's "Copy command" copies. */
+   *  also puts in `instances`). Also what the row's "Copy command" copies.
+   *  Empty for a reason with nothing to run (`Disabled`): no command line,
+   *  no "Copy command". */
   command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
+  /**
+   * The sentence said in place of `detail` when the tool opens by typing
+   * its name in Terminal, with `{{command}}` for that name, set as code;
+   * and how to find the name (null: say `detail`). Only
+   * `SelfUpdatesOnly` has one (`typedLauncherName`).
+   */
+  typed: {
+    detail: string;
+    name: (artifact: InstalledArtifact | undefined, instance: ManagerInstance | undefined) => string | null;
+  } | null;
+  /** A quieter line under the sentence about this one row, or null. */
+  note: (
+    key: ArtifactKey,
+    instance: ManagerInstance | undefined,
+    artifact: InstalledArtifact | undefined,
+  ) => BlockedNote | null;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
    *  refusal, which only a stale Updates page can reach. It is given only
    *  the source's label (`planErrorMessage`'s `sourceLabel`), not the
@@ -643,6 +720,10 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     detail: "updates.blocked.Pinned.detail",
     commandInDetail: true,
     command: unpinCommand,
+    typed: null,
+    // pipx's unpin also unpins what was injected into the tool's
+    // environment (`pinnedNote`).
+    note: pinnedNote,
     refused: "updates.blocked.Pinned.refused",
   },
   SelfUpdatesOnly: {
@@ -655,7 +736,27 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     detail: "updates.blocked.SelfUpdatesOnly.detail",
     commandInDetail: false,
     command: launcherCommand,
+    // Where typing its name in Terminal opens this copy, the sentence
+    // says so, with the name and not the path: 「在终端里输入agy打开它一次」.
+    typed: { detail: "updates.selfUpdatesTyped", name: typedLauncherName },
+    note: () => null,
     refused: "updates.blocked.SelfUpdatesOnly.refused",
+  },
+  Disabled: {
+    // Homebrew's own word for the mark, as the Installed page's row says
+    // it (`homebrewStatusChip`).
+    badge: "brewStatus.disabledWord",
+    // Why there is no Update button: Homebrew provides no more updates of
+    // it. Nothing to run -- `brew upgrade` will not, and Banager does not
+    // pass `--force` -- and nothing about whether the copy installed still
+    // works, which Banager does not know. Homebrew's suggested replacement,
+    // when it gives one, is the line under it.
+    detail: "updates.disabledBlocked.detail",
+    commandInDetail: false,
+    command: () => "",
+    typed: null,
+    note: disabledNote,
+    refused: "updates.disabledBlocked.refused",
   },
 };
 

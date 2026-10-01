@@ -382,6 +382,9 @@ function brewUpdates(): UpdateCandidate[] {
     // Hidden by Settings for 12 more days (snoozed_updates).
     update(formula("wget"), "1.25.0", "1.26.0", "Native"),
     update(key(IDS.brew, "Cask", "android-platform-tools"), "36.0.0", "36.0.2", "Native"),
+    // Disabled by Homebrew (`withHomebrewState`), yet `brew outdated` still
+    // lists a newer version: held back, no button.
+    update(key(IDS.brew, "Cask", "quickjot"), "2.3.1", "2.4.0", "Native", { blocked: "Disabled" }),
   ];
 }
 
@@ -478,6 +481,9 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     update(key(IDS.rustup, "Binary", "rustup"), "1.29.1", "1.30.0", "Registry"),
     // uv did not answer: the newer version is from last time, no button.
     update(key(IDS.uv, "Tool", "ruff"), "0.14.3", "0.14.5", "Native"),
+    // Pinned in pipx (`pipx pin poetry`): the unpin command, and that it
+    // unpins what was injected into poetry's environment too.
+    update(key(IDS.pipx, "Tool", "poetry"), "2.2.1", "2.2.2", "Native", { blocked: "Pinned" }),
   ];
   return { artifacts, updates };
 }

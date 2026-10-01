@@ -1306,12 +1306,17 @@ export function InstalledPage() {
           break;
         case "blocked":
           // A pinned package that is also pinned against its update says
-          // "Pinned" once, with the unpin command, above.
-          if (!(state.reason === "Pinned" && artifact.uninstall_blocked === "Pinned")) {
+          // "Pinned" once, with the unpin command, above; a package
+          // Homebrew disabled says 「已停用」 once, in Homebrew's own line
+          // above, which already says no more updates come.
+          if (
+            !(state.reason === "Pinned" && artifact.uninstall_blocked === "Pinned") &&
+            !(state.reason === "Disabled" && homebrewChip !== null)
+          ) {
             chips.push({
               id: "update-blocked",
               label: t(UPDATE_BLOCKED_KEYS[state.reason].badge),
-              detail: blockedDetail(t, listed, state.reason, instance, label, showTechnicalDetails),
+              detail: blockedDetail(t, listed, state.reason, instance, label, showTechnicalDetails, artifact),
               tone: "neutral",
             });
           }
@@ -1362,7 +1367,8 @@ export function InstalledPage() {
     const listed = listedUpdates.get(artifactKeyId(artifact.key));
     if (listed === undefined) return null;
     const state = updateStateOf(listed, instance);
-    return state.kind === "blocked" ? UPDATE_BLOCKED_KEYS[state.reason].command(listed.key, instance) : null;
+    const command = state.kind === "blocked" ? UPDATE_BLOCKED_KEYS[state.reason].command(listed.key, instance) : "";
+    return command === "" ? null : command;
   };
 
   // The ⋯ menu: the details, and -- with technical details on -- the

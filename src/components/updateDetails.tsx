@@ -8,7 +8,8 @@
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { READ_ONLY_DETAIL_KEYS, UNAVAILABLE_DETAIL_KEYS, UPDATE_BLOCKED_KEYS } from "../lib/sources";
-import type { ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
+import { FAILURE_CAUSE_KEYS, failureCause, type FailureCause } from "../lib/failureCause";
+import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 
@@ -31,8 +32,12 @@ export function detailLines(lines: ReactNode[]): ReactNode {
  * (`NonRegistrySource`) was written for this audience and is always
  * given. A `Message` is raw text off the wire -- a tool's stderr, an HTTP
  * error -- kept verbatim on purpose, and it is behind "Show technical
- * details", which is exactly what spec §6 says the right shape is.
- * Distinct, so a row carrying the same reason twice says it once.
+ * details", which is exactly what spec §6 says the right shape is. Where
+ * its words say why in a way a person knows (`failureCause`: no network,
+ * a full disk, a lock), that is said in a person's words whether or not
+ * technical details are on (`failure.line.*`), before the words
+ * themselves. Distinct, so a row carrying the same reason twice says it
+ * once.
  */
 export function cannotCheckDetail(
   t: TFunction,
@@ -42,17 +47,50 @@ export function cannotCheckDetail(
   const reasons = new Set<string>();
   for (const warning of candidate.warnings) {
     const raw = warningMessage(warning);
-    const text = raw === null ? warningText(t, warning) : showTechnicalDetails ? raw : null;
-    if (text !== null && text !== "") reasons.add(text);
+    if (raw === null) {
+      const text = warningText(t, warning);
+      if (text !== null && text !== "") reasons.add(text);
+      continue;
+    }
+    const cause = failureCause(raw);
+    if (cause !== null) reasons.add(t(FAILURE_CAUSE_KEYS[cause].line));
+    if (showTechnicalDetails && raw !== "") reasons.add(raw);
   }
   return detailLines([t("updates.cannotCheckShort"), ...reasons]);
 }
 
 /**
+ * The one cause a person knows (`failureCause`) that every row of
+ * `candidates` with a tool's own words (`Message`) gives -- 「网络连接失败」
+ * when nothing could be reached -- for the line over the rows Banager
+ * could not check. Null when there is no such row, when one of them says
+ * nothing `failureCause` reads, or when they disagree: then the line does
+ * not claim a cause for all of them, and each row's chip says its own.
+ */
+export function sharedCannotCheckCause(candidates: UpdateCandidate[]): FailureCause | null {
+  let shared: FailureCause | null = null;
+  for (const candidate of candidates) {
+    for (const warning of candidate.warnings) {
+      const raw = warningMessage(warning);
+      if (raw === null) continue;
+      const cause = failureCause(raw);
+      if (cause === null || (shared !== null && cause !== shared)) return null;
+      shared = cause;
+    }
+  }
+  return shared;
+}
+
+/**
  * A blocked row's chip detail: why the tool will not update it, and what
  * the user can do instead -- the unpin command, set as code in the
- * sentence, or "open it once", with the command that opens it under it
- * while technical details are on.
+ * sentence; "open it once", with the name to type in Terminal set into
+ * the sentence where typing it opens this copy (`copy.typed`), or else
+ * the command that opens it under it while technical details are on; or,
+ * for a package Homebrew disabled, nothing to run. Then the row's own
+ * note (`copy.note`): what pipx's unpin also does, Homebrew's suggested
+ * replacement. `artifact` is the row's inventory entry, which the typed
+ * name and the replacement are read from; without it neither is said.
  */
 export function blockedDetail(
   t: TFunction,
@@ -61,15 +99,23 @@ export function blockedDetail(
   instance: ManagerInstance | undefined,
   source: string,
   showTechnicalDetails: boolean,
+  artifact?: InstalledArtifact,
 ): ReactNode {
   const copy = UPDATE_BLOCKED_KEYS[reason];
   const command = copy.command(candidate.key, instance);
+  const note = copy.note(candidate.key, instance, artifact);
+  const noteLines = note === null ? [] : [t(note.key, note.options)];
   if (copy.commandInDetail) {
-    return detailLines([withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command)]);
+    return detailLines([withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command), ...noteLines]);
+  }
+  const typed = copy.typed === null ? null : copy.typed.name(artifact, instance);
+  if (copy.typed !== null && typed !== null) {
+    return detailLines([withCommand(t(copy.typed.detail, { command: COMMAND_SLOT, source }), typed), ...noteLines]);
   }
   return detailLines([
     t(copy.detail, { source }),
-    ...(showTechnicalDetails
+    ...noteLines,
+    ...(showTechnicalDetails && command !== ""
       ? [withCommand(t("updates.runInTerminal", { command: COMMAND_SLOT }), command)]
       : []),
   ]);

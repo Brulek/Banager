@@ -190,8 +190,9 @@ describe("types", () => {
     // crates/banager-core/src/model.rs, whose
     // `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
-    const reasons: UpdateBlocked[] = ["Pinned", "SelfUpdatesOnly"];
-    expect(JSON.stringify(reasons)).toBe('["Pinned","SelfUpdatesOnly"]');
+    const reasons: UpdateBlocked[] = ["Pinned", "SelfUpdatesOnly", "Disabled"];
+    expect(JSON.stringify(reasons)).toBe('["Pinned","SelfUpdatesOnly","Disabled"]');
+    expect(JSON.parse('{"blocked":"Disabled"}')).toEqual({ blocked: "Disabled" satisfies UpdateBlocked });
     const updatable: UpdateBlocked | null = null;
     expect(roundTrip(updatable)).toBeNull();
   });

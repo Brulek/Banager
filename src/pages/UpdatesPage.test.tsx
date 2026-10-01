@@ -1132,6 +1132,65 @@ describe("UpdatesPage", () => {
     expect(within(detail).getByText("/opt/homebrew/bin/pipx unpin cowsay").tagName).toBe("CODE");
     expect(queryByText(/brew unpin/)).toBeNull();
     expect(queryByText(/pinned in Homebrew/)).toBeNull();
+    // pipx's unpin releases what was injected into the environment too
+    // (pipx 1.17.3 `commands/pin.py`), which Banager cannot list: said on
+    // every pinned pipx row, as what the command does.
+    expect(detail).toHaveTextContent("This command also unpins any packages injected into its environment.");
+  });
+
+  it("says nothing of injected packages on a row pinned in Homebrew", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("glib"), "Pinned");
+    expect(detail).toHaveTextContent("brew unpin glib");
+    expect(detail).not.toHaveTextContent(/inject/);
+  });
+
+  it("holds back a package Homebrew disabled: no button, why, Homebrew's suggestion, and nothing to run or copy", async () => {
+    // `brew outdated` lists a disabled cask like any other; `brew upgrade`
+    // of it would change nothing (`UpdateBlocked::Disabled`).
+    settings.show_technical_details = true;
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Disabled" }];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+        facts: {
+          ...NO_FACTS,
+          homebrew: {
+            deprecated: null,
+            disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement: "onyx-ng" },
+            caveats: null,
+            other_versions: [],
+          },
+        },
+      },
+    ];
+    const { getAllByRole } = renderPage();
+
+    await findRow("glib");
+    // Only glib's.
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    await showCantUpdate();
+    const onyx = await findRow("OnyX");
+    const detail = chipDetail(onyx, "Disabled");
+    expect(detail).toHaveTextContent("Homebrew has disabled it and won't provide more updates.");
+    expect(detail).toHaveTextContent("Homebrew suggests “onyx-ng” instead.");
+    // Nothing to run: no "In Terminal" line even with technical details on,
+    // and no Copy Command.
+    expect(detail).not.toHaveTextContent("In Terminal");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(within(openMenu(onyx)).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
   });
 
   it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {
@@ -1339,9 +1398,10 @@ describe("UpdatesPage", () => {
   it("says where to see why rows could not be checked once for the page, not once per row", async () => {
     // Offline, one failed `npm outdated -g` turns every global package into
     // an uncheckable row. The explanation used to be a 180-character
-    // paragraph on each of them -- seventy globals, seventy copies. It
-    // names no cause: the tool's own words, which are what would, are
-    // exactly what is hidden.
+    // paragraph on each of them -- seventy globals, seventy copies. The
+    // tool's own words are hidden; the cause they give is said, in a
+    // person's words, where every row gives the same one
+    // (`sharedCannotCheckCause`): ENOTFOUND is no network.
     updates = Array.from({ length: 70 }, (_, index) => ({
       key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: `global-${index}` },
       current: "1.0.0",
@@ -1359,8 +1419,65 @@ describe("UpdatesPage", () => {
     expect(summary).toHaveLength(1);
     // The sentence says what happened, and a button next to it shows why,
     // rather than a sentence saying which setting to find where.
-    expect(summary[0].textContent).toBe("70 tools couldn't be checked for updates.");
+    expect(summary[0].textContent).toBe(
+      "70 tools couldn't be checked for updates. The connection failed. Check your internet connection, then try again.",
+    );
     expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
+  });
+
+  it("names no cause over the rows when their words give none, or give different ones", async () => {
+    // A registry that answered 500 says nothing a person can act on, and
+    // one row offline beside one with a full disk is not "no network" for
+    // both: the line then says only that they could not be checked.
+    const row = (name: string, message: string) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: message }],
+      blocked: null,
+    });
+    updates = [
+      row("left-pad", "npm outdated -g: npm error code ENOTFOUND"),
+      row("is-odd", "npm outdated -g: npm error code E500 Internal Server Error"),
+    ];
+    const first = renderPage();
+    await showCantUpdate();
+    expect((await first.findByText(/2 tools couldn't be checked for updates/)).textContent).toBe(
+      "2 tools couldn't be checked for updates.",
+    );
+    first.unmount();
+
+    updates = [
+      row("left-pad", "npm outdated -g: npm error code ENOTFOUND"),
+      row("is-odd", "npm outdated -g: npm error code ENOSPC: no space left on device"),
+    ];
+    const second = renderPage();
+    await showCantUpdate();
+    expect((await second.findByText(/2 tools couldn't be checked for updates/)).textContent).toBe(
+      "2 tools couldn't be checked for updates.",
+    );
+  });
+
+  it("says a row's cause in its Can't check chip with technical details off, and the tool's words only with them on", async () => {
+    updates = [
+      {
+        key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: "left-pad" },
+        current: "1.0.0",
+        target: "1.0.0",
+        channel: "Native" as const,
+        checkable: false,
+        warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+        blocked: null,
+      },
+    ];
+    renderPage();
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("left-pad"), "Can't check");
+    expect(detail).toHaveTextContent("Couldn't find its latest version.");
+    expect(detail).toHaveTextContent("The connection failed. Check your internet connection, then try again.");
+    expect(detail).not.toHaveTextContent("ENOTFOUND");
   });
 
   it("shows why with one press: Show Reasons turns on Show technical details, and the tools' words take the line's place", async () => {
@@ -1377,7 +1494,7 @@ describe("UpdatesPage", () => {
     const { findByText, getByRole, queryByText } = renderPage();
 
     await showCantUpdate();
-    await findByText("2 tools couldn't be checked for updates.");
+    await findByText(/^2 tools couldn't be checked for updates\./);
     const showReasons = getByRole("button", { name: "Show Reasons" });
     // Where it goes, in its tooltip: the setting it turns on.
     expect(showReasons).toHaveAttribute("title", "Turns on “Show technical details” in Settings");
@@ -1394,6 +1511,8 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(queryByText(/couldn't be checked for updates/)).not.toBeInTheDocument());
     const detail = chipDetail(await findRow("requests"), "Can't check");
     expect(detail).toHaveTextContent("npm outdated -g: npm error code ENOTFOUND");
+    // The cause in a person's words stays, before the tool's own.
+    expect(detail).toHaveTextContent("The connection failed.");
   });
 
   it("does not count a row with its own reason in the page's cannot-check line", async () => {
@@ -5108,6 +5227,39 @@ describe("UpdatesPage", () => {
     expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
     // Not the updatable row's chip: this row has no button to point at.
     expect(queryByText(/also update it now/)).toBeNull();
+  });
+
+  it("says which name to type in Terminal to open a tool that updates itself, where typing it runs this copy", async () => {
+    // Backlog L451-452 (Astra 7): "open it once" did not say how. The name,
+    // not the path; only while the artifact's command of the launcher's
+    // name is the one Terminal runs.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }];
+    artifacts = [{ ...claudeArtifact, facts: { ...NO_FACTS, commands: [{ name: "claude", state: "Runs" }] } }];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("Claude Code"), "Open to update");
+    expect(detail.textContent).toBe(
+      "It updates itself and can't be updated here. Type claude in Terminal to open it once, and it checks for a new version.",
+    );
+    expect(within(detail).getByText("claude").tagName).toBe("CODE");
+  });
+
+  it("does not tell anyone to type a name that runs another copy", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }];
+    artifacts = [
+      {
+        ...claudeArtifact,
+        facts: { ...NO_FACTS, commands: [{ name: "claude", state: { ShadowedBy: { by: null } } }] },
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const detail = chipDetail(await findRow("Claude Code"), "Open to update");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
   });
 
   it("shows the command that opens a tool that updates itself, and offers to copy it, with technical details on", async () => {

@@ -343,7 +343,13 @@
     "showHidden": "查看已隐藏的更新",
     "snooze": "30天内不提醒",
     "snoozeHint": "此工具的更新30天后会重新列出。可以在“设置”中撤销。",
-    "snoozedUntil": "{{date}}起恢复提醒"
+    "snoozedUntil": "{{date}}起恢复提醒",
+    "selfUpdatesTyped": "它会自行更新，无法在这里更新。在终端里输入{{command}}打开它一次，就会检查新版本。",
+    "disabledBlocked": {
+      "detail": "{{source}}已停用它，以后不再提供更新。",
+      "refused": "无法更新，因为{{source}}已停用它。"
+    },
+    "pinnedPipxInjected": "这条命令也会解除注入到它环境里的包的固定。"
   },
   "history": {
     "today": "今天{{time}}",
