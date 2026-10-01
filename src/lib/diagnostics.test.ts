@@ -432,3 +432,50 @@ describe("the command counts", () => {
     );
   });
 });
+
+describe("the home folder, wherever a path can carry it", () => {
+  // Promise 5 of docs/what-we-run.md, as a property: whatever the account
+  // is called and however its home is spelled, no path in the text names
+  // it -- not a source's program the facts did not cover, not a place
+  // that tells two sources of one kind apart (their prefixes, then their
+  // programs, then their ids), not a search folder Rust left unabbreviated.
+  const NAMES = ["x3secretuser", "x3.secret_user-2", "X3SECRET"];
+  const spellings = (name: string) => [`/Users/${name}`, `/System/Volumes/Data/Users/${name}`];
+
+  function homeSnapshot(home: string): Snapshot {
+    return {
+      ...SNAPSHOT,
+      instances: [
+        // Two Homebrews whose places share a name: told apart by prefix.
+        instance(`brew:${home}/a/homebrew`, `${home}/a/homebrew/bin/brew`, { prefix: `${home}/a/homebrew` }),
+        instance(`brew:${home}/b/homebrew`, `${home}/b/homebrew/bin/brew`, { prefix: `${home}/b/homebrew` }),
+        // Two npms with one prefix: told apart by program.
+        instance(`npm:${home}/one`, `${home}/one/bin/npm`, { prefix: `${home}/.npm-global` }),
+        instance(`npm:${home}/two`, `${home}/two/bin/npm`, { prefix: `${home}/.npm-global` }),
+        // Two pips with one prefix and one program: told apart by id.
+        instance(`pip:${home}/.pyenv/a`, `${home}/.pyenv/shims/python3`, { prefix: `${home}/.pyenv` }),
+        instance(`pip:${home}/.pyenv/b`, `${home}/.pyenv/shims/python3`, { prefix: `${home}/.pyenv` }),
+        // One the facts did not cover: its program from the snapshot.
+        instance(`standalone-claude:${home}/.local/bin/claude`, `${home}/.local/bin/claude`),
+      ],
+      artifacts: [
+        artifact({ instance_id: `standalone-claude:${home}/.local/bin/claude`, kind: "Binary", name: "claude-code" }, "2.1.0"),
+      ],
+    };
+  }
+
+  it("never names the account, in either language, with or without the tools, however the home is spelled", () => {
+    for (const name of NAMES) {
+      for (const home of spellings(name)) {
+        const facts: SystemFacts = { ...FACTS, path_dirs: [`${home}/bin`, "/usr/bin"], sources: [] };
+        for (const t of [en, zh]) {
+          for (const includeTools of [false, true]) {
+            const text = diagnosticsText(t, input({ facts, snapshot: homeSnapshot(home), includeTools }));
+            expect(text, `${home}, tools ${includeTools}`).not.toContain(name);
+            expect(text).not.toContain("/Users/");
+          }
+        }
+      }
+    }
+  });
+});
