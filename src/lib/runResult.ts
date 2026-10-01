@@ -7,9 +7,13 @@
  * words for a run with nothing failed in it (`operations.batch.
  * needsAttention`).
  *
- * Uninstalls keep the words the result block over the Installed list
- * uses (`batchUninstallMore.mixed`, `batchUninstall.bar.notUninstalled`),
- * so the two never say the same run two ways.
+ * Uninstalls keep the heading of the result block over the Installed
+ * list (`BatchUninstallResult`), counted as it counts them: every one not
+ * `Succeeded` -- failed, cancelled or needing a look -- is one that 「没有
+ * 卸载」 (`batchUninstallMore.mixed`, `batchUninstall.bar.notUninstalled`),
+ * and the block's list says how each ended. So a run with a failure in it
+ * is said the same way in both. A run of uninstalls with no failure in
+ * it, but one needing a look, still says 「需要查看」 on the bar, as before.
  *
  * Pure: `t` gives the words, `outcomeTone` sorts the endings.
  */
@@ -39,22 +43,19 @@ export function runTally(ops: readonly OpSummary[]) {
 export function failedRunWords(t: Translate, ops: readonly OpSummary[]): string | null {
   const { failed, attention, succeeded, cancelled } = runTally(ops);
   if (failed === 0) return null;
-  const updates = ops.every((op) => op.kind === "Upgrade");
-  const uninstalls = ops.every((op) => op.kind === "Uninstall");
-  const parts: string[] = [];
-  if (uninstalls) {
-    // The successes are in the uninstall words themselves.
-    parts.push(
-      succeeded > 0
-        ? t("batchUninstallMore.mixed", { done: succeeded, count: failed })
-        : t("batchUninstall.bar.notUninstalled", { count: failed }),
-    );
-  } else {
-    parts.push(
-      updates ? t("failureSteps.bar.updatesFailed", { count: failed }) : t("failureSteps.bar.failed", { count: failed }),
-    );
-    if (succeeded > 0) parts.push(t("failureSteps.bar.succeeded", { count: succeeded }));
+  if (ops.every((op) => op.kind === "Uninstall")) {
+    // The result block's heading, word for word: the successes are in it,
+    // and so is every other ending, as not uninstalled.
+    const notUninstalled = failed + attention + cancelled;
+    return succeeded > 0
+      ? t("batchUninstallMore.mixed", { done: succeeded, count: notUninstalled })
+      : t("batchUninstall.bar.notUninstalled", { count: notUninstalled });
   }
+  const updates = ops.every((op) => op.kind === "Upgrade");
+  const parts = [
+    updates ? t("failureSteps.bar.updatesFailed", { count: failed }) : t("failureSteps.bar.failed", { count: failed }),
+  ];
+  if (succeeded > 0) parts.push(t("failureSteps.bar.succeeded", { count: succeeded }));
   if (attention > 0) parts.push(t("failureSteps.bar.needsAttention", { count: attention }));
   if (cancelled > 0) parts.push(t("failureSteps.bar.cancelled", { count: cancelled }));
   return parts.join(t("overview.listSeparator"));

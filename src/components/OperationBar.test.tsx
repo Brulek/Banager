@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { OperationBar } from "./OperationBar";
+import { BatchUninstallResult } from "./BatchUninstallResult";
 import { BUTTON } from "./ui/controls";
 import { useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
@@ -803,8 +804,23 @@ describe("OperationBar, after a batch uninstall", () => {
     });
   });
 
-  it("counts a cancelled uninstall as cancelled, not as uninstalled, beside a failed one", async () => {
-    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+  it("says a run with a cancelled and a failed uninstall as the result block above the list says it", async () => {
+    // The same batch, as the Installed page records it for its result block.
+    const key = (name: string) => ({ instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name });
+    useUiStore.getState().setUninstallBatch({
+      id: 1,
+      items: [
+        { key: key("git"), name: "git", opId: 1, after: [] },
+        { key: key("jq"), name: "jq", opId: 2, after: [] },
+        { key: key("wget"), name: "wget", opId: 3, after: [] },
+      ],
+    });
+    const { findAllByText, queryClient } = renderWithProviders(
+      <>
+        <OperationBar />
+        <BatchUninstallResult />
+      </>,
+    );
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
     await listNow(queryClient, [uninstall(3, "wget", "Queued"), uninstall(2, "jq", "Queued"), uninstall(1, "git", "Running")]);
     await listNow(queryClient, [
@@ -812,11 +828,13 @@ describe("OperationBar, after a batch uninstall", () => {
       uninstall(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall" } }),
       uninstall(1, "git", "Done", "Succeeded"),
     ]);
-    await findByText("Uninstalled 1; 1 wasn't uninstalled, 1 cancelled");
+    // The cancelled one is not counted as uninstalled, and the bar and the
+    // block say the run the same way: once each.
+    expect(await findAllByText("Uninstalled 1; 2 weren't uninstalled")).toHaveLength(2);
     await act(async () => {
       await i18n.changeLanguage("zh-CN");
     });
-    await findByText("已卸载1个，1个没有卸载，1个已取消");
+    expect(await findAllByText("已卸载1个，2个没有卸载")).toHaveLength(2);
     await act(async () => {
       await i18n.changeLanguage("en");
     });

@@ -68,6 +68,15 @@ describe("failedRunWords", () => {
     const uninstalls = [op(1, failed, "Uninstall"), op(2, "Succeeded", "Uninstall"), op(3, "Succeeded", "Uninstall")];
     expect(failedRunWords(t, uninstalls)).toBe("Uninstalled 2; 1 wasn't uninstalled");
     expect(failedRunWords(t, [op(1, failed, "Uninstall")])).toBe("1 wasn't uninstalled");
+    // Cancelled and needing a look count as not uninstalled, as the block counts them.
+    expect(
+      failedRunWords(t, [
+        op(1, failed, "Uninstall"),
+        op(2, "Cancelled", "Uninstall"),
+        op(3, "Unconfirmed", "Uninstall"),
+        op(4, "Succeeded", "Uninstall"),
+      ]),
+    ).toBe("Uninstalled 1; 3 weren't uninstalled");
     expect(failedRunWords(t, [op(1, failed, "Install"), op(2, "Succeeded")])).toBe("1 failed, 1 succeeded");
 
     await i18n.changeLanguage("zh-CN");
