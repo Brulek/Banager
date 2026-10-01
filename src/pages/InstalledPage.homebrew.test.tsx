@@ -156,7 +156,7 @@ describe("InstalledPage, Homebrew's state", () => {
     expect(pane.querySelector("[data-facts] + [data-homebrew-notes='mark']")).not.toBeNull();
     expect(pane.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newapp” instead.");
     expect(within(pane).queryByRole("button", { name: /Install/ })).toBeNull();
-    expect(within(pane).getByText("Homepage").nextElementSibling).toHaveTextContent("https://oldapp.example/");
+    expect(within(pane).getByText("Homepage").nextElementSibling).toHaveTextContent("oldapp.example");
     expect(within(pane).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
     // No update will come, so it is not called up to date either.
     expect(within(pane).queryByText("Up to date")).toBeNull();

@@ -8,9 +8,11 @@ import type { HomebrewFacts, InstalledArtifact, Measured, Sizes } from "../lib/t
 import { NO_FACTS, NO_SIZES } from "../lib/types";
 import {
   HomebrewNotes,
+  addressWithBreaks,
   REASON_KEYS,
   homebrewStatusChip,
   homepageFact,
+  homepageHost,
   lifecycleSentence,
   otherVersionsFact,
 } from "./HomebrewStatus";
@@ -125,28 +127,32 @@ describe("homepageFact", () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
-  it("shows the address as text and copies it with Copy Link, opening nothing", async () => {
+  it("shows the site's host, the whole address as its tooltip, and copies the whole address with Copy Link, opening nothing", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    const fact = homepageFact(enT, "https://jqlang.github.io/jq/");
+    const fact = homepageFact(enT, "https://code.claude.com/docs/en/setup");
     expect(fact?.term).toBe("Homepage");
     const { container } = renderWithProviders(<>{fact?.value}</>);
     const shown = container.querySelector("[data-homepage]") as HTMLElement;
-    expect(shown.textContent).toBe("https://jqlang.github.io/jq/");
+    expect(shown.textContent).toBe("code.claude.com");
+    expect(shown).toHaveAttribute("title", "https://code.claude.com/docs/en/setup");
     expect(shown.tagName).toBe("SPAN");
-    // A line may break after // and before each /, never inside a name
-    // nor at its dots: "https://" | "jqlang.github.io" | "/jq" | "/".
-    expect(shown.querySelectorAll("wbr")).toHaveLength(3);
-    expect(shown).toHaveClass("break-words");
     expect(screen.queryByRole("link")).toBeNull();
     const button = screen.getByRole("button", { name: "Copy Link" });
     fireEvent.click(button);
-    expect(writeText).toHaveBeenCalledWith("https://jqlang.github.io/jq/");
+    expect(writeText).toHaveBeenCalledWith("https://code.claude.com/docs/en/setup");
     // Its word beside it, as every button in a pane says it -- not in the
     // window's toolbar, which speaks for a row's ⋯ menu.
     const status = await screen.findByRole("status");
     await waitFor(() => expect(status).toHaveTextContent(/^Copied$/));
     expect(status.parentElement).toBe(button.parentElement);
+  });
+
+  it("names a host without its www., and shows whole what is not a web address", () => {
+    expect(homepageHost("https://www.python.org/")).toBe("python.org");
+    expect(homepageHost("http://jqlang.github.io/jq/")).toBe("jqlang.github.io");
+    expect(homepageHost("ftp://example.com/x")).toBeNull();
+    expect(homepageHost("not an address")).toBeNull();
   });
 
   it("says when the clipboard refused, beside the button", async () => {
@@ -155,11 +161,9 @@ describe("homepageFact", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Couldn't copy$/));
   });
 
-  it("keeps a host on one line, dots and all", () => {
-    const { container } = renderWithProviders(
-      <>{homepageFact(enT, "https://youtube-dl.org/?q=a&b=c#top")?.value}</>,
-    );
-    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+  it("keeps a host on one line, dots and all, where a whole address is shown", () => {
+    const { container } = renderWithProviders(<>{addressWithBreaks("https://youtube-dl.org/?q=a&b=c#top")}</>);
+    const shown = container;
     expect(shown.textContent).toBe("https://youtube-dl.org/?q=a&b=c#top");
     // Each piece between two <wbr> is what may stand at a line's start:
     // "youtube-dl.org" whole, never ".org" -- and as one inline block,

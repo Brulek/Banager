@@ -177,12 +177,31 @@ function nameUnbroken(sentence: string, name: string): ReactNode {
 }
 
 /**
+ * The host a web address names, as the inspector's 「主页」 shows it --
+ * 「code.claude.com」 for `https://code.claude.com/docs/en/setup`, less a
+ * leading `www.` -- or null for anything that is not an http(s) address
+ * with a host, which is then shown whole (`addressWithBreaks`).
+ */
+export function homepageHost(address: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return null;
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.hostname === "") return null;
+  return url.hostname.replace(/^www\./, "");
+}
+
+/**
  * The inspector's 「主页」 fact, for any source that reported one: the
- * address as text, and 「拷贝链接」 under it, its 「已拷贝」 beside it
- * (`CopyButton`). Nothing opens it -- opening a page from Banager is a
- * decision not yet taken -- so the address is only read and copied, by
- * its button rather than by selecting it, as the inspector selects only
- * versions and a location.
+ * site's host as text (`homepageHost`) -- a whole address wrapped into
+ * ragged lines at a slash in a 260 pane -- with the whole address as its
+ * tooltip, and 「拷贝链接」 under it, which copies the whole address, its
+ * 「已拷贝」 beside it (`CopyButton`). Nothing opens it -- opening a page
+ * from Banager is a decision not yet taken -- so the address is only read
+ * and copied, by its button rather than by selecting it, as the inspector
+ * selects only versions and a location.
  */
 export function homepageFact(
   t: TFunction,
@@ -190,12 +209,13 @@ export function homepageFact(
 ): { term: string; value: ReactNode; selectable: boolean } | null {
   const address = homepage?.trim() ?? "";
   if (address === "") return null;
+  const host = homepageHost(address);
   return {
     term: t("brewStatus.homepage"),
     value: (
       <span className="flex flex-col items-end gap-1">
-        <span data-homepage="" className="break-words">
-          {addressWithBreaks(address)}
+        <span data-homepage="" title={address} className="break-words">
+          {host ?? addressWithBreaks(address)}
         </span>
         <CopyButton text={address} label={t("brewStatus.copyLink")} />
       </span>
