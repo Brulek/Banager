@@ -3,14 +3,12 @@ use crate::model::{ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact};
 use serde::Deserialize;
 use std::collections::HashSet;
 
-/// Parses `ollama --version`'s "ollama version is X.Y.Z" output.
+/// Parses `ollama --version`'s "ollama version is X.Y.Z" output. A last
+/// token with a control character in it is no version
+/// (`sanity::version_token`).
 pub fn parse_version(text: &str) -> Option<String> {
     let v = text.split_whitespace().last()?;
-    if v.is_empty() {
-        None
-    } else {
-        Some(v.to_string())
-    }
+    crate::adapters::sanity::version_token(Some(v.to_string()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,28 +33,29 @@ struct TagsModel {
 pub fn parse_tags(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let root: TagsRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
-    Ok(root
-        .models
-        .into_iter()
-        .map(|m| InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Model,
-                name: m.name.clone(),
-            },
-            display_name: m.name,
-            version: m.digest,
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: Some(m.size),
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
-        })
-        .collect())
+    Ok(crate::adapters::sanity::artifacts(
+        root.models
+            .into_iter()
+            .map(|m| InstalledArtifact {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Model,
+                    name: m.name.clone(),
+                },
+                display_name: m.name,
+                version: m.digest,
+                reason: InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: Some(m.size),
+                installed_at: None,
+                path: None,
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: Default::default(),
+            })
+            .collect(),
+    ))
 }
 
 /// Splits an Ollama model reference (`name:tag`, e.g. `qwen3.8:27b-mlx`, or
@@ -119,6 +118,19 @@ pub fn config_digest(json: &str) -> Result<Option<String>, AdapterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_version_and_parse_tags_refuse_control_characters() {
+        assert_eq!(parse_version("ollama version is 0.34\u{1}1\n"), None);
+        let json = r#"{"models":[{"name":"","digest":"a"},{"name":"qwen\u001b:1b","digest":"b"},
+            {"name":"llama:1b","digest":"c\nd"}]}"#;
+        let artifacts = parse_tags(json, "ollama:http://127.0.0.1:11434").unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].key.name, "llama:1b");
+        assert_eq!(artifacts[0].version, "");
+    }
 
     #[test]
     fn test_parse_version_reads_the_last_token() {
