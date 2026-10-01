@@ -2,7 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
 import { BUTTON } from "./ui/controls";
-import { JUST_UPDATED_SHOWN, JustUpdated, finishedText, justUpdatedOps } from "./JustUpdated";
+import i18n from "../i18n";
+import {
+  JUST_UPDATED_SHOWN,
+  JustUpdated,
+  endingOfOutcome,
+  endingOfRecord,
+  finishedText,
+  justUpdatedOps,
+  type JustUpdatedEntry,
+} from "./JustUpdated";
 import type { OpSummary } from "../lib/types";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
@@ -23,7 +32,7 @@ function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpS
 const none = { shownInRows: new Set<number>(), cleared: [], finishedAt: {} };
 
 describe("justUpdatedOps", () => {
-  it("takes each tool's newest operation, and only a finished update that succeeded", () => {
+  it("takes each tool's newest operation: a finished update that worked, failed or asks to be checked", () => {
     const operations = [
       upgrade(1, "jq"),
       upgrade(5, "jq"),
@@ -32,8 +41,20 @@ describe("justUpdatedOps", () => {
       upgrade(3, "glib", { outcome: { Failed: { exit_code: 1, summary: "no bottle" } } }),
       upgrade(4, "gh", { status: "Running", outcome: null }),
       upgrade(7, "fd", { outcome: "Unconfirmed" }),
+      upgrade(8, "bat", { outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+      upgrade(9, "tree", { outcome: "Cancelled" }),
+      upgrade(10, "node", { outcome: { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } } }),
     ];
-    expect(justUpdatedOps(operations, none).map((op) => op.id)).toEqual([5]);
+    expect(justUpdatedOps(operations, none).map((op) => op.id)).toEqual([10, 8, 7, 5, 3]);
+  });
+
+  it("lists an update that failed and then worked as the one that worked, and one that worked and then failed as failed", () => {
+    const failed = { outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host" } } } as const;
+    const operations = [upgrade(1, "jq", failed), upgrade(2, "jq"), upgrade(3, "wget"), upgrade(4, "wget", failed)];
+    expect(justUpdatedOps(operations, none).map((op) => [op.name, op.id])).toEqual([
+      ["wget", 4],
+      ["jq", 2],
+    ]);
   });
 
   it("leaves out what a row still shows and what Clear took off", () => {
@@ -46,6 +67,35 @@ describe("justUpdatedOps", () => {
     const operations = [upgrade(1, "jq"), upgrade(2, "wget"), upgrade(3, "glib"), upgrade(4, "gh")];
     const listed = justUpdatedOps(operations, { ...none, finishedAt: { 3: 1000, 2: 3000 } });
     expect(listed.map((op) => op.id)).toEqual([2, 3, 4, 1]);
+  });
+});
+
+describe("endingOfOutcome and endingOfRecord", () => {
+  it("say how an update ended, with a failure's cause, and nothing for one cancelled or not finished", () => {
+    expect(endingOfOutcome("Succeeded")).toEqual({ kind: "succeeded" });
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password" } })).toEqual({
+      kind: "failed",
+      cause: "needsPassword",
+    });
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle" } })).toEqual({ kind: "failed", cause: null });
+    expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: null });
+    expect(endingOfOutcome("Unconfirmed")).toEqual({ kind: "attention", outcome: "Unconfirmed" });
+    expect(endingOfOutcome({ NeedsAttention: "UnchangedAfterUpgrade" })).toEqual({
+      kind: "attention",
+      outcome: { NeedsAttention: "UnchangedAfterUpgrade" },
+    });
+    expect(endingOfOutcome("Cancelled")).toBeNull();
+    expect(endingOfOutcome(null)).toBeNull();
+
+    expect(endingOfRecord("Succeeded")).toEqual({ kind: "succeeded" });
+    expect(endingOfRecord({ Failed: { cause: "network" } })).toEqual({ kind: "failed", cause: "network" });
+    expect(endingOfRecord({ Failed: { cause: null } })).toEqual({ kind: "failed", cause: null });
+    expect(endingOfRecord("Unconfirmed")).toEqual({ kind: "attention", outcome: "Unconfirmed" });
+    expect(endingOfRecord({ NeedsAttention: "GoneAfterUpgrade" })).toEqual({
+      kind: "attention",
+      outcome: { NeedsAttention: "GoneAfterUpgrade" },
+    });
+    expect(endingOfRecord("Cancelled")).toBeNull();
   });
 });
 
@@ -79,7 +129,8 @@ describe("JustUpdated", () => {
     version: "2.55.1",
     finishedAt: Date.now(),
     verified: false,
-  };
+    ending: { kind: "succeeded" },
+  } satisfies JustUpdatedEntry;
 
   it("is a grouped container under its 13 bold title, with a small grey Clear beside the title", () => {
     const onClear = vi.fn();
@@ -191,6 +242,78 @@ describe("JustUpdated", () => {
     expect(fewer).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(fewer);
     expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
+  });
+
+  it("says 「未能更新」 with the cause beside a red sign, and what to do about it in the title", () => {
+    const failed: JustUpdatedEntry[] = [
+      { ...entry, id: "a", version: null, ending: { kind: "failed", cause: "network" } },
+      { ...entry, id: "b", name: "wget", version: null, ending: { kind: "failed", cause: null } },
+    ];
+    renderWithProviders(<JustUpdated entries={failed} onClear={() => {}} />);
+
+    const [withCause, without] = screen.getAllByRole("listitem");
+    const words = within(withCause).getByText("Couldn't update: Connection failed");
+    expect(words).toHaveClass("text-small", "text-foreground");
+    expect(words).toHaveAttribute(
+      "title",
+      "The connection failed. Check your internet connection, then try again.",
+    );
+    expect(words.querySelector("svg")).toHaveClass("text-danger");
+    expect(words.querySelector("svg")).toHaveAttribute("width", "12");
+    const plain = within(without).getByText("Couldn't update");
+    expect(plain).not.toHaveAttribute("title");
+    expect(plain.querySelector("svg")).toHaveClass("text-danger");
+    // Neither says it updated, nor shows a version it might be read as updated to.
+    for (const line of [withCause, without]) {
+      expect(within(line).queryByText(/^(Updated|Verified)$/)).toBeNull();
+      expect(within(line).queryByText("2.55.1")).toBeNull();
+    }
+  });
+
+  it("says the row's 「结果不符」 beside an orange sign for one to check, and what did not add up in the title", () => {
+    const toCheck: JustUpdatedEntry[] = [
+      {
+        ...entry,
+        id: "a",
+        version: null,
+        ending: { kind: "attention", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } },
+      },
+      { ...entry, id: "b", name: "wget", version: null, ending: { kind: "attention", outcome: "Unconfirmed" } },
+    ];
+    renderWithProviders(<JustUpdated entries={toCheck} onClear={() => {}} />);
+
+    const [unchanged, unconfirmed] = screen.getAllByRole("listitem");
+    const words = within(unchanged).getByText("Unexpected result");
+    expect(words).toHaveAttribute("title", "Update reported success, but the version didn't change");
+    expect(within(words).getByRole("img", { name: "Needs attention" }).querySelector("svg")).toHaveClass(
+      "text-warning",
+    );
+    expect(within(unconfirmed).getByText("Unexpected result")).toHaveAttribute("title", "Result unconfirmed");
+  });
+
+  it("says them in Chinese: 未能更新：需要输入密码, 结果不符, 已核实", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const lines: JustUpdatedEntry[] = [
+        { ...entry, id: "a", verified: true },
+        { ...entry, id: "b", version: null, ending: { kind: "failed", cause: "needsPassword" } },
+        { ...entry, id: "c", version: null, ending: { kind: "failed", cause: null } },
+        { ...entry, id: "d", version: null, ending: { kind: "attention", outcome: "Unconfirmed" } },
+      ];
+      renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
+
+      const [verified, password, plain, unconfirmed] = screen.getAllByRole("listitem");
+      expect(within(verified).getByText("已核实")).toBeInTheDocument();
+      expect(within(password).getByText("未能更新：需要输入密码")).toHaveAttribute(
+        "title",
+        "需要输入Mac的登录密码，无法在这里输入。",
+      );
+      expect(within(plain).getByText("未能更新")).toBeInTheDocument();
+      expect(within(unconfirmed).getByText("结果不符")).toHaveAttribute("title", "结果未确认");
+      expect(within(unconfirmed).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it(`has no fold line for ${JUST_UPDATED_SHOWN} or fewer`, () => {

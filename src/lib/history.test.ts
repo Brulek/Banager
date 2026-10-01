@@ -92,17 +92,19 @@ describe("recentUpdates", () => {
     ]);
   });
 
-  it(`lists nothing older than ${RECENT_DAYS} days, nothing from before Clear, and nothing but an update that worked`, () => {
+  it(`lists nothing older than ${RECENT_DAYS} days, nothing from before Clear, no uninstall and no update cancelled`, () => {
     const listed = recentUpdates(
       view(
         [
           record("old", { finished_at: NOW - 31 * DAY }),
           record("cleared", { finished_at: NOW - 5 * DAY }),
-          record("failed", { result: { Failed: { cause: "network" } } }),
-          record("checkit", { result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+          record("oldFailure", { finished_at: NOW - 31 * DAY, result: { Failed: { cause: "network" } } }),
+          record("clearedFailure", { finished_at: NOW - 5 * DAY, result: { Failed: { cause: null } } }),
+          record("stopped", { result: "Cancelled" }),
           // Updated, then uninstalled: its newest is the uninstall.
           record("gone", { finished_at: NOW - 3 * DAY }),
           record("gone", { kind: "Uninstall", finished_at: NOW - 2 * DAY }),
+          record("removed", { kind: "Uninstall", finished_at: NOW - 2 * DAY, result: { Failed: { cause: "permission" } } }),
           record("kept", { finished_at: NOW - 3 * DAY }),
         ],
         { cleared_before: NOW - 4 * DAY },
@@ -111,6 +113,46 @@ describe("recentUpdates", () => {
       NOW,
     );
     expect(listed.map((r) => r.key.name)).toEqual(["kept"]);
+  });
+
+  it("lists an update that failed or asks to be checked too, in the same order, with what the history kept of it", () => {
+    const listed = recentUpdates(
+      view([
+        record("failed", { finished_at: NOW - 2 * DAY, to_version: null, result: { Failed: { cause: "needsPassword" } } }),
+        record("unchanged", { finished_at: NOW - DAY, result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+        record("unconfirmed", { finished_at: NOW - 4 * DAY, result: "Unconfirmed" }),
+        record("worked", { finished_at: NOW - 3 * DAY }),
+      ]),
+      [],
+      NOW,
+    );
+    expect(listed.map((r) => [r.key.name, r.result])).toEqual([
+      ["unchanged", { NeedsAttention: "UnchangedAfterUpgrade" }],
+      ["failed", { Failed: { cause: "needsPassword" } }],
+      ["worked", "Succeeded"],
+      ["unconfirmed", "Unconfirmed"],
+    ]);
+  });
+
+  it("leaves out a failure once the tool's update has worked since, and lists a failure after a success", () => {
+    const failed = { to_version: null, result: { Failed: { cause: "network" } } } as const;
+    const listed = recentUpdates(
+      view([
+        record("cmake", { finished_at: NOW - 3 * DAY, ...failed }),
+        record("cmake", { finished_at: NOW - 2 * DAY, to_version: "4.0" }),
+        record("git", { finished_at: NOW - 3 * DAY }),
+        record("git", { finished_at: NOW - DAY, ...failed }),
+        // Failed, then cancelled: the cancel is its newest, and nothing is listed.
+        record("jq", { finished_at: NOW - 3 * DAY, ...failed }),
+        record("jq", { finished_at: NOW - DAY, result: "Cancelled" }),
+      ]),
+      [],
+      NOW,
+    );
+    expect(listed.map((r) => [r.key.name, r.result])).toEqual([
+      ["git", { Failed: { cause: "network" } }],
+      ["cmake", "Succeeded"],
+    ]);
   });
 
   it("lists no tool this window has an operation of: that operation decides, so nothing is listed twice", () => {

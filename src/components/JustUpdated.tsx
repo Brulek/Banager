@@ -1,11 +1,54 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
-import type { ArtifactKey, OpSummary } from "../lib/types";
+import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
+import { outcomeSentence, outcomeTone } from "../lib/operations";
+import type { ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { GROUP } from "./ui/group";
+
+/**
+ * How an update 「最近更新」 lists ended: it worked; it did not, with the
+ * cause in a word where the tool's own words gave one (`failureCause`); or
+ * the tool said it worked and Banager found nothing changed, or could not
+ * confirm it -- the row's 「结果不符」.
+ */
+export type JustUpdatedEnding =
+  | { kind: "succeeded" }
+  | { kind: "failed"; cause: FailureCause | null }
+  | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } };
+
+/**
+ * The ending of an update this window ran, or null for one 「最近更新」
+ * does not list: one cancelled, or not finished.
+ */
+export function endingOfOutcome(outcome: Outcome | null): JustUpdatedEnding | null {
+  if (outcome === null) return null;
+  switch (outcomeTone(outcome)) {
+    case "success":
+      return { kind: "succeeded" };
+    case "failure":
+      return { kind: "failed", cause: outcomeCause(outcome) };
+    case "attention":
+      return {
+        kind: "attention",
+        outcome: typeof outcome !== "string" && "NeedsAttention" in outcome ? outcome : "Unconfirmed",
+      };
+    case "cancelled":
+      return null;
+  }
+}
+
+/** The ending of an update the history kept, or null for one cancelled (`listedResult`). */
+export function endingOfRecord(result: HistoryResult): JustUpdatedEnding | null {
+  if (result === "Succeeded") return { kind: "succeeded" };
+  if (result === "Cancelled") return null;
+  if (result === "Unconfirmed") return { kind: "attention", outcome: "Unconfirmed" };
+  if ("NeedsAttention" in result) return { kind: "attention", outcome: result };
+  return { kind: "failed", cause: result.Failed.cause };
+}
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
 export interface JustUpdatedEntry {
@@ -22,7 +65,11 @@ export interface JustUpdatedEntry {
   sourceLabel: string;
   /** The name its row had. */
   name: string;
-  /** The version it has now, or null where there is none to show honestly: a model's is a digest. */
+  /**
+   * The version it has now, or null where there is none to show honestly:
+   * a model's is a digest, and beside 「未能更新」 or 「结果不符」 a version
+   * would read as the one it was updated to.
+   */
   version: string | null;
   /** When it finished, in milliseconds, or null for one this window did not see finish. */
   finishedAt: number | null;
@@ -32,6 +79,8 @@ export interface JustUpdatedEntry {
    * otherwise the row's 「已更新」.
    */
   verified: boolean;
+  /** How it ended (`JustUpdatedEnding`). */
+  ending: JustUpdatedEnding;
 }
 
 export interface JustUpdatedFilter {
@@ -45,15 +94,19 @@ export interface JustUpdatedFilter {
 
 /**
  * The updates "Just updated" lists, newest first: every tool whose newest
- * operation is an update that succeeded -- this session's, since the
- * backend lists every operation the session has run. One that failed,
- * was cancelled or asks to be checked keeps its row, with its outcome and
- * its log, and is not listed here; neither is a tool uninstalled since,
- * whose newest operation is the uninstall.
+ * operation is a finished update that was not cancelled (`endingOfOutcome`)
+ * -- this session's, since the backend lists every operation the session
+ * has run. One that worked, and also one that failed or asks to be
+ * checked: a person should know of those too, and an update that failed
+ * and then worked is listed as the one that worked. Not one cancelled,
+ * nor a tool uninstalled since, whose newest operation is the uninstall.
  *
  * Only once its row no longer shows it: until the check after it lands, a
  * finished update's row stays, with its tick where its Update button was,
  * and then the tick moves here -- never in both places, never in neither.
+ * One that failed or asks to be checked keeps its row, with its outcome,
+ * its log and Retry, for as long as that update is still offered; it is
+ * listed here only once the row has gone.
  * Nothing Clear took off; the order is by when each finished, and an
  * update this window did not see finish -- one from before it was opened
  * -- comes after the ones it did, newest first by its number.
@@ -72,7 +125,7 @@ export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpd
       (op) =>
         op.kind === "Upgrade" &&
         op.status === "Done" &&
-        op.outcome === "Succeeded" &&
+        endingOfOutcome(op.outcome) !== null &&
         !filter.shownInRows.has(op.id) &&
         !cleared.has(op.id),
     )
@@ -110,6 +163,55 @@ export function finishedText(
 }
 
 /**
+ * How a line says its update ended, in 11 after the outcome's 12 sign
+ * (`OutcomeIcon`): the ✓ and 「已更新」 the row showed, or 「已核实」 where
+ * Banager read the version change for itself; the red ⚠︎ and 「未能更新」,
+ * with the cause where the tool's words gave one --
+ * 「未能更新：网络连接失败」 -- and what to do about it in the `title`; the
+ * orange ⚠︎ and the row's 「结果不符」, with what did not add up in the
+ * `title`. Words, not colour, tell them apart.
+ */
+function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
+  const { t } = useTranslation();
+  const { ending } = entry;
+  let tone: "success" | "failure" | "attention";
+  let words: string;
+  let title: string | undefined;
+  switch (ending.kind) {
+    case "succeeded":
+      tone = "success";
+      words = entry.verified ? t("history.verified") : t("updates.progress.succeeded");
+      title = entry.verified
+        ? t(entry.key.kind === "Model" ? "history.verifiedModelTitle" : "history.verifiedTitle")
+        : undefined;
+      break;
+    case "failed":
+      tone = "failure";
+      words =
+        ending.cause === null
+          ? t("updates.progress.failed")
+          : t("history.failedBecause", { cause: t(FAILURE_CAUSE_KEYS[ending.cause].word) });
+      title = ending.cause === null ? undefined : t(FAILURE_CAUSE_KEYS[ending.cause].line);
+      break;
+    case "attention":
+      tone = "attention";
+      words = t("updates.progress.check");
+      title = outcomeSentence(t, ending.outcome);
+      break;
+  }
+  return (
+    <span
+      title={title}
+      data-just-updated-ending={ending.kind}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
+    >
+      <OutcomeIcon tone={tone} size={12} />
+      {words}
+    </span>
+  );
+}
+
+/**
  * How many lines 「最近更新」 shows before the rest fold away under an
  * "N More" line: 30 days of updates can be dozens, and the list ends
  * with them.
@@ -125,13 +227,13 @@ export interface JustUpdatedProps {
  * 「最近更新」: the tools updated this session, and those the history
  * kept from the last 30 days (src/lib/history.ts), under the updates still
  * to install on the Updates page (at its top when there are none), as the
- * App Store's Recently Updated is under Pending, so that an update that
- * worked does not simply vanish from
- * the list -- nor after a restart. A grouped container (spec §3.10) under its title -- 13 bold, with
+ * App Store's Recently Updated is under Pending, so that an update does
+ * not simply vanish from the list once it has ended -- nor after a
+ * restart: one that worked, and one that did not or asks to be checked. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
- * 20 icon, the name in 13, the version it has now in 11 muted, the ✓ and
- * 「已更新」 the row showed -- 「已核实」 where Banager read the version
- * change for itself -- in 11, and when it finished, 11 muted. Nothing to
+ * 20 icon, the name in 13, the version it has now in 11 muted, how it
+ * ended in 11 (`EndingWords`: 「已更新」 or 「已核实」, 「未能更新」 with
+ * its cause, or 「结果不符」), and when it finished, 11 muted. Nothing to
  * select or press but Clear, which hides what it lists, after a restart
  * too, until the next update succeeds, and, past `JUST_UPDATED_SHOWN`
  * lines, the "N More" line that shows the rest; it is no part of the
@@ -186,17 +288,7 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span className="min-w-20 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.version}
               </span>
-              <span
-                title={
-                  entry.verified
-                    ? t(entry.key.kind === "Model" ? "history.verifiedModelTitle" : "history.verifiedTitle")
-                    : undefined
-                }
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
-              >
-                <OutcomeIcon tone="success" size={12} />
-                {entry.verified ? t("history.verified") : t("updates.progress.succeeded")}
-              </span>
+              <EndingWords entry={entry} />
               <span className="w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.finishedAt !== null && finished !== null ? (
                   <time dateTime={new Date(entry.finishedAt).toISOString()} title={finished.title}>

@@ -346,7 +346,8 @@
     "verifiedModelTitle": "The model was read before and after the update, and it had changed.",
     "more_one": "{{count}} More",
     "more_other": "{{count}} More",
-    "showFewer": "Show Fewer"
+    "showFewer": "Show Fewer",
+    "failedBecause": "Couldn't update: {{cause}}"
   },
   "commandPreview": {
     "show_one": "Show Command",

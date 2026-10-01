@@ -322,7 +322,8 @@
     "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。",
     "verifiedModelTitle": "更新前后各读了一次这个模型，模型已经变了。",
     "more_other": "还有{{count}}个",
-    "showFewer": "收起"
+    "showFewer": "收起",
+    "failedBecause": "未能更新：{{cause}}"
   },
   "commandPreview": {
     "show_other": "查看命令",

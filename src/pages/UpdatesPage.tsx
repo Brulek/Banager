@@ -18,7 +18,13 @@ import { useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
-import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
+import {
+  JustUpdated,
+  endingOfOutcome,
+  endingOfRecord,
+  justUpdatedOps,
+  type JustUpdatedEntry,
+} from "../components/JustUpdated";
 import { clearedHere, recentUpdates, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
@@ -482,13 +488,16 @@ export function UpdatesPage() {
     });
   }, [actionableRows, startableUpdates, selectedUpdates]);
 
-  // "Recently Updated": this session's updates that worked, once their rows
-  // have gone (`justUpdatedOps`). Out of every count, and of Select all:
+  // "Recently Updated": this session's updates that ended -- worked, or
+  // did not, or ask to be checked -- once their rows have gone
+  // (`justUpdatedOps`). Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
   //
   // The version is the one the snapshot now lists for the tool -- what is
   // installed, read back after the update -- or, where it lists none, the
-  // one the update was for. A model's is a digest, and is not shown.
+  // one the update was for. A model's is a digest, and is not shown; nor
+  // is one beside 「未能更新」 or 「结果不符」, where it would read as the
+  // version the tool was updated to.
   //
   // Then what the history kept from before this window, of the last 30
   // days (`recentUpdates`): never a tool this window has an operation of.
@@ -507,35 +516,48 @@ export function UpdatesPage() {
     });
     // And nothing a kept Clear came after, should the web view have
     // reloaded since and forgotten `clearedJustUpdated`.
-    const here = ops.filter((op) => !clearedHere(history, op.id)).map((op): JustUpdatedEntry => {
+    const here = ops.filter((op) => !clearedHere(history, op.id)).flatMap((op): JustUpdatedEntry[] => {
+      const ending = endingOfOutcome(op.outcome);
+      if (ending === null) return [];
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
       const installed = artifactsById.get(artifactKeyId(key))?.version;
-      return {
-        id: `op:${op.id}`,
-        opId: op.id,
-        key,
-        adapterId,
-        sourceLabel: labels.get(op.instance_id) ?? adapterLabel(t, adapterId),
-        name: opName(op),
-        version: op.artifact_kind === "Model" ? null : installed || updateTargets[op.id] || null,
-        finishedAt: opFinishedAt[op.id] ?? null,
-        verified: verifiedHere(history, op.id),
-      };
+      return [
+        {
+          id: `op:${op.id}`,
+          opId: op.id,
+          key,
+          adapterId,
+          sourceLabel: labels.get(op.instance_id) ?? adapterLabel(t, adapterId),
+          name: opName(op),
+          version:
+            op.artifact_kind === "Model" || ending.kind !== "succeeded"
+              ? null
+              : installed || updateTargets[op.id] || null,
+          finishedAt: opFinishedAt[op.id] ?? null,
+          verified: verifiedHere(history, op.id),
+          ending,
+        },
+      ];
     });
-    const kept = recentUpdates(history, operations ?? [], Date.now()).map(
-      (record): JustUpdatedEntry => ({
-        id: `history:${record.run}:${record.op_id}`,
-        opId: null,
-        key: record.key,
-        adapterId: record.adapter_id,
-        sourceLabel: labels.get(record.key.instance_id) ?? adapterLabel(t, record.adapter_id),
-        name: record.display_name,
-        version: record.key.kind === "Model" ? null : record.to_version,
-        finishedAt: record.finished_at,
-        verified: record.verified,
-      }),
-    );
+    const kept = recentUpdates(history, operations ?? [], Date.now()).flatMap((record): JustUpdatedEntry[] => {
+      const ending = endingOfRecord(record.result);
+      if (ending === null) return [];
+      return [
+        {
+          id: `history:${record.run}:${record.op_id}`,
+          opId: null,
+          key: record.key,
+          adapterId: record.adapter_id,
+          sourceLabel: labels.get(record.key.instance_id) ?? adapterLabel(t, record.adapter_id),
+          name: record.display_name,
+          version: record.key.kind === "Model" || ending.kind !== "succeeded" ? null : record.to_version,
+          finishedAt: record.finished_at,
+          verified: record.verified,
+          ending,
+        },
+      ];
+    });
     const at = (entry: JustUpdatedEntry) => entry.finishedAt ?? Number.NEGATIVE_INFINITY;
     // Stable: this window's own keep their order among themselves.
     return [...here, ...kept].sort((a, b) => {

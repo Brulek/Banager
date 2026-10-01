@@ -3194,23 +3194,37 @@ describe("UpdatesPage", () => {
       expect(await screen.findByText("Everything is up to date")).toBeInTheDocument();
     });
 
-    it("lists no update that failed, was cancelled or asks to be checked: those keep their rows", async () => {
+    it("lists an update that failed or asks to be checked once its row has gone, and never one cancelled", async () => {
       operations = [
+        // Their rows still show how they ended, with the log and Retry: not listed.
         operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle" } } }),
         operation(onyxKey, { id: 10, status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
-        // Two whose rows are gone: still nothing to list.
+        // Three whose rows are gone: the two that did not update are listed.
         operation({ ...glibKey, name: "wget" }, { id: 11, status: "Done", outcome: "Cancelled" }),
         operation({ ...glibKey, name: "jq" }, { id: 12, status: "Done", outcome: "Unconfirmed" }),
+        operation(
+          { ...glibKey, name: "gh" },
+          { id: 13, status: "Done", outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } } },
+        ),
       ];
       started(9, "2.90.0");
       started(10, "5.1.0");
       started(11, "1.1.0");
       started(12, "1.1.0");
+      started(13, "2.80.0");
+      useUiStore.setState({ opFinishedAt: { 12: Date.now() - 60_000, 13: Date.now() } });
       renderPage();
 
       expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(rowOf("onyx")).getByText("Unexpected result")).toBeInTheDocument();
-      expect(justUpdated()).toBeNull();
+      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const lines = within(section).getAllByRole("listitem");
+      expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["gh", "jq"]);
+      expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+      expect(within(lines[1]).getByText("Unexpected result")).toHaveAttribute("title", "Result unconfirmed");
+      // No version beside them: it would read as the one they were updated to.
+      expect(within(section).queryByText(/^\d+\.\d+/)).toBeNull();
+      expect(within(section).queryByText("wget")).toBeNull();
     });
 
     it("lists no tool uninstalled since its update, and no update still under way", async () => {
@@ -3343,7 +3357,7 @@ describe("UpdatesPage", () => {
         });
       }
 
-      it("lists the last 30 days' updates that worked, newest first, with the version, the date and Verified", async () => {
+      it("lists the last 30 days' updates, newest first, with the version, the date and Verified, and one that failed", async () => {
         vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
         answerHistory({
@@ -3360,13 +3374,16 @@ describe("UpdatesPage", () => {
 
         const section = await screen.findByRole("region", { name: "Recently Updated" });
         const lines = within(section).getAllByRole("listitem");
-        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget"]);
+        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "broken", "wget"]);
         expect(within(lines[0]).getByText("4.0.0")).toBeInTheDocument();
         expect(within(lines[0]).getByText("Verified")).toBeInTheDocument();
         expect(within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
-        expect(within(lines[1]).getByText("1.25.0")).toBeInTheDocument();
-        expect(within(lines[1]).getByText("Updated")).toBeInTheDocument();
-        expect(within(lines[1]).getByText("Sep 20")).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Sep 27")).toBeInTheDocument();
+        expect(within(lines[1]).queryByText("2.0")).toBeNull();
+        expect(within(lines[2]).getByText("1.25.0")).toBeInTheDocument();
+        expect(within(lines[2]).getByText("Updated")).toBeInTheDocument();
+        expect(within(lines[2]).getByText("Sep 20")).toBeInTheDocument();
         // No instance id, and so no home folder, is ever shown.
         expect(section.textContent).not.toMatch(/opt\/homebrew/);
         expect(container.textContent).not.toMatch(/brew:\//);
@@ -3397,12 +3414,67 @@ describe("UpdatesPage", () => {
         }
       });
 
+      it("says what did not update in Chinese: 未能更新：需要输入密码 and 结果不符, and leaves out a failure updated since", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime(), {
+              to_version: null,
+              verified: false,
+              result: { Failed: { cause: "needsPassword" } },
+            }),
+            kept("wget", new Date(2026, 8, 26, 9, 0).getTime(), {
+              verified: false,
+              result: { NeedsAttention: "UnchangedAfterUpgrade" },
+            }),
+            // Updated since it failed: the newer success is what is listed.
+            kept("git", new Date(2026, 8, 25, 9, 0).getTime(), { to_version: "2.55.0" }),
+            kept("git", new Date(2026, 8, 24, 9, 0).getTime(), {
+              to_version: null,
+              verified: false,
+              result: { Failed: { cause: "network" } },
+            }),
+          ],
+        });
+        await i18n.changeLanguage("zh-CN");
+        try {
+          renderPage();
+          const section = await screen.findByRole("region", { name: "最近更新" });
+          const lines = within(section).getAllByRole("listitem");
+          expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget", "git"]);
+          expect(within(lines[0]).getByText("未能更新：需要输入密码")).toHaveAttribute(
+            "title",
+            "需要输入Mac的登录密码，无法在这里输入。",
+          );
+          expect(within(lines[1]).getByText("结果不符")).toHaveAttribute("title", "显示已更新，但版本没有变化");
+          expect(within(lines[1]).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
+          expect(within(lines[2]).getByText("已核实")).toBeInTheDocument();
+          expect(within(lines[2]).getByText("2.55.0")).toBeInTheDocument();
+          expect(section.textContent).not.toMatch(/网络连接失败/);
+        } finally {
+          await i18n.changeLanguage("en");
+        }
+      });
+
       it("keeps Clear: the history notes the time, and what was shown stays hidden", async () => {
-        answerHistory({ run: "this-launch", cleared_before: null, records: [kept("cmake", Date.now() - 60_000)] });
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", Date.now() - 60_000),
+            // One that failed and one to check go with it.
+            kept("git", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "busy" } } }),
+            kept("wget", Date.now() - 180_000, { result: "Unconfirmed" }),
+          ],
+        });
         updates = [snapshot.updates[1]];
         renderPage();
 
         const section = await screen.findByRole("region", { name: "Recently Updated" });
+        expect(within(section).getAllByRole("listitem")).toHaveLength(3);
         fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
         await waitFor(() => expect(justUpdated()).toBeNull());
         expect(mockInvoke).toHaveBeenCalledWith("clear_history");
