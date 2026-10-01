@@ -418,6 +418,18 @@ body {
 [data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) {
   color: rgb(255 255 255 / 0.5);
 }
+/*
+ * A grey button that is on, on the accent selection: white with the
+ * accent's words, as a control on a selected row of a Mac list is drawn.
+ * White words on 22% white over the accent were too faint to read.
+ */
+[data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled {
+  background-color: #fff;
+  color: var(--color-accent);
+}
+[data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled:active {
+  background-color: rgb(255 255 255 / 0.85);
+}
 [data-tool-row][data-selected] [data-row-separator] {
   display: none;
 }
