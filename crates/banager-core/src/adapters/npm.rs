@@ -514,7 +514,7 @@ struct LsGlobalDependency {
 /// expecting an array silently sees zero packages instead of erroring.
 /// Sorted by name for deterministic output (a `HashMap`'s own iteration
 /// order is not).
-fn parse_ls_global(
+pub(crate) fn parse_ls_global(
     json: &str,
     instance_id: &str,
 ) -> Result<Vec<InstalledArtifact>, crate::adapters::AdapterError> {

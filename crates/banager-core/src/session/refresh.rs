@@ -667,6 +667,10 @@ impl Session {
         // keeps the startup branch in `SnapshotStatus` working: nothing but
         // an uncommitted snapshot can have a null timestamp now.
         let refreshed_at = Some(self.now());
+        // Which AI coding tool each artifact is a copy of: once, here,
+        // over every instance's rows -- this round's and the ones carried
+        // forward alike -- rather than in each adapter's inventory.
+        crate::families::assign(&instances, &mut artifacts);
         let candidate = Snapshot {
             generation: previous.generation,
             round,
@@ -1084,6 +1088,35 @@ mod tests {
         assert!(snapshot.errors.is_empty());
         assert!(snapshot.refreshed_at.is_some());
         assert_eq!(snapshot.generation, 1);
+    }
+
+    /// Every artifact in a committed snapshot says which AI coding tool it
+    /// is, set once where the round puts the snapshot together
+    /// (`families::assign`) from the adapter its instance belongs to.
+    #[tokio::test]
+    async fn test_refresh_tags_each_artifact_with_its_ai_tool_family() {
+        let (adapter, state) = FakeAdapter::new("brew");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("brew", "brew:/opt/homebrew")];
+            s.artifacts.insert(
+                "brew:/opt/homebrew".to_string(),
+                vec![
+                    make_artifact("brew:/opt/homebrew", "ollama"),
+                    make_artifact("brew:/opt/homebrew", "jq"),
+                ],
+            );
+        }
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let families: Vec<_> = snapshot
+            .artifacts
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.facts.family.as_deref()))
+            .collect();
+        assert_eq!(families, [("ollama", Some("ollama")), ("jq", None)]);
     }
 
     /// The root decision lives entirely in `BrewAdapter::detect` now (spec:

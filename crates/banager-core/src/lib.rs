@@ -56,6 +56,9 @@ pub mod adapters;
 /// task and the round.
 pub mod auto_check;
 pub mod events;
+/// Which AI coding tool an installed artifact is a copy of, from a table
+/// bundled into the binary (`data/ai-tools.json`).
+pub mod families;
 pub mod http;
 /// The icon Finder shows for a cask's app, drawn by macOS for the window
 /// and remembered in memory -- read-only, behind a seam like `trash`.
