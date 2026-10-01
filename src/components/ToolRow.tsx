@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import { keepsOwnMenu } from "../lib/contextMenu";
@@ -409,6 +409,10 @@ export function ToolRow({
   const fit = useRowFit();
   const listHasStatus = useStatusColumn();
   const roving = useRovingRow();
+  // The note is the row's description when the row takes the focus: why a
+  // search found it (「命令：rg」), where an Unknown program points -- said
+  // after the row's name, as the line shows it under the name.
+  const noteId = useId();
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);
   const openButton = useRef<HTMLButtonElement>(null);
@@ -598,6 +602,7 @@ export function ToolRow({
         // controls are read in turn, as any other text.
         role={roving === null ? undefined : "group"}
         aria-label={roving === null ? undefined : rowName(name, statusText, hasUpdate ? version : undefined, versionText)}
+        aria-describedby={roving === null || descriptionNote === undefined ? undefined : noteId}
         aria-current={selected ? "true" : undefined}
         tabIndex={roving?.tabIndex}
         onFocus={roving?.onFocus}
@@ -680,7 +685,9 @@ export function ToolRow({
               // The description gives way to the note, cut short first; the
               // note is cut short only on a row too narrow for it alone.
               // Space sets the two apart, not a dot between them.
-              <span className="max-w-full shrink-0 truncate pl-3">{descriptionNote}</span>
+              <span id={noteId} className="max-w-full shrink-0 truncate pl-3">
+                {descriptionNote}
+              </span>
             ) : null}
           </div>
         </div>

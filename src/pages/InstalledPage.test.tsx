@@ -522,6 +522,9 @@ describe("InstalledPage", () => {
     fireEvent.change(search, { target: { value: "RG" } });
     await waitFor(() => expect(rowNames()).toEqual(["ripgrep"]));
     expect(noteOf("ripgrep")).toBe("Command: rg");
+    // A screen reader hears it too, after the row's name, as the row's description.
+    expect(rowOf("ripgrep")).toHaveAttribute("role", "group");
+    expect(rowOf("ripgrep")).toHaveAccessibleDescription("Command: rg");
 
     fireEvent.change(search, { target: { value: "pip3.13" } });
     await waitFor(() => expect(rowNames()).toEqual(["python@3.13"]));
@@ -531,6 +534,7 @@ describe("InstalledPage", () => {
     fireEvent.change(search, { target: { value: "gh" } });
     await waitFor(() => expect(rowNames()).toEqual(["gh"]));
     expect(noteOf("gh")).toBeNull();
+    expect(rowOf("gh")).not.toHaveAttribute("aria-describedby");
 
     // Letters in a command's middle find nothing.
     fireEvent.change(search, { target: { value: "ip3" } });
