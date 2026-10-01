@@ -22,13 +22,14 @@ const DATE_LIKE_FROM = 1900;
  * The major version a version string names (appendix A3): a leading "v" or
  * "V" dropped, and a trailing Homebrew revision ("_2" in `22.23.2_2`); then
  * its leading run of digits, which must end the string or be followed by
- * a separator -- ".", "-", "+", "~" -- so that `1a2b…`, a hex digest that
+ * a separator -- ".", "-", "+", "~", or the "," a Homebrew cask puts
+ * before a build number (`5,1234`) -- so that `1a2b…`, a hex digest that
  * happens to start with a digit, or `3rc1` is not read as a version. `null`
  * for anything else: `latest`, `r3222`, `HEAD-1a2b`, an empty string.
  */
 export function majorOf(version: string): number | null {
   const bare = version.trim().replace(/^[vV]/, "").replace(/_\d+$/, "");
-  const match = /^(\d+)(?:$|[.\-+~])/.exec(bare);
+  const match = /^(\d+)(?:$|[.\-+~,])/.exec(bare);
   if (match === null) return null;
   const major = Number(match[1]);
   return Number.isSafeInteger(major) ? major : null;

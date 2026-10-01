@@ -61,6 +61,9 @@ describe("majorOf", () => {
     expect(majorOf("7_1")).toBe(7);
     expect(majorOf("5")).toBe(5);
     expect(majorOf(" 3.1 ")).toBe(3);
+    // A cask's version, a comma before its build number.
+    expect(majorOf("5,1234")).toBe(5);
+    expect(majorOf("4.2.1,20260901")).toBe(4);
   });
 
   it("reads nothing from what is not a version", () => {
