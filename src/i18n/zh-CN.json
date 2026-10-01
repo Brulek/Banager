@@ -587,7 +587,7 @@
       "title": "部分检查未完成",
       "description_other": "{{sources}}这次未检查完，更新可能还没全部列出。"
     },
-    "more_other": "还有{{count}}个问题",
+    "more_other": "还有{{count}}条提示",
     "showFewer": "收起"
   },
   "planRefused": {

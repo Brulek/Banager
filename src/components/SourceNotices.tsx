@@ -14,7 +14,7 @@ import { DisclosureIcon } from "./icons";
 import { InfoDetail } from "./InfoDetail";
 
 /**
- * The look of the fold's own buttons, 「还有N个问题」 and 「收起」: a
+ * The look of the fold's own buttons, 「还有N条提示」 and 「收起」: a
  * disclosure, not a link and not a push button. Words in the muted colour
  * and a 10pt disclosure triangle -- pointing right while the lines are
  * folded, turned down once they show, as the lists' other disclosures do.
@@ -109,7 +109,7 @@ export interface SourceNoticesProps {
  *
  * Under a page's `fold`, two lines or more fold into one rather than
  * stack up over the list: the first warning, or else the first line, with
- * 「还有N个问题」 and a triangle at its end for the rest. Pressed, it shows
+ * 「还有N条提示」 and a triangle at its end for the rest. Pressed, it shows
  * every line in its order, and 「收起」 after the last folds them again.
  * The focus goes with the button, to the one that now says the other
  * thing: the one pressed is gone from where it was. Each line keeps its

@@ -3821,9 +3821,9 @@ describe("UpdatesPage", () => {
       mockInvoke.mockClear();
       fireEvent.click(again);
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
-      // With Ollama's, one line: the rest behind 「还有N个问题」.
+      // With Ollama's, one line: the rest behind 「还有N条提示」.
       expect(queryByText("Ollama isn't running")).toBeNull();
-      fireEvent.click(getByRole("button", { name: "1 more issue" }));
+      fireEvent.click(getByRole("button", { name: "1 more note" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
       // Said once, in the line: no band over the page.
       // (Unfolding draws the lines anew: the same words, not the same node.)
@@ -3839,7 +3839,7 @@ describe("UpdatesPage", () => {
 
       await screen.findByText("Ollama isn't running");
       expect(queryByText("Some checks didn't finish")).toBeNull();
-      expect(queryByRole("button", { name: /more issue/ })).toBeNull();
+      expect(queryByRole("button", { name: /more note/ })).toBeNull();
     });
 
     it("folds two lines into one, the warning first, and keeps them unfolded while the page changes under them, until their number does", async () => {
@@ -3854,7 +3854,7 @@ describe("UpdatesPage", () => {
       await screen.findByText("Ollama isn't running");
       expect(screen.getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
       expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
+      fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
       expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
 
       // The updates go, and the page says so under the same two lines.
@@ -3871,7 +3871,7 @@ describe("UpdatesPage", () => {
       expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
       instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
-      expect(await screen.findByRole("button", { name: "1 more issue" })).toHaveAttribute("aria-expanded", "false");
+      expect(await screen.findByRole("button", { name: "1 more note" })).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
     });
 

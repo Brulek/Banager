@@ -364,7 +364,7 @@ describe("the lines over 所有工具 that point at them", () => {
   }
 
   async function unfold() {
-    const more = await screen.findByRole("button", { name: /more issue/ });
+    const more = await screen.findByRole("button", { name: /more note/ });
     fireEvent.click(more);
   }
 

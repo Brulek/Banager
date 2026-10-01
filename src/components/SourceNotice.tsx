@@ -128,7 +128,7 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
   /** The ⓘ's accessible name, which says which notice it explains: 「详情：…」/"Details: …". */
   detailsAriaLabel: string;
   /**
-   * Last in the line, after the notice's own button: 「还有N个问题」 on the
+   * Last in the line, after the notice's own button: 「还有N条提示」 on the
    * one line a page's notices fold into (`SourceNotices`).
    */
   trailing?: ReactNode;

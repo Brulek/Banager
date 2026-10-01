@@ -79,7 +79,7 @@ describe("SourceNotices, folded", () => {
     expect(linesShown()).toEqual(["Homebrew is updating its software list"]);
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
     expect(screen.queryByText("npm 12.1.0 not tested")).toBeNull();
-    const more = screen.getByRole("button", { name: "2 more issues" });
+    const more = screen.getByRole("button", { name: "2 more notes" });
     // Last in that line, after its own "Details".
     expect(screen.getByText("Homebrew is updating its software list").parentElement?.lastElementChild).toBe(more);
   });
@@ -88,13 +88,13 @@ describe("SourceNotices, folded", () => {
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent, ollamaStopped, claudeUntested]} />);
 
     expect(linesShown()).toEqual(["uv isn't responding"]);
-    expect(screen.getByRole("button", { name: "3 more issues" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "3 more notes" })).toBeInTheDocument();
   });
 
   it("shows every line in its order when pressed, and folds them again with Show fewer after the last", () => {
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent, claudeUntested]} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 more notes" }));
 
     // In their order: the warning shown folded goes back to its place.
     expect(linesShown()).toEqual([
@@ -102,7 +102,7 @@ describe("SourceNotices, folded", () => {
       "uv isn't responding",
       "Claude Code 2.1.290 not tested",
     ]);
-    expect(screen.queryByRole("button", { name: "2 more issues" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "2 more notes" })).toBeNull();
     const fewer = screen.getByRole("button", { name: "Show Fewer" });
     expect(
       screen.getByText("Claude Code 2.1.290 not tested").compareDocumentPosition(fewer) &
@@ -113,13 +113,13 @@ describe("SourceNotices, folded", () => {
 
     expect(linesShown()).toEqual(["uv isn't responding"]);
     expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
-    expect(screen.getByRole("button", { name: "2 more issues" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 more notes" })).toBeInTheDocument();
   });
 
   it("folds and unfolds with a real button that says whether the lines are shown, and which", () => {
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent]} />);
 
-    const more = screen.getByRole("button", { name: "1 more issue" });
+    const more = screen.getByRole("button", { name: "1 more note" });
     expect(more.tagName).toBe("BUTTON");
     expect(more).toHaveAttribute("type", "button");
     expect(more).toHaveAttribute("aria-expanded", "false");
@@ -143,7 +143,7 @@ describe("SourceNotices, folded", () => {
     // The line's own ⓘ is muted too, and no link anywhere.
     expect(screen.getByRole("button", { name: "Details: uv isn't responding" })).toHaveClass("text-muted");
     expect(document.body.innerHTML).not.toContain("text-accent-text");
-    const more = screen.getByRole("button", { name: "1 more issue" });
+    const more = screen.getByRole("button", { name: "1 more note" });
     expect(more).toHaveClass("text-muted", "text-body");
     // Set apart from the line's ⓘ and button by more than their gap.
     expect(more).toHaveClass("ml-3");
@@ -166,7 +166,7 @@ describe("SourceNotices, folded", () => {
 
   it("sets Show fewer on the lines' grid: its triangle centred in the icons' column, its words where the titles start", () => {
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent]} />);
-    fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
 
     const fewer = screen.getByRole("button", { name: "Show Fewer" });
     const [slot, words] = [...fewer.children] as HTMLElement[];
@@ -192,7 +192,7 @@ describe("SourceNotices, folded", () => {
     );
     // Last in the lines' box, under them, and so under Show fewer once they show.
     expect(hairline.parentElement?.lastElementChild).toBe(hairline);
-    fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
     expect(hairlines()).toHaveLength(1);
     expect(
       screen.getByRole("button", { name: "Show Fewer" }).compareDocumentPosition(hairlines()[0]) &
@@ -211,17 +211,17 @@ describe("SourceNotices, folded", () => {
     const user = userEvent.setup();
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent, claudeUntested]} />);
 
-    screen.getByRole("button", { name: "2 more issues" }).focus();
+    screen.getByRole("button", { name: "2 more notes" }).focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show Fewer" })));
 
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "2 more issues" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "2 more notes" })));
   });
 
   it("folds again when the number of lines changes, and only then", () => {
     const { rerender } = renderWithProviders(<Folded notices={[brewUpdating, uvSilent]} />);
-    fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
 
     // As many lines, other ones: still unfolded.
     rerender(<Folded notices={[brewUpdating, ollamaStopped]} />);
@@ -231,12 +231,12 @@ describe("SourceNotices, folded", () => {
     // One more: folded.
     rerender(<Folded notices={[brewUpdating, ollamaStopped, uvSilent]} />);
     expect(linesShown()).toEqual(["Ollama isn't running"]);
-    expect(screen.getByRole("button", { name: "2 more issues" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 more notes" })).toBeInTheDocument();
 
     // And back to two, still folded: the fold went for good.
     rerender(<Folded notices={[brewUpdating, ollamaStopped]} />);
     expect(linesShown()).toEqual(["Ollama isn't running"]);
-    expect(screen.getByRole("button", { name: "1 more issue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 more note" })).toBeInTheDocument();
   });
 
   it("keeps each line's ⓘ and its own button working, folded or not", async () => {
@@ -251,7 +251,7 @@ describe("SourceNotices, folded", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Ollama" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
 
-    fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 more notes" }));
 
     // Unfolded: the lines that were folded away, and Ollama's still.
     const claudeDetails = screen.getByRole("button", { name: "Details: Claude Code 2.1.290 not tested" });
@@ -301,12 +301,12 @@ describe("SourceNotices, folded", () => {
     expect(sameIds(plain.container.innerHTML)).toBe(withFold);
   });
 
-  it("says 还有N个问题 and 收起 in Chinese", async () => {
+  it("says 还有N条提示 and 收起 in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       renderWithProviders(<Folded notices={[brewUpdating, uvSilent, claudeUntested]} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "还有2个问题" }));
+      fireEvent.click(screen.getByRole("button", { name: "还有2条提示" }));
       expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

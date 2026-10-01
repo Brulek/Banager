@@ -774,7 +774,7 @@ describe("InstalledPage", () => {
     expect(screen.queryByText("Typing claude runs a same-named program from npm first")).toBeNull();
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 more notes" }));
 
     const fewer = screen.getByRole("button", { name: "Show Fewer" });
     const lines = document.getElementById(fewer.getAttribute("aria-controls") ?? "");
@@ -1439,7 +1439,7 @@ describe("InstalledPage", () => {
       // it (`SourceNotices`).
       expect(screen.getByText("Some checks didn't finish")).toBeInTheDocument();
       expect(screen.queryByText("pipx isn't responding")).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
+      fireEvent.click(screen.getByRole("button", { name: "2 more notes" }));
       expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });

@@ -629,8 +629,8 @@
       "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",
       "description_other": "{{sources}} didn't finish checking this time; some updates may not be listed yet."
     },
-    "more_one": "{{count}} more issue",
-    "more_other": "{{count}} more issues",
+    "more_one": "{{count}} more note",
+    "more_other": "{{count}} more notes",
     "showFewer": "Show Fewer"
   },
   "planRefused": {
