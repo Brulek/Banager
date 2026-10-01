@@ -289,6 +289,45 @@ describe("UninstallDialog", () => {
     expect(screen.queryByText(/password/)).not.toBeInTheDocument();
   });
 
+  it("says, as a caution, which tools another source installed through it stay with nothing to update or uninstall them", async () => {
+    const pipxRequest: OpRequest = { ...request, name: "pipx" };
+    const base = {
+      version: "1.0",
+      reason: "Requested" as const,
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+    };
+    const pipxFormula: InstalledArtifact = {
+      ...base,
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "pipx" },
+      display_name: "pipx",
+      facts: { ...NO_FACTS, commands: [{ name: "pipx", state: "Runs" }] },
+    };
+    const pipx = brewInstance({ id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx", prefix: "/opt/homebrew/bin" });
+    const tool = (name: string): InstalledArtifact => ({
+      ...base,
+      key: { instance_id: "pipx", kind: "Tool", name },
+      display_name: name,
+      facts: NO_FACTS,
+    });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshotWith([brewInstance(), pipx], [pipxFormula, tool("aider-chat"), tool("httpie")]);
+      if (cmd === "plan_operation") return issuedPlanFor({ request: pipxRequest });
+      return undefined;
+    });
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={pipxRequest} displayName="pipx" />);
+
+    const line = "aider-chat and httpie, installed with pipx, will stay, but Banager won't be able to update or uninstall them after this.";
+    expect(await screen.findByText(line)).toBeInTheDocument();
+    expect(screen.getByText(line).closest("li")).toHaveAttribute("data-caution");
+  });
+
   it("disables confirm and explains what would break when something depends on it", async () => {
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ affected: ["jq-cli-wrapper"] }));
 

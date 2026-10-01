@@ -3,6 +3,7 @@ import {
   batchSizeOf,
   classify,
   countedTicks,
+  hostedTools,
   itemSizeOf,
   MAX_BATCH_UNINSTALL,
   mergeKept,
@@ -554,5 +555,46 @@ describe("what the included tools take", () => {
     const ruff = artifact(uv, "Tool", "ruff");
     expect(sizeCaveats([{ artifact: ruff, instance: uv, plan: plan(ruff) }], 0)).toEqual(["batchUninstall.takesShared"]);
     expect(sizeCaveats([{ artifact: httpie, instance: pipx, plan: plan(httpie) }], 0)).toEqual([]);
+  });
+});
+
+describe("hostedTools", () => {
+  const instances = [brew, npm, pipx, ollama, uv];
+  const codex = artifact(npm, "Package", "@openai/codex");
+  const nodeLinked = formula("node", { facts: { ...NO_FACTS, commands: runs("node", "npm", "npx") } });
+
+  it("names the pipx tools Homebrew's pipx manages, and nothing it does not", () => {
+    const hosted = hostedTools(pipxFormula, instances, everything);
+    expect(hosted.map(({ program, manages, runs: runsThem, tools }) => [program, manages, runsThem, tools.map((tool) => tool.key.name)])).toEqual([
+      ["pipx", true, false, ["httpie", "poetry"]],
+    ]);
+    expect(hostedTools(git, instances, everything)).toEqual([]);
+    expect(hostedTools(httpie, instances, everything)).toEqual([]);
+  });
+
+  it("says npm's packages run on a Homebrew node, and that one with npm also manages them", () => {
+    const all = [...everything, codex, nodeLinked];
+    const hosted = hostedTools(nodeLinked, instances, all);
+    expect(hosted.map(({ program, runsOn, manages, runs: runsThem, tools }) => [program, runsOn, manages, runsThem, tools.length])).toEqual([
+      ["npm", "node", true, true, 1],
+    ]);
+  });
+
+  it("takes no program outside this Homebrew's folder, nor a keg-only formula's beside the one Terminal finds", () => {
+    const usrLocalNpm: ManagerInstance = { ...npm, id: "npm:/usr/local", exe_path: "/usr/local/bin/npm" };
+    const theirs = artifact(usrLocalNpm, "Package", "typescript");
+    const node22 = formula("node@22", { facts: { ...NO_FACTS, commands: [{ name: "node", state: null }] } });
+    expect(hostedTools(nodeLinked, [brew, usrLocalNpm], [nodeLinked, theirs])).toEqual([]);
+    // Keg-only, with a linked `node` beside it: not the one npm runs on.
+    expect(hostedTools(node22, instances, [node22, nodeLinked, codex])).toEqual([]);
+    // Alone, it is the only `node` this Homebrew has.
+    expect(hostedTools(node22, instances, [node22, codex]).map(({ tools }) => tools.length)).toEqual([1]);
+  });
+
+  it("leaves a Homebrew node out of a batch with an npm package, as it does pipx with a pipx tool (X5)", () => {
+    const all = [...everything, codex, nodeLinked];
+    const result = classify([candidate(codex), candidate(nodeLinked)], all);
+    expect(result.included.map((item) => item.candidate.name)).toEqual(["@openai/codex"]);
+    expect(result.excluded.map((item) => item.reason)).toEqual([{ kind: "host", by: [artifactKeyId(codex.key)] }]);
   });
 });

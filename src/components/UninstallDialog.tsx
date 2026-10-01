@@ -17,6 +17,7 @@ import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../l
 import { CommandPreview } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { twinUninstallLine } from "./TwinAdvice";
+import { hostedLines } from "./hostedLines";
 import { formatBytes } from "../lib/format";
 import { twinsByArtifact } from "../lib/commands";
 import { artifactKeyId } from "../store/ui";
@@ -175,10 +176,17 @@ export function UninstallDialog({
     artifact !== undefined && artifact.key.kind === "Model" && artifact.size_bytes !== null
       ? t("clarity.freesModel", { size: formatBytes(artifact.size_bytes) })
       : null;
+  const hosted = useMemo(
+    () => (plan === undefined ? [] : hostedLines(t, artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? [])),
+    [t, plan, artifact, snapshot],
+  );
   const notes: WarningLine[] = [
     ...(frees === null ? [] : [{ text: frees, detail: null, caution: false }]),
     ...(twinLine === null ? [] : [{ text: twinLine, detail: null, caution: false }]),
     ...lines.note,
+    // What other sources installed through it, left with no way to update
+    // or uninstall them, or to run (`hostedLines`).
+    ...hosted,
     ...(plan?.cancel_policy === "NoCancel"
       ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]
       : []),

@@ -35,6 +35,7 @@ import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapsho
 import { commandText } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
+import { hostedLines } from "./hostedLines";
 import { TextWithInfo } from "./InfoDetail";
 import {
   Refusal,
@@ -520,10 +521,14 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
       entry.artifact.key.kind === "Model" && entry.artifact.size_bytes !== null
         ? [plain(t("clarity.freesModel", { size: formatBytes(entry.artifact.size_bytes) }))]
         : [];
+    // What other sources installed through it: none of those tools is in
+    // the batch (X5 leaves a program out where one is), so each stays.
+    const hosted = hostedLines(t, entry.artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? []);
     return [
       ...said.map(plain),
       ...order,
       ...trash,
+      ...hosted,
       ...lines.note.filter((line) => line.caution),
       ...lines.note.filter((line) => !line.caution),
       ...(twin === null ? [] : [plain(twin)]),

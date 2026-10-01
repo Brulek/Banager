@@ -795,6 +795,11 @@
     "commandsGo_other": "以下命令也会随它们那一份一起删除：{{names}}。",
     "mixed_other": "已卸载{{done}}个，{{count}}个没有卸载"
   },
+  "reviewFixes": {
+    "hostedManages_other": "用“{{program}}”装的{{names}}会留下，但卸载后无法再在Banager里更新或卸载。",
+    "hostedRuns_other": "用“{{program}}”装的{{names}}要用到{{runsOn}}，卸载后可能无法运行。",
+    "hostedBoth_other": "用“{{program}}”装的{{names}}会留下，但卸载后可能无法运行，也无法再在Banager里更新或卸载。"
+  },
   "keepsData": {
     "title": "卸载后会保留",
     "what": {

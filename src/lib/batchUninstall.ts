@@ -285,9 +285,93 @@ function scopeOf(warnings: readonly Warning[]): UninstallScope | null {
  */
 const HOSTED_SOURCES: ReadonlySet<string> = new Set(["npm", "pipx", "uv", "cargo", "ollama"]);
 
+/**
+ * The program a source's tools run on, beside the one that manages them:
+ * npm's packages start with `#!/usr/bin/env node`, so they need a `node`
+ * as much as `npm` needs one. A pipx tool's own environment holds its
+ * Python, a cargo crate is a program of its own, and an Ollama model is
+ * run by `ollama`, its manager.
+ */
+const RUNS_ON: Readonly<Record<string, string>> = { npm: "node" };
+
 /** The program a source runs, by name: the last part of its `exe_path`. */
 function programName(instance: ManagerInstance): string {
   return instance.exe_path.slice(instance.exe_path.lastIndexOf("/") + 1);
+}
+
+/** What one program a tool provides is to the tools of another source. */
+export interface Hosting {
+  /** It is the program that source runs (`pipx`): uninstalled, nothing can update or uninstall them. */
+  manages: boolean;
+  /** It is the program those tools run on (`node` for npm's): uninstalled, they may stop working. */
+  runs: boolean;
+}
+
+/**
+ * Whether `artifact` provides the program `other`'s tools are managed or
+ * run by (`HOSTED_SOURCES`, `RUNS_ON`), or null. By the command's name, as
+ * X5 goes -- and, for a Homebrew formula, only where that source's program
+ * is in this Homebrew's own folder (`/opt/homebrew/bin/pipx` of
+ * `/opt/homebrew`), and the command is the one Terminal finds or no other
+ * formula of the same Homebrew has it: a keg-only `node@22` beside a
+ * linked `node` is not the `node` npm runs on.
+ */
+export function hosting(
+  artifact: InstalledArtifact,
+  instance: ManagerInstance,
+  other: ManagerInstance,
+  artifacts: readonly InstalledArtifact[],
+): Hosting | null {
+  if (other.id === instance.id || !HOSTED_SOURCES.has(other.adapter_id)) return null;
+  const program = programName(other);
+  const runsOn = RUNS_ON[other.adapter_id];
+  if (instance.adapter_id === "brew" && !other.exe_path.startsWith(`${instance.prefix.replace(/\/$/, "")}/`)) return null;
+  const provides = (name: string): boolean => {
+    const fact = artifact.facts.commands.find((command) => command.name === name);
+    if (fact === undefined) return false;
+    if (instance.adapter_id !== "brew" || fact.state !== null) return true;
+    return !artifacts.some(
+      (another) =>
+        another.key.instance_id === instance.id &&
+        artifactKeyId(another.key) !== artifactKeyId(artifact.key) &&
+        another.facts.commands.some((command) => command.name === name),
+    );
+  };
+  const manages = provides(program);
+  const runs = runsOn !== undefined && provides(runsOn);
+  return manages || runs ? { manages, runs } : null;
+}
+
+/** The tools of one other source that `artifact` is the program of. */
+export interface HostedTools extends Hosting {
+  instance: ManagerInstance;
+  /** The source's program, by name: 「pipx」. */
+  program: string;
+  /** The program its tools run on, by name, where it is another (`RUNS_ON`): 「node」 for npm's. */
+  runsOn: string | null;
+  tools: InstalledArtifact[];
+}
+
+/**
+ * The tools other sources installed that need `artifact`'s program
+ * (`hosting`): what a person uninstalling Homebrew's `pipx` leaves behind
+ * with nothing in Banager able to update or uninstall it, and what
+ * uninstalling a Homebrew `node` may stop from working. One entry a
+ * source with any tool, in the snapshot's order of sources.
+ */
+export function hostedTools(
+  artifact: InstalledArtifact,
+  instances: readonly ManagerInstance[],
+  artifacts: readonly InstalledArtifact[],
+): HostedTools[] {
+  const instance = instances.find((candidate) => candidate.id === artifact.key.instance_id);
+  if (instance === undefined) return [];
+  return instances.flatMap((other) => {
+    const how = hosting(artifact, instance, other, artifacts);
+    if (how === null) return [];
+    const tools = artifacts.filter((tool) => tool.key.instance_id === other.id);
+    return tools.length === 0 ? [] : [{ ...how, instance: other, program: programName(other), runsOn: RUNS_ON[other.adapter_id] ?? null, tools }];
+  });
 }
 
 /** The last part of a Homebrew name: `claudebar` of `gautham-v/tap/claudebar`. */
@@ -443,13 +527,9 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
     if (SINGLE_ONLY.host) {
       const now = included();
       for (const candidate of now) {
-        const provides = new Set(candidate.artifact.facts.commands.map((command) => command.name));
         const by = now.filter(
           (other) =>
-            other.id !== candidate.id &&
-            other.instance.id !== candidate.instance.id &&
-            HOSTED_SOURCES.has(other.instance.adapter_id) &&
-            provides.has(programName(other.instance)),
+            other.id !== candidate.id && hosting(candidate.artifact, candidate.instance, other.instance, artifacts) !== null,
         );
         if (by.length > 0) {
           reasons.set(candidate.id, { kind: "host", by: by.map((other) => other.id) });
