@@ -865,10 +865,11 @@ not exist yet, `{prefix}/lib` or `{prefix}` (`real_prefix_is_writable`).
 A prefix this user cannot write (a Node installed from nodejs.org's
 package leaves a root-owned one) makes the instance read-only. An npm that
 will not answer `prefix -g` is still listed, as not responding. When the
-last check this session found an npm at the same executable, it stays that
-source, with what it listed then and the updates hidden for it
-(`resume_unanswered_npm` in `session/refresh.rs`); otherwise it is named
-by its executable, since its prefix is unknown. No other command runs.
+last check this session found exactly one npm at the same executable, and
+that npm is not among this check's results, it stays that source, with what
+it listed then and the updates hidden for it (`resume_unanswered_npm` in
+`session/refresh.rs`); otherwise it is named by its executable, since its
+prefix is unknown. No other command runs.
 
 **Environment applied to every invocation** (`NpmAdapter::ENV`):
 

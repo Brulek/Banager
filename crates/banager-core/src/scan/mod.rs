@@ -366,9 +366,11 @@ pub fn owned_roots(inst: &ManagerInstance, home: &Path) -> Vec<PathBuf> {
         // is a link into it -- with a home prefix such as `~/.npm-global`
         // that bin directory is on `PATH` and scanned. Not `<prefix>/bin`
         // itself: on `/usr/local` it is where third-party installers drop
-        // things, exactly as for Homebrew above. A `NotResponding` npm has
-        // `prefix = exe_path.parent()`; the root derived from that does
-        // not exist and is simply absent from the index.
+        // things, exactly as for Homebrew above. A `NotResponding` npm that
+        // `resume_unanswered_npm` (session/refresh.rs) took back under last
+        // round's id carries last round's real prefix; one with nothing to
+        // resume has the stand-in `prefix = exe_path.parent()`, whose
+        // derived root does not exist and is simply absent from the index.
         "npm" => vec![inst.prefix.join("lib").join("node_modules")],
         // A tool installed by its own installer owns its root: Claude Code's
         // `~/.local/share/claude` (the `versions/<v>` store its launcher
