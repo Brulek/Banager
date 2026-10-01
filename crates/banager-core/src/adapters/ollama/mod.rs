@@ -204,6 +204,15 @@ fn host_is_this_mac(host: &str) -> bool {
     }
 }
 
+/// Whether `inst`'s models are on this Mac, in its `prefix`'s `models`
+/// folder: the daemon it was detected against is this Mac's
+/// (`host_is_this_mac`). With `OLLAMA_HOST` naming another machine they are
+/// there, and a `~/.ollama` here holds none of them. Read by the size
+/// measurement (`size::plan_round`), which walks that folder only then.
+pub(crate) fn models_on_this_mac(inst: &ManagerInstance) -> bool {
+    host_is_this_mac(host_of(inst))
+}
+
 fn real_ollama_app_present(env: &HostEnv) -> bool {
     ollama_app_path(&env.home).is_some()
 }

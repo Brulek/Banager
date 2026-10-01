@@ -77,6 +77,9 @@ pub mod runner;
 pub mod scan;
 pub mod session;
 pub mod settings;
+/// How much disk each installed tool takes, measured read-only after each
+/// refresh, outside the snapshot.
+pub mod size;
 /// Fixture constructors shared by this crate's tests, its `tests/`
 /// integration tests and the Tauri shell's tests. See the module doc for
 /// why it is public rather than `#[cfg(test)]`.
