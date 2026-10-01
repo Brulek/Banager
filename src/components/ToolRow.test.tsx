@@ -989,6 +989,26 @@ describe("ToolRow", () => {
       expect(onOpen).toHaveBeenCalledTimes(1);
     });
 
+    it("opens with Space a row with no checkbox among rows that have one, the Installed page's", () => {
+      const onOpen = vi.fn();
+      const { container } = renderWithProviders(
+        <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
+          <ToolRow
+            adapterId="brew"
+            sourceLabel="Homebrew"
+            name="jq"
+            description="JSON processor"
+            selectable={null}
+            onOpen={onOpen}
+            openLabel="Details: jq"
+          />
+        </RovingRowProvider>,
+      );
+      const row = container.querySelector("[data-tool-row]") as HTMLElement;
+      expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
+
     it("does what the page says on Enter, where it says: the Installed page's details", () => {
       const onOpen = vi.fn();
       const onEnter = vi.fn();

@@ -431,10 +431,10 @@ export function ToolRow({
     if (event.key === " ") {
       event.preventDefault();
       // Its checkbox, or -- a row with none that opens (the Installed
-      // page's) -- what pressing it does, as Space shows a Finder
-      // selection in Quick Look.
+      // page's, one that cannot be ticked among rows that can) -- what
+      // pressing it does, as Space shows a Finder selection in Quick Look.
       if (selectable !== undefined && selectable !== null) selectable.onToggle();
-      else if (selectable === undefined) onOpen?.();
+      else onOpen?.();
     } else if (event.key === "Enter") {
       event.preventDefault();
       onEnter?.();

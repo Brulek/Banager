@@ -139,6 +139,37 @@ export interface UiState {
   clearJustUpdated(opIds: number[]): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
+  // The Installed page's ticked rows, by artifact key id: what 「卸载所选」
+  // uninstalls (`BatchUninstallSheet`), of the rows the list shows. Kept
+  // through a search, a sort, 「显示」 and another source, as the Updates
+  // page's ticks are, and dropped for good once the tool leaves the list
+  // (`keepUninstalls`), so a tool installed again later never comes back
+  // ticked for removal.
+  selectedUninstalls: string[];
+  toggleUninstall(key: ArtifactKey): void;
+  // Each changes the ids of the keys it is given and no others, as
+  // `selectUpdates` and `deselectUpdates` do.
+  selectUninstalls(keys: ArtifactKey[]): void;
+  deselectUninstalls(keys: ArtifactKey[]): void;
+  // Drops every tick whose id is not in `ids`: the tools still listed.
+  keepUninstalls(ids: ReadonlySet<string>): void;
+  // The last batch uninstall that started something, for the Installed
+  // page's result (`BatchUninstallResult`): what did not uninstall, and
+  // why. Replaced by the next batch; its × drops it.
+  uninstallBatch: UninstallBatchRecord | null;
+  setUninstallBatch(record: UninstallBatchRecord): void;
+  dismissUninstallBatch(): void;
+}
+
+/**
+ * One batch uninstall, as it was submitted (`useBatchUninstall`): each
+ * tool it tried, in run order, with the operation that uninstalls it --
+ * null where it did not start -- and the ids of the tools of the batch it
+ * ran after, the dependents Homebrew uninstalls only after it.
+ */
+export interface UninstallBatchRecord {
+  id: number;
+  items: Array<{ key: ArtifactKey; name: string; opId: number | null; after: string[] }>;
 }
 
 const MAX_LOG_LINES = 2000;
@@ -274,4 +305,31 @@ export const useUiStore = create<UiState>((set, get) => ({
     set((s) => ({ clearedJustUpdated: [...new Set([...s.clearedJustUpdated, ...opIds])] })),
   startupRefreshError: null,
   setStartupRefreshError: (message) => set({ startupRefreshError: message }),
+  selectedUninstalls: [],
+  toggleUninstall: (key) =>
+    set((s) => {
+      const id = artifactKeyId(key);
+      return {
+        selectedUninstalls: s.selectedUninstalls.includes(id)
+          ? s.selectedUninstalls.filter((x) => x !== id)
+          : [...s.selectedUninstalls, id],
+      };
+    }),
+  selectUninstalls: (keys) =>
+    set((s) => ({ selectedUninstalls: [...new Set([...s.selectedUninstalls, ...keys.map(artifactKeyId)])] })),
+  deselectUninstalls: (keys) =>
+    set((s) => {
+      const given = new Set(keys.map(artifactKeyId));
+      return { selectedUninstalls: s.selectedUninstalls.filter((id) => !given.has(id)) };
+    }),
+  // Unchanged when every tick is still listed: no new array, no new draw.
+  keepUninstalls: (ids) =>
+    set((s) =>
+      s.selectedUninstalls.every((id) => ids.has(id))
+        ? s
+        : { selectedUninstalls: s.selectedUninstalls.filter((id) => ids.has(id)) },
+    ),
+  uninstallBatch: null,
+  setUninstallBatch: (record) => set({ uninstallBatch: record }),
+  dismissUninstallBatch: () => set({ uninstallBatch: null }),
 }));

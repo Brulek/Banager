@@ -306,3 +306,51 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().clearedJustUpdated).toEqual([7, 8, 9]);
   });
 });
+
+describe("the Installed page's ticks for a batch uninstall", () => {
+  const glib: ArtifactKey = { ...key, name: "glib" };
+  const wget: ArtifactKey = { ...key, name: "wget" };
+
+  it("start empty, and toggle a key's id in and out", () => {
+    expect(useUiStore.getInitialState().selectedUninstalls).toEqual([]);
+    useUiStore.getState().toggleUninstall(key);
+    expect(useUiStore.getState().selectedUninstalls).toEqual([artifactKeyId(key)]);
+    useUiStore.getState().toggleUninstall(key);
+    expect(useUiStore.getState().selectedUninstalls).toEqual([]);
+  });
+
+  it("are ticked each once and unticked by key, leaving every other id alone", () => {
+    useUiStore.getState().toggleUninstall(wget);
+    useUiStore.getState().selectUninstalls([glib, key, glib]);
+    expect(useUiStore.getState().selectedUninstalls).toEqual([
+      artifactKeyId(wget),
+      artifactKeyId(glib),
+      artifactKeyId(key),
+    ]);
+    useUiStore.getState().deselectUninstalls([key, { ...key, name: "never-ticked" }]);
+    expect(useUiStore.getState().selectedUninstalls).toEqual([artifactKeyId(wget), artifactKeyId(glib)]);
+    // Not the Updates page's, which are another list's.
+    expect(useUiStore.getState().selectedUpdates).toEqual([]);
+  });
+
+  it("drop for good the ticks of tools no longer listed, and change nothing when all still are", () => {
+    useUiStore.getState().selectUninstalls([key, glib, wget]);
+    const before = useUiStore.getState().selectedUninstalls;
+    useUiStore.getState().keepUninstalls(new Set([artifactKeyId(key), artifactKeyId(glib), artifactKeyId(wget)]));
+    expect(useUiStore.getState().selectedUninstalls).toBe(before);
+    useUiStore.getState().keepUninstalls(new Set([artifactKeyId(wget)]));
+    expect(useUiStore.getState().selectedUninstalls).toEqual([artifactKeyId(wget)]);
+  });
+
+  it("keep the last batch's record until the next one replaces it or it is dismissed", () => {
+    expect(useUiStore.getInitialState().uninstallBatch).toBeNull();
+    const first = { id: 1, items: [{ key, name: "jq", opId: 4, after: [] }] };
+    const second = { id: 2, items: [{ key: glib, name: "glib", opId: null, after: [artifactKeyId(key)] }] };
+    useUiStore.getState().setUninstallBatch(first);
+    expect(useUiStore.getState().uninstallBatch).toEqual(first);
+    useUiStore.getState().setUninstallBatch(second);
+    expect(useUiStore.getState().uninstallBatch).toEqual(second);
+    useUiStore.getState().dismissUninstallBatch();
+    expect(useUiStore.getState().uninstallBatch).toBeNull();
+  });
+});
