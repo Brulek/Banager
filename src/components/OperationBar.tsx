@@ -23,7 +23,7 @@ import { CloseIcon } from "./icons";
 import { BUTTON, SMALL_ICON_BUTTON } from "./ui/controls";
 
 /**
- * The bar's buttons: View log and Stop small and grey, as a status line's
+ * The bar's buttons: View log and Cancel small and grey, as a status line's
  * are (spec §3.5), and its close × a 20 square with a 16 cross, drawn to
  * the bar's edge.
  */
@@ -42,10 +42,10 @@ function needsALook(tone: OutcomeTone): boolean {
  * window's own background, a hairline over it, its words 11/14 in the
  * muted grey. Nothing at all until something has run: the window has that
  * height back. While something runs, 「更新ffmpeg：正在处理…」 -- what it
- * does, what it does it to, where it stands -- with Stop where stopping
+ * does, what it does it to, where it stands -- with Cancel where cancelling
  * can still do something, and the way to its log; with several, how far
- * along the run is: 「正在处理第2个，共3个」 and a 4 by 60 bar, and 「全部停止」
- * for all of it that can still be stopped -- 「停止其余」 while one of it
+ * along the run is: 「正在处理第2个，共3个」 and a 4 by 60 bar, and 「全部取消」
+ * for all of it that can still be stopped -- 「取消其余」 while one of it
  * runs that nothing can stop. Once everything is done, how it went in
  * place of where it stood -- 「已更新3个工具」, 「1个未能更新」, 「更新git：
  * 网络连接失败」 -- with its log where it needs a look, and a close ×.
@@ -59,7 +59,7 @@ function needsALook(tone: OutcomeTone): boolean {
  * everything had finished replaces the last run's result. The one a run
  * names while under way is the one nothing can stop (`runsToItsEnd`),
  * while one runs, and otherwise the oldest actually working (`currentOf`);
- * with a single operation that is it, and its Stop is that one's alone.
+ * with a single operation that is it, and its Cancel is that one's alone.
  * Once a run of one is done, that one -- so an update that finished while
  * the user was looking elsewhere is still on screen, with how it went.
  */
@@ -97,7 +97,7 @@ export function OperationBar() {
     setFocusedOpId(op.id);
     setDrawerOpen(true);
   };
-  // Keyed, as are Stop and Close beside it: one node from the run's first
+  // Keyed, as are Cancel and Close beside it: one node from the run's first
   // step to how it went, wherever it stands among them. Unkeyed, the
   // running bar's View Log (second) became the finished bar's Close
   // (second): the log, closed after the run ended, gave the focus back to a
@@ -118,7 +118,7 @@ export function OperationBar() {
   const batch = total > 1;
   // What nothing can stop now (`runsToItsEnd`): rustup's self update or
   // self uninstall once it has started. In a run of several, the bar names
-  // such a one while it runs -- the one its Stop leaves running, before
+  // such a one while it runs -- the one its Cancel leaves running, before
   // the press and after -- and otherwise the oldest actually working
   // (`currentOf`).
   const unstoppable = active.filter(runsToItsEnd);
@@ -127,16 +127,16 @@ export function OperationBar() {
     const done = total - active.length;
     const status = statusKey(current, logs);
     const line = t("operations.current", { ...titleOf(current), status: status === null ? "" : t(status) });
-    // With several, one Stop for the run: every operation of it that can
+    // With several, one Cancel for the run: every operation of it that can
     // still be cancelled -- each one queued, whatever its plan, and each
     // one running whose plan allows it, the current one among them when it
-    // can be. That is all of them, 「全部停止」, unless one running cannot
+    // can be. That is all of them, 「全部取消」, unless one running cannot
     // be (a NoCancel op already running): then it is the rest of them,
-    // 「停止其余」, and that one goes on to its end, named on the bar. The
+    // 「取消其余」, and that one goes on to its end, named on the bar. The
     // queued ones go first, oldest first, so none of them starts in the
     // moment its turn comes. Pressable while there is one to stop; held,
     // not pressable, while the cancels are on their way, as a single
-    // Stop is.
+    // Cancel is.
     const cancellable = active
       .filter((op) => cancelState(op) === "enabled")
       .sort((a, b) => Number(b.status === "Queued") - Number(a.status === "Queued") || a.id - b.id);

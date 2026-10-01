@@ -563,9 +563,10 @@ impl StandaloneAdapter {
             installed_at: None,
             // The real binary: the Unknown page's rule 2.
             path,
-            // For the Updates page's `selfUpdatingHint` sentence, which
-            // arrives with Task 10 of the phase 4 step B plan, and Codex's
-            // 「它自己更新」 on the Installed page.
+            // For the 「会自行更新」 both lists say: the Updates page's
+            // (`saysItUpdatesItself`) and, for a tool whose updates
+            // Banager does not check (Codex's), the Installed page's
+            // (`uncheckedUpdatesOf`).
             auto_updates,
             // No uninstall method at all (spec §6.1 "Neither"; none in
             // the first batch, the second batch's Ollama.app):
@@ -624,8 +625,8 @@ impl StandaloneAdapter {
     /// for casks whose live version `brew outdated` cannot see. This badge
     /// compares the launcher's live version and is true whatever the
     /// switch says; that the tool usually updates itself is for the row to
-    /// say (`selfUpdatingHint`, which arrives with Task 10 of the phase 4
-    /// step B plan), not hidden behind a setting.
+    /// say (the Updates page's 「会自行更新」, `saysItUpdatesItself`), not
+    /// hidden behind a setting.
     ///
     /// A recipe with no `upgrade` (agy) gets its candidate with
     /// `UpdateBlocked::SelfUpdatesOnly`: no button, a badge, and a sentence

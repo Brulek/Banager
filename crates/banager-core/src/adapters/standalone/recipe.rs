@@ -52,9 +52,9 @@ pub struct Recipe {
     pub latest: Latest,
     /// Whether the tool updates itself in the background when its own
     /// updater is on (claude: yes, VERIFIED in claude.md §5). Read by
-    /// `inventory`, into `InstalledArtifact.auto_updates`, whose reader for
-    /// a standalone tool, the Updates page's `selfUpdatingHint` sentence,
-    /// arrives with Task 10 of the phase 4 step B plan.
+    /// `inventory`, into `InstalledArtifact.auto_updates`, which the
+    /// Updates page reads for a standalone tool's 「会自行更新」
+    /// (`saysItUpdatesItself`).
     pub self_updates: bool,
     /// The tool's own documented update command, or `None` for a tool that
     /// installs its updates itself and offers nothing Banager may run

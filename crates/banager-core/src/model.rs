@@ -1019,10 +1019,11 @@ pub enum UninstallScope {
 }
 
 /// One kind of extra step a cask's recorded uninstall takes, for the line
-/// `Warning::CaskUninstallStep` puts under 「请注意」. Declared in the order
-/// the lines are said. Each maps to directives of the cask's `uninstall`
-/// stanza or its `uninstall_*` steps as Homebrew 7.0.6 runs them
-/// (`cask/artifact/abstract_uninstall.rb`, `install_steps.rb`); produced by
+/// `Warning::CaskUninstallStep` puts among the confirmation's notes.
+/// Declared in the order the lines are said. Each maps to directives of
+/// the cask's `uninstall` stanza or its `uninstall_*` steps as Homebrew
+/// 7.0.6 runs them (`cask/artifact/abstract_uninstall.rb`,
+/// `install_steps.rb`); produced by
 /// `cask_receipt::classify`; read by `CASK_STEP_KEYS` in
 /// src/lib/warnings.ts, a `Record` over the mirror.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

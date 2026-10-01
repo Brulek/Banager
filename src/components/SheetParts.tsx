@@ -232,7 +232,7 @@ export function SheetPending({ text }: { text: string }) {
 }
 
 export interface SheetSectionProps {
-  /** Its heading: 「移到废纸篓」, 「保留」, 「这些软件还要用它」. */
+  /** Its heading: 「移到废纸篓」, 「卸载后会保留」, 「不会卸载」. */
   title: string;
   /**
    * The heading is its name only, for a screen reader, and not drawn: the

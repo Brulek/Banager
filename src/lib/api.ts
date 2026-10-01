@@ -351,7 +351,7 @@ export function quitQuestionShown(question: number): Promise<void> {
 }
 
 /**
- * The user answered question `question` 「继续等待」 (or Escape), or the
+ * The user answered question `question` 「取消」 (or Escape), or the
  * sheet went by itself, everything having finished: Banager does not quit
  * 2 seconds after asking, even when `quitQuestionShown` did not get through
  * (`quit_kept_waiting` in src-tauri/src/quit.rs). `QuitQuestion` sends it.
@@ -361,7 +361,7 @@ export function quitKeptWaiting(question: number): Promise<void> {
 }
 
 /**
- * 「仍然退出」: Banager cancels what can be cancelled, waits for it to stop,
+ * 「退出」: Banager cancels what can be cancelled, waits for it to stop,
  * and quits (`quit_anyway` in src-tauri/src/quit.rs); the promise settles
  * only if Banager is still there to answer.
  */

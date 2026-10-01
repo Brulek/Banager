@@ -166,14 +166,14 @@ fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
     crate::adapters::read_file::read_bytes(path).ok()
 }
 
-/// One line under 「请注意」: a kind of extra step; for `Deletes` and
+/// One line of the confirmation's notes: a kind of extra step; for `Deletes` and
 /// `DeletesUnnamed` from a `remove` step that checks each path first, the
 /// check (`RemoveCheck`), else `None`; and what the record names for it.
 pub(crate) type StepLine = (CaskStep, Option<RemoveCheck>, Vec<String>);
 
 /// What a recorded cask uninstall does beyond deleting what Homebrew
 /// installed, for the sentence the confirmation says under the tool and
-/// the lines it lists under 「请注意」.
+/// the lines it lists among its notes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Classified {
     /// Deletes what Homebrew put down or linked for the cask -- the record

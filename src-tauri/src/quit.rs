@@ -15,7 +15,7 @@
 //! -- first asks `should_quit`. While every operation is `Done`, it
 //! answers yes and Banager quits as it always has. While one is not, the
 //! quit is called off, the window comes back, and the page asks
-//! (src/components/QuitQuestion.tsx): 「还有 N 个操作没完成」, with
+//! (src/components/QuitQuestion.tsx): 「还有N个操作未完成」, with
 //! 「取消」, which leaves Banager running, and 「退出」, which quits
 //! (`quit_anyway`).
 //!
