@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
 import type { ArtifactKey, OpSummary } from "../lib/types";
@@ -86,7 +86,8 @@ export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpd
 /**
  * When an update finished, in the fewest words that stay true: the time
  * -- 「06:38」, "6:38 AM" -- on the day it is read, which the line says
- * as 「今天06:38」 (`today`, text-autospace drawing the gap), and the date -- 「9月28日」, "Sep 28" -- on
+ * as 「今天06:38」 (`today`: text-autospace draws the gap, or on macOS 13.3-15.3
+ * the autospace post-processor puts one in, src/i18n/autospace.ts), and the date -- 「9月28日」, "Sep 28" -- on
  * any other, since a window left open overnight still lists yesterday's,
  * and the history lists the last 30 days. Both in full in the `title`.
  */
@@ -108,6 +109,13 @@ export function finishedText(
   return { text, title, today: sameDay };
 }
 
+/**
+ * How many lines 「最近更新」 shows before the rest fold away under an
+ * "N More" line: 30 days of updates can be dozens, and the updates still
+ * to install are below this list.
+ */
+export const JUST_UPDATED_SHOWN = 6;
+
 export interface JustUpdatedProps {
   entries: JustUpdatedEntry[];
   onClear: () => void;
@@ -123,13 +131,18 @@ export interface JustUpdatedProps {
  * 「已更新」 the row showed -- 「已核实」 where Banager read the version
  * change for itself -- in 11, and when it finished, 11 muted. Nothing to
  * select or press but Clear, which hides what it lists, after a restart
- * too, until the next update succeeds; it is no part of the page's count
- * or of Select all.
+ * too, until the next update succeeds, and, past `JUST_UPDATED_SHOWN`
+ * lines, the "N More" line that shows the rest; it is no part of the
+ * page's count or of Select all.
  */
 export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
   const { t, i18n } = useTranslation();
   const headingId = useId();
+  const listId = useId();
   const now = Date.now();
+  const [expanded, setExpanded] = useState(false);
+  const folds = entries.length > JUST_UPDATED_SHOWN;
+  const shown = folds && !expanded ? entries.slice(0, JUST_UPDATED_SHOWN) : entries;
   return (
     <section aria-labelledby={headingId} data-just-updated="">
       <div className="mb-2 flex items-center gap-2 px-2.5">
@@ -145,8 +158,8 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           {t("updates.justUpdated.clear")}
         </button>
       </div>
-      <ul aria-labelledby={headingId} className={`py-1 ${GROUP}`}>
-        {entries.map((entry) => {
+      <ul id={listId} aria-labelledby={headingId} className={`py-1 ${GROUP}`}>
+        {shown.map((entry) => {
           const finished =
             entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, i18n.language);
           return (
@@ -166,7 +179,11 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
                 {entry.version}
               </span>
               <span
-                title={entry.verified ? t("history.verifiedTitle") : undefined}
+                title={
+                  entry.verified
+                    ? t(entry.key.kind === "Model" ? "history.verifiedModelTitle" : "history.verifiedTitle")
+                    : undefined
+                }
                 className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
               >
                 <OutcomeIcon tone="success" size={12} />
@@ -183,6 +200,19 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           );
         })}
       </ul>
+      {folds ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={listId}
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1 ml-2.5 inline-flex items-center rounded-sm text-small text-muted"
+        >
+          {expanded
+            ? t("history.showFewer")
+            : t("history.more", { count: entries.length - JUST_UPDATED_SHOWN })}
+        </button>
+      ) : null}
     </section>
   );
 }

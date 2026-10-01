@@ -318,7 +318,11 @@
   "history": {
     "today": "Today {{time}}",
     "verified": "Verified",
-    "verifiedTitle": "The installed version was read before and after the update, and it had changed."
+    "verifiedTitle": "The installed version was read before and after the update, and it had changed.",
+    "verifiedModelTitle": "The model was read before and after the update, and it had changed.",
+    "more_one": "{{count}} More",
+    "more_other": "{{count}} More",
+    "showFewer": "Show Fewer"
   },
   "commandPreview": {
     "show_one": "Show Command",

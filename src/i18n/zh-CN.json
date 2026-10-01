@@ -297,7 +297,10 @@
   "history": {
     "today": "今天{{time}}",
     "verified": "已核实",
-    "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。"
+    "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。",
+    "verifiedModelTitle": "更新前后各读了一次这个模型，模型已经变了。",
+    "more_other": "还有{{count}}个",
+    "showFewer": "收起"
   },
   "commandPreview": {
     "show_other": "查看命令",

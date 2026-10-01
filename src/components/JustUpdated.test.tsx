@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
 import { BUTTON } from "./ui/controls";
-import { JustUpdated, finishedText, justUpdatedOps } from "./JustUpdated";
+import { JUST_UPDATED_SHOWN, JustUpdated, finishedText, justUpdatedOps } from "./JustUpdated";
 import type { OpSummary } from "../lib/types";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
@@ -130,5 +130,53 @@ describe("JustUpdated", () => {
     );
     expect(done.querySelector("svg")).toHaveAttribute("width", "12");
     expect(within(line).queryByText("Updated")).toBeNull();
+  });
+
+  it("says for a model that the model, not a version, was read and had changed", () => {
+    const model = {
+      ...entry,
+      key: { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model" as const, name: "qwen3:8b" },
+      adapterId: "ollama",
+      name: "qwen3:8b",
+      version: null,
+      verified: true,
+    };
+    renderWithProviders(<JustUpdated entries={[model]} onClear={() => {}} />);
+    expect(screen.getByText("Verified")).toHaveAttribute(
+      "title",
+      "The model was read before and after the update, and it had changed.",
+    );
+  });
+
+  it(`shows the newest ${JUST_UPDATED_SHOWN} and folds the rest under a line that shows them`, () => {
+    const many = Array.from({ length: JUST_UPDATED_SHOWN + 3 }, (_, i) => ({
+      ...entry,
+      id: `op:${i}`,
+      opId: i,
+      name: `tool${i}`,
+      key: { ...entry.key, name: `tool${i}` },
+    }));
+    renderWithProviders(<JustUpdated entries={many} onClear={() => {}} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
+    expect(screen.getByText(`tool${JUST_UPDATED_SHOWN - 1}`)).toBeInTheDocument();
+    expect(screen.queryByText(`tool${JUST_UPDATED_SHOWN}`)).toBeNull();
+    const more = screen.getByRole("button", { name: "3 More" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(more).toHaveClass("text-small", "text-muted");
+
+    fireEvent.click(more);
+    expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN + 3);
+    const fewer = screen.getByRole("button", { name: "Show Fewer" });
+    expect(fewer).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(fewer);
+    expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
+  });
+
+  it(`has no fold line for ${JUST_UPDATED_SHOWN} or fewer`, () => {
+    const few = Array.from({ length: JUST_UPDATED_SHOWN }, (_, i) => ({ ...entry, id: `op:${i}`, opId: i }));
+    renderWithProviders(<JustUpdated entries={few} onClear={() => {}} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
+    expect(screen.queryByRole("button", { name: /More|Show Fewer/ })).toBeNull();
   });
 });

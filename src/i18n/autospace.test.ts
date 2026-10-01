@@ -76,4 +76,12 @@ describe("the autospace post-processor", () => {
     const zh = i18n.getFixedT("zh-CN");
     expect(zh("updates.count", { count: 3 })).toBe("3个可更新");
   });
+
+  it("spaces what is put into a string too: 今天 and the time, where the web view cannot", () => {
+    // `history.today` has no space of its own (src/components/JustUpdated.tsx):
+    // on macOS 13.3-15.3 this processor puts the gap in after the time is.
+    const zh = i18n.getFixedT("zh-CN");
+    expect(zh("history.today", { time: "14:02", postProcess: "autospace" })).toBe(`今天${gap}14:02`);
+    expect(zh("history.today", { time: "14:02" })).toBe("今天14:02");
+  });
 });
