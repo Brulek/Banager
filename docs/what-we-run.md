@@ -2517,7 +2517,9 @@ skipped (`skipped_versions`), tools never to remind about
 each with the time it ends; it hides every version of the tool, not only
 the one offered, and is dropped as the file is loaded after that time),
 and whether the welcome sheet of the first launch has been shown
-(`welcome_seen`), so that it shows once.
+(`welcome_seen`), so that it shows once. A `settings.json` written before
+that field existed reads it as not shown, so the sheet also shows once
+after an upgrade.
 
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近更新」 lists after a restart
@@ -2846,6 +2848,10 @@ Banager neither chooses nor sees them.
   `~/.gemini` itself, which Gemini CLI shares — nor anything they lead to.
 - Never connects to an `https` host that is not on the list above, and
   never follows a redirect.
+- Never sends usage data and has no account to sign in to: its only
+  requests are the `GET`s in the Network table, which carry nothing about
+  this Mac, and `history.json`, its record of the updates and uninstalls
+  it ran, stays on this Mac.
 - Never reports an operation as succeeded on the tool's exit code alone:
   the inventory is re-read afterwards, and a package still present after
   an uninstall, one missing after an install, or an upgraded version that
