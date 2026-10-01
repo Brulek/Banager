@@ -63,6 +63,8 @@ report them all.
 - After each check Banager measures, read-only, how much disk the tools take: a tool's details show its
   size once measured, the Installed page can be sorted **By Size**, and sorted by source a heading says
   what that source's measured tools take in all.
+- The Installed page can also be sorted **By Date Installed**, newest first. Only Homebrew says when a
+  tool was installed, so the tools from every other source come after Homebrew's, by name, with "—".
 - While the first check since launch is still looking for updates, the Installed page already lists
   what it found; uninstalling waits until that check is done.
 - On the Updates page, an update to a new major version is marked **Major update**, unless its row
@@ -424,6 +426,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   装着的其他版本，以及 Homebrew 自己的英文说明（默认收起）。
 - 每次检查后，Banager 以只读方式计算各工具占用的磁盘空间：算好后详情里能看到，“已安装”页可以“按大小”排序，
   按来源排序时，来源标题后写着它算出大小的工具一共占多少。
+- “已安装”页也可以“按安装日期”排序，最近装的在前。只有 Homebrew 记录安装日期，其他来源的工具排在 Homebrew 的
+  后面，按名称排列，日期处显示“—”。
 - 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
   （“终端用另一份”）。待更新的工具下面的“最近更新”（没有待更新时在最上面）列出 30 天内成功的更新，重启后仍在（存在
