@@ -99,8 +99,9 @@ pub struct Detected {
 /// and leaves this alone.
 #[derive(Clone, Debug)]
 enum Reading {
-    /// Not the install detect listed any more (`inventory` says which
-    /// way): `inventory` refused with this reason, and `check_updates`
+    /// Not the install detect listed any more, or a launcher Banager
+    /// could not look at (`inventory` says which): `inventory` refused
+    /// with this reason, and `check_updates`
     /// refuses with the same, so `refresh` keeps the previous round's rows
     /// on both pages and marks them stale.
     Changed(String),
@@ -461,9 +462,18 @@ impl StandaloneAdapter {
 
     /// `Look`: the probe at the instance's own `exe_path` and `prefix`,
     /// which detect expanded, then `--version` when the launcher is this
-    /// route's.
-    async fn look(&self, inst: &ManagerInstance) -> Look {
-        let probe = route::probe(self.recipe.route.kind, &inst.exe_path, &inst.prefix);
+    /// route's. Through `route::probe_strict`, not `probe`: what the disk
+    /// would not show -- a permission error, a symlink loop -- is an
+    /// error here, never `Absent`. `detect` keeps `probe`'s reading (a
+    /// launcher it cannot look at is "not installed", never "not
+    /// responding"), but this instance was detected, and a launcher
+    /// Banager cannot see now is no evidence that it is gone: an upgrade
+    /// that exited 0 would be reported as `GoneAfterUpgrade` (backlog,
+    /// "升级后的读取仍把「看不清」当成「不在了」"). `inventory` refuses
+    /// with the error, as it refuses an install that changed; `reconcile`
+    /// returns it, which `run_operation` reports as `Unconfirmed`.
+    async fn look(&self, inst: &ManagerInstance) -> std::io::Result<Look> {
+        let probe = route::probe_strict(self.recipe.route.kind, &inst.exe_path, &inst.prefix)?;
         let read = match probe {
             Probe::Present { .. } => self.read_version(&inst.exe_path, &inst.prefix).await,
             Probe::Absent | Probe::LauncherOnly => VersionRead {
@@ -471,11 +481,11 @@ impl StandaloneAdapter {
                 follows_latest: None,
             },
         };
-        Look {
+        Ok(Look {
             probe,
             version: read.version,
             follows_latest: read.follows_latest,
-        }
+        })
     }
 
     /// The tool itself, read from the disk again (`look`), not detect's
@@ -496,7 +506,22 @@ impl StandaloneAdapter {
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let look = self.look(inst).await;
+        let look = match self.look(inst).await {
+            Ok(look) => look,
+            Err(error) => {
+                // Not "gone": what is there could not be seen. Refused
+                // like a changed install, so `refresh` keeps the previous
+                // round's rows, marked stale, and `check_updates` refuses
+                // with the same reason.
+                let reason = format!(
+                    "cannot look at {}'s launcher {}: {error}",
+                    self.meta.name,
+                    inst.exe_path.display()
+                );
+                *self.inventoried.lock().unwrap() = Some(Reading::Changed(reason.clone()));
+                return Err(AdapterError::Refused(reason));
+            }
+        };
         let listed_launcher_only = inst.status.notes.contains(&InstanceNote::LauncherOnly);
         let reading = match (&look.probe, listed_launcher_only) {
             (Probe::Absent, _) => Reading::Changed(format!(
@@ -1142,7 +1167,16 @@ impl StandaloneAdapter {
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        let look = self.look(inst).await;
+        // A launcher Banager cannot look at -- a permission error, a loop
+        // -- is neither there nor gone: an error, as after an uninstall
+        // (`reconcile_after_uninstall`), so an upgrade that exited 0 is
+        // `Unconfirmed`, never `GoneAfterUpgrade`.
+        let look = self.look(inst).await.map_err(|error| {
+            AdapterError::Parse(format!(
+                "cannot tell whether {} is still there: {error}",
+                inst.exe_path.display()
+            ))
+        })?;
         let reconciled = reconcile_from(self.rows(inst, look), key);
         if reconciled.present && reconciled.version.as_deref().is_none_or(str::is_empty) {
             return Err(AdapterError::Parse(
@@ -2080,6 +2114,71 @@ mod tests {
             };
             assert!(reason.contains("gone"), "{reason}");
         }
+    }
+
+    #[tokio::test]
+    async fn test_inventory_and_reconcile_call_a_launcher_they_cannot_look_at_unknown_not_gone() {
+        // A detected launcher that the disk will not show now -- its folder
+        // unreadable, or the launcher a link to itself -- is no evidence
+        // that it is gone (backlog, "升级后的读取仍把「看不清」当成「不在了」").
+        // `inventory` refuses saying it could not look, as it refuses an
+        // install that changed, so `refresh` keeps the row marked stale and
+        // `check_updates` refuses with the same reason; `reconcile` (the
+        // readings before and after an upgrade) is an error, which
+        // `run_operation` reports as `Unconfirmed`, never present: false
+        // (`GoneAfterUpgrade`). `detect` still reads both as nothing there:
+        // "not installed", never "not responding".
+        let home = TempHome::new("look-cannot-tell");
+        let layout = claude_layout(&home, "2.1.281");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let adapter = adapter(runner);
+        let inst = instance_for(&layout, Some("2.1.281"));
+        let key = adapter.artifact_key(&inst);
+
+        let bin = layout.launcher.parent().unwrap().to_path_buf();
+        if let Some(_locked) = super::testing::Unreadable::new(&bin) {
+            let Err(AdapterError::Refused(reason)) = adapter.inventory(&inst).await else {
+                panic!("a launcher Banager cannot look at is a refusal");
+            };
+            assert!(reason.contains("cannot look at"), "{reason}");
+            assert!(!reason.contains("gone"), "{reason}");
+            let Err(AdapterError::Refused(checked)) =
+                adapter.check_updates(&inst, &CheckOptions::default()).await
+            else {
+                panic!("the check refuses with the inventory's reason");
+            };
+            assert_eq!(checked, reason);
+            let reading = adapter.reconcile(&inst, &key).await;
+            assert!(
+                matches!(&reading, Err(AdapterError::Parse(m)) if m.contains("cannot tell")),
+                "{reading:?}"
+            );
+        }
+
+        std::fs::remove_file(&layout.launcher).unwrap();
+        std::os::unix::fs::symlink("claude", &layout.launcher).expect("a link to itself");
+        let Err(AdapterError::Refused(reason)) = adapter.inventory(&inst).await else {
+            panic!("a looped launcher is a refusal");
+        };
+        assert!(reason.contains("cannot look at"), "{reason}");
+        let reading = adapter.reconcile(&inst, &key).await;
+        assert!(
+            matches!(&reading, Err(AdapterError::Parse(m)) if m.contains("cannot tell")),
+            "{reading:?}"
+        );
+        assert!(
+            adapter.detect(&home.env(vec![])).await.is_empty(),
+            "detect keeps `probe`'s reading: nothing listed"
+        );
+
+        // Gone is still gone.
+        std::fs::remove_file(&layout.launcher).unwrap();
+        let absent = adapter.reconcile(&inst, &key).await.expect("a reading");
+        assert!(!absent.present);
     }
 
     #[tokio::test]

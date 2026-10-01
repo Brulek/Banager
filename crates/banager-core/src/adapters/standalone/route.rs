@@ -134,7 +134,10 @@ fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
 /// `root`, and if so which binary it runs (spec §3.3 steps 1-3). Whatever
 /// `probe_strict` cannot tell -- a symlink loop, a permission error, a
 /// dangling link along the way -- reads as `Absent` here: "not installed",
-/// never "not responding", for detection and every refresh.
+/// never "not responding", for detection. An instance already detected is
+/// read again through `probe_strict` (`StandaloneAdapter::look`, for
+/// `inventory` and the readings before and after an upgrade), where what
+/// could not be told stays an error rather than "gone".
 pub fn probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
     probe_strict(kind, launcher, root).unwrap_or(Probe::Absent)
 }
@@ -142,9 +145,11 @@ pub fn probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
 /// `probe`, keeping what it could not tell: `Ok(Absent)` only when the
 /// disk says so -- no launcher at all (its `lstat` answers "no such
 /// file"), or one that is not this route's -- and `Err` for any other
-/// error on the way. Read by `probe`, and by
-/// `StandaloneAdapter::reconcile_after_uninstall`, which must not call an
-/// uninstall finished because a permission error hid the launcher.
+/// error on the way. Read by `probe`; by `StandaloneAdapter::look`
+/// (`inventory` and `reconcile`), which must not call a detected launcher
+/// gone -- nor an upgrade `GoneAfterUpgrade` -- because a permission
+/// error hid it; and by `StandaloneAdapter::reconcile_after_uninstall`,
+/// which must not call an uninstall finished for the same reason.
 ///
 /// The launcher is one link, from the installer's fixed path straight
 /// into the root: its own text (`one_hop`) must name a place inside the

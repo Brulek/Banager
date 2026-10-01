@@ -663,9 +663,22 @@ fn claude_home(version: &str) -> (PathBuf, ManagerInstance) {
     (home, inst)
 }
 
+/// What `claude update` leaves at the launcher, beside its output.
+#[derive(Clone, Copy, PartialEq)]
+enum AfterUpdate {
+    /// The launcher as it was.
+    Untouched,
+    /// The program file it links to gone: the launcher dangles.
+    Dangling,
+    /// The launcher a link to itself: a loop no `stat` can see past, so
+    /// Banager cannot tell whether the tool is there.
+    Looped,
+}
+
 struct ClaudeMutationRunner {
     inner: Arc<ScriptedRunner>,
     remove_target_on_update: Option<PathBuf>,
+    loop_launcher_on_update: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -682,6 +695,11 @@ impl CommandRunner for ClaudeMutationRunner {
             if let Some(target) = &self.remove_target_on_update {
                 std::fs::remove_file(target).expect("update left launcher dangling");
             }
+            if let Some(launcher) = &self.loop_launcher_on_update {
+                std::fs::remove_file(launcher).expect("remove the launcher");
+                std::os::unix::fs::symlink(launcher.file_name().unwrap(), launcher)
+                    .expect("update left the launcher a loop");
+            }
         }
         Ok(output)
     }
@@ -690,8 +708,9 @@ impl CommandRunner for ClaudeMutationRunner {
 async fn claude_upgrade_outputs(
     update_output: CommandOutput,
     versions: Vec<CommandOutput>,
-    dangling_after_update: bool,
+    after_update: AfterUpdate,
 ) -> Outcome {
+    let dangling_after_update = after_update == AfterUpdate::Dangling;
     let (home, inst) = claude_home("2.1.281");
     let launcher = inst.exe_path.to_string_lossy().to_string();
     let runner = Arc::new(ScriptedRunner::default());
@@ -699,6 +718,8 @@ async fn claude_upgrade_outputs(
         inner: runner.clone(),
         remove_target_on_update: dangling_after_update
             .then(|| std::fs::canonicalize(&inst.exe_path).unwrap()),
+        loop_launcher_on_update: (after_update == AfterUpdate::Looped)
+            .then(|| inst.exe_path.clone()),
     });
     let adapter = Arc::new(StandaloneAdapter::new(
         &CLAUDE,
@@ -784,7 +805,7 @@ async fn claude_upgrade(update_output: CommandOutput, versions: Vec<&str>) -> Ou
             .iter()
             .map(|v| exited_0(&format!("{v} (Claude Code)\n"), ""))
             .collect(),
-        false,
+        AfterUpdate::Untouched,
     )
     .await
 }
@@ -803,7 +824,7 @@ async fn test_a_claude_update_exiting_zero_with_a_failed_version_read_is_unconfi
             claude_upgrade_outputs(
                 exited_0("updated", ""),
                 vec![exited_0("2.1.281 (Claude Code)\n", ""), after],
-                false,
+                AfterUpdate::Untouched,
             )
             .await,
             Outcome::Unconfirmed
@@ -817,7 +838,26 @@ async fn test_a_claude_update_exiting_zero_with_a_dangling_launcher_is_unconfirm
         claude_upgrade_outputs(
             exited_0("updated", ""),
             vec![exited_0("2.1.281 (Claude Code)\n", "")],
-            true,
+            AfterUpdate::Dangling,
+        )
+        .await,
+        Outcome::Unconfirmed
+    );
+}
+
+#[tokio::test]
+async fn test_a_claude_update_exiting_zero_with_a_launcher_banager_cannot_look_at_is_unconfirmed_not_gone(
+) {
+    // The reading after the update cannot see the launcher (here a link
+    // to itself; a permission error reads the same way): that is no
+    // evidence the tool is gone, so the outcome is `Unconfirmed`, never
+    // `NeedsAttention(GoneAfterUpgrade)` (backlog, "升级后的读取仍把
+    // 「看不清」当成「不在了」": `look` reads through `probe_strict`).
+    assert_eq!(
+        claude_upgrade_outputs(
+            exited_0("updated", ""),
+            vec![exited_0("2.1.281 (Claude Code)\n", "")],
+            AfterUpdate::Looped,
         )
         .await,
         Outcome::Unconfirmed
@@ -847,7 +887,7 @@ async fn test_a_claude_update_exiting_zero_with_no_version_before_it_falls_back_
     let outcome = claude_upgrade_outputs(
         exited_0("Claude Code is up to date (2.1.281)\n", ""),
         vec![timed_out, exited_0("2.1.281 (Claude Code)\n", "")],
-        false,
+        AfterUpdate::Untouched,
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);

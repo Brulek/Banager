@@ -1222,8 +1222,11 @@ launcher or its program files go away between those two looks, that
 refresh reports Claude Code as a source it could not finish (the banner
 over both pages) and keeps the previous refresh's rows rather than
 listing an install that no longer matches its own row; the next refresh
-lists what is there. The update check that follows in the same refresh
-runs nothing itself: it compares the version the second look read.
+lists what is there. The same happens when the second look cannot see the
+launcher at all (a folder Banager may not read, a link that loops back on
+itself): that is not taken as the launcher being gone. The update check
+that follows in the same refresh runs nothing itself: it compares the
+version the second look read.
 
 Banager also asks where `claude` would run from if typed in Terminal (the
 first regular file named `claude` with executable bits in Banager's
@@ -1301,8 +1304,10 @@ leaves behind, and its preview promises nothing. Cancel: allowed
 (`KillThenReconcile`) — the runner stops the process group, Banager reads
 `<claude> --version` again, and the operation is reported as unconfirmed
 regardless of that reading (the same rule as every stopped upgrade). If
-it exits 0 but afterwards the launcher is dangling or its version cannot
-be read, verification fails and the outcome is also unconfirmed. If it
+it exits 0 but afterwards the launcher is dangling, its version cannot
+be read, or Banager cannot look at it (a folder it may not read, a link
+that loops back on itself — never taken as the launcher being gone),
+verification fails and the outcome is also unconfirmed. If it
 exits 0 and the version did not move (Claude Code already updated itself,
 or reports "up to date"), the operation is reported as needing attention
 whenever a version before it could be read, as for every source. When
