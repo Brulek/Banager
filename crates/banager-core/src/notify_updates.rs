@@ -9,6 +9,7 @@
 //! (`report_update_set` in `src-tauri/src/notify.rs`), and posts.
 
 use crate::auto_check::RoundTrigger;
+use crate::model::UpdateCandidate;
 use crate::settings::Settings;
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -157,6 +158,37 @@ pub fn decide(
     Notice::Post { count: whole.len() }
 }
 
+/// The pair the page names `candidate` by (`updatePairOf` in
+/// src/lib/updateNotification.ts): its key as `artifactKeyId` in
+/// src/store/ui.ts spells it, `instance_id|kind|name`, the kind as its
+/// serde name, and the version it offers.
+pub fn pair_of(candidate: &UpdateCandidate) -> UpdatePair {
+    let kind = serde_json::to_value(candidate.key.kind)
+        .ok()
+        .and_then(|kind| kind.as_str().map(str::to_string))
+        .unwrap_or_default();
+    UpdatePair {
+        key_id: format!(
+            "{}|{}|{}",
+            candidate.key.instance_id, kind, candidate.key.name
+        ),
+        target: candidate.target.clone(),
+    }
+}
+
+/// The pairs of `updates` -- as the page reports them -- that `candidates`,
+/// the snapshot's update candidates, offer (`pair_of`), each once: what
+/// `report_update_set` (src-tauri/src/notify.rs) hands `report`. A pair no
+/// candidate offers is no update to tell of, and is neither counted in a
+/// notification nor kept among those told, so what the page reports can
+/// neither post news the snapshot does not have nor grow `Notified` past
+/// the snapshot's own candidates.
+pub fn offered(updates: &[UpdatePair], candidates: &[UpdateCandidate]) -> Vec<UpdatePair> {
+    let offers: BTreeSet<UpdatePair> = candidates.iter().map(pair_of).collect();
+    let reported: BTreeSet<&UpdatePair> = updates.iter().filter(|p| offers.contains(p)).collect();
+    reported.into_iter().cloned().collect()
+}
+
 /// A report's whole effect on `notified`: what `decide` answers, carried
 /// out. `Seen` marks every pair of `updates`; `Nothing`, `Deferred` and
 /// `Withheld` mark none. `Post` calls `post` with its count, and marks
@@ -221,6 +253,40 @@ mod tests {
         trigger: Some(RoundTrigger::Automatic),
         awaits_follow_up: true,
     };
+
+    #[test]
+    fn test_only_pairs_a_candidate_of_the_snapshot_offers_are_reported_each_once() {
+        use crate::model::{ArtifactKey, ArtifactKind, UpdateChannel};
+        let candidate = |kind, name: &str, target: &str| UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind,
+                name: name.to_string(),
+            },
+            current: "1.0".to_string(),
+            target: target.to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+        };
+        let candidates = [
+            candidate(ArtifactKind::Formula, "jq", "1.8.1"),
+            candidate(ArtifactKind::Formula, "gh", "2.102.0"),
+        ];
+        // The page's spelling of a candidate (`artifactKeyId`).
+        assert_eq!(pair_of(&candidates[0]), jq());
+        let reported = [
+            jq(),
+            jq(),
+            // Not offered: another version, another kind, another name.
+            pair("brew:/opt/homebrew|Formula|gh", "9.9.9"),
+            pair("brew:/opt/homebrew|Cask|jq", "1.8.1"),
+            pair("brew:/opt/homebrew|Formula|evil", "1.0"),
+        ];
+        assert_eq!(offered(&reported, &candidates), [jq()]);
+        assert_eq!(offered(&reported, &[]), Vec::<UpdatePair>::new());
+    }
 
     #[test]
     fn test_update_pair_is_the_json_the_page_sends() {

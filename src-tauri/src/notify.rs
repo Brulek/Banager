@@ -34,7 +34,8 @@ pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 
 /// The page's report, after each snapshot, of the updates it offers to
 /// start -- the rows Update all would take, as (row, version) pairs -- and
-/// of `round`, the snapshot's `Snapshot::round`. What it does is `report`'s,
+/// of `round`, the snapshot's `Snapshot::round` -- of those pairs, the ones
+/// the snapshot offers (`notify_updates::offered`). What it does is `report`'s,
 /// with the focus as it is now (`focus`) and the notification in the
 /// window's language. A notification handed off waits on the window
 /// (`window::NotificationPending`) until the window is next in front. One
@@ -47,6 +48,10 @@ pub async fn report_update_set(
     round: u64,
     updates: Vec<UpdatePair>,
 ) -> Result<(), String> {
+    // Only what the snapshot offers (`notify_updates::offered`): the page
+    // cannot post news of an update Banager did not find, nor make what
+    // has been told grow past the snapshot's own candidates.
+    let updates = notify_updates::offered(&updates, &state.session.snapshot().updates);
     let focus = focus(&app);
     let language = language(&app, &state);
     let title = app.package_info().name.clone();
