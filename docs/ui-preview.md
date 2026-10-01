@@ -231,8 +231,9 @@ Paths are under a generic home folder, `/Users/you`.
   `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
   `?state=uptodate`, which leaves Codex's own install out,
   「没有发现装了不止一份的工具」.
-- The 「显示」 popup's last three choices say how many they show: on the
-  default pretend Mac 「终端里找不到（1）」, Grok Build,
+- The 「显示」 popup's last four choices say how many they show: on the
+  default pretend Mac 「装了不止一份（2）」, Codex's two copies,
+  「终端里找不到（1）」, Grok Build,
   「Homebrew已停用或弃用（2）」, QuickJot (已停用) and youtube-dl (已弃用), and
   「保留了其他版本（8）」, the formulae with an older version kept, components
   unfolded. No line over the list points at that last one; the tool setup
