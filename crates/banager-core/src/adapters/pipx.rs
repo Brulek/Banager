@@ -6,9 +6,10 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
+    InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
+    PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -75,6 +76,38 @@ struct PipxMainPackage {
     /// write the key at all, which then simply gives rule 2 nothing.
     #[serde(default)]
     app_paths: Vec<PipxAppPath>,
+    /// `pipx install --suffix`: what pipx adds to each app's name when it
+    /// exposes it (`black@3.12` for the venv's `black`), so the name typed
+    /// in Terminal. Empty without one; a value that is not a string is
+    /// read as none rather than failing the list.
+    #[serde(default)]
+    suffix: Option<serde_json::Value>,
+}
+
+/// The commands pipx exposed for a package (`CommandInputs.provided`):
+/// one per `app_paths` entry, named as exposed -- the app's own name and
+/// the package's `suffix` -- with the app in the tool's environment as the
+/// file the command is. Where pipx put the command itself (its bin folder,
+/// `~/.local/bin` unless `PIPX_BIN_DIR` says otherwise) is not in this
+/// answer; `commands::judge` looks for it.
+fn pipx_commands(package: &PipxMainPackage) -> Vec<ProvidedCommand> {
+    let suffix = match &package.suffix {
+        Some(serde_json::Value::String(suffix)) => suffix.as_str(),
+        _ => "",
+    };
+    package
+        .app_paths
+        .iter()
+        .filter_map(|app| {
+            let path = PathBuf::from(&app.path);
+            let name = path.file_name()?.to_str()?;
+            path.is_absolute().then(|| ProvidedCommand {
+                name: format!("{name}{suffix}"),
+                path: path.clone(),
+                within: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 /// Parses `pipx list --json`. The venv name (the JSON object's key under
@@ -102,6 +135,7 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
                 .first()
                 .and_then(|app| Path::new(&app.path).parent()?.parent())
                 .map(Path::to_path_buf);
+            let provided = pipx_commands(&venv.metadata.main_package);
             InstalledArtifact {
                 key: ArtifactKey {
                     instance_id: instance_id.to_string(),
@@ -120,7 +154,13 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
                 // pipx pins, but `pipx uninstall` removes a pinned tool: pipx
                 // 1.17.3's `commands/uninstall.py` never reads `pinned`.
                 uninstall_blocked: None,
-                facts: Default::default(),
+                facts: ArtifactFacts {
+                    command_inputs: CommandInputs {
+                        provided,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
             }
         })
         .collect();
@@ -571,6 +611,64 @@ mod tests {
             .as_deref()
             .expect("pipx fills path from app_paths");
         assert!(venv.ends_with("pipx/venvs/cowsay"), "{venv:?}");
+        // Its one app, as the command `cowsay`: the program in the venv
+        // (where pipx exposed it is not in this answer).
+        let provided = &artifacts[0].facts.command_inputs.provided;
+        assert_eq!(provided.len(), 1);
+        assert_eq!(provided[0].name, "cowsay");
+        assert!(
+            provided[0].path.ends_with("pipx/venvs/cowsay/bin/cowsay"),
+            "{provided:?}"
+        );
+        assert!(provided[0].within.is_empty());
+    }
+
+    #[test]
+    fn test_parse_list_names_every_app_as_pipx_exposed_it() {
+        // All of `app_paths`, not just the first, each with the package's
+        // `suffix`; a suffix of another shape is read as none.
+        let json = r#"{
+            "venvs": {
+                "black": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [
+                                { "__Path__": "/Users/someone/.local/pipx/venvs/black/bin/black", "__type__": "Path" },
+                                { "__Path__": "/Users/someone/.local/pipx/venvs/black/bin/blackd", "__type__": "Path" }
+                            ],
+                            "package": "black",
+                            "package_version": "25.9.0",
+                            "suffix": "@3.12"
+                        }
+                    }
+                },
+                "httpie": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [
+                                { "__Path__": "/Users/someone/.local/pipx/venvs/httpie/bin/http", "__type__": "Path" }
+                            ],
+                            "package": "httpie",
+                            "package_version": "3.2.4",
+                            "suffix": 7
+                        }
+                    }
+                }
+            }
+        }"#;
+        let artifacts = parse_list(json, "pipx").expect("parse inline pipx list");
+        let names: Vec<Vec<&str>> = artifacts
+            .iter()
+            .map(|a| {
+                a.facts
+                    .command_inputs
+                    .provided
+                    .iter()
+                    .map(|p| p.name.as_str())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(names, vec![vec!["black@3.12", "blackd@3.12"], vec!["http"]]);
     }
 
     #[test]

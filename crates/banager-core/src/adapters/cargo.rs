@@ -6,9 +6,10 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
+    InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
+    PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -100,7 +101,9 @@ pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)
 /// `detect-targets`) are not attributed and stay on the Unknown page
 /// until it can hold several (backlog). The reader is the Unknown page's
 /// rule 2 (`scan/mod.rs`, `Known::index`): a `~/.cargo/bin/hexyl` that
-/// canonicalises to this path is cargo's.
+/// canonicalises to this path is cargo's. Every binary the record lists
+/// is one of the crate's commands (`CommandInputs.provided`), at
+/// `<cargo_home>/bin/<bin>`, which cargo copies the program to.
 fn parse_crates2(
     json: &str,
     instance_id: &str,
@@ -112,11 +115,23 @@ fn parse_crates2(
     Ok(entries
         .into_iter()
         .map(|(name, version, _source_kind)| {
-            let path = bins
+            let crate_bins: &[String] = bins
                 .iter()
                 .find(|(crate_name, _)| *crate_name == name)
-                .and_then(|(_, bins)| bins.iter().find(|b| **b == name).or_else(|| bins.first()))
+                .map_or(&[], |(_, bins)| bins.as_slice());
+            let path = crate_bins
+                .iter()
+                .find(|b| **b == name)
+                .or_else(|| crate_bins.first())
                 .map(|bin| bin_dir.join(bin));
+            let provided = crate_bins
+                .iter()
+                .map(|bin| ProvidedCommand {
+                    name: bin.clone(),
+                    path: bin_dir.join(bin),
+                    within: Vec::new(),
+                })
+                .collect();
             InstalledArtifact {
                 key: ArtifactKey {
                     instance_id: instance_id.to_string(),
@@ -133,7 +148,13 @@ fn parse_crates2(
                 path,
                 auto_updates: false,
                 uninstall_blocked: None,
-                facts: Default::default(),
+                facts: ArtifactFacts {
+                    command_inputs: CommandInputs {
+                        provided,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
             }
         })
         .collect())
@@ -712,6 +733,41 @@ mod tests {
             Some(PathBuf::from("/Users/someone/.cargo/bin/cargo-binstall"))
         );
         assert_eq!(path_of("libonly"), None);
+        // Every binary is one of the crate's commands, `detect-targets`
+        // included: `commands` can hold several where `path` cannot.
+        let commands_of = |name: &str| -> Vec<(String, PathBuf)> {
+            artifacts
+                .iter()
+                .find(|a| a.key.name == name)
+                .expect(name)
+                .facts
+                .command_inputs
+                .provided
+                .iter()
+                .map(|p| (p.name.clone(), p.path.clone()))
+                .collect()
+        };
+        assert_eq!(
+            commands_of("cargo-binstall"),
+            vec![
+                (
+                    "cargo-binstall".to_string(),
+                    PathBuf::from("/Users/someone/.cargo/bin/cargo-binstall")
+                ),
+                (
+                    "detect-targets".to_string(),
+                    PathBuf::from("/Users/someone/.cargo/bin/detect-targets")
+                ),
+            ]
+        );
+        assert_eq!(
+            commands_of("ripgrep"),
+            vec![(
+                "rg".to_string(),
+                PathBuf::from("/Users/someone/.cargo/bin/rg")
+            )]
+        );
+        assert!(commands_of("libonly").is_empty());
     }
 
     #[test]

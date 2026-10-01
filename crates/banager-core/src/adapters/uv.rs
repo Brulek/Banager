@@ -5,10 +5,10 @@ use crate::adapters::{
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel,
-    Warning,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
+    InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
+    PlanAction, ProvidedCommand, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -44,13 +44,46 @@ fn tool_list_header_lines(text: &str) -> impl Iterator<Item = (&str, &str)> {
 }
 
 /// Parses `uv tool list --show-paths`: one `name vX.Y.Z (path)` header line
-/// per tool, followed by `- binary (path)` lines that this function skips
-/// (the header alone has everything `InstalledArtifact` needs).
+/// per tool, followed by one `- binary (path)` line per executable the
+/// tool installed. The header has everything `InstalledArtifact` needs;
+/// the binary lines are the tool's commands (`CommandInputs.provided`),
+/// each with the tool's environment as where its link must lead -- pipx
+/// can have put a `ruff` at the same path. They are read here alone:
+/// `tool_list_header_lines`, which `--outdated`'s parser shares, still
+/// skips them, and this function reads a header the way it does.
 fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArtifact> {
+    // Each `- binary (path)` line, with the tool whose header it follows.
+    // A line with no path (uv without `--show-paths`) names no file.
+    let mut binaries: Vec<(&str, &str, &str)> = Vec::new();
+    let mut tool: Option<&str> = None;
+    for line in text.lines() {
+        if let Some(binary) = line.strip_prefix("- ") {
+            let entry = binary
+                .split_once(" (")
+                .and_then(|(command, path)| Some((command, path.strip_suffix(')')?)));
+            if let (Some(tool), Some((command, path))) = (tool, entry) {
+                binaries.push((tool, command, path));
+            }
+        } else if !line.trim().is_empty() {
+            tool = line
+                .split_once(' ')
+                .filter(|(_, rest)| rest.starts_with('v'))
+                .map(|(name, _)| name);
+        }
+    }
     tool_list_header_lines(text)
         .filter_map(|(name, rest)| {
             let (version, path_part) = rest.split_once(" (")?;
             let path = path_part.trim_end_matches(')');
+            let provided = binaries
+                .iter()
+                .filter(|(tool, _, _)| *tool == name)
+                .map(|(_, command, link)| ProvidedCommand {
+                    name: command.to_string(),
+                    path: PathBuf::from(link),
+                    within: vec![PathBuf::from(path)],
+                })
+                .collect();
             Some(InstalledArtifact {
                 key: ArtifactKey {
                     instance_id: instance_id.to_string(),
@@ -67,7 +100,13 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
                 path: Some(PathBuf::from(path)),
                 auto_updates: false,
                 uninstall_blocked: None,
-                facts: Default::default(),
+                facts: ArtifactFacts {
+                    command_inputs: CommandInputs {
+                        provided,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
             })
         })
         .collect()
@@ -249,7 +288,6 @@ impl UvAdapter {
             .into_iter()
             .map(|artifact| InstalledArtifact {
                 uninstall_blocked,
-                facts: Default::default(),
                 ..artifact
             })
             .collect())
@@ -457,6 +495,63 @@ mod tests {
             artifacts[0].path,
             Some(PathBuf::from("/Users/brulek/.local/share/uv/tools/ruff"))
         );
+        // Its `- ruff (…)` line: the command, its link, and the tool's
+        // environment as where that link must lead.
+        assert_eq!(
+            artifacts[0].facts.command_inputs.provided,
+            vec![ProvidedCommand {
+                name: "ruff".to_string(),
+                path: PathBuf::from("/Users/brulek/.local/bin/ruff"),
+                within: vec![PathBuf::from("/Users/brulek/.local/share/uv/tools/ruff")],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_parse_tool_list_show_paths_gives_each_tool_its_own_binary_lines() {
+        // Two tools, one with two executables; a binary line with no path
+        // (uv without `--show-paths`) names no file.
+        let text = "\
+black v25.9.0 (/Users/someone/.local/share/uv/tools/black)
+- black (/Users/someone/.local/bin/black)
+- blackd (/Users/someone/.local/bin/blackd)
+ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
+- ruff
+";
+        let artifacts = parse_tool_list_show_paths(text, "uv");
+        let commands: Vec<(&str, Vec<(&str, &std::path::Path)>)> = artifacts
+            .iter()
+            .map(|a| {
+                (
+                    a.key.name.as_str(),
+                    a.facts
+                        .command_inputs
+                        .provided
+                        .iter()
+                        .map(|p| (p.name.as_str(), p.path.as_path()))
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            commands,
+            vec![
+                (
+                    "black",
+                    vec![
+                        (
+                            "black",
+                            std::path::Path::new("/Users/someone/.local/bin/black")
+                        ),
+                        (
+                            "blackd",
+                            std::path::Path::new("/Users/someone/.local/bin/blackd")
+                        ),
+                    ]
+                ),
+                ("ruff", Vec::new()),
+            ]
+        );
     }
 
     #[test]
@@ -497,6 +592,40 @@ mod tests {
             version: Some("0.12.17".to_string()),
             ..crate::testing::manager_instance("uv", "uv")
         }
+    }
+
+    #[tokio::test]
+    async fn test_inventory_keeps_the_commands_its_parse_read() {
+        // `inventory` puts this round's `uninstall_blocked` on each row;
+        // the commands the parse read have to come through it.
+        let fixture =
+            std::fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt")
+                .expect("read uv tool-list-show-paths.txt fixture");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: fixture,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = UvAdapter::new(runner);
+        let artifacts = adapter
+            .inventory(&test_instance())
+            .await
+            .expect("inventory");
+        assert_eq!(artifacts.len(), 1);
+        let names: Vec<&str> = artifacts[0]
+            .facts
+            .command_inputs
+            .provided
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["ruff"]);
     }
 
     #[tokio::test]
