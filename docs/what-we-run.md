@@ -943,7 +943,12 @@ for the user's Homebrew config — `$XDG_CONFIG_HOME/homebrew`,
 without waiting, and read and parsed as JSON only when it is a regular
 file of at most 16 MiB; no file is an empty list, as it is to Homebrew,
 and only its `trustedtaps`, `trustedcasks` and `trustedformulae` lists
-are used.
+are used. Banager builds `~` from `$HOME`; for `~/.homebrew` Homebrew
+takes the account's home from the user database instead
+(`Trust.trust_file`, `trust.rb:27-43`), so where `$HOME` points elsewhere
+the two read different files, and the uninstall confirmation may say or
+leave out the trust list line wrongly. Nothing is run or changed because
+of it.
 
 ## npm
 

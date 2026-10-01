@@ -47,6 +47,12 @@ pub(crate) enum Kind {
 /// parse as a JSON object (`rescue Errno::ENOENT, JSON::ParserError`,
 /// `return {} unless parsed_store.is_a?(Hash)`). Opened without waiting,
 /// at most `read_file::LIMIT` bytes of it, as the `brew.env` files are.
+///
+/// `config_home` is built from `$HOME`. Homebrew's `Trust.trust_file`
+/// (`trust.rb:27-43` in 7.0.7-9) takes the account's home from the user
+/// database (`Dir.home($USER)`) when the folder is `~/.homebrew`, so where
+/// `$HOME` is not that home, Banager reads another file than Homebrew
+/// does. That only makes the trust sentences wrong, never an action.
 pub(crate) fn read_trust_list(config_home: &Path) -> Option<TrustList> {
     match crate::adapters::read_file::read_bytes(&config_home.join(TRUST_FILE)) {
         Ok(bytes) => Some(parse(&bytes)),
