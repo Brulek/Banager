@@ -13,8 +13,9 @@
 //! or minimized and tell it, one event each (`PageCommand`, through
 //! `window::show_and_tell`), and the page runs the code its own controls
 //! run (src/lib/menu.ts). Help has one item of Banager's, Copy Diagnostic
-//! Info, which the page answers as Settings' own button does, without the
-//! list of tools.
+//! Info…, which the page answers by opening Settings on its button of that
+//! name, focused: the copy is the button's click, which a webview always
+//! lets write the clipboard.
 //!
 //! The page says which language: `set_menu_language`, at startup and at
 //! every change of language. Until it has, the menu bar is built in the
@@ -60,9 +61,10 @@ pub enum PageCommand {
     CheckAgain,
     /// Search (⌘F): the Installed page, with its search box focused.
     Search,
-    /// Help's Copy Diagnostic Info: the text Settings' button of that name
-    /// copies (src/lib/diagnostics.ts), without the list of tools, which
-    /// only Settings' checkbox adds. No shortcut.
+    /// Help's Copy Diagnostic Info…: Settings, on its button of that name
+    /// (src/components/DiagnosticsRows.tsx), focused, which copies the text
+    /// at its click -- the ellipsis says that one more step follows. No
+    /// shortcut.
     CopyDiagnostics,
 }
 
@@ -249,7 +251,7 @@ const ENGLISH: Words = Words {
     zoom: "Zoom",
     bring_all_to_front: "Bring All to Front",
     help: "Help",
-    copy_diagnostics: "Copy Diagnostic Info",
+    copy_diagnostics: "Copy Diagnostic Info…",
 };
 
 const SIMPLIFIED_CHINESE: Words = Words {
@@ -281,7 +283,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     zoom: "缩放",
     bring_all_to_front: "前置全部窗口",
     help: "帮助",
-    copy_diagnostics: "拷贝诊断信息",
+    copy_diagnostics: "拷贝诊断信息…",
 };
 
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
@@ -623,7 +625,7 @@ mod tests {
                     ],
                 ),
                 ("Window", &["Minimize", "Zoom", "—", "Bring All to Front"]),
-                ("Help", &["Copy Diagnostic Info"]),
+                ("Help", &["Copy Diagnostic Info…"]),
             ])
         );
     }
@@ -668,7 +670,7 @@ mod tests {
                     ],
                 ),
                 ("窗口", &["最小化", "缩放", "—", "前置全部窗口"]),
-                ("帮助", &["拷贝诊断信息"]),
+                ("帮助", &["拷贝诊断信息…"]),
             ])
         );
     }
@@ -845,10 +847,11 @@ mod tests {
                 ]
             );
             assert_eq!(words.settings, format!("{}…", nav("settings")));
-            // Help's item is named as Settings' button is.
+            // Help's item is named as Settings' button is, with the
+            // ellipsis of an item that leads to one more step: the button.
             assert_eq!(
-                Some(words.copy_diagnostics),
-                locale["diagnostics"]["copy"].as_str()
+                words.copy_diagnostics,
+                format!("{}…", locale["diagnostics"]["copy"].as_str().unwrap())
             );
         }
     }

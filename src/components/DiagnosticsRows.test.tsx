@@ -1,9 +1,8 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
-import { useDiagnosticsStatus } from "../lib/diagnostics";
 import type { Settings, Snapshot, SystemFacts } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
 import { SettingsPage } from "../pages/SettingsPage";
@@ -82,7 +81,6 @@ beforeEach(() => {
     throw new Error(`unexpected command ${cmd}`);
   });
   writeText = vi.fn(async () => {});
-  useDiagnosticsStatus.setState({ status: null });
 });
 
 afterEach(() => {
@@ -119,14 +117,14 @@ describe("DiagnosticsRows", () => {
     expect(text).toContain("\nmacOS: 27.0\nChip: Apple M2 Pro\n");
     expect(text).toContain("\nHomebrew\n  Version: 7.0.3\n  Location: /opt/homebrew/bin/brew\n  Status: OK\n  Tools: 1\n");
     expect(text).not.toContain("jq 1.8.2");
-    expect(container.querySelector("[data-diagnostics-status]")).toHaveTextContent("Copied");
+    expect(container.querySelector("[data-copy-diagnostics]")?.previousElementSibling).toHaveTextContent("Copied");
   });
 
   it("adds each source's tools only while its checkbox is ticked, which starts off", async () => {
     const user = setup();
     renderWithProviders(<DiagnosticsRows />);
     await loaded();
-    const box = screen.getByRole("checkbox", { name: "Include the list of installed tools" });
+    const box = screen.getByRole("checkbox", { name: "Include the list of tools" });
     expect(box).not.toBeChecked();
 
     await user.click(box);
@@ -142,14 +140,13 @@ describe("DiagnosticsRows", () => {
     const user = setup();
     const { container } = renderWithProviders(<DiagnosticsRows />);
     await loaded();
-    const status = () => container.querySelector("[data-diagnostics-status]");
+    const status = () => container.querySelector("[data-copy-diagnostics]")?.previousElementSibling;
 
     writeText.mockRejectedValueOnce(new Error("NotAllowedError"));
     await user.click(screen.getByRole("button", { name: "Copy Diagnostic Info" }));
     await waitFor(() => expect(status()).toHaveTextContent("Couldn't copy"));
 
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
-    useDiagnosticsStatus.setState({ status: null });
     await user.click(screen.getByRole("button", { name: "Copy Diagnostic Info" }));
     expect(status()).toHaveTextContent("Couldn't copy");
   });
@@ -161,7 +158,7 @@ describe("DiagnosticsRows", () => {
       renderWithProviders(<DiagnosticsRows />);
       await loaded();
       expect(screen.getByText("诊断信息")).toBeInTheDocument();
-      expect(screen.getByRole("checkbox", { name: "包括已安装的工具清单" })).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "包括工具清单" })).not.toBeChecked();
 
       await user.click(screen.getByRole("button", { name: "拷贝诊断信息" }));
 
@@ -176,17 +173,22 @@ describe("DiagnosticsRows", () => {
 });
 
 describe("Settings' About group", () => {
-  it("ends with Copy Diagnostic Info, its checkbox, and what the text holds under the group", async () => {
+  it("ends with one row: Diagnostic info, its checkbox before Copy Diagnostic Info, and what the text holds under the group", async () => {
     renderWithProviders(<SettingsPage />);
     const about = await screen.findByRole("region", { name: "About" });
     const group = about.querySelector("h2 + div") as HTMLElement;
-    const rows = [...group.children] as HTMLElement[];
-    const [copyRow, boxRow] = rows.slice(-2);
+    const copyRow = [...group.children].at(-1) as HTMLElement;
     expect(copyRow).toHaveTextContent("Diagnostic info");
-    expect(within(copyRow).getByRole("button")).toHaveTextContent("Copy Diagnostic Info");
-    expect(within(boxRow).getByRole("checkbox")).not.toBeChecked();
-    expect(group.nextElementSibling).toHaveTextContent(
-      "Your home folder is written as ~, and apart from those folders it holds no environment variable's value.",
+    const controls = [...copyRow.querySelectorAll("input, button")];
+    expect(controls.map((control) => control.getAttribute("type"))).toEqual(["checkbox", "button"]);
+    expect(controls[0]).not.toBeChecked();
+    expect(controls[1]).toHaveTextContent("Copy Diagnostic Info");
+    const footnote = group.nextElementSibling as HTMLElement;
+    expect(footnote).toHaveTextContent(
+      "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected.",
     );
+    // The details behind its ⓘ.
+    fireEvent.click(within(footnote).getByRole("button", { name: "Details: Diagnostic info" }));
+    expect(screen.getByText(/apart from those folders it includes no environment variable values/)).toBeInTheDocument();
   });
 });

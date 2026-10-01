@@ -11,6 +11,7 @@ import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
 import { NextAutoCheck } from "../components/NextAutoCheck";
 import { DiagnosticsRows } from "../components/DiagnosticsRows";
+import { TextWithInfo } from "../components/InfoDetail";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
 import {
@@ -527,7 +528,14 @@ export function SettingsPage() {
 
       <SettingsGroup
         title={t("settings.groups.about")}
-        footnote={<p className={GROUP_FOOTNOTE}>{t("diagnostics.footnote")}</p>}
+        footnote={
+          <p className={GROUP_FOOTNOTE}>
+            {/* What the text holds, item by item, behind the ⓘ. */}
+            <TextWithInfo text={t("diagnostics.footnote")} label={t("common.detailsLabel", { title: t("diagnostics.label") })}>
+              {t("clarity.diagnosticsDetail")}
+            </TextWithInfo>
+          </p>
+        }
       >
         {/* The version as System Settings' About shows one: a plain row,
             the value on the right in the muted colour, and text a user

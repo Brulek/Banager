@@ -76,6 +76,15 @@ beforeEach(() => {
   vi.mocked(invoke).mockReset();
 });
 
+/**
+ * The line under Notify me on why notifications are off: the page's one
+ * status but for the copy buttons' words (`CopyButton`), which every
+ * copy button has.
+ */
+function notifyStatus(): HTMLElement | null {
+  return screen.queryAllByRole("status").find((element) => !element.hasAttribute("data-copy-status")) ?? null;
+}
+
 describe("SettingsPage", () => {
   it("renders the settings loaded from the backend", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -678,7 +687,7 @@ describe("SettingsPage", () => {
     );
     expect(notify).not.toBeChecked();
     expect(notify).toBeEnabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Allow Banager to send notifications in System Settings > Notifications.");
+    expect(notifyStatus()).toHaveTextContent("Allow Banager to send notifications in System Settings > Notifications.");
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
   });
 
@@ -713,7 +722,7 @@ describe("SettingsPage", () => {
 
     const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
     fireEvent.click(notify);
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(notifyStatus()).toBeInTheDocument());
 
     // Allowed in System Settings, then tried again.
     grant = true;
@@ -721,7 +730,7 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
     );
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(notifyStatus()).toBeNull();
     expect(notify).not.toHaveAttribute("aria-describedby");
 
     // Refused again after turning it off; then the daily check goes off.
@@ -731,9 +740,9 @@ describe("SettingsPage", () => {
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: false })),
     );
     fireEvent.click(notify);
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(notifyStatus()).toBeInTheDocument());
     fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    await waitFor(() => expect(notifyStatus()).toBeNull());
   });
 
   it("does not save Notify me on when the daily check was turned off while permission was asked for", async () => {
@@ -1112,7 +1121,7 @@ describe("SettingsPage's version", () => {
       within(about)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent),
-    ).toEqual(["View icon credits", "Copy Diagnostic Info"]);
+    ).toEqual(["View icon credits", "Copy Diagnostic Info", "Details: Diagnostic info"]);
   });
 
   it("is called 「版本」 in Chinese, with the same version beside it", async () => {
@@ -1187,12 +1196,14 @@ describe("SettingsPage's icon credits", () => {
       tauriConfig.version,
       "Icon credits",
       "View…",
-      // Then Copy Diagnostic Info, its checkbox and what the text holds
-      // (DiagnosticsRows.test.tsx).
+      // Then Diagnostic info, its checkbox and Copy Diagnostic Info, and
+      // what the text holds (DiagnosticsRows.test.tsx).
       "Diagnostic info",
+      "Include the list of tools",
       "Copy Diagnostic Info",
-      "Include the list of installed tools",
-      "Paste this to whoever is helping you. It lists the macOS version, where each source is and how it's doing, and the folders searched for commands. Your home folder is written as ~, and apart from those folders it holds no environment variable's value. The list of tools is included only when the box above is ticked.",
+      // The footnote, its last word held with its ⓘ (`TextWithInfo`).
+      "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected. ",
+      "selected. ",
     ]);
     await user.click(open);
 

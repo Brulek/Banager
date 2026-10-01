@@ -848,7 +848,7 @@ describe("the menu bar's items that act in the page", () => {
     expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("copy the diagnostic text on Help's Copy Diagnostic Info, without the tools, then open Settings where it says so", async () => {
+  it("open Settings on Help's Copy Diagnostic Info…, its button in view and focused, and copy nothing until it is pressed", async () => {
     const menu = fakeMenuBar();
     const { findByText, findByRole, container } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
@@ -861,16 +861,24 @@ describe("the menu bar's items that act in the page", () => {
     try {
       menu.choose("copyDiagnostics");
 
+      expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+      const button = await waitFor(() => {
+        const found = container.querySelector<HTMLButtonElement>("[data-copy-diagnostics]");
+        expect(found).not.toBeNull();
+        return found as HTMLButtonElement;
+      });
+      await waitFor(() => expect(document.activeElement).toBe(button));
+      // At the foot of Settings: its row brought into view, once.
+      const row = button.closest("div.flex.min-h-9");
+      expect(scrolled.filter((element) => element === row)).toHaveLength(1);
+      // A menu item's event may not count as the click a clipboard write needs: nothing is written by it.
+      expect(writeText).not.toHaveBeenCalled();
+
+      fireEvent.click(button);
       expect(writeText).toHaveBeenCalledTimes(1);
       expect(writeText.mock.calls[0][0].startsWith("Diagnostic info\n")).toBe(true);
       expect(writeText.mock.calls[0][0]).not.toMatch(/^ {4}\S/m);
-      expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
-      await waitFor(() =>
-        expect(container.querySelector("[data-diagnostics-status]")).toHaveTextContent("Copied"),
-      );
-      // At the foot of Settings: its row brought into view, once.
-      const row = container.querySelector("[data-copy-diagnostics]")?.closest("div.flex.min-h-9");
-      expect(scrolled.filter((element) => element === row)).toHaveLength(1);
+      await waitFor(() => expect(button.previousElementSibling).toHaveTextContent("Copied"));
     } finally {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;

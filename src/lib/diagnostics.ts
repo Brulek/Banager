@@ -6,8 +6,8 @@
  * (Banager's own `PATH`, the login shell's when it could be read);
  * the last check and whether it finished; how many tools Terminal cannot
  * find and how many tools are installed twice; and the disk they take, once
- * measured. Help's item copies it without the list of tools; Settings'
- * button adds it when its checkbox is on (a private tap's or scope's name
+ * measured. Settings' button copies it -- Help's item takes the user there --
+ * and adds the list of tools when its checkbox is on (a private tap's or scope's name
  * can say where someone works).
  *
  * Never in it: an environment variable's value (a proxy setting can hold
@@ -21,7 +21,6 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
-import { SHOWN_FOR_MS, type CopyStatus } from "./clipboard";
 import { twinsByArtifact } from "./commands";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeText } from "./sizes";
@@ -230,31 +229,20 @@ export function useSystemFacts(): UseQueryResult<SystemFacts | null> {
 }
 
 /**
- * What the last copy did, wherever it was asked for: Settings shows it
- * beside its button. `reveal`: Help's item asked, and Settings is to bring
- * that button into view once it is on screen (`DiagnosticsRows`).
+ * Help's 「拷贝诊断信息…」 asked for Settings' button: Settings is to bring
+ * it into view and give it the focus once it is on screen
+ * (`DiagnosticsRows`). The item itself copies nothing: a webview may not
+ * take a menu item's event as the click a clipboard write needs, so the
+ * copy is always the button's.
  */
-export const useDiagnosticsStatus = create<{ status: CopyStatus; reveal: boolean }>(() => ({
-  status: null,
-  reveal: false,
-}));
-
-let statusTimer: number | undefined;
-
-function sayStatus(status: "copied" | "failed"): void {
-  useDiagnosticsStatus.setState({ status });
-  window.clearTimeout(statusTimer);
-  statusTimer = window.setTimeout(() => useDiagnosticsStatus.setState({ status: null }), SHOWN_FOR_MS);
-}
+export const useDiagnosticsReveal = create<{ reveal: boolean }>(() => ({ reveal: false }));
 
 /**
- * What copies the text: Settings' button, with its checkbox's answer, and
- * Help's item, always without the tools. The same function from one render
- * to the next; it builds the text from what the window holds at the click,
- * writes it at once, and says 「已拷贝」 or 「无法拷贝」 for a moment
- * (`useDiagnosticsStatus`), as the other Copy buttons do.
+ * What builds the text: Settings' button, with its checkbox's answer, at
+ * the click (`CopyButton`). The same function from one render to the
+ * next; it builds the text from what the window holds when it is called.
  */
-export function useCopyDiagnostics(): (includeTools: boolean) => void {
+export function useDiagnosticsText(): (includeTools: boolean) => string {
   const { t, i18n } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const { data: sizes } = useSizes();
@@ -276,15 +264,5 @@ export function useCopyDiagnostics(): (includeTools: boolean) => void {
   useEffect(() => {
     latest.current = build;
   });
-  return useCallback((includeTools: boolean) => {
-    const text = latest.current(includeTools);
-    if (navigator.clipboard === undefined) {
-      sayStatus("failed");
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => sayStatus("copied"),
-      () => sayStatus("failed"),
-    );
-  }, []);
+  return useCallback((includeTools: boolean) => latest.current(includeTools), []);
 }

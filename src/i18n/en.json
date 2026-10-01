@@ -813,8 +813,8 @@
   "diagnostics": {
     "label": "Diagnostic info",
     "copy": "Copy Diagnostic Info",
-    "includeTools": "Include the list of installed tools",
-    "footnote": "Paste this to whoever is helping you. It lists the macOS version, where each source is and how it's doing, and the folders searched for commands. Your home folder is written as ~, and apart from those folders it holds no environment variable's value. The list of tools is included only when the box above is ticked.",
+    "includeTools": "Include the list of tools",
+    "footnote": "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected.",
     "text": {
       "title": "Diagnostic info",
       "time": "Time: {{time}}",
@@ -853,6 +853,9 @@
       "diskTotal": "Space used: {{size}}",
       "noFacts": "System info: couldn't read"
     }
+  },
+  "clarity": {
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values."
   },
   "unknown": {
     "columns": {

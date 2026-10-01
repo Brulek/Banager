@@ -1,69 +1,61 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useCopyDiagnostics, useDiagnosticsStatus } from "../lib/diagnostics";
-import { BUTTON } from "./ui/controls";
+import { useDiagnosticsReveal, useDiagnosticsText } from "../lib/diagnostics";
+import { CopyButton } from "./CopyButton";
 import { GROUP_ROW } from "./ui/group";
 
 /**
- * Settings' 「拷贝诊断信息」, in its About group (`SettingsPage`): a row
- * named 「诊断信息」 with the button on the right -- 「已拷贝」 or
- * 「无法拷贝」 beside it for a moment after, whether the copy was asked for
- * here or from Help's item of the same name (`useDiagnosticsStatus`),
- * which also brings the row into view --
- * and under it the checkbox that adds each source's tools to the text,
- * off whenever Settings opens: a private tap's or scope's name can say
- * where someone works, so the list goes only where it is asked for.
- * Two rows of the group they stand in; what the text holds is the group's
- * footnote.
+ * Settings' 「拷贝诊断信息」, in its About group (`SettingsPage`): one row
+ * named 「诊断信息」, and on its right first the checkbox that adds each
+ * source's tools to the text -- before the button it changes, and off
+ * whenever Settings opens: a private tap's or scope's name can say where
+ * someone works, so the list goes only where it is asked for -- then the
+ * button, which says 「已拷贝」 or 「无法拷贝」 beside itself for a moment,
+ * as every copy button does (`CopyButton`). What the text holds is the
+ * group's footnote.
+ *
+ * Help's 「拷贝诊断信息…」 opens Settings on this row: brought into view,
+ * its button focused (`useDiagnosticsReveal`), so the copy is always made
+ * by a click.
  */
 export function DiagnosticsRows() {
   const { t } = useTranslation();
-  const copy = useCopyDiagnostics();
-  const status = useDiagnosticsStatus((s) => s.status);
-  const reveal = useDiagnosticsStatus((s) => s.reveal);
+  const build = useDiagnosticsText();
+  const reveal = useDiagnosticsReveal((s) => s.reveal);
   const row = useRef<HTMLDivElement>(null);
-  // Opened by Help's item: the button and what it says in view, at the
-  // foot of a page that opens at its top.
+  const button = useRef<HTMLButtonElement>(null);
+  // Opened by Help's item: the button in view and focused, at the foot of
+  // a page that opens at its top.
   useEffect(() => {
     if (!reveal) return;
     row.current?.scrollIntoView?.({ block: "nearest" });
-    useDiagnosticsStatus.setState({ reveal: false });
+    button.current?.focus();
+    useDiagnosticsReveal.setState({ reveal: false });
   }, [reveal]);
   const [includeTools, setIncludeTools] = useState(false);
   const checkboxId = useId();
-  const words = status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;
   return (
-    <>
-      <div ref={row} className={GROUP_ROW}>
-        <span className="block min-w-0 text-body text-foreground">{t("diagnostics.label")}</span>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Read out as it changes, as a status is; not `role="status"`,
-              which Settings keeps for why notifications are off. */}
-          <span aria-live="polite" data-diagnostics-status="" className="text-small text-muted">
-            {words}
-          </span>
-          <button
-            type="button"
-            data-copy-diagnostics=""
-            onClick={() => copy(includeTools)}
-            className={BUTTON.regular.grey}
-          >
-            {t("diagnostics.copy")}
-          </button>
-        </div>
-      </div>
-      <div className={GROUP_ROW}>
-        <label htmlFor={checkboxId} className="flex min-w-0 items-center gap-2 text-body text-foreground">
+    <div ref={row} className={GROUP_ROW}>
+      <span className="block min-w-0 text-body text-foreground">{t("diagnostics.label")}</span>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
+        <label htmlFor={checkboxId} className="flex items-center gap-1.5 text-body text-foreground">
           <input
             id={checkboxId}
             type="checkbox"
             checked={includeTools}
             onChange={(event) => setIncludeTools(event.target.checked)}
-            className="h-4 w-4 shrink-0"
+            className="h-3.5 w-3.5 shrink-0"
           />
           {t("diagnostics.includeTools")}
         </label>
+        <CopyButton
+          text={() => build(includeTools)}
+          label={t("diagnostics.copy")}
+          size="regular"
+          buttonRef={button}
+          data="copy-diagnostics"
+        />
       </div>
-    </>
+    </div>
   );
 }

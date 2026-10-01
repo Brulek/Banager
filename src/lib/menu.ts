@@ -8,7 +8,7 @@
  */
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
-import { useCopyDiagnostics, useDiagnosticsStatus } from "./diagnostics";
+import { useDiagnosticsReveal } from "./diagnostics";
 import { useCheckAgain } from "./queries";
 import { useUiStore } from "../store/ui";
 
@@ -24,22 +24,18 @@ import { useUiStore } from "../store/ui";
  *   (`searchInstalled`), wherever the focus was -- the sidebar, a row, a
  *   field -- since what macOS hands the page is the item, not a key press
  *   on whatever had the focus.
- * - Copy Diagnostic Info copies what Settings' button of that name copies,
- *   without the list of tools whatever its checkbox says, at once -- in
- *   the turn the item is chosen in, which is what lets the page write the
- *   clipboard -- then opens Settings, where 「已拷贝」 (or 「无法拷贝」)
- *   shows under that button, beside the checkbox that adds the list.
- *   Opening Settings is deliberate, beyond what the item's name says: the
- *   window has no other place to say whether the copy worked, and if the
- *   webview refused a write not started by a click, the button there is
- *   one click away. Whether WKWebView lets a menu item's event write the
- *   clipboard is still to be tried in a real window.
+ * - Copy Diagnostic Info… opens Settings on its 「拷贝诊断信息」 button,
+ *   brought into view and focused (`useDiagnosticsReveal`): the item
+ *   copies nothing itself. WKWebView may not take a menu item's event as
+ *   the click a clipboard write needs, and a copy that failed silently
+ *   would leave the user pasting nothing; the button's click always
+ *   counts, and says 「已拷贝」 beside itself. Hence the ellipsis: the item
+ *   leads to one more step.
  */
 export function useMenuCommands(): void {
   const openPage = useUiStore((s) => s.openPage);
   const searchInstalled = useUiStore((s) => s.searchInstalled);
   const { checkAgain } = useCheckAgain();
-  const copyDiagnostics = useCopyDiagnostics();
 
   // These are the same functions from one render to the next, so the
   // window listens once.
@@ -53,9 +49,8 @@ export function useMenuCommands(): void {
       checkAgain,
       search: searchInstalled,
       copyDiagnostics: () => {
-        copyDiagnostics(false);
         openPage("settings");
-        useDiagnosticsStatus.setState({ reveal: true });
+        useDiagnosticsReveal.setState({ reveal: true });
       },
     };
     let stop: (() => void) | undefined;
@@ -81,5 +76,5 @@ export function useMenuCommands(): void {
       cancelled = true;
       stop?.();
     };
-  }, [openPage, searchInstalled, checkAgain, copyDiagnostics]);
+  }, [openPage, searchInstalled, checkAgain]);
 }

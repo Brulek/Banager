@@ -2076,16 +2076,16 @@ Path, which puts the path, as it is shown (`~` and all), on the clipboard.
 
 ## Diagnostic info: read-only, no command runs
 
-Settings' About has Copy Diagnostic Info (「拷贝诊断信息」), and so does the
-Help menu. It puts a short plain text on the clipboard, in the window's
+Settings' About has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's
+Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button,
+focused, so the copy is always the button's click. It puts a short plain text on the clipboard, in the window's
 language, for the user to paste to whoever helps them: Banager's version,
 macOS's version and the chip, the window's language; each source's kind,
 version, program and status; the folders on `PATH` and whether they are the
 login shell's; when the last check was and whether it finished; how many
-tools Terminal cannot find and how many are installed twice; and the disk
+tools Terminal cannot find and how many are installed more than once; and the disk
 they take, once measured. Settings' checkbox, off each time Settings opens,
-adds each source's tools by name and version; the Help menu's item never
-does.
+adds each source's tools by name and version.
 
 The window builds the text from what it already holds, and asks Rust only
 for what it cannot read itself, with `get_system_facts`
