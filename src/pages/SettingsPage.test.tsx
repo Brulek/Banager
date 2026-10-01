@@ -1287,14 +1287,14 @@ describe("SettingsPage's version", () => {
     expect(value.className.split(" ")).toEqual(
       expect.arrayContaining(["text-body", "text-muted", "select-text"]),
     );
-    // Nothing to press in it: the group's buttons are the credits' and
-    // Copy Diagnostic Info's.
+    // Nothing to press in it: the group's buttons are the credits', Check
+    // Tool Setup's and Copy Diagnostic Info's.
     expect(within(row).queryByRole("button")).toBeNull();
     expect(
       within(about)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent),
-    ).toEqual(["View icon credits", "Copy Diagnostic Info", "Details: Diagnostic info"]);
+    ).toEqual(["View icon credits", "Check Tool Setup…", "Copy Diagnostic Info", "Details: Diagnostic info"]);
   });
 
   it("is called 「版本」 in Chinese, with the same version beside it", async () => {
@@ -1369,6 +1369,9 @@ describe("SettingsPage's icon credits", () => {
       tauriConfig.version,
       "Icon credits",
       "View…",
+      // Then Tool setup, whose Check… opens the sheet (ToolSetupSheet.test.tsx).
+      "Tool setup",
+      "Check…",
       // Then Diagnostic info, its checkbox and Copy Diagnostic Info, and
       // what the text holds (DiagnosticsRows.test.tsx).
       "Diagnostic info",

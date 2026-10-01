@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
+import { ToolSetupSheet } from "./components/ToolSetupSheet";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
 import { useInventoryPreview } from "./lib/inventoryPreview";
@@ -300,6 +301,8 @@ function App() {
       {/* Asks before a quit while an operation is under way, when Rust
           says one waits on it (src-tauri/src/quit.rs); nothing until then. */}
       <QuitQuestion />
+      {/* Help's Check Tool Setup… and Settings' Check… open it, over any page. */}
+      <ToolSetupSheet />
     </div>
   );
 }

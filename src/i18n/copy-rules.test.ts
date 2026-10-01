@@ -198,6 +198,7 @@ describe("the polish-3 copy rules, in English", () => {
       "settings.skippedVersions.unskip",
       "settings.ignoredUpdates.unignore",
       "settings.iconCredits.open",
+      "setupCheck.open",
       "unknown.showInFinder",
       "unknown.copyPath",
       "unknown.scanAgain",

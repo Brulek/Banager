@@ -13,6 +13,7 @@ import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
 import { NextAutoCheck } from "../components/NextAutoCheck";
 import { DiagnosticsRows } from "../components/DiagnosticsRows";
+import { openToolSetupSheet } from "../lib/toolSetupCheck";
 import { TextWithInfo } from "../components/InfoDetail";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
@@ -147,7 +148,8 @@ function NoEntries({ text }: { text: string }) {
  * takes it back, where the Overview's count of
  * hidden updates opens the page -- and 「关于」: the app's 「版本」, then
  * the 「图标来源」 row that opens the credits for the logos built into
- * the app (`IconCreditsDrawer`), and 「拷贝诊断信息」 with the checkbox
+ * the app (`IconCreditsDrawer`), 「工具环境」, whose 「检查…」 opens the
+ * sheet Help's 「检查工具环境…」 opens (`ToolSetupSheet`), and 「拷贝诊断信息」 with the checkbox
  * that adds the list of tools (`DiagnosticsRows`). Every change is saved at once; one that cannot
  * be saved is undone on screen and said at the top.
  */
@@ -695,6 +697,22 @@ export function SettingsPage() {
               className={ROW_BUTTON}
             >
               {t("settings.iconCredits.open")}
+            </button>
+          }
+        />
+        {/* Beside the diagnostic info: the same facts, said in sentences
+            for the user rather than copied for a helper. */}
+        <SettingRow
+          label={<span className={ROW_LABEL}>{t("setupCheck.label")}</span>}
+          control={
+            <button
+              type="button"
+              aria-label={t("setupCheck.menu")}
+              onClick={openToolSetupSheet}
+              data-open-tool-setup=""
+              className={ROW_BUTTON}
+            >
+              {t("setupCheck.open")}
             </button>
           }
         />
