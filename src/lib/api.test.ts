@@ -443,6 +443,12 @@ describe("Show in Finder", () => {
     await expect(revealInFinder("/Users/someone/Documents")).rejects.toThrow('{"kind":"not_revealable"}');
   });
 
+  it("gives the window no command of the updater plugin's, which nothing calls yet", () => {
+    // `updater:default` would let the page check for, download and install
+    // an update of Banager itself (docs/what-we-run.md, Network).
+    expect(capability.permissions.filter((p) => p.startsWith("updater:"))).toEqual([]);
+  });
+
   it("gives the window no command of the opener plugin's, which would show any path", () => {
     // `reveal_item_in_dir` has no scope to narrow it to some paths, and
     // `opener:default` would also let the page open a web address or a

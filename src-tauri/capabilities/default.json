@@ -7,7 +7,6 @@
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-badge-count",
-    "notification:allow-is-permission-granted",
-    "updater:default"
+    "notification:allow-is-permission-granted"
   ]
 }

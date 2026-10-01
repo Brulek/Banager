@@ -2824,8 +2824,10 @@ ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint
 `https://github.com/Brulek/Banager/releases/latest/download/latest.json`
 (`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Banager
-calls it yet, so no request to it is made; when app self-update ships,
-this paragraph changes.
+calls it yet, and the window is given none of its commands
+(`src-tauri/capabilities/default.json` has no `updater:` permission), so
+no request to it is made; when app self-update ships, this paragraph
+changes.
 
 Showing a logo makes no network request either. The logos Banager shows
 for tools and sources are built into the app: `pnpm icons:build`
