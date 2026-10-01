@@ -130,8 +130,9 @@ describe("homepageFact", () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     const fact = homepageFact(enT, "https://jqlang.github.io/jq/");
     expect(fact?.term).toBe("Homepage");
-    renderWithProviders(<>{fact?.value}</>);
-    const shown = screen.getByText("https://jqlang.github.io/jq/");
+    const { container } = renderWithProviders(<>{fact?.value}</>);
+    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.textContent).toBe("https://jqlang.github.io/jq/");
     expect(shown.tagName).toBe("SPAN");
     // A line may break after // and before each /, never inside a name
     // nor at its dots: "https://" | "jqlang.github.io" | "/jq" | "/".
@@ -155,14 +156,21 @@ describe("homepageFact", () => {
   });
 
   it("keeps a host on one line, dots and all", () => {
-    renderWithProviders(<>{homepageFact(enT, "https://youtube-dl.org/?q=a&b=c#top")?.value}</>);
-    const shown = screen.getByText("https://youtube-dl.org/?q=a&b=c#top");
-    // Each text piece between two <wbr> is what may stand at a line's
-    // start: "youtube-dl.org" whole, never ".org".
+    const { container } = renderWithProviders(
+      <>{homepageFact(enT, "https://youtube-dl.org/?q=a&b=c#top")?.value}</>,
+    );
+    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.textContent).toBe("https://youtube-dl.org/?q=a&b=c#top");
+    // Each piece between two <wbr> is what may stand at a line's start:
+    // "youtube-dl.org" whole, never ".org" -- and as one inline block,
+    // never "dl.org" after the browser's break at its hyphen.
     const pieces = Array.from(shown.childNodes)
-      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .filter((node) => node.nodeName !== "WBR")
       .map((node) => node.textContent);
     expect(pieces).toEqual(["https://", "youtube-dl.org", "/", "?q", "=a", "&b", "=c", "#top"]);
+    const host = shown.querySelector("[data-host]");
+    expect(host?.textContent).toBe("youtube-dl.org");
+    expect(host).toHaveClass("inline-block", "max-w-full");
   });
 
   it("is nothing where the source gave no address", () => {
