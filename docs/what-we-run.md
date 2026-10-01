@@ -2047,16 +2047,19 @@ cask whose `brew info` entry carries no absolute `target` for its `app`.
 Each row's ⋯ menu has *Show in Finder* and *Copy Path*. Show in Finder
 asks Finder to show the program and runs nothing else: no command runs
 for it. The window hands the path the scan resolved for that row
-(`UnknownEntry.resolved`, every link followed) to the Tauri opener
-plugin's `revealItemInDir` (`revealInFinder` in `src/lib/api.ts`), whose
-`reveal_item_in_dir` command (tauri-plugin-opener 2.5.5, the version in
-`Cargo.lock`) resolves it again (`realpath`) and makes one call,
+(`UnknownEntry.resolved`, every link followed) to Banager's own
+`reveal_in_finder` command (`revealInFinder` in `src/lib/api.ts`,
+`src-tauri/src/reveal.rs`), which accepts only a path the newest scan
+handed to the window resolved, and refuses any other before anything is
+read. It passes that path to the Tauri opener plugin's
+`reveal_item_in_dir` function (tauri-plugin-opener 2.5.5, the version in
+`Cargo.lock`), which resolves it again (`realpath`) and makes one call,
 `NSWorkspace activateFileViewerSelectingURLs:`, with which Finder opens a
 window on the program's folder with the program selected. So for a link
 Finder shows the file the link points to; a broken link's is gone, and on
 its row the item is off, as it is on the row of a link into a protected
-place, which the scan did not follow. The window may call that one command of the
-plugin and no other (Network, below). Copy Path puts the path the row
+place, which the scan did not follow. The window may call none of the
+plugin's commands itself (Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
 
@@ -2811,12 +2814,13 @@ window itself cannot make a network request: its content security policy
 is `connect-src 'self'` (`src-tauri/tauri.conf.json`). The Tauri opener
 plugin — the one that opens a URL or a path in another application — is
 registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
-call one of its commands and no other: `reveal_item_in_dir`
-(`opener:allow-reveal-item-in-dir` in
-`src-tauri/capabilities/default.json`), the Other Programs page's Show in Finder,
-which asks Finder to show a file and connects to nothing (Unknown-source
-scan, above). The window cannot have it open a URL: there is no homepage
-link; when one ships, this paragraph changes. And the Tauri updater
+call none of its commands: `src-tauri/capabilities/default.json` gives it
+no `opener:` permission. Banager's own `reveal_in_finder`, the Other
+Programs page's Show in Finder, calls the plugin's `reveal_item_in_dir`
+function in Rust for a path the newest scan found, which asks Finder to
+show a file and connects to nothing (Unknown-source scan, above). The
+window cannot have it open a URL: there is no homepage link; when one
+ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint
 `https://github.com/Brulek/Banager/releases/latest/download/latest.json`
 (`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Banager

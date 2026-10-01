@@ -55,10 +55,6 @@ export default defineConfig(({ mode }) => {
                 find: /^@tauri-apps\/api\/window$/,
                 replacement: fileURLToPath(new URL("./src/dev/mockTauriWindow.ts", import.meta.url)),
               },
-              {
-                find: /^@tauri-apps\/plugin-opener$/,
-                replacement: fileURLToPath(new URL("./src/dev/mockTauriOpener.ts", import.meta.url)),
-              },
             ],
           },
         }

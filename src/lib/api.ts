@@ -1,7 +1,6 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   ArtifactKey,
   HistoryView,
@@ -108,20 +107,16 @@ export function scanUnknown(): Promise<UnknownScan> {
 
 /**
  * Has Finder show `path` -- a Finder window on its folder, with it
- * selected -- for the Unknown page's Show in Finder. Through the opener
- * plugin's `revealItemInDir`, the one command of that plugin the window may
- * call (`opener:allow-reveal-item-in-dir` in
- * src-tauri/capabilities/default.json), which resolves `path` first, every
- * link followed, and then asks macOS for that and nothing else
- * (`NSWorkspace activateFileViewerSelectingURLs:`): no command runs.
- * Rejects, with the plugin's reason, when there is nothing at `path`.
+ * selected -- for the Unknown page's Show in Finder, through Banager's own
+ * `reveal_in_finder` (src-tauri/src/reveal.rs): only a path the newest
+ * `scan_unknown` resolved (`UnknownEntry.resolved`), refused otherwise as
+ * `not_revealable`; the opener plugin then resolves it, every link
+ * followed, and asks macOS for that and nothing else (`NSWorkspace
+ * activateFileViewerSelectingURLs:`): no command runs. The window is given
+ * no command of the plugin's own, which would show any path at all.
  */
-export async function revealInFinder(path: string): Promise<void> {
-  try {
-    await revealItemInDir(path);
-  } catch (e) {
-    throw asError(e);
-  }
+export function revealInFinder(path: string): Promise<void> {
+  return call<void>("reveal_in_finder", { path });
 }
 
 /**

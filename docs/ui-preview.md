@@ -60,27 +60,25 @@ is closed or minimized. (The page hears one only when
 badge Banager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
 `src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Other
-Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
-`src/dev/mockTauriOpener.ts`, which shows nothing.
+Programs page's Show in Finder reach this Mac's Finder: the mock backend's
+`reveal_in_finder` shows nothing.
 
 ## How it works, and why it never ships
 
 - `src/lib/api.ts` is the only production module that imports Tauri
   (`invoke` and `Channel` from `@tauri-apps/api/core`, `listen` from
   `@tauri-apps/api/event` for the menu bar's items,
-  `getCurrentWindow` from `@tauri-apps/api/window` for the Dock's badge,
-  and `revealItemInDir` from `@tauri-apps/plugin-opener` for the Other
-  Programs page's Show in Finder).
+  and `getCurrentWindow` from `@tauri-apps/api/window` for the Dock's
+  badge).
 - `vite.config.ts` aliases `@tauri-apps/api/core` to
   `src/dev/mockTauri.ts`, `@tauri-apps/api/event` to
-  `src/dev/mockTauriEvent.ts`, `@tauri-apps/api/window` to
-  `src/dev/mockTauriWindow.ts` and `@tauri-apps/plugin-opener` to
-  `src/dev/mockTauriOpener.ts`, in `--mode mock` only, and serves that
+  `src/dev/mockTauriEvent.ts` and `@tauri-apps/api/window` to
+  `src/dev/mockTauriWindow.ts`, in `--mode mock` only, and serves that
   mode on port 1430 (`pnpm tauri dev` keeps 1420, and `pnpm tauri:mock`
   asks for 1440). In every other mode -- `pnpm dev`
   under `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, and
   vitest -- the config resolves exactly as it did before this mode existed.
-  `src/dev/mockBackend.test.ts` checks that those four are every module
+  `src/dev/mockBackend.test.ts` checks that those three are every module
   of Tauri's that production code imports: one left out would run for
   real in the preview.
 - Nothing outside `src/dev/` imports anything in it, so a production
@@ -115,13 +113,13 @@ Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
   say what they are, and TypeScript, which it has no line for, still
   "npm package".
 
-The files: `mockTauri.ts`, `mockTauriEvent.ts`, `mockTauriWindow.ts` and
-`mockTauriOpener.ts` (the stand-in modules; the second hears nothing by
+The files: `mockTauri.ts`, `mockTauriEvent.ts` and `mockTauriWindow.ts`
+(the stand-in modules; the second hears nothing by
 itself -- `window.mockMenu("copy-diagnostics")` in the browser's console
 sends the page what a menu item sends, by the item's id in
-`src-tauri/src/menu.rs` -- the third badges nothing, and the fourth shows nothing in Finder
-and says in the console which path it was handed), `mockBackend.ts` (the
-commands),
+`src-tauri/src/menu.rs` -- and the third badges nothing), `mockBackend.ts` (the
+commands; its `reveal_in_finder` shows nothing in Finder and says in the
+console which path it was handed),
 `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps' icons),
 `mockPlans.ts` (what each operation would run and print), `scenario.ts`
 (the URL switches).

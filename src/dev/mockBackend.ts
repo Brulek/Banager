@@ -48,6 +48,7 @@ export const MOCK_COMMANDS = [
   "subscribe_events",
   "open_ollama_app",
   "scan_unknown",
+  "reveal_in_finder",
   "artifact_icon",
   "get_sizes",
   "get_system_facts",
@@ -200,6 +201,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const measuredBefore = new Set<string>();
   /** What `get_history` answers: earlier launches' records, then this one's. */
   let history: HistoryView = mockHistory(Date.now());
+  // What Show in Finder may show (`reveal::Revealable`): the paths the
+  // newest scan resolved.
+  let revealable = new Set<string>();
 
   /** The part of a snapshot that decides its generation. */
   function snapshotContent(from: World, current: Settings) {
@@ -679,7 +683,18 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       if (scenario.state === "loading") return never();
       await wait(TIMING.scan);
       if (scenario.scan === "error") throw 'task 17 panicked with message "failed to read /usr/local/bin"';
-      return unknownScan(scenario.scan);
+      const scan = unknownScan(scenario.scan);
+      revealable = new Set(scan.entries.flatMap((entry) => (entry.resolved === null ? [] : [entry.resolved])));
+      return scan;
+    },
+    async reveal_in_finder(args) {
+      // `reveal::reveal_impl`: only a path the newest scan resolved. The
+      // browser has no Finder, and the preview never asks this Mac's: it
+      // shows nothing, and says in the console what it was asked to show
+      // (with ./mockTauri.ts's marker, `MOCK_MARKER`).
+      const path = args.path as string;
+      if (!revealable.has(path)) throw JSON.stringify({ kind: "not_revealable" });
+      console.info(`[banager-ui-preview-mock] Show in Finder, not done in the preview: ${path}`);
     },
     async artifact_icon(args) {
       await wait(TIMING.icon);

@@ -6,6 +6,7 @@ mod menu;
 mod notify;
 mod notify_ops;
 mod quit;
+mod reveal;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
 // `get_settings`/`set_settings` methods are only exercised by this module's
@@ -121,6 +122,9 @@ pub fn run() {
         // The runs of operations the page has reported finished, for the
         // notification when operations finish (notify_ops.rs).
         .manage(notify_ops::OperationRuns::default())
+        // What Show in Finder may show: the programs the newest scan of
+        // Other Programs found (reveal.rs).
+        .manage(reveal::Revealable::default())
         // Whether a quit asks first (quit.rs): while the page listens for
         // the question, until the user answers 「退出」; and which
         // questions the page has said are on screen.
@@ -143,6 +147,7 @@ pub fn run() {
             ipc::subscribe_events,
             ipc::open_ollama_app,
             ipc::scan_unknown,
+            reveal::reveal_in_finder,
             ipc::artifact_icon,
             ipc::get_sizes,
             ipc::get_system_facts,

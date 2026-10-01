@@ -749,8 +749,13 @@ pub(crate) fn scan_unknown_impl(session: &Session, env: &HostEnv) -> UnknownScan
     session.scan_unknown(env)
 }
 
+/// The scan handed to the window, after the paths Show in Finder may show
+/// from now on are the ones it resolved (`reveal::Revealable`).
 #[tauri::command]
-pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, String> {
+pub async fn scan_unknown(
+    state: State<'_, AppState>,
+    revealable: State<'_, crate::reveal::Revealable>,
+) -> Result<UnknownScan, String> {
     // On the blocking pool, as `open_ollama_app` is: the scan is
     // synchronous file-system work bounded by `ScanBudget::default()` --
     // up to ten seconds by design -- and running it inline would hold one
@@ -759,13 +764,15 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
     // task; the `Arc<Session>` inside it can.
     let session = state.session.clone();
     let env = HostEnv::discover();
-    tauri::async_runtime::spawn_blocking(move || scan_unknown_impl(&session, &env))
+    let scan = tauri::async_runtime::spawn_blocking(move || scan_unknown_impl(&session, &env))
         .await
         // Only a panic inside the scan reaches this arm. The text is the
         // front end's to show verbatim, the way a failed load shows the
         // backend's own words under `emptyStates.loadFailed`; it is the
         // runtime's sentence, not one of Banager's to translate.
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    revealable.remember(&scan);
+    Ok(scan)
 }
 
 /// How much disk each installed thing takes, as the newest round of

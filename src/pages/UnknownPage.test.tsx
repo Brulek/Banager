@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { renderWithProviders } from "../test/setup";
 import { ScanAgain, UnknownPage } from "./UnknownPage";
 import i18n from "../i18n";
@@ -12,8 +11,8 @@ import { queryKeys } from "../lib/queryKeys";
 import type { Settings, Snapshot, UnknownEntry, UnknownScan } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
-// Show in Finder's one call (src/test/setup.ts mocks the plugin).
-const mockReveal = vi.mocked(revealItemInDir);
+// Show in Finder's one call, `reveal_in_finder`, by the path it hands over.
+const mockReveal = vi.fn(async (_path: string): Promise<void> => {});
 
 // Every name here is invented; the research machine's real ones are
 // deliberately not in the repository.
@@ -97,7 +96,8 @@ beforeEach(() => {
   releaseScan = () => {};
   mockReveal.mockClear();
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation((cmd: string) => {
+  mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+    if (cmd === "reveal_in_finder") return mockReveal((args as { path: string }).path);
     if (cmd === "scan_unknown") {
       if (scanFailure !== null) return Promise.reject(scanFailure);
       if (holdScan) {

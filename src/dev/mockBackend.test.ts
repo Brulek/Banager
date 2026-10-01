@@ -15,6 +15,7 @@ import type {
   Snapshot,
   SystemFacts,
   UiEvent,
+  UnknownScan,
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
@@ -135,6 +136,31 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("report_finished_run", { run: { ...run, kind: "Install" } })).rejects.toMatch(
       /^invalid args/,
     );
+  });
+
+  it("shows nothing in Finder, only for a path the newest scan resolved, and says in the console what it was asked for", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const { backend } = backendFor();
+      // Before any scan, as `reveal::Revealable` starts: nothing.
+      await expect(backend.invoke("reveal_in_finder", { path: "/usr/bin/true" })).rejects.toBe(
+        '{"kind":"not_revealable"}',
+      );
+      const scanned = backend.invoke("scan_unknown") as Promise<UnknownScan>;
+      await vi.runAllTimersAsync();
+      const scan = await scanned;
+      const resolved = scan.entries.find((entry) => entry.resolved !== null)?.resolved;
+      expect(resolved).toBeDefined();
+      await expect(backend.invoke("reveal_in_finder", { path: resolved })).resolves.toBeUndefined();
+      const said = String(info.mock.lastCall?.[0]);
+      expect(said.startsWith("[banager-ui-preview-mock] ")).toBe(true);
+      expect(said.endsWith(String(resolved))).toBe(true);
+      await expect(backend.invoke("reveal_in_finder", { path: "/Users/someone/Documents" })).rejects.toBe(
+        '{"kind":"not_revealable"}',
+      );
+    } finally {
+      info.mockRestore();
+    }
   });
 
   it("takes the page's word on the question before a quit as the real commands do, and quits nothing", async () => {
@@ -655,21 +681,6 @@ describe("the preview's stand-ins for Tauri", () => {
     await expect(previewWindow().setBadgeCount(undefined)).resolves.toBeUndefined();
   });
 
-  it("show nothing in Finder: revealItemInDir needs no Tauri, and says in the console what it was asked for", async () => {
-    // Imported here, under the spy: it shares the preview's console marker
-    // with ./mockTauri.ts, whose first line goes to the console on import.
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    try {
-      const { revealItemInDir } = await import("./mockTauriOpener");
-      const docker = "/Applications/Docker.app/Contents/Resources/bin/docker";
-      await expect(revealItemInDir(docker)).resolves.toBeUndefined();
-      const said = String(info.mock.lastCall?.[0]);
-      expect(said.startsWith("[banager-ui-preview-mock] ")).toBe(true);
-      expect(said.endsWith(docker)).toBe(true);
-    } finally {
-      info.mockRestore();
-    }
-  });
 });
 
 describe("the preview's URL switches", () => {

@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import capability from "../../src-tauri/capabilities/default.json";
 import {
   getSnapshot,
@@ -426,32 +425,29 @@ describe("the Dock's badge", () => {
 });
 
 describe("Show in Finder", () => {
-  const mockReveal = vi.mocked(revealItemInDir);
-
   beforeEach(() => {
-    mockReveal.mockReset();
+    mockInvoke.mockReset();
   });
 
-  it("hands the opener plugin the path and nothing else, not through a command of Banager's", async () => {
-    mockReveal.mockResolvedValueOnce(undefined);
+  it("hands Banager's own command the path and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
     await revealInFinder("/Applications/Helper.app/Contents/Helpers/helper-cli");
-    expect(mockReveal).toHaveBeenCalledTimes(1);
-    expect(mockReveal).toHaveBeenCalledWith("/Applications/Helper.app/Contents/Helpers/helper-cli");
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("reveal_in_finder", {
+      path: "/Applications/Helper.app/Contents/Helpers/helper-cli",
+    });
   });
 
-  it("reports a failure as an Error carrying the plugin's text", async () => {
-    mockReveal.mockRejectedValueOnce("No such file or directory (os error 2)");
-    await expect(revealInFinder("/usr/local/bin/gone")).rejects.toThrow("No such file or directory (os error 2)");
+  it("reports a refusal as an Error carrying the backend's text", async () => {
+    mockInvoke.mockRejectedValueOnce('{"kind":"not_revealable"}');
+    await expect(revealInFinder("/Users/someone/Documents")).rejects.toThrow('{"kind":"not_revealable"}');
   });
 
-  it("is the one command of the opener plugin the window may call", () => {
-    // Not `opener:default`, which would also let the page open a web
-    // address or a mail link. The plugin gives this command no scope to
-    // narrow it to some paths: the permission is for the command.
-    expect(capability.permissions.filter((p) => p.startsWith("opener:"))).toEqual([
-      "opener:allow-reveal-item-in-dir",
-    ]);
+  it("gives the window no command of the opener plugin's, which would show any path", () => {
+    // `reveal_item_in_dir` has no scope to narrow it to some paths, and
+    // `opener:default` would also let the page open a web address or a
+    // mail link: src-tauri/src/reveal.rs shows only what the scan found.
+    expect(capability.permissions.filter((p) => p.startsWith("opener:"))).toEqual([]);
   });
 });
 
