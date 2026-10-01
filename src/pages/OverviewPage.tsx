@@ -15,7 +15,7 @@ import {
   sourceNoticesFor,
   unfinishedChecksNotice,
 } from "../lib/sources";
-import type { SourceNoticeSpec } from "../lib/sources";
+import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings } from "../lib/types";
@@ -113,8 +113,34 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const { data: settings } = useSettings();
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
+  const openInstalled = useUiStore((s) => s.openInstalled);
+  const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const action = notice.action;
   const opensOllama = action?.id === "openOllama";
+  // What the button does, as the lists wire theirs (`SourceNotices`), one
+  // case per action: one added to `SourceNoticeAction` without a case here
+  // fails `tsc` at the `never`. 查看 (`showList`) is the Installed page's
+  // own line, which no source's notice here carries; given one, it would
+  // open that page on the list it names.
+  const press = (pressed: SourceNoticeAction): (() => void) => {
+    switch (pressed.id) {
+      case "openOllama":
+        return () => openOllamaApp.mutate();
+      case "showTool":
+        return () => showTool(pressed.instanceId);
+      case "checkAgain":
+        return checkAgain;
+      case "showList":
+        return () => {
+          openInstalled(null);
+          setInstalledShow(pressed.show);
+        };
+      default: {
+        const unhandled: never = pressed;
+        return unhandled;
+      }
+    }
+  };
 
   let error: ReactNode = null;
   if (opensOllama && openOllamaApp.error) {
@@ -163,13 +189,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
       {action ? (
         <button
           type="button"
-          onClick={
-            action.id === "openOllama"
-              ? () => openOllamaApp.mutate()
-              : action.id === "showTool"
-                ? () => showTool(action.instanceId)
-                : checkAgain
-          }
+          onClick={press(action)}
           disabled={action.id === "checkAgain" && checking}
           className={BUTTON.regular.grey}
         >
