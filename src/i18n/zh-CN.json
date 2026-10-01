@@ -818,6 +818,7 @@
     "notUsedUpdate": "更新这一份不会改变终端里运行的那一份。",
     "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。",
     "completeExcept": "检查结果：完整，不含{{sources}}的更新",
+    "incompleteExcept": "{{check}}；也不含{{sources}}的更新",
     "headingCount_other": "{{count}}个",
     "modelCount_other": "{{count}}个模型",
     "modelsNote": "几个模型共用的文件只算一次，所以合计可能比逐个相加小。",

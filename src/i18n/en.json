@@ -875,6 +875,7 @@
     "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
     "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
     "completeExcept": "Check: complete, except for updates to {{sources}}",
+    "incompleteExcept": "{{check}}; updates to {{sources}} aren't checked either",
     "headingCount_one": "{{count}} tool",
     "headingCount_other": "{{count}} tools",
     "modelCount_one": "{{count}} model",

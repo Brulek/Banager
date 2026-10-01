@@ -335,6 +335,14 @@ describe("diagnosticsText", () => {
       "\nCheck: complete, except for updates to Codex\n",
     );
     expect(diagnosticsText(zh, input({ snapshot: withCodex }))).toContain("\n检查结果：完整，不含Codex的更新\n");
+    // And when another source did not finish, both are said, one after the other.
+    const staleWithCodex = { ...SNAPSHOT, instances: [...SNAPSHOT.instances, codex] };
+    expect(diagnosticsText(en, input({ snapshot: staleWithCodex }))).toContain(
+      "\nCheck: incomplete, npm didn't finish; updates to Codex aren't checked either\n",
+    );
+    expect(diagnosticsText(zh, input({ snapshot: staleWithCodex }))).toContain(
+      "\n检查结果：不完整，npm未检查完；也不含Codex的更新\n",
+    );
     const empty = diagnosticsText(en, input({ snapshot: null, sizes: null }));
     expect(empty).toContain("\nSources: 0\n\nCommand search folders: 4\n");
     expect(empty).toContain("\nNot found in Terminal: 0\nTools installed more than once: 0\n");

@@ -190,20 +190,25 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     lines.push(t("diagnostics.text.neverChecked"));
   } else {
     lines.push(t("diagnostics.text.lastCheck", { time: diagnosticsTime(new Date(refreshedAt * 1000)) }));
+    // The sources whose updates are never checked (Codex's own install,
+    // `updatesUnchecked`): said, not passed over, whether or not the rest
+    // of the check finished.
+    const labels = instanceLabels(t, instances);
+    const unchecked = instances
+      .filter(updatesUnchecked)
+      .map((instance) => labels.get(instance.id) ?? instance.adapter_id);
     if (snapshot?.stale) {
       const names = failedSourceNames(t, snapshot.errors, instances);
-      lines.push(
+      const check =
         names.length === 0
           ? t("diagnostics.text.incompletePlain")
-          : t("diagnostics.text.incomplete", { sources: namesInSentence(t, names) }),
+          : t("diagnostics.text.incomplete", { sources: namesInSentence(t, names) });
+      lines.push(
+        unchecked.length === 0
+          ? check
+          : t("clarity.incompleteExcept", { check, sources: namesInSentence(t, unchecked) }),
       );
     } else {
-      // Complete, but for the sources whose updates are never checked
-      // (Codex's own install, `updatesUnchecked`): said, not passed over.
-      const labels = instanceLabels(t, instances);
-      const unchecked = instances
-        .filter(updatesUnchecked)
-        .map((instance) => labels.get(instance.id) ?? instance.adapter_id);
       lines.push(
         unchecked.length === 0
           ? t("diagnostics.text.complete")
