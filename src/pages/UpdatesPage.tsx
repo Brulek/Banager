@@ -1152,8 +1152,12 @@ export function UpdatesPage() {
             type="button"
             disabled={startableCount === 0 || dialogOpen}
             onClick={(event) => {
-              selectUpdates(startableUpdates.map((u) => u.key));
-              void openConfirm(startableUpdates, event.currentTarget, focusList);
+              // Ticked while the sheet asks, and unticked again if it is
+              // cancelled: a cancel changes nothing.
+              const before = new Set(useUiStore.getState().selectedUpdates);
+              const ticked = startableUpdates.map((u) => u.key).filter((key) => !before.has(artifactKeyId(key)));
+              selectUpdates(ticked);
+              void openConfirm(startableUpdates, event.currentTarget, focusList, () => deselectUpdates(ticked));
             }}
             className={BUTTON.regular.default}
           >

@@ -130,8 +130,17 @@ export interface UpdateConfirm {
    * a row's Update gives way to its progress, Update all turns off with
    * nothing left to start -- and the focus would fall to the window's
    * body with it. The page puts it on the row, or on the list.
+   *
+   * `onCancelled` is called when the sheet is closed before anything was
+   * started -- Cancel, Escape, a click beside it -- so that what the page
+   * changed on opening it (Update all's ticks) goes back as it was.
    */
-  openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null, onStarted?: VoidFunction): Promise<void>;
+  openConfirm(
+    chosen: UpdateCandidate[],
+    opener?: HTMLElement | null,
+    onStarted?: VoidFunction,
+    onCancelled?: VoidFunction,
+  ): Promise<void>;
   /** For the dialog to call once it has closed (`Dialog`'s `onClosed`): `onStarted`, where the batch all started. */
   afterClose(): void;
   /** What the confirmation gives the focus back to (`openConfirm`'s `opener`). */
@@ -184,6 +193,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   // (`openConfirm`'s `onStarted`), and -- set once it has -- what is left
   // for `afterClose` to do.
   const onStartedRef = useRef<VoidFunction | null>(null);
+  const onCancelledRef = useRef<VoidFunction | null>(null);
   const afterCloseRef = useRef<VoidFunction | null>(null);
 
   function isCurrent(id: number): boolean {
@@ -199,7 +209,12 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     }
   }
 
-  async function openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null, onStarted?: VoidFunction) {
+  async function openConfirm(
+    chosen: UpdateCandidate[],
+    opener?: HTMLElement | null,
+    onStarted?: VoidFunction,
+    onCancelled?: VoidFunction,
+  ) {
     // A new id retires whatever batch was still planning (`close` retires
     // one too). Planning has no side effect beyond issuing PlanIds that
     // expire on their own, so the newest batch wins and an older one's
@@ -210,6 +225,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     openerRef.current =
       opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     onStartedRef.current = onStarted ?? null;
+    onCancelledRef.current = onCancelled ?? null;
     afterCloseRef.current = null;
     // In the list's own order, so the confirmation reads as the rows did.
     const candidates = [...chosen].sort(compare);
@@ -310,7 +326,10 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     // closed -- the dialog refuses to (its lock) -- and ready or done, it
     // has nothing left to arrive.
     if (batch?.phase === "planning") batchIdRef.current += 1;
+    const cancelled = batch?.phase === "planning" || batch?.phase === "ready" ? onCancelledRef.current : null;
+    onCancelledRef.current = null;
     setBatch(null);
+    cancelled?.();
   }
 
   // Up from the press: preparing, then with what there is to confirm. Shut

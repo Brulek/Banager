@@ -2099,6 +2099,20 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
     });
 
+    it("unticks what Update all ticked when its sheet is cancelled, and keeps a tick from before", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const { getByRole, findByRole, findByText, queryByRole } = renderPage();
+      await findByText("3 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("dialog");
+      expect(useUiStore.getState().selectedUpdates).toHaveLength(3);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+      expect(getByRole("button", { name: "Update All" })).toBeInTheDocument();
+      expect(submittedPlanIds()).toEqual([]);
+    });
+
     it("says how many are updating, and never that nothing can be updated, while every row it could update is", async () => {
       operations = [
         operation(onyxKey, { id: 8, status: "Queued" }),
