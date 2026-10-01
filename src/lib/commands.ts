@@ -1,4 +1,5 @@
 import { artifactKeyId } from "../store/ui";
+import type { SourceNoticeSpec } from "./sources";
 import type { CommandFact, CommandState, InstalledArtifact } from "./types";
 
 /**
@@ -84,4 +85,36 @@ export function twinsByArtifact(artifacts: readonly InstalledArtifact[]): Map<st
     }
   }
   return twins;
+}
+
+/**
+ * The standalone source's own sentences about its launcher on `PATH`
+ * (`sourceNoticesFor`: the `NotOnPath` and three `ShadowedBy*` notes),
+ * by title. Each names the launcher as `values.command`.
+ */
+const PATH_NOTICE_TITLES = new Set([
+  "sourceNotice.notOnPath.title",
+  "sourceNotice.shadowedByHomebrew.title",
+  "sourceNotice.shadowedByNpm.title",
+  "sourceNotice.shadowedByOther.title",
+]);
+
+/**
+ * `notices` less the source's sentence about the launcher on `PATH` when
+ * `artifact`'s own command group already says what typing that command
+ * runs. The group knows more -- which copy, from which source -- and the
+ * notice, which cannot tell whether npm's `claude` is Claude Code, would
+ * contradict it a few lines up ("could not confirm it is Claude Code"
+ * under "runs the copy npm installed"). A launcher with no verdict keeps
+ * its notice: then the notice is all there is.
+ */
+export function withoutJudgedPathNotices(notices: SourceNoticeSpec[], artifact: InstalledArtifact): SourceNoticeSpec[] {
+  const judged = new Set(
+    artifact.facts.commands.filter((command) => command.state !== null).map((command) => command.name),
+  );
+  if (judged.size === 0) return notices;
+  return notices.filter(
+    (notice) =>
+      !(PATH_NOTICE_TITLES.has(notice.titleKey) && judged.has(String(notice.values?.command ?? ""))),
+  );
 }

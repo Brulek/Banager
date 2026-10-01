@@ -71,6 +71,7 @@ import {
   homepageFact,
 } from "../components/HomebrewStatus";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
+import { withoutJudgedPathNotices } from "../lib/commands";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -1297,9 +1298,11 @@ export function InstalledPage() {
       });
     }
     // Without a Show: it would show what the inspector shows already.
-    const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0).map((notice) =>
-      notice.action?.id === "showTool" ? { ...notice, action: undefined } : notice,
-    );
+    // Nor the launcher's PATH sentence when 「在终端里输入」 says it better.
+    const sourceNotices = withoutJudgedPathNotices(
+      sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0),
+      artifact,
+    ).map((notice) => (notice.action?.id === "showTool" ? { ...notice, action: undefined } : notice));
     const line = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);
     const refusals = confirm.pageErrors.filter((item) => artifactKeyId(item.candidate.key) === id);

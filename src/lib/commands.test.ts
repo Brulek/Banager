@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { commandGroups, stateId, twinsByArtifact } from "./commands";
+import { commandGroups, stateId, twinsByArtifact, withoutJudgedPathNotices } from "./commands";
+import type { SourceNoticeSpec } from "./sources";
 import type { ArtifactKey, CommandFact, InstalledArtifact } from "./types";
 import { NO_FACTS } from "./types";
 
@@ -89,5 +90,38 @@ describe("twinsByArtifact", () => {
     expect(twinsByArtifact([npm, other]).size).toBe(0);
     // A copy with no commands found at all.
     expect(twinsByArtifact([npm, artifact(nativeKey, "claude-code", [])]).size).toBe(0);
+  });
+});
+
+describe("withoutJudgedPathNotices", () => {
+  const nativeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+  const notice = (titleKey: string, command?: string): SourceNoticeSpec => ({
+    id: titleKey,
+    variant: "info",
+    titleKey,
+    descriptionKey: titleKey.replace(".title", ".description"),
+    values: command === undefined ? { source: "Claude Code" } : { source: "Claude Code", command },
+  });
+  const pathNotices = [
+    notice("sourceNotice.notOnPath.title", "claude"),
+    notice("sourceNotice.shadowedByHomebrew.title", "claude"),
+    notice("sourceNotice.shadowedByNpm.title", "claude"),
+    notice("sourceNotice.shadowedByOther.title", "claude"),
+  ];
+  const others = [notice("sourceNotice.launcherOnly.title", "claude"), notice("sourceNotice.notRunning.title")];
+
+  it("drops the launcher's PATH sentence when the command group judged that command", () => {
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: { ShadowedBy: { by: npmKey } } }]);
+    expect(withoutJudgedPathNotices([...pathNotices, ...others], native)).toEqual(others);
+  });
+
+  it("keeps it when nothing was judged about the launcher, or the verdict is for another command", () => {
+    const unjudged = artifact(nativeKey, "claude-code", [{ name: "claude", state: null }]);
+    expect(withoutJudgedPathNotices(pathNotices, unjudged)).toEqual(pathNotices);
+    const elsewhere = artifact(nativeKey, "claude-code", [
+      { name: "claude", state: null },
+      { name: "claude-helper", state: "Runs" },
+    ]);
+    expect(withoutJudgedPathNotices(pathNotices, elsewhere)).toEqual(pathNotices);
   });
 });
