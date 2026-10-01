@@ -5,7 +5,7 @@ import { commandGroups, stateId, twinsByArtifact, type CommandGroup, type Twin }
 import { namesInSentence } from "../lib/sources";
 import type { CommandState, InstalledArtifact } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
-import { TextWithInfo } from "./InfoDetail";
+import { InfoDetail, TextWithInfo } from "./InfoDetail";
 import { GROUP, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "./ui/group";
 import { installedBy } from "./TwinAdvice";
 import { detailLines } from "./updateDetails";
@@ -142,11 +142,15 @@ export function CommandsGroup({
   const title = t("commands.title");
   return (
     <section data-commands="" aria-labelledby={titleId} className="mt-4">
-      <h3 id={titleId} className={GROUP_TITLE}>
-        <TextWithInfo text={title} label={t("common.detailsLabel", { title })}>
-          {t("commands.titleDetail")}
-        </TextWithInfo>
-      </h3>
+      {/* The ⓘ after the heading, not in it: in it, its name -- 「详情：
+          在终端里输入」 -- would be part of the heading's, and of the
+          group's, said twice over. */}
+      <div className={`${GROUP_TITLE} whitespace-nowrap`}>
+        <h3 id={titleId} className="inline">
+          {title}
+        </h3>{" "}
+        <InfoDetail label={t("common.detailsLabel", { title })}>{t("commands.titleDetail")}</InfoDetail>
+      </div>
       <ul className={GROUP}>
         {groups.map((group) => {
           const ordered = mainCommandFirst(group.names, artifact);

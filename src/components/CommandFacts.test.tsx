@@ -60,6 +60,12 @@ describe("CommandsGroup", () => {
   it("titles the group with what the verdicts are judged against behind its ⓘ", () => {
     const { getByRole, getByText } = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
     expect(getByRole("heading", { name: /In Terminal/ })).toBeInTheDocument();
+    // The heading and the group are named by the title alone: the ⓘ is
+    // not in the heading, where a browser would add its own name,
+    // "Details: In Terminal", to both (jsdom's names leave it out).
+    const heading = getByRole("heading", { name: "In Terminal" });
+    expect(heading.querySelector("button")).toBeNull();
+    expect(getByRole("region", { name: "In Terminal" })).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Details: In Terminal" }));
     expect(
       getByText(
