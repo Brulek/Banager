@@ -54,22 +54,17 @@
 //! was when each part of it was read.
 
 use crate::model::{ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance};
-use crate::protected;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::ffi::OsString;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub use crate::protected::{OTHER_VOLUMES, PROTECTED_IN_HOME};
-
-/// The most links followed on the way to one folder, as the kernel's own
-/// limit for a path (`MAXSYMLINKS`).
-const MAX_LINKS: u32 = 32;
+use crate::protected::{resolve, Resolution};
+pub use crate::protected::{Protected, OTHER_VOLUMES, PROTECTED_IN_HOME};
 
 /// How often a round shows the window what it has so far, at most.
 const PUBLISH_EVERY: Duration = Duration::from_millis(500);
@@ -173,118 +168,6 @@ pub struct Sizes {
 pub struct SourceSize {
     pub instance_id: InstanceId,
     pub measured: Measured,
-}
-
-/// The places a measurement never enters, for one home folder: each of
-/// `PROTECTED_IN_HOME` under it -- spelled as given and with its own links
-/// followed -- and `OTHER_VOLUMES`.
-#[derive(Clone, Debug, Default)]
-pub struct Protected {
-    places: Vec<PathBuf>,
-}
-
-impl Protected {
-    pub fn new(home: &Path) -> Protected {
-        let mut homes = vec![home.to_path_buf()];
-        if let Resolution::Found(real, _) = resolve(home, &Protected::default(), true) {
-            if real != home {
-                homes.push(real);
-            }
-        }
-        Protected {
-            places: protected::places(&homes),
-        }
-    }
-
-    /// Whether `path` is one of the places or inside one.
-    pub fn contains(&self, path: &Path) -> bool {
-        protected::is_within(path, &self.places)
-    }
-
-    /// Whether one of the places is inside `path` (or is it): walking
-    /// `path` would reach it.
-    fn under(&self, path: &Path) -> bool {
-        self.places
-            .iter()
-            .any(|place| protected::starts_with_folded(place, path))
-    }
-}
-
-/// What `resolve` found at a path.
-enum Resolution {
-    /// The path with every link on the way followed, and what is there
-    /// (`lstat`: a link at the end, when not followed, is the link).
-    Found(PathBuf, Metadata),
-    Missing,
-    /// It is, or leads, into a protected place; or a folder on the way
-    /// could not be read; or it is not absolute; or too many links.
-    Refused,
-}
-
-/// `path`, with each link among its folders followed, one component at a
-/// time, so that no step is ever taken into a protected place: each next
-/// component is checked against `protected` before it is `lstat`ed, and a
-/// link's text is read (`readlink`) and spliced in before anything it
-/// names is looked at. The last component is followed only with
-/// `follow_last`. Reads nothing but `lstat` and `readlink` of the folders
-/// and links on the way.
-fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
-    if !path.is_absolute() {
-        return Resolution::Refused;
-    }
-    let mut pending: VecDeque<OsString> = names(path).collect();
-    let mut resolved = PathBuf::from("/");
-    let mut found: Option<Metadata> = None;
-    let mut links = 0;
-    while let Some(name) = pending.pop_front() {
-        if name == ".." {
-            resolved.pop();
-            found = None;
-            continue;
-        }
-        let candidate = resolved.join(&name);
-        if protected.contains(&candidate) {
-            return Resolution::Refused;
-        }
-        let meta = match std::fs::symlink_metadata(&candidate) {
-            Ok(meta) => meta,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Resolution::Missing,
-            Err(_) => return Resolution::Refused,
-        };
-        if meta.file_type().is_symlink() && (!pending.is_empty() || follow_last) {
-            links += 1;
-            if links > MAX_LINKS {
-                return Resolution::Refused;
-            }
-            let Ok(target) = std::fs::read_link(&candidate) else {
-                return Resolution::Refused;
-            };
-            if target.is_absolute() {
-                resolved = PathBuf::from("/");
-            }
-            let spliced: Vec<OsString> = names(&target).collect();
-            for name in spliced.into_iter().rev() {
-                pending.push_front(name);
-            }
-            found = None;
-            continue;
-        }
-        resolved = candidate;
-        found = Some(meta);
-    }
-    match found {
-        Some(meta) => Resolution::Found(resolved, meta),
-        None => Resolution::Refused,
-    }
-}
-
-/// `path`'s names, `..` kept as a name and `.` and the root dropped.
-fn names(path: &Path) -> impl Iterator<Item = OsString> + '_ {
-    path.components().filter_map(|component| match component {
-        Component::Normal(name) => Some(name.to_os_string()),
-        Component::ParentDir => Some(OsString::from("..")),
-        Component::RootDir | Component::CurDir | Component::Prefix(_) => None,
-    })
 }
 
 /// Whether `name` is one plain path component: not empty, no `/`, not `.`
@@ -649,7 +532,7 @@ pub(crate) fn look_at(
     }
     match resolve(path, protected, true) {
         Resolution::Missing => (Looked::Missing, Vec::new()),
-        Resolution::Refused => match std::fs::symlink_metadata(path) {
+        Resolution::Refused | Resolution::Protected => match std::fs::symlink_metadata(path) {
             Ok(_) => (Looked::There(None), Vec::new()),
             Err(_) => (Looked::Missing, Vec::new()),
         },
@@ -908,7 +791,7 @@ fn resolve_roots(roots: &[PathBuf], protected: &Protected) -> Option<(Vec<PathBu
                 }
             }
             Resolution::Found(..) | Resolution::Missing => None,
-            Resolution::Refused => {
+            Resolution::Refused | Resolution::Protected => {
                 partial = true;
                 None
             }

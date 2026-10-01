@@ -10,8 +10,11 @@
 //! `docs/what-we-run.md` names each one in both sections
 //! (`what_we_run_test`).
 
+use std::collections::VecDeque;
+use std::ffi::OsString;
+use std::fs::Metadata;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// The folders under the home folder macOS asks the user about before an
 /// app reads them (System Settings > Privacy & Security): Files and
@@ -69,6 +72,133 @@ pub fn starts_with_folded(path: &Path, prefix: &Path) -> bool {
                 .as_bytes()
                 .eq_ignore_ascii_case(wanted.as_os_str().as_bytes())
         })
+    })
+}
+
+/// The most links followed on the way to one path, as the kernel's own
+/// limit for a path (`MAXSYMLINKS`).
+const MAX_LINKS: u32 = 32;
+
+/// The places neither walk enters, for one home folder: each of
+/// `PROTECTED_IN_HOME` under it -- spelled as given and with its own links
+/// followed -- and `OTHER_VOLUMES`. What `resolve` checks every step
+/// against.
+#[derive(Clone, Debug, Default)]
+pub struct Protected {
+    places: Vec<PathBuf>,
+}
+
+impl Protected {
+    pub fn new(home: &Path) -> Protected {
+        let mut homes = vec![home.to_path_buf()];
+        if let Resolution::Found(real, _) = resolve(home, &Protected::default(), true) {
+            if real != home {
+                homes.push(real);
+            }
+        }
+        Protected {
+            places: places(&homes),
+        }
+    }
+
+    /// Whether `path` is one of the places or inside one.
+    pub fn contains(&self, path: &Path) -> bool {
+        is_within(path, &self.places)
+    }
+
+    /// Whether one of the places is inside `path` (or is it): walking
+    /// `path` would reach it.
+    pub fn under(&self, path: &Path) -> bool {
+        self.places
+            .iter()
+            .any(|place| starts_with_folded(place, path))
+    }
+}
+
+/// What `resolve` found at a path.
+#[derive(Clone, Debug)]
+pub enum Resolution {
+    /// The path with every link on the way followed, and what is there
+    /// (`lstat`: a link at the end, when not followed, is the link).
+    Found(PathBuf, Metadata),
+    Missing,
+    /// It is, or leads, into a protected place: nothing there was looked
+    /// at, so nobody knows what is there.
+    Protected,
+    /// A folder on the way could not be read; or it is not absolute; or
+    /// too many links.
+    Refused,
+}
+
+/// `path`, with each link among its folders followed, one component at a
+/// time, so that no step is ever taken into a protected place: each next
+/// component is checked against `protected` before it is `lstat`ed, and a
+/// link's text is read (`readlink`) and spliced in before anything it
+/// names is looked at. The last component is followed only with
+/// `follow_last`. Reads nothing but `lstat` and `readlink` of the folders
+/// and links on the way.
+pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
+    if !path.is_absolute() {
+        return Resolution::Refused;
+    }
+    let mut pending: VecDeque<OsString> = names(path).collect();
+    let mut resolved = PathBuf::from("/");
+    let mut found: Option<Metadata> = None;
+    let mut links = 0;
+    while let Some(name) = pending.pop_front() {
+        if name == ".." {
+            resolved.pop();
+            found = None;
+            continue;
+        }
+        let candidate = resolved.join(&name);
+        if protected.contains(&candidate) {
+            return Resolution::Protected;
+        }
+        let meta = match std::fs::symlink_metadata(&candidate) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Resolution::Missing,
+            Err(_) => return Resolution::Refused,
+        };
+        if meta.file_type().is_symlink() && (!pending.is_empty() || follow_last) {
+            links += 1;
+            if links > MAX_LINKS {
+                return Resolution::Refused;
+            }
+            let Ok(target) = std::fs::read_link(&candidate) else {
+                return Resolution::Refused;
+            };
+            if target.is_absolute() {
+                resolved = PathBuf::from("/");
+            }
+            let spliced: Vec<OsString> = names(&target).collect();
+            for name in spliced.into_iter().rev() {
+                pending.push_front(name);
+            }
+            found = None;
+            continue;
+        }
+        resolved = candidate;
+        found = Some(meta);
+    }
+    match found {
+        Some(meta) => Resolution::Found(resolved, meta),
+        // Ended on `..` (or is the root): the folder reached, already
+        // checked on the way down.
+        None => match std::fs::symlink_metadata(&resolved) {
+            Ok(meta) => Resolution::Found(resolved, meta),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Resolution::Missing,
+            Err(_) => Resolution::Refused,
+        },
+    }
+}
+
+/// `path`'s names, `..` kept as a name and `.` and the root dropped.
+fn names(path: &Path) -> impl Iterator<Item = OsString> + '_ {
+    path.components().filter_map(|component| match component {
+        Component::Normal(name) => Some(name.to_os_string()),
+        Component::ParentDir => Some(OsString::from("..")),
+        Component::RootDir | Component::CurDir | Component::Prefix(_) => None,
     })
 }
 
