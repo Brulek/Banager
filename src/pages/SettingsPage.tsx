@@ -16,6 +16,7 @@ import { DiagnosticsRows } from "../components/DiagnosticsRows";
 import { TextWithInfo } from "../components/InfoDetail";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
+import { focusOrFallback } from "../components/ui/focus";
 import {
   FORM_COLUMN,
   GROUP,
@@ -208,6 +209,27 @@ export function SettingsPage() {
     heading.focus({ preventScroll: true });
     hiddenUpdatesShown();
   }, [hiddenUpdatesRequested, loaded, hiddenUpdatesShown]);
+
+  // A hidden update's Stop Skipping or Remind Me Again takes its row away,
+  // the button with it, once the save lands: the focus goes to the button
+  // that took its place -- the next row's, in whichever of the three
+  // groups -- or the one before it after the last, rather than to the
+  // window's body; with none left, to the page's title. Only while the
+  // focus is still lost.
+  const pressedHidden = useRef<{ button: HTMLElement; at: number } | null>(null);
+  const notePressed = (button: HTMLElement) => {
+    const buttons = Array.from(hiddenGroups.current?.querySelectorAll<HTMLElement>("button") ?? []);
+    pressedHidden.current = { button, at: buttons.indexOf(button) };
+  };
+  useEffect(() => {
+    const pressed = pressedHidden.current;
+    if (pressed === null || pressed.button.isConnected) return;
+    pressedHidden.current = null;
+    const focus = document.activeElement;
+    if (focus !== null && focus !== document.body && focus.isConnected) return;
+    const buttons = Array.from(hiddenGroups.current?.querySelectorAll<HTMLElement>("button") ?? []);
+    focusOrFallback(buttons[pressed.at] ?? buttons[pressed.at - 1] ?? null);
+  });
 
   if (settingsQuery.isLoading || !current) {
     return (
@@ -566,7 +588,10 @@ export function SettingsPage() {
                           ? t("settings.skippedVersions.unskipNewBuildAriaLabel", { name })
                           : t("settings.skippedVersions.unskipAriaLabel", { name, version })
                       }
-                      onClick={() => unskip(skipped)}
+                      onClick={(event) => {
+                        notePressed(event.currentTarget);
+                        unskip(skipped);
+                      }}
                       className={ROW_BUTTON}
                     >
                       {t("settings.skippedVersions.unskip")}
@@ -596,7 +621,10 @@ export function SettingsPage() {
                     <button
                       type="button"
                       aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", { name })}
-                      onClick={() => unsnooze(snoozed)}
+                      onClick={(event) => {
+                        notePressed(event.currentTarget);
+                        unsnooze(snoozed);
+                      }}
                       className={ROW_BUTTON}
                     >
                       {t("settings.ignoredUpdates.unignore")}
@@ -623,7 +651,10 @@ export function SettingsPage() {
                     <button
                       type="button"
                       aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", { name })}
-                      onClick={() => unignore(key)}
+                      onClick={(event) => {
+                        notePressed(event.currentTarget);
+                        unignore(key);
+                      }}
                       className={ROW_BUTTON}
                     >
                       {t("settings.ignoredUpdates.unignore")}

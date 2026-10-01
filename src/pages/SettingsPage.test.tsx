@@ -267,6 +267,37 @@ describe("SettingsPage", () => {
     expect(screen.getByText("onyx")).toBeInTheDocument();
   });
 
+  it("puts the focus on the button that takes a removed entry's place, and on the page's title after the last", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          ignored_updates: [jqKey],
+          skipped_versions: [{ key: glibKey, version: "2.90.0" }],
+        });
+      }
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+    renderWithProviders(
+      <>
+        <h1 tabIndex={-1} data-focus-fallback="">
+          Settings
+        </h1>
+        <SettingsPage />
+      </>,
+    );
+
+    const stop = await screen.findByRole("button", { name: "Stop skipping 2.90.0 of glib" });
+    act(() => stop.focus());
+    fireEvent.click(stop);
+    // The next one, in the next group: jq's Remind Me Again.
+    const remind = screen.getByRole("button", { name: "Remind me again about jq" });
+    await waitFor(() => expect(document.activeElement).toBe(remind));
+
+    fireEvent.click(remind);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 })));
+  });
+
   it("names a model's skipped build without printing its digest", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {
