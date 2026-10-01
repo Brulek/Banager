@@ -144,7 +144,7 @@ interface RowChip {
   /**
    * What the ⓘ says in the inspector's 「状态」 instead of `detail`, where
    * another group of the inspector says part of it already (「装了两份」's
-   * which-copy-runs sentence, said by 「在终端里输入」).
+   * which-copy-runs sentence, said by 「在终端里输入时」).
    */
   inspectorDetail?: ReactNode;
 }
@@ -1566,7 +1566,7 @@ export function InstalledPage() {
       sourceLabelFor,
       canUninstall(artifact, instance),
     );
-    // 「终端里找不到」 is the 「在终端里输入」 group's to say, with its folder
+    // 「终端里找不到」 is the 「在终端里输入时」 group's to say, with its folder
     // and Copy Path: said once, down there.
     const statusChips = chips.filter(
       (chip) =>
@@ -1610,7 +1610,7 @@ export function InstalledPage() {
       });
     }
     // Without a Show: it would show what the inspector shows already.
-    // Nor the launcher's PATH sentence when 「在终端里输入」 says it better.
+    // Nor the launcher's PATH sentence when 「在终端里输入时」 says it better.
     const sourceNotices = withoutJudgedPathNotices(
       sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0),
       artifact,

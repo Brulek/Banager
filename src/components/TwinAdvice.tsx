@@ -11,7 +11,7 @@ import { detailLines } from "./updateDetails";
  * §2.1, pain #1/#4): not only that there are two copies (「装了两份」), but
  * which one typing its command runs, that Terminal does not use the other,
  * and -- for the copy it does not use -- that it may be uninstalled. Said
- * from `ArtifactFacts.commands` alone, as the 「在终端里输入」 group judges
+ * from `ArtifactFacts.commands` alone, as the 「在终端里输入时」 group judges
  * them (against the `PATH` read when the app opened); nothing is said where
  * the shared commands have no single verdict.
  */

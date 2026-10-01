@@ -118,7 +118,7 @@ function verdictOf(
 }
 
 /**
- * The inspector's 「在终端里输入」 group (spec: advantages round, item 4),
+ * The inspector's 「在终端里输入时」 group (spec: advantages round, item 4),
  * under the facts: a line per verdict -- the commands it is about, and
  * under them, in the secondary colour, what typing them runs -- with
  * Copy Path beside a folder Terminal does not search, which copies the
@@ -198,7 +198,7 @@ export interface TwinChip {
   detail: ReactNode;
   /**
    * What the ⓘ says in the details' 「状态」: where the other copies are
-   * from, and no more -- the 「在终端里输入」 group under it says which
+   * from, and no more -- the 「在终端里输入时」 group under it says which
    * copy typing the command runs, with its own ⓘ on how that was judged.
    */
   inspectorDetail: ReactNode;
@@ -291,7 +291,7 @@ export interface NotOnPathChip {
  * word for the same tools (`families.showNotOnPath`) -- for a tool at
  * least one of whose commands has a `NotOnPath` verdict
  * (`hasCommandNotOnPath`), null for any other. Behind its ⓘ, the details'
- * own words: where the command is, as 「在终端里输入」 says it, and the same
+ * own words: where the command is, as 「在终端里输入时」 says it, and the same
  * advice as its ⓘ, when every command is in one such folder -- or, when
  * only some are, or they are in more than one folder, the notice's
  * sentence for one tool (`notOnPathMore.detailOne`), which says "at least
