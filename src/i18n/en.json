@@ -1123,7 +1123,7 @@
       "size": "Size",
       "modified": "Date Modified"
     },
-    "intro": "Couldn't determine how these programs were installed.",
+    "intro": "Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.",
     "lookedIn": "Looked in: {{folders}}",
     "attributed_one": "{{count}} more program has a known source and isn't listed here.",
     "attributed_other": "{{count}} more programs have a known source and aren't listed here.",

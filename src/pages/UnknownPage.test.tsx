@@ -394,7 +394,7 @@ describe("UnknownPage", () => {
 
     const lookedIn = await findByText("Looked in: ~/.local/bin, /usr/local/bin");
     const recognized = getByText("4 more programs have a known source and aren't listed here.");
-    const intro = getByText("Couldn't determine how these programs were installed.");
+    const intro = getByText("Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.");
     const rows = [...container.querySelectorAll("[data-tool-row]")];
     // Over the list: the one line, 13 in the secondary colour.
     expect(intro.className.split(" ")).toEqual(expect.arrayContaining(["text-body", "text-muted"]));
@@ -427,7 +427,7 @@ describe("UnknownPage", () => {
       expect(queryByText("链接")).toBeNull();
       expect(getByText("找不到原文件")).toBeInTheDocument();
       expect(getByText("另有4个程序已确定来源，未在这里列出。")).toBeInTheDocument();
-      expect(getByText("无法确定以下程序的安装来源。")).toBeInTheDocument();
+      expect(getByText("无法确定以下程序的安装来源。这里只列出它们，不会改动；不认识的，可以在访达中查看。")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -466,7 +466,7 @@ describe("UnknownPage", () => {
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
     expect(container.querySelector("[data-tool-row]")).toBeNull();
     // 「以下程序」 over nothing would point at nothing.
-    expect(queryByText("Couldn't determine how these programs were installed.")).toBeNull();
+    expect(queryByText("Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.")).toBeNull();
   });
 
   it("vouches only for what it checked when a scan that stopped early found nothing, with no check mark", async () => {
@@ -533,7 +533,7 @@ describe("UnknownPage", () => {
     // What it says at its top stays: what the page is, and where it looked.
     expect(
       getByText(
-        "Couldn't determine how these programs were installed.",
+        "Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.",
       ),
     ).toBeInTheDocument();
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
