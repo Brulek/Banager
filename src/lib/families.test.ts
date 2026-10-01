@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import { notOnPathDetailKey,
   DISCOVER_SHOWS,
   discoverCounts,
   discoverCovered,
@@ -122,7 +122,7 @@ describe("discoverNotices", () => {
         id: "discover:notOnPath",
         variant: "info",
         titleKey: "families.notOnPathNotice",
-        descriptionKey: "families.notOnPathNoticeDetail",
+        descriptionKey: "notOnPathMore.detailMany",
         values: { count: 2 },
         action: { id: "showList", labelKey: "families.view", show: "notOnPath" },
       },
@@ -185,13 +185,30 @@ describe("the not-found notice's ⓘ", () => {
   // (`commands::judge`): another program with the name may still be the one
   // Terminal runs. The ⓘ says what is true of both cases, in both languages.
   it("says the command doesn't run this copy, not that typing it finds nothing", async () => {
-    const zh = (await import("../i18n/zh-CN.json")).default.families.notOnPathNoticeDetail;
-    const en = (await import("../i18n/en.json")).default.families.notOnPathNoticeDetail;
-    expect(zh).toContain("不会运行这一份");
-    expect(zh).toContain("同名程序");
-    expect(zh).not.toContain("会找不到");
-    expect(en).toContain("doesn't run that copy");
-    expect(en).toContain("another program with the same name");
-    expect(en).not.toContain("won't find it");
+    const zh = (await import("../i18n/zh-CN.json")).default.notOnPathMore;
+    const en = (await import("../i18n/en.json")).default.notOnPathMore;
+    for (const text of [zh.detailOne, zh.detailMany]) {
+      expect(text).toContain("不会运行这一份");
+      expect(text).toContain("同名程序");
+      expect(text).not.toContain("会找不到");
+      // What to try, as the source's own notice says it.
+      expect(text).toContain("请新开一个终端窗口再试");
+    }
+    expect(zh.detailOne).not.toContain("每个工具");
+    expect(en.detailMany).toContain("doesn't run that copy");
+    expect(en.detailOne).toContain("doesn't run this copy");
+    for (const text of [en.detailOne, en.detailMany]) {
+      expect(text).toContain("another program with the same name");
+      expect(text).not.toContain("won't find it");
+      expect(text).toContain("Open a new Terminal window and try again.");
+    }
+  });
+
+  it("says it of one tool or of several, by count", () => {
+    expect(discoverNotices("all", { notOnPath: 1, brewRetired: 0, otherVersions: 0 })[0].descriptionKey).toBe(
+      "notOnPathMore.detailOne",
+    );
+    expect(notOnPathDetailKey("notOnPath", 3)).toBe("notOnPathMore.detailMany");
+    expect(notOnPathDetailKey("brewRetired", 1)).toBeNull();
   });
 });

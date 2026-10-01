@@ -314,13 +314,13 @@ describe("toolSetupCheck's command lines", () => {
   it("counts the tools Terminal can't find and those installed more than once, each with 查看 to its 显示 choice", () => {
     const check = toolSetupCheck(zh, input({ snapshot: twinsSnapshot() }));
     expect(shape(check)["命令"]).toEqual([
-      "note 1个工具在终端里找不到 → installed:notOnPath",
+      "warning 1个工具在终端里找不到 → installed:notOnPath",
       "note 1个工具装了不止一份 → installed:twins",
     ]);
-    expect(lineOf(check, "commands", "notOnPath").detail).toBe(zh("families.notOnPathNoticeDetail"));
+    expect(lineOf(check, "commands", "notOnPath").detail).toBe(zh("notOnPathMore.detailOne"));
     expect(lineOf(check, "commands", "twins").detail).toMatch(/只会运行其中一份/);
     expect(shape(toolSetupCheck(en, input({ snapshot: twinsSnapshot() })))["Commands"]).toEqual([
-      "note 1 tool can't be found in Terminal → installed:notOnPath",
+      "warning 1 tool can't be found in Terminal → installed:notOnPath",
       "note 1 tool is installed more than once → installed:twins",
     ]);
   });
@@ -337,7 +337,7 @@ describe("toolSetupCheck's command lines", () => {
       artifact({ instance_id: NPM, kind: "Package", name: "tsx" }, { commands: [notOnPath("tsx")] }),
     );
     expect(shape(toolSetupCheck(zh, input({ snapshot: lone })))["命令"]).toEqual([
-      "note 1个工具在终端里找不到 → installed:notOnPath",
+      "warning 1个工具在终端里找不到 → installed:notOnPath",
       "fine 没有装了不止一份的工具",
     ]);
   });

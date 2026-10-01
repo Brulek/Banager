@@ -146,7 +146,9 @@ describe("CommandsGroup", () => {
       const copy = getByRole("button", { name: "Copy path: ~/.local/bin" });
       expect(copy).toHaveTextContent(/^Copy Path$/);
       expect(copy.className).toBe(BUTTON.small.grey);
-      expect(container.querySelectorAll("button")).toHaveLength(2);
+      // The heading's ⓘ, the line's ⓘ -- what to try -- and Copy Path.
+      expect(container.querySelectorAll("button")).toHaveLength(3);
+      expect(getByRole("button", { name: "Details: claude" })).toBeInTheDocument();
       fireEvent.click(copy);
       expect(writeText).toHaveBeenCalledWith("~/.local/bin");
       await waitFor(() => expect(getByRole("status")).toHaveTextContent(/^Copied$/));
@@ -165,7 +167,7 @@ describe("CommandsGroup", () => {
         );
         expect(getByRole("heading", { name: /在终端里输入/ })).toBeInTheDocument();
         expect(lines(container)).toEqual([
-          ["claude", "终端找不到它：它在~/.local/bin，这个文件夹不在终端的搜索路径里"],
+          ["claude", "终端找不到它：它在~/.local/bin，终端不在这个文件夹里查找命令"],
           ["claude-helper", "运行的是这一份"],
         ]);
         expect(getByRole("button", { name: "拷贝路径：~/.local/bin" })).toHaveTextContent(/^拷贝路径$/);

@@ -100,10 +100,14 @@
     "brewRetiredNone": "没有发现Homebrew已停用或弃用的工具",
     "brewRetiredNoneInSource": "{{source}}中没有发现Homebrew已停用或弃用的工具",
     "notOnPathNotice_other": "{{count}}个工具在终端里找不到",
-    "notOnPathNoticeDetail": "每个工具至少有一个命令所在的文件夹不在终端的搜索路径里，在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。",
     "brewRetiredNotice_other": "{{count}}个工具已被Homebrew停用或弃用",
     "brewRetiredNoticeDetail": "Homebrew不再为停用的工具提供更新，弃用的以后可能会停用。已安装的不会被删除。",
     "view": "查看"
+  },
+  "notOnPathMore": {
+    "detailOne": "它至少有一个命令所在的文件夹，终端不会在里面查找命令，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。",
+    "detailMany": "每个工具至少有一个命令所在的文件夹，终端不会在里面查找命令，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照那个工具的安装说明操作。",
+    "notFoundDetail": "终端只在几个固定的文件夹里查找命令，这个文件夹不在其中。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。"
   },
   "otherVersionsShow": {
     "show": "保留了其他版本",
@@ -453,7 +457,7 @@
     "runsNamesakeFrom": "运行的是{{source}}装的另一个同名程序",
     "runsNamesake": "运行的是另一个同名程序",
     "behindDetail": "终端先找到那一个，这一份排在它后面。",
-    "notFound": "终端找不到它：它在{{dir}}，这个文件夹不在终端的搜索路径里",
+    "notFound": "终端找不到它：它在{{dir}}，终端不在这个文件夹里查找命令",
     "copyPath": "拷贝路径",
     "copyPathLabel": "拷贝路径：{{dir}}",
     "twin": "装了两份",

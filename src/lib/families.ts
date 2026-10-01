@@ -64,7 +64,7 @@ export function isAiTool(artifact: Pick<InstalledArtifact, "facts"> | undefined)
  * the Mac: a command whose verdict is `NotOnPath` (`commands::judge`). A
  * command Banager says nothing about (`state: null`) is not one. One is
  * enough, so a tool whose other commands run is listed too; the line's ⓘ
- * says "at least one command" (`families.notOnPathNoticeDetail`).
+ * says "at least one command" (`notOnPathMore.detailMany`).
  */
 export function hasCommandNotOnPath(artifact: Pick<InstalledArtifact, "facts"> | undefined): boolean {
   return (
@@ -148,9 +148,20 @@ export function discoverCovered(
 
 /** Each discovery choice's line over the list: its words and their ⓘ. */
 const DISCOVER_NOTICE_KEYS: Record<NoticedShow, { title: string; description: string }> = {
-  notOnPath: { title: "families.notOnPathNotice", description: "families.notOnPathNoticeDetail" },
+  notOnPath: { title: "families.notOnPathNotice", description: "notOnPathMore.detailMany" },
   brewRetired: { title: "families.brewRetiredNotice", description: "families.brewRetiredNoticeDetail" },
 };
+
+/**
+ * 「终端里找不到」's ⓘ, for one tool or several -- Chinese has one plural
+ * form, so by count rather than by `_one`/`_other` -- with what to try:
+ * a new Terminal window, then the tool's installation instructions, as a
+ * source's own 「终端找不到它」 notice says. Null for any other choice.
+ */
+export function notOnPathDetailKey(choice: DiscoverShow, count: number): string | null {
+  if (choice !== "notOnPath") return null;
+  return count === 1 ? "notOnPathMore.detailOne" : "notOnPathMore.detailMany";
+}
 
 /**
  * The lines the Installed page adds after the sources' own notices while
@@ -174,7 +185,7 @@ export function discoverNotices(
     id: `discover:${choice}`,
     variant: "info",
     titleKey: DISCOVER_NOTICE_KEYS[choice].title,
-    descriptionKey: DISCOVER_NOTICE_KEYS[choice].description,
+    descriptionKey: notOnPathDetailKey(choice, counts[choice]) ?? DISCOVER_NOTICE_KEYS[choice].description,
     values: { count: counts[choice] },
     action: { id: "showList", labelKey: "families.view", show: choice },
   }));

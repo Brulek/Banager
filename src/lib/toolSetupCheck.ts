@@ -21,7 +21,7 @@
 import { create } from "zustand";
 import { commandsKnown } from "./commandsKnown";
 import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
-import { discoverCounts, keepsOtherVersions, type DiscoverShow } from "./families";
+import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
 import { instanceLabels } from "./sources";
@@ -240,8 +240,9 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
     lines.push(line("notOnPath", "note", t("commandsKnown.notFoundUnknown")));
   } else if (notOnPath > 0) {
     lines.push(
-      line("notOnPath", "note", t("families.notOnPathNotice", { count: notOnPath }), {
-        detail: t("families.notOnPathNoticeDetail"),
+      // A warning, not a note: Terminal cannot run these copies.
+      line("notOnPath", "warning", t("families.notOnPathNotice", { count: notOnPath }), {
+        detail: t(notOnPathDetailKey("notOnPath", notOnPath)!),
         view: { kind: "installed", show: "notOnPath" },
       }),
     );

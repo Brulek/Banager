@@ -95,7 +95,7 @@ function verdictOf(
   if (state === "Runs") return { text: t("commands.runs"), detail: null, dir: null };
   if ("NotOnPath" in state) {
     const dir = state.NotOnPath.dir;
-    return { text: t("commands.notFound", { dir }), detail: null, dir };
+    return { text: t("commands.notFound", { dir }), detail: t("notOnPathMore.notFoundDetail"), dir };
   }
   const detail = t("commands.behindDetail");
   const by = state.ShadowedBy.by;

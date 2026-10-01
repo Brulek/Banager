@@ -110,11 +110,15 @@
     "brewRetiredNoneInSource": "No tools disabled or deprecated by Homebrew were found in {{source}}",
     "notOnPathNotice_one": "{{count}} tool can't be found in Terminal",
     "notOnPathNotice_other": "{{count}} tools can't be found in Terminal",
-    "notOnPathNoticeDetail": "Each has at least one command in a folder Terminal doesn't search, so typing that command in Terminal doesn't run that copy. It may find nothing, or another program with the same name.",
     "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
     "brewRetiredNotice_other": "{{count}} tools were disabled or deprecated by Homebrew",
     "brewRetiredNoticeDetail": "Homebrew no longer updates a disabled tool, and may disable a deprecated one later. What's installed isn't removed.",
     "view": "Show"
+  },
+  "notOnPathMore": {
+    "detailOne": "Its command is in a folder Terminal doesn't search, so typing it in Terminal doesn't run this copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions.",
+    "detailMany": "Each has at least one command in a folder Terminal doesn't search, so typing that command in Terminal doesn't run that copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If a command still isn't found, follow that tool's installation instructions.",
+    "notFoundDetail": "Terminal looks for commands only in certain folders, and this isn't one of them. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions."
   },
   "otherVersionsShow": {
     "show": "Keeping Other Versions",
