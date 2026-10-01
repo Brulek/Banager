@@ -34,7 +34,7 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 | rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program `cargo install` recorded (`jj-cli`, not `jj`), else by its file name. Neither can be cancelled once it is running, and the preview says so |
 | Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Open to update", whose ⓘ says to open the tool once (Banager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
 | Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how `grok update` behaves when nothing can answer a prompt is yet to be recorded on CI); install no (the installer is xAI's, and Banager never runs it); uninstall yes — its downloaded versions, its bundled agents and shell completions, any fallback links its installer made in `~/.local/bin`, and the two links in its `bin` folder go to the Trash (the folder itself, which its installer put on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
-| Codex — OpenAI's terminal agent, via its own installer | yes, listed only: its version is read from the folder name its installer links to, and no command runs for it | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says Codex can update itself when its installer's auto-update file names the release in use); install no (the installer is OpenAI's, and Banager never runs it); uninstall no — the row says "Manual uninstall" |
+| Codex — OpenAI's terminal agent, via its own installer | yes, listed only: its version is read from the folder name its installer links to, and no command runs for it, not even a version check; npm's `@openai/codex` and Homebrew's `codex` cask stay those sources' own rows | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says Codex can update itself when its installer's auto-update file names the release in use, and otherwise that its updates aren't checked); install no (the installer is OpenAI's, and Banager never runs it); uninstall no — the row says "Manual uninstall" |
 | opencode — via its own installer | yes, listed only: its version is not known, since its installer leaves no file that names it and no command runs for it | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says it updates itself, by default); install no (Banager never runs its installer); uninstall no — the row says "Manual uninstall" |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
@@ -46,6 +46,38 @@ for one): the gap is the source's, and the page says what it sees. Cargo reports
 crate — the one named after the crate, else the first its record lists — so the other programs of
 a crate that installs several (`cargo-binstall`'s `detect-targets`) stay on that page until it can
 report them all.
+
+## What it tells you about each tool
+
+- The **Show** menu in the toolbar of the Updates and Installed pages narrows the list to **AI Tools**:
+  Claude Code, Codex, Gemini CLI, Ollama and the other AI tools in a table built into Banager,
+  whichever source installed them. On the Installed page it also offers **Installed More Than Once**, **Not Found
+  in Terminal** and **Disabled or Deprecated by Homebrew**, the last two with how many tools they show.
+- A tool's details say, under **In Terminal**, what typing each of its commands runs — this copy,
+  another copy or program, or nothing, when the command sits in a folder Terminal doesn't search —
+  judged from the Terminal settings read when Banager opened. A tool another source installed too says
+  **Installed twice**, and where Banager can tell, its details say which copy Terminal runs.
+- A package Homebrew has disabled or deprecated says so, with what that means and the name Homebrew
+  suggests instead. The details also list a formula's other installed versions and Homebrew's own
+  notes, in English, folded.
+- After each check Banager measures, read-only, how much disk the tools take: a tool's details show its
+  size once measured, the Installed page can be sorted **By Size**, and sorted by source a heading says
+  what that source's measured tools take in all.
+- While the first check since launch is still looking for updates, the Installed page already lists
+  what it found; uninstalling waits until that check is done.
+- On the Updates page, an update to a new major version is marked **Major update**, unless its row
+  already says the tool updates itself or that Terminal runs another copy (**Not used in Terminal**).
+  **Recently Updated**, at the top, lists the updates that succeeded in the last 30 days, kept across
+  restarts in `history.json`, until you press Clear.
+- An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
+  table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
+  deletes them.
+- When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
+  command to copy and run in Terminal, where you can type it.
+- With **Check for updates every day** on, Settings says when the next check is due. Its **Copy
+  Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
+  this Mac and its sources to paste to whoever is helping you; it lists your tools only when you tick
+  the box, and writes your home folder as `~`.
 
 Banager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
@@ -371,6 +403,32 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 说明的软件，照旧显示原来那一行。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
+
+它还会告诉你每个工具的这些事：
+
+- “更新”和“已安装”两页工具栏里的“显示”菜单，可以只列出“AI工具”：Claude Code、Codex、Gemini CLI、
+  Ollama 等 Banager 内置表格里的 AI 工具，不管是哪个来源装的。在“已安装”页，它还有“装了不止一份”“终端里找不到”
+  和“Homebrew已停用或弃用”，后两项会写出各有几个。
+- 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
+  运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。别的来源也装了
+  一份的工具会标“装了两份”，能判断时，详情里说终端运行的是哪一份。
+- Homebrew 停用或弃用了的软件会标出来，并说明这意味着什么、Homebrew 建议改用哪个。详情里还列出 formula
+  装着的其他版本，以及 Homebrew 自己的英文说明（默认收起）。
+- 每次检查后，Banager 以只读方式计算各工具占用的磁盘空间：算好后详情里能看到，“已安装”页可以“按大小”排序，
+  按来源排序时，来源标题后写着它算出大小的工具一共占多少。
+- 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
+- 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
+  （“终端用另一份”）。页面最上面的“最近更新”列出 30 天内成功的更新，重启后仍在（存在 `history.json` 里），
+  直到你按“清除”。
+- 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
+  写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
+- Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里
+  输入密码。
+- 打开“每天自动检查”后，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
+  带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
+  工具清单，个人文件夹的路径写成 `~`。
+- 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的
+  `@openai/codex` 和 Homebrew 的 `codex` cask 仍算在各自来源下。
 
 Banager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
