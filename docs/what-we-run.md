@@ -121,7 +121,14 @@ checks.
 The only thing it does with one is pass `SUDO_ASKPASS` through, unchanged,
 to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
-own behalf.
+own behalf. Its commands run with no terminal (stdin is `/dev/null`), so
+when a cask's own step runs `sudo`, sudo cannot ask and the operation
+fails. Banager recognises sudo's own words for this
+(`needsPassword` in `src/lib/failureCause.ts`), and the operation's log
+shows the command it ran — the confirmation's command, without
+`SUDO_ASKPASS` (`src/components/PasswordCommand.tsx`) — with a Copy
+Command button, to be run in Terminal, where sudo can ask. Banager runs
+nothing more for it and does not retry it on its own.
 
 ## When commands run
 
