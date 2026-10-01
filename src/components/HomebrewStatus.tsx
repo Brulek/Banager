@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import type { HomebrewLifecycle, InstalledArtifact, Sizes } from "../lib/types";
 import { otherVersionsSizeText, saysSize, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
-import { DisclosureIcon } from "./icons";
+import { DisclosureButton } from "./DisclosureButton";
 import { CopyButton } from "./CopyButton";
 import { TextWithInfo } from "./InfoDetail";
 import { COMMAND_SLOT } from "./withCommand";
@@ -302,16 +302,9 @@ function Caveats({ text }: { text: string }) {
   const panelId = useId();
   return (
     <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen(!open)}
-        className="-ml-1 flex h-7 items-center gap-1.5 rounded-control px-1 text-body text-muted"
-      >
-        <DisclosureIcon size={10} className={`shrink-0 ${open ? "rotate-90" : ""}`} />
+      <DisclosureButton open={open} panelId={panelId} onToggle={() => setOpen(!open)}>
         {t("brewStatus.caveatsTitle")}
-      </button>
+      </DisclosureButton>
       {open ? (
         <p
           id={panelId}

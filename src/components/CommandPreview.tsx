@@ -5,7 +5,7 @@ import { displayToken } from "../lib/format";
 import { useSettings } from "../lib/queries";
 import type { PlanAction } from "../lib/types";
 import { SMALL_WRAPPING } from "./ui/group";
-import { DisclosureIcon } from "./icons";
+import { DisclosureButton } from "./DisclosureButton";
 
 /** One plan a confirmation is about, for its preview. */
 export interface PlanPreview {
@@ -95,18 +95,9 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
       {trash}
       {commands.length > 0 ? (
         <div className="mt-3">
-          {/* A disclosure row, as a Mac list's (spec §3.6): a 10 triangle,
-              turned down while open, and the words in 13 muted. */}
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={open ? panelId : undefined}
-            onClick={() => setChosen(!open)}
-            className="-ml-1 flex h-7 items-center gap-1.5 rounded-control px-1 text-body text-muted"
-          >
-            <DisclosureIcon size={10} className={`shrink-0 ${open ? "rotate-90" : ""}`} />
+          <DisclosureButton open={open} panelId={panelId} onToggle={() => setChosen(!open)}>
             {t("commandPreview.show", { count: commands.length })}
-          </button>
+          </DisclosureButton>
           {open ? (
             <div id={panelId} className="mt-1 flex flex-col gap-2">
               {commands.map((command) => (

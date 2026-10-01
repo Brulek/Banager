@@ -51,7 +51,8 @@ import {
   sheetMeta,
 } from "./SheetParts";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
-import { CheckIcon, DisclosureIcon } from "./icons";
+import { CheckIcon } from "./icons";
+import { DisclosureButton } from "./DisclosureButton";
 import { detailLines } from "./updateDetails";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
@@ -792,16 +793,9 @@ function BatchPlanDetails({ plans }: { plans: Array<{ id: string; name: string; 
   const paths = plans.some(({ action }) => "TrashPaths" in action);
   return (
     <div className="mt-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={() => setChosen(!open)}
-        className="-ml-1 flex h-7 items-center gap-1.5 rounded-control px-1 text-body text-muted"
-      >
-        <DisclosureIcon size={10} className={`shrink-0 ${open ? "rotate-90" : ""}`} />
+      <DisclosureButton open={open} panelId={panelId} onToggle={() => setChosen(!open)}>
         {paths ? t("batchUninstall.showCommandsAndPaths") : t("commandPreview.show", { count: plans.length })}
-      </button>
+      </DisclosureButton>
       {open ? (
         <div id={panelId} data-batch-plans="" className="mt-1 flex flex-col gap-2">
           {plans.map(({ id, name, action }) => (
