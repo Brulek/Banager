@@ -820,8 +820,10 @@ Banager's or anyone's — overlapped its `brew uses` read
 opened read-only and never created, and `fcntl(F_GETLK)` asks whether the
 lock is held without taking it. Every install, uninstall and upgrade
 preview also reads the `brew.env` files named above
-(`read_brew_env_file`): each is opened only when `stat` says it is a
-regular file (links followed), checked again once open, and read whole;
+(`read_brew_env_file`): each is opened without waiting (links followed,
+`O_NONBLOCK`, so a named pipe there cannot stall it), checked with `fstat`
+once open, and read only when that says it is a regular file of at most
+16 MiB (`read_file::LIMIT`) — otherwise it is skipped as unreadable;
 only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
 `HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME` or
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` are used. A cask's uninstall preview
@@ -830,9 +832,10 @@ cask's name, and only when that is a folder and not a link
 (`read_recorded`) — the names in its `.metadata` folder and in each folder
 there, whether `Casks/<token>.json`, `Casks/<token>.internal.json` or
 `Casks/<token>.rb` exists in the newest, then `.metadata/INSTALL_RECEIPT.json`
-and, when it is the one there, the `.json` caskfile: each is opened only
-when `stat` says it is a regular file (links followed), checked again once
-open, read whole and parsed as JSON. The `.internal.json` and `.rb`
+and, when it is the one there, the `.json` caskfile: each is opened
+without waiting (links followed), checked with `fstat` once open, and read
+and parsed as JSON only when that says it is a regular file of at most
+16 MiB. The `.internal.json` and `.rb`
 caskfiles are never opened.
 
 ## npm
@@ -1054,7 +1057,9 @@ starts inherits the switch. A cargo that is not rustup's ignores it.
 
 **Read-only reads.** `inventory` runs no command: it reads
 `<CARGO_HOME>/.crates2.json`, the file `cargo install` keeps its records
-in (a missing file means nothing is installed). For each crate it also
+in (a missing file means nothing is installed; the file is opened without
+waiting and read only when `fstat` says it is a regular file of at most
+16 MiB, and anything else is an error for the source). For each crate it also
 records the program the crate installed, `<CARGO_HOME>/bin/<binary>` (the
 binary named after the crate when there is one, else the first the record
 lists), which the Other Programs page uses to place that program under Cargo
@@ -1119,7 +1124,9 @@ Banager that refused. Recorded in `docs/superpowers/backlog.md`.
 
 For each pulled model `check_updates` reads the local manifest file
 `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
-and compares its layer digests with the registry's. The three name parts
+(opened without waiting, and read only when `fstat` says it is a regular
+file of at most 16 MiB; otherwise the model is "could not check") and
+compares its layer digests with the registry's. The three name parts
 come out of the daemon's `/api/tags` answer, so before any path is built
 each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
@@ -2480,7 +2487,8 @@ All read-only, none saved anywhere else, none uploaded:
   such file, and, when that one does not resolve to this copy, on down
   `PATH` the same way until one does or `PATH` ends;
   `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
-  and discarded; a missing file or key means `latest`).
+  and discarded, only when it is a regular file of at most 16 MiB, opened
+  without waiting; a missing or unreadable file or key means `latest`).
   For an uninstall preview, when it is confirmed, and again right before
   each path is moved: `lstat` and the resolved path of each path on the
   uninstall list and of the folder it is in, the resolved home folder and
@@ -2530,9 +2538,10 @@ All read-only, none saved anywhere else, none uploaded:
   `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
   the shell startup files named in its section (eight under your home, and
   zsh's three under `ZDOTDIR` when that names another folder), each
-  opened only when `stat` says it is a regular file (links followed), its
-  device and inode taken from the open file (`fstat`) so that two names
-  of one file share one copy, read whole, and only searched for a line
+  opened without waiting (links followed) and read only when `fstat` on
+  the open file says it is a regular file of at most 16 MiB, its device
+  and inode taken from that `fstat` so that two names of one file share
+  one copy, and only searched for a line
   about Cargo's env file and for whether the lines above it stand alone,
   as its section says; nothing else under
   `RUSTUP_HOME` is ever read. After an uninstall: whether
