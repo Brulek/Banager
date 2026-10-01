@@ -1944,7 +1944,14 @@ stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
 `lib/node_modules` under its global prefix; Ollama's `~/.ollama`; Claude
 Code's `~/.local/share/claude`; Antigravity CLI's
-`~/.gemini/antigravity-cli`; Grok Build's `~/.grok`).
+`~/.gemini/antigravity-cli`; Grok Build's `~/.grok`; Codex's
+`~/.codex/packages/standalone`; opencode's `~/.opencode`; and uv's
+`~/.local/share/uv/python`, where `uv python install` puts the Pythons it
+manages, so its `~/.local/bin/python3.12` and the like are uv's, not
+listed). uv's folder is the default its docs give
+(docs.astral.sh/uv/reference/storage, "Python versions"):
+`UV_PYTHON_INSTALL_DIR` or `XDG_DATA_HOME` would move it, but Banager is
+handed only the shell's `PATH`, so a Python installed elsewhere is listed.
 A regular file in a tool's own bin directory whose name is one of the
 backup patterns that tool's recipe declares — `agy.<time>.old` in
 `~/.local/bin`, the copies Antigravity's updater leaves — is that tool's

@@ -306,10 +306,12 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 /// `standalone-opencode` → `~/.opencode`, each the
 /// instance's `prefix`; `standalone-rustup` nothing (its root is the
 /// Cargo home, whose `bin/` is scanned; rule 1 has the launcher and its
-/// proxies, rule 2 the `cargo install`ed programs). A row here with no
+/// proxies, rule 2 the `cargo install`ed programs). uv owns the folder
+/// its managed Pythons are installed in, `~/.local/share/uv/python` under
+/// `home` (`uv_python_dir`). A row here with no
 /// adapter that can produce its instance would be a definition without a
 /// producer (spec §十).
-pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
+pub fn owned_roots(inst: &ManagerInstance, home: &Path) -> Vec<PathBuf> {
     match inst.adapter_id.as_str() {
         // Not `/Applications`: a cask claims its own `.app` through rule
         // 2 (`InstalledArtifact.path`, brew/parse.rs), and the directory
@@ -350,13 +352,30 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
         | "standalone-grok"
         | "standalone-codex"
         | "standalone-opencode" => vec![inst.prefix.clone()],
+        // uv: the Pythons `uv python install` puts in its data folder,
+        // whose executables it links from `~/.local/bin` (`python3.12 ->
+        // ~/.local/share/uv/python/cpython-3.12-macos-aarch64-none/bin/
+        // python3.12`). Never the prefix, which is `exe_path.parent()`.
+        // Its tools are rule 2's, through the tool venv their artifacts
+        // carry.
+        "uv" => vec![uv_python_dir(home)],
         // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
         // scanned; rule 1 places the proxies and rule 2 places
-        // `cargo install`ed binaries. uv and (from Task 3b) pipx: rule 2,
-        // through the tool venv their artifacts carry. pip: a
-        // `parent()`-derived prefix, never a root.
+        // `cargo install`ed binaries. pipx (from Task 3b): rule 2, through
+        // the tool venv its artifacts carry. pip: a `parent()`-derived
+        // prefix, never a root.
         _ => Vec::new(),
     }
+}
+
+/// Where uv installs the Pythons it manages, by default: the `python/`
+/// folder of its data folder, `~/.local/share/uv/python` (uv's docs,
+/// docs.astral.sh/uv/reference/storage, "Python versions"; read as text,
+/// uv never run). `UV_PYTHON_INSTALL_DIR` or `XDG_DATA_HOME` would move it,
+/// but Banager is handed only the shell's `PATH` (`HostEnv`), so a Python
+/// installed elsewhere is not placed and its link is listed.
+pub fn uv_python_dir(home: &Path) -> PathBuf {
+    home.join(".local/share/uv/python")
 }
 
 /// What the registered sources have said is theirs, indexed once per scan
@@ -461,7 +480,7 @@ impl Known {
         let owned = instances
             .iter()
             .flat_map(|inst| {
-                owned_roots(inst).into_iter().filter_map(move |root| {
+                owned_roots(inst, home).into_iter().filter_map(move |root| {
                     let canonical = std::fs::canonicalize(root).ok()?;
                     Some((canonical, inst.id.clone()))
                 })
@@ -1045,12 +1064,13 @@ mod tests {
 
     #[test]
     fn test_owned_roots_table() {
+        let home = Path::new("/Users/someone");
         let brew = ManagerInstance {
             prefix: PathBuf::from("/opt/homebrew"),
             ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
         };
         assert_eq!(
-            owned_roots(&brew),
+            owned_roots(&brew, home),
             vec![
                 PathBuf::from("/opt/homebrew/Cellar"),
                 PathBuf::from("/opt/homebrew/Caskroom"),
@@ -1062,7 +1082,7 @@ mod tests {
             ..crate::testing::manager_instance("ollama", "ollama:http://127.0.0.1:11434")
         };
         assert_eq!(
-            owned_roots(&ollama),
+            owned_roots(&ollama, home),
             vec![PathBuf::from("/Users/someone/.ollama")]
         );
         // npm: where global packages unpack and every bin link points
@@ -1073,7 +1093,7 @@ mod tests {
             ..crate::testing::manager_instance("npm", "npm:/usr/local")
         };
         assert_eq!(
-            owned_roots(&npm),
+            owned_roots(&npm, home),
             vec![PathBuf::from("/usr/local/lib/node_modules")]
         );
         // A standalone tool owns its root: the launcher is the instance's
@@ -1084,7 +1104,7 @@ mod tests {
             ..crate::testing::manager_instance("standalone-claude", "standalone-claude")
         };
         assert_eq!(
-            owned_roots(&claude),
+            owned_roots(&claude, home),
             vec![PathBuf::from("/Users/someone/.local/share/claude")]
         );
         // The two other path-list tools own their roots the same way
@@ -1104,8 +1124,22 @@ mod tests {
                 prefix: PathBuf::from(prefix),
                 ..crate::testing::manager_instance(adapter, adapter)
             };
-            assert_eq!(owned_roots(&inst), vec![PathBuf::from(prefix)], "{adapter}");
+            assert_eq!(
+                owned_roots(&inst, home),
+                vec![PathBuf::from(prefix)],
+                "{adapter}"
+            );
         }
+        // uv: the folder its managed Pythons are in, under the home
+        // folder -- never its `parent()`-derived prefix, `~/.local/bin`.
+        let uv = ManagerInstance {
+            prefix: PathBuf::from("/Users/someone/.local/bin"),
+            ..crate::testing::manager_instance("uv", "uv")
+        };
+        assert_eq!(
+            owned_roots(&uv, home),
+            vec![PathBuf::from("/Users/someone/.local/share/uv/python")]
+        );
         // A `parent()`-derived prefix, or `$CARGO_HOME`, is never a root.
         for (adapter, id, prefix) in [
             (
@@ -1113,7 +1147,6 @@ mod tests {
                 "cargo:/Users/someone/.cargo",
                 "/Users/someone/.cargo",
             ),
-            ("uv", "uv", "/Users/someone/.local/bin"),
             ("pipx", "pipx", "/Users/someone/.local/bin"),
             ("pip", "pip:/usr/bin/python3", "/usr/bin"),
             // rustup's root is the Cargo home, whose `bin/` is the very
@@ -1131,7 +1164,7 @@ mod tests {
                 prefix: PathBuf::from(prefix),
                 ..crate::testing::manager_instance(adapter, id)
             };
-            assert_eq!(owned_roots(&inst), Vec::<PathBuf>::new(), "{adapter}");
+            assert_eq!(owned_roots(&inst, home), Vec::<PathBuf>::new(), "{adapter}");
         }
     }
 

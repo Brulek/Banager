@@ -793,6 +793,127 @@ fn test_rule_3_claims_an_npm_global_cli_under_a_home_prefix() {
 }
 
 #[test]
+fn test_rule_3_claims_the_links_to_pythons_uv_manages_and_nothing_else() {
+    // `uv python install 3.12` puts the Python in uv's data folder and
+    // links `~/.local/bin/python3.12` to it through the minor-version
+    // folder, itself a link to the patch release (uv's docs, "Minor
+    // version directories"). The shape of the author's Mac, names
+    // invented. uv's own executable lives elsewhere and its prefix is
+    // `~/.local/bin` (uv.rs takes `exe_path.parent()`), so neither rule 0
+    // nor the prefix is why anything is claimed: only uv's Python folder.
+    let home = Home::new("rule-3-uv-python");
+    let bin = home.dir(".local/bin");
+    let pythons = home.dir(".local/share/uv/python");
+    let patch = home.dir(".local/share/uv/python/cpython-3.12.14-macos-aarch64-none/bin");
+    exe(&patch, "python3.12", b"x");
+    link(
+        &pythons,
+        "cpython-3.12-macos-aarch64-none",
+        Path::new("cpython-3.12.14-macos-aarch64-none"),
+    );
+    link(
+        &bin,
+        "python3.12",
+        &pythons.join("cpython-3.12-macos-aarch64-none/bin/python3.12"),
+    );
+    // A minor version pip never asks about, linked to its patch folder
+    // straight away.
+    let older = home.dir(".local/share/uv/python/cpython-3.9.23-macos-aarch64-none/bin");
+    exe(&older, "python3.9", b"x");
+    link(&bin, "python3.9", &older.join("python3.9"));
+    // A Python uv does not manage, and a program of the user's own.
+    let other = home.dir(".pyenv/versions/3.11.9/bin");
+    exe(&other, "python3.11", b"x");
+    link(&bin, "python3.11", &other.join("python3.11"));
+    exe(&bin, "my-script", b"x");
+    let uv = ManagerInstance {
+        exe_path: home.path().join("elsewhere/uv"),
+        prefix: bin.clone(),
+        ..manager_instance("uv", "uv")
+    };
+
+    let scan = scan_dirs(
+        std::slice::from_ref(&bin),
+        &home.env(vec![]),
+        &[uv],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let names: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        names,
+        vec![
+            tilde(".local/bin/my-script"),
+            tilde(".local/bin/python3.11")
+        ]
+    );
+    assert_eq!(scan.attributed, 2);
+
+    // Without uv the same links are listed, as any owner's are once it
+    // is gone.
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+    assert_eq!(scan.entries.len(), 4, "{:?}", scan.entries);
+    assert_eq!(scan.attributed, 0);
+}
+
+#[test]
+fn test_rule_3_does_not_place_a_uv_python_installed_outside_the_default_folder() {
+    // `UV_PYTHON_INSTALL_DIR` moves uv's Pythons, but Banager is handed
+    // only the shell's `PATH`: a Python elsewhere is not uv's to this
+    // scan, and neither is a link uv left pointing at one it removed.
+    let home = Home::new("rule-3-uv-elsewhere");
+    let bin = home.dir(".local/bin");
+    home.dir(".local/share/uv/python");
+    let moved = home.dir("pythons/cpython-3.13.5-macos-aarch64-none/bin");
+    exe(&moved, "python3.13", b"x");
+    link(&bin, "python3.13", &moved.join("python3.13"));
+    link(
+        &bin,
+        "python3.10",
+        &home
+            .path()
+            .join(".local/share/uv/python/cpython-3.10.18-macos-aarch64-none/bin/python3.10"),
+    );
+    let uv = ManagerInstance {
+        exe_path: home.path().join("elsewhere/uv"),
+        prefix: bin.clone(),
+        ..manager_instance("uv", "uv")
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[uv],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let rows: Vec<(PathBuf, EntryKind)> = scan
+        .entries
+        .iter()
+        .map(|e| (e.path.clone(), e.kind))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (tilde(".local/bin/python3.10"), EntryKind::BrokenSymlink),
+            (tilde(".local/bin/python3.13"), EntryKind::Symlink),
+        ]
+    );
+    assert_eq!(scan.attributed, 0);
+}
+
+#[test]
 fn test_rule_3_never_treats_a_parent_derived_prefix_as_owned() {
     // The counter-example spec §8.3 is built around: a pip instance whose
     // prefix is `~/.local/bin` itself (pip.rs:125-128 takes
