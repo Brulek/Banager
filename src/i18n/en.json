@@ -1061,6 +1061,34 @@
       "measuring": "Measuring the space used…"
     }
   },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "groups": {
+      "window": "Window",
+      "list": "Lists",
+      "dialog": "Dialogs"
+    },
+    "rows": {
+      "settings": "Open Settings",
+      "overview": "Go to Overview",
+      "updates": "Go to Updates",
+      "installed": "Go to Installed",
+      "unknown": "Go to Other Programs",
+      "checkAgain": "Check installed tools and updates again",
+      "search": "Search Installed",
+      "closeWindow": "Close the window. Anything under way carries on; click the Dock icon to open it again.",
+      "quit": "Quit. If an operation hasn't finished, you're asked first.",
+      "move": "Move to the previous or next item in a list, the sidebar or a menu",
+      "page": "Move up or down a page in a list. On a MacBook, press fn with ↑ or ↓.",
+      "ends": "Move to the first or last item. On a MacBook, press fn with ← or →.",
+      "tick": "Tick or untick the row. On Installed, a row without a checkbox shows or hides its details instead.",
+      "details": "On Installed, show the row's details and move to them",
+      "closeDetails": "On Installed, close the details and go back to the row",
+      "tab": "Move to the next or previous control. In a list, only the current row is a stop.",
+      "press": "Press the focused button. An uninstall confirmation opens with the focus on Cancel.",
+      "escape": "Close a dialog or menu. An open ⓘ closes first."
+    }
+  },
   "clarity": {
     "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",

@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
+import { ShortcutsSheet } from "./components/ShortcutsSheet";
 import { ToolSetupSheet } from "./components/ToolSetupSheet";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { WelcomeSheet } from "./components/WelcomeSheet";
@@ -304,6 +305,8 @@ function App() {
       <QuitQuestion />
       {/* Help's Check Tool Setup… and Settings' Check… open it, over any page. */}
       <ToolSetupSheet />
+      {/* Help's Keyboard Shortcuts opens it, over any page. */}
+      <ShortcutsSheet />
       {/* The first time Banager opens, and never again; the first check
           runs behind it. */}
       <WelcomeSheet />

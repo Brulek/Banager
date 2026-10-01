@@ -313,6 +313,7 @@ describe("the menu bar's events", () => {
     "menu://check-tool-setup",
     "menu://copy-diagnostics",
     "menu://installed",
+    "menu://keyboard-shortcuts",
     "menu://overview",
     "menu://search",
     "menu://settings",
@@ -336,7 +337,7 @@ describe("the menu bar's events", () => {
     });
   });
 
-  it("are the ten Rust sends, one per item acting in the page, each calling back with its item", async () => {
+  it("are the eleven Rust sends, one per item acting in the page, each calling back with its item", async () => {
     const chosen: MenuCommand[] = [];
     await onMenuCommand((command) => chosen.push(command));
 
@@ -351,6 +352,7 @@ describe("the menu bar's events", () => {
       "menu://unknown",
       "menu://check-again",
       "menu://welcome",
+      "menu://keyboard-shortcuts",
       "menu://check-tool-setup",
       "menu://copy-diagnostics",
       "menu://search",
@@ -366,13 +368,14 @@ describe("the menu bar's events", () => {
       "unknown",
       "checkAgain",
       "welcome",
+      "keyboardShortcuts",
       "checkToolSetup",
       "copyDiagnostics",
       "search",
     ]);
   });
 
-  it("stop being listened for, all ten, through what onMenuCommand resolves to", async () => {
+  it("stop being listened for, all eleven, through what onMenuCommand resolves to", async () => {
     const stop = await onMenuCommand(() => {});
     expect(stopped).toEqual([]);
 

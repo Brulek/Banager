@@ -2,7 +2,8 @@
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
  * Settings… (⌘,); the View menu's Overview, Updates, Installed and Other
  * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F); Help's Welcome
- * to Banager, Check Tool Setup and Copy Diagnostic Info. Each does what
+ * to Banager, Keyboard Shortcuts, Check Tool Setup and Copy Diagnostic
+ * Info. Each does what
  * the page's own
  * control for it does,
  * through the same code, so the two cannot drift apart. The menu bar's other items are macOS's own and never
@@ -11,6 +12,7 @@
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
 import { useDiagnosticsReveal } from "./diagnostics";
+import { openShortcutsSheet } from "./shortcuts";
 import { openToolSetupSheet } from "./toolSetupCheck";
 import { openWelcomeSheet } from "./welcome";
 import { useCheckAgain } from "./queries";
@@ -30,6 +32,8 @@ import { useUiStore } from "../store/ui";
  *   on whatever had the focus.
  * - Welcome to Banager shows the sheet the first launch showed
  *   (`WelcomeSheet`) again, over whatever page is showing.
+ * - Keyboard Shortcuts opens the sheet that lists them
+ *   (`ShortcutsSheet`), over whatever page is showing: it only shows.
  * - Check Tool Setup… opens the sheet Settings' 「检查…」 opens
  *   (`ToolSetupSheet`), over whatever page is showing: it only reads.
  * - Copy Diagnostic Info… opens Settings on its 「拷贝诊断信息」 button,
@@ -57,6 +61,7 @@ export function useMenuCommands(): void {
       checkAgain,
       search: searchInstalled,
       welcome: openWelcomeSheet,
+      keyboardShortcuts: openShortcutsSheet,
       checkToolSetup: openToolSetupSheet,
       copyDiagnostics: () => {
         openPage("settings");

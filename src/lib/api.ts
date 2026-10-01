@@ -195,8 +195,8 @@ export function setMenuLanguage(language: MenuLanguage): Promise<void> {
  * the page is chosen, by what the page does for it: Settings… (⌘,); the
  * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Other
  * Programs (⌘4); Check Again (⌘R); Search (⌘F); and Help's Welcome to
- * Banager, Check Tool Setup and Copy Diagnostic Info. `PageCommand` in
- * src-tauri/src/menu.rs sends these ten.
+ * Banager, Keyboard Shortcuts, Check Tool Setup and Copy Diagnostic Info.
+ * `PageCommand` in src-tauri/src/menu.rs sends these eleven.
  */
 export const MENU_EVENTS = {
   settings: "menu://settings",
@@ -207,6 +207,7 @@ export const MENU_EVENTS = {
   checkAgain: "menu://check-again",
   search: "menu://search",
   welcome: "menu://welcome",
+  keyboardShortcuts: "menu://keyboard-shortcuts",
   checkToolSetup: "menu://check-tool-setup",
   copyDiagnostics: "menu://copy-diagnostics",
 } as const;
@@ -215,7 +216,7 @@ export type MenuCommand = keyof typeof MENU_EVENTS;
 
 /**
  * Calls `onCommand` each time one of those items is chosen, and resolves to
- * what stops that once the window listens for all eight. If one cannot be
+ * what stops that once the window listens for all of them. If one cannot be
  * listened for, those that could are stopped again and this rejects.
  * `useMenuCommands` is the caller.
  */

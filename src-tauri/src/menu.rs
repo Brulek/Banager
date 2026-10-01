@@ -12,8 +12,9 @@
 //! Mail's; Check Again; Search -- bring the window back if it was closed
 //! or minimized and tell it, one event each (`PageCommand`, through
 //! `window::show_and_tell`), and the page runs the code its own controls
-//! run (src/lib/menu.ts). Help has three items of Banager's: Welcome to
-//! Banager, which shows again the sheet the first launch showed; Check Tool
+//! run (src/lib/menu.ts). Help has four items of Banager's: Welcome to
+//! Banager, which shows again the sheet the first launch showed; Keyboard
+//! Shortcuts, a sheet of the keys Banager answers to; Check Tool
 //! Setup…, which opens the sheet Settings' About opens too; and Copy
 //! Diagnostic Info…, which the page answers by opening Settings on its
 //! button of that name, focused: the copy is the button's click, which a
@@ -68,6 +69,11 @@ pub enum PageCommand {
     /// open. Closing it saves nothing new: it was shown already. No
     /// ellipsis, as it asks nothing more, and no shortcut.
     Welcome,
+    /// Help's Keyboard Shortcuts: a sheet listing the keys Banager answers
+    /// to (src/components/ShortcutsSheet.tsx) -- this menu bar's shortcuts,
+    /// and the lists' and dialogs' keys -- over whatever page is open. No
+    /// ellipsis, as it only shows, and no shortcut.
+    KeyboardShortcuts,
     /// Help's Check Tool Setup…: the sheet that says how this Mac's
     /// command-line tools are set up (src/components/ToolSetupSheet.tsx),
     /// over whatever page is open, as Settings' About opens it. No
@@ -83,7 +89,7 @@ pub enum PageCommand {
 impl PageCommand {
     /// In the menu bar's order: Settings… in the app's menu, then View's,
     /// then Help's.
-    pub const ALL: [PageCommand; 10] = [
+    pub const ALL: [PageCommand; 11] = [
         PageCommand::Settings,
         PageCommand::Overview,
         PageCommand::Updates,
@@ -92,6 +98,7 @@ impl PageCommand {
         PageCommand::CheckAgain,
         PageCommand::Search,
         PageCommand::Welcome,
+        PageCommand::KeyboardShortcuts,
         PageCommand::CheckToolSetup,
         PageCommand::CopyDiagnostics,
     ];
@@ -107,13 +114,14 @@ impl PageCommand {
             PageCommand::CheckAgain => "check-again",
             PageCommand::Search => "search",
             PageCommand::Welcome => "welcome",
+            PageCommand::KeyboardShortcuts => "keyboard-shortcuts",
             PageCommand::CheckToolSetup => "check-tool-setup",
             PageCommand::CopyDiagnostics => "copy-diagnostics",
         }
     }
 
     /// The event the window hears; src/lib/api.ts's `MENU_EVENTS` spells
-    /// the same ten.
+    /// the same eleven.
     pub fn event(self) -> &'static str {
         match self {
             PageCommand::Settings => "menu://settings",
@@ -124,13 +132,14 @@ impl PageCommand {
             PageCommand::CheckAgain => "menu://check-again",
             PageCommand::Search => "menu://search",
             PageCommand::Welcome => "menu://welcome",
+            PageCommand::KeyboardShortcuts => "menu://keyboard-shortcuts",
             PageCommand::CheckToolSetup => "menu://check-tool-setup",
             PageCommand::CopyDiagnostics => "menu://copy-diagnostics",
         }
     }
 
     /// Its shortcut, as tauri writes one: ⌘, ⌘1 ⌘2 ⌘3 ⌘4 ⌘R ⌘F on a Mac;
-    /// none for Help's three.
+    /// none for Help's four.
     pub fn shortcut(self) -> Option<&'static str> {
         match self {
             PageCommand::Settings => Some("CmdOrCtrl+Comma"),
@@ -140,9 +149,10 @@ impl PageCommand {
             PageCommand::Unknown => Some("CmdOrCtrl+4"),
             PageCommand::CheckAgain => Some("CmdOrCtrl+R"),
             PageCommand::Search => Some("CmdOrCtrl+F"),
-            PageCommand::Welcome | PageCommand::CheckToolSetup | PageCommand::CopyDiagnostics => {
-                None
-            }
+            PageCommand::Welcome
+            | PageCommand::KeyboardShortcuts
+            | PageCommand::CheckToolSetup
+            | PageCommand::CopyDiagnostics => None,
         }
     }
 
@@ -241,10 +251,13 @@ struct Words {
     /// as the sheet's title names it (`welcome.title` in src/i18n, whose
     /// `{{name}}` is the app's name), which a test checks.
     welcome: &'static str,
-    /// Help's second, named as the page names it (`setupCheck.menu` in
+    /// Help's second, named as the sheet's title names it
+    /// (`shortcuts.title` in src/i18n), which a test checks.
+    keyboard_shortcuts: &'static str,
+    /// Help's third, named as the page names it (`setupCheck.menu` in
     /// src/i18n), which a test checks.
     check_tool_setup: &'static str,
-    /// Help's third; Settings' button says the same
+    /// Help's fourth; Settings' button says the same
     /// (`diagnostics.copy` in src/i18n), which a test checks.
     copy_diagnostics: &'static str,
 }
@@ -279,6 +292,7 @@ const ENGLISH: Words = Words {
     bring_all_to_front: "Bring All to Front",
     help: "Help",
     welcome: "Welcome to {app}",
+    keyboard_shortcuts: "Keyboard Shortcuts",
     check_tool_setup: "Check Tool Setup…",
     copy_diagnostics: "Copy Diagnostic Info…",
 };
@@ -313,6 +327,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     bring_all_to_front: "前置全部窗口",
     help: "帮助",
     welcome: "欢迎使用{app}",
+    keyboard_shortcuts: "键盘快捷键",
     check_tool_setup: "检查工具环境…",
     copy_diagnostics: "拷贝诊断信息…",
 };
@@ -323,8 +338,8 @@ const SIMPLIFIED_CHINESE: Words = Words {
 /// sidebar's Overview, Updates and Installed and the last row under its
 /// 「来源」, Other Programs, ⌘1 to ⌘4 as Finder's and Mail's are, then the
 /// page's Check Again and Search; the Window menu; and Help, under the
-/// search field macOS puts there: Welcome to Banager, then, apart, Check
-/// Tool Setup and Copy Diagnostic Info.
+/// search field macOS puts there: Welcome to Banager and Keyboard
+/// Shortcuts, then, apart, Check Tool Setup and Copy Diagnostic Info.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
@@ -397,6 +412,7 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
             label: words.help.to_string(),
             items: vec![
                 page(PageCommand::Welcome, &named(words.welcome)),
+                page(PageCommand::KeyboardShortcuts, words.keyboard_shortcuts),
                 Item::Separator,
                 page(PageCommand::CheckToolSetup, words.check_tool_setup),
                 page(PageCommand::CopyDiagnostics, words.copy_diagnostics),
@@ -666,6 +682,7 @@ mod tests {
                     "Help",
                     &[
                         "Welcome to Banager",
+                        "Keyboard Shortcuts",
                         "—",
                         "Check Tool Setup…",
                         "Copy Diagnostic Info…",
@@ -717,7 +734,13 @@ mod tests {
                 ("窗口", &["最小化", "缩放", "—", "前置全部窗口"]),
                 (
                     "帮助",
-                    &["欢迎使用Banager", "—", "检查工具环境…", "拷贝诊断信息…"]
+                    &[
+                        "欢迎使用Banager",
+                        "键盘快捷键",
+                        "—",
+                        "检查工具环境…",
+                        "拷贝诊断信息…"
+                    ]
                 ),
             ])
         );
@@ -744,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn test_every_item_but_the_pages_ten_is_macos_own() {
+    fn test_every_item_but_the_pages_eleven_is_macos_own() {
         let bar = menu_bar(MenuLanguage::En, "Banager");
         let items: Vec<&Item> = bar.iter().flat_map(|menu| &menu.items).collect();
         let pages: Vec<PageCommand> = items
@@ -816,6 +839,7 @@ mod tests {
                 ("check-again", "menu://check-again", Some("CmdOrCtrl+R")),
                 ("search", "menu://search", Some("CmdOrCtrl+F")),
                 ("welcome", "menu://welcome", None),
+                ("keyboard-shortcuts", "menu://keyboard-shortcuts", None),
                 ("check-tool-setup", "menu://check-tool-setup", None),
                 ("copy-diagnostics", "menu://copy-diagnostics", None),
             ]
@@ -842,6 +866,7 @@ mod tests {
             Some(Code::Digit4),
             Some(Code::KeyR),
             Some(Code::KeyF),
+            None,
             None,
             None,
             None,
@@ -912,6 +937,11 @@ mod tests {
                     .as_str()
                     .unwrap()
                     .replace("{{name}}", "Banager")
+            );
+            // Keyboard Shortcuts as the sheet's title names it.
+            assert_eq!(
+                words.keyboard_shortcuts,
+                locale["shortcuts"]["title"].as_str().unwrap()
             );
             // And Check Tool Setup… as the page names it.
             assert_eq!(
