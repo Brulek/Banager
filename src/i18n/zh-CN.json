@@ -314,9 +314,9 @@
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {
-      "title": "最近更新",
+      "title": "最近的更新记录",
       "clear": "清除",
-      "clearLabel": "清除“最近更新”列表"
+      "clearLabel": "清除“最近的更新记录”列表"
     },
     "confirmTitleNamed": "要更新“{{name}}”吗？",
     "confirmTitle_other": "要更新{{count}}个工具吗？",

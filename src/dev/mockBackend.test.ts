@@ -857,7 +857,7 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
     const start = await answer<HistoryView>(backend.invoke("get_history"));
     expect(start.records.some((r) => r.result !== "Succeeded")).toBe(true);
     expect(start.records.some((r) => r.kind === "Uninstall")).toBe(true);
-    // An update that failed and one to check, for 「最近更新」 to list among the rest.
+    // An update that failed and one to check, for 「最近的更新记录」 to list among the rest.
     expect(start.records.filter((r) => r.kind === "Update").map((r) => r.result)).toEqual(
       expect.arrayContaining([{ Failed: { cause: "network" } }, { NeedsAttention: "UnchangedAfterUpgrade" }]),
     );

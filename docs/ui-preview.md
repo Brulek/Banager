@@ -247,8 +247,8 @@ Paths are under a generic home folder, `/Users/you`.
   puts the focus on its first row. No such line says how many Terminal
   can't find: Grok Build's own notice already says it. A choice that
   hides the selected tool closes its details.
-- The Updates page lists 「最近更新」 under its rows, as the App Store
-  lists Recently Updated under Pending (scroll to the end of the list):
+- The Updates page lists 「最近的更新记录」 under its rows, as the App Store
+  lists Update History under Pending (scroll to the end of the list):
   seven of the ten records the pretend history holds from earlier
   launches (`src/dev/mockHistory.ts`) -- htop and ripgrep today, then
   prettier, httpie with 「未能更新：网络连接失败」, typescript with
@@ -259,7 +259,7 @@ Paths are under a generic home folder, `/Users/you`.
   (as if updated in Terminal since); nor are an uninstall (yt-dlp) and
   an update older than 30 days (ffmpeg). An update the preview runs keeps its tick in its
   own row until the check after it, then is added at the top of
-  「最近更新」; with nothing left to install, 「最近更新」 is at the top of
+  「最近的更新记录」; with nothing left to install, 「最近的更新记录」 is at the top of
   the page. 清除 empties the list until the page reloads.
 - youtube-dl's details have every row the details can have for a
   Homebrew formula at once, for checking their order: under the

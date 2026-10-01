@@ -1,9 +1,9 @@
 /**
  * The history Banager keeps across launches (`history.json`, Rust
- * `banager_core::history`), as the Updates page's 「最近更新」 reads it:
+ * `banager_core::history`), as the Updates page's 「最近的更新记录」 reads it:
  * the updates of the last 30 days -- those that worked, and those that did
  * not or ask to be checked -- still listed after Banager is quit and
- * opened again, as the Mac App Store keeps "Recently Updated". This window's own operations stay `justUpdatedOps`'s
+ * opened again, as the Mac App Store keeps "Update History". This window's own operations stay `justUpdatedOps`'s
  * (src/components/JustUpdated.tsx); the history adds what this window did
  * not see, and never a tool twice.
  */
@@ -13,7 +13,7 @@ import { queryKeys } from "./queryKeys";
 import { artifactKeyId } from "../store/ui";
 import { NO_HISTORY, type HistoryRecord, type HistoryResult, type HistoryView, type OpSummary } from "./types";
 
-/** How far back 「最近更新」 lists: 30 days. */
+/** How far back 「最近的更新记录」 lists: 30 days. */
 export const RECENT_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -49,7 +49,7 @@ export function useClearHistory(): UseMutationResult<HistoryView, Error, void> {
 }
 
 /**
- * Whether 「最近更新」 lists an update that ended so: one that worked, one
+ * Whether 「最近的更新记录」 lists an update that ended so: one that worked, one
  * that did not (「未能更新」, with its cause where the tool's words gave
  * one), and one to check (「结果不符」: nothing changed, or Banager could
  * not confirm it). Not one the person cancelled: they know of it.
@@ -59,7 +59,7 @@ export function listedResult(result: HistoryResult): boolean {
 }
 
 /**
- * The records 「最近更新」 adds to what this window saw, newest first: per
+ * The records 「最近的更新记录」 adds to what this window saw, newest first: per
  * tool, its newest kept operation, when that is an update that ended in a
  * way to know of (`listedResult`) -- the rule `justUpdatedOps` has for this
  * window's own -- finished in the last `RECENT_DAYS` and after the last

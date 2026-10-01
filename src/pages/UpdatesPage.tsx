@@ -84,7 +84,7 @@ import {
 import type { UpdateState } from "../lib/updateState";
 
 // The virtualizer's first guesses: a row, the "N more can't be updated
-// here" line and the line under it, a notice's line, and "Recently Updated"
+// here" line and the line under it, a notice's line, and "Update History"
 // -- its heading, then a line a tool. Each slot then measures itself
 // through `measureElement`.
 const ROW_ESTIMATE = 52;
@@ -168,7 +168,7 @@ export function useUpdatesHeadline(): string | null {
  * headings the list used to be grouped under. First, while there is
  * anything to say, what the sources had to say about this check -- the
  * list's first row, which scrolls away with it (spec §3.8) -- then the
- * rows, and after them, while there is anything in it, "Recently Updated"
+ * rows, and after them, while there is anything in it, "Update History"
  * (`JustUpdated`): under the updates still to install, as the App Store's
  * is under Pending, or right under the notices when there are none.
  */
@@ -316,7 +316,7 @@ export function UpdatesPage() {
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
   const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
-  // What the history kept, for 「最近更新」 after a restart (src/lib/history.ts).
+  // What the history kept, for 「最近的更新记录」 after a restart (src/lib/history.ts).
   const { data: history = NO_HISTORY } = useHistory();
   const clearHistory = useClearHistory();
   const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
@@ -492,7 +492,7 @@ export function UpdatesPage() {
     });
   }, [actionableRows, startableUpdates, selectedUpdates]);
 
-  // "Recently Updated": this session's updates that ended -- worked, or
+  // "Update History": this session's updates that ended -- worked, or
   // did not, or ask to be checked -- once their rows have gone
   // (`justUpdatedOps`). Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
@@ -646,12 +646,12 @@ export function UpdatesPage() {
           candidate.warnings.some((warning) => warningMessage(warning) !== null),
       ).length;
 
-  // 「最近更新」 comes after the updates still to install, as the App
-  // Store's Recently Updated comes under Pending: what is to be done
+  // 「最近的更新记录」 comes after the updates still to install, as the App
+  // Store's Update History comes under Pending: what is to be done
   // first, what was done after. An update that finishes in this window
   // keeps its tick in its own row, where it was pressed, until the check
   // after it lands (`justUpdatedOps`); only then does it move down to the
-  // top of 「最近更新」, as 「今天…」. With nothing to install, it is the
+  // top of 「最近的更新记录」, as 「今天…」. With nothing to install, it is the
   // only list, right under the notices.
   const items = useMemo<ListItem[]>(() => {
     const recent = justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : [];
@@ -678,7 +678,7 @@ export function UpdatesPage() {
     ];
   }, [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show]);
 
-  // Once Clear has taken 「最近更新」 away, its button with it, the focus
+  // Once Clear has taken 「最近的更新记录」 away, its button with it, the focus
   // goes to the list's first row, or, with no list, the page's title --
   // not the window's body, from where the next Tab would start over at
   // the sidebar. The history's own lines go when it answers, so this

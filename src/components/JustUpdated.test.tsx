@@ -136,10 +136,10 @@ describe("JustUpdated", () => {
     const onClear = vi.fn();
     renderWithProviders(<JustUpdated entries={[entry]} onClear={onClear} />);
 
-    const section = screen.getByRole("region", { name: "Recently Updated" });
-    const title = within(section).getByRole("heading", { name: "Recently Updated" });
+    const section = screen.getByRole("region", { name: "Update History" });
+    const title = within(section).getByRole("heading", { name: "Update History" });
     expect(title).toHaveClass("text-title");
-    const clear = within(section).getByRole("button", { name: "Clear the Recently Updated list" });
+    const clear = within(section).getByRole("button", { name: "Clear the Update History list" });
     expect(clear.className).toBe(BUTTON.small.grey);
     // Beside the title, not at the far end.
     expect(clear.parentElement).toBe(title.parentElement);
@@ -270,7 +270,7 @@ describe("JustUpdated", () => {
     }
   });
 
-  it("says the row's 「结果不符」 beside an orange sign for one to check, and what did not add up in the title", () => {
+  it("says what did not add up, in plain words beside an orange sign, not the row's short 「结果不符」", () => {
     const toCheck: JustUpdatedEntry[] = [
       {
         ...entry,
@@ -283,15 +283,15 @@ describe("JustUpdated", () => {
     renderWithProviders(<JustUpdated entries={toCheck} onClear={() => {}} />);
 
     const [unchanged, unconfirmed] = screen.getAllByRole("listitem");
-    const words = within(unchanged).getByText("Unexpected result");
-    expect(words).toHaveAttribute("title", "Update reported success, but the version didn't change");
+    const words = within(unchanged).getByText("Update reported success, but the version didn't change");
+    expect(within(unchanged).queryByText("Unexpected result")).toBeNull();
     expect(within(words).getByRole("img", { name: "Needs attention" }).querySelector("svg")).toHaveClass(
       "text-warning",
     );
-    expect(within(unconfirmed).getByText("Unexpected result")).toHaveAttribute("title", "Result unconfirmed");
+    expect(within(unconfirmed).getByText("Result unconfirmed")).toBeInTheDocument();
   });
 
-  it("says them in Chinese: 未能更新：需要输入密码, 结果不符, 已核实", async () => {
+  it("says them in Chinese: 未能更新：需要输入密码, 结果未确认, 已核实", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const lines: JustUpdatedEntry[] = [
@@ -309,7 +309,7 @@ describe("JustUpdated", () => {
         "需要输入Mac的登录密码，无法在这里输入。",
       );
       expect(within(plain).getByText("未能更新")).toBeInTheDocument();
-      expect(within(unconfirmed).getByText("结果不符")).toHaveAttribute("title", "结果未确认");
+      expect(within(unconfirmed).getByText("结果未确认")).toBeInTheDocument();
       expect(within(unconfirmed).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

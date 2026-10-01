@@ -624,7 +624,7 @@ describe("VirtualList's Tab", () => {
     );
   }
   // Every tenth slot is no row: a line with a button of its own, as the
-  // notices over a list and 最近更新 under it are.
+  // notices over a list and 最近的更新记录 under it are.
   const line = (item: string) => Number(item.split("-")[1]) % 10 === 0;
   const renderItem = (item: string) =>
     line(item) ? (
@@ -691,7 +691,7 @@ describe("VirtualList's Tab", () => {
     expect(document.activeElement).toBe(button("Update tool-7"));
   });
 
-  it("stops at a slot that is no row, the notices' and 最近更新's buttons", () => {
+  it("stops at a slot that is no row, the notices' and 最近的更新记录's buttons", () => {
     const { row, button, tab } = renderTabList();
     act(() => row("tool-7").focus());
     act(() => button("Update tool-7").focus());

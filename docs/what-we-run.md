@@ -2618,7 +2618,7 @@ that field existed reads it as not shown, so the sheet also shows once
 after an upgrade.
 
 `history.json`, Banager's record of the updates and uninstalls it ran,
-which the Updates page's 「最近更新」 lists after a restart
+which the Updates page's 「最近的更新记录」 lists after a restart
 (`crates/banager-core/src/history/mod.rs`, attached in
 `src-tauri/src/history.rs`). One record per finished update or uninstall:
 when it finished, the package's key (its source's instance id — which can
@@ -2654,7 +2654,7 @@ right within the week; with a right clock, a record is dropped up to a week
 more than 180 days with no update the file can keep older records until
 the next record. A file from before these two times were kept starts
 trusting from now, or from its newest record when that is earlier.
-「最近更新」 lists none older
+「最近的更新记录」 lists none older
 than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
 a `history.json.tmp.<n>` beside it and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,

@@ -3,7 +3,7 @@
  * before the page runs anything: a few weeks of a pretend Mac's updates and
  * uninstalls, as earlier launches of Banager kept them in `history.json`
  * (crates/banager-core/src/history/mod.rs) -- two today, so that the
- * Updates page's 「最近更新」 shows both of its date forms, one older than
+ * Updates page's 「最近的更新记录」 shows both of its date forms, one older than
  * the 30 days the page lists, an uninstall it never lists, and an update
  * that failed (「未能更新：网络连接失败」) and one that changed nothing
  * (「结果不符」), which it lists among the rest while the last check still

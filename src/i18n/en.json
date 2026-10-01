@@ -336,9 +336,9 @@
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {
-      "title": "Recently Updated",
+      "title": "Update History",
       "clear": "Clear",
-      "clearLabel": "Clear the Recently Updated list"
+      "clearLabel": "Clear the Update History list"
     },
     "confirmTitleNamed": "Update “{{name}}”?",
     "confirmTitle_one": "Update {{count}} tool?",

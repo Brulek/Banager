@@ -12,7 +12,7 @@ const NO_KEY: ArtifactKey = { instance_id: "", kind: "Formula", name: "" };
  * An app icon's size, as `SourceAvatar`'s of the same name: `md`, 32px, a
  * row's and a sheet line's; `sm`, 24px, a quiet line's, such as a
  * dialog's list of tools; `compact`, 20px, a line of the Updates page's
- * "Recently Updated", which wears no source mark (at 20 a 14 mark would hide
+ * "Update History", which wears no source mark (at 20 a 14 mark would hide
  * the icon); `lg`, 48px, over a dialog's question about one tool, as
  * NSAlert puts an app's icon, and atop the Installed page's inspector.
  * Rounded as an app icon is at that size; the icon's own shape and margin

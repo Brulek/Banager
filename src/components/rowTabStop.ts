@@ -87,7 +87,7 @@ export function useRowTabStop(
       if (next === undefined || !passedOver(next, list)) return;
       event.preventDefault();
       // Onto the rows from outside them -- from before or after the list,
-      // or from a slot of it with no row, its notices, 最近更新 -- with
+      // or from a slot of it with no row, its notices, 最近的更新记录 -- with
       // the row in the Tab order not drawn: that row, brought back into
       // sight, rather than every row passed by.
       const fromRow =

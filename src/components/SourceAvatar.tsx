@@ -38,7 +38,7 @@ const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
  * `sm`, 24px: a list's small mark. `md`, 32px: a tool's row (`ToolRow`).
  * `lg`, 48px: the icon over a dialog's question about one tool, where
  * NSAlert puts an app's, and the top of the Installed page's inspector.
- * `compact`, 20px: a line of the Updates page's "Recently Updated".
+ * `compact`, 20px: a line of the Updates page's "Update History".
  * The square and its corners (22% of its side), whatever is drawn on it.
  * Whole class names, for Tailwind.
  */

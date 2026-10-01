@@ -323,7 +323,7 @@ describe("UninstallDialog", () => {
 
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={pipxRequest} displayName="pipx" />);
 
-    const line = "aider-chat and httpie, installed with pipx, will stay, but Banager won't be able to update or uninstall them after this.";
+    const line = "aider-chat and httpie, installed with pipx, will stay, but can't be updated or uninstalled here after this.";
     expect(await screen.findByText(line)).toBeInTheDocument();
     expect(screen.getByText(line).closest("li")).toHaveAttribute("data-caution");
   });

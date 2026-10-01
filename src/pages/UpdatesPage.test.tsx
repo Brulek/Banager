@@ -3079,7 +3079,7 @@ describe("UpdatesPage", () => {
     });
   });
 
-  describe("Recently Updated", () => {
+  describe("Update History", () => {
     // As `useUpdateConfirm` records it when it submits one.
     function started(opId: number, target: string) {
       useUiStore.setState({ updateTargets: { ...useUiStore.getState().updateTargets, [opId]: target } });
@@ -3103,7 +3103,7 @@ describe("UpdatesPage", () => {
     }
 
     function justUpdated(): HTMLElement | null {
-      return screen.queryByRole("region", { name: "Recently Updated" });
+      return screen.queryByRole("region", { name: "Update History" });
     }
 
     afterEach(() => {
@@ -3136,7 +3136,7 @@ describe("UpdatesPage", () => {
         });
       });
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
       const [line, ...more] = within(section).getAllByRole("listitem");
       expect(more).toEqual([]);
@@ -3162,7 +3162,7 @@ describe("UpdatesPage", () => {
       artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
       const { queryClient } = renderPage();
       await findRow("glib");
-      // Every update done: 「最近更新」 is the list, first in it.
+      // Every update done: 「最近的更新记录」 is the list, first in it.
       act(() => {
         queryClient.setQueryData(queryKeys.snapshot, {
           ...snapshot,
@@ -3172,7 +3172,7 @@ describe("UpdatesPage", () => {
           updates: [],
         });
       });
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       await waitFor(() => expect(rowNames()).toEqual([]));
       // Over the page's empty sentence, which says there is nothing to install.
       expect(section.closest("[data-index]")).toBeNull();
@@ -3189,7 +3189,7 @@ describe("UpdatesPage", () => {
         });
       });
       await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
-      const moved = screen.getByRole("region", { name: "Recently Updated" });
+      const moved = screen.getByRole("region", { name: "Update History" });
       expect(moved.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     });
 
@@ -3212,7 +3212,7 @@ describe("UpdatesPage", () => {
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
       renderPage();
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       const lines = within(section).getAllByRole("listitem");
       expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "OnyX"]);
       expect(
@@ -3246,11 +3246,11 @@ describe("UpdatesPage", () => {
 
       expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(rowOf("onyx")).getByText("Unexpected result")).toBeInTheDocument();
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       const lines = within(section).getAllByRole("listitem");
       expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["gh", "jq"]);
       expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
-      expect(within(lines[1]).getByText("Unexpected result")).toHaveAttribute("title", "Result unconfirmed");
+      expect(within(lines[1]).getByText("Result unconfirmed")).toBeInTheDocument();
       // No version beside them: it would read as the one they were updated to.
       expect(within(section).queryByText(/^\d+\.\d+/)).toBeNull();
       expect(within(section).queryByText("wget")).toBeNull();
@@ -3278,11 +3278,11 @@ describe("UpdatesPage", () => {
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       const { findByText, getByRole, findByRole } = renderPage();
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       expect(await findByText("1 update available")).toBeInTheDocument();
       expect(within(section).queryByRole("checkbox")).toBeNull();
       expect(within(section).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-        "Clear the Recently Updated list",
+        "Clear the Update History list",
       ]);
 
       fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
@@ -3303,8 +3303,8 @@ describe("UpdatesPage", () => {
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       renderPage();
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
-      const clear = within(section).getByRole("button", { name: "Clear the Recently Updated list" });
+      const section = await screen.findByRole("region", { name: "Update History" });
+      const clear = within(section).getByRole("button", { name: "Clear the Update History list" });
       clear.focus();
       fireEvent.click(clear);
       await waitFor(() => expect(justUpdated()).toBeNull());
@@ -3319,8 +3319,8 @@ describe("UpdatesPage", () => {
       artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
       const { queryClient } = renderPage();
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
-      fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
+      const section = await screen.findByRole("region", { name: "Update History" });
+      fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
       await waitFor(() => expect(justUpdated()).toBeNull());
       expect(useUiStore.getState().clearedJustUpdated).toEqual([7]);
       expect(rowNames()).toEqual(["OnyX"]);
@@ -3335,7 +3335,7 @@ describe("UpdatesPage", () => {
         await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       });
 
-      const again = await screen.findByRole("region", { name: "Recently Updated" });
+      const again = await screen.findByRole("region", { name: "Update History" });
       const lines = within(again).getAllByRole("listitem");
       expect(lines).toHaveLength(1);
       expect(within(lines[0]).getByText("OnyX")).toBeInTheDocument();
@@ -3349,7 +3349,7 @@ describe("UpdatesPage", () => {
       artifacts = [installed(qwenKey, "5642e97495e1")];
       const { container } = renderPage();
 
-      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const section = await screen.findByRole("region", { name: "Update History" });
       expect(within(section).getByText("qwen3:8b")).toBeInTheDocument();
       expect(container.textContent).not.toMatch(/sha256|5642e974/);
     });
@@ -3403,7 +3403,7 @@ describe("UpdatesPage", () => {
         updates = [...snapshot.updates, brewCandidate("broken")];
         const { container } = renderPage();
 
-        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const section = await screen.findByRole("region", { name: "Update History" });
         const lines = within(section).getAllByRole("listitem");
         expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "broken", "wget"]);
         expect(within(lines[0]).getByText("4.0.0")).toBeInTheDocument();
@@ -3434,7 +3434,7 @@ describe("UpdatesPage", () => {
         await i18n.changeLanguage("zh-CN");
         try {
           renderPage();
-          const section = await screen.findByRole("region", { name: "最近更新" });
+          const section = await screen.findByRole("region", { name: "最近的更新记录" });
           const lines = within(section).getAllByRole("listitem");
           expect(within(lines[0]).getByText(`今天${new Intl.DateTimeFormat("zh-CN", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
           expect(within(lines[0]).getByText("已核实")).toBeInTheDocument();
@@ -3445,7 +3445,7 @@ describe("UpdatesPage", () => {
         }
       });
 
-      it("says what did not update in Chinese: 未能更新：需要输入密码 and 结果不符, and leaves out a failure updated since", async () => {
+      it("says what did not update in Chinese: 未能更新：需要输入密码 and what did not add up, and leaves out a failure updated since", async () => {
         vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
         answerHistory({
@@ -3474,14 +3474,14 @@ describe("UpdatesPage", () => {
         await i18n.changeLanguage("zh-CN");
         try {
           renderPage();
-          const section = await screen.findByRole("region", { name: "最近更新" });
+          const section = await screen.findByRole("region", { name: "最近的更新记录" });
           const lines = within(section).getAllByRole("listitem");
           expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget", "git"]);
           expect(within(lines[0]).getByText("未能更新：需要输入密码")).toHaveAttribute(
             "title",
             "需要输入Mac的登录密码，无法在这里输入。",
           );
-          expect(within(lines[1]).getByText("结果不符")).toHaveAttribute("title", "显示已更新，但版本没有变化");
+          expect(within(lines[1]).getByText("显示已更新，但版本没有变化")).toBeInTheDocument();
           expect(within(lines[1]).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
           expect(within(lines[2]).getByText("已核实")).toBeInTheDocument();
           expect(within(lines[2]).getByText("2.55.0")).toBeInTheDocument();
@@ -3505,9 +3505,9 @@ describe("UpdatesPage", () => {
         updates = [snapshot.updates[1], brewCandidate("git"), brewCandidate("wget")];
         renderPage();
 
-        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const section = await screen.findByRole("region", { name: "Update History" });
         expect(within(section).getAllByRole("listitem")).toHaveLength(3);
-        fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
+        fireEvent.click(within(section).getByRole("button", { name: "Clear the Update History list" }));
         await waitFor(() => expect(justUpdated()).toBeNull());
         expect(mockInvoke).toHaveBeenCalledWith("clear_history");
       });
@@ -3526,7 +3526,7 @@ describe("UpdatesPage", () => {
         updates = [snapshot.updates[1]];
         renderPage();
 
-        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const section = await screen.findByRole("region", { name: "Update History" });
         const lines = within(section).getAllByRole("listitem");
         expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake"]);
         expect(section.textContent).not.toMatch(/Couldn't update|Unexpected result/);
@@ -3541,7 +3541,7 @@ describe("UpdatesPage", () => {
         updates = [snapshot.updates[1], brewCandidate("jq")];
         renderPage();
 
-        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const section = await screen.findByRole("region", { name: "Update History" });
         const lines = within(section).getAllByRole("listitem");
         expect(lines).toHaveLength(1);
         expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
@@ -3567,7 +3567,7 @@ describe("UpdatesPage", () => {
         });
         renderPage();
 
-        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const section = await screen.findByRole("region", { name: "Update History" });
         await waitFor(() => expect(within(section).getByText("Verified")).toBeInTheDocument());
         const lines = within(section).getAllByRole("listitem");
         expect(lines).toHaveLength(1);
@@ -3617,10 +3617,10 @@ describe("UpdatesPage", () => {
       expect(justUpdated()).toBeNull();
     });
 
-    it("calls itself 最近更新 in Chinese, with 清除 and 已更新, and Clear by the same name", () => {
-      expect(zhCN.updates.justUpdated.title).toBe("最近更新");
+    it("calls itself 最近的更新记录 in Chinese, with 清除 and 已更新, and Clear by the same name", () => {
+      expect(zhCN.updates.justUpdated.title).toBe("最近的更新记录");
       expect(zhCN.updates.justUpdated.clear).toBe("清除");
-      expect(zhCN.updates.justUpdated.clearLabel).toBe("清除“最近更新”列表");
+      expect(zhCN.updates.justUpdated.clearLabel).toBe("清除“最近的更新记录”列表");
       expect(zhCN.updates.progress.succeeded).toBe("已更新");
     });
   });

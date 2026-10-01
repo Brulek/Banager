@@ -10,7 +10,7 @@ import { BUTTON } from "./ui/controls";
 import { GROUP } from "./ui/group";
 
 /**
- * How an update 「最近更新」 lists ended: it worked; it did not, with the
+ * How an update 「最近的更新记录」 lists ended: it worked; it did not, with the
  * cause in a word where the tool's own words gave one (`failureCause`); or
  * the tool said it worked and Banager found nothing changed, or could not
  * confirm it -- the row's 「结果不符」.
@@ -21,7 +21,7 @@ export type JustUpdatedEnding =
   | { kind: "attention"; outcome: "Unconfirmed" | { NeedsAttention: Attention } };
 
 /**
- * The ending of an update this window ran, or null for one 「最近更新」
+ * The ending of an update this window ran, or null for one 「最近的更新记录」
  * does not list: one cancelled, or not finished.
  */
 export function endingOfOutcome(outcome: Outcome | null): JustUpdatedEnding | null {
@@ -171,8 +171,8 @@ export function finishedText(
  * Banager read the version change for itself; the red ⚠︎ and 「未能更新」,
  * with the cause where the tool's words gave one --
  * 「未能更新：网络连接失败」 -- and what to do about it in the `title`; the
- * orange ⚠︎ and the row's 「结果不符」, with what did not add up in the
- * `title`. Words, not colour, tell them apart.
+ * orange ⚠︎ and what did not add up, in the outcome's own words
+ * (「显示已更新，但版本没有变化」). Words, not colour, tell them apart.
  */
 function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   const { t } = useTranslation();
@@ -198,8 +198,11 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
       break;
     case "attention":
       tone = "attention";
-      words = t("updates.progress.check");
-      title = outcomeSentence(t, ending.outcome);
+      // What did not add up, in its own plain words -- 「显示已更新，但版本没有
+      // 变化」 -- rather than the row's short 「结果不符」, which says nothing
+      // here, where there is no log one click away.
+      words = outcomeSentence(t, ending.outcome);
+      title = undefined;
       break;
   }
   return (
@@ -215,7 +218,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
 }
 
 /**
- * How many lines 「最近更新」 shows before the rest fold away under an
+ * How many lines 「最近的更新记录」 shows before the rest fold away under an
  * "N More" line: 30 days of updates can be dozens, and the list ends
  * with them.
  */
@@ -227,10 +230,10 @@ export interface JustUpdatedProps {
 }
 
 /**
- * 「最近更新」: the tools updated this session, and those the history
+ * 「最近的更新记录」: the tools updated this session, and those the history
  * kept from the last 30 days (src/lib/history.ts), under the updates still
  * to install on the Updates page (at its top when there are none), as the
- * App Store's Recently Updated is under Pending, so that an update does
+ * App Store's Update History is under Pending, so that an update does
  * not simply vanish from the list once it has ended -- nor after a
  * restart: one that worked, and one that did not or asks to be checked. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
