@@ -52,17 +52,21 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
     }
   }
   for (const item of keptDataOf(warnings)) {
+    // What the size does not count: another copy's program inside the
+    // folder (Codex's own install in ~/.codex).
+    const leftOut =
+      item.leftOut.length === 0 ? null : item.leftOut.map((path) => t("clarity.keptLeftOut", { path })).join(" ");
     const size =
-      item.size === null ? null : item.leftOut.length === 0 ? (
+      item.size === null ? null : leftOut === null ? (
         sizeText(t, item.size)
       ) : (
-        // What the size does not count: another copy's program inside the
-        // folder (Codex's own install in ~/.codex).
         <TextWithInfo text={sizeText(t, item.size)} label={t("clarity.keptLeftOutLabel", { path: item.path })}>
-          {item.leftOut.map((path) => t("clarity.keptLeftOut", { path })).join(" ")}
+          {leftOut}
         </TextWithInfo>
       );
-    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why: null });
+    // With no size to hang it on, it goes behind the ⓘ of what it holds.
+    const why = item.size === null ? leftOut : null;
+    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why });
   }
   if (lines.length === 0) return null;
   return (

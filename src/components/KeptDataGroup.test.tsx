@@ -84,6 +84,16 @@ describe("KeepsData on the wire", () => {
     ]);
   });
 
+  it("says what it leaves out behind the ⓘ of what it holds when its size is not known", () => {
+    const unsized = '{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}';
+    const { container } = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(unsized) as Warning]} />);
+    expect(container.querySelector("[data-kept-size]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details: ~/.codex" }));
+    expect(
+      screen.getByText("Not counting ~/.codex/packages/standalone, which holds another copy installed on its own."),
+    ).toBeInTheDocument();
+  });
+
   it("says behind an ⓘ by the size what it leaves out: Codex's own install inside ~/.codex", () => {
     renderWithProviders(<KeptDataGroup warnings={[JSON.parse(LEFT_OUT_WIRE) as Warning]} />);
     const info = screen.getByRole("button", { name: "About the size: ~/.codex" });
