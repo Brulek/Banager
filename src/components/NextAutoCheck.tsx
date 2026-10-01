@@ -37,13 +37,13 @@ export function NextAutoCheck({ at, className }: { at: number | null | undefined
  */
 export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, language: string): string {
   const due = new Date(at * 1000);
-  if (due.getTime() <= nowMs) return t("settings.nextAutoCheck.soon");
+  if (due.getTime() <= nowMs) return t("nextAutoCheck.soon");
   const time = new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(due);
   const days = calendarDaysBetween(new Date(nowMs), due);
-  if (days === 0) return t("settings.nextAutoCheck.today", { time });
-  if (days === 1) return t("settings.nextAutoCheck.tomorrow", { time });
+  if (days === 0) return t("nextAutoCheck.today", { time });
+  if (days === 1) return t("nextAutoCheck.tomorrow", { time });
   const date = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(due);
-  return t("settings.nextAutoCheck.date", { date, time });
+  return t("nextAutoCheck.date", { date, time });
 }
 
 /** How many calendar days, in the Mac's time zone, `to` is after `from`. */

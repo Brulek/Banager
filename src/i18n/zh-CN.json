@@ -299,6 +299,12 @@
     "detail": "从{{from}}升到{{to}}，用法或设置可能会变。不确定时可以先“{{skip}}”。",
     "zeroNote": "版本号以0开头的工具不标大版本。"
   },
+  "nextAutoCheck": {
+    "today": "下次自动检查：今天{{time}}左右",
+    "tomorrow": "下次自动检查：明天{{time}}左右",
+    "date": "下次自动检查：{{date}}{{time}}左右",
+    "soon": "下次自动检查：很快"
+  },
   "warnings": {
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
@@ -688,13 +694,7 @@
     "hiddenNone": "无",
     "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "无法保存：{{message}}。已恢复原来的设置。",
-    "saveErrorPlain": "无法保存。已恢复原来的设置。",
-    "nextAutoCheck": {
-      "today": "下次自动检查：今天{{time}}左右",
-      "tomorrow": "下次自动检查：明天{{time}}左右",
-      "date": "下次自动检查：{{date}}{{time}}左右",
-      "soon": "下次自动检查：很快"
-    }
+    "saveErrorPlain": "无法保存。已恢复原来的设置。"
   },
   "settingsSaveFailed": {
     "permissionDenied": "没有权限写入设置文件夹",

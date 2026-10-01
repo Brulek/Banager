@@ -48,6 +48,6 @@ describe("nextAutoCheckText", () => {
     expect(nextAutoCheckText(i18n.t, seconds(new Date(2026, 9, 4, 8, 0)), NOW, "zh-CN")).toBe(
       "下次自动检查：10月4日08:00左右",
     );
-    expect(zhCN.settings.nextAutoCheck.soon).toBe("下次自动检查：很快");
+    expect(zhCN.nextAutoCheck.soon).toBe("下次自动检查：很快");
   });
 });

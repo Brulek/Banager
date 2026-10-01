@@ -322,6 +322,12 @@
     "detail": "From {{from}} to {{to}}: how it's used or set up may change. If you're not sure, you can choose “{{skip}}” for now.",
     "zeroNote": "Tools whose version starts with 0 aren't marked."
   },
+  "nextAutoCheck": {
+    "today": "Next automatic check: about {{time}} today",
+    "tomorrow": "Next automatic check: about {{time}} tomorrow",
+    "date": "Next automatic check: about {{time}} on {{date}}",
+    "soon": "Next automatic check: soon"
+  },
   "warnings": {
     "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
     "wouldBreak_one": "{{names}} still needs this.",
@@ -741,13 +747,7 @@
     "hiddenNone": "None",
     "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "Couldn't save: {{message}}. Your previous setting is back.",
-    "saveErrorPlain": "Couldn't save. Your previous setting is back.",
-    "nextAutoCheck": {
-      "today": "Next automatic check: about {{time}} today",
-      "tomorrow": "Next automatic check: about {{time}} tomorrow",
-      "date": "Next automatic check: about {{time}} on {{date}}",
-      "soon": "Next automatic check: soon"
-    }
+    "saveErrorPlain": "Couldn't save. Your previous setting is back."
   },
   "settingsSaveFailed": {
     "permissionDenied": "no permission to write to the settings folder",
