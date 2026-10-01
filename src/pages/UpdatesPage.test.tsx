@@ -4840,6 +4840,19 @@ describe("UpdatesPage", () => {
       }
     });
 
+    it("lets an app that updates itself keep its own word, across a major version too", async () => {
+      // One word a row: 「Also updates itself」 wins over 「Major version」,
+      // on purpose -- the app moves on by itself whatever the row says.
+      instances = [...snapshot.instances, claudeInstance];
+      updates = [{ ...claudeUpdate, current: "2.1.290", target: "3.0.0" }];
+      artifacts = [claudeArtifact];
+      renderPage();
+
+      const claude = await findRow("Claude Code");
+      expect(claude.querySelector("[data-status-column]")).toHaveTextContent("Also updates itself");
+      expect(within(claude).queryByText("Major version")).toBeNull();
+    });
+
     it("leaves what is ticked, and the order of the rows, as they were", async () => {
       updates = majorUpdates().slice(0, 2);
       renderPage();
