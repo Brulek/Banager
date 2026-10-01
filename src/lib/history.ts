@@ -51,8 +51,8 @@ export function useClearHistory(): UseMutationResult<HistoryView, Error, void> {
 /**
  * Whether 「最近的更新记录」 lists an update that ended so: one that worked, one
  * that did not (「未能更新」, with its cause where the tool's words gave
- * one), and one to check (「结果不符」: nothing changed, or Banager could
- * not confirm it). Not one the person cancelled: they know of it.
+ * one), and one to check (it said it worked, but nothing changed, or
+ * Banager could not confirm it). Not one the person cancelled: they know of it.
  */
 export function listedResult(result: HistoryResult): boolean {
   return result !== "Cancelled";

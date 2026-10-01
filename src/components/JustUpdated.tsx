@@ -67,8 +67,8 @@ export interface JustUpdatedEntry {
   name: string;
   /**
    * The version it has now, or null where there is none to show honestly:
-   * a model's is a digest, and beside 「未能更新」 or 「结果不符」 a version
-   * would read as the one it was updated to.
+   * a model's is a digest, and beside 「未能更新」 or what did not add up
+   * a version would read as the one it was updated to.
    */
   version: string | null;
   /** When it finished, in milliseconds, or null for one this window did not see finish. */
@@ -239,7 +239,8 @@ export interface JustUpdatedProps {
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, how it
  * ended in 11 (`EndingWords`: 「已更新」 or 「已核实」, 「未能更新」 with
- * its cause, or 「结果不符」), and when it finished, 11 muted. Nothing to
+ * its cause, or what did not add up, 「显示已更新，但版本没有变化」), and
+ * when it finished, 11 muted. Nothing to
  * select or press but Clear, which hides what it lists, after a restart
  * too, until the next update ends, and, past `JUST_UPDATED_SHOWN`
  * lines, the "N More" line that shows the rest; it is no part of the

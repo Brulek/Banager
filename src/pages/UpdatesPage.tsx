@@ -500,8 +500,8 @@ export function UpdatesPage() {
   // The version is the one the snapshot now lists for the tool -- what is
   // installed, read back after the update -- or, where it lists none, the
   // one the update was for. A model's is a digest, and is not shown; nor
-  // is one beside 「未能更新」 or 「结果不符」, where it would read as the
-  // version the tool was updated to.
+  // is one beside 「未能更新」 or what did not add up, where it would read
+  // as the version the tool was updated to.
   //
   // Then what the history kept from before this window, of the last 30
   // days (`recentUpdates`): never a tool this window has an operation of,

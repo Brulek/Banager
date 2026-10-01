@@ -6,7 +6,7 @@
  * Updates page's 「最近的更新记录」 shows both of its date forms, one older than
  * the 30 days the page lists, an uninstall it never lists, and an update
  * that failed (「未能更新：网络连接失败」) and one that changed nothing
- * (「结果不符」), which it lists among the rest while the last check still
+ * (「显示已更新，但版本没有变化」), which it lists among the rest while the last check still
  * offers each an update. jq's failure is not listed: no update is offered
  * for it any more, as if it had been updated in Terminal since. Times count
  * back from when the preview opened; today's two never reach back past
