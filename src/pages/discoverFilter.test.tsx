@@ -194,6 +194,26 @@ describe("the Installed page's discovery choices", () => {
     await waitFor(() => expect(rowNames()).toEqual(["QuickJot", "youtube-dl"]));
   });
 
+  it("lists a component Homebrew deprecated, unfolded, so the count is the rows shown", async () => {
+    const libfoo: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "libfoo" };
+    artifacts = [
+      artifact(wget, [{ name: "wget", state: "Runs" }]),
+      {
+        ...artifact(libfoo, [], { deprecated: { date: "2026-01-01", reason: "unmaintained", replacement: null } }),
+        reason: "Dependency",
+      },
+    ];
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    // Over 所有工具 it stays behind its source's fold, as every component does.
+    expect(rowNames()).toEqual(["wget"]);
+    expect(screen.getByText("1 more component came with other software")).toBeInTheDocument();
+    expect(screen.getByText("1 tool was disabled or deprecated by Homebrew")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(rowNames()).toEqual(["libfoo"]));
+    expect(screen.queryByText(/more component/)).not.toBeInTheDocument();
+  });
+
   it("counts only the source in view, and keeps a choice with none, without a number", async () => {
     useUiStore.getState().openInstalled(PIPX);
     renderInstalled();

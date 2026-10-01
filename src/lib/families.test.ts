@@ -6,6 +6,7 @@ import {
   hasCommandNotOnPath,
   isAiTool,
   isBrewRetired,
+  isDiscoverShow,
   shownBy,
 } from "./families";
 import { NO_FACTS, type ArtifactFacts, type InstalledArtifact } from "./types";
@@ -42,6 +43,11 @@ describe("families", () => {
 });
 
 describe("the discovery choices", () => {
+  it("tells the discovery choices from the others", () => {
+    expect(DISCOVER_SHOWS.every(isDiscoverShow)).toBe(true);
+    expect(["all", "ai", "twins"].some((show) => isDiscoverShow(show as "all"))).toBe(false);
+  });
+
   const key = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "wget" };
   const lifecycle = { date: null, reason: null, replacement: null };
   const homebrew = { deprecated: null, disabled: null, caveats: null, other_versions: [] };

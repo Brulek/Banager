@@ -32,6 +32,14 @@ export type DiscoverShow = "notOnPath" | "brewRetired";
 /** The discovery choices, in the popup's order. */
 export const DISCOVER_SHOWS: readonly DiscoverShow[] = ["notOnPath", "brewRetired"];
 
+/**
+ * Whether `show` is a discovery choice. The list unfolds a source's
+ * components under one, so every tool its count counted is a row.
+ */
+export function isDiscoverShow(show: InstalledShow): show is DiscoverShow {
+  return (DISCOVER_SHOWS as readonly string[]).includes(show);
+}
+
 /** Whether this artifact is a copy of a known AI coding tool. */
 export function isAiTool(artifact: Pick<InstalledArtifact, "facts"> | undefined): boolean {
   return artifact !== undefined && artifact.facts.family !== null;

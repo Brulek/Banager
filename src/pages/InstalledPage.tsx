@@ -45,7 +45,7 @@ import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "
 import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { ToolShowButton } from "../components/ToolShowButton";
-import { discoverCounts, discoverNotices, shownBy, type InstalledShow } from "../lib/families";
+import { discoverCounts, discoverNotices, isDiscoverShow, shownBy, type InstalledShow } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
@@ -704,8 +704,12 @@ export function InstalledPage() {
       // Unknown or Dependency (its `--not-required` marks a leaf, which is
       // not the same as "the user asked for it"), so keying off "Requested"
       // would fold every pip package away.
-      const primary = artifacts.filter((a) => a.reason !== "Dependency").sort(compareArtifacts);
-      const dependencies = artifacts.filter((a) => a.reason === "Dependency").sort(compareArtifacts);
+      // Under 「终端里找不到」 or 「Homebrew已停用或弃用」 nothing folds: a
+      // retired formula is often a component, and the count the popup and
+      // the notice said is the rows 查看 shows (`isDiscoverShow`).
+      const folding = !isDiscoverShow(show);
+      const primary = artifacts.filter((a) => !folding || a.reason !== "Dependency").sort(compareArtifacts);
+      const dependencies = folding ? artifacts.filter((a) => a.reason === "Dependency").sort(compareArtifacts) : [];
       // The fold line stays in both states, so a source's components fold
       // back up the way they unfolded.
       const expanded = expandedDependencies.includes(instance.id);
@@ -734,7 +738,7 @@ export function InstalledPage() {
       result.push(...rows.sort(sort === "size" ? bySize : byName), ...folds);
     }
     return result;
-  }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder]);
+  }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder, show]);
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
