@@ -735,9 +735,31 @@ pub async fn open_ollama_app() -> Result<(), String> {
     // inside an async command would hold one of the async runtime's
     // worker threads -- the ones every other command and the refresh run
     // on -- for as long as LaunchServices takes.
-    tauri::async_runtime::spawn_blocking(open_ollama_app_impl)
+    //
+    // One at a time (`OPEN_TURN`): a press while one is still waiting
+    // waits for it, as a task, not on a thread of the blocking pool.
+    in_turn(&OPEN_TURN, open_ollama_app_impl)
         .await
         .unwrap_or_else(|_| Err(open_ollama_failed_json("launch_failed")))
+}
+
+/// Whose turn it is to launch Ollama.app (`open_ollama_app`).
+static OPEN_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Whose turn it is to scan for programs of unknown source (`scan_unknown`).
+static SCAN_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// `work` on the blocking pool once `turn` is this call's: one at a time,
+/// the others waiting for it as tasks, holding no thread. Without it a page
+/// that called `scan_unknown` (up to ten seconds each) or `open_ollama_app`
+/// (up to `OPEN_ANSWER_TIMEOUT`) over and over would take a blocking thread
+/// for each call, up to the pool's limit, which the app icons share.
+async fn in_turn<T: Send + 'static>(
+    turn: &tokio::sync::Mutex<()>,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> tauri::Result<T> {
+    let _turn = turn.lock().await;
+    tauri::async_runtime::spawn_blocking(work).await
 }
 
 /// The unknown-source scan over the session's current snapshot
@@ -761,10 +783,10 @@ pub async fn scan_unknown(
     // up to ten seconds by design -- and running it inline would hold one
     // of the async runtime's worker threads, the ones every other command
     // and the refresh run on, for that long. `State` cannot move into the
-    // task; the `Arc<Session>` inside it can.
+    // task; the `Arc<Session>` inside it can. One at a time (`SCAN_TURN`).
     let session = state.session.clone();
     let env = HostEnv::discover();
-    let scan = tauri::async_runtime::spawn_blocking(move || scan_unknown_impl(&session, &env))
+    let scan = in_turn(&SCAN_TURN, move || scan_unknown_impl(&session, &env))
         .await
         // Only a panic inside the scan reaches this arm. The text is the
         // front end's to show verbatim, the way a failed load shows the
@@ -1050,6 +1072,35 @@ mod tests {
     fn state_with_fake_adapter() -> AppState {
         let (state, _execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         state
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_in_turn_runs_one_call_at_a_time_however_many_wait() {
+        static TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let most = Arc::new(AtomicUsize::new(0));
+        let calls: Vec<_> = (0..6)
+            .map(|n| {
+                let (in_flight, most) = (in_flight.clone(), most.clone());
+                tokio::spawn(async move {
+                    in_turn(&TURN, move || {
+                        let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                        most.fetch_max(now, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        in_flight.fetch_sub(1, Ordering::SeqCst);
+                        n
+                    })
+                    .await
+                })
+            })
+            .collect();
+        let mut done = Vec::new();
+        for call in calls {
+            done.push(call.await.unwrap().expect("each call runs in its turn"));
+        }
+        done.sort_unstable();
+        assert_eq!(done, (0..6).collect::<Vec<_>>());
+        assert_eq!(most.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
