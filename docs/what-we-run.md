@@ -63,9 +63,14 @@ the only time a shell is involved, and all it does is print the
 environment.
 
 **What a command inherits.** A child gets Banager's own environment — the
-`PATH` above and whatever else the login shell exported — plus the
-variables listed in each source's section below (`RealRunner::run` adds
-them with `envs` and never clears the environment). Its stdin is
+`PATH` above, which is the only variable taken from the login shell, and
+whatever else Banager itself was started with — plus the variables listed
+in each source's section below (`RealRunner::run` adds them with `envs` and
+never clears the environment). Opened from Finder or the Dock, Banager
+starts with macOS's small default environment, so a variable exported only
+in a shell startup file — a proxy such as `https_proxy`, a Homebrew mirror
+such as `HOMEBREW_BOTTLE_DOMAIN`, `CARGO_HOME` — does not reach the commands
+Banager runs (see "Which Rust" under rustup for why that is deliberate). Its stdin is
 `/dev/null`, so a tool that asks a question gets end-of-file rather than a
 wait; its stdout and stderr are piped and, for a write command, streamed
 line by line into the operation log. Each child runs in its own process
