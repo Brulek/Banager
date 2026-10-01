@@ -147,8 +147,9 @@ Paths are under a generic home folder, `/Users/you`.
   two models, one with a new version from a third-party registry.
 - **Tools with their own installer**: Claude Code (updates itself, and has
   an update), rustup (an update that cannot be cancelled once it starts),
-  Antigravity CLI (a newer version it can only install itself) and Grok
-  Build (an update, and a notice that it is not on the PATH).
+  Antigravity CLI (a newer version it can only install itself), Grok
+  Build (an update, and a notice that it is not on the PATH) and Codex,
+  installed by its own script and listed only, beside npm's @openai/codex.
 - **Other Programs page**: five programs no source accounts for -- two plain
   files, two links an installer with administrator rights put there (one
   into an app), and a broken link to an app that was deleted.
@@ -213,6 +214,21 @@ Paths are under a generic home folder, `/Users/you`.
   `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
   `?state=uptodate`, which leaves Codex's own install out,
   「没有发现装了不止一份的工具」.
+- The 「显示」 popup's last two choices say how many they show: on the
+  default pretend Mac 「终端里找不到（1）」, Grok Build, and
+  「Homebrew已停用或弃用（2）」, QuickJot (已停用) and youtube-dl (已弃用).
+  With every tool shown, the notices over the list, unfolded, end on
+  「2个工具已被Homebrew停用或弃用」 with 查看, which picks that choice and
+  puts the focus on its first row. No such line says how many Terminal
+  can't find: Grok Build's own notice already says it. A choice that
+  hides the selected tool closes its details.
+- The Updates page opens with 「最近更新」 over its rows: five of the eight
+  records the pretend history holds from earlier launches
+  (`src/dev/mockHistory.ts`) -- htop and ripgrep today, then prettier,
+  wget and gh, which says 「已更新」 where the others say 「已核实」. A failed
+  update, an uninstall and an update older than 30 days are not listed.
+  Each update the preview runs is added at the top; 清除 empties the list
+  until the page reloads.
 - youtube-dl's details have every row the details can have for a
   Homebrew formula at once, for checking their order: under the
   description, a callout with what Homebrew's 「已弃用」 means and the name
