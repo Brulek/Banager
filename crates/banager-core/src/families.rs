@@ -33,11 +33,14 @@
 //! - Standalone: the recipe ids in `adapters/standalone/recipes.rs`.
 //! - Data folders: the four the vendors document (Claude Code, Codex,
 //!   Gemini CLI, Qwen Code), and Antigravity CLI's
-//!   `~/.gemini/antigravity-cli`, which its own recipe already keeps on
-//!   uninstall (`recipes::AGY`; the install script and the cask's `zap`
-//!   name it) -- inside Gemini CLI's `~/.gemini`, so Gemini CLI's line
-//!   leaves it out (`kept_data::others_inside`). Every other family has
-//!   none until verified.
+//!   `~/.gemini/antigravity-cli` -- named by the Homebrew cask's `zap`
+//!   (the only vendor-side source; it trashes only that folder), and seen
+//!   in this Mac's directory listing and the 1.2.11 recording's README;
+//!   the install script does not name it. Banager's own recipe keeps it on
+//!   uninstall (`recipes::AGY`), a keep list agy.md calls a synthesis, not
+//!   a vendor list. It sits inside Gemini CLI's `~/.gemini`, so Gemini
+//!   CLI's line leaves it out (`kept_data::others_inside`). Every other
+//!   family has none until verified.
 //!
 //! Versions are deliberately not in the table: they change weekly.
 //!
