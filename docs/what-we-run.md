@@ -1811,8 +1811,12 @@ because a Mac app started from the Finder inherits no variable from your
 shell except the `PATH` Banager asks your login shell for, so a
 `CODEX_HOME` set in `~/.zshrc` is invisible to it. A Codex installed under
 another `CODEX_HOME` is not listed here (the Other Programs page lists its
-launcher instead). `~/.codex` itself, with your settings, login and
-sessions, is never read.
+launcher instead). Nothing else in `~/.codex`, with your settings, login
+and sessions, is looked at to list this row or read its version, and no
+file of yours there is ever opened. Only the preview of uninstalling a
+Codex -- npm's `@openai/codex`, Homebrew's `codex` -- walks `~/.codex` to
+say how much it takes, by names and sizes alone (Data an uninstall leaves
+behind, below).
 
 **Version, with no command.** `readlink` and `realpath` of
 `~/.codex/packages/standalone/current`, which the installer points at
@@ -2329,7 +2333,9 @@ All read-only, none saved anywhere else, none uploaded:
   `~/.codex/packages/standalone/auto-update-version`, at most 256 bytes,
   when it is a regular file (`lstat`); for the notice under the source,
   each `PATH` directory's `codex`, as for Claude Code. Nothing else under
-  `~/.codex` is read, and no command runs (Codex's section).
+  `~/.codex` is read for this row, and no command runs (Codex's section);
+  the preview of uninstalling a Codex walks `~/.codex` for its size,
+  names and sizes only (Data an uninstall leaves behind, above).
 - opencode (its own install, listed only): whether
   `~/.opencode/bin/opencode` exists, whether it is a regular file and
   where it leads (`lstat`, `realpath`); for the notice under the source,

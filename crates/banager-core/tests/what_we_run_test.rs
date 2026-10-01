@@ -1224,3 +1224,25 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
     assert!(!folded.contains("other than its own `settings.json` and `.window-state.json`"));
     assert!(!folded.contains("Two, both in Banager's application data directory"));
 }
+
+#[test]
+fn test_what_we_run_never_says_a_folder_the_uninstall_preview_walks_is_never_read() {
+    // `kept_data` walks `~/.codex` (names and sizes) in the preview of
+    // uninstalling a Codex. The Codex section and the list of files read
+    // may say nothing else there is read for the row, but not that the
+    // folder is never read, and both point at the section that walks it.
+    let doc = read_doc();
+    for section in ["Codex", "Files Banager reads"] {
+        let body = section_body(&doc, section)
+            .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## {section}` section"));
+        let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            !folded.contains("`~/.codex` itself, with your settings, login and sessions, is never read"),
+            "the `## {section}` section says `~/.codex` is never read, but the uninstall preview walks it"
+        );
+        assert!(
+            folded.contains("walks `~/.codex`"),
+            "the `## {section}` section does not say the uninstall preview walks `~/.codex`"
+        );
+    }
+}
