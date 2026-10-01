@@ -33,6 +33,7 @@ import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { searchMatch } from "../lib/searchMatch";
+import { SEARCH_SETTLE_MS, useSettled } from "../lib/settled";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -809,30 +810,39 @@ export function InstalledPage() {
     return result;
   }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder, show]);
 
-  // A 「显示」 choice that hides the selected tool -- from the popup, or a
-  // notice's 查看 -- closes its details, as a Mac list's selection goes
-  // with a row its filter hides: details of a tool the list no longer
-  // shows would be about nothing the user can see. Where the focus went
-  // with what changed it -- 查看's line, gone once the choice is made, or
-  // the closed details -- it goes to the list's first row, or, with none,
-  // the page's title: never the window's body, from where the next Tab
-  // would start over at the sidebar. The popup itself keeps the focus.
-  // So does a new check that takes the selected tool out of the choice
-  // while it is still installed -- its other copy uninstalled under
-  // 「装了不止一份」, its folder put on `PATH` under 「终端里找不到」 -- and
-  // only then: a check that hides nothing moves no focus.
+  // Whatever hides the selected tool closes its details, as a Mac list's
+  // selection goes with a row its filter hides: details of a tool the list
+  // no longer shows would be about nothing the user can see. A 「显示」
+  // choice -- from the popup, or a notice's 查看 -- a search, or a new check
+  // that takes the tool out of the choice while it is still installed (its
+  // other copy uninstalled under 「装了不止一份」, its folder put on `PATH`
+  // under 「终端里找不到」). A tool gone from the check altogether is
+  // unselected above. A fold closed over a component hides nothing: the
+  // tool is still among those the list holds, a notice's Show may select
+  // one there, and the fold's line says it is in it.
+  // A search hides it once the user has stopped typing (`useSettled`): a
+  // letter that hides it and the Backspace that brings it back, or a
+  // longer name typed through a word that matches it no more than its
+  // start, close nothing. The search on screen and the settled one must
+  // both hide it, so a search cleared all at once (a notice's Show,
+  // Escape in the field) never closes the details of a tool it shows.
+  // Where the focus went with what hid it -- 查看's line, gone once the
+  // choice is made, or the closed details -- it goes to the list's first
+  // row, or, with none, the page's title: never the window's body, from
+  // where the next Tab would start over at the sidebar. The popup, or the
+  // search field typed in, keeps the focus. A 「显示」 choice that hides
+  // nothing still places a focus it took with it; anything else that hides
+  // nothing moves no focus.
+  const settledNeedle = useSettled(needle, SEARCH_SETTLE_MS);
   const shownBefore = useRef(show);
-  const twinsBefore = useRef(twins);
-  const artifactsBefore = useRef(artifactsById);
   useEffect(() => {
     const showChanged = shownBefore.current !== show;
-    const listChanged = artifactsBefore.current !== artifactsById || twinsBefore.current !== twins;
-    if (!showChanged && !listChanged) return;
     shownBefore.current = show;
-    twinsBefore.current = twins;
-    artifactsBefore.current = artifactsById;
     const selected = selectedId === null ? undefined : artifactsById.get(selectedId);
-    const hidden = selected !== undefined && !shownBy(show, selected, twins);
+    const hidden =
+      selected !== undefined &&
+      (!shownBy(show, selected, twins) ||
+        (searchMatch(selected, needle) === null && searchMatch(selected, settledNeedle) === null));
     if (hidden) setSelection(null);
     if (!showChanged && !hidden) return;
     const focus = document.activeElement;
@@ -844,7 +854,7 @@ export function InstalledPage() {
     if (!lost) return;
     if (rowItems.some(keyboardRow)) listHandle.current?.focusFirst();
     else focusOrFallback(null);
-  }, [show, selectedId, artifactsById, twins, rowItems]);
+  }, [show, selectedId, artifactsById, twins, needle, settledNeedle, rowItems]);
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
