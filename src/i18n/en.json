@@ -1087,6 +1087,26 @@
       "tab": "Move to the next or previous control. In a list, only the current row is a stop.",
       "press": "Press the focused button. An uninstall confirmation opens with the focus on Cancel.",
       "escape": "Close a dialog or menu. An open ⓘ closes first."
+    },
+    "keyNames": {
+      "settings": "Command-Comma",
+      "overview": "Command-1",
+      "updates": "Command-2",
+      "installed": "Command-3",
+      "unknown": "Command-4",
+      "checkAgain": "Command-R",
+      "search": "Command-F",
+      "closeWindow": "Command-W",
+      "quit": "Command-Q",
+      "move": "Up Arrow and Down Arrow",
+      "page": "Page Up and Page Down",
+      "ends": "Home and End",
+      "tick": "Space",
+      "details": "Return",
+      "closeDetails": "Escape",
+      "tab": "Tab and Shift-Tab",
+      "press": "Return",
+      "escape": "Escape"
     }
   },
   "clarity": {

@@ -42,15 +42,44 @@ const SHORTCUT_TEXT_KEYS: Record<ShortcutId, string> = {
 };
 
 /**
+ * Each row's keys by name, for VoiceOver: it reads ␣ ⇞ ↖ and the like as
+ * the bare symbols, so the glyphs are hidden from it and these said instead.
+ */
+const KEY_NAME_KEYS: Record<ShortcutId, string> = {
+  settings: "shortcuts.keyNames.settings",
+  overview: "shortcuts.keyNames.overview",
+  updates: "shortcuts.keyNames.updates",
+  installed: "shortcuts.keyNames.installed",
+  unknown: "shortcuts.keyNames.unknown",
+  checkAgain: "shortcuts.keyNames.checkAgain",
+  search: "shortcuts.keyNames.search",
+  closeWindow: "shortcuts.keyNames.closeWindow",
+  quit: "shortcuts.keyNames.quit",
+  move: "shortcuts.keyNames.move",
+  page: "shortcuts.keyNames.page",
+  ends: "shortcuts.keyNames.ends",
+  tick: "shortcuts.keyNames.tick",
+  details: "shortcuts.keyNames.details",
+  closeDetails: "shortcuts.keyNames.closeDetails",
+  tab: "shortcuts.keyNames.tab",
+  press: "shortcuts.keyNames.press",
+  escape: "shortcuts.keyNames.escape",
+};
+
+/**
  * One row: what the keys do on the left, in the label colour, and the keys
- * on the right, muted, as a Mac menu shows an item's shortcut.
+ * on the right, muted, as a Mac menu shows an item's shortcut. VoiceOver
+ * hears the keys' names (`KEY_NAME_KEYS`), not the glyphs.
  */
 function Row({ shortcut }: { shortcut: Shortcut }) {
   const { t } = useTranslation();
   return (
     <li data-shortcut={shortcut.id} className={GROUP_ROW}>
       <span className="min-w-0 flex-1 break-words text-body text-foreground">{t(SHORTCUT_TEXT_KEYS[shortcut.id])}</span>
-      <kbd className="shrink-0 whitespace-nowrap font-sans text-body text-muted">{shortcut.keys}</kbd>
+      <kbd className="shrink-0 whitespace-nowrap font-sans text-body text-muted">
+        <span aria-hidden="true">{shortcut.keys}</span>
+        <span className="sr-only">{t(KEY_NAME_KEYS[shortcut.id])}</span>
+      </kbd>
     </li>
   );
 }

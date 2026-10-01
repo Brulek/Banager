@@ -14,11 +14,11 @@ beforeEach(() => {
   useShortcutsSheet.setState({ open: false });
 });
 
-/** Each row of the open sheet as "words | keys", group by group. */
+/** Each row of the open sheet as "words | keys" (the glyphs drawn), group by group. */
 function rows(dialog: HTMLElement): string[][] {
   return [...dialog.querySelectorAll("[data-shortcut-group]")].map((group) =>
     [...group.querySelectorAll("[data-shortcut]")].map(
-      (row) => `${row.querySelector("span")?.textContent} | ${row.querySelector("kbd")?.textContent}`,
+      (row) => `${row.querySelector("span")?.textContent} | ${row.querySelector("kbd [aria-hidden]")?.textContent}`,
     ),
   );
 }
@@ -82,6 +82,28 @@ describe("ShortcutsSheet", () => {
     expect(useShortcutsSheet.getState().open).toBe(false);
   });
 
+  it("names each row's keys for VoiceOver, with the glyphs hidden from it", async () => {
+    renderWithProviders(<ShortcutsSheet />);
+    act(() => openShortcutsSheet());
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+    const said = (id: string) => {
+      const kbd = dialog.querySelector(`[data-shortcut="${id}"] kbd`);
+      expect(kbd?.querySelector("[aria-hidden='true']")).not.toBeNull();
+      return kbd?.querySelector(".sr-only")?.textContent;
+    };
+    expect(said("settings")).toBe("Command-Comma");
+    expect(said("page")).toBe("Page Up and Page Down");
+    expect(said("ends")).toBe("Home and End");
+    expect(said("tick")).toBe("Space");
+    expect(said("tab")).toBe("Tab and Shift-Tab");
+    // Every row has a name, none left as a raw key.
+    for (const row of dialog.querySelectorAll("[data-shortcut]")) {
+      const name = row.querySelector("kbd .sr-only")?.textContent ?? "";
+      expect(name).not.toBe("");
+      expect(name).not.toMatch(/^shortcuts\./);
+    }
+  });
+
   it("says it in Chinese, with the same keys", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
@@ -101,6 +123,7 @@ describe("ShortcutsSheet", () => {
         "按下有焦点的按钮；卸载前的确认打开时，焦点在“取消”上 | ↩",
         "关闭对话框或菜单；打开着的ⓘ说明会先关闭 | ⎋",
       ]);
+      expect(dialog.querySelector('[data-shortcut="tick"] kbd .sr-only')?.textContent).toBe("空格键");
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();
     } finally {
       await i18n.changeLanguage("en");

@@ -1006,6 +1006,26 @@
       "tab": "移到下一个或上一个控件；在列表中只停在当前这一行",
       "press": "按下有焦点的按钮；卸载前的确认打开时，焦点在“取消”上",
       "escape": "关闭对话框或菜单；打开着的ⓘ说明会先关闭"
+    },
+    "keyNames": {
+      "settings": "Command-逗号",
+      "overview": "Command-1",
+      "updates": "Command-2",
+      "installed": "Command-3",
+      "unknown": "Command-4",
+      "checkAgain": "Command-R",
+      "search": "Command-F",
+      "closeWindow": "Command-W",
+      "quit": "Command-Q",
+      "move": "上箭头和下箭头",
+      "page": "Page Up和Page Down",
+      "ends": "Home和End",
+      "tick": "空格键",
+      "details": "Return键",
+      "closeDetails": "Esc键",
+      "tab": "Tab和Shift-Tab",
+      "press": "Return键",
+      "escape": "Esc键"
     }
   },
   "clarity": {
