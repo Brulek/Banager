@@ -1525,6 +1525,10 @@ describe("UninstallDialog", () => {
 
     const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    // The note's status, there empty before there is anything to say.
+    const emptyStatuses = screen.getAllByRole("status").filter((status) => status.textContent === "");
+    expect(emptyStatuses).toHaveLength(1);
+    const noteStatus = emptyStatuses[0];
     fireEvent.click(confirmButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -1545,6 +1549,9 @@ describe("UninstallDialog", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(saying()).toHaveLength(1);
     expect(saying()[0]).toHaveTextContent("That didn't start, so it was checked again. Confirm once more.");
+    // The same node as before, its words changed rather than a new status
+    // put in with them: what a screen reader reads out.
+    expect(saying()[0]).toBe(noteStatus);
 
     // Acting on the fresh preview retires the note; the (again expired)
     // submit's own error takes its place while the next re-check runs.
