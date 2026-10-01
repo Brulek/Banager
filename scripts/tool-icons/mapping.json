@@ -1,5 +1,5 @@
 {
-  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli.",
+  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli. Round 5 (2026-10-02): the members of the AI-tool families (crates/banager-core/data/ai-tools.json) that had no logo, each tied to its vendor by the vendor's own registry entry, docs or site: an npm or PyPI twin of a formula already mapped takes the formula's logo (gemini-cli, kimi, mistral-vibe, ampcode); CodeBuddy Code is Simple Icons' CodeBuddy (codebuddy.cn, whose CLI docs install @tencent-ai/codebuddy-code); Qoder's avatar is the GitHub organization qoder.com links (QoderAI); goose's is aaif-goose, where Homebrew's block-goose-cli now builds from; the others are the GitHub organization of the package's repository (iflow-ai, charmbracelet, augmentcode, Factory-AI, openclaw); Ollama's app cask has Ollama's logo and Grok Build's cask xAI's, as their standalone and formula twins do.",
   "tools": {
     "brew:a2ps": {
       "icon": "si:gnu",
@@ -323,6 +323,10 @@
     },
     "brew:black": {
       "icon": "si:black",
+      "relation": "same"
+    },
+    "brew:block-goose-cli": {
+      "icon": "gh:aaif-goose",
       "relation": "same"
     },
     "brew:block/tap/lhm": {
@@ -1167,6 +1171,10 @@
     },
     "brew:geeqie": {
       "icon": "gh:bestimageviewer",
+      "relation": "same"
+    },
+    "brew:gemini-cli": {
+      "icon": "si:googlegemini",
       "relation": "same"
     },
     "brew:gentleman-programming/tap/gentleman-dots": {
@@ -4589,6 +4597,10 @@
       "icon": "si:google",
       "relation": "maker"
     },
+    "cask:grok-build": {
+      "icon": "gh:xai-org",
+      "relation": "maker"
+    },
     "cask:gstreamer-development": {
       "icon": "si:gstreamer",
       "relation": "same"
@@ -4655,6 +4667,10 @@
     },
     "cask:nordvpn": {
       "icon": "si:nordvpn",
+      "relation": "same"
+    },
+    "cask:ollama-app": {
+      "icon": "si:ollama",
       "relation": "same"
     },
     "cask:opensc-app": {
@@ -4777,6 +4793,10 @@
       "icon": "si:eleventy",
       "relation": "maker"
     },
+    "npm:@ampcode/cli": {
+      "icon": "gh:ampcode",
+      "relation": "same"
+    },
     "npm:@angular/cli": {
       "icon": "si:angular",
       "relation": "maker"
@@ -4795,6 +4815,10 @@
     },
     "npm:@astryxdesign/cli": {
       "icon": "gh:facebook",
+      "relation": "maker"
+    },
+    "npm:@augmentcode/auggie": {
+      "icon": "gh:augmentcode",
       "relation": "maker"
     },
     "npm:@aws-amplify/cli": {
@@ -4821,6 +4845,10 @@
       "icon": "si:capacitor",
       "relation": "same"
     },
+    "npm:@charmland/crush": {
+      "icon": "gh:charmbracelet",
+      "relation": "maker"
+    },
     "npm:@cloudflare/wrangler": {
       "icon": "si:cloudflare",
       "relation": "maker"
@@ -4845,6 +4873,10 @@
       "icon": "si:expo",
       "relation": "maker"
     },
+    "npm:@factory/cli": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
+    },
     "npm:@fission-ai/openspec": {
       "icon": "gh:fission-ai",
       "relation": "same"
@@ -4864,6 +4896,10 @@
     "npm:@google/gemini-cli": {
       "icon": "si:googlegemini",
       "relation": "same"
+    },
+    "npm:@iflow-ai/iflow-cli": {
+      "icon": "gh:iflow-ai",
+      "relation": "maker"
     },
     "npm:@infisical/cli": {
       "icon": "gh:infisical",
@@ -4913,6 +4949,10 @@
       "icon": "si:moonrepo",
       "relation": "same"
     },
+    "npm:@moonshot-ai/kimi-code": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
     "npm:@napi-rs/cli": {
       "icon": "gh:napi-rs",
       "relation": "same"
@@ -4936,6 +4976,10 @@
     "npm:@prisma/cli": {
       "icon": "si:prisma",
       "relation": "same"
+    },
+    "npm:@qoder-ai/qodercli": {
+      "icon": "gh:QoderAI",
+      "relation": "maker"
     },
     "npm:@quasar/app-vite": {
       "icon": null,
@@ -4981,6 +5025,10 @@
       "icon": "si:socket",
       "relation": "maker"
     },
+    "npm:@sourcegraph/amp": {
+      "icon": "gh:ampcode",
+      "relation": "same"
+    },
     "npm:@sourcemeta/jsonschema": {
       "icon": "gh:sourcemeta",
       "relation": "same"
@@ -5004,6 +5052,10 @@
     "npm:@tapjs/run": {
       "icon": "gh:tapjs",
       "relation": "same"
+    },
+    "npm:@tencent-ai/codebuddy-code": {
+      "icon": "si:codebuddy",
+      "relation": "maker"
     },
     "npm:@typespec/compiler": {
       "icon": "gh:microsoft",
@@ -5164,6 +5216,10 @@
     "npm:drizzle-kit": {
       "icon": "si:drizzle",
       "relation": "same"
+    },
+    "npm:droid": {
+      "icon": "gh:Factory-AI",
+      "relation": "maker"
     },
     "npm:eas-cli": {
       "icon": "si:expo",
@@ -5383,6 +5439,10 @@
     },
     "npm:oclif": {
       "icon": "si:oclif",
+      "relation": "same"
+    },
+    "npm:openclaw": {
+      "icon": "gh:openclaw",
       "relation": "same"
     },
     "npm:opencode-ai": {
@@ -5901,6 +5961,10 @@
       "icon": "si:kaggle",
       "relation": "same"
     },
+    "pypi:kimi-cli": {
+      "icon": "si:kimi",
+      "relation": "maker"
+    },
     "pypi:label-studio": {
       "icon": "gh:humansignal",
       "relation": "same"
@@ -5932,6 +5996,10 @@
     "pypi:meson": {
       "icon": "gh:mesonbuild",
       "relation": "same"
+    },
+    "pypi:mistral-vibe": {
+      "icon": "gh:mistralai",
+      "relation": "maker"
     },
     "pypi:mitmproxy": {
       "icon": "gh:mitmproxy",

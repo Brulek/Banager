@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-09-29",
+  "generated": "2026-10-01",
   "glyphs": {
     "si-1password": {
       "path": "M12 0c6.63 0 12 5.37 12 12 0 6.63-5.37 12-12 12S0 18.63 0 12C0 5.37 5.37 0 12 0m-.89 4.86c-.49 0-.73 0-.92.1a.87.87 0 0 0 -.378.379c-.09.18-.09.42-.09.91v2.74c0 .12 0 .19.01.24q.03.08.07.14a1 1 0 0 0 .175.162l.69.56c.12.1.18.14.2.2a.22.22 0 0 1 0 .15c-.03.05-.08.1-.2.19l-.69.57a1 1 0 0 0 -.175.162.4.4 0 0 0 -.065.138 1 1 0 0 0 -.016.238v6.01c0 .49 0 .73.1.92a.87.87 0 0 0 .378.378c.18.09.42.09.91.09h1.78c.49 0 .73 0 .92-.09a.87.87 0 0 0 .378-.378c.09-.19.09-.43.09-.92v-2.74c0-.12 0-.18-.01-.24a.4.4 0 0 0 -.065-.138 1 1 0 0 0 -.175-.162l-.7-.56c-.11-.1-.17-.14-.19-.2a.22.22 0 0 1 0-.152c.02-.05.08-.1.19-.19l.7-.56a1 1 0 0 0 .175-.162.4.4 0 0 0 .065-.138 1 1 0 0 0 .016-.238V6.25c0-.49 0-.73-.1-.92a.87.87 0 0 0 -.378-.379c-.18-.09-.43-.09-.91-.09Z",
@@ -371,6 +371,11 @@
       "path": "M11.77.07.07 23.21l12.76-10.85zM23.21 23.93 7.47 17.59 0 23.93zM24 23.74 12.3.46l1.72 19.24zM12.89 12.96l-5.02 4.3 5.62 2.24z",
       "hex": "064F8C",
       "title": "CMake"
+    },
+    "si-codebuddy": {
+      "path": "M18.64.29a1 1 0 0 0 -.11 0c-.18.01-.2.02-.45.24-.71.64-1.72 2.54-2.7 5.14l-.27.72-.5.16c-1.56.49-2.94 1.12-4.16 1.89-1.17.73-1.81 1.21-2.77 2.05l-.58.51-.26-.04c-2.53-.45-4.8-.61-5.84-.43-.41.08-.76.22-.86.35-.09.12-.14.26-.14.47 0 .19.03.42.1.73.26 1.24.95 2.85 2.03 4.78l.7 1.24-.02.46c-.03.5 0 1.27.06 1.8.04.32.03.32-.13.51-.57.65-.71 1.68-.41 2.84h5.36l-.33-.57c-.64-1.11-.96-1.66-1.13-2.17a5.46 5.46 0 0 1 1.564-5.84c.41-.36.96-.68 2.07-1.32l6.38-3.69c1.11-.64 1.66-.96 2.18-1.13a5.46 5.46 0 0 1 5.577 1.287V6.46l-.12-.06-.5-.25-.36-.66c-.92-1.7-2.41-3.7-3.48-4.67-.4-.36-.65-.51-.91-.53M11.57 17.63a1.26 1.26 0 0 1 1.722.462l1.36 2.35c.84 1.46-1.34 2.72-2.18 1.27l-1.36-2.36a1.26 1.26 0 0 1 .461-1.722m6.8-3.92a1.26 1.26 0 0 1 1.721.46l1.36 2.35c.84 1.46-1.35 2.72-2.19 1.26l-1.35-2.35a1.26 1.26 0 0 1 .462-1.722",
+      "hex": "6C4DFF",
+      "title": "CodeBuddy"
     },
     "si-codecrafters": {
       "path": "M9.82 17.53a.111.111 0 0 1 -.107-.142l3.05-10.84a.111.111 0 0 1 .108-.081H14.2c.07 0 .13.07.11.14l-3.07 10.84a.111.111 0 0 1 -.107.08H9.82Zm-2.14-2.74a.11.11 0 0 1 -.079-.033l-2.67-2.7a.111.111 0 0 1 0-.156L7.6 9.21a.111.111 0 0 1 .08-.033h1.7c.1 0 .15.12.08.19l-2.53 2.53a.111.111 0 0 0 0 .157l2.53 2.55c.07.07.02.19-.08.19H7.68Zm6.95 0a.111.111 0 0 1 -.079-.19l2.53-2.54a.111.111 0 0 0 0-.157l-2.53-2.54a.111.111 0 0 1 .079-.19h1.7c.03 0 .05.02.07.04l2.68 2.69a.111.111 0 0 1 0 .157l-2.68 2.7a.111.111 0 0 1 -.078.033h-1.69ZM12 24C5.38 24 0 18.62 0 12S5.38 0 12 0s12 5.38 12 12-5.38 12-12 12Zm0-22.67C6.12 1.33 1.33 6.12 1.33 12S6.12 22.67 12 22.67 22.67 17.88 22.67 12 17.88 1.33 12 1.33Z",
@@ -2416,6 +2421,10 @@
       "file": "gh-a11ywatch.webp",
       "title": "a11ywatch"
     },
+    "gh-aaif-goose": {
+      "file": "gh-aaif-goose.webp",
+      "title": "aaif-goose"
+    },
     "gh-abseil": {
       "file": "gh-abseil.webp",
       "title": "abseil"
@@ -2539,6 +2548,10 @@
     "gh-audacious-media-player": {
       "file": "gh-audacious-media-player.webp",
       "title": "audacious-media-player"
+    },
+    "gh-augmentcode": {
+      "file": "gh-augmentcode.webp",
+      "title": "augmentcode"
     },
     "gh-automattic": {
       "file": "gh-automattic.webp",
@@ -3096,6 +3109,10 @@
       "file": "gh-facebookresearch.webp",
       "title": "facebookresearch"
     },
+    "gh-factory-ai": {
+      "file": "gh-factory-ai.webp",
+      "title": "Factory-AI"
+    },
     "gh-fairwindsops": {
       "file": "gh-fairwindsops.webp",
       "title": "fairwindsops"
@@ -3391,6 +3408,10 @@
     "gh-ibm-granite": {
       "file": "gh-ibm-granite.webp",
       "title": "ibm-granite"
+    },
+    "gh-iflow-ai": {
+      "file": "gh-iflow-ai.webp",
+      "title": "iflow-ai"
     },
     "gh-imagemagick": {
       "file": "gh-imagemagick.webp",
@@ -4239,6 +4260,10 @@
     "gh-qalculate": {
       "file": "gh-qalculate.webp",
       "title": "qalculate"
+    },
+    "gh-qoderai": {
+      "file": "gh-qoderai.webp",
+      "title": "QoderAI"
     },
     "gh-qpdf": {
       "file": "gh-qpdf.webp",
@@ -5095,6 +5120,7 @@
     "brew:bitrise": "si-bitrise",
     "brew:bitwarden-cli": "si-bitwarden",
     "brew:black": "si-black",
+    "brew:block-goose-cli": "gh-aaif-goose",
     "brew:block/tap/lhm": "gh-block",
     "brew:boost": "si-boost",
     "brew:borgbackup": "si-borgbackup",
@@ -5302,6 +5328,7 @@
     "brew:gdb": "si-gnu",
     "brew:gdk-pixbuf": "si-gtk",
     "brew:geeqie": "gh-bestimageviewer",
+    "brew:gemini-cli": "si-googlegemini",
     "brew:gentleman-programming/tap/gentleman-dots": "gh-gentleman-programming",
     "brew:getsentry/tools/sentry": "si-sentry",
     "brew:getsentry/tools/sentry-cli": "si-sentry",
@@ -6153,6 +6180,7 @@
     "cask:gitkraken-cli": "si-gitkraken",
     "cask:google-drive": "si-googledrive",
     "cask:google-japanese-ime": "si-google",
+    "cask:grok-build": "gh-xai-org",
     "cask:gstreamer-development": "si-gstreamer",
     "cask:gstreamer-runtime": "si-gstreamer",
     "cask:karabiner-elements": "gh-pqrs-org",
@@ -6169,6 +6197,7 @@
     "cask:nextcloud": "si-nextcloud",
     "cask:ngrok": "si-ngrok",
     "cask:nordvpn": "si-nordvpn",
+    "cask:ollama-app": "si-ollama",
     "cask:opensc-app": "gh-opensc",
     "cask:openvpn-connect": "si-openvpn",
     "cask:openwebstart": "gh-karakun",
@@ -6199,28 +6228,33 @@
     "cask:zoom": "si-zoom",
     "npm:@11ty/eleventy": "si-eleventy",
     "npm:@11ty/eleventy-dev-server": "si-eleventy",
+    "npm:@ampcode/cli": "gh-ampcode",
     "npm:@angular/cli": "si-angular",
     "npm:@anthropic-ai/claude-code": "si-claudecode",
     "npm:@apollo/rover": "si-apollographql",
     "npm:@argos-ci/cli": "gh-argos-ci",
     "npm:@astryxdesign/cli": "gh-facebook",
+    "npm:@augmentcode/auggie": "gh-augmentcode",
     "npm:@aws-amplify/cli": "gh-aws-amplify",
     "npm:@axe-core/cli": "gh-dequelabs",
     "npm:@babel/cli": "si-babel",
     "npm:@biomejs/biome": "si-biome",
     "npm:@bitwarden/cli": "si-bitwarden",
     "npm:@capacitor/cli": "si-capacitor",
+    "npm:@charmland/crush": "gh-charmbracelet",
     "npm:@cloudflare/wrangler": "si-cloudflare",
     "npm:@commitlint/cli": "si-commitlint",
     "npm:@compodoc/live-server": "gh-compodoc",
     "npm:@docusaurus/core": "si-docusaurus",
     "npm:@e2b/cli": "gh-e2b-dev",
     "npm:@expo/cli": "si-expo",
+    "npm:@factory/cli": "gh-factory-ai",
     "npm:@fission-ai/openspec": "gh-fission-ai",
     "npm:@formatjs/cli": "gh-formatjs",
     "npm:@github/copilot": "si-githubcopilot",
     "npm:@githubnext/github-copilot-cli": "si-githubcopilot",
     "npm:@google/gemini-cli": "si-googlegemini",
+    "npm:@iflow-ai/iflow-cli": "gh-iflow-ai",
     "npm:@infisical/cli": "gh-infisical",
     "npm:@ionic/cli": "si-ionic",
     "npm:@kilocode/cli": "gh-kilo-org",
@@ -6233,12 +6267,14 @@
     "npm:@microsoft/rush": "gh-microsoft",
     "npm:@mintlify/cli": "si-mintlify",
     "npm:@moonrepo/cli": "si-moonrepo",
+    "npm:@moonshot-ai/kimi-code": "si-kimi",
     "npm:@napi-rs/cli": "gh-napi-rs",
     "npm:@nestjs/cli": "si-nestjs",
     "npm:@netlify/zip-it-and-ship-it": "si-netlify",
     "npm:@openai/codex": "gh-openai",
     "npm:@playwright/test": "gh-microsoft",
     "npm:@prisma/cli": "si-prisma",
+    "npm:@qoder-ai/qodercli": "gh-qoderai",
     "npm:@qwen-code/qwen-code": "si-qwen",
     "npm:@railway/cli": "si-railway",
     "npm:@salesforce/cli": "gh-salesforcecli",
@@ -6249,12 +6285,14 @@
     "npm:@shikijs/cli": "gh-shikijs",
     "npm:@shopify/cli": "si-shopify",
     "npm:@socketsecurity/socket-patch": "si-socket",
+    "npm:@sourcegraph/amp": "gh-ampcode",
     "npm:@sourcemeta/jsonschema": "gh-sourcemeta",
     "npm:@storybook/cli": "si-storybook",
     "npm:@strapi/cloud-cli": "si-strapi",
     "npm:@swc/cli": "si-swc",
     "npm:@tailwindcss/cli": "si-tailwindcss",
     "npm:@tapjs/run": "gh-tapjs",
+    "npm:@tencent-ai/codebuddy-code": "si-codebuddy",
     "npm:@typespec/compiler": "gh-microsoft",
     "npm:@usebruno/cli": "si-bruno",
     "npm:@vscode/test-cli": "gh-microsoft",
@@ -6293,6 +6331,7 @@
     "npm:depcheck": "gh-depcheck",
     "npm:docsify-cli": "si-docsify",
     "npm:drizzle-kit": "si-drizzle",
+    "npm:droid": "gh-factory-ai",
     "npm:eas-cli": "si-expo",
     "npm:electron": "si-electron",
     "npm:electron-builder": "si-electronbuilder",
@@ -6348,6 +6387,7 @@
     "npm:nx": "si-nx",
     "npm:oauth2-mock-server": "gh-axa-group",
     "npm:oclif": "si-oclif",
+    "npm:openclaw": "gh-openclaw",
     "npm:opencode-ai": "si-opencode",
     "npm:ovsx": "gh-eclipse-openvsx",
     "npm:pa11y": "gh-pa11y",
@@ -6475,6 +6515,7 @@
     "pypi:jupyterlab": "si-jupyter",
     "pypi:jupytext": "gh-jupytext",
     "pypi:kaggle": "si-kaggle",
+    "pypi:kimi-cli": "si-kimi",
     "pypi:label-studio": "gh-humansignal",
     "pypi:localstack": "gh-localstack",
     "pypi:manim": "gh-manimcommunity",
@@ -6483,6 +6524,7 @@
     "pypi:maturin": "gh-pyo3",
     "pypi:meltano": "gh-meltano",
     "pypi:meson": "gh-mesonbuild",
+    "pypi:mistral-vibe": "gh-mistralai",
     "pypi:mitmproxy": "gh-mitmproxy",
     "pypi:mkdocs": "gh-mkdocs",
     "pypi:mlflow": "si-mlflow",
