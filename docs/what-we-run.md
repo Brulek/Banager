@@ -2238,8 +2238,8 @@ Three, all in Banager's application data directory
 renamed into place, so a crash mid-write cannot leave it corrupt; the
 directory is created if it is missing).
 
-`history.json`, Banager's record of the updates and uninstalls it ran, which
-the Updates page's 「最近更新」 lists after a restart
+`history.json`, Banager's record of the updates and uninstalls it ran,
+which the Updates page's 「最近更新」 lists after a restart
 (`crates/banager-core/src/history/mod.rs`, attached in
 `src-tauri/src/history.rs`). One record per finished update or uninstall:
 when it finished, the package's key (its source's instance id — which can
@@ -2249,25 +2249,25 @@ before and the version read back after, how it ended (succeeded, needs
 attention with its reason, failed with the cause in one word when one is
 known, could not be confirmed, or cancelled once Banager had handed it to
 the tool's adapter, which can be before the tool's own command started, as
-when Homebrew was still finishing a `brew update`), and
-whether Banager saw the change itself (the version it read before and after
-differ). Also the time the page's Clear was last pressed. Never a line of
-a log, a command line, an error message or any other path: a failure's
-cause is read from the tool's last lines as the operation finishes, and the
-lines are dropped. An operation cancelled before Banager began carrying it
-out (while it waited for its turn, or while Banager read the installed
-version) is not recorded. Each record also carries a random id of the launch of Banager
-that ran it and the operation's number in that launch, so that the page
-lists an update it watched finish only once. The file keeps the newest
-1,000 records and nothing older than 180 days: as Banager starts it drops the rest and, if it dropped any,
-writes the file again straight away; it drops them again at each record.
-It is written whole to a `history.json.tmp.<n>` beside it and
-renamed into place, on a thread of its own, after each operation finishes
-and after Clear. A missing, unreadable or malformed file is an empty
-history and is replaced at the next record; a file a newer Banager wrote is
-left exactly as it is. To remove the history, quit Banager and delete
-`history.json`; it starts empty at the next launch. Clear does not delete
-it.
+when Homebrew was still finishing a `brew update`), and whether Banager
+saw the change itself (the version it read before and after differ). Also
+the time the page's Clear was last pressed. Never a line of a log, a
+command line, an error message or any other path: a failure's cause is
+read from the tool's last lines as the operation finishes, and the lines
+are dropped. An operation cancelled before Banager began carrying it out
+(while it waited for its turn, or while Banager read the installed
+version) is not recorded. Each record also carries a random id of the
+launch of Banager that ran it and the operation's number in that launch,
+so that the page lists an update it watched finish only once. The file
+keeps the newest 1,000 records and nothing older than 180 days: as Banager
+starts it drops the rest and, if it dropped any, writes the file again
+straight away; it drops them again at each record. It is written whole to
+a `history.json.tmp.<n>` beside it and renamed into place, on a thread of
+its own, after each operation finishes and after Clear. A missing,
+unreadable or malformed file is an empty history and is replaced at the
+next record; a file a newer Banager wrote is left exactly as it is. To
+remove the history, quit Banager and delete `history.json`; it starts
+empty at the next launch. Clear does not delete it.
 
 And `.window-state.json`: the
 window's size and position, and whether it was zoomed or in full screen,
