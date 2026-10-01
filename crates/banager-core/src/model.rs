@@ -895,8 +895,9 @@ pub enum Warning {
 /// No sentence for pip (Banager never uninstalls from pip), for npm older
 /// than 7 or of an unknown version (npm 6 ran a package's uninstall
 /// scripts), for uv while `UV_TOOL_DIR` is set (the plan is refused), or for
-/// the four tools with their own installer, whose uninstall confirmation
-/// already lists what goes to the Trash, what stays and what rustup deletes.
+/// the tools with their own installer that Banager can uninstall, whose
+/// uninstall confirmation already lists what goes to the Trash, what stays
+/// and what rustup deletes (Codex, listed only, has no uninstall).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UninstallScope {
     /// `brew uninstall --formula` with Homebrew's autoremove off: it removes
