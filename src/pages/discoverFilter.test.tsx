@@ -516,7 +516,10 @@ describe("the details and the focus when a choice hides the selected tool", () =
     view.focus();
     fireEvent.click(view);
     await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
-    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Grok Build"));
+    // The row's name, with its word: Terminal does not find its commands.
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe("Grok Build, Not Found in Terminal"),
+    );
   });
 
   it("puts it on the page's title when the focus was lost and the choice shows nothing", async () => {

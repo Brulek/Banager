@@ -275,3 +275,45 @@ export function twinChip(
     tone: "neutral",
   };
 }
+
+/** The row's 「终端里找不到」, in the shape `InstalledPage`'s chips have. */
+export interface NotOnPathChip {
+  id: "not-on-path";
+  label: string;
+  detail: ReactNode;
+  ariaLabel: string;
+  tone: "neutral";
+}
+
+/**
+ * The row's 「终端里找不到」 / "Not Found in Terminal" -- the Show menu's
+ * word for the same tools (`families.showNotOnPath`) -- for a tool at
+ * least one of whose commands has a `NotOnPath` verdict
+ * (`hasCommandNotOnPath`), null for any other. Behind its ⓘ, the details'
+ * own words: where the command is, as 「在终端里输入」 says it, and the same
+ * advice as its ⓘ -- or, for commands in more than one such folder, the
+ * notice's sentence for one tool (`notOnPathMore.detailOne`), which names
+ * no folder. A status word like the others (`StatusChip`), shown on the
+ * row after 「装了两份」 and what the source and the tool allow (`chipsOf`).
+ */
+export function notOnPathChip(t: Translate, artifact: InstalledArtifact): NotOnPathChip | null {
+  const dirs = [
+    ...new Set(
+      artifact.facts.commands.flatMap(({ state }) =>
+        typeof state === "object" && state !== null && "NotOnPath" in state ? [state.NotOnPath.dir] : [],
+      ),
+    ),
+  ];
+  if (dirs.length === 0) return null;
+  const label = t("families.showNotOnPath");
+  return {
+    id: "not-on-path",
+    label,
+    detail:
+      dirs.length === 1
+        ? detailLines([t("commands.notFound", { dir: dirs[0] }), t("notOnPathMore.notFoundDetail")])
+        : detailLines([t("notOnPathMore.detailOne")]),
+    ariaLabel: t("commands.twinLabel", { word: label, name: artifact.display_name }),
+    tone: "neutral",
+  };
+}

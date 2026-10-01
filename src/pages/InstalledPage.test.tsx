@@ -3288,7 +3288,9 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     };
     renderInstalled();
 
-    expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
+    // No 「装了两份」 for a tool with one copy; its word is that Terminal
+    // does not find it (`notOnPathChip`).
+    expect(chipsOf(await findRow("Claude Code"))).toEqual(["Not Found in Terminal"]);
     expect(chipsOf(rowOf("grok"))).toEqual([]);
     const inspector = await openDetails("Claude Code");
     expect(inspector.querySelector("[data-command-line]")).toHaveTextContent(

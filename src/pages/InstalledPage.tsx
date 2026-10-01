@@ -76,7 +76,7 @@ import {
 import { InspectorCallout, twinAdviceLines, twinVerdict } from "../components/TwinAdvice";
 import { uncheckedUpdatesChip } from "../components/UncheckedUpdates";
 import { updatesUnchecked } from "../lib/uncheckedStandalone";
-import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
+import { CommandsGroup, notOnPathChip, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
 import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
@@ -153,7 +153,8 @@ interface RowChip {
  * then 「装了两份」, so that every row the 「装了不止一份」 filter lists says
  * so; else the first of its chips that is not a normal state, in
  * `chipsOf`'s order -- what the source allows, then the tool's own refusal
- * to be removed, then Homebrew's own mark, then where its update stands,
+ * to be removed, then Homebrew's own mark, then that Terminal does not
+ * find one of its commands (「终端里找不到」), then where its update stands,
  * then how the user hid it. Never the first check's wait, the same on
  * every row: the list's own line says it once (`PREVIEW_HOLD_ID`).
  */
@@ -1244,6 +1245,11 @@ export function InstalledPage() {
     // where its update stands, which the Updates page says too.
     const twin = twinChip(t, artifact, twins.get(id), sourceLabelFor);
     if (twin !== null) chips.push(twin);
+    // 「终端里找不到」: after 「装了两份」, which says it of the shared command
+    // already, and before where its update stands -- an update does not
+    // help a tool Terminal does not find.
+    const notOnPath = notOnPathChip(t, artifact);
+    if (notOnPath !== null) chips.push(notOnPath);
     // The first check's list holds every Uninstall until that check is
     // done (the button stays disabled, `uninstallHeld`). The same for
     // every row: the list's line says it once, and the row says its own
@@ -1555,8 +1561,13 @@ export function InstalledPage() {
       sourceLabelFor,
       canUninstall(artifact, instance),
     );
+    // 「终端里找不到」 is the 「在终端里输入」 group's to say, with its folder
+    // and Copy Path: said once, down there.
     const statusChips = chips.filter(
-      (chip) => !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) && !(chip.id === "twin" && twinLines !== null),
+      (chip) =>
+        !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) &&
+        !(chip.id === "twin" && twinLines !== null) &&
+        chip.id !== "not-on-path",
     );
     // Where its update stands, and what it is: a row of the group, each
     // word 13 in the label colour as the other values, its why behind an
