@@ -2072,6 +2072,31 @@ Nothing is written, and nothing is deleted: the preview has no button or
 command that removes these paths. The one action beside each is Copy
 Path, which puts the path, as it is shown (`~` and all), on the clipboard.
 
+## Diagnostic info: read-only, no command runs
+
+Settings' About has Copy Diagnostic Info (「拷贝诊断信息」), and so does the
+Help menu. It puts a short plain text on the clipboard, in the window's
+language, for the user to paste to whoever helps them: Banager's version,
+macOS's version and the chip, the window's language; each source's kind,
+version, program and status; the folders on `PATH` and whether they are the
+login shell's; when the last check was and whether it finished; how many
+tools Terminal cannot find and how many are installed twice; and the disk
+they take, once measured. Settings' checkbox, off each time Settings opens,
+adds each source's tools by name and version; the Help menu's item never
+does.
+
+The window builds the text from what it already holds, and asks Rust only
+for what it cannot read itself, with `get_system_facts`
+(`src-tauri/src/ipc.rs`, `crates/banager-core/src/diagnostics.rs`), which
+takes nothing from it. That reads two strings the kernel keeps,
+`kern.osproductversion` and `machdep.cpu.brand_string`, with
+`sysctlbyname`; the process's own `PATH` and `HOME`, and no other
+environment variable; and the sources' last known state. No command runs,
+no file is opened, nothing is written to disk, and no connection is made.
+Every path in the text has the home folder written as `~`, and the text
+never holds an environment variable's value (a proxy setting can hold a
+password), anything from a shell file, or a token.
+
 ## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:

@@ -41,7 +41,9 @@
 //! paragraph cites the Homebrew lines that install, and that the disk-use
 //! section states the two limits `SizeBudget::default()` keeps a round to,
 //! names every place `size::Protected` never looks into and says nothing is
-//! written. A source, host,
+//! written, and that the diagnostic-info section names the two kernel
+//! strings and the two variables `diagnostics::current` reads and says the
+//! text never holds a variable's value. A source, host,
 //! variable, limit, path, check, pause, icon size, opener or notification
 //! permission or daily-check number added or changed, or that look
 //! shortened, without its line in the document fails here.
@@ -1037,4 +1039,27 @@ fn test_what_we_run_names_the_notification_plugins_permissions_and_says_the_swit
         folded.contains("\"Notify me when there are updates\" (「有更新时通知我」), off by default too (`Settings::notify_updates`)"),
         "the `## The daily check` section of docs/what-we-run.md does not say the notification's switch is off by default"
     );
+}
+
+#[test]
+fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_never_holds() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Diagnostic info").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Diagnostic info` section for diagnostics::current")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "`get_system_facts`",
+        "`kern.osproductversion` and `machdep.cpu.brand_string`, with `sysctlbyname`",
+        "the process's own `PATH` and `HOME`, and no other environment variable",
+        "No command runs, no file is opened, nothing is written to disk, and no connection is made",
+        "the home folder written as `~`",
+        "never holds an environment variable's value",
+        "the Help menu's item never does",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Diagnostic info` section of docs/what-we-run.md does not say {words:?}"
+        );
+    }
 }

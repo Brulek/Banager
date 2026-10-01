@@ -52,7 +52,8 @@ page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
 never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
-Again or Search, which Rust sends only to a page that asked it to listen:
+Again, Search or Help's Copy Diagnostic Info, which Rust sends only to a
+page that asked it to listen:
 in this window those items do nothing but bring the window back when it
 is closed or minimized. Nor does the page
 badge Banager's icon in the Dock with its count of updates, as the app
@@ -114,8 +115,10 @@ Programs page's Show in Finder reach this Mac's Finder: it asks the stand-in in
   "npm package".
 
 The files: `mockTauri.ts`, `mockTauriEvent.ts`, `mockTauriWindow.ts` and
-`mockTauriOpener.ts` (the stand-in modules; the second listens to
-nothing, the third badges nothing, and the fourth shows nothing in Finder
+`mockTauriOpener.ts` (the stand-in modules; the second hears nothing by
+itself -- `window.mockMenu("copy-diagnostics")` in the browser's console
+sends the page what a menu item sends, by the item's id in
+`src-tauri/src/menu.rs` -- the third badges nothing, and the fourth shows nothing in Finder
 and says in the console which path it was handed), `mockBackend.ts` (the
 commands),
 `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps' icons),
