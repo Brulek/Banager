@@ -14,6 +14,7 @@ import type {
   ArtifactKey,
   ArtifactKind,
   DetectOutcome,
+  HomebrewFacts,
   InstalledArtifact,
   ManagerInstance,
   Settings,
@@ -280,6 +281,72 @@ function casks(): InstalledArtifact[] {
   ];
 }
 
+/**
+ * What `brew info --installed --json=v2` says beyond versions
+ * (`ArtifactFacts.homebrew`), on a few of the rows above, and two rows of
+ * its own: a cask Homebrew disabled for failing macOS's security check,
+ * and a formula it deprecated in favour of another. Every cask also gets
+ * its install time, as brew reports one for each.
+ */
+function withHomebrewState(artifacts: InstalledArtifact[]): InstalledArtifact[] {
+  const empty: HomebrewFacts = { deprecated: null, disabled: null, caveats: null, other_versions: [] };
+  const extra: Record<string, Partial<HomebrewFacts>> = {
+    git: { other_versions: ["2.54.0"] },
+    "openssl@3": {
+      other_versions: ["3.6.3"],
+      caveats:
+        "A CA file has been bootstrapped using certificates from the system\nkeychain. To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3/bin/c_rehash",
+    },
+    readline: { other_versions: ["8.3.3"] },
+    "python@3.13": {
+      caveats:
+        "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.13\n\n`idle3.13` requires tkinter, which is available separately:\n  brew install python-tk@3.13",
+    },
+  };
+  const caskDays: Record<string, number> = {
+    "android-platform-tools": 75,
+    "font-jetbrains-mono": 300,
+    iterm2: 190,
+    "visual-studio-code": 33,
+  };
+  const marked = artifacts.map((a) => {
+    if (a.key.instance_id !== IDS.brew) return a;
+    const more = extra[a.key.name];
+    const facts = more === undefined ? a.facts : { ...a.facts, homebrew: { ...empty, ...more } };
+    const days = caskDays[a.key.name];
+    const installed_at = a.key.kind === "Cask" && days !== undefined ? daysAgo(days) : a.installed_at;
+    return { ...a, facts, installed_at };
+  });
+  marked.push(
+    artifact(IDS.brew, "Formula", "youtube-dl", "2021.12.17", {
+      description: "Download YouTube videos from the command-line",
+      homepage: "https://youtube-dl.org/",
+      installed_at: daysAgo(500),
+      facts: {
+        ...NO_FACTS,
+        homebrew: {
+          ...empty,
+          deprecated: { date: "2025-11-01", reason: "unmaintained", replacement: "yt-dlp" },
+        },
+      },
+    }),
+    artifact(IDS.brew, "Cask", "quickjot", "2.3.1", {
+      display_name: "QuickJot",
+      description: "Menu bar notes",
+      homepage: "https://quickjot.example/",
+      installed_at: daysAgo(420),
+      facts: {
+        ...NO_FACTS,
+        homebrew: {
+          ...empty,
+          disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement: null },
+        },
+      },
+    }),
+  );
+  return marked;
+}
+
 function brewUpdates(): UpdateCandidate[] {
   const formula = (name: string) => key(IDS.brew, "Formula", name);
   return [
@@ -439,7 +506,7 @@ function fullWorld(): World {
   return {
     detect: "Found",
     instances: instances(),
-    artifacts: [...formulae(), ...casks(), ...rest.artifacts],
+    artifacts: withHomebrewState([...formulae(), ...casks(), ...rest.artifacts]),
     updates: [...brewUpdates(), ...rest.updates],
     greedyUpdates: brewGreedyUpdates(),
     errors: [],
