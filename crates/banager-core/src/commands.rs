@@ -53,6 +53,7 @@ use crate::adapters::standalone::recipes::RECIPES;
 use crate::model::{
     ArtifactKind, CommandFact, CommandState, InstallReason, InstalledArtifact, ManagerInstance,
 };
+use crate::protected;
 use crate::runner::HostEnv;
 use crate::scan::display_path;
 use std::collections::{BTreeSet, HashMap};
@@ -98,35 +99,14 @@ struct Folder {
     read: bool,
 }
 
-/// Folders macOS asks the user about before an app looks inside them
-/// (System Settings > Privacy & Security, Files and Folders and App
-/// Management's data from other apps), under the home folder. With any
-/// other disk, under `/Volumes` -- removable and network disks are asked
-/// about too, and a network disk that went away does not answer at all --
-/// they are never read here: a refresh must not put up a permission
-/// request, or wait on a disk.
-const ASKS_FIRST: [&str; 10] = [
-    "Desktop",
-    "Documents",
-    "Downloads",
-    "Movies",
-    "Music",
-    "Pictures",
-    "Library/CloudStorage",
-    "Library/Containers",
-    "Library/Group Containers",
-    "Library/Mobile Documents",
-];
-
-/// Whether `path` is in a folder `ASKS_FIRST` names under one of `homes`
-/// (the home folder as named, and where it leads), or on another disk.
-fn asks_first(path: &Path, homes: &[PathBuf]) -> bool {
-    path.starts_with("/Volumes")
-        || homes.iter().any(|home| {
-            ASKS_FIRST
-                .iter()
-                .any(|rel| path.starts_with(home.join(rel)))
-        })
+/// Whether `path` is in one of `places` (`protected::places`): one of
+/// the folders macOS asks the user about before an app looks inside them,
+/// under the home folder as named or where it leads, or on another disk,
+/// under `/Volumes` -- a network disk that went away does not answer at
+/// all. They are never read here: a refresh must not put up a permission
+/// request, or wait on a disk. Case aside, as APFS compares names.
+fn asks_first(path: &Path, places: &[PathBuf]) -> bool {
+    protected::is_within(path, places)
 }
 
 /// The folders one round read (`read_folders`).
@@ -221,18 +201,19 @@ pub fn read_folders(
     let mut seen: Vec<PathBuf> = Vec::new();
     let mut homes = vec![home.to_path_buf()];
     homes.extend(std::fs::canonicalize(home).ok());
+    let places = protected::places(&homes);
     for dir in path_dirs {
         if dir.as_os_str().is_empty() || !dir.is_absolute() {
             continue;
         }
-        match read_one(dir, &homes, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &places, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
             Ok(Some(folder)) => folders.path.push(folder),
             Ok(None) => {}
         }
     }
     for dir in bin_dirs {
-        match read_one(dir, &homes, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &places, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
             Ok(Some(folder)) if folder.read => folders.other.push(folder),
             Ok(_) => {}
@@ -247,7 +228,7 @@ pub fn read_folders(
 /// names comes back unread; as named there, it is not even resolved.
 fn read_one(
     dir: &Path,
-    homes: &[PathBuf],
+    places: &[PathBuf],
     seen: &mut Vec<PathBuf>,
     budget: CommandBudget,
     started: Instant,
@@ -262,7 +243,7 @@ fn read_one(
         names: BTreeSet::new(),
         read: false,
     };
-    if asks_first(dir, homes) {
+    if asks_first(dir, places) {
         if seen.iter().any(|known| known == dir) {
             return Ok(None);
         }
@@ -276,7 +257,7 @@ fn read_one(
         return Ok(None);
     }
     seen.push(canonical.clone());
-    if asks_first(&canonical, homes) {
+    if asks_first(&canonical, places) {
         return Ok(Some(unread(canonical)));
     }
     let Ok(read) = std::fs::read_dir(&canonical) else {

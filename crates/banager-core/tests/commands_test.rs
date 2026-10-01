@@ -1083,3 +1083,41 @@ fn test_a_folder_macos_asks_about_is_never_read_and_no_verdict_rests_on_it() {
         vec![vec![unjudged("claude")], vec![unjudged("claude")]]
     );
 }
+
+#[test]
+fn test_a_protected_folder_is_never_read_whatever_case_names_it() {
+    // The list is `protected::PROTECTED_IN_HOME`, shared with the size
+    // walk, and compared case aside as APFS compares names: `~/documents`
+    // is `~/Documents`, and `/volumes` is `/Volumes`. Other apps' data in
+    // `~/Library/Containers` and `~/Library/Group Containers` is on it too.
+    let home = Home::new("asks-first-case");
+    let setup = two_claudes(&home);
+    let lower_documents = home.at("documents/bin");
+    let containers = home.dir("Library/Containers/com.example.app/Data/bin");
+    let group_containers = home.dir("Library/Group Containers/group.example/bin");
+    let volume = PathBuf::from("/volumes/Banager-test-no-such-disk/bin");
+    let path = [
+        lower_documents.clone(),
+        containers.clone(),
+        group_containers.clone(),
+        volume.clone(),
+        setup.npm_bin.clone(),
+    ];
+    let folders = read_folders(
+        &path,
+        &bin_folders(&setup.instances),
+        home.path(),
+        CommandBudget::default(),
+    );
+    assert!(folders.complete());
+    assert_eq!(
+        folders.unread_path_folders(),
+        vec![
+            lower_documents.as_path(),
+            containers.as_path(),
+            group_containers.as_path(),
+            volume.as_path()
+        ]
+    );
+    assert_eq!(folders.path_folders(), vec![setup.npm_bin.as_path()]);
+}

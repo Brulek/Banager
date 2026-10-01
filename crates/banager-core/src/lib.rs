@@ -73,6 +73,10 @@ pub mod model;
 /// the shell reads the window's focus and posts.
 pub mod notify_updates;
 pub mod ops;
+/// The places no read-only walk ever enters -- the folders macOS asks the
+/// user about first, and every other disk -- shared by `commands` and
+/// `size`.
+pub mod protected;
 pub mod runner;
 pub mod scan;
 pub mod session;

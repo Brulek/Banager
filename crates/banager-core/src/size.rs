@@ -37,9 +37,11 @@
 //!
 //! Where it never looks (`Protected`): the folders macOS asks the user
 //! about before an app may read them -- Desktop, Documents, Downloads,
-//! iCloud Drive (`~/Library/Mobile Documents`), other apps' cloud folders
-//! (`~/Library/CloudStorage`), Pictures, Movies, Music -- and other
-//! volumes (`/Volumes`). A tool whose folder is in one of them, or reached
+//! Pictures, Movies, Music, iCloud Drive (`~/Library/Mobile Documents`),
+//! other apps' cloud folders (`~/Library/CloudStorage`) and other apps'
+//! data (`~/Library/Containers`, `~/Library/Group Containers`) -- and
+//! other volumes (`/Volumes`), the list `crate::protected` keeps for
+//! `commands` too. A tool whose folder is in one of them, or reached
 //! through a link into one, gets no size, so measuring never makes macOS
 //! ask anything. Each folder on the way to a tool's folder is `lstat`ed,
 //! and a link among them read (`readlink`) and followed only after where
@@ -52,38 +54,18 @@
 //! was when each part of it was read.
 
 use crate::model::{ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance};
+use crate::protected;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsString;
 use std::fs::Metadata;
-use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The folders under the home folder that are never measured, nor walked
-/// through: macOS asks the user before an app reads the first five
-/// (Files and Folders; iCloud Drive; the folders of apps such as Dropbox
-/// that keep files in the cloud), and the last three hold the user's
-/// libraries. Compared without regard to case, as APFS does by default.
-/// `docs/what-we-run.md` names each one (`what_we_run_test`).
-pub const PROTECTED_IN_HOME: [&str; 8] = [
-    "Desktop",
-    "Documents",
-    "Downloads",
-    "Library/Mobile Documents",
-    "Library/CloudStorage",
-    "Pictures",
-    "Movies",
-    "Music",
-];
-
-/// Where macOS mounts every other volume -- external disks, disk images,
-/// network shares -- which are never measured either: reading one can make
-/// macOS ask, and its folders are not on this Mac's own disk.
-pub const OTHER_VOLUMES: &str = "/Volumes";
+pub use crate::protected::{OTHER_VOLUMES, PROTECTED_IN_HOME};
 
 /// The most links followed on the way to one folder, as the kernel's own
 /// limit for a path (`MAXSYMLINKS`).
@@ -195,18 +177,14 @@ impl Protected {
                 homes.push(real);
             }
         }
-        let mut places = vec![PathBuf::from(OTHER_VOLUMES)];
-        for home in &homes {
-            places.extend(PROTECTED_IN_HOME.iter().map(|place| home.join(place)));
+        Protected {
+            places: protected::places(&homes),
         }
-        Protected { places }
     }
 
     /// Whether `path` is one of the places or inside one.
     pub fn contains(&self, path: &Path) -> bool {
-        self.places
-            .iter()
-            .any(|place| starts_with_folded(path, place))
+        protected::is_within(path, &self.places)
     }
 
     /// Whether one of the places is inside `path` (or is it): walking
@@ -214,22 +192,8 @@ impl Protected {
     fn under(&self, path: &Path) -> bool {
         self.places
             .iter()
-            .any(|place| starts_with_folded(place, path))
+            .any(|place| protected::starts_with_folded(place, path))
     }
-}
-
-/// `Path::starts_with`, comparing each component without regard to ASCII
-/// case: on a case-insensitive APFS volume `~/documents` is `~/Documents`.
-fn starts_with_folded(path: &Path, prefix: &Path) -> bool {
-    let mut components = path.components();
-    prefix.components().all(|wanted| {
-        components.next().is_some_and(|component| {
-            component
-                .as_os_str()
-                .as_bytes()
-                .eq_ignore_ascii_case(wanted.as_os_str().as_bytes())
-        })
-    })
 }
 
 /// What `resolve` found at a path.

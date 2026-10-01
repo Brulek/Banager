@@ -61,10 +61,11 @@ use banager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
 use banager_core::http::HttpError;
 use banager_core::icon::ICON_PIXELS;
 use banager_core::model::{InstanceNote, KeptWhat};
+use banager_core::protected::{OTHER_VOLUMES, PROTECTED_IN_HOME};
 use banager_core::runner::HostEnv;
 use banager_core::scan::ScanBudget;
 use banager_core::session::Session;
-use banager_core::size::{SizeBudget, OTHER_VOLUMES, PROTECTED_IN_HOME};
+use banager_core::size::SizeBudget;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -402,7 +403,7 @@ fn test_what_we_run_has_the_disk_use_section_with_its_limits_and_every_place_it_
     for place in PROTECTED_IN_HOME {
         assert!(
             folded.contains(&format!("`~/{place}`")),
-            "the `## Disk use` section of docs/what-we-run.md does not name `~/{place}`, which size::PROTECTED_IN_HOME keeps it out of"
+            "the `## Disk use` section of docs/what-we-run.md does not name `~/{place}`, which protected::PROTECTED_IN_HOME keeps it out of"
         );
     }
     assert!(
@@ -457,6 +458,18 @@ fn test_what_we_run_has_the_command_check_section_with_its_folders_and_both_of_i
             "the `## Which copy a command runs` section of docs/what-we-run.md does not say {phrase:?}"
         );
     }
+    // Every place it never reads, as the shared list has them -- the same
+    // list as the disk-use section's.
+    for place in PROTECTED_IN_HOME {
+        assert!(
+            folded.contains(&format!("`~/{place}`")),
+            "the `## Which copy a command runs` section of docs/what-we-run.md does not name `~/{place}`, which protected::PROTECTED_IN_HOME keeps it out of"
+        );
+    }
+    assert!(
+        folded.contains(&format!("`{OTHER_VOLUMES}`")),
+        "the `## Which copy a command runs` section of docs/what-we-run.md does not name `{OTHER_VOLUMES}`"
+    );
     // And the list of files Banager reads names it too.
     let reads =
         section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");

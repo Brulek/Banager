@@ -1820,13 +1820,15 @@ It reads:
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | `realpath`: whether it leads into that tool's own folder; `stat`: whether it is a file with an execute bit |
 | in each `PATH` folder, the entry of each name some tool provides | `stat` (a file with an execute bit) and `realpath` (where it leads), in `PATH`'s order |
 
-A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Movies`,
-`~/Music` or `~/Pictures`, in iCloud Drive or another cloud folder
+A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
+`~/Movies` or `~/Music`, in iCloud Drive or another cloud folder
 (`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
-app's container (`~/Library/Containers`, `~/Library/Group Containers`)
-or on another disk (`/Volumes`) is not read at all, as named or where it
-leads (`asks_first`): macOS asks you before an app looks there, and a
-network disk that went away does not answer. On `PATH`, such a folder is
+app's data (`~/Library/Containers`, `~/Library/Group Containers`) or on
+another disk (`/Volumes`), whatever case spells them, is not read at all,
+as named or where it leads (`asks_first`): macOS asks you before an app
+looks there, and a network disk that went away does not answer. It is the
+same list the disk-use measurement keeps out of
+(`crates/banager-core/src/protected.rs`). On `PATH`, such a folder is
 kept in its place, unread, and nothing is said about a name it could
 hold before another copy; a bin folder there is skipped.
 
@@ -1949,10 +1951,13 @@ blocks.
 
 It never looks into these places, nor follows a link into them, so
 measuring never makes macOS ask for permission: `~/Desktop`,
-`~/Documents`, `~/Downloads`, `~/Library/Mobile Documents` (iCloud
-Drive), `~/Library/CloudStorage` (apps that keep files in the cloud),
-`~/Pictures`, `~/Movies`, `~/Music`, and `/Volumes` (every other disk).
-A tool kept in one of them shows no size (`Protected`).
+`~/Documents`, `~/Downloads`, `~/Pictures`, `~/Movies`, `~/Music`,
+`~/Library/Mobile Documents` (iCloud Drive), `~/Library/CloudStorage`
+(apps that keep files in the cloud), `~/Library/Containers` and
+`~/Library/Group Containers` (other apps' data), and `/Volumes` (every
+other disk), whatever case spells them. A tool kept in one of them shows
+no size (`Protected`). It is the same list the command check keeps out
+of (`crates/banager-core/src/protected.rs`).
 
 Nothing is written: the sizes stay in Banager's memory until it quits, and
 a folder already measured in full at the same version is not walked again. They
