@@ -51,7 +51,8 @@ function Line({ line, onView }: { line: SetupLine; onView: (view: SetupView) => 
   const view = line.view;
   return (
     <li data-setup-line={line.id} data-symbol={line.symbol} className="flex min-h-9 items-center gap-4 px-2.5 py-1.5">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      {/* The symbol by the first line of the words, however many there are. */}
+      <div className="flex min-w-0 flex-1 items-start gap-2">
         <LineSymbol kind={line.symbol} />
         <div className="min-w-0">
           <p className="break-words text-body text-foreground">

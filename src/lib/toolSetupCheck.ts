@@ -152,7 +152,8 @@ function terminalLines(t: Translate, input: ToolSetupInput): SetupLine[] {
 /**
  * 「来源」: each source not answering, read-only or on a version not tested
  * -- in the diagnostic text's words (`sourceStateWords`) -- or whose check
- * did not finish, a line of its own with 查看 to its page; the rest said
+ * did not finish, a line of its own with 查看 to its page, those that do
+ * not answer or did not finish first; the rest said
  * once, 「所有来源都正常回应」, with their names, two Homebrews named as the
  * sidebar names them (`instanceLabels`). Then where the programs no source
  * installed are: Other Programs.
@@ -183,6 +184,8 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       ),
     );
   }
+  // What stops a source from working first, as the Overview orders its problems.
+  lines.sort((a, b) => Number(b.symbol === "warning") - Number(a.symbol === "warning"));
   if (fine.length > 0) {
     lines.push(
       line(
@@ -193,9 +196,7 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       ),
     );
   }
-  if (!input.pending) {
-    lines.push(line("otherPrograms", "note", t("setupCheck.sources.otherPrograms"), { view: { kind: "unknown" } }));
-  }
+  lines.push(line("otherPrograms", "note", t("setupCheck.sources.otherPrograms"), { view: { kind: "unknown" } }));
   return lines;
 }
 
