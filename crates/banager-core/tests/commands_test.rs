@@ -310,6 +310,79 @@ fn test_which_claude_runs_follows_the_order_of_path() {
 }
 
 #[test]
+fn test_codexs_own_launcher_is_judged_like_the_other_standalone_launchers() {
+    // Codex's install script: `~/.local/bin/codex` links (absolute text)
+    // through `~/.codex/packages/standalone/current` into
+    // `releases/<version>-<target>`; npm's `@openai/codex` sits in an npm
+    // prefix. The launcher's `current` hop stays inside the package folder,
+    // so the native copy claims `codex` as Claude Code's launcher claims
+    // `claude`; its helper `codex-code-mode-host` is no command people
+    // type and gets no verdict.
+    let home = Home::new("two-codexes");
+    let npm = home.dir("npm");
+    home.exe("npm/lib/node_modules/@openai/codex/bin/codex.js");
+    home.link(
+        "npm/bin/codex",
+        Path::new("../lib/node_modules/@openai/codex/bin/codex.js"),
+    );
+    let root = home.at(".codex/packages/standalone");
+    let release = root.join("releases/0.159.3-aarch64-apple-darwin");
+    home.exe(".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex");
+    home.exe(
+        ".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex-code-mode-host",
+    );
+    home.link(".codex/packages/standalone/current", &release);
+    let launcher = home.link(".local/bin/codex", &root.join("current/bin/codex"));
+    home.link(
+        ".local/bin/codex-code-mode-host",
+        &root.join("current/bin/codex-code-mode-host"),
+    );
+    let npm_id = format!("npm:{}", npm.display());
+    let instances = vec![
+        instance("npm", &npm_id, &npm, &npm.join("bin/npm")),
+        instance("standalone-codex", "standalone-codex", &root, &launcher),
+    ];
+    let artifacts = vec![
+        with_family(
+            artifact(&npm_id, ArtifactKind::Package, "@openai/codex"),
+            "codex",
+        ),
+        with_family(
+            artifact("standalone-codex", ArtifactKind::Binary, "codex"),
+            "codex",
+        ),
+    ];
+    let npm_key = artifacts[0].key.clone();
+    let native_key = artifacts[1].key.clone();
+
+    let npm_first = verdicts(
+        &home,
+        &[npm.join("bin"), home.at(".local/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(
+        npm_first,
+        vec![vec![runs("codex")], vec![shadowed("codex", Some(&npm_key))]]
+    );
+    let native_first = verdicts(
+        &home,
+        &[home.at(".local/bin"), npm.join("bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(
+        native_first,
+        vec![
+            vec![shadowed("codex", Some(&native_key))],
+            vec![runs("codex")]
+        ]
+    );
+    let only_npm = verdicts(&home, &[npm.join("bin")], &instances, &artifacts);
+    assert_eq!(only_npm[1], vec![not_on_path("codex", "~/.local/bin")]);
+}
+
+#[test]
 fn test_a_grok_build_shaped_cask_provides_both_its_names_from_one_file() {
     // The cask as `brew info --installed --json=v2` lists it, its two
     // links where the stanzas' targets say, both to one staged file.
