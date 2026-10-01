@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
 import { twinsByArtifact } from "./commands";
+import { commandsKnown } from "./commandsKnown";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
@@ -245,8 +246,18 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
       );
     }
   }
-  lines.push(t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length }));
-  lines.push(t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) }));
+  // 0 only when the check looked (`commandsKnown`): a round with no
+  // verdicts, or no commands at all, says it did not.
+  lines.push(
+    commandsKnown(artifacts, false, "verdicts") === "known"
+      ? t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length })
+      : t("commandsKnown.notFoundUnknown"),
+  );
+  lines.push(
+    commandsKnown(artifacts, false, "names") === "known"
+      ? t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) })
+      : t("commandsKnown.twinsUnknown"),
+  );
   // The toolbar's total and hedge (`sizeTotalsOf`): measured for this
   // snapshot's round, and 「…以上」 when some tool has no size in it -- a
   // pip package, a cask with no app -- as well as when the budget ran out.

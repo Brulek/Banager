@@ -100,6 +100,12 @@
     "none": "没有发现装了不止一份的工具",
     "noneInSource": "{{source}}中没有发现装了不止一份的工具"
   },
+  "commandsKnown": {
+    "previewing": "检查完成后会显示在这里",
+    "unjudged": "这次检查没有判断终端里的命令",
+    "notFoundUnknown": "终端找不到：这次没有判断",
+    "twinsUnknown": "装了不止一份的工具：这次没有判断"
+  },
   "overview": {
     "updatesAvailable_other": "{{count}}个工具可以更新",
     "reviewUpdates": "查看更新",

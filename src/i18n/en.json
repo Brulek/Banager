@@ -111,6 +111,12 @@
     "none": "No tools installed more than once were found",
     "noneInSource": "No tools installed more than once were found in {{source}}"
   },
+  "commandsKnown": {
+    "previewing": "These appear here when the check finishes",
+    "unjudged": "This check didn't look at the commands in Terminal",
+    "notFoundUnknown": "Not found in Terminal: not looked at this time",
+    "twinsUnknown": "Tools installed more than once: not looked at this time"
+  },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
     "updatesAvailable_other": "{{count}} tools can be updated",

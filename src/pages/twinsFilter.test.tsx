@@ -219,6 +219,17 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     expect(await screen.findByText("没有发现装了不止一份的工具")).toBeInTheDocument();
   });
 
+  it("says the commands weren't looked at when no row has any, rather than that none is installed twice", async () => {
+    // The folder read ran past its budget: no row has a command, and the
+    // copies can't be told apart.
+    artifacts = fullWorld().map((a) => ({ ...a, facts: { ...a.facts, commands: [] } }));
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    show("twins");
+    expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
+    expect(screen.queryByText("No tools installed more than once were found")).not.toBeInTheDocument();
+  });
+
   it("names the source when the page shows one source that has none", async () => {
     useUiStore.getState().openInstalled(BREW);
     useUiStore.getState().setInstalledShow("twins");

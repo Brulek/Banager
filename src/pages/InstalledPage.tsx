@@ -80,6 +80,7 @@ import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
 import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
+import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
@@ -458,6 +459,13 @@ export function InstalledPage() {
     () => (sort === "size" ? sizeOrderOf(sizes, snapshot?.artifacts ?? []) : NO_SIZE_ORDER),
     [sort, sizes, snapshot],
   );
+  // Why 「装了不止一份」 or 「终端里找不到」 cannot say 「没有发现…」: the
+  // commands are not judged yet, or were not this time (`commandsKnown`).
+  const commandsUnknown = useMemo(() => {
+    if (show !== "twins" && show !== "notOnPath") return null;
+    const known = commandsKnown(snapshot?.artifacts ?? [], preview, show === "twins" ? "names" : "verdicts");
+    return known === "known" ? null : COMMANDS_UNKNOWN_KEYS[known];
+  }, [show, snapshot, preview]);
   // What each source takes together, under its heading (`sizeTotalsOf`).
   const sizeTotals = useMemo(() => sizeTotalsOf(sizes, snapshot), [sizes, snapshot]);
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
@@ -1753,9 +1761,11 @@ export function InstalledPage() {
                     ? t("installed.noMatches", { query: query.trim() })
                     : show === "all"
                       ? t("emptyStates.nothingInstalled.title")
-                      : activeFilter === null
-                        ? t(SHOW_NONE_KEYS[show].none)
-                        : t(SHOW_NONE_KEYS[show].noneInSource, { source: sourceLabelFor(activeFilter) })}
+                      : commandsUnknown !== null
+                        ? t(commandsUnknown)
+                        : activeFilter === null
+                          ? t(SHOW_NONE_KEYS[show].none)
+                          : t(SHOW_NONE_KEYS[show].noneInSource, { source: sourceLabelFor(activeFilter) })}
                 </p>
               </div>
             )

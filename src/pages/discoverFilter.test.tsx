@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import { useUiStore } from "../store/ui";
+import { writeInventoryPreview } from "../lib/events";
 import i18n from "../i18n";
 import type { ArtifactKey, CommandFact, HomebrewFacts, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
@@ -245,6 +246,60 @@ describe("the Installed page's discovery choices", () => {
     expect(await screen.findByText("没有发现Homebrew已停用或弃用的工具")).toBeInTheDocument();
     show("notOnPath");
     expect(await screen.findByText("没有发现终端里找不到的工具")).toBeInTheDocument();
+  });
+
+  it("says the commands weren't looked at, not that none was found, when no command has a verdict", async () => {
+    // The login shell's PATH was not restored (names, no verdicts), or the
+    // folder read ran past its budget (no commands at all): 「没有发现…」
+    // would say it had been looked for.
+    artifacts = [artifact(wget, [{ name: "wget", state: null }]), artifact(httpie, [])];
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    show("notOnPath");
+    expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
+    expect(screen.queryByText("No tools missing from Terminal were found")).not.toBeInTheDocument();
+    await i18n.changeLanguage("zh-CN");
+    expect(await screen.findByText("这次检查没有判断终端里的命令")).toBeInTheDocument();
+    // Homebrew's own choice goes by Homebrew's facts, which are there.
+    show("brewRetired");
+    expect(await screen.findByText("没有发现Homebrew已停用或弃用的工具")).toBeInTheDocument();
+  });
+
+  it("says those appear when the check finishes while the first check's list is on screen", async () => {
+    // The preview's rows carry no commands: they are judged when the round
+    // ends. Over a startup snapshot, the page lists the preview.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot")
+        return Promise.resolve({
+          generation: 0,
+          round: 0,
+          detect: "Missing",
+          instances: [],
+          artifacts: [],
+          updates: [],
+          refreshed_at: null,
+          stale: false,
+          errors: [],
+        } satisfies Snapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    const { queryClient } = renderInstalled();
+    act(() =>
+      writeInventoryPreview(queryClient, {
+        round: 1,
+        instances: [instance("brew", BREW)],
+        artifacts: [artifact(wget, [])],
+      }),
+    );
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    show("notOnPath");
+    expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
+    show("twins");
+    expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
+    await i18n.changeLanguage("zh-CN");
+    expect(await screen.findByText("检查完成后会显示在这里")).toBeInTheDocument();
   });
 
   it("names the source when the page shows one source that has none", async () => {

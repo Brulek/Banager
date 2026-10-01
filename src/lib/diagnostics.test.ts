@@ -411,3 +411,24 @@ describe("the disk line", () => {
     expect(diagnosticsText(zh, input({ sizes: { ...whole, round: 3 } }))).not.toContain("占用空间");
   });
 });
+
+describe("the command counts", () => {
+  it("says the commands weren't looked at, not 0, when the check made no verdict or read no command", () => {
+    const strip = (commands: CommandFact[]) => (a: InstalledArtifact) => ({ ...a, facts: { ...a.facts, commands } });
+    // No login PATH: names but no verdicts. Twins are still known.
+    const noVerdicts = {
+      ...SNAPSHOT,
+      artifacts: SNAPSHOT.artifacts.map((a) => ({
+        ...a,
+        facts: { ...a.facts, commands: a.facts.commands.map((c) => ({ ...c, state: null })) },
+      })),
+    };
+    const text = diagnosticsText(zh, input({ snapshot: noVerdicts }));
+    expect(text).toContain("\n终端找不到：这次没有判断\n装了不止一份的工具：1个\n");
+    // The read ran past its budget: nothing at all.
+    const nothing = { ...SNAPSHOT, artifacts: SNAPSHOT.artifacts.map(strip([])) };
+    expect(diagnosticsText(en, input({ snapshot: nothing }))).toContain(
+      "\nNot found in Terminal: not looked at this time\nTools installed more than once: not looked at this time\n",
+    );
+  });
+});
