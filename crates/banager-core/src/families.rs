@@ -5,31 +5,30 @@
 //! family (Claude Code, Codex, Gemini CLI, …) lists its members: where it
 //! can be installed from and the exact name it has there (an npm package,
 //! a Homebrew formula or cask, a PyPI project, or one of Banager's own
-//! standalone recipes), the command names it provides, and the folders it
-//! keeps its data in where that is verified.
+//! standalone recipes), and the folders it keeps its data in where that is
+//! verified. It names no commands: which copy a typed name runs is read
+//! from each source's own answer (`commands.rs`), never from this table.
 //!
 //! # How the table was verified (2026-10-01)
 //!
 //! Every name was looked up on that day, read-only, from the registry that
 //! owns it (research synthesis, appendix B; critique §2 item 1):
 //!
-//! - npm: `registry.npmjs.org/<name>` -- the `bin` field gives the command
-//!   names. For the three *unscoped* names, where a scope does not already
-//!   say who publishes them, the publisher was checked too: `droid`
+//! - npm: `registry.npmjs.org/<name>`. For the three *unscoped* names,
+//!   where a scope does not already say who publishes them, the
+//!   publisher was checked too: `droid`
 //!   (maintainers `@factory.ai`, repository `Factory-AI/factory`, the same
 //!   as `@factory/cli`), `openclaw` (repository `openclaw/openclaw`, author
 //!   "OpenClaw Foundation", published from GitHub Actions) and
 //!   `opencode-ai` (no repository field, but the opencode project's own
 //!   README installs it with `npm i -g opencode-ai`, and Homebrew's
 //!   `opencode` formula builds from the same project). None was dropped.
-//! - Homebrew: `formulae.brew.sh/api/{formula,cask}/<name>.json`; command
-//!   names from the formula's install/test block or the cask's `binary`
-//!   stanza. A name that 404'd there (formula `codex`, formula
-//!   `claude-code`, cask `ollama`) is deliberately absent: the cask
-//!   `codexbar` or a tap's `codex` is someone else's.
+//! - Homebrew: `formulae.brew.sh/api/{formula,cask}/<name>.json`. A name
+//!   that 404'd there (formula `codex`, formula `claude-code`, cask
+//!   `ollama`) is deliberately absent: the cask `codexbar` or a tap's
+//!   `codex` is someone else's.
 //! - PyPI: `pypi.org/pypi/<name>/json` (project URLs name the vendor's
-//!   repository); command names from that repository's `pyproject.toml`
-//!   `[project.scripts]`.
+//!   repository).
 //! - Standalone: the recipe ids in `adapters/standalone/recipes.rs`.
 //! - Data folders: the ones the vendors document (Claude Code, Codex,
 //!   Gemini CLI, Qwen Code, and opencode, below), and Antigravity CLI's
@@ -210,9 +209,6 @@ pub struct Family {
     pub name_en: String,
     pub name_zh: String,
     pub members: Vec<Member>,
-    /// The command names it puts on PATH, for working out which copy a
-    /// typed name runs.
-    pub commands: Vec<String>,
     /// Folders (or files) it keeps the user's data in, `~/`-relative, for
     /// saying what an uninstall leaves behind. Empty where unverified.
     pub data_paths: Vec<String>,
@@ -438,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn test_every_family_has_a_unique_kebab_case_id_names_a_member_and_a_command() {
+    fn test_every_family_has_a_unique_kebab_case_id_names_and_a_member() {
         let mut ids = HashSet::new();
         for f in families() {
             assert!(ids.insert(f.id.as_str()), "duplicate id {}", f.id);
@@ -456,21 +452,6 @@ mod tests {
                 f.id
             );
             assert!(!f.members.is_empty(), "{} has no member", f.id);
-            assert!(!f.commands.is_empty(), "{} has no command", f.id);
-            let commands: HashSet<_> = f.commands.iter().collect();
-            assert_eq!(
-                commands.len(),
-                f.commands.len(),
-                "{} repeats a command",
-                f.id
-            );
-            for c in &f.commands {
-                assert!(
-                    !c.is_empty() && !c.contains('/') && !c.contains(char::is_whitespace),
-                    "{}: command {c:?} is not a bare name",
-                    f.id
-                );
-            }
         }
     }
 
@@ -599,7 +580,7 @@ mod tests {
 
     #[test]
     fn test_the_table_carries_no_version_numbers() {
-        // Versions change weekly; the table is ids, names and commands.
+        // Versions change weekly; the table is ids, names and folders.
         let raw: serde_json::Value = serde_json::from_str(TABLE_JSON).unwrap();
         fn walk(v: &serde_json::Value, path: &str) {
             match v {
