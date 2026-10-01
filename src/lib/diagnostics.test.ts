@@ -176,7 +176,7 @@ describe("diagnosticsText", () => {
         "Check: incomplete, Homebrew, npm and uv didn't finish",
         "Not found in Terminal: 1",
         "Tools installed more than once: 1",
-        "Space used: About 1.2 GB",
+        "Space used: 1.2 GB or more",
         "",
       ].join("\n"),
     );
@@ -226,7 +226,7 @@ describe("diagnosticsText", () => {
         "检查结果：不完整，Homebrew、npm和uv未检查完",
         "终端找不到：1个",
         "装了不止一份的工具：1个",
-        "占用空间：约1.2 GB",
+        "占用空间：1.2 GB以上",
         "",
       ].join("\n"),
     );
@@ -387,5 +387,27 @@ describe("the check line", () => {
       "\n检查结果：不完整，Ollama未检查完\n",
     );
     expect(diagnosticsText(en, input({ snapshot: quiet([]) }))).toContain("\nCheck: complete\n");
+  });
+});
+
+describe("the disk line", () => {
+  // The toolbar's number and hedge: 「约」 only when every tool listed has
+  // its size in the total, and nothing from a round other than the
+  // snapshot's.
+  it("hedges as the toolbar does, and says nothing for another round's sizes", () => {
+    const measured = (artifact: InstalledArtifact) => ({
+      key: artifact.key,
+      version: artifact.version,
+      measured: { bytes: 1, partial: false, at_least: false },
+      old_versions: null,
+    });
+    const whole = { ...SIZES, artifacts: SNAPSHOT.artifacts.map(measured) };
+    expect(diagnosticsText(zh, input({ sizes: whole }))).toContain("\n占用空间：约1.2 GB\n");
+    expect(diagnosticsText(en, input({ sizes: whole }))).toContain("\nSpace used: about 1.2 GB\n");
+    // A pip package, say, with no size: the total is short of what they take.
+    const one = { ...whole, artifacts: whole.artifacts.slice(1) };
+    expect(diagnosticsText(zh, input({ sizes: one }))).toContain("\n占用空间：1.2 GB以上\n");
+    // Measured for an earlier round: no line rather than a stale number.
+    expect(diagnosticsText(zh, input({ sizes: { ...whole, round: 3 } }))).not.toContain("占用空间");
   });
 });

@@ -24,7 +24,7 @@ import { getSystemFacts } from "./api";
 import { twinsByArtifact } from "./commands";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
-import { sizeText } from "./sizes";
+import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
 import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence } from "./sources";
 import { checkedInFull } from "./updateState";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
@@ -247,8 +247,12 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
   }
   lines.push(t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length }));
   lines.push(t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) }));
-  if (sizes !== null && sizes.done && sizes.total !== null) {
-    lines.push(t("diagnostics.text.diskTotal", { size: sizeText(t, sizes.total) }));
+  // The toolbar's total and hedge (`sizeTotalsOf`): measured for this
+  // snapshot's round, and 「…以上」 when some tool has no size in it -- a
+  // pip package, a cask with no app -- as well as when the budget ran out.
+  const total = sizeTotalsOf(sizes ?? undefined, snapshot ?? undefined).all;
+  if (total !== null) {
+    lines.push(t("diagnostics.text.diskTotal", { size: sourceTotalText(t, total) }));
   }
   // Plain spaces: the window keeps 「About 1.2 GB」 on one line with a
   // no-break space, which a pasted text has no use for.
