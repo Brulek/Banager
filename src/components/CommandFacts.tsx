@@ -142,6 +142,12 @@ export interface TwinChip {
   id: "twin";
   label: string;
   detail: ReactNode;
+  /**
+   * What the ⓘ says in the details' 「状态」: where the other copies are
+   * from, and no more -- the 「在终端里输入」 group under it says which
+   * copy typing the command runs, with its own ⓘ on how that was judged.
+   */
+  inspectorDetail: ReactNode;
   ariaLabel: string;
   tone: "neutral";
 }
@@ -209,6 +215,9 @@ export function twinChip(
     id: "twin",
     label,
     detail: detailLines(runs === null ? [where] : [where, runs]),
+    // Said there once: a verdict for the shared command is what both
+    // `runs` and the commands group are made of.
+    inspectorDetail: detailLines([where]),
     ariaLabel: t("commands.twinLabel", { word: label, name: artifact.display_name }),
     tone: "neutral",
   };

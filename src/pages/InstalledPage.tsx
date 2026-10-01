@@ -120,6 +120,12 @@ interface RowChip {
    * 「状态」: 「取消跳过」 by 「已跳过2.102.0」, 「恢复提醒」 by 「已关闭提醒」.
    */
   undo?: { label: string; ariaLabel: string; onUndo: () => void };
+  /**
+   * What the ⓘ says in the inspector's 「状态」 instead of `detail`, where
+   * another group of the inspector says part of it already (「装了两份」's
+   * which-copy-runs sentence, said by 「在终端里输入」).
+   */
+  inspectorDetail?: ReactNode;
 }
 
 /**
@@ -1322,7 +1328,9 @@ export function InstalledPage() {
               <li key={chip.id} className="flex flex-wrap items-center justify-end gap-1">
                 <span data-status-word="">{chip.label}</span>
                 {chip.detail !== undefined && !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) ? (
-                  <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>{chip.detail}</InfoDetail>
+                  <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>
+                    {chip.inspectorDetail ?? chip.detail}
+                  </InfoDetail>
                 ) : null}
                 {chip.undo !== undefined ? (
                   <button

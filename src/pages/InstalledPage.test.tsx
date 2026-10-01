@@ -3172,6 +3172,14 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
       "Details: Typed in Terminal",
       "Details: claude",
     ]);
+    // Which copy runs is said once in the details, by the group: the
+    // status word's ⓘ there says only where the other copy is from.
+    const status = within(inspector).getByText("Status").nextElementSibling as HTMLElement;
+    const info = within(status).getByRole("button", { name: "Details: Installed twice" });
+    fireEvent.click(info);
+    const panel = document.getElementById(info.getAttribute("aria-controls") ?? "");
+    expect(panel).toHaveTextContent(/^npm has a copy too\.$/);
+    expect(inspector).not.toHaveTextContent("Typing claude in Terminal");
   });
 
   it("still tells two copies apart when nothing was said about which runs, and shows no group", async () => {
