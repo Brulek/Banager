@@ -7,9 +7,14 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateCandidate, UpdateChannel,
-    Warning,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UninstallScope, UpdateCandidate,
+    UpdateChannel, Warning,
 };
+
+/// npm's own package, as `npm ls -g` lists it beside the user's: the npm
+/// every other package is updated and uninstalled with, and the program
+/// `npm uninstall -g npm` would remove (`UninstallBlocked::SourceProgram`).
+const OWN_PACKAGE: &str = "npm";
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -388,6 +393,15 @@ impl NpmAdapter {
                 unavailable: None,
             });
         }
+        // npm itself (`UninstallBlocked::SourceProgram`): the gate's late
+        // twin (`blocked_uninstall` in session/plans.rs refuses the same
+        // row from the snapshot), so no preview of `npm uninstall -g npm` is
+        // ever built. Its update is planned as any package's.
+        if req.kind == OpKind::Uninstall && req.name == OWN_PACKAGE {
+            return Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::SourceProgram,
+            });
+        }
         let lock = ResourceLock(inst.id.clone());
         let warnings = match req.kind {
             OpKind::Uninstall => uninstall_scope(inst.version.as_deref())
@@ -513,7 +527,9 @@ struct LsGlobalDependency {
 /// `dependencies` **object** keyed by package name, not an array — a parser
 /// expecting an array silently sees zero packages instead of erroring.
 /// Sorted by name for deterministic output (a `HashMap`'s own iteration
-/// order is not).
+/// order is not). npm's own `npm` is listed like any package, and is the
+/// one Banager does not offer to uninstall (`UninstallBlocked::
+/// SourceProgram`).
 pub(crate) fn parse_ls_global(
     json: &str,
     instance_id: &str,
@@ -529,6 +545,7 @@ pub(crate) fn parse_ls_global(
                 kind: ArtifactKind::Package,
                 name: name.clone(),
             },
+            uninstall_blocked: (name == OWN_PACKAGE).then_some(UninstallBlocked::SourceProgram),
             display_name: name,
             version: dep.version.unwrap_or_default(),
             reason: InstallReason::Requested,
@@ -538,7 +555,6 @@ pub(crate) fn parse_ls_global(
             installed_at: None,
             path: None,
             auto_updates: false,
-            uninstall_blocked: None,
             facts: Default::default(),
         })
         .collect();
@@ -672,6 +688,18 @@ mod tests {
             .expect("npm entry");
         assert_eq!(npm_self.version, "12.0.2");
         assert_eq!(npm_self.key.kind, ArtifactKind::Package);
+        // npm itself is not offered for uninstalling; every other package,
+        // `corepack` among them, is.
+        assert_eq!(
+            npm_self.uninstall_blocked,
+            Some(UninstallBlocked::SourceProgram)
+        );
+        let blocked: Vec<&str> = artifacts
+            .iter()
+            .filter(|a| a.uninstall_blocked.is_some())
+            .map(|a| a.key.name.as_str())
+            .collect();
+        assert_eq!(blocked, vec!["npm"]);
     }
 
     #[test]
@@ -1224,6 +1252,50 @@ mod tests {
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert_eq!(command_args(&plan), vec!["uninstall", "-g", "jq"]);
+    }
+
+    #[tokio::test]
+    async fn test_npm_itself_is_never_planned_for_uninstalling_but_is_updated_as_any_package() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        let request = |kind: OpKind, name: &str| OpRequest {
+            kind,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: name.to_string(),
+        };
+        match adapter
+            .plan(&inst, &request(OpKind::Uninstall, "npm"))
+            .await
+        {
+            Err(AdapterError::UninstallBlocked { reason }) => {
+                assert_eq!(reason, UninstallBlocked::SourceProgram)
+            }
+            other => panic!("expected UninstallBlocked(SourceProgram), got {other:?}"),
+        }
+        let upgrade = adapter
+            .plan(&inst, &request(OpKind::Upgrade, "npm"))
+            .await
+            .expect("an update of npm is planned");
+        assert_eq!(command_args(&upgrade), vec!["install", "-g", "npm@latest"]);
+        // Nor is a package merely named like it, or npm's other bundled one.
+        for name in ["npm-check-updates", "@scope/npm", "corepack"] {
+            let plan = adapter
+                .plan(&inst, &request(OpKind::Uninstall, name))
+                .await
+                .expect("planned");
+            assert_eq!(command_args(&plan), vec!["uninstall", "-g", name]);
+        }
+        // A prefix that cannot be written is the bigger news.
+        let read_only =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| false);
+        assert!(matches!(
+            read_only
+                .plan(&inst, &request(OpKind::Uninstall, "npm"))
+                .await,
+            Err(AdapterError::NotActionable { .. })
+        ));
     }
 
     fn uninstall_jq(inst: &ManagerInstance) -> OpRequest {
