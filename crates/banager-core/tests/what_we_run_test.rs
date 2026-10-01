@@ -7,7 +7,7 @@
 //! and shows each entry, the three Homebrew flags the file promises are
 //! never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
-//! enforces, the section on which copy a command runs with the two
+//! enforces and every protected place it never reads, the section on which copy a command runs with the two
 //! `CommandBudget::default()` enforces, the folders it reads and the words
 //! that it runs no command, the one thing the allowlist refuses that a reader would not
 //! expect (an `https://` `OLLAMA_HOST`), every path each path-list
@@ -402,6 +402,47 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
         assert!(
             body.contains(&limit),
             "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_the_unknown_scan_never_reads_into_a_protected_place() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Unknown-source scan").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Unknown-source scan` section for scan::scan_unknown")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Every place it never reads, as the shared list has them -- the same
+    // list as the command check's and the disk-use measurement's.
+    for place in PROTECTED_IN_HOME {
+        assert!(
+            folded.contains(&format!("`~/{place}`")),
+            "the `## Unknown-source scan` section of docs/what-we-run.md does not name `~/{place}`, which protected::PROTECTED_IN_HOME keeps it out of"
+        );
+    }
+    assert!(
+        folded.contains(&format!("`{OTHER_VOLUMES}`")),
+        "the `## Unknown-source scan` section of docs/what-we-run.md does not name `{OTHER_VOLUMES}`"
+    );
+    for words in [
+        "as named or where it leads (`protected::resolve`)",
+        "`/System/Volumes/Data`",
+        "`UnknownScan.protected_dirs`",
+        "`EntryKind::ProtectedSymlink`",
+        "by name alone",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Unknown-source scan` section of docs/what-we-run.md does not say {words:?}"
+        );
+    }
+    // The exception t27 disclosed is closed: no sentence may say the scan
+    // reads by path into those places.
+    for words in ["known exception", "no list of places it never looks into"] {
+        assert!(
+            !folded.contains(words),
+            "the `## Unknown-source scan` section of docs/what-we-run.md still says {words:?}"
         );
     }
 }

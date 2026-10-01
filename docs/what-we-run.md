@@ -17,7 +17,8 @@ flags this file promises are never passed, that pip's section shows the
 `xcode-select -p` it asks before running an interpreter in `/usr/bin` and
 says one with no developer tools behind it is skipped, that the
 unknown-source scan's section and the section on which copy a command
-runs each state the two limits the code enforces, that the latter says
+runs each state the two limits the code enforces and name every place
+they never read, that the latter says
 it runs no command and which folders it reads, that the sections of the
 three tools uninstalled by moving files to the
 Trash (Claude Code, Antigravity CLI, Grok Build) name every path those
@@ -1915,19 +1916,46 @@ metadata and nothing else:
 
 | It looks at | How |
 |---|---|
-| `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, plus every `PATH` entry under your home folder (`candidate_dirs`) | `read_dir`, one level deep — a subdirectory is never entered; a directory that does not exist, or that cannot be read, is skipped silently; two names for one directory are read once (`scan_dirs`) |
-| each entry | `lstat`, `readlink`, `realpath`, `stat` (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run. A broken link, while a source's own executable is a link that leads nowhere too, also gets `lstat`, `readlink` and `realpath` on the folders and links its text leads through, to see where it would lead (`dead_end`) |
+| `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, plus every `PATH` entry under your home folder (`candidate_dirs`) | where the folder leads, found one step at a time from `/` (`protected::resolve`), then the folder listing (`readdir`), one level deep, from a descriptor held open on that very folder (`dirfd`) — a subdirectory is never entered; a directory that does not exist, or that cannot be reached or listed, is skipped silently; two names for one directory are read once (`scan_dirs`) |
+| each entry | `lstat` and `readlink` of the entry, asked of that held folder; where a link leads, found one step at a time as `realpath` would; and the size, date and permissions of what it leads to (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run. A broken link, while a source's own executable is a link that leads nowhere too, also gets `lstat` and `readlink` (each asked of the folder it is in, held open) of the folders and links its text leads through, to see where it would lead (`dead_end`) |
 
-Unlike the commands check and the disk-use measurement, this scan reads
-by path, and it has no list of places it never looks into: if one of the
-folders above is in, or is a link into, `~/Documents`, iCloud Drive,
-`/Volumes` or another place Disk use (below) never looks into, that
-folder is read one level deep all the same, and macOS may ask for
-permission; so is a folder replaced by such a link while it is read, and
-the folder an entry's link leads to is resolved (`realpath`) wherever it
-is, as is each folder a source owns (`owned_roots`, below; uv's
-`~/.local/share/uv/python` among them). This is a known exception, as the
-fixed-path probes above are.
+Like the command check and the disk-use measurement, this scan never
+reads into `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
+`~/Movies`, `~/Music`, `~/Library/Mobile Documents` (iCloud Drive),
+`~/Library/CloudStorage`, `~/Library/Containers`,
+`~/Library/Group Containers` or `/Volumes` (every other disk), whatever
+case spells them and also when spelled from `/System/Volumes/Data`
+(`protected::DATA_VOLUME`): it is the same list
+(`crates/banager-core/src/protected.rs`), so scanning never makes macOS
+ask for permission. Nothing in these places is listed, `lstat`ed, read as
+a link or resolved, as named or where it leads (`protected::resolve`):
+each step on the way to a folder to scan, to where an entry leads and to
+a source's own folder is checked against them before it is taken, from
+the folder before it, held open; and each scanned folder is listed, and
+its entries looked at, from a descriptor held open on it, so a folder
+replaced by a link while it is read is never followed.
+
+- A folder to scan that is in one of these places, or leads into one (a
+  `PATH` entry in `~/Documents`, a `~/bin` that is a link to the Desktop,
+  a `$CARGO_HOME` on another disk), is not read. The page says how many
+  folders it left unread (「有2个文件夹在受保护的位置，没有读取。」), and,
+  with Show technical details on, names them behind an ⓘ
+  (`UnknownScan.protected_dirs`).
+- A program in a scanned folder whose link leads into one of these places
+  is listed by its own name, with its link's text, and what it leads to is
+  not followed: the page says 「指向受保护的位置」 ("Points into a
+  protected place") where a size and a date would be, and its Show in
+  Finder is off (`EntryKind::ProtectedSymlink`).
+- Which source a program belongs to is still decided for a path that
+  leads into these places, by name alone: the path as far as the links
+  outside them lead, the rest as written, compared with each source's own
+  executable, the paths it reported installing and the folders it owns,
+  which are found the same way and never entered either (`Known::index`).
+  So a Homebrew installed on another disk (`/Volumes/<disk>/homebrew`)
+  keeps its programs: a link into its `Cellar` is Homebrew's, by name, and
+  is not listed.
+- A folder that cannot be listed (one locked with no permissions) is
+  skipped, not reported as read, and left as it is.
 
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
@@ -1988,7 +2016,8 @@ plugin's `revealItemInDir` (`revealInFinder` in `src/lib/api.ts`), whose
 `NSWorkspace activateFileViewerSelectingURLs:`, with which Finder opens a
 window on the program's folder with the program selected. So for a link
 Finder shows the file the link points to; a broken link's is gone, and on
-its row the item is off. The window may call that one command of the
+its row the item is off, as it is on the row of a link into a protected
+place, which the scan did not follow. The window may call that one command of the
 plugin and no other (Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
@@ -2417,10 +2446,11 @@ All read-only, none saved anywhere else, none uploaded:
   contents are read, and no command runs (opencode's section).
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
-  a file's contents; and where each source's owned folder leads
-  (`realpath`), uv's Python folder `~/.local/share/uv/python` among them
-  when uv is found. A row's Show in Finder: where the path it shows
-  leads (`realpath`), and nothing else (Unknown-source scan, above).
+  a file's contents; and where each source's owned folder leads, one step
+  at a time, uv's Python folder `~/.local/share/uv/python` among them
+  when uv is found — never anything in the places Disk use names, nor
+  through a link into them (Unknown-source scan, above). A row's Show in
+  Finder: where the path it shows leads (`realpath`), and nothing else.
 - Disk use, after each refresh: each tool's own folder or program file, the
   names in each formula's `<prefix>/Cellar/<name>`, Ollama's
   `~/.ollama/models/blobs` and `<CARGO_HOME>/.crates2.json`, with `lstat`,

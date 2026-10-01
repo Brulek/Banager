@@ -1,6 +1,7 @@
 //! Folders looked at through an open descriptor, never by their path
 //! again: what keeps the read-only walks (`protected::resolve`, `size`'s
-//! walk, `commands`' folder reads) where they checked they were.
+//! walk, `commands`' folder reads, the Other Programs scan's listing)
+//! where they checked they were.
 //!
 //! A path is a name, looked up afresh at every call. Between the check
 //! that `~/.cargo/registry` is a real folder outside the protected places

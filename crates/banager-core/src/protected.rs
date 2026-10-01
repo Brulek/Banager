@@ -1,13 +1,14 @@
 //! The places Banager never reads into, whatever it is doing: the folders
 //! macOS asks the user about before an app looks inside them, and every
-//! other disk. One list, one rule for case, shared by the two read-only
+//! other disk. One list, one rule for case, shared by the three read-only
 //! walks that could otherwise reach them -- which copy a command runs
-//! (`commands::read_folders`, over `PATH`'s folders) and how much a tool
-//! takes on disk (`size::Protected`, over a tool's own folders).
+//! (`commands::read_folders`, over `PATH`'s folders), how much a tool
+//! takes on disk (`size::Protected`, over a tool's own folders), and the
+//! Other Programs scan (`scan::scan_dirs`, over the usual bin folders).
 //!
-//! A refresh must never put up a permission request, nor wait on a disk
-//! that is not this Mac's own: reading one of these places can do either.
-//! `docs/what-we-run.md` names each one in both sections
+//! A refresh or a scan must never put up a permission request, nor wait
+//! on a disk that is not this Mac's own: reading one of these places can
+//! do either. `docs/what-we-run.md` names each one in all three sections
 //! (`what_we_run_test`).
 
 use crate::dirfd::{Dir, Stat};
