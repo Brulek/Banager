@@ -202,9 +202,11 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 放哪儿仍待作者拍板。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
-- **pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
+- ~~**pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
   （pipx 1.17.3 `commands/pin.py:82-92`，没有只解主包的选项）。Banager 不列注入包（不传
-  `--include-injected`），行上的说明没提这一点。
+  `--include-injected`），行上的说明没提这一点。~~
+  —— **已于 2026-10-02 做了**：pipx 被固定的行（更新页与已安装页共用 `blockedDetail`）在解除固定命令下多一行
+  「这条命令也会解除注入到它环境里的包的固定。」（`UPDATE_BLOCKED_KEYS.Pinned.note`，只对 pipx；不说有几个）。
 - ~~**假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
   brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Banager 报「成功」而什么都没变。~~
   —— **已于 2026-09-24 在 `c6ecf5b` 修复**，走的是「核对版本真的变了」这条路：升级前后各用同一个
@@ -213,6 +215,10 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   四种情况各有一个端到端测试（`tests/ops_upgrade_version_test.rs`）。代价是每次升级多一次清单读取；
   brew 在后台 `brew update` 还没跑完时这次读取会被拒（`IndexUpdating`），那时照旧只看在不在。
   **仍未做**：更新页事先不知道这些状态，行上照样有「更新」按钮，点了才知道；要提前标出仍得多读上面那几份输出。
+  其中 ~~brew 已停用的公式与 cask~~ —— **已于 2026-10-02 做了**：`check_updates` 本来就为限定名字读一次
+  `brew info --installed --json=v2`，据其 `disabled` 给候选加新的 `UpdateBlocked::Disabled`，更新页标「已停用」、
+  不给按钮、说明 Homebrew 不再提供更新（有替代就点名），闸门照样拒绝；没加命令。pipx lock 文件、uv `==`、
+  caskfile 读不出三种仍未做（要读新输出、先录真机 fixture，见分诊 NEEDS-AUTHOR）。
 - ~~**卸载被固定的包**~~ —— **已于 2026-09-24 修复**：Homebrew 7.0.6 不加 `--force` 时拒绝卸载被固定的包
   （`uninstall.rb:48-49`、`cask/uninstall.rb:40-44`），用的是 `onoe` 不是 `ofail`，公式这边退出 0。
   现在从清单读 `pinned`（`brew info --installed --json=v2` 的公式与 cask 条目都有，`formula.rb:3140`、
@@ -455,8 +461,11 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 - **npm 等卸载确认没说删什么、留什么**（Astra 2）。npm 的计划没有任何 warnings，确认框只有名字、版本和折叠的命令。
   要加"卸载范围"一行，必须先查清每个来源的卸载命令到底碰不碰用户的设置文件，没查清的不许写"会保留"。
-- **不能更新的原因藏得深**（Astra 7）：断网原因默认折叠；解除固定的命令要打开「显示技术细节」才能复制；
-  Antigravity CLI 的"打开它一次"没说怎么打开。
+- ~~**不能更新的原因藏得深**（Astra 7）：断网原因默认折叠；解除固定的命令要打开「显示技术细节」才能复制；
+  Antigravity CLI 的"打开它一次"没说怎么打开。~~
+  —— **已于 2026-10-02 做了**：「无法检查」的原话认得出原因（`failureCause`：没网、磁盘满…）时，行的说明和
+  （各行原因相同时）上方那句都直接说出来，技术细节关着也说；Antigravity CLI 在终端里输入 `agy` 跑的就是这一份时，
+  句子写「在终端里输入agy打开它一次」（用命令名不用路径），否则照旧。解除固定的命令早已在句子里。
 - **来源不明页只列文件、不帮辨认**（Astra 8）：缺「在访达中显示」和复制路径（需要新的 IPC）；Docker 这类已知归属
   藏在「链接」标签的 ⓘ 里。另可考虑把入口改叫「未识别的工具」，免得用户以为是危险软件清单。
 - **中文界面里的英文简介**（Astra 10）：Homebrew 的 formula 简介是上游英文（git、jq 等），需要一份常用工具的中文用途表。
