@@ -139,6 +139,42 @@ fn test_what_we_run_has_a_section_for_every_registered_source() {
 }
 
 #[test]
+fn test_what_we_run_intro_counts_and_names_every_registered_source() {
+    // The opening paragraph says how many sources there are, and how many
+    // of them are tools with their own installer, in words; it said
+    // "eleven" and "four" after Codex's own install made twelve.
+    let doc = read_doc();
+    let intro: String = doc
+        .lines()
+        .skip(2)
+        .take_while(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let session = Session::new(Arc::new(VecSink::new()), None);
+    let ids = session.adapter_ids();
+    let words = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    ];
+    let sources = format!("for the {} sources it manages today", words[ids.len()]);
+    assert!(
+        intro.contains(&sources),
+        "the intro does not say {sources:?}"
+    );
+    let own = format!("{} tools with their own installer", words[RECIPES.len()]);
+    assert!(intro.contains(&own), "the intro does not say {own:?}");
+    for id in ids {
+        let meta_path = format!("../../adapters/meta/{id}.toml");
+        let meta = AdapterMeta::from_toml(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+        assert!(
+            intro.contains(&meta.name),
+            "the intro does not name {:?}",
+            meta.name
+        );
+    }
+}
+
+#[test]
 fn test_what_we_run_names_every_allowed_https_host() {
     let doc = read_doc();
     for host in ALLOWED_HTTPS_HOSTS {

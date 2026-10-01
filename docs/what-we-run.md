@@ -2,9 +2,10 @@
 
 Every command Banager runs, every file it reads, writes or moves to the
 Trash, every host it connects to and every environment variable it sets,
-for the eleven sources it manages today: Homebrew, npm, pipx, uv, pip
-(read-only), Cargo, Ollama, and four tools with their own installer:
-Claude Code, Antigravity CLI, Grok Build and rustup. Each sentence
+for the thirteen sources it manages today: Homebrew, npm, pipx, uv, pip
+(read-only), Cargo, Ollama, and six tools with their own installer:
+Claude Code, Antigravity CLI, Grok Build and rustup, and Codex and
+opencode, which are listed only. Each sentence
 describes what the code does now and names the function it describes, so
 it can be checked against `crates/banager-core/src/adapters/` rather than
 believed. `crates/banager-core/tests/what_we_run_test.rs` checks the parts
@@ -99,8 +100,9 @@ on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
 own installer: Claude Code at `~/.local/bin/claude`, Antigravity CLI at
 `~/.local/bin/agy`, Grok Build at `~/.grok/bin/grok`, rustup at
-`$CARGO_HOME/bin/rustup` (their sections). The path that was found is the
-one previewed and the one run.
+`$CARGO_HOME/bin/rustup`, Codex at `~/.local/bin/codex` and opencode at
+`~/.opencode/bin/opencode` (their sections). The path that was found is
+the one previewed and the one run; Codex's and opencode's are never run.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
