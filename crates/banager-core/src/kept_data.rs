@@ -525,7 +525,10 @@ mod tests {
         assert_eq!(paths.len(), 2);
         for (path, _) in paths {
             let path = format!("{}/", path.trim_end_matches('/'));
-            assert!(!path.starts_with(&root) && !root.starts_with(&path), "{path}");
+            assert!(
+                !path.starts_with(&root) && !root.starts_with(&path),
+                "{path}"
+            );
         }
     }
 
