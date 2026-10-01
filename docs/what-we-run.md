@@ -1795,10 +1795,12 @@ A tool's details on the Installed page say, for each command it puts on
 the Mac, what typing that name in Terminal runs: this copy, another file
 that comes first on `PATH`, or nothing of this copy's because the folder
 its command is in is not on `PATH` (`ArtifactFacts.commands`). Working
-that out runs no command. Every refresh does it after the sources'
-inventories (`commands::start_reading` and `commands::finish` in
-`crates/banager-core/src/commands.rs`, called from `Session::refresh`),
-on a background thread, and reads:
+that out runs no command. Every refresh does it beside the sources'
+inventories, on a background thread: the folders are read while the
+inventories run (`commands::start_reading`), and the answer made once
+they are in (`commands::finish`), both in
+`crates/banager-core/src/commands.rs` and called from `Session::refresh`.
+It reads:
 
 | It looks at | How |
 |---|---|
@@ -1808,18 +1810,23 @@ on a background thread, and reads:
 | in each `PATH` folder, the entry of each name some tool provides | `stat` (a file with an execute bit) and `realpath` (where it leads), in `PATH`'s order |
 
 Nothing's contents are read, nothing found is run or changed, and no
-lock is taken. Each of the two halves stops after 20000 entries or 5
-seconds (`CommandBudget::default`), and that refresh then says nothing
-about which copy runs; a read that has not come back a second after that
-is no longer waited for, and no new one starts while it is still running.
+lock is taken. Reading the folders stops after 20000 entries or 5
+seconds, and working out the answer after 5 seconds more
+(`CommandBudget::default`); that refresh then says nothing about which
+copy runs for what the inventories listed (a row kept from an earlier
+refresh, because its source did not answer this time, keeps what was
+said then). A read that has not come back a second after its limit is
+no longer waited for, and no new one starts while it is still running.
 The answer is judged against the `PATH` Banager has: the login shell's,
 restored at launch (How Banager runs anything, above). When restoring it
 failed, the shell says so (`Session::note_login_path` in `run()`,
-`src-tauri/src/lib.rs`) and nothing is said about which copy runs. An
-alias, a shell function, or a `PATH` that only a new terminal window or
-an editor's terminal sets is not seen, and the details say so. Nothing
-is said about a Homebrew formula that is keg-only (Homebrew keeps it off
-`PATH` on purpose) or was installed as a dependency. The folder of a
+`src-tauri/src/lib.rs`): the `PATH` folders are not read, and nothing is
+said about which copy runs. An alias, a shell function, or a `PATH` that
+only a new terminal window or an editor's terminal sets is not seen; the
+details say that an alias, a new window or an editor's terminal may
+differ. Nothing is said about a Homebrew formula that is keg-only
+(Homebrew keeps it off `PATH` on purpose) or was installed as a
+dependency. The folder of a
 command Terminal cannot find can be copied (*Copy Path*, in
 `CommandsGroup` in `src/components/CommandFacts.tsx`, through
 `useCopyCommand`), `~` and all; nothing edits a shell file.

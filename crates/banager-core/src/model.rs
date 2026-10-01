@@ -362,12 +362,14 @@ pub struct CommandFact {
     pub name: String,
     /// `None`: Banager says nothing about which copy runs -- for a Homebrew
     /// dependency or keg-only formula, whose commands are left off `PATH`
-    /// on purpose or were never asked for, for a copy whose file is there
-    /// but could not be placed (not executable, or its folder is on `PATH`
-    /// and it was not found there), and for every command while the `PATH`
-    /// Banager has is not the login shell's (`Session::note_login_path`).
-    /// The name is still listed, so two copies of one tool can be told
-    /// apart from one.
+    /// on purpose or were never asked for; for a copy nothing on `PATH`
+    /// leads to although its folder is on `PATH` (its link there replaced
+    /// by another tool's), or whose folder Banager does not know (a pipx
+    /// app with no link in `~/.local/bin`); and for every command while
+    /// the `PATH` Banager has is not the login shell's
+    /// (`Session::note_login_path`). The name is still listed, so two
+    /// copies of one tool can be told apart from one. A file that cannot
+    /// run (no execute bit) is no command at all and is not listed.
     pub state: Option<CommandState>,
 }
 
@@ -379,8 +381,8 @@ pub struct CommandFact {
 /// src/lib/types.ts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandState {
-    /// The first executable of this name on `PATH` is this copy (or a link
-    /// that leads to the same file).
+    /// The first executable of this name on `PATH` is this copy: a link
+    /// that leads to the same file, or another of this artifact's files.
     Runs,
     /// This copy is on `PATH`, behind another executable of the same name
     /// that comes first. `by` is the artifact that one belongs to, when

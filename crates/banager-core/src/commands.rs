@@ -38,8 +38,8 @@
 //! run (docs/what-we-run.md, "Which copy a command runs"). Bounded
 //! (`CommandBudget`) and run on the blocking pool, in two halves around a
 //! refresh round's fan-out (`start_reading`, `finish`), so a folder on a
-//! network disk that stopped answering costs one round its verdicts, not
-//! the round.
+//! network disk that stopped answering costs the rounds its verdicts while
+//! it does not answer, never a round itself.
 //!
 //! No verdict at all (`CommandFact.state: None`) for a Homebrew dependency
 //! or keg-only formula -- left off `PATH` on purpose, or never asked for --

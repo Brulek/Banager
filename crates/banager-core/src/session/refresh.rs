@@ -668,7 +668,8 @@ impl Session {
             }
         }
 
-        // Every row, carried or fresh, judged against this round's reading.
+        // The rows this round's inventories listed, judged against this
+        // round's reading; a carried row keeps its own (`commands::finish`).
         crate::commands::finish(
             commands,
             &instances,
