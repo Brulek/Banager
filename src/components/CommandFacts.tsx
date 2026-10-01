@@ -160,7 +160,8 @@ export interface TwinChip {
  * command of the same name) -- null for one that is not. Behind its ⓘ,
  * where the other copy is from, and what typing the shared command runs:
  * this copy, the other one, or not this one. A status word like the
- * others (`StatusChip`), shown on the row when the row has no other.
+ * others (`StatusChip`), shown on the row unless what the source allows
+ * or why the tool cannot be uninstalled comes first (`chipsOf`).
  */
 export function twinChip(
   t: Translate,

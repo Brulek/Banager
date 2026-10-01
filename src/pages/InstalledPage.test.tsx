@@ -3181,6 +3181,41 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect(inspector.querySelector("[data-commands]")).toBeNull();
   });
 
+  it("says a tool is installed twice before where its update stands, after what its source allows", async () => {
+    serveBoth(nativeClaude, npmClaude);
+    served = {
+      ...served,
+      updates: [
+        { ...snapshot.updates[0], key: npmClaude.key, checkable: false, warnings: [{ Message: "timed out" }] },
+      ],
+    };
+    renderInstalled();
+
+    // Not "Can't check": the Updates page says that one too.
+    expect(chipsOf(await findRow("@anthropic-ai/claude-code"))).toEqual(["Installed twice"]);
+  });
+
+  it("leaves out the source's own PATH notice where the group says which copy runs", async () => {
+    const shadowed = { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm" as const] } };
+    serveBoth(nativeClaude, npmClaude);
+    served = { ...served, instances: [brew, npm, shadowed] };
+    const { unmount } = renderInstalled();
+    let inspector = await openDetails("Claude Code");
+    expect(inspector.querySelector("[data-commands]")).toHaveTextContent("Runs the copy from npm");
+    expect(inspector).not.toHaveTextContent("Typing claude runs a same-named program from npm first");
+    unmount();
+
+    // Nothing said about `claude`: the notice is all there is, and stays.
+    serveBoth(
+      { ...nativeClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
+      npmClaude,
+    );
+    served = { ...served, instances: [brew, npm, shadowed] };
+    renderInstalled();
+    inspector = await openDetails("Claude Code");
+    expect(inspector).toHaveTextContent("Typing claude runs a same-named program from npm first");
+  });
+
   it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {
     const formulaGrok: InstalledArtifact = {
       ...formula("grok"),

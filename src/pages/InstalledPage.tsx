@@ -123,7 +123,8 @@ interface RowChip {
  * The one word a row shows (spec §3.4: one at most): the first of its
  * chips that is not a normal state, in `chipsOf`'s order -- what the
  * source allows, then the tool's own refusal to be removed, why its
- * Uninstall waits, then where its update stands, then how the user hid it.
+ * Uninstall waits, then Homebrew's own mark, then whether it is installed
+ * twice, then where its update stands, then how the user hid it.
  */
 function rowChipOf(chips: RowChip[]): RowChip | undefined {
   return chips.find((chip) => chip.tone === "neutral");
@@ -1032,6 +1033,10 @@ export function InstalledPage() {
     // Homebrew's own mark: 「已停用」 or 「已弃用」.
     const homebrewChip = homebrewStatusChip(t, artifact);
     if (homebrewChip !== null) chips.push(homebrewChip);
+    // 「装了两份」: after what the source and the tool allow, and before
+    // where its update stands, which the Updates page says too.
+    const twin = twinChip(t, artifact, twins.get(id), sourceLabelFor);
+    if (twin !== null) chips.push(twin);
     if (listed !== undefined) {
       // A `switch` with no default, so a state added to `UpdateState`
       // without a chip here fails `tsc`.
@@ -1084,9 +1089,6 @@ export function InstalledPage() {
     ) {
       chips.push({ id: "up-to-date", label: t("installed.upToDate"), tone: "upToDate" });
     }
-    // 「装了两份」: last, so the row says it only when nothing above has.
-    const twin = twinChip(t, artifact, twins.get(id), sourceLabelFor);
-    if (twin !== null) chips.push(twin);
     return chips;
   };
 
