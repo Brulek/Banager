@@ -109,21 +109,21 @@ describe("sizeTotalsOf", () => {
     const totals = sizeTotalsOf(short, { round: 7, artifacts: [jq, node, llama] });
     expect(totals.all).toEqual({ bytes: 7_000_000_000, atLeast: true });
     expect(totals.bySource.get(BREW)).toEqual({ bytes: 612_200_000, atLeast: true });
-    // Never 「至少约0 KB」.
+    // Never 「0 KB以上」.
     expect(totals.bySource.has(OLLAMA)).toBe(false);
   });
 });
 
 describe("the total words", () => {
-  it("say about, or at least about, never what could be freed", () => {
+  it("say about, or or more, one hedge at a time, never what could be freed", () => {
     expect(sourceTotalText(zh, { bytes: 4_100_000_000, atLeast: false })).toBe("约4.1 GB");
-    expect(sourceTotalText(zh, { bytes: 4_100_000_000, atLeast: true })).toBe("至少约4.1 GB");
-    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: false })).toBe("共约9.8 GB");
-    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: true })).toBe("共至少约9.8 GB");
+    expect(sourceTotalText(zh, { bytes: 4_100_000_000, atLeast: true })).toBe("4.1 GB以上");
+    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: false })).toBe("约9.8 GB");
+    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB以上");
     expect(sourceTotalText(en, { bytes: 4_100_000_000, atLeast: false })).toBe("about 4.1 GB");
-    expect(sourceTotalText(en, { bytes: 4_100_000_000, atLeast: true })).toBe("at least about 4.1 GB");
-    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: false })).toBe("about 9.8 GB in all");
-    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: true })).toBe("at least about 9.8 GB in all");
+    expect(sourceTotalText(en, { bytes: 4_100_000_000, atLeast: true })).toBe("4.1 GB or more");
+    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: false })).toBe("about 9.8 GB");
+    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB or more");
     for (const text of [sourceTotalText(zh, { bytes: 1, atLeast: true }), viewTotalText(zh, { bytes: 1, atLeast: true })]) {
       expect(text).not.toMatch(/腾出|释放|清理/);
     }

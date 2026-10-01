@@ -78,7 +78,7 @@ import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
-import { compareBySize, sizeOrderOf } from "../lib/sizes";
+import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
@@ -663,10 +663,10 @@ export function InstalledPage() {
   // package's own name ("visual-studio-code" finds "Microsoft Visual
   // Studio Code").
   const needle = query.trim().toLowerCase();
-  // A heading's ` · 约4.1 GB`, only while it counts the whole source: no search, every tool shown.
+  // A heading's 「约4.1 GB」, only while it counts the whole source: no search, every tool shown.
   const sourceTotalOf = (instanceId: string): string | null => {
     const total = needle === "" && show === "all" ? sizeTotals.bySource.get(instanceId) : undefined;
-    return total === undefined ? null : ` · ${sourceTotalText(t, total)}`;
+    return total === undefined ? null : sourceTotalText(t, total);
   };
 
   // The rows the search matches, by source -- of the AI coding tools
@@ -1261,6 +1261,10 @@ export function InstalledPage() {
     // word; a hidden one leaves the version installed.
     const listed = listedUpdates.get(artifactKeyId(artifact.key));
     const change = listed !== undefined && listed.checkable ? updateVersionColumn(t, listed) : null;
+    // By Size: the size the order goes by in the version's place, as
+    // Finder's Size column shows it -- muted while it is measured, or
+    // 「—」 for none. The version is in the inspector.
+    const sizeCell = sort === "size" ? sizeCellOf(t, sizes, artifact) : null;
     return (
       <ToolRow
         adapterId={instance.adapter_id}
@@ -1277,8 +1281,16 @@ export function InstalledPage() {
           chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} ariaLabel={chip.ariaLabel} />
         }
         statusText={chip?.label}
-        version={change?.version ?? versionOf(artifact)}
-        newVersion={change?.newVersion}
+        version={
+          sizeCell !== null ? (
+            <span data-size-cell="" className={sizeCell.muted ? "text-muted" : undefined}>
+              {sizeCell.text}
+            </span>
+          ) : (
+            (change?.version ?? versionOf(artifact))
+          )
+        }
+        newVersion={sizeCell !== null ? undefined : change?.newVersion}
         action={
           canUninstall(artifact, instance) ? (
             <RowAction
@@ -1641,9 +1653,20 @@ export function InstalledPage() {
               >
                 <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
                 <span className="min-w-0 truncate">{item.label}</span>{" "}
-                <span className="shrink-0 text-body font-normal tabular-nums text-muted">
-                  {item.count}
-                  {sourceTotalOf(item.instance.id)}
+                {/* 「Homebrew · 33个 · 约2.6 GB」: a count with its unit,
+                    Ollama's in models. */}
+                {/* -ml-1: the 8 of the heading's gap less a space's 4, so
+                    「·」 stands a space from the name, as from the count. */}
+                <span className="-ml-1 shrink-0 text-body font-normal tabular-nums text-muted">
+                  {[
+                    t(item.instance.adapter_id === "ollama" ? "clarity.modelCount" : "clarity.headingCount", {
+                      count: item.count,
+                    }),
+                    sourceTotalOf(item.instance.id),
+                  ]
+                    .filter((part) => part !== null)
+                    .map((part) => `· ${part}`)
+                    .join(" ")}
                 </span>
               </h2>
             ) : item.type === "fold" ? (

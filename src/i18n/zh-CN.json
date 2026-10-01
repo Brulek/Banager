@@ -225,8 +225,7 @@
       "description": "用{{source}}安装的工具会显示在这里。",
       "unreachable": "无法列出它安装的内容。请稍后重新检查。"
     },
-    "installedOn": "安装日期",
-    "size": "大小"
+    "installedOn": "安装日期"
   },
   "updates": {
     "upToDate": "所有工具都是最新的",
@@ -463,21 +462,19 @@
     "term": "占用空间",
     "measuring": "正在计算…",
     "about": "约{{size}}",
-    "atLeast": "至少约{{size}}",
+    "atLeast": "{{size}}以上",
     "partial": "约{{size}}，部分无法读取",
     "ollamaModels": "Ollama模型共约{{size}}",
-    "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}",
+    "ollamaModelsAtLeast": "Ollama模型共{{size}}以上",
     "sortBySize": "按大小",
     "programOnly": "只算程序文件本身，不含它下载的内容和缓存。",
     "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占用的空间可能更少。",
     "otherVersionsTotal": "共约{{size}}",
-    "otherVersionsTotalAtLeast": "共至少约{{size}}"
+    "otherVersionsTotalAtLeast": "共{{size}}以上"
   },
   "sizeTotals": {
     "source": "约{{size}}",
-    "sourceAtLeast": "至少约{{size}}",
-    "view": "共约{{size}}",
-    "viewAtLeast": "共至少约{{size}}",
+    "sourceAtLeast": "{{size}}以上",
     "note": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。"
   },
   "sourceNotice": {
@@ -821,7 +818,13 @@
     "listedOnly": "只列出",
     "notUsedUpdate": "更新这一份不会改变终端里运行的那一份。",
     "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。",
-    "completeExcept": "检查结果：完整，不含{{sources}}的更新"
+    "completeExcept": "检查结果：完整，不含{{sources}}的更新",
+    "headingCount_other": "{{count}}个",
+    "modelCount_other": "{{count}}个模型",
+    "modelsNote": "几个模型共用的文件只算一次，所以合计可能比逐个相加小。",
+    "shownOfAll_other": "{{total}}个工具中的{{count}}个",
+    "updatesOfAll_other": "{{count}}个可更新，共{{total}}个",
+    "totalNoteAtLeast": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。有些工具没有大小，或部分文件无法读取，所以实际占用的更多。"
   },
   "unknown": {
     "columns": {

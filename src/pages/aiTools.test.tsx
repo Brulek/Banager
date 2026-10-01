@@ -272,7 +272,7 @@ describe("the Updates page with AI Tools shown", () => {
     expect(useUiStore.getState().updatesShow).toBe("ai");
   });
 
-  it("counts only the AI tools' updates in the toolbar's subtitle while they alone are shown", async () => {
+  it("counts the AI tools' updates of all of them in the toolbar's subtitle while they alone are shown", async () => {
     const { container } = renderUpdates();
     await screen.findByText("glib", { selector: "[data-tool-row] p" });
     const subtitle = () => container.querySelector("[data-toolbar-subtitle]")?.textContent;
@@ -281,7 +281,9 @@ describe("the Updates page with AI Tools shown", () => {
     expect(everything).not.toBe("2 updates available");
 
     showAiTools();
-    await waitFor(() => expect(subtitle()).toBe("2 updates available"));
+    // How many of how many, so the sidebar's count beside it does not read as wrong.
+    const all = Number(/^(\d+)/.exec(everything ?? "")?.[1]);
+    await waitFor(() => expect(subtitle()).toBe(`2 of ${all} updates`));
   });
 
   it("shows every update again whenever the page is opened, as the sidebar, the Overview and the notification count them all", () => {

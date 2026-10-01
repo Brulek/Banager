@@ -61,12 +61,12 @@ describe("the size words", () => {
     const exact = { bytes: 312_600_000, partial: false, at_least: false };
     expect(sizeText(zh, exact)).toBe("约312.6 MB");
     expect(sizeText(en, exact)).toBe("About\u00a0312.6 MB");
-    expect(sizeText(zh, { ...exact, at_least: true })).toBe("至少约312.6 MB");
-    expect(sizeText(en, { ...exact, at_least: true })).toBe("At least about\u00a0312.6 MB");
+    expect(sizeText(zh, { ...exact, at_least: true })).toBe("312.6 MB以上");
+    expect(sizeText(en, { ...exact, at_least: true })).toBe("312.6 MB or more");
     expect(sizeText(zh, { ...exact, partial: true })).toBe("约312.6 MB，部分无法读取");
     expect(sizeText(en, { ...exact, partial: true })).toBe("About\u00a0312.6 MB; some of it couldn't be read");
     // Both: the budget's word wins -- it is the larger "more than this".
-    expect(sizeText(zh, { ...exact, partial: true, at_least: true })).toBe("至少约312.6 MB");
+    expect(sizeText(zh, { ...exact, partial: true, at_least: true })).toBe("312.6 MB以上");
   });
 
   it("say what a formula's other versions take, in all for several, as at least when not all were measured", () => {
@@ -75,9 +75,9 @@ describe("the size words", () => {
     expect(otherVersionsSizeText(en, other, 1)).toBe("About\u00a01.2 GB");
     expect(otherVersionsSizeText(zh, other, 3)).toBe("共约1.2 GB");
     expect(otherVersionsSizeText(en, other, 3)).toBe("About\u00a01.2 GB in all");
-    expect(otherVersionsSizeText(zh, { ...other, partial: true }, 1)).toBe("至少约1.2 GB");
-    expect(otherVersionsSizeText(zh, { ...other, at_least: true }, 2)).toBe("共至少约1.2 GB");
-    expect(otherVersionsSizeText(en, { ...other, partial: true }, 2)).toBe("At least about\u00a01.2 GB in all");
+    expect(otherVersionsSizeText(zh, { ...other, partial: true }, 1)).toBe("1.2 GB以上");
+    expect(otherVersionsSizeText(zh, { ...other, at_least: true }, 2)).toBe("共1.2 GB以上");
+    expect(otherVersionsSizeText(en, { ...other, partial: true }, 2)).toBe("1.2 GB or more in all");
   });
 
   it("say what an Ollama's models take together, and nothing while it is measured or for another source", () => {
@@ -93,7 +93,7 @@ describe("the size words", () => {
     const cut = sizes({
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: true } }],
     });
-    expect(modelsTotalText(zh, cut, OLLAMA)).toBe("Ollama模型共至少约6.6 GB");
+    expect(modelsTotalText(zh, cut, OLLAMA)).toBe("Ollama模型共6.6 GB以上");
   });
 
   it("never claim what could be freed", () => {

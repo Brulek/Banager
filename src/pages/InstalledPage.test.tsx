@@ -2157,12 +2157,12 @@ describe("InstalledPage", () => {
     expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Source$/);
     const [homebrewHeading, pipHeading, ...more] = queryAllByRole("heading", { level: 2 });
     expect(more).toEqual([]);
-    expect(homebrewHeading).toBe(getByRole("heading", { level: 2, name: "Homebrew 3" }));
-    expect(pipHeading).toBe(getByRole("heading", { level: 2, name: "pip 2" }));
+    expect(homebrewHeading).toBe(getByRole("heading", { level: 2, name: "Homebrew · 3 tools" }));
+    expect(pipHeading).toBe(getByRole("heading", { level: 2, name: "pip · 2 tools" }));
     // A group's heading: 13 bold, its count 13 in the secondary colour,
     // the source's mark at 16 -- no pill.
     expect(homebrewHeading.className.split(" ")).toEqual(expect.arrayContaining(["text-title", "text-foreground"]));
-    const count = within(homebrewHeading).getByText("3");
+    const count = within(homebrewHeading).getByText("· 3 tools");
     expect(count.className.split(" ")).toEqual(expect.arrayContaining(["text-body", "font-normal", "text-muted"]));
     expect(homebrewHeading.querySelector("[aria-hidden='true']")?.className).toContain("h-4 w-4");
     expect(homebrewHeading.className).not.toMatch(/rounded|border|bg-/);
@@ -2282,7 +2282,7 @@ describe("InstalledPage", () => {
       expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
         "Version",
         "New version",
-        "Size",
+        "Space used",
         "Date installed",
         "Homepage",
         "Status",
@@ -2585,17 +2585,17 @@ describe("InstalledPage", () => {
       expect(within(inspector).getByText("Date installed").nextElementSibling).toHaveTextContent(
         new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(1783762037 * 1000)),
       );
-      expect(within(inspector).getByText("Size").nextElementSibling).toHaveTextContent("1.4 MB");
+      expect(within(inspector).getByText("Space used").nextElementSibling).toHaveTextContent("About 1.4 MB");
       // A row of the facts' group: the label in the secondary colour, the
       // value at the right, tabular.
-      const group = within(inspector).getByText("Size").parentElement?.parentElement as HTMLElement;
+      const group = within(inspector).getByText("Space used").parentElement?.parentElement as HTMLElement;
       expect(group).toHaveAttribute("data-facts");
-      expect(within(inspector).getByText("Size")).toHaveClass("text-muted", "whitespace-nowrap");
-      expect(within(inspector).getByText("Size").nextElementSibling).toHaveClass("tabular-nums", "text-right");
+      expect(within(inspector).getByText("Space used")).toHaveClass("text-muted", "whitespace-nowrap");
+      expect(within(inspector).getByText("Space used").nextElementSibling).toHaveClass("tabular-nums", "text-right");
 
       fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
       inspector = await screen.findByRole("complementary", { name: "wget" });
-      expect(within(inspector).queryByText("Size")).toBeNull();
+      expect(within(inspector).queryByText("Space used")).toBeNull();
       expect(within(inspector).getByText("Date installed")).toBeInTheDocument();
     });
 
@@ -3113,9 +3113,9 @@ describe("InstalledPage", () => {
       expect(within(await findRow("requests")).getByText("P")).toHaveAttribute("aria-hidden", "true");
 
       fireEvent.change(screen.getByRole("combobox", { name: "Sort Order" }), { target: { value: "source" } });
-      const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew 2" });
+      const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew · 2 tools" });
       expect(heading.querySelector(glyph(HOMEBREW))).not.toBeNull();
-      const pipHeading = screen.getByRole("heading", { level: 2, name: "pip 1" });
+      const pipHeading = screen.getByRole("heading", { level: 2, name: "pip · 1 tool" });
       expect(within(pipHeading).getByText("P")).toHaveAttribute("aria-hidden", "true");
     });
   });

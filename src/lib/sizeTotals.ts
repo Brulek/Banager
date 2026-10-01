@@ -5,8 +5,8 @@ import { artifactKeyId } from "../store/ui";
 
 /**
  * What several tools take together, as the Installed page says it: under
- * each source's heading while the list is sorted by source (「86 · 约4.1
- * GB」), and in the toolbar after the count (「55个工具 · 共约9.8 GB」).
+ * each source's heading while the list is sorted by source (「86个 · 约4.1
+ * GB」), and in the toolbar after the count (「55个工具 · 约9.8 GB」).
  *
  * The numbers are the ones Rust adds up (`Sizes.total`, `Sizes.sources`,
  * crates/banager-core/src/size.rs): a file with several hard links counts
@@ -14,7 +14,7 @@ import { artifactKeyId } from "../store/ui";
  * whenever the number is short of what the tools in it take -- a part
  * could not be read, the budget ran out, or a tool in it has no size at
  * all (a pip package, a cask with no app, a model whose folder was not
- * measured) -- and the words then say 「至少约」. Never what could be freed:
+ * measured) -- and the words then say 「…以上」. Never what could be freed:
  * nothing here offers to remove anything.
  */
 export interface SizeTotal {
@@ -36,7 +36,7 @@ function counted(artifact: InstalledArtifact, sizes: Sizes, measured: ReadonlyMa
 }
 
 function totalOf(measured: Measured | null | undefined, whole: boolean): SizeTotal | null {
-  // Nothing measured, or nothing reached: no number rather than 「至少约0 KB」.
+  // Nothing measured, or nothing reached: no number rather than 「0 KB以上」.
   if (measured == null || measured.bytes === 0) return null;
   return { bytes: measured.bytes, atLeast: measured.partial || measured.at_least || !whole };
 }
@@ -68,14 +68,17 @@ export function sizeTotalsOf(
   return { all: totalOf(sizes.total, short.size === 0), bySource };
 }
 
-/** A source's heading's: 「约4.1 GB」, 「至少约4.1 GB」. */
+/** A source's heading's: 「约4.1 GB」, 「4.1 GB以上」 -- one hedge, never two. */
 export function sourceTotalText(t: Translate, total: SizeTotal): string {
   const size = formatBytes(total.bytes);
   return total.atLeast ? t("sizeTotals.sourceAtLeast", { size }) : t("sizeTotals.source", { size });
 }
 
-/** The toolbar's, after the count: 「共约9.8 GB」, 「共至少约9.8 GB」. */
+/**
+ * The toolbar's, after the count: the same words, 「58个工具 · 约10.6 GB」
+ * -- no 「共」, which the 「·」 after a count says already, and which left
+ * the number to be cut off in a narrow window.
+ */
 export function viewTotalText(t: Translate, total: SizeTotal): string {
-  const size = formatBytes(total.bytes);
-  return total.atLeast ? t("sizeTotals.viewAtLeast", { size }) : t("sizeTotals.view", { size });
+  return sourceTotalText(t, total);
 }

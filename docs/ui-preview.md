@@ -186,19 +186,25 @@ Paths are under a generic home folder, `/Users/you`.
   and in the row under it 「其他版本：22.22.0」 with 「约298.4 MB」 under the
   version -- git, node@22, python@3.13, gettext, libuv, openssl@3,
   readline and youtube-dl keep other kegs, and each one's versions and
-  size agree -- 「至少约612.4 MB」 for Visual Studio Code (the
+  size agree -- 「612.4 MB以上」 for Visual Studio Code (the
   round's budget ran out) and 「约22.7 MB，部分无法读取」 for pre-commit. A
   tool measured before at the same version shows at once. pip's packages,
-  the font and a model get no measured size (a model keeps its own), and
-  the Ollama source's page says 「Ollama模型共约6.6 GB」 under its title.
+  the font and a model get no measured size (a model keeps its own,
+  said as 「占用空间 约2 GB」), and the Ollama source's page says
+  「2个模型 · Ollama模型共约6.6 GB」 under its title, its tooltip saying that
+  files several models share count once.
   The Installed page's sort has 「按大小」 ("By Size"): the two models
-  first, then Visual Studio Code and node@22, a tool with no size last.
+  first, then Visual Studio Code and node@22, a tool with no size last;
+  while it is on, each row shows its size where the version was
+  (「约4.7 GB」, 「正在计算…」, or 「—」).
   Sorted 「按来源」, each source's heading says what it takes after its
-  count, 「Homebrew 33 · 至少约2.6 GB」 (the font has no size, so "at least"),
-  「Ollama 2 · 约6.6 GB」 as its models' line says; pip has no number. The
-  toolbar says the whole list's, 「58个工具 · 共至少约10.6 GB」, or one
+  count, 「Homebrew · 33个 · 2.6 GB以上」 (the font has no size, so "or more"),
+  「Ollama · 2个模型 · 约6.6 GB」 as its models' line says; pip has no number. The
+  toolbar says the whole list's, 「58个工具 · 10.6 GB以上」, or one
   source's on its page. No number while the round measures, or while a
-  search or the 「显示」 popup narrows a heading's count. A total counts a
+  search or the 「显示」 popup narrows a heading's count; while the popup
+  shows only some, the toolbar says how many of how many,
+  「58个工具中的2个」. A total counts a
   formula's other versions (其他版本), which its row's size leaves out, so a heading
   can be more than its rows add up to; hovering a heading or the subtitle
   with a total shows a tooltip that says so (other versions in, caches out).
@@ -208,10 +214,21 @@ Paths are under a generic home folder, `/Users/you`.
   `?state=uptodate`, which leaves Codex's own install out,
   「没有发现装了不止一份的工具」.
 - youtube-dl's details have every row the details can have for a
-  Homebrew formula at once, for checking their order: the facts (version,
-  date installed, 占用空间, 其他版本 with its size, homepage, and 状态 with
-  「已弃用」), under them what that mark means and the name Homebrew
-  suggests, then 「在终端里输入」, and last Homebrew's notes, folded.
+  Homebrew formula at once, for checking their order: under the
+  description, a callout with what Homebrew's 「已弃用」 means and the name
+  Homebrew suggests; then the facts (version, 占用空间, 其他版本 with its
+  size and an ⓘ, date installed, homepage, and 状态), then 「在终端里输入」,
+  and last Homebrew's notes, folded.
+- Codex's own install and npm's @openai/codex (default pretend Mac): both
+  rows say 「装了两份」; the details say under the description which copy
+  typing `codex` runs, that Terminal does not use the other, and, for
+  npm's copy, that it can be uninstalled. On the Updates page npm's copy
+  says 「终端用另一份」; its uninstall preview says Codex's own copy stays
+  and `codex` still works, and ~/.codex's size leaves out
+  `packages/standalone` (its ⓘ says so). Codex's own install says
+  「只列出」 in its 状态; it would on its row too, without the twin.
+- `?state=preview`: the first check's list says once, in its first line,
+  「检查完成后才能卸载」; each Uninstall is off with that as its tooltip.
 - An uninstall of an AI coding tool lists what stays after it under
   「卸载后会保留」 ("Stays after uninstalling"), as the app's preview does
   (`src/dev/mockKeptData.ts`): Codex (npm) `~/.codex`, about 38.4 MB;

@@ -284,7 +284,7 @@ describe("otherVersionsFact", () => {
     const two = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.2", "3.6.3"] });
     expect(textOf(otherVersionsFact(zh, two, sizesOf(two, about(240_000_000)))?.value)).toBe("3.6.2、3.6.3 " + "共约240 MB");
     expect(textOf(otherVersionsFact(enT, two, sizesOf(two, about(240_000_000, { partial: true })))?.value)).toBe(
-      "3.6.2, 3.6.3 " + "At least about\u00a0240 MB in all",
+      "3.6.2, 3.6.3 " + "240 MB or more in all",
     );
   });
 

@@ -180,7 +180,7 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     const group = await screen.findByRole("region", { name: "卸载后会保留" });
     const [row] = within(group).getAllByRole("listitem");
     expect(row.textContent).toContain("~/.ollama/models");
-    expect(row.textContent).toContain("至少约");
+    expect(row.textContent).toContain("6.6 GB以上");
     expect(row.textContent).toContain("下载的模型");
     expect(within(group).getByRole("button", { name: "拷贝路径：~/.ollama/models" })).toHaveTextContent("拷贝路径");
   });

@@ -19,6 +19,8 @@ import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
 import { modelsTotalText } from "./lib/sizes";
 import { sizeTotalsOf, viewTotalText } from "./lib/sizeTotals";
 import { instanceLabels } from "./lib/sources";
+import { shownBy } from "./lib/families";
+import { twinsByArtifact } from "./lib/commands";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
 import { useDockBadge } from "./lib/dockBadge";
@@ -59,9 +61,10 @@ function headerActions(page: Page): ReactNode {
  * every refresh sets or clears), in place of a count the check could not
  * bring up to date. On one source alone, the Installed page counts that
  * source's tools, 「30个工具」, under its name (`useShownSource`) -- and on
- * Ollama's, what its models take together, 「2个工具 · Ollama模型共约6.2 GB」
+ * Ollama's, its models and what they take together, 「2个模型 · Ollama模型共约6.2 GB」
  * (`modelsTotalText`); on any other, or on all of them, what the tools
- * counted take, 「55个工具 · 共约9.8 GB」 (`viewTotalText`). Other Programs
+ * counted take, 「55个工具 · 约9.8 GB」 (`viewTotalText`); while the 「显示」
+ * popup shows only some, how many of how many, 「58个工具中的2个」. Other Programs
  * says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
  * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
@@ -83,9 +86,13 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   // nothing in a sentence of its own.
   const counted = (key: string, count: number | undefined) =>
     count === undefined || count === 0 ? null : t(key, { count });
-  // What the tools counted take together, once measured: 「共约9.8 GB」, or
-  // 「共至少约…」 when some of them have no size (`sizeTotalsOf`).
+  // What the tools counted take together, once measured: 「约9.8 GB」, or
+  // 「9.8 GB以上」 when some of them have no size (`sizeTotalsOf`).
   const totals = useMemo(() => sizeTotalsOf(sizes, snapshot), [sizes, snapshot]);
+  // What the Installed page's 「显示」 popup shows: of every tool, or only
+  // some (`shownBy`), which the count then says of how many.
+  const show = useUiStore((s) => s.installedShow);
+  const twins = useMemo(() => (show === "all" ? undefined : twinsByArtifact(snapshot?.artifacts ?? [])), [show, snapshot]);
   const viewTotal = (source: string | null): string | null => {
     const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
     return total === null ? null : viewTotalText(t, total);
@@ -107,22 +114,35 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       // Ollama's, what its models take together after it, once measured;
       // on any other, or all, what the tools counted take together.
       {
+        const inSource = (snapshot?.artifacts ?? []).filter(
+          (artifact) => shownSource === null || artifact.key.instance_id === shownSource,
+        );
+        // Of only some (`show`): 「58个工具中的2个」, and no size, which
+        // would be of all of them.
+        if (show !== "all") {
+          if (inSource.length === 0) return null;
+          const shown = inSource.filter((artifact) => shownBy(show, artifact, twins)).length;
+          return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
+        }
         const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource);
         const total = models === null ? viewTotal(shownSource) : null;
-        const text = [
-          counted(
-            "toolbar.toolCount",
-            shownSource === null
-              ? snapshot?.artifacts.length
-              : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
-          ),
-          models ?? total,
-        ]
+        // Ollama's page counts models, 「2个模型」.
+        const ollama = snapshot?.instances.find((instance) => instance.id === shownSource)?.adapter_id === "ollama";
+        const text = [counted(ollama ? "clarity.modelCount" : "toolbar.toolCount", inSource.length), models ?? total]
           .filter((part): part is string => part !== null)
           .join(" · ");
         if (text === "") return null;
-        // A total counts a formula's other versions, which the rows' sizes leave out: the tooltip says what it holds.
-        return total === null ? said(text) : { text, failed: false, note: t("sizeTotals.note") };
+        // What a total holds, as its tooltip: a formula's other versions,
+        // which the rows' sizes leave out, and why it is 「…以上」 where it
+        // is; models' shared files, counted once.
+        if (models !== null) return { text, failed: false, note: t("clarity.modelsNote") };
+        if (total === null) return said(text);
+        const short = (shownSource === null ? totals.all : totals.bySource.get(shownSource))?.atLeast ?? false;
+        return {
+          text,
+          failed: false,
+          note: t(short ? "clarity.totalNoteAtLeast" : "sizeTotals.note"),
+        };
       }
     case "unknown":
       if (scan.isFetching) return said(t("unknown.scanning"));

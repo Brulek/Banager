@@ -232,12 +232,12 @@ describe("the Installed page's details, on disk use", () => {
     render();
     const inspector = await openDetails("node@22");
     // The text matcher reads the no-break space before the number as a space.
-    expect(await within(inspector).findByText("At least about 612.4 MB")).toBeInTheDocument();
+    expect(await within(inspector).findByText("612.4 MB or more")).toBeInTheDocument();
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("About 22.7 MB; some of it couldn't be read")).toBeInTheDocument();
   });
 
-  it("keep a model's own size, as Ollama reports it, and never measure it", async () => {
+  it("keep a model's own size, as Ollama reports it, said as every size is, and never measure it", async () => {
     served = {
       ...NO_SIZES,
       round: 4,
@@ -246,9 +246,10 @@ describe("the Installed page's details, on disk use", () => {
     };
     render();
     const inspector = await openDetails("llama3.2:3b");
-    await within(inspector).findByText("Size");
-    expect(factsOf(inspector).Size).toBe("2 GB");
-    expect(within(inspector).queryByText("Space used")).toBeNull();
+    // Said as every other size is: 「占用空间」, 「约…」.
+    await within(inspector).findByText("Space used");
+    expect(factsOf(inspector)["Space used"]).toBe("About\u00a02 GB");
+    expect(within(inspector).queryByText("Size")).toBeNull();
   });
 
   it("say it in Chinese, 约 before every number", async () => {
@@ -290,6 +291,15 @@ describe("the Installed page's details, on disk use", () => {
     fireEvent.change(sortBy, { target: { value: "size" } });
     await waitFor(() => expect(rowNames()).toEqual(["llama3.2:3b", "node@22", "jq", "wget"]));
     expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Size$/);
+    // The size the order goes by, in the version's place, as Finder's Size
+    // column: 「—」, muted, for a row with none.
+    const cells = () =>
+      [...document.querySelectorAll("[data-tool-row]")].map((row) => row.querySelector("[data-size-cell]")?.textContent);
+    expect(cells()).toEqual(["About\u00a02 GB", "About\u00a0312.6 MB", "About\u00a01.2 MB", "—"]);
+    expect(document.querySelectorAll("[data-size-cell].text-muted")).toHaveLength(1);
+    // By name again: the versions.
+    fireEvent.change(sortBy, { target: { value: "name" } });
+    await waitFor(() => expect(document.querySelector("[data-size-cell]")).toBeNull());
   });
 });
 
@@ -322,46 +332,46 @@ describe("the Installed page's source headings, on disk use", () => {
   it("say what each source takes after its count, as Ollama's own line says its models", async () => {
     served = measuredAll;
     await bySource();
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · about 616.4 MB" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "Ollama 1 · about 6.6 GB" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools · about 616.4 MB" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Ollama · 1 model · about 6.6 GB" })).toBeInTheDocument();
   });
 
   it("say at least where a tool of the source has no size, and nothing while it is measured", async () => {
     served = { ...measuredAll, artifacts: measuredAll.artifacts.filter((size) => size.key.name !== "wget") };
     await bySource();
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · at least about 616.4 MB" }),
+      await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools · 616.4 MB or more" }),
     ).toBeInTheDocument();
 
     cleanupAndServe({ ...measuredAll, done: false, total: null, sources: [] });
     await bySource();
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools" })).toBeInTheDocument();
   });
 
   it("say no size while a search narrows the count to part of the source", async () => {
     served = measuredAll;
     await bySource();
-    await screen.findByRole("heading", { level: 2, name: /^Homebrew 3 · / });
+    await screen.findByRole("heading", { level: 2, name: /^Homebrew · 3 tools · / });
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "j" } });
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 1 tool" })).toBeInTheDocument();
   });
 
   it("say in a tooltip that other versions count and caches do not, which the rows' sizes leave out", async () => {
     served = measuredAll;
     await bySource();
-    const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · about 616.4 MB" });
+    const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools · about 616.4 MB" });
     expect(heading).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
 
     cleanupAndServe({ ...measuredAll, done: false, total: null, sources: [] });
     await bySource();
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3" })).not.toHaveAttribute("title");
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools" })).not.toHaveAttribute("title");
   });
 
   it("say it in Chinese, 约 before the number", async () => {
     await i18n.changeLanguage("zh-CN");
     served = measuredAll;
     await bySource();
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · 约616.4 MB" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3个 · 约616.4 MB" })).toBeInTheDocument();
   });
 });
 

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
+import { useUiStore } from "./store/ui";
 import type { InstalledArtifact, ManagerInstance, Settings, Sizes, Snapshot } from "./lib/types";
 import { NO_FACTS, NO_SIZES } from "./lib/types";
 
@@ -113,13 +114,13 @@ describe("the Ollama source's page", () => {
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
     };
     const subtitle = await subtitleOn("Ollama");
-    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about\u00a06.6 GB in all"));
+    await waitFor(() => expect(subtitle()).toBe("1 model · Ollama models: about\u00a06.6 GB in all"));
   });
 
   it("says only its count while they are measured", async () => {
     served = { ...NO_SIZES, round: 2, models: [{ instance_id: OLLAMA, measured: null }] };
     const subtitle = await subtitleOn("Ollama");
-    await waitFor(() => expect(subtitle()).toBe("1 tool"));
+    await waitFor(() => expect(subtitle()).toBe("1 model"));
   });
 
   it("is said on Ollama's page alone", async () => {
@@ -169,34 +170,45 @@ describe("the Installed page's subtitle, on disk use", () => {
   it("says what everything takes after the count on every source's list", async () => {
     served = measured;
     const subtitle = await subtitleOnAll();
-    await waitFor(() => expect(subtitle()).toBe("2 tools · about 6.6 GB in all"));
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about 6.6 GB"));
   });
 
   it("says what one source's tools take on that source's list, and Ollama's models line on Ollama's", async () => {
     served = measured;
     const subtitle = await subtitleOn("Homebrew");
-    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB in all"));
+    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB"));
     const sources = await screen.findByRole("list", { name: "Sources" });
     fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
-    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
+    await waitFor(() => expect(subtitle()).toBe("1 model · Ollama models: about 6.6 GB in all"));
   });
 
   it("says at least when a tool counted has no size, and nothing until the round is done", async () => {
     served = { ...measured, artifacts: [] };
     const subtitle = await subtitleOnAll();
-    await waitFor(() => expect(subtitle()).toBe("2 tools · at least about 6.6 GB in all"));
+    await waitFor(() => expect(subtitle()).toBe("2 tools · 6.6 GB or more"));
   });
 
-  it("says in a tooltip what a total holds, and none over Ollama's models line", async () => {
+  it("says in a tooltip what a total holds, and that models' shared files count once over Ollama's", async () => {
     served = measured;
     const subtitle = await subtitleOn("Homebrew");
-    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB in all"));
+    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB"));
     const line = () => screen.getByRole("heading", { level: 1 }).nextElementSibling;
     expect(line()).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
     const sources = await screen.findByRole("list", { name: "Sources" });
     fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
-    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
-    expect(line()).not.toHaveAttribute("title");
+    await waitFor(() => expect(subtitle()).toBe("1 model · Ollama models: about 6.6 GB in all"));
+    // Models: the files several share count once, which adding up the rows does not.
+    expect(line()).toHaveAttribute("title", expect.stringMatching(/Files several models share count once/));
+  });
+
+  it("says how many of how many while the 显示 popup shows only some, and no size, which is of all of them", async () => {
+    served = measured;
+    const subtitle = await subtitleOnAll();
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about\u00a06.6 GB"));
+    act(() => useUiStore.getState().setInstalledShow("twins"));
+    await waitFor(() => expect(subtitle()).toBe("0 of 2 tools"));
+    act(() => useUiStore.getState().setInstalledShow("all"));
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about\u00a06.6 GB"));
   });
 
   it("says only the count while the sizes are measured", async () => {

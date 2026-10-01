@@ -244,8 +244,7 @@
       "description": "Tools you install with {{source}} show up here.",
       "unreachable": "Couldn't list what it has installed. Check again later."
     },
-    "installedOn": "Date installed",
-    "size": "Size"
+    "installedOn": "Date installed"
   },
   "updates": {
     "upToDate": "Everything is up to date",
@@ -504,21 +503,19 @@
     "term": "Space used",
     "measuring": "Calculating…",
     "about": "About\u00a0{{size}}",
-    "atLeast": "At least about\u00a0{{size}}",
+    "atLeast": "{{size}} or more",
     "partial": "About\u00a0{{size}}; some of it couldn't be read",
     "ollamaModels": "Ollama models: about\u00a0{{size}} in all",
-    "ollamaModelsAtLeast": "Ollama models: at least about\u00a0{{size}} in all",
+    "ollamaModelsAtLeast": "Ollama models: {{size}} or more in all",
     "sortBySize": "By Size",
     "programOnly": "Counts only its program files, not what it downloads or caches.",
     "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less.",
     "otherVersionsTotal": "About\u00a0{{size}} in all",
-    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all"
+    "otherVersionsTotalAtLeast": "{{size}} or more in all"
   },
   "sizeTotals": {
     "source": "about\u00a0{{size}}",
-    "sourceAtLeast": "at least about\u00a0{{size}}",
-    "view": "about\u00a0{{size}} in all",
-    "viewAtLeast": "at least about\u00a0{{size}} in all",
+    "sourceAtLeast": "{{size}} or more",
     "note": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once."
   },
   "sourceNotice": {
@@ -878,7 +875,17 @@
     "listedOnly": "Listed only",
     "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
     "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
-    "completeExcept": "Check: complete, except for updates to {{sources}}"
+    "completeExcept": "Check: complete, except for updates to {{sources}}",
+    "headingCount_one": "{{count}} tool",
+    "headingCount_other": "{{count}} tools",
+    "modelCount_one": "{{count}} model",
+    "modelCount_other": "{{count}} models",
+    "modelsNote": "Files several models share count once, so the total can be less than the models' sizes added up.",
+    "shownOfAll_one": "{{count}} of {{total}} tools",
+    "shownOfAll_other": "{{count}} of {{total}} tools",
+    "updatesOfAll_one": "{{count}} of {{total}} updates",
+    "updatesOfAll_other": "{{count}} of {{total}} updates",
+    "totalNoteAtLeast": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once. Some tools have no size, or some of their files couldn't be read, so they take more than this."
   },
   "unknown": {
     "columns": {

@@ -15,9 +15,9 @@ export interface SizeFactRow {
  * The details' row for how much `artifact` takes on disk, or null for
  * none:
  *
- * - a size its source reports (an Ollama model's own, from Ollama) keeps
- *   the row it always had, 「大小」 and the number;
- * - a measured one is 「占用空间」 and 「约312 MB」 -- 「至少约…」 when the
+ * - a size its source reports (an Ollama model's own, from Ollama) is
+ *   said as a measured one is, 「占用空间」 and 「约4.7 GB」;
+ * - a measured one is 「占用空间」 and 「约312 MB」 -- 「312 MB以上」 when the
  *   round's budget ran out, 「…，部分无法读取」 when part of it could not be
  *   read; for a Cargo crate, a tool with its own installer and a uv tool,
  *   an ⓘ after the number says what it leaves out or shares
@@ -32,7 +32,13 @@ export interface SizeFactRow {
  */
 export function sizeFact(t: Translate, artifact: InstalledArtifact, sizes: Sizes | undefined): SizeFactRow | null {
   if (artifact.size_bytes !== null) {
-    return { term: t("installed.size"), value: formatBytes(artifact.size_bytes), selectable: true };
+    // Said as every other size is -- 「占用空间」, 「约…」 -- though its
+    // source reports it: a model's layers, which another model may share.
+    return {
+      term: t("sizes.term"),
+      value: <span data-size="reported">{t("sizes.about", { size: formatBytes(artifact.size_bytes) })}</span>,
+      selectable: true,
+    };
   }
   const view = sizeViewOf(sizes, artifact);
   if (view === null) return null;

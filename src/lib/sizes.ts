@@ -36,8 +36,9 @@ export function sizeViewOf(sizes: Sizes | undefined, artifact: InstalledArtifact
 
 /**
  * 「约312 MB」, "About 312 MB": every measured number says it is rough. A
- * round the budget cut short says 「至少约…」, "At least about …"; one that
- * could not read part of it says so after the number.
+ * round the budget cut short says 「312 MB以上」, "312 MB or more" -- one
+ * hedge, not two; one that could not read part of it says so after the
+ * number.
  */
 export function sizeText(t: Translate, measured: Measured): string {
   const size = formatBytes(measured.bytes);
@@ -125,4 +126,23 @@ export function compareBySize(order: Map<string, number>, a: InstalledArtifact, 
   if (left === undefined) return 1;
   if (right === undefined) return -1;
   return right - left;
+}
+
+/**
+ * What a row shows in its version's place while the list is sorted by
+ * size (`InstalledPage`'s "By Size"), as Finder's Size column does: the
+ * size the order goes by -- 「约4.7 GB」 -- or 「正在计算…」 while it is
+ * measured, or 「—」 for a row with none. `measuring` says which, to be
+ * drawn muted.
+ */
+export function sizeCellOf(
+  t: Translate,
+  sizes: Sizes | undefined,
+  artifact: InstalledArtifact,
+): { text: string; muted: boolean } {
+  if (artifact.size_bytes !== null) return { text: t("sizes.about", { size: formatBytes(artifact.size_bytes) }), muted: false };
+  const view = sizeViewOf(sizes, artifact);
+  if (view === null) return { text: "—", muted: true };
+  if (view.kind === "measuring") return { text: t("sizes.measuring"), muted: true };
+  return { text: sizeText(t, view.measured), muted: false };
 }

@@ -141,7 +141,13 @@ export function useUpdatesHeadline(): string | null {
   const updating = listed.actionable.filter(
     (candidate) => inView(candidate) && isUnderway(operationFor(candidate)),
   ).length;
-  return updatesHeadline(t, updating, startable.filter(inView).length);
+  const shown = startable.filter(inView).length;
+  // Of only some: how many of how many, 「5个可更新，共13个」, so the
+  // sidebar's 13 beside it does not read as wrong.
+  if (show !== "all" && updating === 0 && shown > 0 && shown < startable.length) {
+    return t("clarity.updatesOfAll", { count: shown, total: startable.length });
+  }
+  return updatesHeadline(t, updating, shown);
 }
 
 /**
