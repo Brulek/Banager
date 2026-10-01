@@ -1035,5 +1035,8 @@
     "intro": "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type. That's normal.",
     "after": "When it's done, come back here and press ⌘R to check again.",
     "commandLabel": "Command to run in Terminal"
+  },
+  "a11y": {
+    "updateList": "Tools to update"
   }
 }

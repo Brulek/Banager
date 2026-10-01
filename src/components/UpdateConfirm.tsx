@@ -675,7 +675,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>
       ) : (
-        <SheetToolList>
+        <SheetToolList label={t("a11y.updateList")}>
           {ordered.slice(0, drawn).map(({ item, notes }) => {
             const { key } = item.candidate;
             return (
