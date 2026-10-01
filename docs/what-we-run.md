@@ -2093,9 +2093,11 @@ takes nothing from it. That reads two strings the kernel keeps,
 `sysctlbyname`; the process's own `PATH` and `HOME`, and no other
 environment variable; and the sources' last known state. No command runs,
 no file is opened, nothing is written to disk, and no connection is made.
-Every path in the text has the home folder written as `~`, and the text
-never holds an environment variable's value (a proxy setting can hold a
-password), anything from a shell file, or a token.
+Every path in the text has the home folder written as `~`. The folders on
+`PATH` are the one environment variable's value the text holds, as its
+"Command search folders" (「查找命令的文件夹」) lines, and Settings' footnote says
+so; it never holds any other environment variable's value (a proxy setting
+can hold a password), anything from a shell file, or a token.
 
 ## Files Banager reads
 

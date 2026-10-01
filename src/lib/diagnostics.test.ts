@@ -164,7 +164,7 @@ describe("diagnosticsText", () => {
         "  Status: Version not tested",
         "  Tools: 1",
         "",
-        "Terminal search folders: 4",
+        "Command search folders: 4",
         "  Read from the login settings",
         "  /opt/homebrew/bin",
         "  ~/.local/bin",
@@ -174,7 +174,7 @@ describe("diagnosticsText", () => {
         "Last check: 2026-10-01 13:58",
         "Check: incomplete, npm didn't finish",
         "Not found in Terminal: 1",
-        "Installed twice: 2",
+        "Tools installed twice: 1",
         "Space used: About 1.2 GB",
         "",
       ].join("\n"),
@@ -214,7 +214,7 @@ describe("diagnosticsText", () => {
         "  状态：未经测试的版本",
         "  工具：1个",
         "",
-        "终端搜索路径：4个文件夹",
+        "查找命令的文件夹：4个",
         "  已读取登录时的设置",
         "  /opt/homebrew/bin",
         "  ~/.local/bin",
@@ -224,7 +224,7 @@ describe("diagnosticsText", () => {
         "上次检查：2026-10-01 13:58",
         "检查结果：不完整，npm未检查完",
         "终端找不到：1个",
-        "装了两份：2个",
+        "装了两份的工具：1个",
         "占用空间：约1.2 GB",
         "",
       ].join("\n"),
@@ -247,6 +247,26 @@ describe("diagnosticsText", () => {
     ]);
     // Nothing else changes.
     expect(withTools.split("\n").filter((line) => !line.startsWith("    "))).toEqual(without.split("\n"));
+  });
+
+  it("counts a tool installed twice once, however many copies it has, and each such tool", () => {
+    // A third Claude Code, from Homebrew; and ruff twice more, from pipx and Homebrew.
+    const brewClaude = artifact({ instance_id: BREW, kind: "Cask", name: "claude-code" }, "2.1.0", "claude-code", [
+      { name: "claude", state: { ShadowedBy: { by: npmClaude } } },
+    ]);
+    const pipxRuff = artifact({ instance_id: "pipx:/opt/homebrew/bin/pipx", kind: "Package", name: "ruff" }, "0.14.0", "ruff", [
+      { name: "ruff", state: "Runs" },
+    ]);
+    const brewRuff = artifact({ instance_id: BREW, kind: "Formula", name: "ruff" }, "0.14.0", "ruff", [
+      { name: "ruff", state: { ShadowedBy: { by: pipxRuff.key } } },
+    ]);
+    const three = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude] } }));
+    expect(three).toContain("\nTools installed twice: 1\n");
+    const two = diagnosticsText(
+      zh,
+      input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude, pipxRuff, brewRuff] } }),
+    );
+    expect(two).toContain("\n装了两份的工具：2个\n");
   });
 
   it("cuts an Ollama model's digest to the twelve digits ollama list shows", () => {
@@ -276,7 +296,7 @@ describe("diagnosticsText", () => {
       input({ facts: { ...FACTS, login_path: false, chip: null, macos_version: null, arch: "x86_64" } }),
     );
     expect(text).toContain("\nmacOS: couldn't read\nChip: Intel\n");
-    expect(text).toContain("\n  Couldn't read the login settings, so these are the defaults\n");
+    expect(text).toContain("\n  Couldn't read the login settings, so these are the defaults, which Terminal may not use\n");
     const apple = diagnosticsText(zh, input({ facts: { ...FACTS, chip: null } }));
     expect(apple).toContain("\n芯片：Apple芯片\n");
   });
@@ -284,7 +304,7 @@ describe("diagnosticsText", () => {
   it("still says what the snapshot knows when the facts could not be had, without a word on the search folders", () => {
     const text = diagnosticsText(en, input({ facts: null }));
     expect(text).toContain("Banager: 0.1.0\nSystem info: couldn't read\nLanguage: English\n");
-    expect(text).not.toContain("Terminal search folders");
+    expect(text).not.toContain("Command search folders");
     // Every path from the snapshot, with `~` all the same.
     expect(text).toContain("  Location: ~/.local/bin/uv\n");
     expect(text).not.toContain("/Users/");
@@ -301,8 +321,8 @@ describe("diagnosticsText", () => {
     expect(never).not.toContain("检查结果");
     expect(never).not.toContain("占用空间");
     const empty = diagnosticsText(en, input({ snapshot: null, sizes: null }));
-    expect(empty).toContain("\nSources: 0\n\nTerminal search folders: 4\n");
-    expect(empty).toContain("\nNot found in Terminal: 0\nInstalled twice: 0\n");
+    expect(empty).toContain("\nSources: 0\n\nCommand search folders: 4\n");
+    expect(empty).toContain("\nNot found in Terminal: 0\nTools installed twice: 0\n");
   });
 });
 

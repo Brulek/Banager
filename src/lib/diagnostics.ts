@@ -2,9 +2,10 @@
  * 「拷贝诊断信息」, "Copy Diagnostic Info": a short plain text, in the
  * window's language, that the user can paste to whoever helps them --
  * which Banager, which macOS on which chip, each source with its version,
- * where its program is, how it is doing; the Terminal's search folders;
+ * where its program is, how it is doing; the folders searched for commands
+ * (Banager's own `PATH`, the login shell's when it could be read);
  * the last check and whether it finished; how many tools Terminal cannot
- * find and how many are installed twice; and the disk they take, once
+ * find and how many tools are installed twice; and the disk they take, once
  * measured. Help's item copies it without the list of tools; Settings'
  * button adds it when its checkbox is on (a private tap's or scope's name
  * can say where someone works).
@@ -104,6 +105,21 @@ function notFoundInTerminal(artifact: InstalledArtifact): boolean {
 }
 
 /**
+ * How many tools are installed more than once: one tool (a family, such as
+ * Claude Code from npm and from its own installer) counts once however many
+ * of its copies there are, not once a copy as `twinsByArtifact` keys them.
+ */
+function toolsInstalledTwice(artifacts: readonly InstalledArtifact[]): number {
+  const families = new Set<string>();
+  for (const twins of twinsByArtifact(artifacts).values()) {
+    // Every twin is of the artifact's own family (`twinsByArtifact` pairs within one).
+    const family = twins[0]?.artifact.facts.family;
+    if (family != null) families.add(family);
+  }
+  return families.size;
+}
+
+/**
  * The diagnostic text, line by line. Pure: the golden tests in
  * diagnostics.test.ts build it from a fixed snapshot in both languages.
  */
@@ -186,7 +202,7 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     }
   }
   lines.push(t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length }));
-  lines.push(t("diagnostics.text.twins", { number: twinsByArtifact(artifacts).size }));
+  lines.push(t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) }));
   if (sizes !== null && sizes.done && sizes.total !== null) {
     lines.push(t("diagnostics.text.diskTotal", { size: sizeText(t, sizes.total) }));
   }

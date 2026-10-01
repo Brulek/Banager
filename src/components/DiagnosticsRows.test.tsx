@@ -186,7 +186,7 @@ describe("Settings' About group", () => {
     expect(within(copyRow).getByRole("button")).toHaveTextContent("Copy Diagnostic Info");
     expect(within(boxRow).getByRole("checkbox")).not.toBeChecked();
     expect(group.nextElementSibling).toHaveTextContent(
-      "with your home folder written as ~ and no values of environment variables",
+      "Your home folder is written as ~, and apart from those folders it holds no environment variable's value.",
     );
   });
 });

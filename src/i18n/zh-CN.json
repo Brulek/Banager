@@ -738,7 +738,7 @@
     "label": "诊断信息",
     "copy": "拷贝诊断信息",
     "includeTools": "包括已安装的工具清单",
-    "footnote": "可以粘贴给帮你看问题的人。其中有macOS版本、各来源的位置和状态，个人文件夹写成~，不含环境变量的值。",
+    "footnote": "可以粘贴给帮你看问题的人。其中有macOS版本、各来源的位置和状态，以及查找命令的文件夹。个人文件夹写成~，除这些文件夹外不含其他环境变量的值。勾选上面的选项才会包括工具清单。",
     "text": {
       "title": "诊断信息",
       "time": "时间：{{time}}",
@@ -764,16 +764,16 @@
         "readOnly": "仅供查看",
         "unverified": "未经测试的版本"
       },
-      "searchPath": "终端搜索路径：{{number}}个文件夹",
+      "searchPath": "查找命令的文件夹：{{number}}个",
       "loginRead": "已读取登录时的设置",
-      "loginNotRead": "无法读取登录时的设置，用的是默认值",
+      "loginNotRead": "无法读取登录时的设置，用的是默认值，终端用的可能不同",
       "lastCheck": "上次检查：{{time}}",
       "neverChecked": "上次检查：还没有检查过",
       "complete": "检查结果：完整",
       "incomplete": "检查结果：不完整，{{sources}}未检查完",
       "incompletePlain": "检查结果：不完整",
       "notFound": "终端找不到：{{number}}个",
-      "twins": "装了两份：{{number}}个",
+      "twins": "装了两份的工具：{{number}}个",
       "diskTotal": "占用空间：{{size}}",
       "noFacts": "系统信息：无法读取"
     }

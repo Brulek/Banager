@@ -1054,7 +1054,8 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "the process's own `PATH` and `HOME`, and no other environment variable",
         "No command runs, no file is opened, nothing is written to disk, and no connection is made",
         "the home folder written as `~`",
-        "never holds an environment variable's value",
+        "The folders on `PATH` are the one environment variable's value the text holds",
+        "never holds any other environment variable's value",
         "the Help menu's item never does",
     ] {
         assert!(

@@ -1192,7 +1192,7 @@ describe("SettingsPage's icon credits", () => {
       "Diagnostic info",
       "Copy Diagnostic Info",
       "Include the list of installed tools",
-      "To paste to someone helping you. It has the macOS version and where each source is and how it's doing, with your home folder written as ~ and no values of environment variables.",
+      "Paste this to whoever is helping you. It lists the macOS version, where each source is and how it's doing, and the folders searched for commands. Your home folder is written as ~, and apart from those folders it holds no environment variable's value. The list of tools is included only when the box above is ticked.",
     ]);
     await user.click(open);
 
