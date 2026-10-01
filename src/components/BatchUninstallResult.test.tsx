@@ -169,4 +169,21 @@ describe("what a batch uninstall did not uninstall", () => {
     expect(within(block).getByText("“pipx”没有卸载。还有软件要用到它们，Homebrew不会卸载。")).toBeInTheDocument();
     expect(within(block).getByRole("button", { name: "查看“python@3.13”的日志" })).toHaveTextContent("查看日志");
   });
+
+  it("says a known cause as what to do, in the label colour with a ⚠︎, and ticks the ones left to try again", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    useUiStore.getState().deselectUninstalls(record.items.map((item) => item.key));
+    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget" } };
+    operations = [op(13, "wget", "Done", denied), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
+    renderWithProviders(<BatchUninstallResult />);
+    const heading = await screen.findByRole("alert");
+    expect(heading.className).not.toMatch(/danger/);
+    expect(heading.querySelector("svg")).not.toBeNull();
+    const item = document.querySelector("[data-batch-result-item]") as HTMLElement;
+    expect(item).toHaveTextContent(/Permission/i);
+    expect(item).toHaveTextContent("There's no permission to change its files. Check the permissions, then try again.");
+    fireEvent.click(screen.getByRole("button", { name: "Select It Again" }));
+    expect(useUiStore.getState().selectedUninstalls).toContainEqual(artifactKeyId(key("wget")));
+  });
 });
+

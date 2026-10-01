@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings } from "../lib/queries";
 import { outcomeWords } from "../lib/operations";
+import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { namesInSentence } from "../lib/sources";
 import { artifactKeyId, useUiStore } from "../store/ui";
-import { CloseIcon } from "./icons";
+import { CloseIcon, WarningFilledIcon } from "./icons";
 import { BUTTON, SMALL_ICON_BUTTON } from "./ui/controls";
 import { focusOrFallback } from "./ui/focus";
 import { SMALL_WRAPPING } from "./ui/group";
@@ -25,6 +26,7 @@ export function BatchUninstallResult() {
   const { t } = useTranslation();
   const record = useUiStore((s) => s.uninstallBatch);
   const dismiss = useUiStore((s) => s.dismissUninstallBatch);
+  const selectUninstalls = useUiStore((s) => s.selectUninstalls);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const { data: operations } = useOperations();
@@ -51,6 +53,13 @@ export function BatchUninstallResult() {
     succeeded.size > 0
       ? t("batchUninstallMore.mixed", { done: succeeded.size, count: notUninstalled.length })
       : t("batchUninstall.result", { count: notUninstalled.length });
+  // A known cause in a sentence that says what to do (`failure.line`), as
+  // the row's ⓘ says it; the tool's own words with technical details on.
+  const causeLine = (outcome: (typeof notUninstalled)[number]["op"]["outcome"]): string | null => {
+    if (technical) return null;
+    const cause = outcomeCause(outcome);
+    return cause === null ? null : t(FAILURE_CAUSE_KEYS[cause].line);
+  };
   const viewLog = (opId: number) => {
     setFocusedOpId(opId);
     setDrawerOpen(true);
@@ -59,7 +68,10 @@ export function BatchUninstallResult() {
     <section aria-label={heading} data-batch-result="" className="px-5 pb-2 pt-2">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p role="alert" className="text-body text-danger-text">
+          {/* In the label colour with a ⚠︎, as System Settings says a partial
+              result: what did not happen is not an error of the page's. */}
+          <p role="alert" className="flex items-center gap-1.5 text-body text-foreground">
+            <WarningFilledIcon size={14} className="shrink-0 text-warning" />
             {heading}
           </p>
           <ul className="mt-1 flex flex-col gap-1.5">
@@ -71,7 +83,7 @@ export function BatchUninstallResult() {
                 <li key={op.id} data-batch-result-item="">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className={`text-foreground ${SMALL_WRAPPING}`}>{item.name}</span>
-                    <span className={`text-muted ${SMALL_WRAPPING}`}>{outcomeWords(t, op.outcome, technical)}</span>
+                    <span className={`text-muted ${SMALL_WRAPPING}`}>{causeLine(op.outcome) ?? outcomeWords(t, op.outcome, technical)}</span>
                     <button
                       type="button"
                       aria-label={t("batchUninstall.viewLogOf", { name: item.name })}
@@ -96,6 +108,15 @@ export function BatchUninstallResult() {
               );
             })}
           </ul>
+          {/* The way to try again: they are ticked once more, for 「卸载所选」
+              to preview them again -- nothing starts from here. */}
+          <button
+            type="button"
+            onClick={() => selectUninstalls(notUninstalled.map(({ item }) => item.key))}
+            className={`mt-2 ${BUTTON.small.grey}`}
+          >
+            {t("reviewFixes.selectAgain", { count: notUninstalled.length })}
+          </button>
         </div>
         <button
           type="button"

@@ -882,7 +882,9 @@
     "passwordNamed_one": "{{names}} may ask for your Mac password.",
     "passwordNamed_other": "{{names}} may ask for your Mac password.",
     "hostedThrough_one": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
-    "hostedThrough_other": "{{names}}, installed with {{program}}, may use it too, and may stop working after this."
+    "hostedThrough_other": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
+    "selectAgain_one": "Select It Again",
+    "selectAgain_other": "Select Them Again"
   },
   "keepsData": {
     "title": "Stays after uninstalling",

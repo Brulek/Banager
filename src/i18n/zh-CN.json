@@ -800,7 +800,8 @@
     "hostedBoth_other": "用“{{program}}”装的{{names}}会留下，但卸载后可能无法运行，也无法再在这里更新或卸载。",
     "cannotUninstallOne": "无法在这里卸载“{{name}}”",
     "passwordNamed_other": "{{names}}可能会要求输入Mac的密码。",
-    "hostedThrough_other": "用“{{program}}”装的{{names}}可能也在用它，卸载后可能无法运行。"
+    "hostedThrough_other": "用“{{program}}”装的{{names}}可能也在用它，卸载后可能无法运行。",
+    "selectAgain_other": "重新选择这些工具"
   },
   "keepsData": {
     "title": "卸载后会保留",
