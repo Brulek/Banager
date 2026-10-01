@@ -21,6 +21,7 @@ import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
+import { majorVersionWord } from "../components/majorVersionWord";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { NOTICE_GRID } from "../components/SourceNotice";
@@ -638,7 +639,11 @@ export function UpdatesPage() {
     const source = sourceLabelFor(candidate.key.instance_id);
     switch (state.kind) {
       case "actionable":
-        return saysItUpdatesItself(candidate, instance) ? { label: t("updates.selfUpdating") } : undefined;
+        // One word a row: an app that updates itself says so; any other
+        // update that changes the major version says 「大版本」.
+        return saysItUpdatesItself(candidate, instance)
+          ? { label: t("updates.selfUpdating") }
+          : majorVersionWord(t, candidate, nameOf(candidate));
       case "readOnly":
         return candidate.checkable
           ? { label: t("updates.readOnly"), detail: readOnlyDetail(t, instance) }

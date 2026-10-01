@@ -316,6 +316,12 @@
     "trashLabel": "Moves to the Trash",
     "needsPassword": "Some apps ask for your Mac password at this step."
   },
+  "majorVersion": {
+    "tag": "Major version",
+    "tagLabel": "Major version: {{name}}",
+    "detail": "From {{from}} to {{to}}: how it's used or set up may change. If you're not sure, you can choose “{{skip}}” for now.",
+    "zeroNote": "Tools whose version starts with 0 aren't marked."
+  },
   "warnings": {
     "dependentsUnknown": "Couldn't check what else needs this. Check yourself before you uninstall.",
     "wouldBreak_one": "{{names}} still needs this.",

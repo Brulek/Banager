@@ -293,6 +293,12 @@
     "trashLabel": "移到废纸篓",
     "needsPassword": "部分App在这一步会要求输入Mac密码。"
   },
+  "majorVersion": {
+    "tag": "大版本",
+    "tagLabel": "大版本：{{name}}",
+    "detail": "从{{from}}升到{{to}}，用法或设置可能会变。不确定时可以先“{{skip}}”。",
+    "zeroNote": "版本号以0开头的工具不标大版本。"
+  },
   "warnings": {
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",

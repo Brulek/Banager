@@ -4801,6 +4801,71 @@ describe("UpdatesPage", () => {
     expect(hints[0].closest("li")).toHaveAttribute("data-caution");
   });
 
+  describe("a major version (versionJump)", () => {
+    const runningOllama = { ...stoppedOllama, status: { unavailable: null, notes: [] } };
+    // glib 2 → 3 is a major version; onyx 5.0 → 5.1 is not; a model's
+    // digests, which here start with digits, are never read as versions.
+    const majorUpdates = (): Snapshot["updates"] => [
+      { ...snapshot.updates[0], current: "2.88.3", target: "3.0.0" },
+      snapshot.updates[1],
+      {
+        key: qwenKey,
+        current: "1a2b3c4d5e6f",
+        target: "9f8e7d6c5b4a",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+
+    it("marks the row with 「Major version」, says so to a screen reader, and points at Skip This Version", async () => {
+      instances = [...snapshot.instances, runningOllama];
+      updates = majorUpdates();
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(glib.querySelector("[data-status-column]")).toHaveTextContent("Major version");
+      expect(glib).toHaveAccessibleName("glib, Major version, 2.88.3 → 3.0.0");
+      const detail = chipDetail(glib, "Major version: glib");
+      expect(detail).toHaveTextContent(
+        "From 2 to 3: how it's used or set up may change. If you're not sure, you can choose “Skip This Version” for now.",
+      );
+      expect(detail).toHaveTextContent("Tools whose version starts with 0 aren't marked.");
+      // The menu item it points at is the row's own.
+      expect(within(openMenu(glib)).getByRole("menuitem", { name: /Skip This Version/ })).toBeInTheDocument();
+
+      for (const name of ["onyx", "qwen3:8b"]) {
+        expect(within(rowOf(name)).queryByText("Major version")).toBeNull();
+      }
+    });
+
+    it("leaves what is ticked, and the order of the rows, as they were", async () => {
+      updates = majorUpdates().slice(0, 2);
+      renderPage();
+      const glib = await findRow("glib");
+      expect(within(glib).getByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeChecked();
+      expect(within(rowOf("onyx")).getByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeChecked();
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+      expect(slotOf(glib)).toBeLessThan(slotOf(rowOf("onyx")) ?? -1);
+    });
+
+    it("says the same in Chinese", async () => {
+      updates = majorUpdates().slice(0, 2);
+      await i18n.changeLanguage("zh-CN");
+      try {
+        renderPage();
+        const glib = await findRow("glib");
+        expect(glib).toHaveAccessibleName("glib, 大版本, 2.88.3 → 3.0.0");
+        expect(chipDetail(glib, "大版本：glib")).toHaveTextContent(
+          "从2升到3，用法或设置可能会变。不确定时可以先“跳过此版本”。",
+        );
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  });
+
   describe("the keyboard (R11)", () => {
     it("moves between the rows with ↑ and ↓, ticks the focused one with Space, and does nothing on Enter", async () => {
       updates = [...snapshot.updates, brewCandidate("jq"), { ...brewCandidate("wget"), blocked: "Pinned" }];
