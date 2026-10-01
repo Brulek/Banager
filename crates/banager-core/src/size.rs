@@ -1913,6 +1913,41 @@ mod tests {
     }
 
     #[test]
+    fn test_a_cask_whose_app_was_removed_by_hand_gets_no_size() {
+        // Two casks on the author's Mac (2026-10-01): the app dragged to
+        // the Trash, Homebrew's folder still there with its link to it.
+        // What is left is Homebrew's bookkeeping, not the tool: no size,
+        // rather than "about 4 KB".
+        let scratch = Scratch::new("cask-app-gone");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("homebrew");
+        let app = scratch.path("Applications/Claudebar.app");
+        scratch.file("homebrew/Caskroom/claudebar/.metadata/receipt.json", 3_000);
+        scratch.dir("homebrew/Caskroom/claudebar/0.1.1");
+        symlink(&app, prefix.join("Caskroom/claudebar/0.1.1/Claudebar.app")).unwrap();
+        let id = "brew:homebrew";
+        let artifacts = [artifact(
+            id,
+            ArtifactKind::Cask,
+            "claudebar",
+            "0.1.1",
+            Some(app),
+        )];
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let sizes = run(
+            &meter,
+            1,
+            &[instance("brew", id, &prefix)],
+            &artifacts,
+            &home,
+        );
+        assert!(sizes.done);
+        assert!(size_of(&sizes, "claudebar").is_none());
+        assert_eq!(sizes.total, None);
+        assert!(sizes.sources.is_empty());
+    }
+
+    #[test]
     fn test_each_source_has_its_own_total_with_a_shared_file_once() {
         let scratch = Scratch::new("per-source");
         let home = scratch.dir("home");
