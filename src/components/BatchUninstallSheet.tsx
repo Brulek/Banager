@@ -450,6 +450,18 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           },
         ]
       : []),
+    ...(commands.unjudged.length > 0
+      ? [
+          {
+            text: t("batchUninstallMore.commandsGo", {
+              names: someNames(t, commands.unjudged),
+              count: commands.unjudged.length,
+            }),
+            detail: null,
+            caution: false,
+          },
+        ]
+      : []),
     ...(keptAi > 0 ? [{ text: t("batchUninstall.keptAi", { count: keptAi }), detail: null, caution: false }] : []),
     ...(included.some(({ entry }) => entry.plan!.needs_password)
       ? [{ text: t("batchUninstall.password"), detail: null, caution: false }]

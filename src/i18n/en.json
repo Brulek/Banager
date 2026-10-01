@@ -849,6 +849,10 @@
     },
     "uninstallSelectedShort": "Uninstall ({{number}})…"
   },
+  "batchUninstallMore": {
+    "commandsGo_one": "This command goes with its copy too: {{names}}.",
+    "commandsGo_other": "These commands go with their copies too: {{names}}."
+  },
   "keepsData": {
     "title": "Stays after uninstalling",
     "what": {

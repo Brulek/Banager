@@ -774,6 +774,9 @@
     },
     "uninstallSelectedShort": "卸载（{{number}}）…"
   },
+  "batchUninstallMore": {
+    "commandsGo_other": "以下命令也会随它们那一份一起删除：{{names}}。"
+  },
   "keepsData": {
     "title": "卸载后会保留",
     "what": {

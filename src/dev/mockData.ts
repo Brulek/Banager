@@ -1163,6 +1163,9 @@ const COMMANDS: Record<string, CommandFact[]> = {
     "rustfmt",
     "rustup",
   ]),
+  "brew|Formula|gemini-cli": runs(["gemini"]),
+  "npm|Package|opencode-ai": runs(["opencode"]),
+  "pipx|Tool|aider-chat": runs(["aider"]),
 };
 
 /** npm's copy of Claude Code, which `?state=notices` adds. */

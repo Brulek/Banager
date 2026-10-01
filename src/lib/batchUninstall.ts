@@ -546,20 +546,24 @@ export interface TakenOver {
  * §5.7): a command an included tool's copy runs now (`Runs`) is taken
  * over where an artifact the batch leaves -- not included -- has it, with
  * this tool's copy the one in its way (`ShadowedBy` this key); otherwise
- * Terminal will not find it. Nothing for a command Banager said nothing
- * about (`state: null`), which is every command while its `PATH` is not
- * the login shell's.
+ * Terminal will not find it. A command Banager named but said nothing
+ * about (`state: null`) -- every command while its `PATH` is not the login
+ * shell's, and a dependency's -- is in `unjudged`: its copy goes, but
+ * whether Terminal finds another of that name is not known, so it is not
+ * said to be lost. Commands Banager could not name at all are in neither.
  */
 export function terminalCommands(
   included: readonly InstalledArtifact[],
   artifacts: readonly InstalledArtifact[],
-): { lost: string[]; takenOver: Map<string, TakenOver[]> } {
+): { lost: string[]; takenOver: Map<string, TakenOver[]>; unjudged: string[] } {
   const going = new Set(included.map((artifact) => artifactKeyId(artifact.key)));
   const lost: string[] = [];
+  const unjudged: string[] = [];
   const takenOver = new Map<string, TakenOver[]>();
   for (const artifact of included) {
     const id = artifactKeyId(artifact.key);
     for (const fact of artifact.facts.commands) {
+      if (fact.state === null) unjudged.push(fact.name);
       if (fact.state !== "Runs") continue;
       const by = artifacts.filter(
         (other) =>
@@ -578,7 +582,12 @@ export function terminalCommands(
       else takenOver.set(id, [...(takenOver.get(id) ?? []), { command: fact.name, by }]);
     }
   }
-  return { lost: unique(lost).sort(), takenOver };
+  const lostSet = new Set(lost);
+  return {
+    lost: unique(lost).sort(),
+    takenOver,
+    unjudged: unique(unjudged.filter((name) => !lostSet.has(name))).sort(),
+  };
 }
 
 /**

@@ -515,6 +515,14 @@ describe("the batch uninstall's sheet", () => {
     ).toBeInTheDocument();
   });
 
+  it("names the commands it could not judge as going with their copies, not as lost", async () => {
+    const unjudgedWget = { ...wget, facts: { ...NO_FACTS, commands: [{ name: "wget", state: null }] } };
+    const dialog = await openSheet([git, unjudgedWget]);
+    expect(within(dialog).getByText("After this, Terminal won't find these commands: git and scalar.")).toBeInTheDocument();
+    const goes = within(dialog).getByText("This command goes with its copy too: wget.");
+    expect(goes.closest("[data-caution]")).toBeNull();
+  });
+
   it("names nothing Terminal loses where both copies go", async () => {
     const dialog = await openSheet([claudeCode, npmClaude]);
     expect(within(dialog).getByText("After this, Terminal won't find this command: claude.")).toBeInTheDocument();

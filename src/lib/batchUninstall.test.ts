@@ -443,9 +443,14 @@ describe("what the included tools' commands run once they are gone", () => {
     expect(takenOver.size).toBe(0);
   });
 
-  it("says nothing of a command Banager did not judge", () => {
+  it("does not call a command Banager did not judge lost, but names it as going with its copy", () => {
     const unjudged = { ...git, facts: { ...NO_FACTS, commands: [{ name: "git", state: null }] } };
-    expect(terminalCommands([unjudged], [unjudged])).toEqual({ lost: [], takenOver: new Map() });
+    expect(terminalCommands([unjudged], [unjudged])).toEqual({ lost: [], takenOver: new Map(), unjudged: ["git"] });
+  });
+
+  it("names nothing for a tool whose commands it could not name", () => {
+    const bare = { ...git, facts: { ...NO_FACTS, commands: [] } };
+    expect(terminalCommands([bare], [bare])).toEqual({ lost: [], takenOver: new Map(), unjudged: [] });
   });
 });
 
