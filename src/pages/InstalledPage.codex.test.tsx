@@ -146,13 +146,13 @@ describe("InstalledPage, Codex's own install", () => {
     expect(within(pane).queryByText("Up to date")).toBeNull();
     fireEvent.click(within(status).getByRole("button", { name: "Details: Updates itself" }));
     expect(
-      await screen.findByText("Codex installs new versions itself. Its updates aren't checked or installed here."),
+      await screen.findByText(
+        "Codex is set to follow its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
+      ),
     ).toBeInTheDocument();
     fireEvent.click(within(status).getByRole("button", { name: "Details: Manual uninstall" }));
     expect(
-      await screen.findByText(
-        "Codex is only listed here for now and can't be uninstalled here. Follow Codex's official instructions to uninstall it.",
-      ),
+      await screen.findByText("Codex is only listed here for now and can't be uninstalled here."),
     ).toBeInTheDocument();
   });
 

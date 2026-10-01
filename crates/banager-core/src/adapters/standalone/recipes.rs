@@ -594,7 +594,11 @@ pub static RUSTUP: Recipe = Recipe {
 ///   a scheduled update re-runs the script only while that file names the
 ///   release `current` points at. So the row says it updates itself when
 ///   the file names the current release (`self_updates` plus
-///   `ReleaseLink::follows_latest`), and nothing about updates otherwise;
+///   `ReleaseLink::follows_latest`), and nothing about updates otherwise.
+///   The file shows the install follows the latest release, not that the
+///   updater that re-runs the script (`app-server-daemon/*updater.pid`,
+///   `CODEX_INSTALL_IF_LATEST`) is running: nothing read here says so, and
+///   the details' text says only that it *can* install new versions;
 /// - the newest version comes from `releases.openai.com` or GitHub, hosts
 ///   not on Banager's list, so nothing is asked (`Latest::Unchecked`) and
 ///   there is no `upgrade`: Banager must not re-run the script's `curl |

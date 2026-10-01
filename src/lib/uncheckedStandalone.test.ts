@@ -66,6 +66,9 @@ describe("tools whose updates Banager does not check", () => {
     // Not "has no uninstall command": whether it has one was not looked into.
     expect(copy.description).toBe("standalone.codex.uninstallDescription");
     expect(zhCN.standalone.codex.uninstallDescription).not.toMatch(/没有卸载命令/);
+    // Nobody checked that Codex publishes uninstall instructions.
+    expect(zhCN.standalone.codex.uninstallDescription).not.toMatch(/官方说明/);
+    expect(en.standalone.codex.uninstallDescription).not.toMatch(/official/i);
     expect(copy.command(artifact("standalone-codex", true).key, instance("standalone-codex"))).toBe("");
   });
 

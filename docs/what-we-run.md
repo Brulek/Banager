@@ -1771,8 +1771,10 @@ since nothing was asked). Then one small file,
 `~/.codex/packages/standalone/auto-update-version` (at most 256 bytes,
 only when it is a regular file): the installer writes the release's name
 there when it installs the latest release, and its scheduled updates run
-only while that file names the release in use. When it does, the row says
-Codex updates itself; otherwise it says nothing about updates.
+only while that file names the release in use. When it does, the install
+follows Codex's latest release and the row says Codex can update itself
+(whether Codex's own updater is running is not something Banager reads);
+otherwise it says nothing about updates.
 
 Banager also asks where `codex` would run from if typed in Terminal, as it
 does for Claude Code, and says so under the source and in the details'
