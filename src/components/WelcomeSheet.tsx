@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../lib/queryKeys";
 import { useSaveSettings, useSettings } from "../lib/queries";
 import type { Settings } from "../lib/types";
+import { useWelcomeAgain } from "../lib/welcome";
 import { CheckCircleIcon, InstalledIcon, SettingsIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
@@ -49,6 +50,12 @@ export function welcomeDue(settings: Settings | undefined): boolean {
  * `welcome_seen` true once it is (`Settings::keep_welcome_seen`), so a page
  * that saves settings it read before the sheet closed cannot bring it back.
  *
+ * Help's 「欢迎使用Banager」 shows it again at any time (`openWelcomeSheet`,
+ * src/lib/welcome.ts). Closing it then saves nothing, as the settings say
+ * it was seen already; should they not -- the item chosen while the first
+ * launch's sheet is up, or after its save failed -- closing saves
+ * `welcome_seen` as above.
+ *
  * It holds nothing up: the first check starts behind it as at any launch
  * (`useStartupRefresh` in `App`). Mounted once, by `App`.
  */
@@ -61,12 +68,17 @@ export function WelcomeSheet() {
   // null until the settings have arrived and it has decided.
   const [open, setOpen] = useState<boolean | null>(null);
   if (open === null && settings !== undefined) setOpen(welcomeDue(settings));
+  const again = useWelcomeAgain((s) => s.open);
+  const shown = open === true || again;
 
   const close = () => {
-    if (open !== true) return;
+    if (!shown) return;
+    // From null too: settings that arrive after the menu's sheet was
+    // closed must not bring it back.
     setOpen(false);
+    useWelcomeAgain.setState({ open: false });
     const latest = queryClient.getQueryData<Settings>(queryKeys.settings) ?? settings;
-    if (latest === undefined) return;
+    if (latest === undefined || latest.welcome_seen !== false) return;
     save.mutate(
       { ...latest, welcome_seen: true },
       {
@@ -79,7 +91,7 @@ export function WelcomeSheet() {
 
   return (
     <Dialog
-      open={open === true}
+      open={shown}
       onOpenChange={(next) => {
         if (!next) close();
       }}

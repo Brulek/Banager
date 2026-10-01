@@ -847,7 +847,7 @@ describe("the menu bar's items that act in the page", () => {
     return mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
   }
 
-  it("are listened for from the start: Settings…, the View menu's four pages, Check Again, Search and Help's two", async () => {
+  it("are listened for from the start: Settings…, the View menu's four pages, Check Again, Search and Help's three", async () => {
     const menu = fakeMenuBar();
     const { findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
@@ -862,6 +862,7 @@ describe("the menu bar's items that act in the page", () => {
       "menu://settings",
       "menu://unknown",
       "menu://updates",
+      "menu://welcome",
     ]);
   });
 

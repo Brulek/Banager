@@ -1,8 +1,9 @@
 /**
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
  * Settings… (⌘,); the View menu's Overview, Updates, Installed and Other
- * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F); Help's Check
- * Tool Setup and Copy Diagnostic Info. Each does what the page's own
+ * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F); Help's Welcome
+ * to Banager, Check Tool Setup and Copy Diagnostic Info. Each does what
+ * the page's own
  * control for it does,
  * through the same code, so the two cannot drift apart. The menu bar's other items are macOS's own and never
  * reach the page.
@@ -11,6 +12,7 @@ import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
 import { useDiagnosticsReveal } from "./diagnostics";
 import { openToolSetupSheet } from "./toolSetupCheck";
+import { openWelcomeSheet } from "./welcome";
 import { useCheckAgain } from "./queries";
 import { useUiStore } from "../store/ui";
 
@@ -26,6 +28,8 @@ import { useUiStore } from "../store/ui";
  *   (`searchInstalled`), wherever the focus was -- the sidebar, a row, a
  *   field -- since what macOS hands the page is the item, not a key press
  *   on whatever had the focus.
+ * - Welcome to Banager shows the sheet the first launch showed
+ *   (`WelcomeSheet`) again, over whatever page is showing.
  * - Check Tool Setup… opens the sheet Settings' 「检查…」 opens
  *   (`ToolSetupSheet`), over whatever page is showing: it only reads.
  * - Copy Diagnostic Info… opens Settings on its 「拷贝诊断信息」 button,
@@ -52,6 +56,7 @@ export function useMenuCommands(): void {
       unknown: () => openPage("unknown"),
       checkAgain,
       search: searchInstalled,
+      welcome: openWelcomeSheet,
       checkToolSetup: openToolSetupSheet,
       copyDiagnostics: () => {
         openPage("settings");

@@ -283,6 +283,9 @@ Paths are under a generic home folder, `/Users/you`.
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
   says it couldn't.
+- Help's 「欢迎使用Banager」 ("Welcome to Banager"): `window.mockMenu("welcome")` in the
+  console shows the welcome sheet again over any page, with or without `?welcome=1`.
+  Closing it saves nothing when it was seen already.
 - Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
   in the console, or 「检查…」 beside 「诊断信息」 in Settings' 关于, opens the
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应

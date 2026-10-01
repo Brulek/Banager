@@ -318,6 +318,7 @@ describe("the menu bar's events", () => {
     "menu://settings",
     "menu://unknown",
     "menu://updates",
+    "menu://welcome",
   ];
   // What is listened for, and what stopped listening, by event name.
   let handlers: Map<string, EventCallback<unknown>>;
@@ -335,7 +336,7 @@ describe("the menu bar's events", () => {
     });
   });
 
-  it("are the nine Rust sends, one per item acting in the page, each calling back with its item", async () => {
+  it("are the ten Rust sends, one per item acting in the page, each calling back with its item", async () => {
     const chosen: MenuCommand[] = [];
     await onMenuCommand((command) => chosen.push(command));
 
@@ -349,6 +350,7 @@ describe("the menu bar's events", () => {
       "menu://installed",
       "menu://unknown",
       "menu://check-again",
+      "menu://welcome",
       "menu://check-tool-setup",
       "menu://copy-diagnostics",
       "menu://search",
@@ -363,13 +365,14 @@ describe("the menu bar's events", () => {
       "installed",
       "unknown",
       "checkAgain",
+      "welcome",
       "checkToolSetup",
       "copyDiagnostics",
       "search",
     ]);
   });
 
-  it("stop being listened for, all nine, through what onMenuCommand resolves to", async () => {
+  it("stop being listened for, all ten, through what onMenuCommand resolves to", async () => {
     const stop = await onMenuCommand(() => {});
     expect(stopped).toEqual([]);
 

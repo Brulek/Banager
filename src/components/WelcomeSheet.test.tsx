@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
@@ -7,6 +7,8 @@ import i18n from "../i18n";
 import App from "../App";
 import { queryKeys } from "../lib/queryKeys";
 import type { Settings, Snapshot } from "../lib/types";
+import { openWelcomeSheet, useWelcomeAgain } from "../lib/welcome";
+import { fakeMenuBar } from "../test/menuBar";
 import { WelcomeSheet, welcomeDue } from "./WelcomeSheet";
 import { BUTTON } from "./ui/controls";
 
@@ -47,6 +49,7 @@ beforeEach(() => {
   served = { ...base, welcome_seen: false };
   saved = [];
   saveReply = () => Promise.resolve();
+  useWelcomeAgain.setState({ open: false });
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
     if (cmd === "get_settings") return Promise.resolve(served);
@@ -215,5 +218,68 @@ describe("the welcome sheet in the window", () => {
     await screen.findByRole("heading", { level: 1, name: "Overview" });
     await settle();
     expect(screen.queryByRole("dialog", { name: "Welcome to Banager" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Help's Welcome to Banager", () => {
+  it("shows the sheet again once it has been seen, and closing it saves nothing", async () => {
+    served = { ...base, welcome_seen: true };
+    const user = userEvent.setup();
+    renderWithProviders(<WelcomeSheet />);
+    await settle();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    act(() => openWelcomeSheet());
+    const sheet = await findSheet();
+    expect(within(sheet).getAllByRole("listitem")).toHaveLength(3);
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Get Started" })).toHaveFocus());
+    await user.click(within(sheet).getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(useWelcomeAgain.getState().open).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(saved).toEqual([]);
+  });
+
+  it("shows it again as often as it is chosen, and Escape closes it", async () => {
+    served = { ...base, welcome_seen: true };
+    const user = userEvent.setup();
+    renderWithProviders(<WelcomeSheet />);
+    await settle();
+    for (let time = 0; time < 2; time += 1) {
+      act(() => openWelcomeSheet());
+      await findSheet();
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    }
+    expect(saved).toEqual([]);
+  });
+
+  it("is the same one sheet when chosen while the first launch's is up, which saves once on closing", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<WelcomeSheet />);
+    await findSheet();
+    act(() => openWelcomeSheet());
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Get Started" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toEqual({ ...base, welcome_seen: true });
+    expect(useWelcomeAgain.getState().open).toBe(false);
+  });
+
+  it("opens from the menu bar over the page that is showing", async () => {
+    served = { ...base, welcome_seen: true };
+    const menu = fakeMenuBar();
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { level: 1, name: "Overview" });
+    await settle();
+    expect(screen.queryByRole("dialog", { name: "Welcome to Banager" })).not.toBeInTheDocument();
+
+    menu.choose("welcome");
+
+    expect(await findSheet()).toBeInTheDocument();
+    // Still behind it, hidden from VoiceOver while the sheet is up.
+    expect(screen.getByRole("heading", { level: 1, name: "Overview", hidden: true })).toBeInTheDocument();
   });
 });
