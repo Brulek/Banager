@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { sizeTotalsOf, sourceTotalText, viewTotalText } from "./sizeTotals";
+import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Measured, type Sizes } from "./types";
 
 const BREW = "brew:/opt/homebrew";
@@ -135,14 +135,12 @@ describe("the total words", () => {
   it("say about, or or more, one hedge at a time, never what could be freed", () => {
     expect(sourceTotalText(zh, { bytes: 4_100_000_000, atLeast: false })).toBe("约4.1 GB");
     expect(sourceTotalText(zh, { bytes: 4_100_000_000, atLeast: true })).toBe("4.1 GB以上");
-    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: false })).toBe("约9.8 GB");
-    expect(viewTotalText(zh, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB以上");
+    expect(sourceTotalText(zh, { bytes: 9_800_000_000, atLeast: false })).toBe("约9.8 GB");
+    expect(sourceTotalText(zh, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB以上");
     expect(sourceTotalText(en, { bytes: 4_100_000_000, atLeast: false })).toBe("about 4.1 GB");
     expect(sourceTotalText(en, { bytes: 4_100_000_000, atLeast: true })).toBe("4.1 GB or more");
-    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: false })).toBe("about 9.8 GB");
-    expect(viewTotalText(en, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB or more");
-    for (const text of [sourceTotalText(zh, { bytes: 1, atLeast: true }), viewTotalText(zh, { bytes: 1, atLeast: true })]) {
-      expect(text).not.toMatch(/腾出|释放|清理/);
-    }
+    expect(sourceTotalText(en, { bytes: 9_800_000_000, atLeast: false })).toBe("about 9.8 GB");
+    expect(sourceTotalText(en, { bytes: 9_800_000_000, atLeast: true })).toBe("9.8 GB or more");
+    expect(sourceTotalText(zh, { bytes: 1, atLeast: true })).not.toMatch(/腾出|释放|清理/);
   });
 });

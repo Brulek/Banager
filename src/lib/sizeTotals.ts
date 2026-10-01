@@ -68,17 +68,13 @@ export function sizeTotalsOf(
   return { all: totalOf(sizes.total, short.size === 0), bySource };
 }
 
-/** A source's heading's: 「约4.1 GB」, 「4.1 GB以上」 -- one hedge, never two. */
+/**
+ * A source's heading's: 「约4.1 GB」, 「4.1 GB以上」 -- one hedge, never two.
+ * The toolbar's too, after the count, 「58个工具 · 约10.6 GB」 -- no 「共」,
+ * which the 「·」 after a count says already, and which left the number to
+ * be cut off in a narrow window.
+ */
 export function sourceTotalText(t: Translate, total: SizeTotal): string {
   const size = formatBytes(total.bytes);
   return total.atLeast ? t("sizeTotals.sourceAtLeast", { size }) : t("sizeTotals.source", { size });
-}
-
-/**
- * The toolbar's, after the count: the same words, 「58个工具 · 约10.6 GB」
- * -- no 「共」, which the 「·」 after a count says already, and which left
- * the number to be cut off in a narrow window.
- */
-export function viewTotalText(t: Translate, total: SizeTotal): string {
-  return sourceTotalText(t, total);
 }

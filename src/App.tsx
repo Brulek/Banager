@@ -20,7 +20,7 @@ import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib
 import { useInventoryPreview } from "./lib/inventoryPreview";
 import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
 import { modelsTotalText } from "./lib/sizes";
-import { sizeTotalsOf, viewTotalText } from "./lib/sizeTotals";
+import { sizeTotalsOf, sourceTotalText } from "./lib/sizeTotals";
 import { instanceLabels } from "./lib/sources";
 import { shownBy } from "./lib/families";
 import { twinsByArtifact } from "./lib/commands";
@@ -70,7 +70,7 @@ function headerActions(page: Page): ReactNode {
  * source's tools, 「30个工具」, under its name (`useShownSource`) -- and on
  * Ollama's, its models and what they take together, 「2个模型 · Ollama模型共约6.2 GB」
  * (`modelsTotalText`); on any other, or on all of them, what the tools
- * counted take, 「55个工具 · 约9.8 GB」 (`viewTotalText`); while the 「显示」
+ * counted take, 「55个工具 · 约9.8 GB」 (`sourceTotalText`); while the 「显示」
  * popup shows only some, how many of how many, 「58个工具中的2个」. Other Programs
  * says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
@@ -104,7 +104,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   const twins = useMemo(() => (show === "all" ? undefined : twinsByArtifact(snapshot?.artifacts ?? [])), [show, snapshot]);
   const viewTotal = (source: string | null): string | null => {
     const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
-    return total === null ? null : viewTotalText(t, total);
+    return total === null ? null : sourceTotalText(t, total);
   };
   switch (page) {
     case "overview":
