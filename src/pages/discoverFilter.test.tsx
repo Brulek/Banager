@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
@@ -364,5 +364,66 @@ describe("the lines over 所有工具 that point at them", () => {
     renderInstalled();
     expect(await screen.findByText("2个工具在终端里找不到")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看" })).toBeInTheDocument();
+  });
+});
+
+describe("the details and the focus when a choice hides the selected tool", () => {
+  async function openDetails(name: string): Promise<HTMLElement> {
+    const label = await screen.findByText(name, { selector: "[data-tool-row] p" });
+    const row = label.closest("[data-tool-row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: i18n.t("common.detailsLabel", { title: name }) }));
+    return screen.findByRole("complementary", { name });
+  }
+
+  it("closes the details of a tool the choice hides, the focus staying on the popup", async () => {
+    renderInstalled();
+    await openDetails("wget");
+    const popup = screen.getByRole("combobox", { name: "Show" });
+    popup.focus();
+    show("notOnPath");
+    await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(popup).toHaveFocus();
+    // Every tool again: wget is not selected again behind the user's back.
+    show("all");
+    await waitFor(() => expect(rowNames()).toContain("wget"));
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(document.querySelector("[data-tool-row][data-selected]")).toBeNull();
+  });
+
+  it("keeps the details of a tool the choice still shows", async () => {
+    renderInstalled();
+    await openDetails("httpie");
+    show("notOnPath");
+    await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+    expect(screen.getByRole("complementary", { name: "httpie" })).toBeInTheDocument();
+  });
+
+  it("puts the focus on the list's first row once 查看 has gone with its line", async () => {
+    artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    const view = screen.getByRole("button", { name: "Show" });
+    view.focus();
+    fireEvent.click(view);
+    await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Grok Build"));
+  });
+
+  it("puts it on the page's title when the focus was lost and the choice shows nothing", async () => {
+    artifacts = [artifact(wget, [{ name: "wget", state: "Runs" }])];
+    renderWithProviders(
+      <WithToolbarSlot>
+        <h1 tabIndex={-1} data-focus-fallback="">
+          Installed
+        </h1>
+        <InstalledPage />
+      </WithToolbarSlot>,
+    );
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    (document.activeElement as HTMLElement | null)?.blur();
+    act(() => useUiStore.getState().setInstalledShow("brewRetired"));
+    await screen.findByText("No tools disabled or deprecated by Homebrew were found");
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Installed" })).toHaveFocus());
   });
 });

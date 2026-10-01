@@ -753,6 +753,32 @@ export function InstalledPage() {
     return result;
   }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder, show]);
 
+  // A 「显示」 choice that hides the selected tool -- from the popup, or a
+  // notice's 查看 -- closes its details, as a Mac list's selection goes
+  // with a row its filter hides: details of a tool the list no longer
+  // shows would be about nothing the user can see. Where the focus went
+  // with what changed it -- 查看's line, gone once the choice is made, or
+  // the closed details -- it goes to the list's first row, or, with none,
+  // the page's title: never the window's body, from where the next Tab
+  // would start over at the sidebar. The popup itself keeps the focus.
+  const shownBefore = useRef(show);
+  useEffect(() => {
+    if (shownBefore.current === show) return;
+    shownBefore.current = show;
+    const selected = selectedId === null ? undefined : artifactsById.get(selectedId);
+    const hidden = selected !== undefined && !shownBy(show, selected, twins);
+    if (hidden) setSelection(null);
+    const focus = document.activeElement;
+    const lost =
+      focus === null ||
+      focus === document.body ||
+      !focus.isConnected ||
+      (hidden && focus.closest("[data-inspector]") !== null);
+    if (!lost) return;
+    if (rowItems.some(keyboardRow)) listHandle.current?.focusFirst();
+    else focusOrFallback(null);
+  }, [show, selectedId, artifactsById, twins, rowItems]);
+
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
   const namedTwice = useMemo(
