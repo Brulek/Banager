@@ -8,7 +8,8 @@
 //!
 //! - Promise 1: a walk that must never look inside a protected place takes
 //!   every step through `protected::resolve` and `dirfd`, never a path
-//!   lookup of its own (`std::fs::metadata`, `canonicalize`, `exists`...),
+//!   lookup of its own (`std::fs::metadata`, `canonicalize`, `exists`,
+//!   `Path::is_dir`...),
 //!   which would follow a link into `~/Documents` or onto `/Volumes`.
 //! - Promise 3: nothing starts a process but `RealRunner`, which runs a
 //!   confirmed plan or a read-only refresh command, and the Open Ollama
@@ -149,25 +150,104 @@ fn test_the_test_only_files_are_compiled_for_tests_only() {
 }
 
 /// The calls that look a path up by its name, following any link on the
-/// way: what a protected walk must never make.
-const PATH_LOOKUPS: [&str; 16] = [
-    "fs::metadata",
-    "fs::symlink_metadata",
-    "fs::canonicalize",
-    "fs::read_dir",
-    "fs::read_link",
+/// way: what a protected walk must never make. A bare name counts too
+/// (`read_dir(` after `use std::fs::read_dir`), so each is matched without
+/// its `fs::` or leading dot where that adds no false match. The kind
+/// questions (`is_dir()` and the like) are `asks_a_path`'s.
+const PATH_LOOKUPS: [&str; 17] = [
+    "metadata(",
+    "canonicalize(",
+    "read_dir(",
+    "read_link(",
     "fs::File",
+    "File::open(",
     "fs::read",
     "fs::OpenOptions",
-    ".canonicalize(",
-    ".read_dir(",
-    ".read_link(",
-    ".symlink_metadata(",
-    ".metadata()",
+    "::exists(",
     ".exists()",
     ".try_exists(",
     "realpath",
+    // Called as a function (`Path::is_dir(&p)`), or imported under
+    // another name (`use std::fs::read_dir as list`): a walk takes
+    // nothing from `std::fs`.
+    "::is_dir(",
+    "::is_file(",
+    "::is_symlink(",
+    "use std::fs",
+    "std::fs::{",
 ];
+
+/// What `is_dir()`, `is_file()` and `is_symlink()` may be asked of in a
+/// walk: the answer of a step `resolve` or `dirfd` already took, by the
+/// names the walks give it. `meta.is_dir()` on a `Stat` asks nothing of
+/// the disk, where `path.is_dir()` stats `path` and follows every link in
+/// it; the two can only be told apart by what the call is made on.
+const STAT_NAMES: [&str; 4] = ["meta", "stat", "lstat", "target"];
+
+/// Whether `text` asks `is_dir()`, `is_file()` or `is_symlink()` of
+/// anything but a `STAT_NAMES` value or `Dir::stat_at`'s answer
+/// (`held.stat_at(name).ok()?.is_symlink()`), such as
+/// `Path::new("/Volumes").is_dir()` or `folder.join(name).is_file()`.
+fn asks_a_path(text: &str) -> bool {
+    [".is_dir(", ".is_file(", ".is_symlink("]
+        .iter()
+        .any(|call| {
+            text.match_indices(call).any(|(at, _)| {
+                let before = &text[..at];
+                let name_starts = before
+                    .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .map_or(0, |at| at + 1);
+                let receiver = &before[name_starts..];
+                let answered = STAT_NAMES.contains(&receiver)
+                    || (receiver.is_empty()
+                        && before.ends_with("ok()?")
+                        && before.contains(".stat_at("));
+                !answered
+            })
+        })
+}
+
+/// The lines among `lines` that look a path up: one of `PATH_LOOKUPS`,
+/// or a kind question asked of a path (`asks_a_path`).
+fn path_lookups<'a>(lines: impl Iterator<Item = &'a Line>) -> Vec<String> {
+    lines
+        .filter(|line| {
+            PATH_LOOKUPS.iter().any(|lookup| line.text.contains(lookup)) || asks_a_path(&line.text)
+        })
+        .map(|line| format!("{}:{}: {}", line.file, line.number, line.text.trim()))
+        .collect()
+}
+
+#[test]
+fn test_a_kind_question_is_told_apart_by_what_it_is_asked_of() {
+    for answered in [
+        "if !meta.is_dir() && meta.nlink() > 1 {",
+        "Resolution::Found(_, stat) if stat.is_symlink() => link = place,",
+        "} else if lstat.is_file() {",
+        "if target.is_dir() || (target.mode() & 0o111) == 0 {",
+        "if !opened.same_as(&stat) || !held.stat_at(name).ok()?.is_symlink() {",
+    ] {
+        assert!(!asks_a_path(answered), "{answered}");
+    }
+    for lookup in [
+        "if Path::new(\"/Volumes\").is_dir() {",
+        "folder.join(name).is_file()",
+        "if path.is_symlink() {",
+        "if xstat.is_dir() {",
+        "meta.is_dir() && root.is_dir()",
+        "std::fs::read_dir(&p)",
+        "read_dir(&p)",
+        "File::open(p)",
+        "std::fs::exists(p)",
+        "Path::is_dir(&p)",
+        "use std::fs::{read_dir as list};",
+    ] {
+        assert!(
+            asks_a_path(lookup) || PATH_LOOKUPS.iter().any(|call| lookup.contains(call)),
+            "{lookup}"
+        );
+    }
+}
 
 #[test]
 fn test_no_protected_walk_looks_a_path_up_by_its_name() {
@@ -195,11 +275,10 @@ fn test_no_protected_walk_looks_a_path_up_by_its_name() {
             "{walk} is not among the production files"
         );
     }
-    let found = holding(
+    let found = path_lookups(
         lines
             .iter()
             .filter(|line| walks.contains(&line.file.as_str())),
-        &PATH_LOOKUPS,
     );
     assert!(
         found.is_empty(),
@@ -220,7 +299,7 @@ fn test_no_protected_walk_looks_a_path_up_by_its_name() {
         .position(|line| line.text == "}")
         .map(|at| start + 1 + at)
         .expect("shadow_note ends");
-    let found = holding(route[start..=end].iter().copied(), &PATH_LOOKUPS);
+    let found = path_lookups(route[start..=end].iter().copied());
     assert!(found.is_empty(), "shadow_note looks a path up: {found:#?}");
 }
 
