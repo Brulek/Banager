@@ -206,6 +206,15 @@ Paths are under a generic home folder, `/Users/you`.
   date installed, 占用空间, 其他版本 with its size, homepage, and 状态 with
   「已弃用」), under them what that mark means and the name Homebrew
   suggests, then 「在终端里输入」, and last Homebrew's notes, folded.
+- An uninstall of an AI coding tool lists what stays after it under
+  「卸载后会保留」 ("Stays after uninstalling"), as the app's preview does
+  (`src/dev/mockKeptData.ts`): Codex (npm) `~/.codex`, about 38.4 MB;
+  Gemini CLI (Homebrew) `~/.gemini` with no size, as for a folder that
+  leads into `~/Documents`; Homebrew's ollama `~/.ollama/models`, about
+  6.6 GB; and, with `?state=many`, Claude Code from npm `~/.claude` and
+  `~/.claude.json`. Each has Copy Path and nothing that deletes. The
+  native Claude Code's own list keeps those two under 「保留」 already, so
+  its dialog does not repeat them.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise

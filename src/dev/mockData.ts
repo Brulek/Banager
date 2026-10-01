@@ -811,6 +811,10 @@ function addMany(world: World): void {
     ...MANY_CARGO.map((name) => tool(IDS.cargo, "Binary", name, inHome(`.cargo/bin/${name}`))),
     ...MANY_MODELS.map(model),
   );
+  // Claude Code from npm as well, beside the native install, as many Macs
+  // have it: its uninstall preview names the `~/.claude` and
+  // `~/.claude.json` it leaves behind (./mockKeptData.ts).
+  world.artifacts.push(tool(IDS.npm, "Package", NPM_CLAUDE, null));
 }
 
 /**

@@ -27,6 +27,7 @@ import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, t
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
 import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
+import { withMockKeptData } from "./mockKeptData";
 import { mockSizes } from "./mockSizes";
 import type { Scenario } from "./scenario";
 
@@ -532,7 +533,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const issued: IssuedPlan = {
         // 32 hex characters, like the real random token; counted, not random.
         id: planCount.toString(16).padStart(32, "0"),
-        plan: buildPlan(world, inst, request),
+        // What the uninstall leaves behind, named (`mockKeptData.ts`).
+        plan: withMockKeptData(buildPlan(world, inst, request), inst.adapter_id, request),
         issued_at: nowSeconds(),
       };
       plans.set(issued.id, { issued, issuedAtMs: Date.now() });
