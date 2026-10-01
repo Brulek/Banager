@@ -1,5 +1,5 @@
-mod brew_env;
-mod cask_receipt;
+pub(crate) mod brew_env;
+pub(crate) mod cask_receipt;
 pub mod parse;
 
 use crate::adapters::{

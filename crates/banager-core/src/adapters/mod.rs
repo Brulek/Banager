@@ -24,6 +24,8 @@ pub mod uv;
 pub(crate) mod read_file;
 pub(crate) mod sanity;
 
+#[cfg(test)]
+mod robustness;
 
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
 /// that do not apply to them; a new field must never change behaviour for an
