@@ -73,7 +73,7 @@ import {
   homepageFact,
   otherVersionsFact,
 } from "../components/HomebrewStatus";
-import { InspectorCallout, twinAdviceLines } from "../components/TwinAdvice";
+import { InspectorCallout, twinAdviceLines, twinVerdict } from "../components/TwinAdvice";
 import { uncheckedUpdatesChip } from "../components/UncheckedUpdates";
 import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
@@ -1684,7 +1684,12 @@ export function InstalledPage() {
                     void confirm.openConfirm([listed], event.currentTarget, () => inspectorHeading.current?.focus())
                   }
                   disabled={confirm.dialogOpen}
-                  className={BUTTON.regular.default}
+                  // Grey on a copy Terminal does not run: updating it
+                  // leaves the command as it was, so it is not the one
+                  // to press (the callout above says which copy runs).
+                  className={
+                    twinVerdict(artifact, twins.get(id))?.kind === "unused" ? BUTTON.regular.grey : BUTTON.regular.default
+                  }
                 >
                   {progress === null ? t("updates.update") : t("updates.retry")}
                 </button>

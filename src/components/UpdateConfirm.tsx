@@ -8,6 +8,8 @@ import { majorJump } from "../lib/versionJump";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
+import { useTwins } from "./CommandFacts";
+import { twinAdviceLines, twinVerdict } from "./TwinAdvice";
 import {
   Refusal,
   SheetIcon,
@@ -561,6 +563,25 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     }
   }, [phase]);
 
+  // The row's 「终端用另一份」, said again where the update is confirmed:
+  // updating a copy Terminal does not run leaves the command as it was.
+  const twins = useTwins(snapshot?.artifacts);
+  const notUsedNote = (item: BatchItem): WarningLine[] => {
+    const id = artifactKeyId(item.candidate.key);
+    const artifact = snapshot?.artifacts.find((a) => artifactKeyId(a.key) === id);
+    if (artifact === undefined) return [];
+    const verdict = twinVerdict(artifact, twins.get(id));
+    if (verdict?.kind !== "unused") return [];
+    const why = twinAdviceLines(t, artifact, twins.get(id), sourceLabelOf, false) ?? [];
+    return [
+      {
+        text: t("clarityMore.notUsedUpdateNote", { command: verdict.command }),
+        detail: why[0] ?? null,
+        caution: false,
+      },
+    ];
+  };
+
   const notesOf = (item: BatchItem): WarningLine[] => {
     if (item.issued === null) return [];
     const { plan } = item.issued;
@@ -568,6 +589,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     return [
       // The row's 「大版本更新」, said again where the update is confirmed.
       ...(majorJump(item.candidate) !== null ? [{ text: t("clarity.majorNote"), detail: null, caution: false }] : []),
+      ...notUsedNote(item),
       ...lines.trash,
       ...lines.keep,
       ...lines.note,

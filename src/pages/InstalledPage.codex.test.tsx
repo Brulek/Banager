@@ -6,6 +6,7 @@ import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import type { InstalledArtifact, ManagerInstance, Settings, Snapshot } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { BUTTON } from "../components/ui/controls";
 
 // Codex installed by its own script, listed only: Banager checks nothing
 // for it, so its row never says "Up to date" -- it says Codex updates
@@ -207,6 +208,48 @@ describe("InstalledPage, Codex's own install", () => {
       "Typing codex in Terminal runs the copy from Codex's own installer, version 0.159.3, so Terminal doesn't use this one.",
       "If you don't need it, you can uninstall this copy.",
     ]);
+  });
+
+  it("greys Update on the copy Terminal does not run, and keeps it blue on one it does", async () => {
+    const npm: ManagerInstance = { ...standalone("npm:/opt/homebrew", "/opt/homebrew/bin/npm", "/opt/homebrew", "11.0.0"), adapter_id: "npm" };
+    const npmKey = { instance_id: npm.id, kind: "Package" as const, name: "@openai/codex" };
+    const npmCodex: InstalledArtifact = {
+      ...row(npm, "@openai/codex", "@openai/codex", {}),
+      key: npmKey,
+      version: "0.155.1",
+      facts: {
+        ...NO_FACTS,
+        family: "codex",
+        commands: [{ name: "codex", state: { ShadowedBy: { by: { instance_id: codex.id, kind: "Binary", name: "codex" } } } }],
+      },
+    };
+    const prettier: InstalledArtifact = { ...row(npm, "prettier", "prettier", {}), key: { ...npmKey, name: "prettier" }, version: "3.0.0" };
+    const base = snapshotWith(true);
+    const own = {
+      ...base.artifacts[1],
+      facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: "Runs" as const }] },
+    };
+    const update = (key: typeof npmKey, current: string, target: string) => ({
+      key,
+      current,
+      target,
+      channel: "Native" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    });
+    serve({
+      ...base,
+      instances: [...base.instances, npm],
+      artifacts: [base.artifacts[0], own, npmCodex, prettier],
+      updates: [update(npmKey, "0.155.1", "0.159.3"), update(prettier.key as typeof npmKey, "3.0.0", "3.1.0")],
+    });
+    page();
+    const npmPane = await openDetails("@openai/codex");
+    const greyUpdate = within(npmPane).getByRole("button", { name: "Update" });
+    expect(greyUpdate.className).toBe(BUTTON.regular.grey);
+    const prettierPane = await openDetails("prettier");
+    expect(within(prettierPane).getByRole("button", { name: "Update" }).className).toBe(BUTTON.regular.default);
   });
 
   it("still calls a checked tool beside it up to date", async () => {

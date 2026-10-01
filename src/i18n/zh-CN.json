@@ -1012,6 +1012,9 @@
     "freesModel": "会腾出约{{size}}，与其他模型共用的部分除外。",
     "majorNote": "这是大版本更新，用法可能会变。"
   },
+  "clarityMore": {
+    "notUsedUpdateNote": "终端运行的是另一份，更新这一份不会改变终端里的“{{command}}”。"
+  },
   "unknown": {
     "columns": {
       "size": "大小",

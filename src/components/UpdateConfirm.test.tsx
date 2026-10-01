@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { within } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
-import type { UpdateCandidate } from "../lib/types";
+import { invoke } from "@tauri-apps/api/core";
+import type { CommandState, InstalledArtifact, IssuedPlan, ManagerInstance, Snapshot, UpdateCandidate } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 import { SheetTool } from "./SheetParts";
 import { UpdateConfirmDialog, type Batch, type BatchItem, type UpdateConfirm } from "./UpdateConfirm";
 import i18n from "../i18n";
@@ -97,5 +99,83 @@ describe("UpdateConfirmDialog's list of several", () => {
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+});
+
+describe("UpdateConfirmDialog on a copy Terminal does not run", () => {
+  const codexCopy = (instanceId: string, name: string, version: string, state: CommandState): InstalledArtifact => ({
+    key: { instance_id: instanceId, kind: instanceId.startsWith("npm") ? "Package" : "Binary", name },
+    display_name: name,
+    version,
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state }] },
+  });
+  const own = codexCopy("standalone-codex", "codex", "0.159.3", "Runs");
+  const npm = codexCopy("npm:/opt/homebrew", "@openai/codex", "0.155.1", { ShadowedBy: { by: own.key } });
+  const instance = (id: string, adapter: string): ManagerInstance => ({
+    id,
+    adapter_id: adapter,
+    exe_path: "/opt/homebrew/bin/npm",
+    prefix: "/opt/homebrew",
+    scope: "User",
+    version: "11.0.0",
+    status: { unavailable: null, notes: [] },
+    unverified_version: null,
+    read_only_reason: null,
+  });
+  const snapshot: Snapshot = {
+    generation: 1,
+    round: 1,
+    detect: "Found",
+    instances: [instance("npm:/opt/homebrew", "npm"), instance("standalone-codex", "standalone-codex")],
+    artifacts: [own, npm],
+    updates: [],
+    refreshed_at: 1,
+    stale: false,
+    errors: [],
+  };
+  const issued = (name: string): IssuedPlan => ({
+    id: name,
+    plan: {
+      request: { kind: "Upgrade", instance_id: "npm:/opt/homebrew", artifact_kind: "Package", name },
+      action: { Command: { program: "/opt/homebrew/bin/npm", args: ["install", "-g", name], env: [] } },
+      needs_password: false,
+      locks: ["npm:/opt/homebrew"],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected: [],
+      timeout_secs: 1800,
+    },
+    issued_at: 1,
+  });
+  const npmCandidate: UpdateCandidate = { ...candidate("@openai/codex"), key: npm.key, current: "0.155.1", target: "0.159.3" };
+
+  it("says under it that the update leaves what Terminal runs as it was, with which copy runs behind its ⓘ", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => (cmd === "get_snapshot" ? snapshot : null));
+    const jq = candidate("jq");
+    const batch: Batch = {
+      id: 3,
+      phase: "ready",
+      items: [
+        item(npmCandidate, { issued: issued("@openai/codex") }),
+        item(jq, { issued: issued("jq") }),
+      ],
+    };
+    const { findByText, getByRole } = renderWithProviders(<UpdateConfirmDialog confirm={confirmOf(batch)} />);
+    const note = await findByText(/^Terminal runs another copy\./);
+    expect(note).toHaveTextContent("Terminal runs another copy. Updating this one doesn't change what codex runs in Terminal.");
+    const dialog = getByRole("dialog");
+    expect(dialog).toContainElement(note);
+    // Which copy runs is behind the line's ⓘ, as on the row.
+    expect(within(dialog).getByRole("button", { name: /^Details: Terminal runs another copy/ })).toBeInTheDocument();
+    // Only under the copy Terminal does not use.
+    expect(within(dialog).getAllByText(/Terminal runs another copy/)).toHaveLength(1);
   });
 });

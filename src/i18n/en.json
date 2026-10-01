@@ -1098,6 +1098,9 @@
     "freesModel": "Frees about {{size}}, less any part other models share.",
     "majorNote": "This is a major update; how it's used may change."
   },
+  "clarityMore": {
+    "notUsedUpdateNote": "Terminal runs another copy. Updating this one doesn't change what {{command}} runs in Terminal."
+  },
   "unknown": {
     "columns": {
       "size": "Size",
