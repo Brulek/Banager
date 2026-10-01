@@ -1,7 +1,8 @@
 use crate::adapters::AdapterError;
 use crate::model::{
-    ArtifactFacts, ArtifactKey, ArtifactKind, HomebrewFacts, HomebrewLifecycle, InstallReason,
-    InstalledArtifact, SearchHit, UninstallBlocked, UpdateBlocked, UpdateCandidate, UpdateChannel,
+    ArtifactFacts, ArtifactKey, ArtifactKind, CommandInputs, HomebrewFacts, HomebrewLifecycle,
+    InstallReason, InstalledArtifact, ProvidedCommand, SearchHit, UninstallBlocked, UpdateBlocked,
+    UpdateCandidate, UpdateChannel,
 };
 use serde::de::IgnoredAny;
 use serde::Deserialize;
@@ -35,6 +36,14 @@ struct FormulaInfo {
     homepage: Option<String>,
     #[serde(default)]
     linked_keg: Option<String>,
+    /// `keg_only` (`formula.rb`'s `"keg_only" => keg_only?`): Homebrew
+    /// keeps the formula out of its `bin` on purpose, so Banager says
+    /// nothing about its commands (`CommandInputs.keg_only`). Read as any
+    /// JSON value, so a brew that one day writes something else costs this
+    /// one judgement and not the whole inventory: anything but `true` is
+    /// not keg-only.
+    #[serde(default)]
+    keg_only: Option<serde_json::Value>,
     #[serde(default)]
     installed: Vec<FormulaInstalledEntry>,
     /// `brew pin`. `brew info --json=v2` writes it for every formula
@@ -196,10 +205,11 @@ fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<
 /// One entry of a cask's `artifacts` in `brew info --json=v2`: one stanza,
 /// keyed by the stanza's name, plus the absolute `target` brew adds for a
 /// stanza that moves or links something (`artifacts_list`,
-/// `cask/cask.rb:709-732` in Homebrew 7.0.6). Only an `app` stanza's
-/// `target` is read. A `binary` stanza's `target` is the link in
-/// `<prefix>/bin` itself, which the unknown-source scan finds by reading
-/// that directory; no other stanza's entry is read.
+/// `cask/cask.rb:709-732` in Homebrew 7.0.6). An `app` stanza's `target`
+/// is the cask's `path`. A `binary` stanza's `target` is the link in
+/// `<prefix>/bin` itself -- the command -- which the unknown-source scan
+/// finds by reading that directory and `cask_commands` names for
+/// `commands::judge`; no other stanza's entry is read.
 #[derive(Debug, Deserialize)]
 struct CaskArtifact {
     /// Present exactly when this entry is an `app` stanza. What it holds
@@ -207,8 +217,49 @@ struct CaskArtifact {
     /// nothing here; the moved-to path is `target`.
     #[serde(default)]
     app: Option<IgnoredAny>,
+    /// Present exactly when this entry is a `binary` stanza: its arguments,
+    /// the file it links (`"grok"`, relative to the cask's folder in
+    /// `Caskroom`, or an absolute path into the app) and, when the command
+    /// is renamed, `{"target": "agent"}` -- `grok-build` links one file
+    /// as both `grok` and `agent`, in two stanzas. Read as any JSON value
+    /// (`cask_commands`), so an argument of an unexpected shape costs that
+    /// one command, not the inventory.
+    #[serde(default)]
+    binary: Option<serde_json::Value>,
     #[serde(default)]
     target: Option<String>,
+}
+
+/// The commands a cask's `binary` stanzas put in `<prefix>/bin`, for
+/// `CommandInputs.provided`: each named after the absolute `target` brew
+/// adds beside the stanza (the link: `/opt/homebrew/bin/agent`), with the
+/// file the stanza links as where that link must lead when it is an
+/// absolute path (`within`; `commands::judge` adds the cask's own folder in
+/// `Caskroom` and its app). A stanza without an absolute `target` names no
+/// command: there is no saying where its link is.
+fn cask_commands(artifacts: &[CaskArtifact]) -> Vec<ProvidedCommand> {
+    artifacts
+        .iter()
+        .filter_map(|artifact| {
+            let args = artifact.binary.as_ref()?;
+            let link = PathBuf::from(artifact.target.as_deref()?);
+            if !link.is_absolute() {
+                return None;
+            }
+            let name = link.file_name()?.to_str()?.to_string();
+            let source = args
+                .as_array()
+                .and_then(|args| args.first())
+                .and_then(serde_json::Value::as_str)
+                .map(PathBuf::from)
+                .filter(|source| source.is_absolute());
+            Some(ProvidedCommand {
+                name,
+                path: link,
+                within: source.into_iter().collect(),
+            })
+        })
+        .collect()
 }
 
 /// Parses `brew info --installed --json=v2`. For each formula, picks the
@@ -317,6 +368,10 @@ pub fn parse_info_installed(
             uninstall_blocked: f.pinned.then_some(UninstallBlocked::Pinned),
             facts: ArtifactFacts {
                 homebrew: homebrew_facts(&f.status, other_versions),
+                command_inputs: CommandInputs {
+                    keg_only: matches!(f.keg_only, Some(serde_json::Value::Bool(true))),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         });
@@ -358,6 +413,10 @@ pub fn parse_info_installed(
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
             facts: ArtifactFacts {
                 homebrew: homebrew_facts(&c.status, Vec::new()),
+                command_inputs: CommandInputs {
+                    provided: cask_commands(&c.artifacts),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         });
@@ -1045,5 +1104,133 @@ mod tests {
 
         assert_eq!(result.len(), 4);
         assert!(result.iter().all(|a| a.path.is_none()), "{result:?}");
+    }
+
+    #[test]
+    fn parse_info_installed_names_both_commands_grok_build_links_from_one_file() {
+        // The `grok-build` cask's shape (formulae.brew.sh's cask API, and
+        // the synthesis' S §3c): two `binary` stanzas for one file, the
+        // second renamed. Each gets the absolute link brew writes beside
+        // it; the file is relative to the cask's folder, so it says
+        // nothing about where the link must lead (`commands::judge` adds
+        // that folder). A stanza with no absolute `target` names nothing;
+        // one whose arguments are not the expected shape is still named by
+        // its link, and fails nothing else.
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {
+                    "token": "grok-build",
+                    "full_token": "grok-build",
+                    "name": ["Grok Build"],
+                    "installed": "1.0.46",
+                    "artifacts": [
+                        { "binary": ["grok"], "target": "/opt/homebrew/bin/grok" },
+                        { "binary": ["grok", { "target": "agent" }], "target": "/opt/homebrew/bin/agent" },
+                        { "binary": ["grok-helper"] },
+                        { "binary": ["relative"], "target": "bin/relative" },
+                        { "binary": { "unexpected": true }, "target": "/opt/homebrew/bin/odd" }
+                    ]
+                }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result.len(), 1);
+        let provided = &result[0].facts.command_inputs.provided;
+        assert_eq!(
+            provided,
+            &vec![
+                ProvidedCommand {
+                    name: "grok".to_string(),
+                    path: PathBuf::from("/opt/homebrew/bin/grok"),
+                    within: Vec::new(),
+                },
+                ProvidedCommand {
+                    name: "agent".to_string(),
+                    path: PathBuf::from("/opt/homebrew/bin/agent"),
+                    within: Vec::new(),
+                },
+                ProvidedCommand {
+                    name: "odd".to_string(),
+                    path: PathBuf::from("/opt/homebrew/bin/odd"),
+                    within: Vec::new(),
+                },
+            ]
+        );
+        // What the window gets is the verdicts, which nothing has made yet.
+        assert!(result[0].facts.commands.is_empty());
+    }
+
+    #[test]
+    fn parse_info_installed_keeps_an_absolute_binary_source_as_where_its_link_must_lead() {
+        // The recorded 7.0.3 `codexbar` cask: its command links into the
+        // app, by absolute path.
+        let json =
+            std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+                .expect("read the recorded brew info");
+        let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
+        let codexbar = result
+            .iter()
+            .find(|a| a.key.kind == ArtifactKind::Cask && a.key.name == "codexbar")
+            .expect("codexbar is in the recording");
+        assert_eq!(
+            codexbar.facts.command_inputs.provided,
+            vec![ProvidedCommand {
+                name: "codexbar".to_string(),
+                path: PathBuf::from("/opt/homebrew/bin/codexbar"),
+                within: vec![PathBuf::from(
+                    "/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI"
+                )],
+            }]
+        );
+        // The other three casks of the recording link no command.
+        let others: Vec<_> = result
+            .iter()
+            .filter(|a| a.key.kind == ArtifactKind::Cask && a.key.name != "codexbar")
+            .collect();
+        assert_eq!(others.len(), 3);
+        assert!(others
+            .iter()
+            .all(|a| a.facts.command_inputs.provided.is_empty()));
+        // A formula's commands are found from its links, not from here.
+        assert!(result
+            .iter()
+            .filter(|a| a.key.kind == ArtifactKind::Formula)
+            .all(|a| a.facts.command_inputs.provided.is_empty()));
+    }
+
+    #[test]
+    fn parse_info_installed_marks_the_keg_only_formulae() {
+        // The recording has four: `node@22`, linked by hand, among them --
+        // keg-only is what Homebrew says of the formula, whatever was
+        // linked since.
+        let json =
+            std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+                .expect("read the recorded brew info");
+        let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
+        let keg_only: Vec<&str> = result
+            .iter()
+            .filter(|a| a.facts.command_inputs.keg_only)
+            .map(|a| a.key.name.as_str())
+            .collect();
+        assert_eq!(keg_only, vec!["icu4c@78", "node@22", "readline", "sqlite"]);
+        // Anything but `true` is not keg-only, and never fails the reply.
+        let json = r#"{
+            "formulae": [
+                { "name": "a", "keg_only": "yes", "installed": [] },
+                { "name": "b", "keg_only": null, "installed": [] },
+                { "name": "c", "installed": [] },
+                { "name": "d", "keg_only": true, "installed": [] }
+            ],
+            "casks": []
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        let flags: Vec<bool> = result
+            .iter()
+            .map(|a| a.facts.command_inputs.keg_only)
+            .collect();
+        assert_eq!(flags, vec![false, false, false, true]);
     }
 }
