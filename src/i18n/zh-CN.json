@@ -80,7 +80,15 @@
     "none": "这台Mac上没有找到常见的AI编程工具",
     "noneInSource": "{{source}}中没有找到常见的AI编程工具",
     "noUpdates": "这里没有AI编程工具的更新",
-    "updateTheseCount": "更新这{{number}}个"
+    "updateTheseCount": "更新这{{number}}个",
+    "showNotOnPath": "终端里找不到",
+    "showNotOnPathCount": "终端里找不到（{{number}}）",
+    "showBrewRetired": "Homebrew已停用或弃用",
+    "showBrewRetiredCount": "Homebrew已停用或弃用（{{number}}）",
+    "notOnPathNone": "没有发现终端里找不到的工具",
+    "notOnPathNoneInSource": "{{source}}中没有发现终端里找不到的工具",
+    "brewRetiredNone": "没有发现Homebrew已停用或弃用的工具",
+    "brewRetiredNoneInSource": "{{source}}中没有发现Homebrew已停用或弃用的工具"
   },
   "twinsFilter": {
     "show": "装了不止一份",

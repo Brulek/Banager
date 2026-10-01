@@ -45,7 +45,7 @@ import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "
 import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { ToolShowButton } from "../components/ToolShowButton";
-import { shownBy } from "../lib/families";
+import { discoverCounts, shownBy, type InstalledShow } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
@@ -372,6 +372,17 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
   );
 }
 
+/**
+ * What the list says when the 「显示」 popup's choice has nothing to show:
+ * on every source, and on one, named.
+ */
+const SHOW_NONE_KEYS: Record<Exclude<InstalledShow, "all">, { none: string; noneInSource: string }> = {
+  ai: { none: "families.none", noneInSource: "families.noneInSource" },
+  twins: { none: "twinsFilter.none", noneInSource: "twinsFilter.noneInSource" },
+  notOnPath: { none: "families.notOnPathNone", noneInSource: "families.notOnPathNoneInSource" },
+  brewRetired: { none: "families.brewRetiredNone", noneInSource: "families.brewRetiredNoneInSource" },
+};
+
 /** The size order under any sort but By Size: one map, so it never changes. */
 const NO_SIZE_ORDER: Map<string, number> = new Map();
 
@@ -666,6 +677,17 @@ export function InstalledPage() {
   // The sources in view: the filter's, or every one.
   const instancesInView = useMemo(
     () => (snapshot?.instances ?? []).filter((instance) => activeFilter === null || instance.id === activeFilter),
+    [snapshot, activeFilter],
+  );
+  // How many of the sources in view's tools 「终端里找不到」 and
+  // 「Homebrew已停用或弃用」 show, search aside (`discoverCounts`).
+  const discover = useMemo(
+    () =>
+      discoverCounts(
+        (snapshot?.artifacts ?? []).filter(
+          (artifact) => activeFilter === null || artifact.key.instance_id === activeFilter,
+        ),
+      ),
     [snapshot, activeFilter],
   );
 
@@ -1490,7 +1512,7 @@ export function InstalledPage() {
         <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
           {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
         </p>
-        <ToolShowButton twins value={show} onChange={setShow} />
+        <ToolShowButton twins value={show} onChange={setShow} counts={discover} />
         <ToolbarPopupButton
           label={t("installed.sortLabel")}
           value={sort}
@@ -1594,15 +1616,11 @@ export function InstalledPage() {
                 >
                   {needle !== ""
                     ? t("installed.noMatches", { query: query.trim() })
-                    : show === "ai"
-                      ? activeFilter === null
-                        ? t("families.none")
-                        : t("families.noneInSource", { source: sourceLabelFor(activeFilter) })
-                      : show === "twins"
-                        ? activeFilter === null
-                          ? t("twinsFilter.none")
-                          : t("twinsFilter.noneInSource", { source: sourceLabelFor(activeFilter) })
-                        : t("emptyStates.nothingInstalled.title")}
+                    : show === "all"
+                      ? t("emptyStates.nothingInstalled.title")
+                      : activeFilter === null
+                        ? t(SHOW_NONE_KEYS[show].none)
+                        : t(SHOW_NONE_KEYS[show].noneInSource, { source: sourceLabelFor(activeFilter) })}
                 </p>
               </div>
             )

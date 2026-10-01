@@ -165,6 +165,9 @@ describe("the Show popup", () => {
       ["ai", "AI Tools"],
       // The Installed page's own third choice (twinsFilter.test.tsx).
       ["twins", "Installed More Than Once"],
+      // And its discovery choices (discoverFilter.test.tsx), with no number while none matches.
+      ["notOnPath", "Not Found in Terminal"],
+      ["brewRetired", "Disabled or Deprecated by Homebrew"],
     ]);
     expect(popup).toHaveValue("all");
     expect(useUiStore.getState().installedShow).toBe("all");

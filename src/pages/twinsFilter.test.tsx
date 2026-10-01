@@ -178,7 +178,9 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
   it("offers it third in the Installed page's popup, after every tool and the AI tools", async () => {
     renderInstalled();
     const popup = await screen.findByRole("combobox", { name: "Show" });
-    expect([...popup.querySelectorAll("option")].map((option) => [option.value, option.textContent])).toEqual([
+    expect(
+      [...popup.querySelectorAll("option")].slice(0, 3).map((option) => [option.value, option.textContent]),
+    ).toEqual([
       ["all", "All Tools"],
       ["ai", "AI Tools"],
       ["twins", "Installed More Than Once"],

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isAiTool, shownBy } from "./families";
+import {
+  DISCOVER_SHOWS,
+  discoverCounts,
+  hasCommandNotOnPath,
+  isAiTool,
+  isBrewRetired,
+  shownBy,
+} from "./families";
 import { NO_FACTS, type ArtifactFacts, type InstalledArtifact } from "./types";
 
 describe("families", () => {
@@ -30,5 +37,61 @@ describe("families", () => {
     const plain = { key: { ...key, name: "jq" }, facts: NO_FACTS };
     expect([shownBy("all", tagged), shownBy("all", plain), shownBy("all", undefined)]).toEqual([true, true, true]);
     expect([shownBy("ai", tagged), shownBy("ai", plain), shownBy("ai", undefined)]).toEqual([true, false, false]);
+  });
+});
+
+describe("the discovery choices", () => {
+  const key = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "wget" };
+  const lifecycle = { date: null, reason: null, replacement: null };
+  const homebrew = { deprecated: null, disabled: null, caveats: null, other_versions: [] };
+  const offPath = {
+    key: { ...key, name: "grok" },
+    facts: {
+      ...NO_FACTS,
+      commands: [
+        { name: "agent", state: "Runs" as const },
+        { name: "grok", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+      ],
+    },
+  };
+  const shadowed = {
+    key: { ...key, name: "claude" },
+    facts: { ...NO_FACTS, commands: [{ name: "claude", state: { ShadowedBy: { by: null } } }] },
+  };
+  const unjudged = {
+    key: { ...key, name: "node@22" },
+    facts: { ...NO_FACTS, commands: [{ name: "node", state: null }] },
+  };
+  const deprecated = {
+    key: { ...key, name: "youtube-dl" },
+    facts: { ...NO_FACTS, homebrew: { ...homebrew, deprecated: lifecycle } },
+  };
+  const disabled = {
+    key: { ...key, name: "quickjot" },
+    facts: { ...NO_FACTS, homebrew: { ...homebrew, disabled: lifecycle } },
+  };
+  const caveatsOnly = {
+    key: { ...key, name: "git" },
+    facts: { ...NO_FACTS, homebrew: { ...homebrew, caveats: "note" } },
+  };
+  const plain = { key, facts: NO_FACTS };
+  const all = [offPath, shadowed, unjudged, deprecated, disabled, caveatsOnly, plain];
+
+  it("finds a tool with one command Terminal does not find, and nothing else", () => {
+    expect(all.filter((a) => hasCommandNotOnPath(a)).map((a) => a.key.name)).toEqual(["grok"]);
+    expect(all.filter((a) => shownBy("notOnPath", a)).map((a) => a.key.name)).toEqual(["grok"]);
+    expect(hasCommandNotOnPath(undefined)).toBe(false);
+  });
+
+  it("finds what Homebrew disabled or deprecated, not what it merely has notes on", () => {
+    expect(all.filter((a) => isBrewRetired(a)).map((a) => a.key.name)).toEqual(["youtube-dl", "quickjot"]);
+    expect(all.filter((a) => shownBy("brewRetired", a)).map((a) => a.key.name)).toEqual(["youtube-dl", "quickjot"]);
+    expect(isBrewRetired(undefined)).toBe(false);
+  });
+
+  it("counts what each choice shows", () => {
+    expect(discoverCounts(all)).toEqual({ notOnPath: 1, brewRetired: 2 });
+    expect(discoverCounts([])).toEqual({ notOnPath: 0, brewRetired: 0 });
+    expect(DISCOVER_SHOWS).toEqual(["notOnPath", "brewRetired"]);
   });
 });
