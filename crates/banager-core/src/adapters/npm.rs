@@ -543,7 +543,7 @@ pub(crate) fn parse_ls_global(
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok(out)
+    Ok(crate::adapters::sanity::artifacts(out))
 }
 
 #[derive(Debug, Deserialize)]
@@ -556,7 +556,7 @@ struct OutdatedEntry {
 /// outdated — the caller must still treat that stdout as the real result,
 /// not an error (see the per-adapter contract table). Empty stdout (no
 /// output at all, not even `{}`) means nothing is outdated.
-fn parse_outdated_global(
+pub(crate) fn parse_outdated_global(
     json: &str,
     instance_id: &str,
 ) -> Result<Vec<UpdateCandidate>, crate::adapters::AdapterError> {
@@ -582,7 +582,7 @@ fn parse_outdated_global(
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok(out)
+    Ok(crate::adapters::sanity::candidates(out))
 }
 
 #[derive(Debug, Deserialize)]
@@ -593,26 +593,59 @@ struct SearchEntry {
 }
 
 /// Parses `npm search --json --searchlimit 20 {query}`.
-fn parse_search(
+pub(crate) fn parse_search(
     json: &str,
     adapter_id: &str,
 ) -> Result<Vec<SearchHit>, crate::adapters::AdapterError> {
     let entries: Vec<SearchEntry> = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
-    Ok(entries
-        .into_iter()
-        .map(|e| SearchHit {
-            adapter_id: adapter_id.to_string(),
-            kind: ArtifactKind::Package,
-            name: e.name,
-            description: e.description,
-        })
-        .collect())
+    Ok(crate::adapters::sanity::hits(
+        entries
+            .into_iter()
+            .map(|e| SearchHit {
+                adapter_id: adapter_id.to_string(),
+                kind: ArtifactKind::Package,
+                name: e.name,
+                description: e.description,
+            })
+            .collect(),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_ls_global_reads_a_version_with_a_control_character_as_unknown() {
+        let json = r#"{"dependencies":{"a":{"version":"1.0\n"},"":{"version":"1"}}}"#;
+        let artifacts = parse_ls_global(json, "npm:/opt/homebrew/bin/npm").unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].key.name, "a");
+        assert_eq!(artifacts[0].version, "");
+    }
+
+    #[test]
+    fn regression_parse_outdated_global_drops_an_update_to_nothing() {
+        let json = r#"{"a":{"current":"1","latest":""},"b":{"current":"1\u0000","latest":"2"},
+            "c":{"current":"1","latest":"2"}}"#;
+        let names: Vec<String> = parse_outdated_global(json, "npm:/opt/homebrew/bin/npm")
+            .unwrap()
+            .into_iter()
+            .map(|c| c.key.name)
+            .collect();
+        assert_eq!(names, vec!["c".to_string()]);
+    }
+
+    #[test]
+    fn regression_parse_search_drops_a_hit_with_no_name() {
+        let json = r#"[{"name":""},{"name":"jq\u001b"},{"name":"node-jq"}]"#;
+        let hits = parse_search(json, "npm").unwrap();
+        let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, vec!["node-jq"]);
+    }
     use crate::testing::command_args;
 
     #[test]
