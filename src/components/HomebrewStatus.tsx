@@ -209,7 +209,8 @@ export function homepageHost(address: string): string | null {
     return null;
   }
   if ((url.protocol !== "https:" && url.protocol !== "http:") || url.hostname === "") return null;
-  return url.hostname.replace(/^www\./, "");
+  // `host`, not `hostname`: a port is part of where the page is.
+  return url.host.replace(/^www\./, "");
 }
 
 /**

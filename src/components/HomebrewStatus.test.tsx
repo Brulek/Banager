@@ -153,6 +153,8 @@ describe("homepageFact", () => {
   it("names a host without its www., and shows whole what is not a web address", () => {
     expect(homepageHost("https://www.python.org/")).toBe("python.org");
     expect(homepageHost("http://jqlang.github.io/jq/")).toBe("jqlang.github.io");
+    expect(homepageHost("http://localhost:8080/x")).toBe("localhost:8080");
+    expect(homepageHost("https://example.com:443/")).toBe("example.com");
     expect(homepageHost("ftp://example.com/x")).toBeNull();
     expect(homepageHost("not an address")).toBeNull();
   });
