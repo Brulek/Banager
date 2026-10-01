@@ -232,11 +232,11 @@ describe("the polish-3 copy rules, in English", () => {
   });
 
   it("writes a disclosure's count in sentence case: it says how many more, it is not a command", () => {
-    // 「还有N个问题」 and 「另有N个无法在这里更新」 are the words of a
+    // 「还有N条提示」 and 「另有N个无法在这里更新」 are the words of a
     // disclosure line, as Cork's "There are 6 additional packages…".
     const strings = new Map(entries(en));
-    expect(strings.get("sourceNotice.more_one")).toBe("{{count}} more issue");
-    expect(strings.get("sourceNotice.more_other")).toBe("{{count}} more issues");
+    expect(strings.get("sourceNotice.more_one")).toBe("{{count}} more note");
+    expect(strings.get("sourceNotice.more_other")).toBe("{{count}} more notes");
     expect(strings.get("updates.cantUpdateHere")).toBe("{{number}} more can't be updated here");
   });
 });
