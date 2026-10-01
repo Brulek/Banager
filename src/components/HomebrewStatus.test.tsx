@@ -75,6 +75,15 @@ describe("lifecycleSentence", () => {
     expect(lifecycleSentence(zh, deprecated)).toBe("它已经没人维护。Homebrew已将它标为弃用，以后可能会停用。");
   });
 
+  it("quotes a reason that happens to be the name of an object property, too", () => {
+    for (const reason of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const mark = { kind: "disabled" as const, lifecycle: { date: null, reason, replacement: null } };
+      expect(lifecycleSentence(enT, mark)).toBe(
+        `Homebrew's reason: “${reason}”. Homebrew has disabled it, so no more updates will come. The copy already installed is not removed.`,
+      );
+    }
+  });
+
   it("has a sentence in both languages for every reason Homebrew 7.0.7 names", () => {
     // `deprecate_disable.rb`: ten formula reasons and seven cask ones, two
     // shared (`unmaintained`, `unreachable`).
@@ -155,6 +164,19 @@ describe("HomebrewNotes", () => {
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+
+  it("says the replacement a disabled package named only when Homebrew deprecated it", () => {
+    renderWithProviders(
+      <HomebrewNotes
+        artifact={artifact("both", {
+          ...EMPTY,
+          deprecated: { date: "2026-01-01", reason: null, replacement: "newtool" },
+          disabled: { date: "2026-09-01", reason: null, replacement: null },
+        })}
+      />,
+    );
+    expect(screen.getByText("Homebrew suggests “newtool” instead.")).toBeInTheDocument();
   });
 
   it("says nothing for a package Homebrew has nothing to say about", () => {

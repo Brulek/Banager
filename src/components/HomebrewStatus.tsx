@@ -54,10 +54,12 @@ function markOf(artifact: InstalledArtifact): HomebrewMark | null {
  */
 export function lifecycleSentence(t: TFunction, mark: HomebrewMark): string {
   const { date, reason } = mark.lifecycle;
+  // An own key only: a free-text reason such as "constructor" must be
+  // quoted, not looked up on Object's prototype.
   const why =
     reason === null
       ? ""
-      : REASON_KEYS[reason] !== undefined
+      : Object.prototype.hasOwnProperty.call(REASON_KEYS, reason)
         ? t(REASON_KEYS[reason])
         : t("brewStatus.reasonQuoted", { reason });
   const what =
@@ -183,7 +185,9 @@ export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
   const homebrew = artifact.facts.homebrew;
   if (homebrew === null) return null;
   const mark = markOf(artifact);
-  const replacement = mark?.lifecycle.replacement ?? null;
+  // A package both deprecated and disabled may name its replacement on the
+  // deprecation only; Homebrew still said it.
+  const replacement = mark?.lifecycle.replacement ?? homebrew.deprecated?.replacement ?? null;
   const others = homebrew.other_versions;
   const lines: ReactNode[] = [];
   if (mark !== null) {
