@@ -947,3 +947,40 @@ async fn test_a_session_told_the_path_was_not_restored_says_nothing_about_which_
         assert_eq!(artifact.facts.commands, vec![unjudged("claude")]);
     }
 }
+
+#[test]
+fn test_a_thousand_links_in_a_bin_folder_take_milliseconds_not_seconds() {
+    // The synthesis' bar: a thousand entries is a busy Homebrew `bin`, and
+    // the whole check (both halves) must stay far inside its budget. The
+    // bound here is loose -- a slow CI disk is not a failure -- the point
+    // is the shape: one `read_dir` per folder and a `realpath` per entry,
+    // never a lookup per command per folder.
+    let home = Home::new("thousand");
+    let brew = home.dir("brew");
+    let id = format!("brew:{}", brew.display());
+    let mut artifacts = Vec::new();
+    for i in 0..1000 {
+        let name = format!("tool{i:04}");
+        home.exe(&format!("brew/Cellar/{name}/1.0/bin/{name}"));
+        home.link(
+            &format!("brew/bin/{name}"),
+            Path::new(&format!("../Cellar/{name}/1.0/bin/{name}")),
+        );
+        artifacts.push(artifact(&id, ArtifactKind::Formula, &name));
+    }
+    let instances = vec![instance("brew", &id, &brew, &brew.join("bin/brew"))];
+    let path = [home.dir("usr-bin"), brew.join("bin")];
+    let started = std::time::Instant::now();
+    let found = verdicts(&home, &path, &instances, &artifacts);
+    let took = started.elapsed();
+    eprintln!("read and judged a thousand links in {took:?}");
+    assert_eq!(found.len(), 1000);
+    assert!(found
+        .iter()
+        .zip(&artifacts)
+        .all(|(commands, artifact)| commands == &vec![runs(&artifact.key.name)]));
+    assert!(
+        took < Duration::from_secs(2),
+        "a thousand links took {took:?}"
+    );
+}
