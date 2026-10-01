@@ -2333,6 +2333,21 @@ describe("UpdatesPage", () => {
     expect(queryByText("onyx")).toBeInTheDocument();
   });
 
+  it("puts the focus on the next row once a row's ⋯ has hidden it, not on the page's title", async () => {
+    const { queryByText } = renderPage();
+    const glib = await findRow("glib");
+    const names = Array.from(document.querySelectorAll("[data-tool-row] p[title]")).map((p) => p.getAttribute("title"));
+    const next = names[names.indexOf("glib") + 1];
+    expect(next).toBeTruthy();
+    const more = within(glib).getByRole("button", { name: /^More actions for / });
+    act(() => more.focus());
+
+    chooseFromMenu(glib, "Skip This Version");
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(rowOf(next as string)));
+  });
+
   it("hides the row for 30 days when Remind Me in 30 Days is chosen, between the other two, and saves the date", async () => {
     const { queryByText } = renderPage();
     const before = Math.floor(Date.now() / 1000);

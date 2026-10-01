@@ -409,6 +409,9 @@ export function UpdatesPage() {
   const listHandle = useRef<VirtualListHandle | null>(null);
   // Clear was pressed, and the focus is to be found a place once its section is gone.
   const refocusAfterClear = useRef(false);
+  // A row's ⋯ hid its update: the row the focus goes to once that row is
+  // gone (the next row, or the one before it at the list's end).
+  const refocusAfterHide = useRef<{ gone: string; next: string | null } | null>(null);
   const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
   const focusList = () => listHandle.current?.focusFirst();
 
@@ -688,6 +691,25 @@ export function UpdatesPage() {
     else focusOrFallback(null);
   });
 
+  // Once a row's ⋯ has hidden its update -- Skip this version, Remind me
+  // in 30 days, Don't remind me -- and the row is gone with its ⋯, the
+  // focus goes to the row after it, as a Mac list's selection does, rather
+  // than staying on the page's title (where the ⋯ left it as it went,
+  // `Menu`), from where the keyboard would start over in the toolbar.
+  // Only while the focus is still lost: not once the user has moved it.
+  useEffect(() => {
+    const hidden = refocusAfterHide.current;
+    if (hidden === null || items.some((item) => listItemKey(item) === hidden.gone)) return;
+    refocusAfterHide.current = null;
+    const focus = document.activeElement;
+    const lost =
+      focus === null || focus === document.body || !focus.isConnected || focus.hasAttribute("data-focus-fallback");
+    if (!lost) return;
+    if (hidden.next !== null && items.some((item) => listItemKey(item) === hidden.next)) {
+      listHandle.current?.focusKey(hidden.next);
+    } else if (items.some(keyboardRow)) listHandle.current?.focusFirst();
+  });
+
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
   const namedTwice = useMemo(
@@ -794,7 +816,16 @@ export function UpdatesPage() {
     if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
       toggleUpdate(candidate.key);
     }
-    saveSettings.mutate(next(settings));
+    const gone = artifactKeyId(candidate.key);
+    const at = items.findIndex((item) => listItemKey(item) === gone);
+    const neighbour =
+      items.slice(at + 1).find(keyboardRow) ?? items.slice(0, Math.max(at, 0)).reverse().find(keyboardRow);
+    refocusAfterHide.current = { gone, next: neighbour === undefined ? null : listItemKey(neighbour) };
+    saveSettings.mutate(next(settings), {
+      onError: () => {
+        refocusAfterHide.current = null;
+      },
+    });
   }
 
   // "Skip this version": hides this update until the source offers another
