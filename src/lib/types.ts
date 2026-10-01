@@ -543,9 +543,9 @@ export interface UnknownEntry {
   resolved: string | null;
   /** `readlink`'s text as the installer wrote it, links only. */
   link_target: string | null;
-  /** The target's; `null` for a broken link, which has none. */
+  /** The target's; `null` for a broken link, which has none, and for a link into a protected place, never looked at. */
   size_bytes: number | null;
-  /** Unix seconds, the target's; `null` for a broken link. */
+  /** Unix seconds, the target's; `null` for a broken link and for a link into a protected place. */
   modified_at: number | null;
   /** `st_uid == euid` of the entry itself: who put it here. */
   owned_by_me: boolean;

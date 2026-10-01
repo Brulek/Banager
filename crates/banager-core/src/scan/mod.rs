@@ -189,10 +189,12 @@ pub struct UnknownEntry {
     /// sentence.
     pub link_target: Option<String>,
     /// The target's size. `None` for a broken link: there is no target to
-    /// measure. Formatted by `formatBytes` into the size · date subtitle.
+    /// measure; and for a link into a protected place, whose target is
+    /// never looked at. Formatted by `formatBytes` into the size · date subtitle.
     pub size_bytes: Option<u64>,
     /// The target's modification time, unix seconds. `None` for a broken
-    /// link, whose own `mtime` would only say when the link was made.
+    /// link, whose own `mtime` would only say when the link was made, and
+    /// for a link into a protected place.
     /// Formatted with `Intl.DateTimeFormat`, as an absolute date: when the
     /// file last changed, not how long ago.
     pub modified_at: Option<i64>,
