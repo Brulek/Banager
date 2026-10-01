@@ -245,6 +245,11 @@ enum Loaded {
     Usable {
         cleared_before: Option<i64>,
         records: Vec<HistoryRecord>,
+        /// Whether `bound` dropped records the file still has: too old, or
+        /// past the newest `MAX_RECORDS`. The file is then written again
+        /// at once, so that it holds no more than its bounds say for
+        /// longer than this launch takes to start.
+        pruned: bool,
     },
     /// A newer Banager's file: start empty and never write over it.
     Newer,
@@ -254,6 +259,7 @@ fn load(path: &Path, now: i64) -> Loaded {
     let empty = Loaded::Usable {
         cleared_before: None,
         records: Vec::new(),
+        pruned: false,
     };
     let Ok(bytes) = std::fs::read(path) else {
         return empty;
@@ -282,9 +288,11 @@ fn load(path: &Path, now: i64) -> Loaded {
                 .collect()
         })
         .unwrap_or_default();
+    let read = records.len();
     bound(&mut records, now);
     Loaded::Usable {
         cleared_before,
+        pruned: records.len() < read,
         records,
     }
 }
@@ -362,12 +370,13 @@ impl HistoryStore {
     /// `open`, with the clock a test sets: `now_fn` answers in
     /// milliseconds since 1970.
     pub fn open_with_clock(path: PathBuf, now_fn: fn() -> i64) -> Arc<HistoryStore> {
-        let (cleared_before, records, writable) = match load(&path, now_fn()) {
+        let (cleared_before, records, writable, pruned) = match load(&path, now_fn()) {
             Loaded::Usable {
                 cleared_before,
                 records,
-            } => (cleared_before, records, true),
-            Loaded::Newer => (None, Vec::new(), false),
+                pruned,
+            } => (cleared_before, records, true, pruned),
+            Loaded::Newer => (None, Vec::new(), false, false),
         };
         let (tx, rx) = mpsc::channel::<()>();
         let store = Arc::new(HistoryStore {
@@ -378,7 +387,9 @@ impl HistoryStore {
                 cleared_before,
                 records,
                 writable,
-                changes: 0,
+                // A file with records past its bounds is written again
+                // straight away, without them.
+                changes: u64::from(pruned),
                 written: 0,
             }),
             flushed: Condvar::new(),
@@ -403,6 +414,8 @@ impl HistoryStore {
             // come.
             eprintln!("[banager] could not start the history writer; keeping history in memory");
             store.state.lock().unwrap().writable = false;
+        } else if pruned {
+            store.wake();
         }
         store
     }
@@ -801,6 +814,26 @@ mod tests {
             vec!["new"]
         );
         assert_eq!(view.cleared_before, Some(NOW - DAY));
+        // ... and the file is written again without it, with no new record.
+        assert!(store.flush(Duration::from_secs(5)));
+        let on_disk: HistoryFile =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        assert_eq!(
+            on_disk
+                .records
+                .iter()
+                .map(|r| r.key.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["new"]
+        );
+        assert_eq!(on_disk.cleared_before, Some(NOW - DAY));
+        drop(store);
+
+        // A file within its bounds is left exactly as it is.
+        let bytes = std::fs::read(dir.file()).unwrap();
+        let again = HistoryStore::open_with_clock(dir.file(), now);
+        assert!(again.flush(Duration::from_secs(5)));
+        assert_eq!(std::fs::read(dir.file()).unwrap(), bytes);
     }
 
     #[test]

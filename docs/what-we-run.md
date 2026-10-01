@@ -2258,8 +2258,10 @@ lines are dropped. An operation cancelled before Banager began carrying it
 out (while it waited for its turn, or while Banager read the installed
 version) is not recorded. Each record also carries a random id of the launch of Banager
 that ran it and the operation's number in that launch, so that the page
-lists an update it watched finish only once. The file keeps the newest 1,000 records and nothing older than
-180 days. It is written whole to a `history.json.tmp.<n>` beside it and
+lists an update it watched finish only once. The file keeps the newest
+1,000 records and nothing older than 180 days: as Banager starts it drops the rest and, if it dropped any,
+writes the file again straight away; it drops them again at each record.
+It is written whole to a `history.json.tmp.<n>` beside it and
 renamed into place, on a thread of its own, after each operation finishes
 and after Clear. A missing, unreadable or malformed file is an empty
 history and is replaced at the next record; a file a newer Banager wrote is
