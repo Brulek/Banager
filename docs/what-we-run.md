@@ -733,13 +733,18 @@ its JSON has no field for the mark, and neither `Formula#outdated?` nor
 not update it: a formula fails, and a cask prints "Not upgrading …, it is
 disabled" and exits 0 having changed nothing. The `brew info` reading in
 the same check carries the mark (`disabled: true`), so such a row is
-listed with Homebrew's word 「已停用」 and no Update button, says that
+listed with Homebrew's word ("Disabled", 「已停用」) and no Update button, says that
 Homebrew provides no more updates of it (and the replacement Homebrew
 suggests, when it names one), and `Session::issue_plan` refuses its
 upgrade (`UpdateBlocked::Disabled`, `BrewAdapter::check_updates`). Nothing
-more runs for this, and Banager never passes `--force`. When that reading
-fails, nothing is marked, and an upgrade is reported as before: failed, or
-needing attention when the version did not change.
+more runs for this, and Banager never passes `--force`. The mark is as
+fresh as the last `brew update` that succeeded: when the index update
+fails, `brew info` reads the catalogue already on this Mac (the same copy
+`brew outdated` read), so a package Homebrew disabled since then is not
+marked yet, and one it re-enabled stays held back until an index update
+succeeds. When that reading fails, nothing is marked, and an upgrade is
+reported as before: failed, or needing attention when the version did not
+change.
 
 `brew uses` names only formulae and casks. The uninstall preview of a
 formula or cask also looks, read-only and running nothing, for the other

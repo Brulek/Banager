@@ -1144,7 +1144,9 @@ impl BrewAdapter {
         // (`UpdateBlocked::Disabled`): `brew outdated` lists it like any
         // other, and only `brew info` carries the mark. With no inventory
         // nothing is marked, and an upgrade of it fails or changes nothing
-        // as before (`UnchangedAfterUpgrade`).
+        // as before (`UnchangedAfterUpgrade`). The mark is as fresh as the
+        // last `brew update` that succeeded: after `MayBeStale` this reads
+        // the catalogue already on disk, like `brew outdated` above.
         let installed = self.inventory(inst).await.unwrap_or_default();
         if !installed.is_empty() {
             for candidate in &mut candidates {
