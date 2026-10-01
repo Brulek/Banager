@@ -314,6 +314,24 @@ describe("OperationBar", () => {
     expect(container.textContent).not.toContain("git");
   });
 
+  it("keeps View Log the same button as its operation ends, so the focus it hands back is never on Close", async () => {
+    // The log, opened from the bar and closed after the update failed,
+    // hands the focus back to the button that opened it. That node must
+    // still be View Log: an unkeyed one became the finished bar's Close.
+    operations = [op(9, "git", "Running")];
+    const { findByText, findByRole, getByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await findByText("Update git: Running");
+    const viewLog = getByRole("button", { name: "View Log" });
+
+    await listNow(queryClient, [op(9, "git", "Done", { Failed: { exit_code: 1, summary: "" } })]);
+    const close = await findByRole("button", { name: "Close" });
+
+    expect(viewLog).toBeInTheDocument();
+    expect(viewLog).toHaveAccessibleName("View Log");
+    expect(getByRole("button", { name: "View Log" })).toBe(viewLog);
+    expect(close).not.toBe(viewLog);
+  });
+
   it("shows a new run's first operation in place of the last run's result", async () => {
     operations = [op(7, "git", "Done", "Succeeded")];
     const { findByText, queryClient, queryByText } = renderWithProviders(<OperationBar />);

@@ -96,8 +96,13 @@ export function OperationBar() {
     setFocusedOpId(op.id);
     setDrawerOpen(true);
   };
+  // Keyed, as are Stop and Close beside it: one node from the run's first
+  // step to how it went, wherever it stands among them. Unkeyed, the
+  // running bar's View Log (second) became the finished bar's Close
+  // (second): the log, closed after the run ended, gave the focus back to a
+  // Close, which the next Space pressed.
   const viewLog = (op: OpSummary) => (
-    <button type="button" onClick={() => openLog(op)} className={VIEW_LOG_BUTTON}>
+    <button key="viewLog" type="button" onClick={() => openLog(op)} className={VIEW_LOG_BUTTON}>
       {t("common.viewLog")}
     </button>
   );
@@ -166,6 +171,7 @@ export function OperationBar() {
           // How much of the run is done, beside the words that say it: a
           // 4 by 60 capsule, the accent over the fill.
           <span
+            key="progress"
             aria-hidden="true"
             data-run-progress=""
             className="h-1 w-15 shrink-0 overflow-hidden rounded-full bg-fill"
@@ -175,7 +181,13 @@ export function OperationBar() {
         ) : null}
         {viewLog(current)}
         {cancel !== "none" ? (
-          <button type="button" onClick={cancelNow} disabled={cancel === "disabled"} className={STOP_BUTTON}>
+          <button
+            key="stop"
+            type="button"
+            onClick={cancelNow}
+            disabled={cancel === "disabled"}
+            className={STOP_BUTTON}
+          >
             {!batch
               ? t("operations.stop")
               : unstoppable.length > 0
@@ -236,6 +248,7 @@ export function OperationBar() {
       <>
         {logOf !== undefined ? viewLog(logOf) : null}
         <button
+          key="close"
           type="button"
           aria-label={t("common.close")}
           onClick={() => setDismissedThrough(newest)}
