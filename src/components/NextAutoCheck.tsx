@@ -42,9 +42,13 @@ export function NextAutoCheck({ at, className }: { at: number | null | undefined
  * time, on 「今天」, 「明天」 or a date, in the Mac's own clock style for
  * `language` (`timeStyle: "short"`: 21:10, 9:10 PM).
  */
+const HALF_HOUR_MS = 30 * 60 * 1000;
+
 export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, language: string): string {
-  const due = new Date(at * 1000);
-  if (due.getTime() <= nowMs) return t("nextAutoCheck.soon");
+  // To the half hour: the check runs around then, and 「16:04左右」 pairs
+  // a minute's precision with 左右. Within half an hour, 「很快」.
+  if (at * 1000 - nowMs < HALF_HOUR_MS) return t("nextAutoCheck.soon");
+  const due = new Date(Math.round((at * 1000) / HALF_HOUR_MS) * HALF_HOUR_MS);
   const time = new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(due);
   const days = calendarDaysBetween(new Date(nowMs), due);
   if (days === 0) return t("nextAutoCheck.today", { time });
