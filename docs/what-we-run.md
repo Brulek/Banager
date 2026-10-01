@@ -1931,7 +1931,10 @@ ask for permission. Nothing in these places is listed, `lstat`ed, read as
 a link or resolved, as named or where it leads (`protected::resolve`):
 each step on the way to a folder to scan, to where an entry leads and to
 a source's own folder is checked against them before it is taken, from
-the folder before it, held open; and each scanned folder is listed, and
+the folder before it, held open; an entry of a scanned folder that is
+itself one of these places (`Documents` in a home folder that is on
+`PATH`, `Containers` in a scanned `~/Library`) is passed over without even
+an `lstat`; and each scanned folder is listed, and
 its entries looked at, from a descriptor held open on it, so a folder
 replaced by a link while it is read is never followed.
 
@@ -1942,18 +1945,25 @@ replaced by a link while it is read is never followed.
   with Show technical details on, names them behind an ⓘ
   (`UnknownScan.protected_dirs`).
 - A program in a scanned folder whose link leads into one of these places
-  is listed by its own name, with its link's text, and what it leads to is
-  not followed: the page says 「指向受保护的位置」 ("Points into a
-  protected place") where a size and a date would be, and its Show in
-  Finder is off (`EntryKind::ProtectedSymlink`).
+  is listed by its own name, and what it leads to is not followed -- so
+  nothing tells whether it is a program at all: a link into a project
+  folder or a data file there is listed too, where the same link outside
+  these places would be dropped. The page says 「指向受保护的位置」
+  ("Points into a protected place") where a size and a date would be, shows
+  no path, and its Show in Finder is off (`EntryKind::ProtectedSymlink`).
+  The link's own text is kept, and used only to find the app it points
+  into.
 - Which source a program belongs to is still decided for a path that
   leads into these places, by name alone: the path as far as the links
-  outside them lead, the rest as written, compared with each source's own
+  outside them lead, the rest as written (a `..` in it folded by name),
+  compared with each source's own
   executable, the paths it reported installing and the folders it owns,
   which are found the same way and never entered either (`Known::index`).
   So a Homebrew installed on another disk (`/Volumes/<disk>/homebrew`)
   keeps its programs: a link into its `Cellar` is Homebrew's, by name, and
-  is not listed.
+  is not listed. A path that a `..` takes back out of a protected place
+  (`~/Documents/../.local/...`, where `~/Documents` may itself be a link
+  elsewhere) is compared with nothing, and the program is listed.
 - A folder that cannot be listed (one locked with no permissions) is
   skipped, not reported as read, and left as it is.
 

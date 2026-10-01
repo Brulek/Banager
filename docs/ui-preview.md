@@ -151,9 +151,13 @@ Paths are under a generic home folder, `/Users/you`.
   Antigravity CLI (a newer version it can only install itself), Grok
   Build (an update, and a notice that it is not on the PATH) and Codex,
   installed by its own script and listed only, beside npm's @openai/codex.
-- **Other Programs page**: five programs no source accounts for -- two plain
+- **Other Programs page**: six programs no source accounts for -- two plain
   files, two links an installer with administrator rights put there (one
-  into an app), and a broken link to an app that was deleted.
+  into an app), a broken link to an app that was deleted, and a link into
+  `~/Documents` (`notes-cli`) that is listed by its own name and not
+  followed. Under the list, a line says two folders were left unread
+  because they are in protected places; with Show technical details on,
+  its ⓘ names them.
 
 ## What it does
 
