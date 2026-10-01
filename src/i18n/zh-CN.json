@@ -390,6 +390,8 @@
     "twinLabel": "{{word}}：{{name}}",
     "twinOther": "{{source}}也装了一份。",
     "twinOthers": "{{sources}}也各装了一份。",
+    "twinOtherStandalone": "{{source}}自带的安装程序也装了一份。",
+    "twinOthersCount_other": "另外{{count}}份由{{sources}}安装。",
     "twinRuns": "在终端里输入“{{command}}”，运行的是这一份。",
     "twinRunsCopyFrom": "在终端里输入“{{command}}”，运行的是{{source}}装的那一份。",
     "twinNotFound": "在终端里输入“{{command}}”，找不到这一份。"

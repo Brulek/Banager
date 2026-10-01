@@ -180,7 +180,7 @@ describe("twinChip", () => {
 
     const onNpm = twinChip(t, npm, twins.get("npm:/opt/homebrew|Package|@anthropic-ai/claude-code"), sourceLabelFor);
     expect(detailText(onNpm?.detail)).toEqual([
-      "Claude Code has a copy too.",
+      "Claude Code's own installer installed a copy too.",
       "Typing claude in Terminal runs this copy.",
     ]);
   });
@@ -215,6 +215,45 @@ describe("twinChip", () => {
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+
+  it("counts copies, not sources, where one source has two", async () => {
+    const otherNpmKey: ArtifactKey = { ...npmKey, instance_id: "npm:/Users/a/.npm-global" };
+    const native = artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }], "Claude Code");
+    const npm = artifact(npmKey, "claude-code", [{ name: "claude", state: null }]);
+    const otherNpm = artifact(otherNpmKey, "claude-code", [{ name: "claude", state: null }]);
+    const labels = (id: string) => (id.startsWith("npm:") ? "npm" : sourceLabelFor(id));
+    const twins = twinsByArtifact([native, npm, otherNpm]);
+    const chip = twinChip(t, native, twins.get("standalone-claude|Binary|claude"), labels);
+    expect(chip?.label).toBe("Installed 3 times");
+    expect(detailText(chip?.detail)).toEqual([
+      "The other 2 copies were installed by npm.",
+      "Typing claude in Terminal runs this copy.",
+    ]);
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const zh = i18n.getFixedT("zh-CN");
+      const zhChip = twinChip(zh, native, twins.get("standalone-claude|Binary|claude"), labels);
+      expect(detailText(zhChip?.detail)).toEqual(["另外2份由npm安装。", "在终端里输入“claude”，运行的是这一份。"]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("names no command when the shared commands do not all run the same copy", () => {
+    const rustupKey: ArtifactKey = { instance_id: "standalone-rustup", kind: "Binary", name: "rustup" };
+    const rustKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "rust" };
+    const rustup = artifact(rustupKey, "rust", [
+      { name: "cargo", state: { ShadowedBy: { by: rustKey } } },
+      { name: "rustc", state: "Runs" },
+    ]);
+    const rust = artifact(rustKey, "rust", [
+      { name: "cargo", state: "Runs" },
+      { name: "rustc", state: null },
+    ]);
+    const twins = twinsByArtifact([rustup, rust]);
+    const chip = twinChip(t, rustup, twins.get("standalone-rustup|Binary|rustup"), sourceLabelFor);
+    expect(detailText(chip?.detail)).toEqual(["Homebrew has a copy too."]);
   });
 
   it("is no word at all for a tool with no other copy", () => {

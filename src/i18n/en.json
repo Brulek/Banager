@@ -427,6 +427,8 @@
     "twinLabel": "{{word}}: {{name}}",
     "twinOther": "{{source}} has a copy too.",
     "twinOthers": "{{sources}} each have a copy too.",
+    "twinOtherStandalone": "{{source}}'s own installer installed a copy too.",
+    "twinOthersCount_other": "The other {{count}} copies were installed by {{sources}}.",
     "twinRuns": "Typing {{command}} in Terminal runs this copy.",
     "twinRunsCopyFrom": "Typing {{command}} in Terminal runs the copy from {{source}}.",
     "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy."

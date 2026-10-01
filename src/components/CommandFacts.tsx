@@ -1,7 +1,7 @@
 import { useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCopyCommand } from "../lib/clipboard";
-import { commandGroups, twinsByArtifact, type CommandGroup, type Twin } from "../lib/commands";
+import { commandGroups, stateId, twinsByArtifact, type CommandGroup, type Twin } from "../lib/commands";
 import { namesInSentence } from "../lib/sources";
 import type { CommandState, InstalledArtifact } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
@@ -155,6 +155,29 @@ export interface TwinChip {
 }
 
 /**
+ * Where the other copies are from, behind the twin word's ⓘ: 「npm也装了一份。」;
+ * a standalone tool's own install by its installer, not by its name
+ * alone (「Claude Code自带的安装程序也装了一份。」); 「npm和Homebrew也各装了一份。」;
+ * and, where one source has more than one (two npm folders), how many
+ * there are in all (「另外2份由npm安装。」) -- never a count of sources
+ * passed off as one of copies.
+ */
+function whereTheOthersAre(t: Translate, twins: Twin[], sourceLabelFor: SourceLabel): string {
+  const bySource = new Map<string, number>();
+  for (const twin of twins) {
+    const source = sourceLabelFor(twin.artifact.key.instance_id);
+    bySource.set(source, (bySource.get(source) ?? 0) + 1);
+  }
+  const sources = [...bySource.keys()];
+  if (twins.length === 1) {
+    const standalone = twins[0].artifact.key.instance_id.startsWith("standalone-");
+    return t(standalone ? "commands.twinOtherStandalone" : "commands.twinOther", { source: sources[0] });
+  }
+  if (sources.length === twins.length) return t("commands.twinOthers", { sources: namesInSentence(t, sources) });
+  return t("commands.twinOthersCount", { count: twins.length, sources: namesInSentence(t, sources) });
+}
+
+/**
  * The row's 「装了两份」 (「装了3份」 for three), for a tool another
  * source installed too (`twinsByArtifact`: the same AI coding tool, a
  * command of the same name) -- null for one that is not. Behind its ⓘ,
@@ -170,21 +193,24 @@ export function twinChip(
   sourceLabelFor: SourceLabel,
 ): TwinChip | null {
   if (twins === undefined || twins.length === 0) return null;
-  const sources = [...new Set(twins.map((twin) => sourceLabelFor(twin.artifact.key.instance_id)))];
   const label = twins.length === 1 ? t("commands.twin") : t("commands.twinMany", { number: twins.length + 1 });
-  const where =
-    sources.length === 1
-      ? t("commands.twinOther", { source: sources[0] })
-      : t("commands.twinOthers", { sources: namesInSentence(t, sources) });
+  const where = whereTheOthersAre(t, twins, sourceLabelFor);
+  // Named only when every command the copies share has one verdict here:
+  // `claude` that runs this copy says nothing of a second name that may not.
+  const shared = [...new Set(twins.flatMap((twin) => twin.commands))];
+  const states = shared.map((name) => artifact.facts.commands.find((fact) => fact.name === name)?.state ?? null);
+  const state = states[0];
+  const oneVerdict = state !== null && states.every((other) => other !== null && stateId(other) === stateId(state));
   const command = twins[0].commands[0];
-  const state = artifact.facts.commands.find((fact) => fact.name === command)?.state ?? null;
   let runs: string | null = null;
-  if (state === "Runs") runs = t("commands.twinRuns", { command });
-  else if (state !== null && "NotOnPath" in state) runs = t("commands.twinNotFound", { command });
-  else if (state !== null && state.ShadowedBy.by !== null) {
-    const by = state.ShadowedBy.by;
-    if (twins.some((twin) => artifactKeyId(twin.artifact.key) === artifactKeyId(by))) {
-      runs = t("commands.twinRunsCopyFrom", { command, source: sourceLabelFor(by.instance_id) });
+  if (oneVerdict) {
+    if (state === "Runs") runs = t("commands.twinRuns", { command });
+    else if ("NotOnPath" in state) runs = t("commands.twinNotFound", { command });
+    else if (state.ShadowedBy.by !== null) {
+      const by = state.ShadowedBy.by;
+      if (twins.some((twin) => artifactKeyId(twin.artifact.key) === artifactKeyId(by))) {
+        runs = t("commands.twinRunsCopyFrom", { command, source: sourceLabelFor(by.instance_id) });
+      }
     }
   }
   return {
