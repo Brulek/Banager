@@ -955,7 +955,35 @@ function scenarioWorld(state: ScenarioState): World {
       allAnswering(world);
       addMany(world);
       return world;
+    case "refused":
+      withRefusedSources(world);
+      return world;
   }
+}
+
+/**
+ * Two sources Banager did not ask (`?state=refused`), each with its own
+ * notice: an Ollama whose `OLLAMA_HOST` is an `https://` address, which
+ * Banager's http client never connects to (`HttpsHostRefused`), so none of
+ * its models are listed; and a second Python, from MacPorts in
+ * `/opt/local`, whose `-m pip --version` said it has no module named pip
+ * (`NoPip`), next to Homebrew's.
+ */
+function withRefusedSources(world: World): void {
+  const ollama = findInstance(world, IDS.ollama);
+  const refusedId = "ollama:https://ollama.home.lan";
+  world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.ollama);
+  world.updates = world.updates.filter((u) => u.key.instance_id !== IDS.ollama);
+  ollama.id = refusedId;
+  ollama.status = { unavailable: "HttpsHostRefused", notes: [] };
+  world.instances.splice(
+    world.instances.findIndex((i) => i.id === IDS.pip) + 1,
+    0,
+    instance("pip", "pip:/opt/local/bin/python3.13", "/opt/local/bin/python3.13", "/opt/local/bin", null, {
+      read_only_reason: "ByDesign",
+      status: { unavailable: "NoPip", notes: [] },
+    }),
+  );
 }
 
 /**

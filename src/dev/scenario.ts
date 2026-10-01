@@ -30,6 +30,9 @@ import type { Page } from "../store/ui";
  *   (`InventoryPreview`) and then never finishes checking for updates, as
  *   a real launch looks while `brew update` runs: the Installed page lists
  *   the Mac above, every Uninstall off.
+ * - `refused`: two sources Banager did not ask, each saying why: an
+ *   Ollama whose `OLLAMA_HOST` is an `https://` address, and a second
+ *   Python, with no pip.
  */
 export const SCENARIO_STATES = [
   "full",
@@ -45,6 +48,7 @@ export const SCENARIO_STATES = [
   "offline",
   "many",
   "preview",
+  "refused",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

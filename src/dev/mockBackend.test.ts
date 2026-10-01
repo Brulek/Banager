@@ -313,6 +313,20 @@ describe("the browser preview's mock backend", () => {
     expect(snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/usr/local")).toEqual([]);
   });
 
+  it("has an Ollama at an https address and a Python with no pip with ?state=refused, neither listing anything", async () => {
+    const { backend } = backendFor({ state: "refused" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const unasked = snapshot.instances.filter((i) => i.status.unavailable !== null && i.adapter_id !== "uv");
+    expect(unasked.map((i) => [i.id, i.status.unavailable])).toEqual([
+      ["ollama:https://ollama.home.lan", "HttpsHostRefused"],
+      ["pip:/opt/local/bin/python3.13", "NoPip"],
+    ]);
+    for (const { id } of unasked) {
+      expect(snapshot.artifacts.filter((a) => a.key.instance_id === id)).toEqual([]);
+      expect(snapshot.updates.filter((u) => u.key.instance_id === id)).toEqual([]);
+    }
+  });
+
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
