@@ -72,8 +72,15 @@ export interface ArtifactFacts {
   family: string | null;
   /** What Homebrew says about this formula or cask; null for other sources and for a package with nothing to say. */
   homebrew: HomebrewFacts | null;
+  /**
+   * The commands this artifact puts on the Mac, sorted by name, and which
+   * copy runs when each is typed in Terminal (`commands::judge`). Empty
+   * when Banager found none, or could not look this round.
+   */
+  commands: CommandFact[];
 }
-export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null };
+/** Shared by every artifact with nothing more to say: never mutate it. */
+export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null, commands: [] };
 /**
  * Homebrew's own state for one formula or cask, copied from `brew info
  * --installed --json=v2`. Mirrors `HomebrewFacts` in
@@ -97,6 +104,25 @@ export interface HomebrewLifecycle {
   reason: string | null;
   replacement: string | null;
 }
+/**
+ * One command an artifact provides. Mirrors `CommandFact` in
+ * crates/banager-core/src/model.rs. `state` is null where Banager says
+ * nothing about which copy runs: a Homebrew dependency or keg-only
+ * formula, a copy it could not place, and every command while the `PATH`
+ * it has is not the login shell's.
+ */
+export interface CommandFact {
+  name: string;
+  state: CommandState | null;
+}
+/**
+ * What typing a command runs, judged against the `PATH` Banager read when
+ * it opened. Mirrors `CommandState` (externally tagged): `ShadowedBy.by` is
+ * the artifact whose file comes first on `PATH`, null for one no artifact
+ * provides; `NotOnPath.dir` is the folder the command is in, with the home
+ * folder as `~`.
+ */
+export type CommandState = "Runs" | { ShadowedBy: { by: ArtifactKey | null } } | { NotOnPath: { dir: string } };
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
  * `UninstallBlocked` in crates/banager-core/src/model.rs: bare-string unit

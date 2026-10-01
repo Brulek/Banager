@@ -301,6 +301,21 @@ pub struct ArtifactFacts {
     /// fetches. `None` for every other source, and for a Homebrew package
     /// with nothing of the kind to say.
     pub homebrew: Option<HomebrewFacts>,
+    /// The commands this artifact puts on the Mac, by name, and which copy
+    /// runs when the user types each one in Terminal (`CommandFact`).
+    /// Worked out after the inventory, once per refresh round, from the
+    /// whole snapshot and the `PATH` Banager read at launch
+    /// (`commands::judge`, through `Session::refresh`); sorted by name.
+    /// Empty when the artifact provides no command Banager could find,
+    /// for every artifact while a round could not read the folders
+    /// (`commands::CommandBudget`), and for sources whose commands Banager
+    /// does not look for (Ollama models, pip).
+    pub commands: Vec<CommandFact>,
+    /// What the inventory read about this artifact's commands, for
+    /// `commands::judge`: never on the wire (the window has `commands`,
+    /// which is the answer), so not in the TypeScript mirror either.
+    #[serde(skip)]
+    pub command_inputs: CommandInputs,
 }
 
 /// Homebrew's own state for one installed formula or cask. Every field is
@@ -334,6 +349,83 @@ pub struct HomebrewLifecycle {
     pub date: Option<String>,
     pub reason: Option<String>,
     pub replacement: Option<String>,
+}
+
+/// One command an artifact provides: the name typed in Terminal, and what
+/// typing it runs. Payload of `ArtifactFacts.commands`; mirrored by
+/// `CommandFact` in src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandFact {
+    /// `claude`, `grok`, `agent`, `ruff`.
+    pub name: String,
+    /// `None`: Banager says nothing about which copy runs -- for a Homebrew
+    /// dependency or keg-only formula, whose commands are left off `PATH`
+    /// on purpose or were never asked for, for a copy whose file is there
+    /// but could not be placed (not executable, or its folder is on `PATH`
+    /// and it was not found there), and for every command while the `PATH`
+    /// Banager has is not the login shell's (`Session::note_login_path`).
+    /// The name is still listed, so two copies of one tool can be told
+    /// apart from one.
+    pub state: Option<CommandState>,
+}
+
+/// What typing a command runs, judged against the `PATH` Banager read when
+/// it opened, the way a shell looks a name up: the first folder on `PATH`
+/// holding an executable file of that name wins (`commands::judge`).
+/// Externally tagged on the wire: `"Runs"`, `{"ShadowedBy":{"by":…}}`,
+/// `{"NotOnPath":{"dir":"~/.local/bin"}}`; mirrored by `CommandState` in
+/// src/lib/types.ts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandState {
+    /// The first executable of this name on `PATH` is this copy (or a link
+    /// that leads to the same file).
+    Runs,
+    /// This copy is on `PATH`, behind another executable of the same name
+    /// that comes first. `by` is the artifact that one belongs to, when
+    /// some artifact in the snapshot provides that very file; `None` when
+    /// none does ("another program with this name").
+    ShadowedBy { by: Option<ArtifactKey> },
+    /// Nothing on `PATH` leads to this copy, and the folder its command is
+    /// in is not on `PATH`. `dir` is that folder with the home folder as
+    /// `~` (`scan::display_path`): text the page shows and its Copy Path
+    /// copies, as the Other Programs page's paths are.
+    NotOnPath { dir: String },
+}
+
+/// What an inventory read about an artifact's commands: the input
+/// `commands::judge` turns into `ArtifactFacts.commands`. Not on the wire.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommandInputs {
+    /// The commands the source's own answer names: a Homebrew cask's
+    /// `binary` stanzas (`brew/parse.rs`), a pipx tool's `app_paths`, the
+    /// `- name (path)` lines of `uv tool list --show-paths`, the `bins` of
+    /// Cargo's `.crates2.json`. Empty for the sources whose commands
+    /// `commands::judge` finds itself: a Homebrew formula's and an npm
+    /// package's links in their prefix's `bin`, and a tool with its own
+    /// installer's launcher and the commands its recipe names.
+    pub provided: Vec<ProvidedCommand>,
+    /// Homebrew's `keg_only` for a formula: Homebrew keeps it out of its
+    /// `bin` folder on purpose (macOS has its own `curl`), so no judgement
+    /// is made about its commands, even when it was linked by hand.
+    pub keg_only: bool,
+}
+
+/// One command a source's own answer names (`CommandInputs.provided`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProvidedCommand {
+    /// The name typed in Terminal.
+    pub name: String,
+    /// The file the source says the command is: a link in a `bin` folder
+    /// (`/opt/homebrew/bin/grok`, `~/.local/bin/ruff`), or, for pipx, the
+    /// program in the tool's own environment (`<venv>/bin/black`).
+    pub path: PathBuf,
+    /// Where `path` has to lead, every link followed, to be this
+    /// artifact's: the uv tool's environment, a cask binary's own file.
+    /// Empty when the source vouches for the file wherever it is. Links
+    /// are followed and compared because two sources can name one path --
+    /// pipx and uv both put `ruff` in `~/.local/bin`, and only one of them
+    /// installed the file that is there now.
+    pub within: Vec<PathBuf>,
 }
 
 /// Why the tool itself will refuse to uninstall this one package, although
@@ -1527,11 +1619,12 @@ mod tests {
     #[test]
     fn test_facts_is_an_object_with_explicit_nulls_on_the_wire_and_optional_when_read() {
         // `src/lib/types.ts` spells it `facts: ArtifactFacts` with
-        // `family: string | null`, and `NO_FACTS` is this default.
+        // `family: string | null`, `homebrew: HomebrewFacts | null` and
+        // `commands: CommandFact[]`, and `NO_FACTS` is this default.
         let facts = ArtifactFacts::default();
         assert_eq!(
             serde_json::to_string(&facts).unwrap(),
-            r#"{"family":null,"homebrew":null}"#
+            r#"{"family":null,"homebrew":null,"commands":[]}"#
         );
         // A payload written before a fact existed still reads.
         assert_eq!(
@@ -1544,7 +1637,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&claude).unwrap(),
-            r#"{"family":"claude-code","homebrew":null}"#
+            r#"{"family":"claude-code","homebrew":null,"commands":[]}"#
         );
     }
 
@@ -1570,7 +1663,7 @@ mod tests {
         let json = serde_json::to_string(&facts).unwrap();
         assert_eq!(
             json,
-            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]}}"#
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[]}"#
         );
         assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
         // Fields a payload leaves out read as empty.
@@ -1582,6 +1675,73 @@ mod tests {
             serde_json::from_str::<HomebrewLifecycle>("{}").unwrap(),
             HomebrewLifecycle::default()
         );
+    }
+
+    #[test]
+    fn test_command_facts_are_externally_tagged_and_their_inputs_never_reach_the_wire() {
+        // `src/lib/types.ts` spells `CommandState` as the bare string
+        // "Runs" and single-key objects for the two with a payload, and
+        // `CommandFact.state` as `CommandState | null`.
+        let key = ArtifactKey {
+            instance_id: "npm:/opt/homebrew".to_string(),
+            kind: ArtifactKind::Package,
+            name: "@anthropic-ai/claude-code".to_string(),
+        };
+        let facts = ArtifactFacts {
+            family: None,
+            homebrew: None,
+            commands: vec![
+                CommandFact {
+                    name: "agent".to_string(),
+                    state: Some(CommandState::ShadowedBy {
+                        by: Some(key.clone()),
+                    }),
+                },
+                CommandFact {
+                    name: "claude".to_string(),
+                    state: Some(CommandState::Runs),
+                },
+                CommandFact {
+                    name: "grok".to_string(),
+                    state: Some(CommandState::NotOnPath {
+                        dir: "~/.grok/bin".to_string(),
+                    }),
+                },
+                CommandFact {
+                    name: "rg".to_string(),
+                    state: Some(CommandState::ShadowedBy { by: None }),
+                },
+                CommandFact {
+                    name: "curl".to_string(),
+                    state: None,
+                },
+            ],
+            command_inputs: CommandInputs {
+                provided: vec![ProvidedCommand {
+                    name: "claude".to_string(),
+                    path: PathBuf::from("/opt/homebrew/bin/claude"),
+                    within: Vec::new(),
+                }],
+                keg_only: true,
+            },
+        };
+        let json = serde_json::to_string(&facts).unwrap();
+        assert_eq!(
+            json,
+            concat!(
+                r#"{"family":null,"homebrew":null,"commands":["#,
+                r#"{"name":"agent","state":{"ShadowedBy":{"by":{"instance_id":"npm:/opt/homebrew","kind":"Package","name":"@anthropic-ai/claude-code"}}}},"#,
+                r#"{"name":"claude","state":"Runs"},"#,
+                r#"{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},"#,
+                r#"{"name":"rg","state":{"ShadowedBy":{"by":null}}},"#,
+                r#"{"name":"curl","state":null}"#,
+                "]}"
+            )
+        );
+        // The inputs stay behind: what comes back is the answer alone.
+        let back: ArtifactFacts = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.commands, facts.commands);
+        assert_eq!(back.command_inputs, CommandInputs::default());
     }
 
     #[test]

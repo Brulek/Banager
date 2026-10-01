@@ -7,11 +7,11 @@ describe("families", () => {
     // `ArtifactFacts` in crates/banager-core/src/model.rs serialises to
     // exactly these (its test
     // test_facts_is_an_object_with_explicit_nulls_on_the_wire_and_optional_when_read).
-    const none: ArtifactFacts = JSON.parse('{"family":null,"homebrew":null}');
-    const codex: ArtifactFacts = JSON.parse('{"family":"codex","homebrew":null}');
+    const none: ArtifactFacts = JSON.parse('{"family":null,"homebrew":null,"commands":[]}');
+    const codex: ArtifactFacts = JSON.parse('{"family":"codex","homebrew":null,"commands":[]}');
     expect(none).toEqual(NO_FACTS);
     expect(codex).toEqual({ ...NO_FACTS, family: "codex" });
-    expect(JSON.stringify(codex)).toBe('{"family":"codex","homebrew":null}');
+    expect(JSON.stringify(codex)).toBe('{"family":"codex","homebrew":null,"commands":[]}');
     expect(JSON.parse(JSON.stringify(NO_FACTS))).toEqual(NO_FACTS);
   });
 

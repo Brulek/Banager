@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   ArtifactFacts,
+  CommandState,
   Snapshot,
   Outcome,
   OperationEvent,
@@ -120,7 +121,7 @@ describe("types", () => {
     // The literal `test_homebrew_facts_spell_every_field_on_the_wire_and_read_back`
     // in crates/banager-core/src/model.rs asserts, byte for byte.
     const wire =
-      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]}}';
+      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]},"commands":[]}';
     const facts = {
       family: null,
       homebrew: {
@@ -129,10 +130,11 @@ describe("types", () => {
         caveats: 'Turn on "Launch at login".\n',
         other_versions: ["3.6.3"],
       },
+      commands: [],
     } satisfies ArtifactFacts;
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire) as ArtifactFacts)).toEqual(facts);
-    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null}');
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[]}');
   });
 
   it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
@@ -167,6 +169,44 @@ describe("types", () => {
     expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod","UvToolDirSet"]');
     const removable: UninstallBlocked | null = null;
     expect(roundTrip(removable)).toBeNull();
+  });
+
+  it("spells ArtifactFacts' commands as model.rs's wire test does", () => {
+    // `test_command_facts_are_externally_tagged_and_their_inputs_never_reach_the_wire`
+    // in crates/banager-core/src/model.rs serialises these exact facts;
+    // the string below is what it asserts.
+    const facts: ArtifactFacts = {
+      family: null,
+      homebrew: null,
+      commands: [
+        {
+          name: "agent",
+          state: {
+            ShadowedBy: {
+              by: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" },
+            },
+          },
+        },
+        { name: "claude", state: "Runs" },
+        { name: "grok", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+        { name: "rg", state: { ShadowedBy: { by: null } } },
+        { name: "curl", state: null },
+      ],
+    };
+    const wire =
+      '{"family":null,"homebrew":null,"commands":[' +
+      '{"name":"agent","state":{"ShadowedBy":{"by":{"instance_id":"npm:/opt/homebrew","kind":"Package","name":"@anthropic-ai/claude-code"}}}},' +
+      '{"name":"claude","state":"Runs"},' +
+      '{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},' +
+      '{"name":"rg","state":{"ShadowedBy":{"by":null}}},' +
+      '{"name":"curl","state":null}' +
+      "]}";
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip(facts)).toEqual(facts);
+    // `ArtifactFacts::default()`.
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[]}');
+    const states: CommandState[] = facts.commands.flatMap((command) => (command.state === null ? [] : [command.state]));
+    expect(states).toHaveLength(4);
   });
 
   it("spells InstanceStatus as an always-present object with bare-string variants", () => {
