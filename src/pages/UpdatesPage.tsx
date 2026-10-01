@@ -109,14 +109,22 @@ export function updatesHeadline(t: Translate, updatingCount: number, startableCo
  * checkbox (`useStartableUpdates`), and those an update is installing now
  * (`isUnderway`) -- so the two can never say different numbers. Null
  * until the snapshot and the settings are in, and while the page lists
- * nothing at all and says so in a sentence of its own.
+ * nothing at all and says so in a sentence of its own. While the
+ * 「显示」 popup shows only the AI coding tools, of those alone, as the
+ * page's list and its Update button count them.
  */
 export function useUpdatesHeadline(): string | null {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
+  const show = useUiStore((s) => s.updatesShow);
   const operationFor = useUpdateOperationFor();
   const startable = useStartableUpdates();
+  const inView = useMemo(() => {
+    if (show === "all" || !snapshot) return () => true;
+    const byId = new Map(snapshot.artifacts.map((artifact) => [artifactKeyId(artifact.key), artifact]));
+    return (candidate: UpdateCandidate) => shownBy(show, byId.get(artifactKeyId(candidate.key)));
+  }, [show, snapshot]);
   const listed = useMemo(
     () =>
       snapshot && settings
@@ -125,8 +133,10 @@ export function useUpdatesHeadline(): string | null {
     [snapshot, settings],
   );
   if (listed === undefined || startable === undefined || !listed.any) return null;
-  const updating = listed.actionable.filter((candidate) => isUnderway(operationFor(candidate))).length;
-  return updatesHeadline(t, updating, startable.length);
+  const updating = listed.actionable.filter(
+    (candidate) => inView(candidate) && isUnderway(operationFor(candidate)),
+  ).length;
+  return updatesHeadline(t, updating, startable.filter(inView).length);
 }
 
 /**
@@ -971,7 +981,7 @@ export function UpdatesPage() {
             }}
             className={BUTTON.regular.default}
           >
-            {show === "all" ? t("updates.updateAll") : t("families.updateAllCount", { number: startableCount })}
+            {show === "all" ? t("updates.updateAll") : t("families.updateTheseCount", { number: startableCount })}
           </button>
         )}
       </ToolbarItems>

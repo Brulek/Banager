@@ -164,7 +164,7 @@ describe("the polish-3 copy rules, in English", () => {
       "updates.selectAll",
       "updates.updateSelectedCount",
       "updates.updateAll",
-      "families.updateAllCount",
+      "families.updateTheseCount",
       "families.showAll",
       "families.showAi",
       "updates.update",

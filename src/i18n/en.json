@@ -81,7 +81,7 @@
     "none": "No common AI coding tools were found on this Mac",
     "noneInSource": "No common AI coding tools were found in {{source}}",
     "noUpdates": "No AI coding tool updates here",
-    "updateAllCount": "Update All ({{number}})"
+    "updateTheseCount": "Update These {{number}}"
   },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",

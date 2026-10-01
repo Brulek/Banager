@@ -29,17 +29,20 @@ export interface UiState {
   setInstalledSort(sort: InstalledSort): void;
   // What the Installed and the Updates page's 「显示」 popups show: every
   // tool, or only the AI coding tools (`ToolShow`, src/lib/families.ts).
-  // One for each page, and kept as the sort is while the window is open;
-  // only a notice's Show resets the Installed page's, so the tool it
-  // shows is in the list.
+  // One for each page, kept while the page stays open. Every way onto a
+  // page from outside it -- the sidebar's row, the menu bar's View menu,
+  // ⌘F from another page, a notice's Show, the Overview's Review Updates,
+  // the update notification -- sets it back to every tool, as each of
+  // those promises a list (or a count) of everything.
   installedShow: ToolShow;
   setInstalledShow(show: ToolShow): void;
   updatesShow: ToolShow;
   setUpdatesShow(show: ToolShow): void;
   // Opens the Installed page showing one source's tools or, with null,
   // all of them: the sidebar's entry, whose count is of everything
-  // installed. Either way the search starts empty, so the list is the one
-  // the source or the count promised, not an old search's.
+  // installed. Either way the search starts empty and every tool is shown
+  // (`installedShow`), so the list is the one the source or the count
+  // promised, not an old search's or an old 「显示」's.
   openInstalled(instanceId: string | null): void;
   // A page's row in the sidebar, and its item in the menu bar's View menu
   // (⌘1 to ⌘4, src/lib/menu.ts): the page, and Installed on everything
@@ -49,7 +52,8 @@ export interface UiState {
   // search box takes the focus as soon as it is on screen -- at once, or
   // once the page has loaded -- and says so (`searchFocused`). From another
   // page, the page opens as the sidebar opens it, on everything with the
-  // search empty; on it, it keeps its source and its search, whose text is
+  // search empty and every tool shown; on it, it keeps its source, its
+  // 「显示」 and its search, whose text is
   // then selected, to be typed over. Going to any page by any other way
   // drops a search not yet focused, so it cannot take the focus later.
   searchFocusRequested: boolean;
@@ -147,7 +151,17 @@ let logSeq = 0;
 export const useUiStore = create<UiState>((set, get) => ({
   // The Overview: what the Mac looks like at a glance, before any list.
   page: "overview",
-  setPage: (p) => set({ page: p, searchFocusRequested: false, hiddenUpdatesRequested: false, inspectRequested: null }),
+  // The Updates page, by whatever way (the sidebar, the menu bar, the
+  // Overview's Review Updates, the update notification), opens on every
+  // update: each of them counted them all (`updatesShow`).
+  setPage: (p) =>
+    set({
+      page: p,
+      searchFocusRequested: false,
+      hiddenUpdatesRequested: false,
+      inspectRequested: null,
+      ...(p === "updates" ? { updatesShow: "all" as const } : {}),
+    }),
   query: "",
   setQuery: (q) => set({ query: q }),
   installedFilter: null,
@@ -162,6 +176,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({
       page: "installed",
       installedFilter: instanceId,
+      installedShow: "all",
       query: "",
       searchFocusRequested: false,
       hiddenUpdatesRequested: false,
@@ -176,6 +191,7 @@ export const useUiStore = create<UiState>((set, get) => ({
         : {
             page: "installed",
             installedFilter: null,
+            installedShow: "all",
             query: "",
             searchFocusRequested: true,
             hiddenUpdatesRequested: false,

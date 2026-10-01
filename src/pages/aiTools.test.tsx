@@ -223,6 +223,28 @@ describe("the Installed page with AI Tools shown", () => {
     useUiStore.getState().showInstalledTool(glib);
     expect(useUiStore.getState().installedShow).toBe("all");
   });
+
+  it("shows every tool again when the sidebar or the menu bar opens the page, whose counts are of everything", () => {
+    useUiStore.getState().setInstalledShow("ai");
+    useUiStore.getState().openInstalled(BREW);
+    expect(useUiStore.getState().installedShow).toBe("all");
+
+    useUiStore.getState().setInstalledShow("ai");
+    useUiStore.getState().openPage("installed");
+    expect(useUiStore.getState().installedShow).toBe("all");
+  });
+
+  it("shows every tool again when ⌘F opens the page from another, and keeps the choice when ⌘F is pressed on it", () => {
+    useUiStore.getState().openPage("installed");
+    useUiStore.getState().setInstalledShow("ai");
+    useUiStore.getState().searchInstalled();
+    expect(useUiStore.getState().installedShow).toBe("ai");
+
+    useUiStore.getState().setPage("overview");
+    useUiStore.getState().searchInstalled();
+    expect(useUiStore.getState().page).toBe("installed");
+    expect(useUiStore.getState().installedShow).toBe("all");
+  });
 });
 
 describe("the Updates page with AI Tools shown", () => {
@@ -241,8 +263,31 @@ describe("the Updates page with AI Tools shown", () => {
 
     showAiTools();
     await waitFor(() => expect(rowNames()).toEqual(["@openai/codex", "Claude Code"]));
-    expect(screen.getByRole("button", { name: "Update All (2)" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Update These 2" })).toBeEnabled();
     expect(useUiStore.getState().updatesShow).toBe("ai");
+  });
+
+  it("counts only the AI tools' updates in the toolbar's subtitle while they alone are shown", async () => {
+    const { container } = renderUpdates();
+    await screen.findByText("glib", { selector: "[data-tool-row] p" });
+    const subtitle = () => container.querySelector("[data-toolbar-subtitle]")?.textContent;
+    const everything = subtitle();
+    expect(everything).toMatch(/^\d+ updates available$/);
+    expect(everything).not.toBe("2 updates available");
+
+    showAiTools();
+    await waitFor(() => expect(subtitle()).toBe("2 updates available"));
+  });
+
+  it("shows every update again whenever the page is opened, as the sidebar, the Overview and the notification count them all", () => {
+    for (const open of [
+      () => useUiStore.getState().setPage("updates"),
+      () => useUiStore.getState().openPage("updates"),
+    ]) {
+      useUiStore.getState().setUpdatesShow("ai");
+      open();
+      expect(useUiStore.getState().updatesShow).toBe("all");
+    }
   });
 
   it("ticks only the rows in sight with Select All, and leaves a row ticked before out of the count", async () => {
@@ -253,7 +298,7 @@ describe("the Updates page with AI Tools shown", () => {
 
     showAiTools();
     // glib is out of sight: nothing in sight is ticked.
-    expect(await screen.findByRole("button", { name: "Update All (2)" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Update These 2" })).toBeInTheDocument();
     const selectAll = screen.getByRole("checkbox", { name: "Select all items that can be updated here" });
     expect(selectAll).not.toBeChecked();
 
@@ -273,7 +318,7 @@ describe("the Updates page with AI Tools shown", () => {
     renderUpdates();
     await screen.findByText("glib", { selector: "[data-tool-row] p" });
     showAiTools();
-    fireEvent.click(await screen.findByRole("button", { name: "Update All (2)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update These 2" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Update 2 tools?" });
     await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(2));
@@ -292,7 +337,7 @@ describe("the Updates page with AI Tools shown", () => {
     showAiTools();
     expect(await screen.findByText("No AI coding tool updates here")).toBeInTheDocument();
     expect(rowNames()).toEqual([]);
-    expect(screen.getByRole("button", { name: "Update All (0)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Update These 0" })).toBeDisabled();
   });
 
   it("says no common AI coding tools were found on this Mac when none is installed", async () => {
