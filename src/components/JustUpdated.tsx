@@ -173,6 +173,12 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span title={entry.name} className="min-w-0 flex-1 truncate text-body text-foreground">
                 {entry.name}
               </span>
+              {/* The source, which the avatar's mark is all the line shows
+                  of, for a screen reader: two copies of one tool, updated
+                  from two sources, are otherwise two lines alike. */}
+              <span data-just-updated-source="" className="sr-only">
+                {entry.sourceLabel}
+              </span>
               {/* The version and the time each take a column, with or
                   without one, so that the ticks line up down the list. */}
               <span className="min-w-20 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">

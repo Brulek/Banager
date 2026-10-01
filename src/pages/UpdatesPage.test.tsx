@@ -3164,7 +3164,7 @@ describe("UpdatesPage", () => {
       expect(await findByText("1 update available")).toBeInTheDocument();
       expect(within(section).queryByRole("checkbox")).toBeNull();
       expect(within(section).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-        "Clear the Just updated list",
+        "Clear the Recently Updated list",
       ]);
 
       fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
@@ -3178,6 +3178,22 @@ describe("UpdatesPage", () => {
       expect(plannedNames()).toEqual(["onyx"]);
     });
 
+    it("puts the focus on the list's first row once Clear has taken the section away", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      renderPage();
+
+      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      const clear = within(section).getByRole("button", { name: "Clear the Recently Updated list" });
+      clear.focus();
+      fireEvent.click(clear);
+      await waitFor(() => expect(justUpdated()).toBeNull());
+      await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")).not.toBeNull());
+      expect(document.activeElement?.closest("[data-tool-row]")).toHaveTextContent("OnyX");
+    });
+
     it("hides itself on Clear, until the next update succeeds", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
@@ -3186,7 +3202,7 @@ describe("UpdatesPage", () => {
       const { queryClient } = renderPage();
 
       const section = await screen.findByRole("region", { name: "Recently Updated" });
-      fireEvent.click(within(section).getByRole("button", { name: "Clear the Just updated list" }));
+      fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
       await waitFor(() => expect(justUpdated()).toBeNull());
       expect(useUiStore.getState().clearedJustUpdated).toEqual([7]);
       expect(rowNames()).toEqual(["OnyX"]);
@@ -3312,7 +3328,7 @@ describe("UpdatesPage", () => {
         renderPage();
 
         const section = await screen.findByRole("region", { name: "Recently Updated" });
-        fireEvent.click(within(section).getByRole("button", { name: "Clear the Just updated list" }));
+        fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
         await waitFor(() => expect(justUpdated()).toBeNull());
         expect(mockInvoke).toHaveBeenCalledWith("clear_history");
       });
@@ -3383,9 +3399,10 @@ describe("UpdatesPage", () => {
       expect(justUpdated()).toBeNull();
     });
 
-    it("calls itself 刚更新的 in Chinese, with 清除 and 已更新", () => {
+    it("calls itself 最近更新 in Chinese, with 清除 and 已更新, and Clear by the same name", () => {
       expect(zhCN.updates.justUpdated.title).toBe("最近更新");
       expect(zhCN.updates.justUpdated.clear).toBe("清除");
+      expect(zhCN.updates.justUpdated.clearLabel).toBe("清除“最近更新”列表");
       expect(zhCN.updates.progress.succeeded).toBe("已更新");
     });
   });

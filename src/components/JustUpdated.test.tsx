@@ -88,7 +88,7 @@ describe("JustUpdated", () => {
     const section = screen.getByRole("region", { name: "Recently Updated" });
     const title = within(section).getByRole("heading", { name: "Recently Updated" });
     expect(title).toHaveClass("text-title");
-    const clear = within(section).getByRole("button", { name: "Clear the Just updated list" });
+    const clear = within(section).getByRole("button", { name: "Clear the Recently Updated list" });
     expect(clear.className).toBe(BUTTON.small.grey);
     // Beside the title, not at the far end.
     expect(clear.parentElement).toBe(title.parentElement);
@@ -113,6 +113,26 @@ describe("JustUpdated", () => {
     expect(done).toHaveClass("text-small", "text-foreground");
     expect(done.querySelector("svg")).toHaveAttribute("width", "12");
     expect(line.querySelector("time")?.parentElement).toHaveClass("text-small", "text-muted");
+  });
+
+  it("says each line's source to a screen reader, so two copies of one tool are two lines apart", () => {
+    const npm = {
+      ...entry,
+      id: "op:5",
+      opId: 5,
+      key: { ...entry.key, instance_id: "npm:/opt/homebrew" },
+      adapterId: "npm",
+      sourceLabel: "npm",
+    };
+    renderWithProviders(<JustUpdated entries={[entry, npm]} onClear={() => {}} />);
+
+    const lines = screen.getAllByRole("listitem");
+    expect(lines.map((line) => line.querySelector("[data-just-updated-source]")?.textContent)).toEqual([
+      "Homebrew",
+      "npm",
+    ]);
+    // Heard, not seen: the avatar's mark says it in sight.
+    expect(within(lines[1]).getByText("npm")).toHaveClass("sr-only");
   });
 
   it("says Today and the time for one that finished today, and Verified where Banager read the change", () => {

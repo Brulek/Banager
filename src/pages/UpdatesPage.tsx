@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { elapsedSince } from "../lib/format";
@@ -58,6 +58,7 @@ import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
+import { focusOrFallback } from "../components/ui/focus";
 import type {
   InstanceNote,
   InstalledArtifact,
@@ -397,6 +398,8 @@ export function UpdatesPage() {
   // its progress; Update all and Update selected to the list's first row,
   // as the button turns off or into Update all -- never the window's body.
   const listHandle = useRef<VirtualListHandle | null>(null);
+  // Clear was pressed, and the focus is to be found a place once its section is gone.
+  const refocusAfterClear = useRef(false);
   const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
   const focusList = () => listHandle.current?.focusFirst();
 
@@ -553,6 +556,7 @@ export function UpdatesPage() {
   // Clear takes this window's off its list, and has the history note the
   // time, so that none of what was shown comes back after a restart.
   const clearJustUpdatedList = () => {
+    refocusAfterClear.current = true;
     clearJustUpdated(justUpdated.flatMap((entry) => (entry.opId === null ? [] : [entry.opId])));
     clearHistory.mutate();
   };
@@ -629,6 +633,20 @@ export function UpdatesPage() {
     ],
     [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show],
   );
+
+  // Once Clear has taken 「最近更新」 away, its button with it, the focus
+  // goes to the list's first row, or, with no list, the page's title --
+  // not the window's body, from where the next Tab would start over at
+  // the sidebar. The history's own lines go when it answers, so this
+  // waits for the section to be gone.
+  useEffect(() => {
+    if (!refocusAfterClear.current || justUpdated.length > 0) return;
+    refocusAfterClear.current = false;
+    const focus = document.activeElement;
+    if (focus !== null && focus !== document.body && focus.isConnected) return;
+    if (visibleUpdates.length > 0 && items.some(keyboardRow)) listHandle.current?.focusFirst();
+    else focusOrFallback(null);
+  });
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.

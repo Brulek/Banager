@@ -303,7 +303,7 @@
     "justUpdated": {
       "title": "Recently Updated",
       "clear": "Clear",
-      "clearLabel": "Clear the Just updated list"
+      "clearLabel": "Clear the Recently Updated list"
     },
     "confirmTitleNamed": "Update “{{name}}”?",
     "confirmTitle_one": "Update {{count}} tool?",
