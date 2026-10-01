@@ -13,7 +13,8 @@
 //!
 //! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS` -- by
 //! the clock, or by the newest record when the clock says later, so a
-//! clock set far ahead drops nothing (`age_anchor`).
+//! clock set far ahead drops nothing (`age_anchor`). What is listed is
+//! never older than `MAX_AGE_MS` by the clock (`HistoryStore::view`).
 //! A missing, unreadable or malformed file is an empty history, and a file
 //! a newer Banager wrote is left exactly as it is (`HistoryStore::open`).
 //! Written whole, to a staging file beside it renamed into place, as
@@ -475,13 +476,26 @@ impl HistoryStore {
         self.view()
     }
 
-    /// What `get_history` answers.
+    /// What `get_history` answers: the records, newest first, but none
+    /// older than `MAX_AGE_MS` by the clock. The file can keep older ones
+    /// (`age_anchor`: after more than 180 days with no update, up to 180
+    /// days before its newest record); they are not listed, so an idle
+    /// Mac's 「最近更新」 shows nothing older than 180 days either. A
+    /// clock set far ahead lists little until it is put right, and loses
+    /// nothing.
     pub fn view(&self) -> HistoryView {
+        let oldest = (self.now_fn)().saturating_sub(MAX_AGE_MS);
         let state = self.state.lock().unwrap();
         HistoryView {
             run: self.run.clone(),
             cleared_before: state.cleared_before,
-            records: state.records.iter().rev().cloned().collect(),
+            records: state
+                .records
+                .iter()
+                .rev()
+                .filter(|r| r.finished_at >= oldest)
+                .cloned()
+                .collect(),
         }
     }
 
@@ -887,7 +901,19 @@ mod tests {
         let k = key("cmake");
         store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
         assert!(store.flush(Duration::from_secs(5)));
-        let mut names: Vec<String> = store
+        // Under the wrong clock the page lists only what is within 180
+        // days of it ...
+        let listed: Vec<String> = store
+            .view()
+            .records
+            .iter()
+            .map(|r| r.key.name.clone())
+            .collect();
+        assert_eq!(listed, vec!["cmake"]);
+        drop(store);
+        // ... and with the clock put right, the history is whole.
+        let again = HistoryStore::open_with_clock(dir.file(), now);
+        let mut names: Vec<String> = again
             .view()
             .records
             .iter()
@@ -912,6 +938,34 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["kept", "newest"]
         );
+    }
+
+    #[test]
+    fn test_after_half_a_year_with_no_update_the_page_lists_nothing_older_than_180_days() {
+        // No update for more than 180 days: the file's age rule counts
+        // from its newest record, so it may keep these, but the page
+        // lists nothing older than 180 days by the clock.
+        let dir = TempDir::new("idle");
+        let file = HistoryFile {
+            format: HISTORY_FORMAT,
+            cleared_before: None,
+            records: vec![
+                record_at("long-ago", NOW - 300 * DAY),
+                record_at("last", NOW - 200 * DAY),
+            ],
+        };
+        std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(store.view().records, vec![]);
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        let listed: Vec<String> = store
+            .view()
+            .records
+            .iter()
+            .map(|r| r.key.name.clone())
+            .collect();
+        assert_eq!(listed, vec!["cmake"]);
     }
 
     #[test]
