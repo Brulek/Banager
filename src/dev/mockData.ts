@@ -13,6 +13,7 @@
 import type {
   ArtifactKey,
   ArtifactKind,
+  CommandFact,
   DetectOutcome,
   HomebrewFacts,
   InstalledArtifact,
@@ -801,8 +802,19 @@ function addMany(world: World): void {
   );
 }
 
-/** The world `?state=` describes, fresh. */
+/**
+ * The world `?state=` describes, fresh, with what its tools' commands run
+ * (`addCommands`), worked out from that state's sources as the backend's
+ * `commands::judge` works it out from the disk.
+ */
 export function buildWorld(state: ScenarioState): World {
+  const world = scenarioWorld(state);
+  addCommands(world);
+  return world;
+}
+
+/** The world `?state=` describes, before its commands. */
+function scenarioWorld(state: ScenarioState): World {
   const world = fullWorld();
   switch (state) {
     case "full":
@@ -967,4 +979,128 @@ export function unknownScan(scan: Exclude<ScenarioScan, "error">): UnknownScan {
     attributed,
     stopped: scan === "stopped" ? { TimeLimit: { max_secs: 10 } } : null,
   };
+}
+
+// ------------------------------------------- which copy a command runs
+
+/** Commands that run the copy they belong to. */
+function runs(names: string[]): CommandFact[] {
+  return names.map((name) => ({ name, state: "Runs" }));
+}
+
+/** Commands Banager names and says nothing about: a keg-only formula's, a dependency's. */
+function unjudged(names: string[]): CommandFact[] {
+  return names.map((name) => ({ name, state: null }));
+}
+
+/**
+ * The commands each of the pretend Mac's tools puts on it, by its source's
+ * adapter id, kind and name -- so npm's rows keep theirs when `?state=notices`
+ * moves them to the npm in /usr/local -- and what typing each runs where
+ * nothing else is on the same name.
+ */
+const COMMANDS: Record<string, CommandFact[]> = {
+  "brew|Formula|ffmpeg": runs(["ffmpeg", "ffplay", "ffprobe"]),
+  "brew|Formula|gh": runs(["gh"]),
+  // More than three on one line: 「git、git-cvsserver、git-receive-pack等7个」.
+  "brew|Formula|git": runs([
+    "git",
+    "git-cvsserver",
+    "git-receive-pack",
+    "git-shell",
+    "git-upload-archive",
+    "git-upload-pack",
+    "scalar",
+  ]),
+  "brew|Formula|htop": runs(["htop"]),
+  "brew|Formula|jq": runs(["jq"]),
+  // Keg-only, linked by hand: named, never judged. Its `npm` and `npx`
+  // links are npm's own now (`npm install -g npm`).
+  "brew|Formula|node@22": unjudged(["node"]),
+  "brew|Formula|ollama": runs(["ollama"]),
+  "brew|Formula|pipx": runs(["pipx"]),
+  "brew|Formula|postgresql@17": runs(["pg_dump", "pg_restore", "postgres", "psql"]),
+  "brew|Formula|python@3.13": runs(["idle3.13", "pip3.13", "pydoc3.13", "python3.13"]),
+  "brew|Formula|ripgrep": runs(["rg"]),
+  "brew|Formula|wget": runs(["wget"]),
+  // Dependencies: nobody asked for them by name.
+  "brew|Formula|openssl@3": unjudged(["openssl"]),
+  "brew|Formula|sqlite": unjudged(["sqlite3"]),
+  "brew|Formula|xz": unjudged(["unxz", "xz", "xzcat"]),
+  "brew|Cask|android-platform-tools": runs(["adb", "fastboot"]),
+  "brew|Cask|visual-studio-code": runs(["code"]),
+  "cargo|Binary|jj-cli": runs(["jj"]),
+  "cargo|Binary|tokei": runs(["tokei"]),
+  "npm|Package|corepack": runs(["corepack"]),
+  "npm|Package|npm": runs(["npm", "npx"]),
+  "npm|Package|prettier": runs(["prettier"]),
+  "npm|Package|typescript": runs(["tsc", "tsserver"]),
+  "pipx|Tool|httpie": runs(["http", "httpie", "https"]),
+  "pipx|Tool|poetry": runs(["poetry"]),
+  "uv|Tool|pre-commit": runs(["pre-commit"]),
+  "uv|Tool|ruff": runs(["ruff"]),
+  "standalone-agy|Binary|agy": runs(["agy"]),
+  "standalone-claude|Binary|claude": runs(["claude"]),
+  // Fourteen with one verdict: one line, 「cargo、cargo-clippy、cargo-fmt等14个」.
+  "standalone-rustup|Binary|rustup": runs([
+    "cargo",
+    "cargo-clippy",
+    "cargo-fmt",
+    "cargo-miri",
+    "clippy-driver",
+    "rls",
+    "rust-analyzer",
+    "rust-gdb",
+    "rust-gdbgui",
+    "rust-lldb",
+    "rustc",
+    "rustdoc",
+    "rustfmt",
+    "rustup",
+  ]),
+};
+
+/** npm's copy of Claude Code, which `?state=notices` adds. */
+const NPM_CLAUDE = "@anthropic-ai/claude-code";
+
+/**
+ * `ArtifactFacts.commands` for the state's rows, as the backend would judge
+ * them on this Mac, consistent with what each source's notice says:
+ *
+ * - Grok Build's `grok` and `agent` are not found while `~/.grok/bin` is off
+ *   the search path (its `NotOnPath` note, `?state=full`), and named not at
+ *   all while its program is gone (`LauncherOnly`, `?state=notices`).
+ * - With npm's copy of Claude Code beside the native one (`?state=notices`),
+ *   both are the `claude-code` tool -- 「装了两份」 on both rows -- and
+ *   typing `claude` runs npm's, as the native one's `ShadowedByNpm` note says.
+ *
+ * Each row gets facts of its own: `NO_FACTS` is shared, and never changed.
+ */
+function addCommands(world: World): void {
+  const adapterOf = new Map(world.instances.map((instance) => [instance.id, instance.adapter_id]));
+  const grok = world.instances.find((instance) => instance.id === IDS.grok);
+  const npmClaude = world.artifacts.find((a) => a.key.kind === "Package" && a.key.name === NPM_CLAUDE);
+  for (const artifact of world.artifacts) {
+    const adapterId = adapterOf.get(artifact.key.instance_id) ?? "";
+    let commands = COMMANDS[`${adapterId}|${artifact.key.kind}|${artifact.key.name}`];
+    let family = artifact.facts.family;
+    if (artifact.key.instance_id === IDS.grok) {
+      const notes = grok?.status.notes ?? [];
+      const names = ["agent", "grok"];
+      commands = notes.includes("LauncherOnly")
+        ? []
+        : notes.includes("NotOnPath")
+          ? names.map((name) => ({ name, state: { NotOnPath: { dir: "~/.grok/bin" } } }))
+          : runs(names);
+    }
+    if (npmClaude !== undefined && artifact === npmClaude) {
+      family = "claude-code";
+      commands = runs(["claude"]);
+    }
+    if (npmClaude !== undefined && artifact.key.instance_id === IDS.claude) {
+      family = "claude-code";
+      commands = [{ name: "claude", state: { ShadowedBy: { by: npmClaude.key } } }];
+    }
+    if (commands !== undefined) artifact.facts = { ...artifact.facts, family, commands };
+  }
 }

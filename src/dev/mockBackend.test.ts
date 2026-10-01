@@ -13,6 +13,7 @@ import type {
   UiEvent,
   UpdateCandidate,
 } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
@@ -483,5 +484,56 @@ describe("the preview's URL switches", () => {
     const { scenario, problems } = parseScenario("?state=bogus&lang=fr");
     expect(scenario).toEqual(DEFAULT_SCENARIO);
     expect(problems).toHaveLength(2);
+  });
+});
+
+describe("the preview's commands, and which copy runs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function factsOf(snapshot: Snapshot, instanceId: string, name: string) {
+    return snapshot.artifacts.find((a) => a.key.instance_id === instanceId && a.key.name === name)?.facts;
+  }
+
+  it("says what each source's notice says: Grok Build not found off the search path, npm's Claude Code first", async () => {
+    const full = await answer<Snapshot>(backendFor().backend.invoke("refresh"));
+    // `~/.grok/bin` is off the search path in the default state (its
+    // `NotOnPath` note): both of its commands, and the folder to add.
+    const notFound = { NotOnPath: { dir: "~/.grok/bin" } };
+    expect(factsOf(full, "standalone-grok", "grok")?.commands).toEqual([
+      { name: "agent", state: notFound },
+      { name: "grok", state: notFound },
+    ]);
+    expect(factsOf(full, "standalone-claude", "claude")?.commands).toEqual([{ name: "claude", state: "Runs" }]);
+    // Keg-only: named, not judged.
+    expect(factsOf(full, "brew:/opt/homebrew", "node@22")?.commands).toEqual([{ name: "node", state: null }]);
+
+    const notices = await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
+    const npmClaude = notices.artifacts.find((a) => a.key.name === "@anthropic-ai/claude-code");
+    expect(npmClaude?.facts).toEqual({ family: "claude-code", commands: [{ name: "claude", state: "Runs" }] });
+    expect(factsOf(notices, "standalone-claude", "claude")).toEqual({
+      family: "claude-code",
+      commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude?.key } } }],
+    });
+    // The launcher with no program: nothing to name.
+    expect(factsOf(notices, "standalone-grok", "grok")?.commands).toEqual([]);
+    // npm's rows keep theirs in the npm in /usr/local.
+    expect(factsOf(notices, "npm:/usr/local", "typescript")?.commands.map((c) => c.name)).toEqual(["tsc", "tsserver"]);
+
+    // Every source answering: Grok Build's folder is on the search path.
+    const upToDate = await answer<Snapshot>(backendFor({ state: "uptodate" }).backend.invoke("refresh"));
+    expect(factsOf(upToDate, "standalone-grok", "grok")?.commands).toEqual([
+      { name: "agent", state: "Runs" },
+      { name: "grok", state: "Runs" },
+    ]);
+  });
+
+  it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
+    await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
+    expect(NO_FACTS).toEqual({ family: null, commands: [] });
   });
 });
