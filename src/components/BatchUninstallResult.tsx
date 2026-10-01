@@ -5,6 +5,7 @@ import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { namesInSentence } from "../lib/sources";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { CloseIcon, WarningFilledIcon } from "./icons";
+import { ResultRowStep } from "./FailureNextStep";
 import { BUTTON, SMALL_ICON_BUTTON } from "./ui/controls";
 import { focusOrFallback } from "./ui/focus";
 import { SMALL_WRAPPING } from "./ui/group";
@@ -14,7 +15,9 @@ import { SMALL_WRAPPING } from "./ui/group";
  * of the Installed list once every operation it started has finished: 「2
  * 个没有卸载」, then each of them with how it ended, in the operation bar's
  * words (`outcomeWords`: 「未能完成」, 「已取消」, a failure's cause), and its
- * 查看日志. Under a Homebrew formula whose dependent in the batch did not
+ * 查看日志 -- and, with technical details on, where that is the tool's own
+ * words, whose they are and what to do next (`ResultRowStep`). Under a
+ * Homebrew formula whose dependent in the batch did not
  * uninstall, the two facts that explain it, and no cause claimed beyond
  * them: that one did not uninstall, and Homebrew does not uninstall what
  * is still needed. Nothing while any of it still runs, nothing when all of
@@ -93,6 +96,9 @@ export function BatchUninstallResult() {
                       {t("common.viewLog")}
                     </button>
                   </div>
+                  {/* With technical details on, the tool's own words are
+                      the row's: whose they are, and what to do next. */}
+                  <ResultRowStep op={op} technical={technical} className={`mt-0.5 text-muted ${SMALL_WRAPPING}`} />
                   {waitedFor.length > 0 ? (
                     <p className={`mt-0.5 text-muted ${SMALL_WRAPPING}`}>
                       {t("batchUninstall.resultStillNeeded", {

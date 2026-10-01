@@ -1220,6 +1220,12 @@
       "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。",
       "needsPassword": "需要输入Mac的登录密码，无法在这里输入。",
       "passwordNotAccepted": "密码未被接受，请在密码窗口输入Mac的登录密码后重试。"
+    },
+    "toolWords": {
+      "generic": "上面是{{program}}自己的报错。可以稍后{{again}}；还是失败，就点按“查看日志”，再点按“拷贝日志”，发给懂的人看。",
+      "withCause": "上面是{{program}}自己的报错。{{line}}",
+      "inTerminal": "上面是{{program}}自己的报错。{{line}}可以点按“查看日志”，在终端里运行那里给出的命令。",
+      "noLog": "上面是{{program}}自己的报错。可以稍后{{again}}；还是失败，就把这段报错告诉懂的人。"
     }
   },
   "failureSteps": {

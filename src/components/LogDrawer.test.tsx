@@ -654,3 +654,90 @@ describe("LogDrawer, under a tool's own words", () => {
     expect(described).not.toContain(under.id);
   });
 });
+
+describe("LogDrawer, a tool's own words left only in the subtitle", () => {
+  // "Show technical details" on: the subtitle has the tool's words.
+  const technicalOn = () =>
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      if (cmd === "get_snapshot") return new Promise(() => {});
+      if (cmd === "get_settings") {
+        return Promise.resolve({
+          language: "System",
+          show_technical_details: true,
+          ignored_updates: [],
+          skipped_versions: [],
+          include_self_updating: false,
+          auto_check: false,
+          notify_updates: false,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+  const failed = (summary: string, exitCode: number | null = 1): OpSummary => ({
+    ...runningOp,
+    kind: "Upgrade",
+    name: "wget",
+    status: "Done",
+    outcome: { Failed: { exit_code: exitCode, summary } },
+  });
+  const sentence = {
+    en: "The words above are Homebrew's own error. You can click Retry later. If it still fails, show these words to someone who can help.",
+    "zh-CN": "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就把这段报错告诉懂的人。",
+  };
+
+  it("says whose they are under the subtitle when this window's log has none of its lines, in both languages", async () => {
+    technicalOn();
+    operations = [failed("Error: wget: something went wrong")];
+    try {
+      for (const lang of ["en", "zh-CN"] as const) {
+        await i18n.changeLanguage(lang);
+        const view = renderWithProviders(<LogDrawer />);
+        const step = await view.findByText(sentence[lang]);
+        expect(step).toHaveAttribute("data-failure-next-step");
+        // Over the log, and what the dialog says it is about.
+        expect(step.compareDocumentPosition(view.getByRole("log")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(view.getByRole("dialog").getAttribute("aria-describedby")?.split(" ")).toContain(step.id);
+        view.unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says it once only: not over the log when the log has the lines, nor with a cause, nor with details off", async () => {
+    technicalOn();
+    // The log has the lines: the sentence is under the log, not over it.
+    operations = [failed("Error: wget: something went wrong")];
+    const withLog = renderWithProviders(<LogDrawer />);
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "Error: wget: something went wrong" });
+    });
+    await withLog.findByText(/^The lines above are Homebrew's own error\./);
+    expect(withLog.queryByText(sentence.en)).toBeNull();
+    withLog.unmount();
+    useUiStore.setState({ logs: [] });
+
+    // A cause: its step is over the log already.
+    operations = [failed("curl: (6) Could not resolve host: ghcr.io")];
+    const cause = renderWithProviders(<LogDrawer />);
+    await cause.findByText("Check your internet connection, then try again.");
+    expect(cause.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+    cause.unmount();
+
+    // macOS's words for a path it would not move to the Trash: no command
+    // ran, so they are not the source's.
+    operations = [failed("Operation not permitted", null)];
+    const trash = renderWithProviders(<LogDrawer />);
+    await trash.findByText(/Operation not permitted/);
+    expect(trash.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+    trash.unmount();
+  });
+
+  it("says nothing over the log with technical details off", async () => {
+    operations = [failed("Error: wget: something went wrong")];
+    const view = renderWithProviders(<LogDrawer />);
+    await view.findByText("Couldn't finish");
+    expect(view.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+  });
+});

@@ -21,7 +21,7 @@ import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { PasswordCommand } from "./PasswordCommand";
-import { FailureNextStep, failureLogStep } from "./FailureNextStep";
+import { FailureNextStep, SubtitleStep, failureLogStep, subtitleStep } from "./FailureNextStep";
 import { SpinnerIcon } from "./icons";
 
 const NEAR_BOTTOM_PX = 32;
@@ -78,7 +78,9 @@ function noteText(t: TFunction, note: LogNote): string {
  * keeping to its end while more arrives, with Banager's own notes among
  * the lines as plain sentences; under it, where it holds a tool's words
  * for a failure, whose words they are and what to do next, Copy Log among
- * it (`FailureNextStep`). That text selects, as nothing else in the
+ * it (`FailureNextStep`) -- or, with technical details on and none of the
+ * tool's lines left in this window's log, under the subtitle that still
+ * has its words (`SubtitleStep`). That text selects, as nothing else in the
  * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
  * operation can still be stopped, a button beside Done stops it: the page
@@ -169,6 +171,9 @@ export function LogDrawer() {
   const stepId = useId();
   // The sentence under the log, where a tool's own words are in it.
   const step = operation === undefined ? null : failureLogStep(operation, logs);
+  // The same, under the subtitle, where only the subtitle still has them.
+  const overStep = operation === undefined ? null : subtitleStep(operation, logs, technical);
+  const overStepId = useId();
   const copyWords = copyStatusText(t, copyStatus);
 
   return (
@@ -184,7 +189,7 @@ export function LogDrawer() {
       subtitle={parts?.subtitle}
       // What to do next, where the log says: said after its subtitle as it
       // opens -- the cause's step over the log, else the one under it.
-      describedBy={parts?.next ? nextId : step !== null ? stepId : undefined}
+      describedBy={parts?.next ? nextId : step !== null ? stepId : overStep !== null ? overStepId : undefined}
       focusSelf
       fillBody
       footerStart={
@@ -215,6 +220,11 @@ export function LogDrawer() {
         <p id={nextId} className="mb-3 break-words text-body text-foreground">
           {parts.next}
         </p>
+      ) : null}
+      {/* With technical details on, where the log no longer has the
+          tool's own words, but the subtitle does: whose they are. */}
+      {operation !== undefined ? (
+        <SubtitleStep op={operation} logs={logs} technical={technical} id={overStepId} />
       ) : null}
       {/* Where sudo wanted a password: the command to run in Terminal. */}
       {operation !== undefined ? <PasswordCommand op={operation} /> : null}

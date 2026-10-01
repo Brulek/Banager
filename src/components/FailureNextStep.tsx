@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { FailureCause } from "../lib/failureCause";
-import { outcomeCause } from "../lib/failureCause";
+import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { adapterIdOf, adapterLabel } from "../lib/sources";
 import { showsPasswordCommand } from "./PasswordCommand";
 import type { OpKind, OpSummary } from "../lib/types";
@@ -87,6 +88,131 @@ export function FailureNextStep({ op, logs, id }: { op: OpSummary; logs: readonl
         program: adapterLabel(t, adapterIdOf(op.instance_id)),
         again: t(TRY_AGAIN_KEYS[op.kind]),
       })}
+    </p>
+  );
+}
+
+/**
+ * The same sentence where the tool's own words are shown outside the log,
+ * with "Show technical details" on: under a row of the batch uninstall's
+ * result block (`resultRowStep`), and under the log's subtitle when the
+ * log itself no longer holds those words (`subtitleStep`). Spelled out,
+ * so the reachability test finds every key.
+ *
+ * - `generic`: no cause the words give -- how to try again, then View Log
+ *   and Copy Log there, the row having no Copy Log of its own.
+ * - `withCause`: a cause, whose line (`failure.line.*`) is what the row
+ *   says with technical details off -- the words take its place, so the
+ *   sentence says it.
+ * - `inTerminal`: a cause the Terminal command answers (`PasswordCommand`,
+ *   which is in the log): the cause's line, then where the command is.
+ * - `noLog`: the log's subtitle, where this window's log has none of the
+ *   tool's lines any more (it keeps the newest 2,000): how to try again,
+ *   and no Copy Log, which would copy nothing of them.
+ */
+export const TOOL_WORDS_STEP_KEYS = {
+  generic: "failure.toolWords.generic",
+  withCause: "failure.toolWords.withCause",
+  inTerminal: "failure.toolWords.inTerminal",
+  noLog: "failure.toolWords.noLog",
+} as const;
+
+/**
+ * Whether `op` ended `Failed` in words a program it ran wrote: the summary
+ * is not empty, and a command ran (`exit_code` is set). A path-list
+ * uninstall that macOS would not move to the Trash also ends `Failed`, in
+ * macOS's words, with no exit code -- not the source's words, so not said
+ * to be.
+ */
+function endedInToolWords(op: OpSummary): boolean {
+  if (op.status !== "Done") return false;
+  const outcome = op.outcome;
+  if (outcome === null || typeof outcome === "string" || !("Failed" in outcome)) return false;
+  return outcome.Failed.exit_code !== null && outcome.Failed.summary.trim() !== "";
+}
+
+/**
+ * The sentence under a row of the batch uninstall's result block, which
+ * shows the tool's own words only with technical details on: null with
+ * them off, and for an operation that did not end in a tool's words.
+ */
+export function resultRowStep(op: OpSummary, technical: boolean): { key: string; cause: FailureCause | null } | null {
+  if (!technical || !endedInToolWords(op)) return null;
+  const cause = outcomeCause(op.outcome);
+  if (cause === null) return { key: TOOL_WORDS_STEP_KEYS.generic, cause };
+  if (showsPasswordCommand(op)) return { key: TOOL_WORDS_STEP_KEYS.inTerminal, cause };
+  return { key: TOOL_WORDS_STEP_KEYS.withCause, cause };
+}
+
+/**
+ * The sentence under the log's subtitle, which shows the tool's own words
+ * only with technical details on: only where the sentence under the log
+ * is missing (`failureLogStep` is null: none of the tool's lines are left
+ * in this window's log) and no cause's step is over the log already --
+ * where there is one, it says what to do.
+ */
+export function subtitleStep(
+  op: OpSummary,
+  logs: readonly LogEntry[],
+  technical: boolean,
+): { key: string } | null {
+  if (!technical || !endedInToolWords(op)) return null;
+  if (failureLogStep(op, logs) !== null) return null;
+  if (outcomeCause(op.outcome) !== null) return null;
+  return { key: TOOL_WORDS_STEP_KEYS.noLog };
+}
+
+/** The words for a `TOOL_WORDS_STEP_KEYS` sentence about `op`. */
+function toolWordsText(
+  t: TFunction,
+  op: OpSummary,
+  key: string,
+  cause: FailureCause | null,
+): string {
+  return t(key, {
+    program: adapterLabel(t, adapterIdOf(op.instance_id)),
+    again: t(TRY_AGAIN_KEYS[op.kind]),
+    line: cause === null ? "" : t(FAILURE_CAUSE_KEYS[cause].line),
+  });
+}
+
+/**
+ * Under a row of the batch uninstall's result block that shows a tool's
+ * own words (technical details on): whose words they are and what to do
+ * next (`resultRowStep`).
+ */
+export function ResultRowStep({ op, technical, className }: { op: OpSummary; technical: boolean; className?: string }) {
+  const { t } = useTranslation();
+  const step = resultRowStep(op, technical);
+  if (step === null) return null;
+  return (
+    <p data-failure-next-step="" className={className}>
+      {toolWordsText(t, op, step.key, step.cause)}
+    </p>
+  );
+}
+
+/**
+ * Over the log, under its subtitle, where that subtitle is the only place
+ * left with the tool's own words (`subtitleStep`).
+ */
+export function SubtitleStep({
+  op,
+  logs,
+  technical,
+  id,
+}: {
+  op: OpSummary;
+  logs: readonly LogEntry[];
+  technical: boolean;
+  id?: string;
+}) {
+  const { t } = useTranslation();
+  const step = subtitleStep(op, logs, technical);
+  if (step === null) return null;
+  return (
+    <p id={id} data-failure-next-step="" className="mb-3 break-words text-body text-foreground">
+      {toolWordsText(t, op, step.key, null)}
     </p>
   );
 }

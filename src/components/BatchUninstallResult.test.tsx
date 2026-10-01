@@ -42,16 +42,18 @@ const record: UninstallBatchRecord = {
 };
 
 let operations: OpSummary[];
+let technical: boolean;
 
 beforeEach(() => {
   mockInvoke.mockReset();
   operations = [];
+  technical = false;
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "list_operations") return Promise.resolve(operations);
     if (cmd === "get_settings") {
       return Promise.resolve({
         language: "System",
-        show_technical_details: false,
+        show_technical_details: technical,
         ignored_updates: [],
         skipped_versions: [],
         include_self_updating: false,
@@ -185,5 +187,74 @@ describe("what a batch uninstall did not uninstall", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select It Again" }));
     expect(useUiStore.getState().selectedUninstalls).toContainEqual(artifactKeyId(key("wget")));
   });
-});
 
+  it("with technical details on, says under each tool's own words whose they are and what to do next", async () => {
+    technical = true;
+    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong" } };
+    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget" } };
+    const password: Outcome = {
+      Failed: {
+        exit_code: 1,
+        summary:
+          "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+      },
+    };
+    // macOS's words for a path it would not move to the Trash: no command ran.
+    const trash: Outcome = { Failed: { exit_code: null, summary: "Operation not permitted" } };
+    const sentences = {
+      en: {
+        generic:
+          "The words above are Homebrew's own error. You can uninstall it again later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
+        withCause:
+          "The words above are Homebrew's own error. There's no permission to change its files. Check the permissions, then try again.",
+        inTerminal:
+          "The words above are Homebrew's own error. This needs your Mac login password, which can't be entered here. You can click View Log and run the command it gives in Terminal.",
+      },
+      "zh-CN": {
+        generic: "上面是Homebrew自己的报错。可以稍后重新卸载；还是失败，就点按“查看日志”，再点按“拷贝日志”，发给懂的人看。",
+        withCause: "上面是Homebrew自己的报错。没有权限修改它的文件，请确认权限后重试。",
+        inTerminal: "上面是Homebrew自己的报错。需要输入Mac的登录密码，无法在这里输入。可以点按“查看日志”，在终端里运行那里给出的命令。",
+      },
+    };
+    try {
+      for (const lang of ["en", "zh-CN"] as const) {
+        await i18n.changeLanguage(lang);
+        useUiStore.getState().setUninstallBatch(record);
+        operations = [op(13, "wget", "Done", unknown), op(12, "python@3.13", "Done", denied), op(11, "pipx", "Done", password)];
+        const view = renderWithProviders(<BatchUninstallResult />);
+        const items = await waitFor(() => {
+          const found = Array.from(document.querySelectorAll<HTMLElement>("[data-batch-result-item]"));
+          expect(found).toHaveLength(3);
+          return found;
+        });
+        const byName = (name: string) => items.find((item) => item.textContent?.startsWith(name)) as HTMLElement;
+        const stepOf = (name: string) => byName(name).querySelector("[data-failure-next-step]");
+        await waitFor(() => expect(stepOf("wget")).toHaveTextContent(sentences[lang].generic));
+        // The tool's own words are on the row, over the sentence.
+        expect(byName("wget")).toHaveTextContent("Error: wget: something went wrong");
+        expect(stepOf("python@3.13")).toHaveTextContent(sentences[lang].withCause);
+        expect(stepOf("pipx")).toHaveTextContent(sentences[lang].inTerminal);
+        view.unmount();
+
+        operations = [op(13, "wget", "Done", trash), op(12, "python@3.13", "Done", "Cancelled"), op(11, "pipx", "Done", "Succeeded")];
+        const none = renderWithProviders(<BatchUninstallResult />);
+        await waitFor(() => expect(document.querySelectorAll("[data-batch-result-item]")).toHaveLength(2));
+        await waitFor(() => expect(none.getByText(/Operation not permitted/)).toBeInTheDocument());
+        expect(document.querySelector("[data-failure-next-step]")).toBeNull();
+        none.unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says no such sentence with technical details off: the row says the cause, or 「未能完成」", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong" } };
+    operations = [op(13, "wget", "Done", unknown), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
+    renderWithProviders(<BatchUninstallResult />);
+    await screen.findByRole("alert");
+    expect(document.querySelector("[data-batch-result-item]")).not.toHaveTextContent(/something went wrong/);
+    expect(document.querySelector("[data-failure-next-step]")).toBeNull();
+  });
+});
