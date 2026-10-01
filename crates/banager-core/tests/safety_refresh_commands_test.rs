@@ -6,7 +6,9 @@
 //! a runner that answers from the recorded fixtures and records every
 //! command. Each command it was asked to run must be one its source's
 //! section shows (a `{name}` there stands for one argument), and none may
-//! be one of the section's write commands.
+//! be one of the section's write commands. And the refresh, and the
+//! Other Programs scan after it, leave the home folder they read exactly
+//! as it was (promise 4).
 //!
 //! Homebrew is left out here only because it is found at fixed paths on
 //! this Mac's own disk (`/opt/homebrew`), which a test cannot point
@@ -138,6 +140,34 @@ impl Drop for Home {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// Every entry under `dir`, links not followed: its path, kind, length
+/// and modification time.
+fn tree(dir: &Path) -> Vec<(PathBuf, String, u64, i64, i64)> {
+    let mut all = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(next) = stack.pop() {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(&next)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            let meta = std::fs::symlink_metadata(&path).unwrap();
+            if meta.is_dir() {
+                stack.push(path.clone());
+            }
+            all.push((
+                path,
+                format!("{:?}", meta.file_type()),
+                meta.len(),
+                meta.mtime(),
+                meta.mtime_nsec(),
+            ));
+        }
+    }
+    all
 }
 
 /// Each source's program, by file name: the name `docs/what-we-run.md`
@@ -356,7 +386,12 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         zdotdir: None,
         ollama_host: None,
     };
+    let before = tree(&home.0);
     let snapshot = session.refresh(&env, &CheckOptions::default()).await;
+    // Promise 4 too: the refresh, and the Other Programs scan after it,
+    // wrote, made, moved and deleted nothing in the home they read.
+    session.scan_unknown(&env);
+    assert_eq!(tree(&home.0), before, "the home folder changed");
 
     let doc = std::fs::read_to_string(root().join("docs/what-we-run.md")).unwrap();
     let calls = runner.calls.lock().unwrap().clone();
