@@ -1,0 +1,949 @@
+//! Which copy of a command runs (`commands`), over directory trees each
+//! test builds in a temp directory: a Homebrew prefix, an npm prefix, a
+//! home with `~/.local/bin`, a Cargo home -- real links and real files,
+//! since the judgement answers from `read_dir`, `stat` and `realpath` and
+//! nothing else. No recorded fixture is read but uv's (whose `ruff` line
+//! is parsed), and none is written.
+
+use async_trait::async_trait;
+use banager_core::adapters::brew::parse::parse_info_installed;
+use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+use banager_core::commands::{bin_folders, judge, read_folders, CommandBudget, Folders};
+use banager_core::events::{EventSink, OpId, VecSink};
+use banager_core::model::{
+    ArtifactFacts, ArtifactKey, ArtifactKind, CommandFact, CommandInputs, CommandState,
+    InstallReason, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, ProvidedCommand,
+    Reconciled, SearchHit,
+};
+use banager_core::runner::HostEnv;
+use banager_core::session::Session;
+use banager_core::testing::manager_instance;
+use std::fs;
+use std::os::unix::fs::{symlink, PermissionsExt};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+
+/// A fresh home for one test, removed when it ends. Canonical, so paths
+/// built from it compare equal to what `realpath` answers (`/var` is a
+/// link to `/private/var` on a Mac).
+struct Home(PathBuf);
+
+impl Home {
+    fn new(tag: &str) -> Home {
+        let raw = std::env::temp_dir().join(format!(
+            "banager-commands-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&raw).expect("create temp home");
+        Home(fs::canonicalize(&raw).expect("canonical temp home"))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn at(&self, rel: &str) -> PathBuf {
+        self.0.join(rel)
+    }
+
+    fn dir(&self, rel: &str) -> PathBuf {
+        let dir = self.0.join(rel);
+        fs::create_dir_all(&dir).expect("create dir");
+        dir
+    }
+
+    /// An executable regular file at `rel` (its folders created).
+    fn exe(&self, rel: &str) -> PathBuf {
+        let path = self.0.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).expect("create parent");
+        fs::write(&path, b"#!/bin/sh\n").expect("write file");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
+        path
+    }
+
+    /// A regular file at `rel` with no execute bit.
+    fn plain(&self, rel: &str) -> PathBuf {
+        let path = self.0.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).expect("create parent");
+        fs::write(&path, b"text").expect("write file");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("chmod");
+        path
+    }
+
+    /// A symbolic link at `rel` whose text is exactly `target`.
+    fn link(&self, rel: &str, target: &Path) -> PathBuf {
+        let path = self.0.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).expect("create parent");
+        symlink(target, &path).expect("symlink");
+        path
+    }
+
+    fn env(&self, path_dirs: Vec<PathBuf>) -> HostEnv {
+        HostEnv {
+            path_dirs,
+            home: self.0.clone(),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        }
+    }
+}
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn instance(adapter_id: &str, id: &str, prefix: &Path, exe_path: &Path) -> ManagerInstance {
+    ManagerInstance {
+        prefix: prefix.to_path_buf(),
+        exe_path: exe_path.to_path_buf(),
+        ..manager_instance(adapter_id, id)
+    }
+}
+
+fn artifact(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
+    InstalledArtifact {
+        key: ArtifactKey {
+            instance_id: instance_id.to_string(),
+            kind,
+            name: name.to_string(),
+        },
+        display_name: name.to_string(),
+        version: "1.0".to_string(),
+        reason: InstallReason::Requested,
+        description: None,
+        homepage: None,
+        size_bytes: None,
+        installed_at: None,
+        path: None,
+        auto_updates: false,
+        uninstall_blocked: None,
+        facts: ArtifactFacts::default(),
+    }
+}
+
+fn with_family(mut artifact: InstalledArtifact, family: &str) -> InstalledArtifact {
+    artifact.facts.family = Some(family.to_string());
+    artifact
+}
+
+fn provided(name: &str, path: &Path, within: &[&Path]) -> ProvidedCommand {
+    ProvidedCommand {
+        name: name.to_string(),
+        path: path.to_path_buf(),
+        within: within.iter().map(|p| p.to_path_buf()).collect(),
+    }
+}
+
+fn with_provided(
+    mut artifact: InstalledArtifact,
+    provided: Vec<ProvidedCommand>,
+) -> InstalledArtifact {
+    artifact.facts.command_inputs.provided = provided;
+    artifact
+}
+
+/// Every artifact's verdicts, by `PATH`, read and judged with the
+/// default budget and the login shell's `PATH` known.
+fn verdicts(
+    home: &Home,
+    path: &[PathBuf],
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+) -> Vec<Vec<CommandFact>> {
+    let folders = read_folders(path, &bin_folders(instances), CommandBudget::default());
+    assert!(folders.complete());
+    judge(
+        &folders,
+        instances,
+        artifacts,
+        home.path(),
+        true,
+        CommandBudget::default(),
+    )
+    .expect("judged within the budget")
+}
+
+fn runs(name: &str) -> CommandFact {
+    CommandFact {
+        name: name.to_string(),
+        state: Some(CommandState::Runs),
+    }
+}
+
+fn shadowed(name: &str, by: Option<&ArtifactKey>) -> CommandFact {
+    CommandFact {
+        name: name.to_string(),
+        state: Some(CommandState::ShadowedBy { by: by.cloned() }),
+    }
+}
+
+fn not_on_path(name: &str, dir: &str) -> CommandFact {
+    CommandFact {
+        name: name.to_string(),
+        state: Some(CommandState::NotOnPath {
+            dir: dir.to_string(),
+        }),
+    }
+}
+
+fn unjudged(name: &str) -> CommandFact {
+    CommandFact {
+        name: name.to_string(),
+        state: None,
+    }
+}
+
+/// npm's Claude Code under an npm prefix (`<prefix>/bin/claude` into
+/// `lib/node_modules/@anthropic-ai/claude-code`) and the native install
+/// (`~/.local/bin/claude` into `~/.local/share/claude/versions/…`), both
+/// of the `claude-code` family.
+struct TwoClaudes {
+    instances: Vec<ManagerInstance>,
+    artifacts: Vec<InstalledArtifact>,
+    npm_bin: PathBuf,
+    local_bin: PathBuf,
+}
+
+fn two_claudes(home: &Home) -> TwoClaudes {
+    let npm = home.dir("npm");
+    home.exe("npm/lib/node_modules/@anthropic-ai/claude-code/cli.js");
+    home.link(
+        "npm/bin/claude",
+        Path::new("../lib/node_modules/@anthropic-ai/claude-code/cli.js"),
+    );
+    let real = home.exe(".local/share/claude/versions/2.1.281");
+    let launcher = home.link(".local/bin/claude", &real);
+    let npm_id = format!("npm:{}", npm.display());
+    TwoClaudes {
+        instances: vec![
+            instance("npm", &npm_id, &npm, &npm.join("bin/npm")),
+            instance(
+                "standalone-claude",
+                "standalone-claude",
+                &home.at(".local/share/claude"),
+                &launcher,
+            ),
+        ],
+        artifacts: vec![
+            with_family(
+                artifact(&npm_id, ArtifactKind::Package, "@anthropic-ai/claude-code"),
+                "claude-code",
+            ),
+            with_family(
+                artifact("standalone-claude", ArtifactKind::Binary, "claude"),
+                "claude-code",
+            ),
+        ],
+        npm_bin: npm.join("bin"),
+        local_bin: home.at(".local/bin"),
+    }
+}
+
+#[test]
+fn test_which_claude_runs_follows_the_order_of_path() {
+    let home = Home::new("two-claudes");
+    let setup = two_claudes(&home);
+    let npm_key = setup.artifacts[0].key.clone();
+    let native_key = setup.artifacts[1].key.clone();
+
+    // npm's folder first: npm's copy runs, the native one waits behind it.
+    let npm_first = verdicts(
+        &home,
+        &[setup.npm_bin.clone(), setup.local_bin.clone()],
+        &setup.instances,
+        &setup.artifacts,
+    );
+    assert_eq!(
+        npm_first,
+        vec![
+            vec![runs("claude")],
+            vec![shadowed("claude", Some(&npm_key))]
+        ]
+    );
+
+    // The other order, the other answer.
+    let native_first = verdicts(
+        &home,
+        &[setup.local_bin.clone(), setup.npm_bin.clone()],
+        &setup.instances,
+        &setup.artifacts,
+    );
+    assert_eq!(
+        native_first,
+        vec![
+            vec![shadowed("claude", Some(&native_key))],
+            vec![runs("claude")]
+        ]
+    );
+
+    // `~/.local/bin` not on PATH: Terminal does not find the native copy,
+    // and the folder it is in is named as the user knows it.
+    let only_npm = verdicts(
+        &home,
+        std::slice::from_ref(&setup.npm_bin),
+        &setup.instances,
+        &setup.artifacts,
+    );
+    assert_eq!(
+        only_npm,
+        vec![
+            vec![runs("claude")],
+            vec![not_on_path("claude", "~/.local/bin")]
+        ]
+    );
+}
+
+#[test]
+fn test_a_grok_build_shaped_cask_provides_both_its_names_from_one_file() {
+    // The cask as `brew info --installed --json=v2` lists it, its two
+    // links where the stanzas' targets say, both to one staged file.
+    let home = Home::new("grok-build");
+    let brew = home.dir("brew");
+    home.exe("brew/Caskroom/grok-build/1.0.46/grok");
+    home.link(
+        "brew/bin/grok",
+        Path::new("../Caskroom/grok-build/1.0.46/grok"),
+    );
+    home.link(
+        "brew/bin/agent",
+        Path::new("../Caskroom/grok-build/1.0.46/grok"),
+    );
+    let json = format!(
+        r#"{{"formulae": [], "casks": [{{
+            "token": "grok-build", "full_token": "grok-build", "name": ["Grok Build"],
+            "installed": "1.0.46",
+            "artifacts": [
+                {{ "binary": ["grok"], "target": "{bin}/grok" }},
+                {{ "binary": ["grok", {{ "target": "agent" }}], "target": "{bin}/agent" }}
+            ]
+        }}]}}"#,
+        bin = brew.join("bin").display()
+    );
+    let brew_id = format!("brew:{}", brew.display());
+    let cask = with_family(
+        parse_info_installed(&json, &brew_id)
+            .expect("parse")
+            .remove(0),
+        "grok-build",
+    );
+    // Grok Build's own installer too: `~/.grok/bin/grok` and `agent`.
+    let download = home.exe(".grok/downloads/grok-1.0.41-macos-aarch64");
+    let launcher = home.link(".grok/bin/grok", &download);
+    home.link(".grok/bin/agent", &download);
+    let instances = vec![
+        instance("brew", &brew_id, &brew, &brew.join("bin/brew")),
+        instance(
+            "standalone-grok",
+            "standalone-grok",
+            &home.at(".grok"),
+            &launcher,
+        ),
+    ];
+    let native = with_family(
+        artifact("standalone-grok", ArtifactKind::Binary, "grok"),
+        "grok-build",
+    );
+    let artifacts = vec![cask.clone(), native];
+
+    let found = verdicts(
+        &home,
+        &[brew.join("bin"), home.at(".grok/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found[0], vec![runs("agent"), runs("grok")]);
+    assert_eq!(
+        found[1],
+        vec![
+            shadowed("agent", Some(&cask.key)),
+            shadowed("grok", Some(&cask.key))
+        ]
+    );
+}
+
+#[test]
+fn test_a_broken_link_and_a_file_with_no_execute_bit_are_passed_over() {
+    let home = Home::new("passed-over");
+    let real = home.exe(".local/share/claude/versions/2.1.281");
+    let launcher = home.link(".local/bin/claude", &real);
+    // Earlier on PATH: a link to nothing, then a file that cannot run.
+    home.link("broken/claude", &home.at("gone/claude"));
+    home.plain("text/claude");
+    let instances = vec![instance(
+        "standalone-claude",
+        "standalone-claude",
+        &home.at(".local/share/claude"),
+        &launcher,
+    )];
+    let artifacts = vec![artifact(
+        "standalone-claude",
+        ArtifactKind::Binary,
+        "claude",
+    )];
+    let found = verdicts(
+        &home,
+        &[home.at("broken"), home.at("text"), home.at(".local/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![vec![runs("claude")]]);
+
+    // A launcher that cannot run is no claim at all: no verdict, no name.
+    fs::remove_file(&launcher).unwrap();
+    home.plain(".local/bin/claude");
+    let found = verdicts(&home, &[home.at(".local/bin")], &instances, &artifacts);
+    assert_eq!(found, vec![Vec::<CommandFact>::new()]);
+}
+
+#[test]
+fn test_a_folder_named_twice_on_path_is_read_once() {
+    let home = Home::new("twice");
+    let bin = home.dir(".local/bin");
+    let alias = home.link("alias-of-local-bin", &bin);
+    let folders = read_folders(
+        &[bin.clone(), bin.clone(), alias],
+        std::slice::from_ref(&bin),
+        CommandBudget::default(),
+    );
+    assert!(folders.complete());
+    assert_eq!(folders.path_folders(), vec![bin.as_path()]);
+}
+
+#[test]
+fn test_empty_and_relative_path_entries_are_skipped() {
+    // A shell would look a relative entry up from its own current folder,
+    // which is not Banager's (an app opened from Finder has `/`). The
+    // tests run in crates/banager-core, where `src` exists: it is still
+    // skipped.
+    let home = Home::new("relative");
+    let bin = home.dir("bin");
+    let folders = read_folders(
+        &[
+            PathBuf::new(),
+            PathBuf::from("src"),
+            PathBuf::from("."),
+            bin.clone(),
+        ],
+        &[],
+        CommandBudget::default(),
+    );
+    assert_eq!(folders.path_folders(), vec![bin.as_path()]);
+}
+
+#[test]
+fn test_no_verdicts_at_all_without_the_login_shells_path() {
+    // `Session::note_login_path(false)`: the names stay, so two copies can
+    // still be told apart, but nothing is said about which runs.
+    let home = Home::new("unknown-path");
+    let setup = two_claudes(&home);
+    let folders = read_folders(
+        &[setup.npm_bin.clone(), setup.local_bin.clone()],
+        &bin_folders(&setup.instances),
+        CommandBudget::default(),
+    );
+    let found = judge(
+        &folders,
+        &setup.instances,
+        &setup.artifacts,
+        home.path(),
+        false,
+        CommandBudget::default(),
+    )
+    .expect("judged");
+    assert_eq!(
+        found,
+        vec![vec![unjudged("claude")], vec![unjudged("claude")]]
+    );
+}
+
+/// A Homebrew prefix with three formulae linked into its `bin`: `jq`,
+/// asked for; `curl`, keg-only and linked by hand; `oniguruma`, a
+/// dependency.
+fn three_formulae(home: &Home) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>, PathBuf) {
+    let brew = home.dir("brew");
+    for (formula, version, command) in [
+        ("jq", "1.8.2", "jq"),
+        ("curl", "8.17.0", "curl"),
+        ("oniguruma", "6.9.10", "onig-config"),
+    ] {
+        home.exe(&format!("brew/Cellar/{formula}/{version}/bin/{command}"));
+        home.link(
+            &format!("brew/bin/{command}"),
+            Path::new(&format!("../Cellar/{formula}/{version}/bin/{command}")),
+        );
+    }
+    let id = format!("brew:{}", brew.display());
+    let mut curl = artifact(&id, ArtifactKind::Formula, "curl");
+    curl.facts.command_inputs = CommandInputs {
+        keg_only: true,
+        ..Default::default()
+    };
+    let mut oniguruma = artifact(&id, ArtifactKind::Formula, "oniguruma");
+    oniguruma.reason = InstallReason::Dependency;
+    (
+        vec![instance("brew", &id, &brew, &brew.join("bin/brew"))],
+        vec![artifact(&id, ArtifactKind::Formula, "jq"), curl, oniguruma],
+        brew.join("bin"),
+    )
+}
+
+#[test]
+fn test_a_keg_only_or_dependency_formula_gets_no_verdict() {
+    let home = Home::new("keg-only");
+    let (instances, artifacts, bin) = three_formulae(&home);
+    let found = verdicts(&home, &[bin], &instances, &artifacts);
+    assert_eq!(
+        found,
+        vec![
+            vec![runs("jq")],
+            vec![unjudged("curl")],
+            vec![unjudged("onig-config")]
+        ]
+    );
+    // Off PATH altogether, still nothing about curl's: Homebrew leaves it
+    // there on purpose. (This prefix is under the test's home, so its
+    // folder is shown from `~`.)
+    let found = verdicts(&home, &[], &instances, &artifacts);
+    assert_eq!(
+        found,
+        vec![
+            vec![not_on_path("jq", "~/brew/bin")],
+            vec![unjudged("curl")],
+            vec![unjudged("onig-config")]
+        ]
+    );
+}
+
+#[test]
+fn test_a_formula_that_comes_first_is_another_program_with_the_name() {
+    // Homebrew's formula `grok`, a regular-expression tool, before Grok
+    // Build's own `grok`: what runs is named by its artifact, which is not
+    // Grok Build (no family).
+    let home = Home::new("namesake");
+    let brew = home.dir("brew");
+    home.exe("brew/Cellar/grok/1.0.3/bin/grok");
+    home.link("brew/bin/grok", Path::new("../Cellar/grok/1.0.3/bin/grok"));
+    let download = home.exe(".grok/downloads/grok-1.0.41-macos-aarch64");
+    let launcher = home.link(".grok/bin/grok", &download);
+    let brew_id = format!("brew:{}", brew.display());
+    let instances = vec![
+        instance("brew", &brew_id, &brew, &brew.join("bin/brew")),
+        instance(
+            "standalone-grok",
+            "standalone-grok",
+            &home.at(".grok"),
+            &launcher,
+        ),
+    ];
+    let formula = artifact(&brew_id, ArtifactKind::Formula, "grok");
+    let artifacts = vec![
+        formula.clone(),
+        with_family(
+            artifact("standalone-grok", ArtifactKind::Binary, "grok"),
+            "grok-build",
+        ),
+    ];
+    let found = verdicts(
+        &home,
+        &[brew.join("bin"), home.at(".grok/bin")],
+        &instances,
+        &artifacts,
+    );
+    // Grok Build's `agent` is not there in this layout: one command.
+    assert_eq!(
+        found,
+        vec![
+            vec![runs("grok")],
+            vec![shadowed("grok", Some(&formula.key))]
+        ]
+    );
+}
+
+#[test]
+fn test_a_file_no_artifact_provides_is_another_program() {
+    let home = Home::new("stranger");
+    let real = home.exe(".local/share/claude/versions/2.1.281");
+    let launcher = home.link(".local/bin/claude", &real);
+    home.exe("usr-local-bin/claude");
+    let instances = vec![instance(
+        "standalone-claude",
+        "standalone-claude",
+        &home.at(".local/share/claude"),
+        &launcher,
+    )];
+    let artifacts = vec![artifact(
+        "standalone-claude",
+        ArtifactKind::Binary,
+        "claude",
+    )];
+    let found = verdicts(
+        &home,
+        &[home.at("usr-local-bin"), home.at(".local/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![vec![shadowed("claude", None)]]);
+}
+
+#[test]
+fn test_rustups_proxies_are_its_commands_by_name_whether_links_or_hard_links() {
+    let home = Home::new("rustup");
+    let cargo_home = home.dir(".cargo");
+    let rustup = home.exe(".cargo/bin/rustup");
+    home.link(".cargo/bin/cargo", Path::new("rustup"));
+    fs::hard_link(&rustup, home.at(".cargo/bin/rustc")).expect("hard link");
+    let instances = vec![instance(
+        "standalone-rustup",
+        "standalone-rustup",
+        &cargo_home,
+        &rustup,
+    )];
+    let artifacts = vec![artifact(
+        "standalone-rustup",
+        ArtifactKind::Binary,
+        "rustup",
+    )];
+    let found = verdicts(&home, &[home.at(".cargo/bin")], &instances, &artifacts);
+    // The proxies that are not there are no claim.
+    assert_eq!(
+        found,
+        vec![vec![runs("cargo"), runs("rustc"), runs("rustup")]]
+    );
+
+    // Homebrew's `rust` first on PATH, with its own `cargo`.
+    let brew = home.dir("brew");
+    home.exe("brew/Cellar/rust/1.90.0/bin/cargo");
+    home.link(
+        "brew/bin/cargo",
+        Path::new("../Cellar/rust/1.90.0/bin/cargo"),
+    );
+    let brew_id = format!("brew:{}", brew.display());
+    let mut instances = instances;
+    instances.insert(0, instance("brew", &brew_id, &brew, &brew.join("bin/brew")));
+    let rust = artifact(&brew_id, ArtifactKind::Formula, "rust");
+    let artifacts = vec![rust.clone(), artifacts[0].clone()];
+    let found = verdicts(
+        &home,
+        &[brew.join("bin"), home.at(".cargo/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(
+        found,
+        vec![
+            vec![runs("cargo")],
+            vec![
+                shadowed("cargo", Some(&rust.key)),
+                runs("rustc"),
+                runs("rustup")
+            ]
+        ]
+    );
+}
+
+#[test]
+fn test_a_cargo_crates_bins_are_its_commands() {
+    let home = Home::new("cargo-bins");
+    let cargo_home = home.dir(".cargo");
+    let rg = home.exe(".cargo/bin/rg");
+    let id = format!("cargo:{}", cargo_home.display());
+    let instances = vec![instance(
+        "cargo",
+        &id,
+        &cargo_home,
+        &cargo_home.join("bin/cargo"),
+    )];
+    let artifacts = vec![with_provided(
+        artifact(&id, ArtifactKind::Binary, "ripgrep"),
+        vec![provided("rg", &rg, &[])],
+    )];
+    let found = verdicts(&home, &[home.at(".cargo/bin")], &instances, &artifacts);
+    assert_eq!(found, vec![vec![runs("rg")]]);
+    let found = verdicts(&home, &[], &instances, &artifacts);
+    assert_eq!(found, vec![vec![not_on_path("rg", "~/.cargo/bin")]]);
+}
+
+/// uv's `ruff` and pipx's `ruff`, each in its own environment, and one
+/// `~/.local/bin/ruff` that leads into `owner`'s.
+fn two_ruffs(home: &Home, owner: &str) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>) {
+    let uv_venv = home.dir(".local/share/uv/tools/ruff");
+    home.exe(".local/share/uv/tools/ruff/bin/ruff");
+    let pipx_app = home.exe(".local/pipx/venvs/ruff/bin/ruff");
+    let target = match owner {
+        "uv" => uv_venv.join("bin/ruff"),
+        _ => pipx_app.clone(),
+    };
+    let link = home.link(".local/bin/ruff", &target);
+    // The uv line names the link; pipx names the app in its environment.
+    let instances = vec![
+        instance("pipx", "pipx", &home.at("bin"), &home.at("bin/pipx")),
+        instance("uv", "uv", &home.at("bin"), &home.at("bin/uv")),
+    ];
+    let artifacts = vec![
+        with_provided(
+            artifact("pipx", ArtifactKind::Tool, "ruff"),
+            vec![provided("ruff", &pipx_app, &[])],
+        ),
+        with_provided(
+            artifact("uv", ArtifactKind::Tool, "ruff"),
+            vec![provided("ruff", &link, &[&uv_venv])],
+        ),
+    ];
+    (instances, artifacts)
+}
+
+#[test]
+fn test_one_local_bin_ruff_is_the_copy_whose_environment_it_leads_into() {
+    let home = Home::new("ruffs-uv");
+    let (instances, artifacts) = two_ruffs(&home, "uv");
+    let found = verdicts(&home, &[home.at(".local/bin")], &instances, &artifacts);
+    // pipx's copy is still named, but no link leads to it: no verdict.
+    assert_eq!(found, vec![vec![unjudged("ruff")], vec![runs("ruff")]]);
+
+    let home = Home::new("ruffs-pipx");
+    let (instances, artifacts) = two_ruffs(&home, "pipx");
+    let found = verdicts(&home, &[home.at(".local/bin")], &instances, &artifacts);
+    // The link is pipx's now: uv's line names a file that is not uv's.
+    assert_eq!(found, vec![vec![runs("ruff")], Vec::<CommandFact>::new()]);
+    // Off PATH, pipx's folder is the one its link is in.
+    let found = verdicts(&home, &[], &instances, &artifacts);
+    assert_eq!(
+        found,
+        vec![
+            vec![not_on_path("ruff", "~/.local/bin")],
+            Vec::<CommandFact>::new()
+        ]
+    );
+}
+
+#[test]
+fn test_the_recorded_uv_line_names_ruff() {
+    // The recording's `- ruff (/Users/brulek/.local/bin/ruff)`, through the
+    // adapter's own parse: `ruff`, the link, and the tool's environment.
+    let text = fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt")
+        .expect("read the recorded uv tool list");
+    let ruff = text
+        .lines()
+        .find(|line| line.starts_with("- "))
+        .expect("a binary line");
+    assert_eq!(ruff, "- ruff (/Users/brulek/.local/bin/ruff)");
+}
+
+#[test]
+fn test_the_budget_stops_the_read_and_then_nothing_is_judged() {
+    let home = Home::new("budget");
+    let setup = two_claudes(&home);
+    let tight = CommandBudget {
+        max_entries: 1,
+        max_duration: Duration::from_secs(5),
+    };
+    let folders = read_folders(
+        &[setup.npm_bin.clone(), setup.local_bin.clone()],
+        &[],
+        tight,
+    );
+    assert!(!folders.complete());
+    assert_eq!(
+        judge(
+            &folders,
+            &setup.instances,
+            &setup.artifacts,
+            home.path(),
+            true,
+            CommandBudget::default()
+        ),
+        None
+    );
+    let no_time = CommandBudget {
+        max_entries: 20_000,
+        max_duration: Duration::ZERO,
+    };
+    assert!(!read_folders(std::slice::from_ref(&setup.npm_bin), &[], no_time).complete());
+    // `Folders::default()`, a read that never ran, judges nothing either.
+    assert_eq!(
+        judge(
+            &Folders::default(),
+            &setup.instances,
+            &setup.artifacts,
+            home.path(),
+            true,
+            CommandBudget::default()
+        ),
+        None
+    );
+}
+
+#[test]
+fn test_the_same_disk_gives_the_same_answer() {
+    // `Snapshot::same_content` compares the answer: two readings of an
+    // unchanged disk must not differ in order or content.
+    let home = Home::new("same");
+    let setup = two_claudes(&home);
+    let (brew_instances, brew_artifacts, bin) = three_formulae(&home);
+    let instances: Vec<_> = setup.instances.into_iter().chain(brew_instances).collect();
+    let artifacts: Vec<_> = setup.artifacts.into_iter().chain(brew_artifacts).collect();
+    let path = [bin, setup.npm_bin, setup.local_bin];
+    let first = verdicts(&home, &path, &instances, &artifacts);
+    let second = verdicts(&home, &path, &instances, &artifacts);
+    assert_eq!(first, second);
+    assert!(first
+        .iter()
+        .all(|commands| commands.windows(2).all(|pair| pair[0].name < pair[1].name)));
+}
+
+// ------------------------------------------------------- through a Session
+
+/// One source as a test describes it: its instance and its rows, the same
+/// every round.
+struct Fixed {
+    meta: AdapterMeta,
+    instance: ManagerInstance,
+    artifacts: Vec<InstalledArtifact>,
+}
+
+impl Fixed {
+    fn new(instance: ManagerInstance, artifacts: Vec<InstalledArtifact>) -> Arc<Fixed> {
+        Arc::new(Fixed {
+            meta: AdapterMeta {
+                id: instance.adapter_id.clone(),
+                name: instance.adapter_id.clone(),
+                kind: "test".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            instance,
+            artifacts,
+        })
+    }
+}
+
+#[async_trait]
+impl Adapter for Fixed {
+    fn meta(&self) -> &AdapterMeta {
+        &self.meta
+    }
+
+    async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        vec![self.instance.clone()]
+    }
+
+    async fn inventory(
+        &self,
+        _inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        Ok(self.artifacts.clone())
+    }
+
+    async fn check_updates(
+        &self,
+        _inst: &ManagerInstance,
+        _opts: &CheckOptions,
+    ) -> Result<CheckOutcome, AdapterError> {
+        Ok(CheckOutcome::default())
+    }
+
+    async fn search(
+        &self,
+        _inst: &ManagerInstance,
+        _query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        Ok(Vec::new())
+    }
+
+    async fn plan(&self, _inst: &ManagerInstance, _req: &OpRequest) -> Result<Plan, AdapterError> {
+        Err(AdapterError::Unsupported("test source".to_string()))
+    }
+
+    async fn execute(
+        &self,
+        _plan: &Plan,
+        _sink: Arc<dyn EventSink>,
+        _op_id: OpId,
+        _cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        Ok(Outcome::Succeeded)
+    }
+
+    async fn reconcile(
+        &self,
+        _inst: &ManagerInstance,
+        _key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        Err(AdapterError::Unsupported("test source".to_string()))
+    }
+}
+
+fn session_over(setup: &TwoClaudes) -> Arc<Session> {
+    let adapters: Vec<Arc<dyn Adapter>> = setup
+        .instances
+        .iter()
+        .map(|inst| {
+            let rows = setup
+                .artifacts
+                .iter()
+                .filter(|a| a.key.instance_id == inst.id)
+                .cloned()
+                .collect();
+            Fixed::new(inst.clone(), rows) as Arc<dyn Adapter>
+        })
+        .collect();
+    Session::with_adapters(Arc::new(VecSink::new()), adapters, None)
+}
+
+fn commands_of<'a>(artifacts: &'a [InstalledArtifact], name: &str) -> &'a [CommandFact] {
+    &artifacts
+        .iter()
+        .find(|a| a.key.name == name)
+        .expect(name)
+        .facts
+        .commands
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_refresh_writes_the_verdicts_and_an_unchanged_disk_does_not_move_the_generation() {
+    let home = Home::new("session");
+    let setup = two_claudes(&home);
+    let session = session_over(&setup);
+    let env = home.env(vec![setup.npm_bin.clone(), setup.local_bin.clone()]);
+
+    let first = session.refresh(&env, &CheckOptions::default()).await;
+    assert_eq!(
+        commands_of(&first.artifacts, "@anthropic-ai/claude-code"),
+        &[runs("claude")]
+    );
+    let npm_key = setup.artifacts[0].key.clone();
+    assert_eq!(
+        commands_of(&first.artifacts, "claude"),
+        &[shadowed("claude", Some(&npm_key))]
+    );
+
+    let second = session.refresh(&env, &CheckOptions::default()).await;
+    assert_eq!(second.generation, first.generation);
+    assert_eq!(second.artifacts, first.artifacts);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_session_told_the_path_was_not_restored_says_nothing_about_which_runs() {
+    let home = Home::new("session-unknown");
+    let setup = two_claudes(&home);
+    let session = session_over(&setup);
+    session.note_login_path(false);
+    let env = home.env(vec![setup.npm_bin.clone(), setup.local_bin.clone()]);
+    let snapshot = session.refresh(&env, &CheckOptions::default()).await;
+    for artifact in &snapshot.artifacts {
+        assert_eq!(artifact.facts.commands, vec![unjudged("claude")]);
+    }
+}
