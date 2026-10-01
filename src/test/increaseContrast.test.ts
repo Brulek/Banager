@@ -27,12 +27,34 @@ function block(head: string): string {
 }
 
 describe("Increase contrast", () => {
-  it("darkens the light appearance's accent, the default blue and the user's own alike, and leaves the dark one's", () => {
+  it("darkens the accent in either appearance, the default blue and the user's own alike", () => {
     const light = block("@media (prefers-contrast: more) and (prefers-color-scheme: light)");
     expect(light).toContain(":root { --color-accent: #0060df; }");
     expect(light).toContain("@supports (color: AccentColor) { :root { --color-accent: color-mix(in srgb, AccentColor 85%, black); } }");
     const dark = block("@media (prefers-contrast: more) and (prefers-color-scheme: dark)");
-    expect(dark).not.toContain("--color-accent");
+    expect(dark).toContain("--color-accent: #0068d9;");
+    expect(dark).toContain("@supports (color: AccentColor) { :root { --color-accent: color-mix(in srgb, AccentColor 85%, black); } }");
+  });
+
+  it("puts a filled button's white words at 4.5:1 or more on the darkened blue, which still stands 3:1 off the window", () => {
+    // WCAG's relative luminance and contrast ratio.
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((at) => {
+        const v = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    // The default blue: 4:1, which is what this is for.
+    expect(ratio("#ffffff", "#007aff")).toBeLessThan(4.5);
+    expect(ratio("#ffffff", "#0060df")).toBeGreaterThanOrEqual(4.5);
+    expect(ratio("#ffffff", "#0068d9")).toBeGreaterThanOrEqual(4.5);
+    // The dark window (#1E1E1E) round a dark button.
+    expect(ratio("#0068d9", "#1e1e1e")).toBeGreaterThanOrEqual(3);
   });
 
   it("comes after the user's accent, so that it wins over it", () => {

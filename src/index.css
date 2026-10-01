@@ -240,12 +240,14 @@
 
 /* Increase contrast (System Settings > Accessibility > Display): the
    secondary text darkens to 70%, and the keyboard's focus ring is drawn
-   solid rather than at half strength. In the light appearance the accent
-   a filled button and the focused list's selection are drawn in darkens
-   too -- the default blue to #0060DF, the user's own by 15% -- so their
-   white words read at 5.5:1 rather than 4:1; the dark appearance keeps
-   its accent. After the user's accent (above), which this darkens rather
-   than replaces; nothing here applies without the setting. */
+   solid rather than at half strength. The accent a filled button, a menu's
+   highlighted item and the focused list's selection are drawn in darkens
+   too, so their white words read at 4.5:1 or more rather than about 4:1:
+   in the light appearance the default blue to #0060DF (5.5:1), in the
+   dark to #0068D9 (5.3:1, and still 3:1 against the dark window round a
+   button), and the user's own by 15% in either. After the user's accent
+   (above), which this darkens rather than replaces; nothing here applies
+   without the setting. */
 @media (prefers-contrast: more) {
   :root {
     --color-muted: rgb(0 0 0 / 0.7);
@@ -266,6 +268,12 @@
   :root {
     --color-muted: rgb(255 255 255 / 0.7);
     --color-focus: rgb(26 169 255);
+    --color-accent: #0068d9;
+  }
+  @supports (color: AccentColor) {
+    :root {
+      --color-accent: color-mix(in srgb, AccentColor 85%, black);
+    }
   }
 }
 
