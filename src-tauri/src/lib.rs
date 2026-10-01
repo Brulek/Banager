@@ -177,3 +177,62 @@ pub fn run() {
             window::on_run_event(app, event);
         });
 }
+
+/// What the window is allowed to ask of Tauri and of the page's own address,
+/// pinned: a change here is a change of what a page that ran someone else's
+/// script could do, so it must come with a change of this test, read by a
+/// person (docs/what-we-run.md, Network; the security review of round 5).
+#[cfg(test)]
+mod window_rights {
+    fn permissions() -> Vec<String> {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        capability["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                p.as_str()
+                    .or_else(|| p["identifier"].as_str())
+                    .expect("a permission is a string or has an identifier")
+                    .to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_the_window_is_given_exactly_these_permissions() {
+        // `core:default` is Tauri's own set of getters, events, menus and
+        // paths; `core:image:deny-from-path` takes from it the one command
+        // that reads a file by the path it is given, which Tauri leaves out
+        // only while no `image-png` or `image-ico` feature is on.
+        assert_eq!(
+            permissions(),
+            [
+                "core:default",
+                "core:image:deny-from-path",
+                "core:window:allow-start-dragging",
+                "core:window:allow-set-badge-count",
+                "notification:allow-is-permission-granted",
+            ]
+        );
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(capability["windows"], serde_json::json!(["main"]));
+        assert!(
+            capability.get("remote").is_none(),
+            "no page on another address may be given a command"
+        );
+    }
+
+    #[test]
+    fn test_the_content_security_policy_lets_the_page_load_and_connect_to_itself_only() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(
+            config["app"]["security"]["csp"],
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+             img-src 'self' data: asset: https://asset.localhost; connect-src 'self'"
+        );
+    }
+}

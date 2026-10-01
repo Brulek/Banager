@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:image:deny-from-path",
     "core:window:allow-start-dragging",
     "core:window:allow-set-badge-count",
     "notification:allow-is-permission-granted"
