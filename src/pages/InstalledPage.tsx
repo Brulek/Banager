@@ -90,7 +90,8 @@ import {
   uninstallOffered,
   type UninstallHolds,
 } from "../lib/batchUninstall";
-import { InstalledSelectionHeader } from "../components/InstalledSelectionHeader";
+import { InstalledSelectionHeader, UninstallSelectedButton } from "../components/InstalledSelectionHeader";
+import { BatchUninstallSheet, useBatchUninstall } from "../components/BatchUninstallSheet";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -623,6 +624,8 @@ export function InstalledPage() {
   // The Updates page's own confirmation, for the inspector's Update: the same
   // plan, command, warnings and submission (`useUpdateConfirm`).
   const confirm = useUpdateConfirm({ nameOf, compare: compareCandidates, sourceLabelFor });
+  // 「卸载所选」's sheet: the ticked rows' uninstalls, previewed together.
+  const batchUninstall = useBatchUninstall();
 
   // Every update in the snapshot, split by the rule the Updates page lists
   // by (`hidingRule`, src/lib/updateState.ts): the ones it lists, and the
@@ -1736,6 +1739,24 @@ export function InstalledPage() {
             className="h-6 w-full appearance-none rounded-control bg-fill-subtle pl-7 pr-2 text-body text-foreground placeholder:text-muted [&::-webkit-search-decoration]:appearance-none"
           />
         </span>
+        {/* The ticked rows the list shows, once something is ticked. Once
+            everything has started, the button goes with the ticks, and the
+            focus to the list. */}
+        <UninstallSelectedButton
+          count={counted.length}
+          sheetOpen={batchUninstall.sheetOpen}
+          onOpen={(opener) =>
+            batchUninstall.open(
+              counted.map((artifact) => ({
+                artifact,
+                instance: instancesById.get(artifact.key.instance_id)!,
+                name: artifact.display_name,
+              })),
+              opener,
+              () => listHandle.current?.focusFirst(),
+            )
+          }
+        />
         {/* That nothing matches, for a screen reader, as it becomes so: one
             node for as long as the page is open, beside the field typed
             in, where the list's own line (below) is a new one each time. */}
@@ -1874,6 +1895,7 @@ export function InstalledPage() {
         />
       ) : null}
       <UpdateConfirmDialog confirm={confirm} />
+      <BatchUninstallSheet uninstall={batchUninstall} />
     </div>
   );
 }

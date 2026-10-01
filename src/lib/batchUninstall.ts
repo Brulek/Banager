@@ -224,7 +224,11 @@ export type Exclusion =
   | { kind: "unseen" }
   /** X5: the program these included tools (ids) need to be uninstalled. */
   | { kind: "host"; by: string[] }
-  /** X6: still used by software not ticked (names as the list shows them, or as Homebrew gave them). */
+  /**
+   * X6: still used by software not ticked -- named with any ticked one left
+   * out itself, every one that stays -- as the list shows them, or as
+   * Homebrew gave them.
+   */
   | { kind: "stillNeeded"; names: string[] }
   /** X6: still used by ticked tools (ids) that are left out themselves. */
   | { kind: "neededByExcluded"; ids: string[] }
@@ -406,6 +410,32 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
   // ticked and included (it is covered, or it would be left out).
   const afterOf = (id: string): string[] =>
     unique((dependents.get(id) ?? []).flatMap(({ matches }) => matches.map((match) => artifactKeyId(match.key))));
+  // Why a tool's dependents keep it, or null when every one is ticked and
+  // included, to be uninstalled first. Every one that stays is named, ticked
+  // or not, where one is not ticked: each still needs it.
+  const dependentsVerdict = (id: string): Exclusion | null => {
+    const named = dependents.get(id) ?? [];
+    const staying: string[] = [];
+    const leftOut: string[] = [];
+    let notTicked = false;
+    for (const { name, matches } of named) {
+      if (matches.length === 0) {
+        staying.push(name);
+        notTicked = true;
+      }
+      for (const match of matches) {
+        const matchId = artifactKeyId(match.key);
+        if (!ticked.has(matchId)) notTicked = true;
+        else if (reasons.has(matchId)) leftOut.push(matchId);
+        else continue;
+        staying.push(match.display_name || match.key.name);
+      }
+    }
+    if (notTicked) return { kind: "stillNeeded", names: unique(staying) };
+    if (leftOut.length > 0) return { kind: "neededByExcluded", ids: unique(leftOut) };
+    if (named.length > 0 && !DEPENDENTS_FIRST) return { kind: "afterOthers", ids: afterOf(id) };
+    return null;
+  };
 
   for (let changed = true; changed; ) {
     changed = false;
@@ -430,27 +460,9 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
     }
     // X6: a dependent Homebrew named that is not uninstalled first.
     for (const candidate of included()) {
-      const named = dependents.get(candidate.id) ?? [];
-      if (named.length === 0) continue;
-      const notTicked: string[] = [];
-      const leftOut: string[] = [];
-      for (const { name, matches } of named) {
-        if (matches.length === 0) notTicked.push(name);
-        for (const match of matches) {
-          const id = artifactKeyId(match.key);
-          if (!ticked.has(id)) notTicked.push(match.display_name || match.key.name);
-          else if (reasons.has(id)) leftOut.push(id);
-        }
-      }
-      if (notTicked.length > 0) {
-        reasons.set(candidate.id, { kind: "stillNeeded", names: unique(notTicked) });
-      } else if (leftOut.length > 0) {
-        reasons.set(candidate.id, { kind: "neededByExcluded", ids: unique(leftOut) });
-      } else if (!DEPENDENTS_FIRST) {
-        reasons.set(candidate.id, { kind: "afterOthers", ids: afterOf(candidate.id) });
-      } else {
-        continue;
-      }
+      const verdict = dependentsVerdict(candidate.id);
+      if (verdict === null) continue;
+      reasons.set(candidate.id, verdict);
       changed = true;
     }
     if (changed) continue;
@@ -459,6 +471,13 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
     const looped = cycleMembers(ids, new Map(ids.map((id) => [id, afterOf(id)])));
     for (const id of looped) reasons.set(id, { kind: "cycle" });
     changed = looped.length > 0;
+  }
+  // Said with every exclusion known: a dependent left out later in the
+  // same pass is named too. (Exclusions only grow, so the kind holds.)
+  for (const [id, reason] of reasons) {
+    if (reason.kind === "stillNeeded" || reason.kind === "neededByExcluded") {
+      reasons.set(id, dependentsVerdict(id) ?? reason);
+    }
   }
 
   const kept = included();

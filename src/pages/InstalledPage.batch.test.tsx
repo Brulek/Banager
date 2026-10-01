@@ -8,7 +8,7 @@ import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
 import { writeInventoryPreview } from "../lib/events";
-import type { InstalledArtifact, ManagerInstance, OpSummary, Settings, Snapshot } from "../lib/types";
+import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, OpSummary, Settings, Snapshot } from "../lib/types";
 import { NO_FACTS, NO_SIZES } from "../lib/types";
 
 // Uninstalling several tools at once, on the Installed page
@@ -101,6 +101,8 @@ const settings: Settings = {
 
 let served: Snapshot;
 let operations: OpSummary[];
+/** The tools whose uninstall was submitted, in order. */
+let submitted: string[];
 
 beforeEach(() => {
   mockInvoke.mockReset();
@@ -110,11 +112,35 @@ beforeEach(() => {
     return this.getAttribute("data-index") === null ? 900 : 52;
   });
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
-  mockInvoke.mockImplementation((cmd: string) => {
+  submitted = [];
+  let ops = 10;
+  mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "get_snapshot") return Promise.resolve(served);
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "list_operations") return Promise.resolve(operations);
     if (cmd === "get_sizes") return Promise.resolve(NO_SIZES);
+    if (cmd === "plan_operation") {
+      const request = (args as { request: OpRequest }).request;
+      return Promise.resolve({
+        id: request.name.padStart(32, "0"),
+        plan: {
+          request,
+          action: { Command: { program: brew.exe_path, args: ["uninstall", "--formula", request.name], env: [] } },
+          needs_password: false,
+          locks: [request.instance_id],
+          cancel_policy: "KillThenReconcile",
+          warnings: [{ UninstallScope: { what: "HomebrewFormulaOnly" } }],
+          affected: [],
+          timeout_secs: 1800,
+        },
+        issued_at: 1789700000,
+      } satisfies IssuedPlan);
+    }
+    if (cmd === "submit_operation") {
+      submitted.push((args as { planId: string }).planId.replace(/^0+/, ""));
+      ops += 1;
+      return Promise.resolve(ops);
+    }
     return Promise.resolve(undefined);
   });
 });
@@ -248,5 +274,49 @@ describe("the Installed page's checkboxes", () => {
     await findRow("jq");
     expect(boxOf("jq")).not.toBeChecked();
     expect(boxOf("wget")).toBeChecked();
+  });
+});
+
+describe("Uninstall Selected, on the Installed page", () => {
+  const button = () => screen.queryByRole("button", { name: /^Uninstall Selected/ });
+
+  it("counts the ticked rows the list shows, and opens their sheet in the list's order", async () => {
+    renderInstalled();
+    await findRow("jq");
+    expect(button()).toBeNull();
+    fireEvent.click(boxOf("wget")!);
+    fireEvent.click(boxOf("jq")!);
+    expect(button()).toHaveAccessibleName("Uninstall Selected (2)…");
+    // jq hidden by a search: kept, not counted.
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "wg" } });
+    await waitFor(() => expect(button()).toHaveAccessibleName("Uninstall Selected (1)…"));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
+    await waitFor(() => expect(button()).toHaveAccessibleName("Uninstall Selected (2)…"));
+
+    fireEvent.click(button()!);
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall these 2 tools?" });
+    expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(["jq", "wget"]);
+    // One batch at a time (under the sheet, out of the accessibility tree).
+    expect(document.querySelector("[data-uninstall-selected]")).toBeDisabled();
+    const uninstall = await within(dialog).findByRole("button", { name: "Uninstall 2 Tools" });
+    await waitFor(() => expect(uninstall).toBeEnabled());
+    fireEvent.click(uninstall);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(submitted).toEqual(["jq", "wget"]);
+    // Started: unticked, the button gone with them, and the focus in the list.
+    expect(useUiStore.getState().selectedUninstalls).toEqual([]);
+    expect(button()).toBeNull();
+    await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")).not.toBeNull());
+  });
+
+  it("is off with more ticked than one batch takes", async () => {
+    const many = Array.from({ length: 21 }, (_, index) => artifact(brew, "Formula", `tool-${String(index).padStart(2, "0")}`));
+    served = { ...snapshot, artifacts: many };
+    renderInstalled();
+    await findRow("tool-00");
+    act(() => useUiStore.getState().selectUninstalls(many.map((a) => a.key)));
+    expect(button()).toHaveAccessibleName("Uninstall Selected (21)…");
+    expect(button()).toBeDisabled();
+    expect(status()).toBe("21 selected. Up to 20 can be uninstalled at a time");
   });
 });

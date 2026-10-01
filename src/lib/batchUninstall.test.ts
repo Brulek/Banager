@@ -287,6 +287,24 @@ describe("which ticked tools a batch uninstalls", () => {
     });
   });
 
+  it("names every dependent that stays, a ticked one left out among them", () => {
+    // python@3.13 is ticked, and left out (pipx, not ticked, needs it):
+    // it still needs openssl@3 too.
+    const result = classify(
+      [
+        candidate(openssl, { affected: ["node@22", "postgresql@17", "python@3.13", "wget"] }),
+        candidate(node),
+        candidate(python, { affected: ["pipx"] }),
+      ],
+      [...everything, formula("postgresql@17")],
+    );
+    expect(ids(result.included)).toEqual(["node@22"]);
+    expect(result.excluded.map((item) => [item.candidate.name, item.reason])).toEqual([
+      ["openssl@3", { kind: "stillNeeded", names: ["postgresql@17", "python@3.13", "wget"] }],
+      ["python@3.13", { kind: "stillNeeded", names: ["pipx"] }],
+    ]);
+  });
+
   it("names a dependent Homebrew gave that the list does not have, as Homebrew spells it", () => {
     const result = classify([candidate(python, { affected: ["somethingnew"] })], everything);
     expect(result.excluded[0].reason).toEqual({ kind: "stillNeeded", names: ["somethingnew"] });

@@ -346,3 +346,26 @@ describe("the uninstall dialog's notes on what else stays", () => {
     expect(await screen.findByText("Frees about 2 GB, less any part other models share.")).toBeInTheDocument();
   });
 });
+
+describe("the kept data of several tools at once", () => {
+  it("says under each path whose it is, only where it is told", async () => {
+    const warnings: Warning[] = [
+      { WillKeep: { path: "~/.claude.json", what: "Settings" } },
+      JSON.parse(MEASURED_WIRE) as Warning,
+    ];
+    const owners: Record<string, string[]> = {
+      "~/.claude": ["Claude Code", "@anthropic-ai/claude-code"],
+      "~/.claude.json": ["Claude Code"],
+    };
+    const { rerender } = renderWithProviders(<KeptDataGroup warnings={warnings} ownersOf={(path) => owners[path] ?? []} />);
+    const lines = screen.getAllByText(/^From /).map((line) => line.textContent);
+    expect(lines).toEqual(["From Claude Code", "From Claude Code and @anthropic-ai/claude-code"]);
+    expect(document.querySelectorAll("[data-kept-owners]")).toHaveLength(2);
+    rerender(<KeptDataGroup warnings={warnings} />);
+    expect(document.querySelector("[data-kept-owners]")).toBeNull();
+    await i18n.changeLanguage("zh-CN");
+    rerender(<KeptDataGroup warnings={warnings} ownersOf={(path) => owners[path] ?? []} />);
+    expect(screen.getByText("来自Claude Code和@anthropic-ai/claude-code")).toBeInTheDocument();
+    await i18n.changeLanguage("en");
+  });
+});

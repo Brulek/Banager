@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { keptDataOf } from "../lib/keptData";
 import { saysSize, sizeText } from "../lib/sizes";
+import { namesInSentence } from "../lib/sources";
 import type { KeptWhat, Warning } from "../lib/types";
 import { KEPT_DATA_KEYS, KEPT_WHAT_DETAIL_KEYS } from "../lib/warnings";
 import { CopyButton } from "./CopyButton";
@@ -28,6 +29,8 @@ interface KeptLine {
   why: string | null;
   /** Under it: whose data inside it the size does not count, one line each (`KeepsData`'s `others`). */
   others: string[];
+  /** Whose it is, where the group is about several tools (`ownersOf`), or null. */
+  owners: string | null;
 }
 
 /**
@@ -45,8 +48,23 @@ interface KeptLine {
  * two tools share says, under it, which other tool's data it does not count
  * (`~/.gemini` without Antigravity CLI's `~/.gemini/antigravity-cli`).
  */
-export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
+export function KeptDataGroup({
+  warnings,
+  ownersOf,
+}: {
+  warnings: readonly Warning[];
+  /**
+   * Whose each path is, by the names the list shows, where the group is
+   * about several tools' uninstalls at once (`BatchUninstallSheet`): said
+   * under the path, 「来自Claude Code和Codex」.
+   */
+  ownersOf?: (path: string) => string[];
+}) {
   const { t } = useTranslation();
+  const ownersText = (path: string): string | null => {
+    const names = ownersOf?.(path) ?? [];
+    return names.length === 0 ? null : t("batchUninstall.keptBy", { names: namesInSentence(t, names) });
+  };
   const lines: KeptLine[] = [];
   for (const warning of warnings) {
     if (typeof warning !== "string" && "WillKeep" in warning) {
@@ -58,6 +76,7 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
         what: t(WILL_KEEP_WHAT_KEYS[what]),
         why: why === null ? null : t(why),
         others: [],
+        owners: ownersText(path),
       });
     }
   }
@@ -80,7 +99,7 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
     const why = measured === null ? leftOut : null;
     // Another tool's data inside it, which the size leaves out: said under it.
     const others = item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path }));
-    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others });
+    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others, owners: ownersText(item.path) });
   }
   if (lines.length === 0) return null;
   return (
@@ -112,6 +131,11 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
                   {other}
                 </p>
               ))}
+              {line.owners !== null ? (
+                <p data-kept-owners="" className={`break-words text-muted ${SMALL_WRAPPING}`}>
+                  {line.owners}
+                </p>
+              ) : null}
             </div>
             <CopyButton
               text={line.path}
