@@ -160,7 +160,11 @@ impl Session {
             record(committed, &snapshot);
             return (committed, snapshot);
         }
-        self.refresh_round(gate, env, opts, record, preview).await
+        let (round, snapshot) = self.refresh_round(gate, env, opts, record, preview).await;
+        // Committed, and the gate released: sizes are measured on a thread
+        // of their own from here, outside the snapshot (`sizes.rs`).
+        self.measure_sizes(round, &snapshot, env);
+        (round, snapshot)
     }
 
     /// One real refresh round, the body of `refresh`, handing back its own

@@ -10,6 +10,7 @@ mod icon;
 mod plans;
 mod refresh;
 mod scan;
+mod sizes;
 /// Re-exported for `crate::testing::expire_issued_plans` alone: how long
 /// an issued plan stays submittable, so that helper can age one past it
 /// without duplicating the number. Gated the same way that function is --
@@ -310,6 +311,12 @@ pub struct Session {
     /// on a folder that stopped answering is not joined by another each
     /// round.
     commands_in_flight: Arc<std::sync::atomic::AtomicBool>,
+    /// Measures how much disk each installed thing takes after every round
+    /// commits (`refresh_recording`, `sizes.rs`), or `None`: on in
+    /// `Session::new` and `with_adapters_and_sizes`, off for every other
+    /// test seam, so that a test refreshing a fake source never walks a
+    /// folder it did not make.
+    sizes: Option<Arc<crate::size::SizeMeter>>,
 }
 
 impl Session {
@@ -343,7 +350,7 @@ impl Session {
         // "move to Trash", for a confirmed path-list uninstall
         // (`removal::execute_removal`; docs/what-we-run.md).
         adapters.extend(standalone::all(runner, http, Arc::new(RealTrasher::new())));
-        Session::build(sink, adapters, now_fn, background_change)
+        Session::build_with(sink, adapters, now_fn, background_change, true)
     }
 
     /// Test seam: build a Session over arbitrary adapters. Its
@@ -360,6 +367,23 @@ impl Session {
         Session::build(sink, adapters, now_fn, Arc::new(tokio::sync::Notify::new()))
     }
 
+    /// Test seam: `with_adapters`, with the size measurement on, as
+    /// `Session::new` has it -- for a test whose adapters report folders
+    /// of its own (`sizes.rs`, and the shell's `get_sizes`).
+    pub fn with_adapters_and_sizes(
+        sink: Arc<dyn EventSink>,
+        adapters: Vec<Arc<dyn Adapter>>,
+        now_fn: Option<fn() -> i64>,
+    ) -> Arc<Session> {
+        Session::build_with(
+            sink,
+            adapters,
+            now_fn,
+            Arc::new(tokio::sync::Notify::new()),
+            true,
+        )
+    }
+
     /// `pub(crate)`, not private: `crate::testing::session_with_background_change`
     /// (a separate module, but the same crate) is the only other caller,
     /// and exists for exactly the reason `with_adapters`'s own doc comment
@@ -374,6 +398,24 @@ impl Session {
         now_fn: Option<fn() -> i64>,
         background_change: Arc<tokio::sync::Notify>,
     ) -> Arc<Session> {
+        Session::build_with(sink, adapters, now_fn, background_change, false)
+    }
+
+    /// `build`, with the size measurement on or off (`Session::sizes`):
+    /// its rounds tell `sink` as they move (`EventSink::sizes_changed`).
+    fn build_with(
+        sink: Arc<dyn EventSink>,
+        adapters: Vec<Arc<dyn Adapter>>,
+        now_fn: Option<fn() -> i64>,
+        background_change: Arc<tokio::sync::Notify>,
+        measure_sizes: bool,
+    ) -> Arc<Session> {
+        let sizes = measure_sizes.then(|| {
+            let sink = sink.clone();
+            crate::size::SizeMeter::new(crate::size::SizeBudget::default(), move |round| {
+                sink.sizes_changed(round)
+            })
+        });
         let mut ops = OperationManager::new(sink);
         let mut by_id = HashMap::new();
         for adapter in adapters {
@@ -409,6 +451,7 @@ impl Session {
             background_change,
             login_path: std::sync::atomic::AtomicBool::new(true),
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            sizes,
         })
     }
 

@@ -101,6 +101,13 @@ pub enum OperationEvent {
 
 pub trait EventSink: Send + Sync {
     fn emit(&self, event: OperationEvent);
+
+    /// What `Session::sizes` answers has moved, for the snapshot of
+    /// `round`: a round of measuring started, got further, or finished
+    /// (`size::SizeMeter`). Called from the measuring thread. Nothing by
+    /// default: a sink with no window to tell has nothing to do; the
+    /// shell's sends the window `UiEvent::SizesChanged`.
+    fn sizes_changed(&self, _round: u64) {}
 }
 
 pub struct VecSink {
