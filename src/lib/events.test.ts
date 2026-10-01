@@ -187,6 +187,28 @@ describe("useOperationEvents", () => {
     }
   });
 
+  it("asks for the history again on Finished, whose record is kept before the event is sent", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.history, { run: "r", cleared_before: null, records: [] });
+    renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    capturedChannel!.onmessage({ Operation: { Status: { op_id: 4, status: "Running" } } });
+    expect(queryClient.getQueryState(queryKeys.history)?.isInvalidated).toBe(false);
+    capturedChannel!.onmessage({ Operation: { Finished: { op_id: 4, outcome: "Succeeded" } } });
+    expect(queryClient.getQueryState(queryKeys.history)?.isInvalidated).toBe(true);
+    await waitFor(() => expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("ignores events that arrive after unmount while the subscription is still pending", async () => {
     let capturedChannel = null as InstanceType<typeof Channel> | null;
     let resolveSubscribe: () => void = () => {};
