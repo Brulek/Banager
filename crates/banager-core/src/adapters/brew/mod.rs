@@ -5462,7 +5462,7 @@ mod plan_execute_tests {
     /// `tests/safety_refresh_commands_test.rs` cannot reach (Homebrew is
     /// found at fixed paths): every command a refresh asks of Homebrew --
     /// `detect`, `inventory` and `check_updates` with and without
-    /// `--greedy` -- is one the Homebrew section shows outside its
+    /// `--greedy`, and `search` -- is one the Homebrew section shows outside its
     /// "Needs a password" table, with `{name}` standing for one argument,
     /// and none is one of that table's. `brew update` is the one command
     /// that changes Homebrew itself; it is checked apart: it runs once,
@@ -5525,6 +5525,21 @@ mod plan_execute_tests {
             };
             checks.push(adapter.check_updates(inst, &opts).await.map(|_| ()));
         }
+        // Search, which runs without a plan as a refresh does, though
+        // nothing in the window asks for it yet.
+        runner.respond(
+            vec![BREW, "search", "jq"],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.3/search-jq.txt"
+            )),
+        );
+        runner.respond(
+            vec![BREW, "search", "--desc", "jq"],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.3/search-desc-jq.txt"
+            )),
+        );
+        checks.push(adapter.search(inst, "jq").await.map(|_| ()));
 
         let doc = include_str!("../../../../../docs/what-we-run.md");
         let start = doc.find("\n## Homebrew\n").expect("a section ## Homebrew") + 1;
@@ -5600,6 +5615,7 @@ mod plan_execute_tests {
             vec!["info", "--installed", "--json=v2"],
             vec!["outdated", "--json=v2"],
             vec!["outdated", "--json=v2", "--greedy"],
+            vec!["search", "--desc", "jq"],
         ] {
             assert!(
                 calls.iter().any(|call| call[1..] == wanted[..]),

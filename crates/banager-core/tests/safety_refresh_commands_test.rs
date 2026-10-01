@@ -360,6 +360,12 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         0,
         fixture("standalone-rustup/1.29.1/version.txt"),
     );
+    recorder.answer(
+        "npm",
+        "search --json --searchlimit 20 jq",
+        0,
+        fixture("npm/12.0.2/search-jq.json"),
+    );
     let runner = Arc::new(recorder);
     let http = Arc::new(MockHttpClient::new());
     let mut adapters: Vec<Arc<dyn Adapter>> = vec![
@@ -378,7 +384,7 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
             Arc::new(MockTrasher::new()),
         )));
     }
-    let session = Session::with_adapters(Arc::new(VecSink::new()), adapters, None);
+    let session = Session::with_adapters(Arc::new(VecSink::new()), adapters.clone(), None);
     let env = HostEnv {
         path_dirs: vec![bin.clone(), home.0.join(".local/bin")],
         home: home.0.clone(),
@@ -395,6 +401,19 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     session.scan_unknown(&env);
     assert_eq!(tree(&home.0), before, "the home folder changed");
 
+    // Search, the one other call that runs without a plan (nothing in the
+    // window asks for it yet): over every source found, its commands are
+    // held to the same tables.
+    for adapter in &adapters {
+        for inst in snapshot
+            .instances
+            .iter()
+            .filter(|inst| inst.adapter_id == adapter.meta().id)
+        {
+            let _ = adapter.search(inst, "jq").await;
+        }
+    }
+
     let doc = std::fs::read_to_string(root().join("docs/what-we-run.md")).unwrap();
     let calls = runner.calls.lock().unwrap().clone();
     let mut ran: Vec<&str> = Vec::new();
@@ -409,11 +428,12 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
         argv.extend(args.iter().cloned());
         assert!(
             writes.iter().all(|write| !is(&argv, write)),
-            "a refresh ran {argv:?}, a write command of {heading}"
+            "a refresh or search ran {argv:?}, a write command of {heading}"
         );
         assert!(
             reads.iter().any(|read| is(&argv, read)),
-            "a refresh ran {argv:?}, which ## {heading} does not show as read-only: {reads:?}"
+            "a refresh or search ran {argv:?}, which ## {heading} does not show as read-only: \
+             {reads:?}"
         );
         ran.push(heading);
     }
@@ -456,5 +476,11 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
             .iter()
             .any(|(p, a)| p.ends_with("grok") && a.join(" ") == "update --check --json"),
         "Grok Build's own update check ran"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|(p, a)| p.ends_with("npm") && a.first().map(String::as_str) == Some("search")),
+        "npm's search ran"
     );
 }
