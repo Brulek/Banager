@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { HomebrewLifecycle, InstalledArtifact, Sizes } from "../lib/types";
-import { otherVersionsSizeText, sizeViewOf } from "../lib/sizes";
+import { otherVersionsSizeText, saysSize, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureIcon } from "./icons";
 import { CopyButton } from "./CopyButton";
@@ -279,7 +279,7 @@ export function otherVersionsFact(
             {t("clarity.otherVersionsDetail")}
           </TextWithInfo>
         </span>
-        {measured !== null ? (
+        {measured !== null && saysSize(measured) ? (
           <span data-other-versions-size="" className="text-muted">
             {otherVersionsSizeText(t, measured, others.length)}
           </span>

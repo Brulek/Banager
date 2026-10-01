@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { compareBySize, modelsTotalText, otherVersionsSizeText, sizeNoteOf, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
+import {
+  compareBySize,
+  modelsTotalText,
+  otherVersionsSizeText,
+  saysSize,
+  sizeNoteOf,
+  sizeOrderOf,
+  sizeText,
+  sizeViewOf,
+} from "./sizes";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
 
 const ruff: InstalledArtifact = {
@@ -104,6 +113,24 @@ describe("the size words", () => {
     for (const text of words) {
       expect(text).not.toMatch(/腾出|释放|清理|free up|reclaim|clean/i);
     }
+  });
+});
+
+describe("saysSize", () => {
+  it("says no number for a measured 0, whatever else it says, and one for anything more", () => {
+    expect(saysSize({ bytes: 0, partial: false, at_least: false })).toBe(false);
+    expect(saysSize({ bytes: 0, partial: true, at_least: false })).toBe(false);
+    expect(saysSize({ bytes: 1, partial: false, at_least: false })).toBe(true);
+    expect(saysSize({ bytes: 4_096, partial: false, at_least: true })).toBe(true);
+  });
+
+  it("still sorts a measured 0 By Size, as the smallest measured", () => {
+    const zero = { ...ruff, key: { ...ruff.key, name: "corepack" } };
+    const order = sizeOrderOf(
+      sizes({ artifacts: [{ key: zero.key, version: zero.version, measured: { bytes: 0, partial: false, at_least: false }, old_versions: null }] }),
+      [zero],
+    );
+    expect([...order.entries()]).toEqual([["uv|Tool|corepack", 0]]);
   });
 });
 

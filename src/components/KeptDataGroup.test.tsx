@@ -249,6 +249,14 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     expect(row.querySelector("[data-kept-others]")?.textContent).toBe("~/.gemini/antigravity-cli是Antigravity CLI的数据，不算在内");
   });
 
+  it("names a path that measured 0 with no size, never 「约0 B」", async () => {
+    open([{ KeepsData: { path: "~/.claude.json", what: "ToolData", size: { bytes: 0, partial: false, at_least: false } } }]);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const [row] = within(group).getAllByRole("listitem");
+    expect(row.textContent).toBe("~/.claude.jsonThis tool's settings and dataCopy Path");
+    expect(row.querySelector("[data-kept-size]")).toBeNull();
+  });
+
   it("has no group when nothing stays", async () => {
     open([{ UninstallScope: { what: "Npm" } }]);
     await screen.findByRole("button", { name: "Show Command" });

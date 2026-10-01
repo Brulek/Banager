@@ -305,4 +305,9 @@ describe("otherVersionsFact", () => {
     expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null, null))?.value)).toBe("3.6.3 ");
     expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null))?.value)).toBe("3.6.3 ");
   });
+
+  it("names the versions alone when what they take measured 0, never 「约0 B」", () => {
+    const openssl = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.3"] });
+    expect(textOf(otherVersionsFact(zh, openssl, sizesOf(openssl, about(0)))?.value)).toBe("3.6.3 ");
+  });
 });

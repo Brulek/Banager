@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatBytes } from "../lib/format";
-import { sizeNoteOf, sizeText, sizeViewOf, type Translate } from "../lib/sizes";
+import { saysSize, sizeNoteOf, sizeText, sizeViewOf, type Translate } from "../lib/sizes";
 import { TextWithInfo } from "./InfoDetail";
 import type { InstalledArtifact, Sizes } from "../lib/types";
 
@@ -25,7 +25,9 @@ export interface SizeFactRow {
  *   said with those versions, in the row under this one
  *   (`otherVersionsFact`);
  * - while it is measured, 「正在计算…」 in the secondary colour;
- * - with nothing measured for it (`sizeViewOf`), no row at all.
+ * - with nothing measured for it (`sizeViewOf`), or a measured 0
+ *   (`saysSize`: links only, as npm's `corepack` under Homebrew's node),
+ *   no row at all.
  *
  * Nothing here says how much could be freed, and nothing offers to: the
  * row only says what is there.
@@ -53,6 +55,7 @@ export function sizeFact(t: Translate, artifact: InstalledArtifact, sizes: Sizes
       selectable: false,
     };
   }
+  if (!saysSize(view.measured)) return null;
   const text = sizeText(t, view.measured);
   const note = sizeNoteOf(artifact);
   return {

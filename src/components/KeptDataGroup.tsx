@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { keptDataOf } from "../lib/keptData";
-import { sizeText } from "../lib/sizes";
+import { saysSize, sizeText } from "../lib/sizes";
 import type { KeptWhat, Warning } from "../lib/types";
 import { KEPT_DATA_KEYS, KEPT_WHAT_DETAIL_KEYS } from "../lib/warnings";
 import { CopyButton } from "./CopyButton";
@@ -66,16 +66,18 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
     // folder (Codex's own install in ~/.codex).
     const leftOut =
       item.leftOut.length === 0 ? null : item.leftOut.map((path) => t("clarity.keptLeftOut", { path })).join(" ");
+    // A measured 0 says no size (`saysSize`), as one not known.
+    const measured = item.size !== null && saysSize(item.size) ? item.size : null;
     const size =
-      item.size === null ? null : leftOut === null ? (
-        sizeText(t, item.size)
+      measured === null ? null : leftOut === null ? (
+        sizeText(t, measured)
       ) : (
-        <TextWithInfo text={sizeText(t, item.size)} label={t("clarity.keptLeftOutLabel", { path: item.path })}>
+        <TextWithInfo text={sizeText(t, measured)} label={t("clarity.keptLeftOutLabel", { path: item.path })}>
           {leftOut}
         </TextWithInfo>
       );
     // With no size to hang it on, it goes behind the ⓘ of what it holds.
-    const why = item.size === null ? leftOut : null;
+    const why = measured === null ? leftOut : null;
     // Another tool's data inside it, which the size leaves out: said under it.
     const others = item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path }));
     lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others });

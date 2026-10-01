@@ -35,6 +35,18 @@ export function sizeViewOf(sizes: Sizes | undefined, artifact: InstalledArtifact
 }
 
 /**
+ * Whether a measured size is worth a number: not a measured 0 -- npm's
+ * `corepack` under Homebrew's node is only links into the node keg, which
+ * take no blocks -- since 「约0 B」 reads as something broken. Nothing is
+ * said instead (the row, or the number, is left out), which is quieter
+ * than a phrase and claims nothing. A 0 is still a measurement: By Size
+ * (`sizeOrderOf`) and the totals (src/lib/sizeTotals.ts) count it.
+ */
+export function saysSize(measured: Measured): boolean {
+  return measured.bytes > 0;
+}
+
+/**
  * 「约312 MB」, "About 312 MB": every measured number says it is rough. A
  * round the budget cut short says 「312 MB以上」, "312 MB or more" -- one
  * hedge, not two; one that could not read part of it says so after the

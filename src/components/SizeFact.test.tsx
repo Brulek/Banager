@@ -72,3 +72,27 @@ describe("sizeFact's ⓘ", () => {
     expect(queryByRole("button")).toBeNull();
   });
 });
+
+describe("sizeFact for a measured 0", () => {
+  it("has no row rather than 「约0 B」, in both languages", () => {
+    // npm's corepack under Homebrew's node: its folder is only links into the
+    // node keg, which take no blocks.
+    const corepack = { ...tool("npm:/opt/homebrew", "corepack"), key: { instance_id: "npm:/opt/homebrew", kind: "Package" as const, name: "corepack" } };
+    const zero: Sizes = {
+      ...NO_SIZES,
+      round: 1,
+      done: true,
+      artifacts: [
+        { key: corepack.key, version: corepack.version, measured: { bytes: 0, partial: false, at_least: false }, old_versions: null },
+      ],
+    };
+    expect(sizeFact(i18n.getFixedT("en"), corepack, zero)).toBeNull();
+    expect(sizeFact(i18n.getFixedT("zh-CN"), corepack, zero)).toBeNull();
+    // A size its source reports keeps its row, as before; and a few bytes are said.
+    const few: Sizes = {
+      ...zero,
+      artifacts: [{ ...zero.artifacts[0], measured: { bytes: 4_096, partial: false, at_least: false } }],
+    };
+    expect(sizeFact(i18n.getFixedT("en"), corepack, few)?.term).toBe("Space used");
+  });
+});

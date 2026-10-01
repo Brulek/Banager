@@ -60,6 +60,23 @@ const zh = i18n.getFixedT("zh-CN");
 const en = i18n.getFixedT("en");
 
 describe("sizeTotalsOf", () => {
+  it("counts a tool measured at 0 as measured: it does not make the total 「至少」", () => {
+    // npm's corepack under Homebrew's node: only links, which take no blocks.
+    // Its own row shows no size (`saysSize`), but 0 is still what it takes.
+    const corepack = tool(BREW, "Formula", "corepack");
+    const sizes = done({
+      artifacts: [
+        { key: jq.key, version: "1.0.0", measured: about(1_200_000), old_versions: null },
+        { key: corepack.key, version: "1.0.0", measured: about(0), old_versions: null },
+      ],
+      total: about(1_200_000),
+      sources: [{ instance_id: BREW, measured: about(1_200_000) }],
+    });
+    const totals = sizeTotalsOf(sizes, { round: 7, artifacts: [jq, corepack] });
+    expect(totals.all).toEqual({ bytes: 1_200_000, atLeast: false });
+    expect(totals.bySource.get(BREW)).toEqual({ bytes: 1_200_000, atLeast: false });
+  });
+
   it("has nothing before the round is done, or for a round that did not measure the snapshot shown", () => {
     const snapshot = { round: 7, artifacts: [jq, node] };
     expect(sizeTotalsOf(undefined, snapshot)).toEqual({ all: null, bySource: new Map() });
