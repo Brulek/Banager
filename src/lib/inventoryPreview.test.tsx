@@ -261,7 +261,7 @@ describe("the window while the first check still checks for updates", () => {
       // not as the same word on each of its rows; each button keeps it as
       // its tooltip.
       expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
-      const line = container.querySelector("[data-notice-line]") as HTMLElement;
+      const line = container.querySelector("[data-preview-hold]") as HTMLElement;
       expect(line).toHaveTextContent("You can uninstall once the check is done");
       expect(uninstallJq.closest("[data-row-action-why]")).toHaveAttribute(
         "title",
@@ -286,6 +286,7 @@ describe("the window while the first check still checks for updates", () => {
     await waitFor(() => expect(getByRole("button", { name: "Uninstall ripgrep…" })).toBeEnabled());
     expect(app.subtitle()).toBe("2 tools");
     expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
+    expect(container.querySelector("[data-preview-hold]")).toBeNull();
     const inspector = getByRole("complementary", { name: "jq" });
     expect(within(inspector).getByRole("button", { name: "Update" })).toBeEnabled();
     await waitFor(() => expect(app.queryClient.getQueryData(queryKeys.inventoryPreview)).toBeNull());

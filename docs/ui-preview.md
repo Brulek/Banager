@@ -227,8 +227,9 @@ Paths are under a generic home folder, `/Users/you`.
   and `codex` still works, and ~/.codex's size leaves out
   `packages/standalone` (its ⓘ says so). Codex's own install says
   「只列出」 in its 状态; it would on its row too, without the twin.
-- `?state=preview`: the first check's list says once, in its first line,
-  「检查完成后才能卸载」; each Uninstall is off with that as its tooltip.
+- `?state=preview`: the first check's list says once, in a line over it,
+  「检查完成后才能卸载」 with an ⓘ; each Uninstall is off with that as its
+  tooltip, and no row repeats it.
 - An uninstall of an AI coding tool lists what stays after it under
   「卸载后会保留」 ("Stays after uninstalling"), as the app's preview does
   (`src/dev/mockKeptData.ts`): Codex (npm) `~/.codex`, about 38.4 MB;

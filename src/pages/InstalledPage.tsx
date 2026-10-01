@@ -63,7 +63,7 @@ import { EmptyState } from "../components/EmptyState";
 import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
 import { focusOrFallback } from "../components/ui/focus";
 import { GROUP, SMALL_WRAPPING } from "../components/ui/group";
-import { InfoDetail } from "../components/InfoDetail";
+import { InfoDetail, TextWithInfo } from "../components/InfoDetail";
 import {
   HOMEBREW_STATUS_CHIP_IDS,
   HomebrewCaveats,
@@ -791,18 +791,6 @@ export function InstalledPage() {
   );
   const notices = useMemo(
     () => [
-      // The first check's hold on every Uninstall, said once for the list
-      // rather than as a word on each of its rows (`PREVIEW_HOLD_ID`).
-      ...(preview
-        ? [
-            {
-              id: "preview-hold",
-              variant: "info",
-              titleKey: "clarity.previewHold",
-              descriptionKey: "clarity.previewHoldDetail",
-            } satisfies SourceNoticeSpec,
-          ]
-        : []),
       ...(unfinished === null ? [] : [unfinished]),
       ...instancesInView.flatMap((instance) =>
         sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
@@ -823,7 +811,7 @@ export function InstalledPage() {
       // shows them (`discoverNotices`).
       ...discoverNotices(show, discover, discoverNamed),
     ],
-    [preview, unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
+    [unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the
@@ -1621,6 +1609,17 @@ export function InstalledPage() {
         </p>
       </ToolbarItems>
       <div className="flex min-w-0 flex-1 flex-col" onKeyDown={onEscape}>
+        {/* The first check's hold on every Uninstall, said once over the
+            list, as Software Update's one status line -- not as a word on
+            each of its rows (`PREVIEW_HOLD_ID`), and not folded away among
+            the sources' notices. */}
+        {preview ? (
+          <p data-preview-hold="" className="flex shrink-0 items-center gap-1 px-5 pt-2 text-small text-muted">
+            <TextWithInfo text={t("clarity.previewHold")} label={t("common.detailsLabel", { title: t("clarity.previewHold") })}>
+              {t("clarity.previewHoldDetail")}
+            </TextWithInfo>
+          </p>
+        ) : null}
         {/* Virtualized: a Mac with Homebrew's components unfolded lists
             hundreds of rows. */}
         <VirtualList
