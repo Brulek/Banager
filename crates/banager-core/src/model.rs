@@ -915,6 +915,17 @@ pub enum Warning {
         old_versions: bool,
         autoremove: bool,
     },
+    /// After this `brew uninstall`, Homebrew deletes the entry its trust
+    /// list (`trust.json` in the user's Homebrew config folder) holds for
+    /// what it uninstalls -- `name`, a cask's full name or a formula's tap
+    /// and name -- when that entry is there and the tap itself is not on
+    /// the list (`cmd/uninstall.rb:122-127`, `Trust.untrust!`,
+    /// `trust.rb:65-90` in Homebrew 7.0.7-9). Produced by
+    /// `BrewAdapter::plan` for an `Uninstall` only when the list Banager
+    /// read says so for certain (`brew::trust::TrustList::uninstall_forgets`);
+    /// read by `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
+    HomebrewForgetsTrust { name: String },
     /// What this uninstall removes and what it leaves, in the one sentence
     /// the uninstall confirmation shows under the tool: which sentence is
     /// `what` (`UninstallScope`). At most one per plan, and only on an
@@ -1061,6 +1072,49 @@ pub enum UninstallScope {
     /// artifact's uninstall at all (`cask/installer.rb:714-761`), and a
     /// record Banager does not read can list anything.
     HomebrewCask,
+    /// `HomebrewCaskPlain` for a cask from a tap that is not Homebrew's own
+    /// (the receipt's `source.tap`, else the tap in the cask's full name):
+    /// its record cannot show a `pkg` or an installer beside what Homebrew
+    /// placed (`cask/cask.rb:709-732`), and while none of the 7,763 casks
+    /// in Homebrew's own catalogue is plain with one, a tap's cask can be.
+    /// So the sentence says Homebrew deletes the files it placed, and that
+    /// the cask's settings and data stay, as does anything its installer
+    /// put down besides: on a plain record no step deletes those.
+    HomebrewCaskPlainThirdParty,
+    /// A cask whose saved caskfile is Ruby (`cask_receipt::Recorded::ruby`)
+    /// and whose record lists something Homebrew placed, from a tap
+    /// Homebrew trusts or where trust is not required. Homebrew loads the
+    /// Ruby, and when it cannot -- a method the cask used has since been
+    /// removed -- it rebuilds the cask from the receipt, unless the receipt
+    /// or the cask's current definition has Ruby flight blocks, and then
+    /// runs the current definition's uninstall instead
+    /// (`cask/installer.rb:1046-1055`,
+    /// `CaskLoader.recover_from_installed_caskfile`,
+    /// `cask/cask_loader.rb:879-920` in Homebrew 7.0.7-9). So the sentence
+    /// says Homebrew deletes the files it placed and runs the cask's
+    /// uninstall steps, that what some of them delete cannot be seen in
+    /// advance, and that where Homebrew cannot read the recorded steps it
+    /// runs the current definition's -- never that anything stays.
+    HomebrewCaskRuby,
+    /// `HomebrewCaskRuby` for a record that lists nothing Homebrew placed:
+    /// the same, without the files Homebrew placed.
+    HomebrewCaskStepsOnlyRuby,
+    /// A cask whose saved caskfile is Ruby, from a tap that is not
+    /// Homebrew's own and that Banager cannot see Homebrew trusts -- its
+    /// trust list names neither the cask nor its tap, or Banager could not
+    /// read it -- while Homebrew requires trust
+    /// (`brew_env::HomebrewSwitches::require_tap_trust`), and whose record
+    /// lists steps beside what Homebrew placed. An untrusted cask's Ruby is
+    /// not loaded: Homebrew runs only the recorded artifacts that are not
+    /// its `uninstall` stanza, `zap` or steps (`cask/installer.rb:1010-1043`).
+    /// So the sentence says Homebrew deletes the files it placed, and runs
+    /// the cask's uninstall steps only if it trusts where the cask comes
+    /// from.
+    HomebrewCaskStepsIfTrusted,
+    /// `HomebrewCaskStepsIfTrusted` for a record that lists nothing
+    /// Homebrew placed: only that the steps run only if Homebrew trusts
+    /// where the cask comes from.
+    HomebrewCaskStepsOnlyIfTrusted,
     /// `npm uninstall -g`, when the npm Banager detected is 7 or later: npm
     /// deletes the package's folder, with the dependencies inside it, and
     /// its command and man-page links, and runs no script of the package's
@@ -2251,6 +2305,13 @@ mod tests {
             .unwrap(),
             r#"{"HomebrewNoCleanupFormulae":{"names":["python@3.13"],"old_versions":true,"autoremove":false}}"#
         );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewForgetsTrust {
+                name: "gautham-v/tap/claudebar".to_string()
+            })
+            .unwrap(),
+            r#"{"HomebrewForgetsTrust":{"name":"gautham-v/tap/claudebar"}}"#
+        );
 
         // Round 2: an uninstall's one sentence about what goes and what
         // stays, and a cask's extra steps. Two externally tagged objects
@@ -2327,6 +2388,11 @@ mod tests {
             UninstallScope::HomebrewCaskStepsOnly,
             UninstallScope::HomebrewCaskStepsOnlyUnseen,
             UninstallScope::HomebrewCask,
+            UninstallScope::HomebrewCaskPlainThirdParty,
+            UninstallScope::HomebrewCaskRuby,
+            UninstallScope::HomebrewCaskStepsOnlyRuby,
+            UninstallScope::HomebrewCaskStepsIfTrusted,
+            UninstallScope::HomebrewCaskStepsOnlyIfTrusted,
             UninstallScope::Npm,
             UninstallScope::Pipx,
             UninstallScope::Uv,

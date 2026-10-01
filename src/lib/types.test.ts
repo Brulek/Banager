@@ -446,6 +446,9 @@ describe("types", () => {
       '{"HomebrewNoCleanupFormulae":{"names":["python@3.13"],"old_versions":true,"autoremove":false}}',
     );
     expect(roundTrip(noCleanup)).toEqual(noCleanup);
+    const forgetsTrust: Warning = { HomebrewForgetsTrust: { name: "gautham-v/tap/claudebar" } };
+    expect(JSON.stringify(forgetsTrust)).toBe('{"HomebrewForgetsTrust":{"name":"gautham-v/tap/claudebar"}}');
+    expect(roundTrip(forgetsTrust)).toEqual(forgetsTrust);
 
     // Round 2: an uninstall's sentence about what goes and what stays, and
     // a cask's extra steps. Pinned against the same Rust test.

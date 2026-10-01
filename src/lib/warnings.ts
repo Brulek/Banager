@@ -84,6 +84,11 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
   HomebrewCaskStepsOnly: "warnings.uninstallScope.HomebrewCaskStepsOnly",
   HomebrewCaskStepsOnlyUnseen: "warnings.uninstallScope.HomebrewCaskStepsOnlyUnseen",
   HomebrewCask: "warnings.uninstallScope.HomebrewCask",
+  HomebrewCaskPlainThirdParty: "uninstall.scopeMore.HomebrewCaskPlainThirdParty",
+  HomebrewCaskRuby: "uninstall.scopeMore.HomebrewCaskRuby",
+  HomebrewCaskStepsOnlyRuby: "uninstall.scopeMore.HomebrewCaskStepsOnlyRuby",
+  HomebrewCaskStepsIfTrusted: "uninstall.scopeMore.HomebrewCaskStepsIfTrusted",
+  HomebrewCaskStepsOnlyIfTrusted: "uninstall.scopeMore.HomebrewCaskStepsOnlyIfTrusted",
   Npm: "warnings.uninstallScope.Npm",
   Pipx: "warnings.uninstallScope.Pipx",
   Uv: "warnings.uninstallScope.Uv",
@@ -276,6 +281,7 @@ export function warningKey(warning: Warning): string | null {
       ? "warnings.leavesShellConfigLine"
       : "warnings.leavesShellConfigLineMaybe";
   }
+  if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrust";
   if ("HomebrewNoCleanupFormulae" in warning) {
     const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
     return NO_CLEANUP_FORMULAE_KEYS[oldVersions ? (autoremove ? "both" : "oldVersions") : "autoremove"];
@@ -324,6 +330,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     return { count: names.length, names: names.join(separator) };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
+  if ("HomebrewForgetsTrust" in warning) return { name: warning.HomebrewForgetsTrust.name };
   if ("HomebrewNoCleanupFormulae" in warning) {
     const names = warning.HomebrewNoCleanupFormulae.names;
     return { count: names.length, names: names.join(separator) };
@@ -430,6 +437,7 @@ export function warningDetailKey(warning: Warning): string | null {
   // The listed and the unlisted sentence share one why.
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
+  if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrustDetail";
   if ("LeavesShellConfigLine" in warning) {
     return warning.LeavesShellConfigLine.certain
       ? "warnings.leavesShellConfigLineDetail"
@@ -488,6 +496,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
+    "HomebrewForgetsTrust" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
@@ -554,6 +563,7 @@ export function deletesForGood(warning: Warning): boolean {
     "AlreadyGone" in warning ||
     "LeavesShellConfigLine" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
+    "HomebrewForgetsTrust" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -586,11 +596,17 @@ export function deletesForGood(warning: Warning): boolean {
  * `uv tool uninstall`, `cargo uninstall` and `ollama rm` delete a folder,
  * its commands, a program's files, a model's manifest and unused layers.
  *
- * Not the three cask sentences that cannot see or read everything the
+ * Not the cask sentences that cannot see or read everything the
  * uninstall does: a program the cask names or Ruby around the uninstall
  * may move something to the Trash for all Banager knows
- * (`HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`), and a record
- * Banager could not read may hold a `trash:` step (`HomebrewCask`). A plan
+ * (`HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`), a record
+ * Banager could not read may hold a `trash:` step (`HomebrewCask`), and so
+ * may the definition Homebrew runs in place of a Ruby record it cannot
+ * load (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`) -- and a Ruby
+ * record from a tap Banager cannot see Homebrew trusts runs its steps,
+ * whatever they are, only if Homebrew does (`HomebrewCaskStepsIfTrusted`,
+ * `HomebrewCaskStepsOnlyIfTrusted`). A tap's plain cask deletes in place
+ * like any plain cask (`HomebrewCaskPlainThirdParty`). A plan
  * with no sentence -- npm 6, and the tools with their own installer, whose
  * confirmation lists what goes to the Trash or says that rustup's
  * deletions cannot be undone -- says nothing either. A `Record`, so a
@@ -606,6 +622,11 @@ const SCOPE_SKIPS_TRASH: Record<UninstallScope, boolean> = {
   HomebrewCaskStepsOnly: true,
   HomebrewCaskStepsOnlyUnseen: false,
   HomebrewCask: false,
+  HomebrewCaskPlainThirdParty: true,
+  HomebrewCaskRuby: false,
+  HomebrewCaskStepsOnlyRuby: false,
+  HomebrewCaskStepsIfTrusted: false,
+  HomebrewCaskStepsOnlyIfTrusted: false,
   Npm: true,
   Pipx: true,
   Uv: true,
@@ -669,6 +690,7 @@ export function isCaution(warning: Warning): boolean {
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
+    "HomebrewForgetsTrust" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning
   ) {

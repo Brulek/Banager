@@ -129,6 +129,48 @@ describe("warningKey", () => {
     );
   });
 
+  it("says Homebrew deletes the trust list's entry for what it uninstalls, its why behind the ⓘ", () => {
+    const warning: Warning = { HomebrewForgetsTrust: { name: "gautham-v/tap/claudebar" } };
+    const zh = i18n.getFixedT("zh-CN");
+    const enT = i18n.getFixedT("en");
+    expect(enT(warningKey(warning) as string, warningArgs(warning))).toBe(
+      "Homebrew also removes gautham-v/tap/claudebar from its trust list.",
+    );
+    expect(zh(warningKey(warning) as string, warningArgs(warning))).toBe(
+      "Homebrew还会从它的信任列表中删除“gautham-v/tap/claudebar”。",
+    );
+    expect(zh(warningDetailKey(warning) as string)).toBe(
+      "这条记录是用brew trust单独为它加的。删除后，Homebrew不再把它当作受信任的软件。",
+    );
+    expect(warningGroup(warning)).toBe("note");
+    expect(isCaution(warning)).toBe(false);
+    expect(deletesForGood(warning)).toBe(false);
+  });
+
+  it("says a cask's sentence where Homebrew may not run what it recorded, in both languages", () => {
+    const say = (lang: string, what: UninstallScope) =>
+      warningText(i18n.getFixedT(lang), { UninstallScope: { what } }, "Thing");
+    expect(say("zh-CN", "HomebrewCaskPlainThirdParty")).toBe(
+      "删除Homebrew为“Thing”放置的文件；它的设置和数据保留不动，它的安装器如果另外装了文件，也不删除。",
+    );
+    expect(say("zh-CN", "HomebrewCaskRuby")).toBe(
+      "删除Homebrew为“Thing”放置的文件，并执行它的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的步骤时，会按它现在的定义执行。",
+    );
+    expect(say("zh-CN", "HomebrewCaskStepsOnlyRuby")).toBe(
+      "执行“Thing”的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的步骤时，会按它现在的定义执行。",
+    );
+    expect(say("zh-CN", "HomebrewCaskStepsIfTrusted")).toBe(
+      "删除Homebrew为“Thing”放置的文件；它的卸载步骤，只在Homebrew信任它的来源时才执行。",
+    );
+    expect(say("zh-CN", "HomebrewCaskStepsOnlyIfTrusted")).toBe("“Thing”的卸载步骤，只在Homebrew信任它的来源时才执行。");
+    expect(say("en", "HomebrewCaskStepsIfTrusted")).toBe(
+      "Deletes the files Homebrew placed for Thing; its uninstall steps run only if Homebrew trusts where it comes from.",
+    );
+    expect(say("en", "HomebrewCaskPlainThirdParty")).toBe(
+      "Deletes the files Homebrew placed for Thing; its settings and data stay, and so does anything its installer put on this Mac separately.",
+    );
+  });
+
   it("gives Homebrew's three brew.env warnings their keys", () => {
     expect(warningKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremoves");
     expect(warningKey("HomebrewPeriodicCleanup")).toBe("warnings.homebrewPeriodicCleanup");
@@ -234,6 +276,7 @@ describe("warningKey", () => {
       "HomebrewPeriodicCleanup",
       "HomebrewCleanupAutoremoves",
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
+      { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
       { UninstallScope: { what: "Pipx" } },
       { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
       { Message: "boom" },
@@ -421,6 +464,7 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewPeriodicCleanup",
   "HomebrewCleanupAutoremoves",
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
+  { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
@@ -437,6 +481,11 @@ const EVERY_SCOPE: UninstallScope[] = [
   "HomebrewCaskStepsOnly",
   "HomebrewCaskStepsOnlyUnseen",
   "HomebrewCask",
+  "HomebrewCaskPlainThirdParty",
+  "HomebrewCaskRuby",
+  "HomebrewCaskStepsOnlyRuby",
+  "HomebrewCaskStepsIfTrusted",
+  "HomebrewCaskStepsOnlyIfTrusted",
   "Npm",
   "Pipx",
   "Uv",
@@ -529,7 +578,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(18);
+    expect(notes).toHaveLength(19);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -833,6 +882,7 @@ describe("skipsTrash", () => {
       "HomebrewCaskSteps",
       "HomebrewCaskStepsAutoremoves",
       "HomebrewCaskStepsOnly",
+      "HomebrewCaskPlainThirdParty",
       "Npm",
       "Pipx",
       "Uv",
@@ -898,6 +948,7 @@ describe("isCaution", () => {
       { WillKeep: { path: "~/.claude.json", what: "Settings" } },
       { AlreadyGone: { path: "~/.grok/downloads" } },
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: false } },
+      { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
       { UninstallScope: { what: "HomebrewFormula" } },
     ];
     expect(cautions.filter((warning) => !isCaution(warning))).toEqual([]);

@@ -267,13 +267,19 @@ export interface Classification {
 /**
  * The cask sentences whose uninstall runs steps of its own Banager cannot
  * read the effect of (`skipsTrash`'s note in src/lib/warnings.ts): a
- * program the cask names, Ruby around the uninstall, or a record it could
- * not read.
+ * program the cask names, Ruby around the uninstall, a record it could
+ * not read, or a Ruby record Homebrew may not run as recorded.
  */
 const UNSEEN_SCOPES: ReadonlySet<UninstallScope> = new Set<UninstallScope>([
   "HomebrewCask",
   "HomebrewCaskStepsUnseen",
   "HomebrewCaskStepsOnlyUnseen",
+  // A Ruby record: Homebrew may run the cask's current definition instead,
+  // or, from a tap it does not trust, none of its steps.
+  "HomebrewCaskRuby",
+  "HomebrewCaskStepsOnlyRuby",
+  "HomebrewCaskStepsIfTrusted",
+  "HomebrewCaskStepsOnlyIfTrusted",
 ]);
 
 /** A plan's `UninstallScope`, or null for one with none. */

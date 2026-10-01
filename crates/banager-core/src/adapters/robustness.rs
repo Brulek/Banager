@@ -661,6 +661,7 @@ fn cask_receipts_survive_any_record() {
                     .get("uninstall_flight_blocks")
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
+                ..Default::default()
             };
             Some(classify(
                 &recorded,

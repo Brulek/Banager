@@ -1,6 +1,7 @@
 pub(crate) mod brew_env;
 pub(crate) mod cask_receipt;
 pub mod parse;
+pub(crate) mod trust;
 
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, validate_package_name, Adapter, AdapterError,
@@ -15,6 +16,7 @@ use crate::model::{
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
+use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
@@ -23,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tokio_util::sync::CancellationToken;
+use trust::TrustList;
 
 pub struct BrewAdapter {
     runner: Arc<dyn CommandRunner>,
@@ -152,6 +155,12 @@ pub struct BrewAdapter {
     /// differently for the apps in the `/Applications` of the Mac running
     /// it.
     app_bundle_id_fn: fn(&Path) -> Option<String>,
+    /// How to read Homebrew's trust list in the user's Homebrew config
+    /// folder, for the uninstall preview (`trust::read_trust_list`):
+    /// the real file outside this crate's unit tests; inside them an empty
+    /// list unless a test installs a reader (`with_trust_list_fn`), so that
+    /// no test answers differently for the trust list of the Mac running it.
+    trust_list_fn: fn(&Path) -> Option<TrustList>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -196,6 +205,14 @@ const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> = |_, _
 const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = cask_receipt::app_bundle_id;
 #[cfg(test)]
 const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = |_| None;
+
+/// `BrewAdapter::trust_list_fn` as `BrewAdapter::new` sets it: the real
+/// trust list in every build but this crate's unit tests, where it is
+/// empty.
+#[cfg(not(test))]
+const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = trust::read_trust_list;
+#[cfg(test)]
+const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = |_| Some(TrustList::default());
 
 /// `BrewAdapter::wall_clock_fn` as `BrewAdapter::new` sets it: the real
 /// clock in every build but this crate's unit tests, where it stands still
@@ -301,6 +318,7 @@ impl BrewAdapter {
             brew_env_fn: DEFAULT_BREW_ENV_FN,
             recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
+            trust_list_fn: DEFAULT_TRUST_LIST_FN,
         }
     }
 
@@ -409,6 +427,14 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook to give the preview a trust list (see
+    /// `trust_list_fn`).
+    #[cfg(test)]
+    fn with_trust_list_fn(mut self, trust_list_fn: fn(&Path) -> Option<TrustList>) -> BrewAdapter {
+        self.trust_list_fn = trust_list_fn;
+        self
+    }
+
     /// Test-only hook to put apps on the disk the preview reads (see
     /// `app_bundle_id_fn`).
     #[cfg(test)]
@@ -436,8 +462,10 @@ impl BrewAdapter {
         &self,
         inst: &ManagerInstance,
         req: &OpRequest,
-        autoremoves: bool,
+        switches: &HomebrewSwitches,
+        trust: Option<&TrustList>,
     ) -> (Warning, Vec<Warning>) {
+        let autoremoves = !switches.no_autoremove;
         let scope = |what| Warning::UninstallScope { what };
         if req.artifact_kind != ArtifactKind::Cask {
             let what = if autoremoves {
@@ -455,9 +483,46 @@ impl BrewAdapter {
             Some(recorded) => cask_receipt::classify(recorded, home.as_deref()),
             None => Classified::Unknown,
         };
+        // The tap Homebrew installed it from, as Homebrew takes it
+        // (`tab.tap || @cask.tap`, `cask/installer.rb:1007-1009`): the
+        // receipt's, else the one in its full name.
+        let token = req.name.rsplit('/').next().unwrap_or(&req.name);
+        let tap = recorded
+            .as_ref()
+            .and_then(|recorded| recorded.tap.clone())
+            .or_else(|| trust::split_full_name(&req.name).map(|(tap, _)| tap.to_string()));
+        let third_party = tap.as_deref().is_some_and(|tap| !trust::official(tap));
+        let ruby = recorded.as_ref().is_some_and(|recorded| recorded.ruby);
+        // A Ruby record from a tap Banager cannot see Homebrew trusts, where
+        // trust is required: Homebrew loads none of the Ruby and runs no
+        // step (`cask/installer.rb:1010-1043`).
+        let maybe_untrusted = ruby
+            && switches.require_tap_trust
+            && third_party
+            && !tap
+                .as_deref()
+                .is_some_and(|tap| trust.is_some_and(|trust| trust.trusts_cask(tap, token)));
         let (what, steps) = match classified {
-            Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
+            // Loaded as Ruby, which Homebrew may not manage, and then runs
+            // the cask's current definition.
+            Classified::Plain if ruby && !maybe_untrusted => {
+                (UninstallScope::HomebrewCaskRuby, Vec::new())
+            }
+            Classified::Plain if third_party => {
+                (UninstallScope::HomebrewCaskPlainThirdParty, Vec::new())
+            }
+            Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
+            Classified::Steps(steps) if maybe_untrusted => {
+                (UninstallScope::HomebrewCaskStepsIfTrusted, steps)
+            }
+            Classified::Steps(steps) if ruby => (UninstallScope::HomebrewCaskRuby, steps),
+            Classified::OnlySteps(steps) if maybe_untrusted => {
+                (UninstallScope::HomebrewCaskStepsOnlyIfTrusted, steps)
+            }
+            Classified::OnlySteps(steps) if ruby => {
+                (UninstallScope::HomebrewCaskStepsOnlyRuby, steps)
+            }
             // A program or code Banager cannot see into: no sentence says
             // what stays, with the autoremove on or off.
             Classified::Steps(steps) if cask_receipt::runs_unseen(&steps) => {
@@ -523,6 +588,25 @@ impl BrewAdapter {
         )
     }
 
+    /// `Warning::HomebrewForgetsTrust` for an uninstall of `req`, when
+    /// `trust` -- Homebrew's trust list -- holds an entry for it alone that
+    /// `brew uninstall` will delete (`TrustList::uninstall_forgets`). The
+    /// name is the one Homebrew looks up: a cask's full name, which has its
+    /// tap in it unless the cask is Homebrew's own (`item.full_name`,
+    /// `cmd/uninstall.rb:59`), and a formula's tap and name
+    /// (`"#{keg.tab.tap.name}/#{keg.name}"`, `:63`, `:68`) -- `homebrew/core`
+    /// for a formula whose full name has no tap in it.
+    fn forgets_trust(trust: &TrustList, req: &OpRequest) -> Option<Warning> {
+        let (kind, name) = match req.artifact_kind {
+            ArtifactKind::Cask => (trust::Kind::Cask, req.name.clone()),
+            _ if req.name.contains('/') => (trust::Kind::Formula, req.name.clone()),
+            _ => (trust::Kind::Formula, format!("homebrew/core/{}", req.name)),
+        };
+        trust
+            .uninstall_forgets(kind, &name)
+            .then_some(Warning::HomebrewForgetsTrust { name })
+    }
+
     /// The apps a cask's `quit:` and `signal:` steps can be said to quit by
     /// name, as (bundle id, name) pairs: each app its record puts down
     /// (`cask_receipt::app_targets`) that is on the disk where Homebrew
@@ -573,8 +657,21 @@ impl BrewAdapter {
         kind: OpKind,
         env: &[(String, String)],
     ) -> Vec<Warning> {
-        let switches =
-            brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn);
+        Self::switch_warnings(&self.homebrew_switches(inst, env), kind)
+    }
+
+    /// What Homebrew makes of a plan's environment `env` on `inst` once
+    /// `bin/brew` has read the `brew.env` files (`brew_env::after_brew_env`).
+    fn homebrew_switches(
+        &self,
+        inst: &ManagerInstance,
+        env: &[(String, String)],
+    ) -> HomebrewSwitches {
+        brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn)
+    }
+
+    /// `brew_env_warnings` for switches already read.
+    fn switch_warnings(switches: &HomebrewSwitches, kind: OpKind) -> Vec<Warning> {
         // What `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out of the lines before
         // it, when it names any formula.
         let except = |old_versions: bool, autoremove: bool| {
@@ -1672,8 +1769,20 @@ impl BrewAdapter {
                     return Err(AdapterError::IndexUpdating);
                 }
                 let env = self.env_vec();
-                let autoremoves = self.brew_env_warnings(inst, req.kind, &env);
-                let (scope, cask_steps) = self.uninstall_scope(inst, req, !autoremoves.is_empty());
+                let switches = self.homebrew_switches(inst, &env);
+                let autoremoves = Self::switch_warnings(&switches, req.kind);
+                // Homebrew's trust list, where `bin/brew` will look for it;
+                // `None` when Banager cannot read it.
+                let trust = switches
+                    .user_config_home
+                    .as_deref()
+                    .and_then(self.trust_list_fn);
+                let (scope, cask_steps) =
+                    self.uninstall_scope(inst, req, &switches, trust.as_ref());
+                let forgets = trust
+                    .as_ref()
+                    .and_then(|trust| Self::forgets_trust(trust, req))
+                    .into_iter();
                 let mut warnings = vec![scope];
                 let affected = if uses_output.exit_code == Some(0) {
                     parse_uses(&uses_output.stdout)
@@ -1690,6 +1799,7 @@ impl BrewAdapter {
                     });
                 }
                 warnings.extend(cask_steps);
+                warnings.extend(forgets);
                 warnings.extend(autoremoves);
                 Ok(Plan {
                     request: req.clone(),
@@ -3861,6 +3971,257 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
+    async fn test_an_uninstall_says_homebrew_deletes_the_trust_list_entry_it_holds_for_it_alone() {
+        // `brew uninstall` deletes the trust list's entry for each package
+        // it names whose tap is not on the list (`cmd/uninstall.rb:122-127`):
+        // a cask by its full name, a formula by its tap and name.
+        fn list(home: &Path) -> Option<TrustList> {
+            (home == Path::new("/Users/someone/.homebrew")).then(|| TrustList {
+                casks: vec!["someone/tap/thing".to_string()],
+                formulae: vec!["homebrew/core/jq".to_string()],
+                ..TrustList::default()
+            })
+        }
+        let runner = Arc::new(MockRunner::new());
+        let inst = test_instance();
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_env_var_fn(someones_home)
+            .with_trust_list_fn(list);
+        let forgets = |name: &str| Warning::HomebrewForgetsTrust {
+            name: name.to_string(),
+        };
+        let plan = cask_uninstall(&runner, &adapter, &inst, "someone/tap/thing").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::UninstallScope {
+                    what: UninstallScope::HomebrewCask
+                },
+                forgets("someone/tap/thing"),
+            ]
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert!(plan.warnings.contains(&forgets("homebrew/core/jq")));
+
+        // Another cask, and the same cask with no list to read: nothing.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "someone/tap/other").await;
+        assert!(!plan
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::HomebrewForgetsTrust { .. })));
+        let unread = BrewAdapter::new(runner.clone())
+            .with_env_var_fn(someones_home)
+            .with_trust_list_fn(|_| None);
+        let plan = cask_uninstall(&runner, &unread, &inst, "someone/tap/thing").await;
+        assert!(!plan
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::HomebrewForgetsTrust { .. })));
+    }
+
+    /// A record of `artifacts` (JSON), as `read_recorded` reads one.
+    fn record(
+        artifacts: serde_json::Value,
+        flight_blocks: bool,
+        ruby: bool,
+        tap: &str,
+    ) -> Recorded {
+        Recorded {
+            artifacts: artifacts.as_array().expect("a list").clone(),
+            flight_blocks,
+            ruby,
+            tap: Some(tap.to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_says_less_where_homebrew_may_not_run_what_it_recorded() {
+        // The sentence under a cask, by its record's caskfile (JSON or Ruby),
+        // its tap, Homebrew's trust list and HOMEBREW_NO_REQUIRE_TAP_TRUST.
+        fn plain_from_a_tap(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }]),
+                false,
+                false,
+                "someone/tap",
+            ))
+        }
+        fn plain_from_homebrew(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }]),
+                false,
+                false,
+                "homebrew/cask",
+            ))
+        }
+        fn plain_ruby_from_a_tap(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }]),
+                false,
+                true,
+                "someone/tap",
+            ))
+        }
+        fn ruby_steps(tap: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }, { "uninstall": [{ "delete": "/Library/Thing" }] }]),
+                true,
+                true,
+                tap,
+            ))
+        }
+        fn ruby_steps_from_a_tap(_: &Path, _: &str) -> Option<Recorded> {
+            ruby_steps("someone/tap")
+        }
+        fn ruby_steps_from_homebrew(_: &Path, _: &str) -> Option<Recorded> {
+            ruby_steps("homebrew/cask")
+        }
+        fn ruby_only_steps_from_a_tap(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "uninstall": [{ "pkgutil": "com.someone.thing" }] }]),
+                true,
+                true,
+                "someone/tap",
+            ))
+        }
+        fn trusts_the_cask(_: &Path) -> Option<TrustList> {
+            Some(TrustList {
+                casks: vec!["someone/tap/thing".to_string()],
+                ..TrustList::default()
+            })
+        }
+        fn trusts_the_tap(_: &Path) -> Option<TrustList> {
+            Some(TrustList {
+                taps: vec!["someone/tap".to_string()],
+                ..TrustList::default()
+            })
+        }
+        fn no_trust_required(path: &Path) -> Option<Vec<u8>> {
+            (path == Path::new("/etc/homebrew/brew.env"))
+                .then(|| b"HOMEBREW_NO_REQUIRE_TAP_TRUST=1\n".to_vec())
+        }
+        type Recorder = fn(&Path, &str) -> Option<Recorded>;
+        type Lister = fn(&Path) -> Option<TrustList>;
+        type Files = fn(&Path) -> Option<Vec<u8>>;
+        let empty: Lister = |_| Some(TrustList::default());
+        let unread: Lister = |_| None;
+        let none: Files = |_| None;
+        let cases: [(Recorder, Lister, Files, UninstallScope); 12] = [
+            // JSON records: what Homebrew records runs. A tap's plain cask
+            // may have an installer beside what Homebrew placed.
+            (
+                plain_from_a_tap,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskPlainThirdParty,
+            ),
+            (
+                plain_from_homebrew,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskPlain,
+            ),
+            // Ruby: what Homebrew cannot load, it may run as the cask is
+            // defined today.
+            (
+                ruby_steps_from_homebrew,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskRuby,
+            ),
+            (
+                ruby_steps_from_a_tap,
+                trusts_the_cask,
+                none,
+                UninstallScope::HomebrewCaskRuby,
+            ),
+            (
+                ruby_steps_from_a_tap,
+                trusts_the_tap,
+                none,
+                UninstallScope::HomebrewCaskRuby,
+            ),
+            (
+                ruby_steps_from_a_tap,
+                empty,
+                no_trust_required,
+                UninstallScope::HomebrewCaskRuby,
+            ),
+            // Ruby from a tap Banager cannot see Homebrew trusts: the steps
+            // run only if it does.
+            (
+                ruby_steps_from_a_tap,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskStepsIfTrusted,
+            ),
+            (
+                ruby_steps_from_a_tap,
+                unread,
+                none,
+                UninstallScope::HomebrewCaskStepsIfTrusted,
+            ),
+            (
+                ruby_only_steps_from_a_tap,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskStepsOnlyIfTrusted,
+            ),
+            (
+                ruby_only_steps_from_a_tap,
+                trusts_the_cask,
+                none,
+                UninstallScope::HomebrewCaskStepsOnlyRuby,
+            ),
+            // A plain Ruby record: untrusted, only what Homebrew placed goes,
+            // as a tap's plain cask says; trusted, Ruby again.
+            (
+                plain_ruby_from_a_tap,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskPlainThirdParty,
+            ),
+            (
+                plain_ruby_from_a_tap,
+                trusts_the_tap,
+                none,
+                UninstallScope::HomebrewCaskRuby,
+            ),
+        ];
+        let runner = Arc::new(MockRunner::new());
+        let inst = test_instance();
+        for (i, (recorder, lister, files, expected)) in cases.into_iter().enumerate() {
+            let adapter = BrewAdapter::new(runner.clone())
+                .with_recorded_uninstall_fn(recorder)
+                .with_trust_list_fn(lister)
+                .with_brew_env_fn(files)
+                .with_env_var_fn(someones_home);
+            let plan = cask_uninstall(&runner, &adapter, &inst, "someone/tap/thing").await;
+            assert_eq!(
+                plan.warnings.first(),
+                Some(&Warning::UninstallScope { what: expected }),
+                "case {i}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn test_a_cask_uninstall_says_what_its_install_receipt_records() {
         // What `brew uninstall --cask` runs is what Homebrew recorded at
         // install, not what `brew info` says of the cask today: the plan
@@ -3889,11 +4250,12 @@ mod plan_execute_tests {
         };
 
         // Recorded on this Mac: `quit`, `app`, `zap`. The tapped cask's
-        // full name finds its Caskroom folder.
+        // full name finds its Caskroom folder; from a tap that is not
+        // Homebrew's own, the sentence leaves room for an installer's files.
         let plan = cask_uninstall(&runner, &adapter, &inst, "gautham-v/tap/claudebar").await;
         assert_eq!(
             plan.warnings,
-            vec![scope(UninstallScope::HomebrewCaskPlain)]
+            vec![scope(UninstallScope::HomebrewCaskPlainThirdParty)]
         );
 
         // One line per kind of extra step, in `CaskStep`'s order. Word
@@ -3961,7 +4323,7 @@ mod plan_execute_tests {
         assert_eq!(
             plan.warnings,
             vec![
-                scope(UninstallScope::HomebrewCaskPlain),
+                scope(UninstallScope::HomebrewCaskPlainThirdParty),
                 Warning::HomebrewAutoremoves,
             ]
         );
@@ -4167,9 +4529,11 @@ mod plan_execute_tests {
             step(CaskStep::RemovesPackages, &["org.wireshark.ChmodBPF.pkg"]),
             step(CaskStep::RunsScript, &["/usr/sbin/installer"]),
         ];
-        // An `uninstall_preflight` block beside the app Homebrew placed.
+        // An `uninstall_preflight` block beside the app Homebrew placed,
+        // saved as Ruby, from `someone/tap`, which these tests' empty trust
+        // list does not name: Homebrew runs it only if it trusts the tap.
         let flight_block = vec![
-            scope(UninstallScope::HomebrewCaskStepsUnseen),
+            scope(UninstallScope::HomebrewCaskStepsIfTrusted),
             step(CaskStep::RunsOwnSteps, &[]),
         ];
 

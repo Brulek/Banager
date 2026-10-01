@@ -608,6 +608,19 @@ and, where the autoremove is back, they and the formulae they need at run
 time, which it keeps (`:1051-1055`). Banager changes nothing in those
 files.
 
+**The trust list.** After `brew uninstall`, Homebrew deletes the entry its
+trust list holds for each package it uninstalled — a cask by its full
+name, which has its tap in it unless the cask is Homebrew's own; a formula
+by its tap and name — when that package's tap is not on the list itself
+(Homebrew 7.0.7-9, `cmd/uninstall.rb:51-69`, `:122-127`;
+`Trust.untrust!`, `trust.rb:65-90`), and writes the list only when there
+was such an entry. When the list Banager read holds that entry, and no
+entry that names the tap or might (one naming a tap by its remote, which
+Homebrew matches against the tap's git remote, which Banager does not
+read), the uninstall confirmation says Homebrew also removes the package
+from its trust list (`Warning::HomebrewForgetsTrust`); when it cannot read
+the list, it says nothing of it.
+
 **What an uninstall says it removes.** Under the tool, the uninstall
 confirmation says in one sentence what the command removes and what it
 leaves (`Warning::UninstallScope`, built with the plan by
@@ -669,7 +682,40 @@ runs the uninstall steps it recorded, and that Banager can't see what else
 some of those steps delete — nothing about what stays, whether the
 autoremove is on or off (`UninstallScope::HomebrewCaskStepsUnseen`,
 `HomebrewCaskStepsOnlyUnseen`); the step's own line below still names the
-program. Either way, "Notes" lists one line per kind,
+program. Three more cases say less than the record shows (Homebrew
+7.0.7-9, `Cask::Installer#load_installed_caskfile!`,
+`cask/installer.rb:998-1056`). A cask from a tap that is not Homebrew's
+own — the receipt's `source.tap`, else the tap in its full name — whose
+record is plain says Homebrew deletes the files it placed, and that its
+settings and data stay, as does anything its installer put on the Mac
+besides: the record cannot show a `pkg` or an installer, and none of
+Homebrew's own plain casks has one, but a tap's can
+(`UninstallScope::HomebrewCaskPlainThirdParty`). A cask whose saved
+caskfile is Ruby (`.rb`, which Homebrew 7 saves only for a cask with Ruby
+around its uninstall) is loaded as Ruby; when Homebrew cannot load it, it
+rebuilds the cask from the receipt, unless the receipt or the cask's
+current definition has such Ruby, and then runs the current definition
+instead (`:1046-1055`, `CaskLoader.recover_from_installed_caskfile`,
+`cask/cask_loader.rb:879-920`). So its sentence says Homebrew deletes the
+files it placed, when it placed any, and runs the cask's uninstall steps,
+that what some of them delete can't be seen in advance, and that where
+Homebrew can't read the steps it recorded it uses the cask's current
+definition (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`). And while
+Homebrew requires taps to be trusted — unless `HOMEBREW_NO_REQUIRE_TAP_TRUST`
+is set (`env_config.rb:632-638`, `:686-695`) — a Ruby caskfile from a tap
+that is not Homebrew's own and that Homebrew does not trust is not loaded
+at all: Homebrew runs only the recorded artifacts that are not the cask's
+`uninstall` stanza, `zap` or its steps (`cask/installer.rb:1010-1043`).
+Where the trust list Banager read names neither the cask nor its tap by
+name, or it could not read the list, a cask with recorded steps says
+Homebrew deletes the files it placed, when it placed any, and runs the
+uninstall steps only if it trusts where the cask comes from
+(`HomebrewCaskStepsIfTrusted`, `HomebrewCaskStepsOnlyIfTrusted`); a plain
+one says what a tap's plain cask says. A tap named on the list by name is
+taken to use its usual remote, as `Tap#matches_reference?` requires
+(`tap.rb:952-959`). A batch uninstall leaves each of the Ruby sentences out
+for a single uninstall, as it does the sentences above that cannot see
+everything. Either way, "Notes" lists one line per kind,
 with what the record names, the home folder spelled `~`: paths deleted for good
 (`delete:`, an `artifact` placed in the home folder, and each path an
 uninstall step of type `remove` spells out — from `/` or `~`, or under the
@@ -882,7 +928,16 @@ and, when it is the one there, the `.json` caskfile: each is opened
 without waiting (links followed), checked with `fstat` once open, and read
 and parsed as JSON only when that says it is a regular file of at most
 16 MiB. The `.internal.json` and `.rb`
-caskfiles are never opened.
+caskfiles are never opened. Every uninstall preview, formula or cask, also
+reads Homebrew's trust list, `trust.json` in the folder `bin/brew` takes
+for the user's Homebrew config — `$XDG_CONFIG_HOME/homebrew`,
+`$HOMEBREW_XDG_CONFIG_HOME/homebrew` or `~/.homebrew`, as for the user's
+`brew.env` (`trust::read_trust_list` in
+`crates/banager-core/src/adapters/brew/trust.rs`): opened the same way,
+without waiting, and read and parsed as JSON only when it is a regular
+file of at most 16 MiB; no file is an empty list, as it is to Homebrew,
+and only its `trustedtaps`, `trustedcasks` and `trustedformulae` lists
+are used.
 
 ## npm
 
@@ -2630,7 +2685,8 @@ All read-only, none saved anywhere else, none uploaded:
   uninstall and upgrade preview; during a cask's uninstall preview, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
-  `INSTALL_RECEIPT.json` (Homebrew's section).
+  `INSTALL_RECEIPT.json`; during every uninstall preview, its trust list,
+  `trust.json` in the user's Homebrew config folder (Homebrew's section).
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Banager opens no file in the app

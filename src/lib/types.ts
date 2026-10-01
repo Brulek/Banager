@@ -210,6 +210,11 @@ export type UninstallScope =
   | "HomebrewCaskStepsOnly"
   | "HomebrewCaskStepsOnlyUnseen"
   | "HomebrewCask"
+  | "HomebrewCaskPlainThirdParty"
+  | "HomebrewCaskRuby"
+  | "HomebrewCaskStepsOnlyRuby"
+  | "HomebrewCaskStepsIfTrusted"
+  | "HomebrewCaskStepsOnlyIfTrusted"
   | "Npm"
   | "Pipx"
   | "Uv"
@@ -316,6 +321,11 @@ export type Warning =
    * `HomebrewCleanupAutoremoves`).
    */
   | { HomebrewNoCleanupFormulae: { names: string[]; old_versions: boolean; autoremove: boolean } }
+  /**
+   * `brew uninstall` deletes the entry Homebrew's trust list holds for
+   * `name` alone: a cask's full name, a formula's tap and name.
+   */
+  | { HomebrewForgetsTrust: { name: string } }
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**

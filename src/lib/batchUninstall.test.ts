@@ -248,10 +248,20 @@ describe("which ticked tools a batch uninstalls", () => {
         candidate(artifact(brew, "Cask", "unreadable"), { warnings: [{ UninstallScope: { what: "HomebrewCask" } }] }),
         candidate(artifact(brew, "Cask", "pkg"), { warnings: [{ UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } }] }),
         candidate(artifact(brew, "Cask", "iterm2"), { warnings: [{ UninstallScope: { what: "HomebrewCaskSteps" } }] }),
+        // A Ruby record: Homebrew may run what it records, the cask's
+        // current definition, or, from a tap it does not trust, no step.
+        candidate(artifact(brew, "Cask", "ruby"), { warnings: [{ UninstallScope: { what: "HomebrewCaskRuby" } }] }),
+        candidate(artifact(brew, "Cask", "untrusted"), {
+          warnings: [{ UninstallScope: { what: "HomebrewCaskStepsIfTrusted" } }],
+        }),
+        // A tap's plain cask is plain.
+        candidate(artifact(brew, "Cask", "claudebar"), {
+          warnings: [{ UninstallScope: { what: "HomebrewCaskPlainThirdParty" } }],
+        }),
       ],
       everything,
     );
-    expect(ids(result.included)).toEqual(["iterm2"]);
+    expect(ids(result.included)).toEqual(["iterm2", "claudebar"]);
     expect(result.excluded.map((item) => [item.candidate.name, item.reason.kind])).toEqual([
       // The first that holds: rustup's own uninstall is both.
       ["rustup", "noCancel"],
@@ -259,6 +269,8 @@ describe("which ticked tools a batch uninstalls", () => {
       ["adobe-creative-cloud", "unseen"],
       ["unreadable", "unseen"],
       ["pkg", "unseen"],
+      ["ruby", "unseen"],
+      ["untrusted", "unseen"],
     ]);
   });
 

@@ -83,6 +83,19 @@ const CASK_STEPS: Record<string, Warning[]> = {
   ],
 };
 
+/**
+ * A cask whose sentence is not the one its steps give, and the steps it
+ * says: QuickJot as a cask from a tap Homebrew does not trust, saved as
+ * Ruby, so its uninstall steps run only if Homebrew trusts the tap
+ * (`HomebrewCaskStepsIfTrusted`).
+ */
+const CASK_SCOPES: Record<string, { what: UninstallScope; steps: Warning[] }> = {
+  quickjot: {
+    what: "HomebrewCaskStepsIfTrusted",
+    steps: [{ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } }],
+  },
+};
+
 /** The sentence an uninstall says under the tool (`Warning::UninstallScope`). */
 function scope(what: UninstallScope): Warning {
   return { UninstallScope: { what } };
@@ -256,12 +269,15 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         world.artifacts.some((a) => a.key.instance_id === inst.id && a.key.name === formula);
       const unknown = BREW_DEPENDENTS_UNKNOWN.has(name);
       const affected = unknown ? [] : (BREW_DEPENDENTS[name] ?? []).filter(installed);
-      const steps = cask ? (CASK_STEPS[name] ?? []) : [];
+      const special = cask ? CASK_SCOPES[name] : undefined;
+      const steps = cask ? (special?.steps ?? CASK_STEPS[name] ?? []) : [];
       const what: UninstallScope = !cask
         ? "HomebrewFormulaOnly"
-        : steps.length > 0
-          ? "HomebrewCaskSteps"
-          : "HomebrewCaskPlain";
+        : special !== undefined
+          ? special.what
+          : steps.length > 0
+            ? "HomebrewCaskSteps"
+            : "HomebrewCaskPlain";
       return {
         ...plan,
         action: command(inst.exe_path, ["uninstall", flag, name], BREW_ENV),

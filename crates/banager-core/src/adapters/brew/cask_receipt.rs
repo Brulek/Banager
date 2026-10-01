@@ -43,13 +43,27 @@ use std::path::{Path, PathBuf};
 
 /// The uninstall artifacts `brew uninstall --cask` will run, as Homebrew
 /// recorded them at install.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Recorded {
     /// One `{ "<stanza>": [<arguments>] }` object per artifact.
     pub(crate) artifacts: Vec<Value>,
     /// The receipt's `uninstall_flight_blocks`: the cask has Ruby that runs
     /// before or after its uninstall.
     pub(crate) flight_blocks: bool,
+    /// The saved caskfile is Ruby (`.rb`), which Homebrew 7 saves only for
+    /// a cask with Ruby flight blocks, and older ones saved for others.
+    /// Homebrew loads it as Ruby (`load_installed_caskfile!`,
+    /// `cask/installer.rb:998-1056` in 7.0.7-9): from a tap it does not
+    /// trust, it loads nothing of it and runs only the recorded artifacts
+    /// that are not steps (`:1010-1043`); one it cannot load it rebuilds
+    /// from the receipt, unless the receipt or the cask's current definition
+    /// has flight blocks, and then runs the current definition
+    /// (`:1046-1055`; `CaskLoader.recover_from_installed_caskfile`,
+    /// `cask/cask_loader.rb:879-920`).
+    pub(crate) ruby: bool,
+    /// The receipt's `source.tap`, the tap Homebrew installed the cask
+    /// from (`tab.tap`), when it names one.
+    pub(crate) tap: Option<String>,
 }
 
 /// The receipt's name in a cask's `.metadata` folder (`AbstractTab::FILENAME`).
@@ -89,7 +103,14 @@ pub(crate) fn read_recorded(prefix: &Path, token: &str) -> Option<Recorded> {
             .filter(|list| !list.is_empty())
             .cloned()
     };
+    let tap = receipt
+        .and_then(|r| r.get("source"))
+        .and_then(|source| source.get("tap"))
+        .and_then(Value::as_str)
+        .filter(|tap| !tap.is_empty())
+        .map(str::to_string);
     let name = caskfile.file_name()?.to_str()?;
+    let ruby = name.ends_with(".rb");
     let artifacts = if name.ends_with(".internal.json") {
         return None;
     } else if name.ends_with(".json") {
@@ -105,6 +126,8 @@ pub(crate) fn read_recorded(prefix: &Path, token: &str) -> Option<Recorded> {
     Some(Recorded {
         artifacts,
         flight_blocks,
+        ruby,
+        tap,
     })
 }
 
@@ -848,6 +871,8 @@ mod tests {
             flight_blocks: receipt["uninstall_flight_blocks"]
                 .as_bool()
                 .unwrap_or(false),
+            ruby: false,
+            tap: receipt["source"]["tap"].as_str().map(str::to_string),
         }
     }
 
@@ -934,6 +959,7 @@ mod tests {
                 &Recorded {
                     artifacts: artifacts.as_array().unwrap().clone(),
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -963,6 +989,7 @@ mod tests {
                 &Recorded {
                     artifacts: artifacts.as_array().unwrap().clone(),
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -1233,6 +1260,7 @@ mod tests {
         let flagged = Recorded {
             artifacts: vec![serde_json::json!({ "app": ["Some.app"] })],
             flight_blocks: true,
+            ..Default::default()
         };
         assert_eq!(
             classify(&flagged, Some(Path::new(HOME))),
@@ -1288,6 +1316,7 @@ mod tests {
         let flagged = Recorded {
             artifacts: vec![serde_json::json!({ "app": ["Some.app"] })],
             flight_blocks: true,
+            ..Default::default()
         };
         match classify(&flagged, Some(Path::new(HOME))) {
             Classified::Steps(steps) => assert!(runs_unseen(&steps)),
@@ -1304,6 +1333,7 @@ mod tests {
                 &Recorded {
                     artifacts: artifacts.as_array().unwrap().clone(),
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -1352,6 +1382,7 @@ mod tests {
                         serde_json::json!({ "app": ["A.app"] }),
                     ],
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -1414,6 +1445,7 @@ mod tests {
                         }),
                     ],
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -1523,6 +1555,7 @@ mod tests {
                         serde_json::json!({ "uninstall_postflight_steps": [{ "steps": [step] }] }),
                     ],
                     flight_blocks: false,
+                    ..Default::default()
                 },
                 Some(Path::new(HOME)),
             )
@@ -1600,6 +1633,7 @@ mod tests {
                 ] }] }),
             ],
             flight_blocks: false,
+            ..Default::default()
         };
         assert_eq!(
             classify(&recorded, Some(Path::new(HOME))),
@@ -1713,6 +1747,10 @@ mod tests {
             read_recorded(&prefix.0, "homebrew/cask/microsoft-word"),
             Some(recorded(json))
         );
+        // The tap it came from, as the receipt says; a JSON caskfile.
+        let read = read_recorded(&prefix.0, "microsoft-word").expect("recorded");
+        assert_eq!(read.tap.as_deref(), Some("homebrew/cask"));
+        assert!(!read.ruby);
     }
 
     #[test]
@@ -1815,6 +1853,7 @@ mod tests {
         );
         let read = read_recorded(&prefix.0, "uninstall-flight-block").expect("recorded");
         assert!(read.flight_blocks);
+        assert!(read.ruby);
         assert_eq!(
             classify(&read, Some(Path::new(HOME))),
             steps(&[(RunsOwnSteps, &[])])
@@ -1894,6 +1933,7 @@ mod tests {
             )
             .unwrap(),
             flight_blocks: false,
+            ..Default::default()
         };
         assert_eq!(
             app_targets(&recorded),
