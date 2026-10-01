@@ -67,6 +67,15 @@
       "other": "用{{source}}安装"
     }
   },
+  "families": {
+    "showLabel": "显示",
+    "showAll": "所有工具",
+    "showAi": "AI工具",
+    "none": "这台Mac上没有找到常见的AI编程工具",
+    "noneInSource": "{{source}}中没有找到常见的AI编程工具",
+    "noUpdates": "这里没有AI编程工具的更新",
+    "updateAllCount": "全部更新（{{number}}）"
+  },
   "overview": {
     "updatesAvailable_other": "{{count}}个工具可以更新",
     "reviewUpdates": "查看更新",

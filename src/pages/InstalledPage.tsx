@@ -44,6 +44,8 @@ import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfi
 import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
+import { ToolShowButton } from "../components/ToolShowButton";
+import { shownBy } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
@@ -392,6 +394,8 @@ export function InstalledPage() {
   const setFilter = useUiStore((s) => s.setInstalledFilter);
   const sort = useUiStore((s) => s.installedSort);
   const setSort = useUiStore((s) => s.setInstalledSort);
+  const show = useUiStore((s) => s.installedShow);
+  const setShow = useUiStore((s) => s.setInstalledShow);
   const expandedDependencies = useUiStore((s) => s.expandedDependencies);
   const toggleDependencies = useUiStore((s) => s.toggleDependencies);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
@@ -601,21 +605,23 @@ export function InstalledPage() {
   // Studio Code").
   const needle = query.trim().toLowerCase();
 
-  // The rows the search matches, by source.
+  // The rows the search matches, by source -- of the AI coding tools
+  // alone while the 「显示」 popup says so (`shownBy`).
   const matchingByInstance = useMemo(() => {
     const byInstance = new Map<string, InstalledArtifact[]>();
     for (const artifact of snapshot?.artifacts ?? []) {
       const matches =
-        needle === "" ||
-        artifact.display_name.toLowerCase().includes(needle) ||
-        artifact.key.name.toLowerCase().includes(needle);
+        shownBy(show, artifact) &&
+        (needle === "" ||
+          artifact.display_name.toLowerCase().includes(needle) ||
+          artifact.key.name.toLowerCase().includes(needle));
       if (!matches) continue;
       const list = byInstance.get(artifact.key.instance_id) ?? [];
       list.push(artifact);
       byInstance.set(artifact.key.instance_id, list);
     }
     return byInstance;
-  }, [snapshot, needle]);
+  }, [snapshot, needle, show]);
 
   // The sources in view: the filter's, or every one.
   const instancesInView = useMemo(
@@ -1394,12 +1400,14 @@ export function InstalledPage() {
   return (
     <div ref={attachPage} className="relative flex h-full">
       {/* The page's own controls, in the window's toolbar (spec §3.2):
-          how the last Copy command went, for a moment; the sort, a grey
-          popup button; and the search field, 200 wide. */}
+          how the last Copy command went, for a moment; what it shows
+          (every tool, or the AI coding tools) and the sort, grey popup
+          buttons; and the search field, 200 wide. */}
       <ToolbarItems>
         <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
           {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
         </p>
+        <ToolShowButton value={show} onChange={setShow} />
         <ToolbarPopupButton
           label={t("installed.sortLabel")}
           value={sort}
@@ -1494,7 +1502,11 @@ export function InstalledPage() {
                 >
                   {needle !== ""
                     ? t("installed.noMatches", { query: query.trim() })
-                    : t("emptyStates.nothingInstalled.title")}
+                    : show === "ai"
+                      ? activeFilter === null
+                        ? t("families.none")
+                        : t("families.noneInSource", { source: sourceLabelFor(activeFilter) })
+                      : t("emptyStates.nothingInstalled.title")}
                 </p>
               </div>
             )

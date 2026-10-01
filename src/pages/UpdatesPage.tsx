@@ -28,6 +28,8 @@ import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfi
 import { Refusal } from "../components/SheetParts";
 import { VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
+import { ToolShowButton } from "../components/ToolShowButton";
+import { shownBy } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import { EmptyState } from "../components/EmptyState";
@@ -141,6 +143,7 @@ export function useUpdatesHeadline(): string | null {
  */
 type ListItem =
   | { type: "notices"; count: number }
+  | { type: "showEmpty" }
   | { type: "justUpdated"; count: number }
   | { type: "update"; candidate: UpdateCandidate; updatable: boolean }
   | { type: "section"; count: number; expanded: boolean }
@@ -170,6 +173,8 @@ function listItemKey(item: ListItem): string {
       return "section:cant-update-here";
     case "summary":
       return "summary:cannot-check";
+    case "showEmpty":
+      return "section:show-empty";
   }
 }
 
@@ -269,6 +274,8 @@ export function UpdatesPage() {
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const deselectUpdates = useUiStore((s) => s.deselectUpdates);
+  const show = useUiStore((s) => s.updatesShow);
+  const setShow = useUiStore((s) => s.setUpdatesShow);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
@@ -397,7 +404,16 @@ export function UpdatesPage() {
   // tick a row the user could not tick by hand. `useStartableUpdates`,
   // which the update notification's report, the sidebar's count and the
   // Dock's badge read too (`useUpdateCount`).
-  const startableUpdates = useStartableUpdates() ?? NO_UPDATES;
+  //
+  // While the 「显示」 popup shows only the AI coding tools (`shownBy`),
+  // the rows it hides are out of all of these too: the list, Select all,
+  // the count in Update all and what it updates are the rows in sight.
+  const inView = useCallback(
+    (candidate: UpdateCandidate) => shownBy(show, artifactsById.get(artifactKeyId(candidate.key))),
+    [show, artifactsById],
+  );
+  const allStartable = useStartableUpdates() ?? NO_UPDATES;
+  const startableUpdates = useMemo(() => allStartable.filter(inView), [allStartable, inView]);
 
   // The list's two parts, each by name: the rows with an Update button,
   // and everything else listed -- pinned, read-only, could not be checked,
@@ -408,12 +424,12 @@ export function UpdatesPage() {
   const { actionableRows, otherRows } = useMemo(() => {
     const actionableIds = new Set(actionableUpdates.map((u) => artifactKeyId(u.key)));
     return {
-      actionableRows: [...actionableUpdates].sort(compareRows),
+      actionableRows: actionableUpdates.filter(inView).sort(compareRows),
       otherRows: visibleUpdates
-        .filter((u) => !actionableIds.has(artifactKeyId(u.key)))
+        .filter((u) => !actionableIds.has(artifactKeyId(u.key)) && inView(u))
         .sort(compareRows),
     };
-  }, [actionableUpdates, visibleUpdates, compareRows]);
+  }, [actionableUpdates, visibleUpdates, compareRows, inView]);
 
   // Only rows that are selected, still visible *and* still actionable
   // count. The store keeps a selection for a row that has since been
@@ -535,6 +551,11 @@ export function UpdatesPage() {
       ...(notices.length > 0 ? [{ type: "notices", count: notices.length } as const] : []),
       ...(justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : []),
       ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: true })),
+      // Only the AI coding tools shown, and none of them listed: a line
+      // that says so, where the rows would be.
+      ...(show !== "all" && actionableRows.length === 0 && otherRows.length === 0
+        ? [{ type: "showEmpty" } as const]
+        : []),
       ...(otherRows.length > 0
         ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
         : []),
@@ -545,7 +566,7 @@ export function UpdatesPage() {
         ? otherRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: false }))
         : []),
     ],
-    [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
+    [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show],
   );
 
   // The names the list shows under more than one source (spec R3), whose
@@ -904,6 +925,9 @@ export function UpdatesPage() {
   const statusColumn = items.some((item) => item.type === "update" && hasStatusWord(item.candidate));
 
   const startableCount = startableUpdates.length;
+  // Whether this Mac has any AI coding tool at all, for what the line in
+  // place of none of their rows says.
+  const aiToolsInstalled = snapshot.artifacts.some((artifact) => shownBy("ai", artifact));
   // The checkboxes that are ticked, against those there are: the list
   // header's box is ticked for all, a dash for some (`indeterminate`).
   const selectedCount = selectedVisible.length;
@@ -927,6 +951,7 @@ export function UpdatesPage() {
           source not answering -- has no checkbox, and a row the user hid
           (skipped, or never to be reminded about) is not listed at all. */}
       <ToolbarItems>
+        <ToolShowButton value={show} onChange={setShow} />
         {selectedCount > 0 ? (
           <button
             type="button"
@@ -946,7 +971,7 @@ export function UpdatesPage() {
             }}
             className={BUTTON.regular.default}
           >
-            {t("updates.updateAll")}
+            {show === "all" ? t("updates.updateAll") : t("families.updateAllCount", { number: startableCount })}
           </button>
         )}
       </ToolbarItems>
@@ -1028,6 +1053,12 @@ export function UpdatesPage() {
               expanded={item.expanded}
               onToggle={() => setShowCantUpdate((shown) => !shown)}
             />
+          ) : item.type === "showEmpty" ? (
+            // As the Installed page says an empty list: one line, 13 in the
+            // secondary colour, no symbol.
+            <p data-list-empty="" className="px-5 py-10 text-center text-body text-muted">
+              {aiToolsInstalled ? t("families.noUpdates") : t("families.none")}
+            </p>
           ) : item.type === "summary" ? (
             // Why these rows could not be checked is the tool's own words,
             // hidden while "Show technical details" is off: a button that

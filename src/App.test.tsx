@@ -293,13 +293,13 @@ describe("App", () => {
       [...getByRole("banner").querySelectorAll<HTMLElement>("button, input, select")].map(
         (control) => control.getAttribute("aria-label") ?? control.textContent,
       );
-    // The page's own controls first -- Update All, the sort and the
-    // search -- and the ⟳ last: a button before it whose words change
-    // grows to its left, and the ⟳ never moves.
+    // The page's own controls first -- what it shows, Update All, the
+    // sort and the search -- and the ⟳ last: a button before it whose
+    // words change grows to its left, and the ⟳ never moves.
     const pages: Array<[string, string[], string]> = [
       ["Overview", [], "Check Again"],
-      ["Updates", ["Update All"], "Check Again"],
-      ["Installed", ["Sort Order", "Search installed tools"], "Check Again"],
+      ["Updates", ["Show", "Update All"], "Check Again"],
+      ["Installed", ["Show", "Sort Order", "Search installed tools"], "Check Again"],
       ["Other Programs", [], "Scan Again"],
     ];
     for (const [page, own, again] of pages) {

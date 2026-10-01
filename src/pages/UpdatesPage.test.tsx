@@ -2020,13 +2020,15 @@ describe("UpdatesPage", () => {
       expect(all.childElementCount).toBe(0);
       expect(all.textContent).toBe("Update All");
       expect(all.className).toBe(BUTTON.regular.default);
-      expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
+      // (The 「显示」 popup beside it draws its value and ⌄ hidden from a
+      // screen reader inside its own box; nothing is laid in the toolbar.)
+      expect(toolbar.querySelector(":scope > [aria-hidden]")).toBeNull();
 
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
       const selected = getByRole("button", { name: "Update Selected (1)" });
       expect(selected.childElementCount).toBe(0);
       expect(selected.textContent).toBe("Update Selected (1)");
-      expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
+      expect(toolbar.querySelector(":scope > [aria-hidden]")).toBeNull();
     });
 
     it("says how many in the toolbar as Latest does in English, one or several", async () => {

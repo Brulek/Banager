@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ToolShow } from "../lib/families";
 import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
 export type Page = "overview" | "updates" | "installed" | "unknown" | "settings";
@@ -26,6 +27,15 @@ export interface UiState {
   setInstalledFilter(instanceId: string | null): void;
   installedSort: InstalledSort;
   setInstalledSort(sort: InstalledSort): void;
+  // What the Installed and the Updates page's 「显示」 popups show: every
+  // tool, or only the AI coding tools (`ToolShow`, src/lib/families.ts).
+  // One for each page, and kept as the sort is while the window is open;
+  // only a notice's Show resets the Installed page's, so the tool it
+  // shows is in the list.
+  installedShow: ToolShow;
+  setInstalledShow(show: ToolShow): void;
+  updatesShow: ToolShow;
+  setUpdatesShow(show: ToolShow): void;
   // Opens the Installed page showing one source's tools or, with null,
   // all of them: the sidebar's entry, whose count is of everything
   // installed. Either way the search starts empty, so the list is the one
@@ -50,7 +60,7 @@ export interface UiState {
   // and the focus on its row, as soon as the page has its snapshot --
   // at once, or once it has loaded -- which says so (`inspectAnswered`).
   // The page opens on every source, or stays on this tool's own, with the
-  // search empty, so the tool is in the list; going to any page by any
+  // search empty and every tool shown, so the tool is in the list; going to any page by any
   // other way drops it, as it drops a search not yet focused.
   inspectRequested: string | null;
   showInstalledTool(key: ArtifactKey): void;
@@ -144,6 +154,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   setInstalledFilter: (instanceId) => set({ installedFilter: instanceId }),
   installedSort: "name",
   setInstalledSort: (sort) => set({ installedSort: sort }),
+  installedShow: "all",
+  setInstalledShow: (show) => set({ installedShow: show }),
+  updatesShow: "all",
+  setUpdatesShow: (show) => set({ updatesShow: show }),
   openInstalled: (instanceId) =>
     set({
       page: "installed",
@@ -174,6 +188,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     set((s) => ({
       page: "installed",
       installedFilter: s.installedFilter === key.instance_id ? key.instance_id : null,
+      installedShow: "all",
       query: "",
       searchFocusRequested: false,
       hiddenUpdatesRequested: false,
