@@ -39,8 +39,9 @@
 //! `impl Adapter` (phase 4 spec §8.1, Q12; its appendix C records the
 //! deviation).
 
+use crate::commands;
 use crate::dirfd::Dir;
-use crate::model::{InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};
+use crate::model::{ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
@@ -465,7 +466,18 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    with the program each crate installed, which only this rule places
 ///    (`hexyl` resolves to no instance's `exe_path`); the standalone
 ///    adapters fill it from step B, and for those rules 1 and 2 compare
-///    the same file and rule 2 decides nothing new.
+///    the same file and rule 2 decides nothing new. A cask's `path` is one
+///    place, its first `app`'s, so the rule also takes the cask's own
+///    word for its commands: the entry *is* a link a `binary` stanza put
+///    there (`CommandInputs.provided`, the absolute `target` brew writes
+///    beside the stanza), and it resolves where `commands::judge` asks a
+///    cask's command to lead -- the file the stanza names, the cask's
+///    folder in `Caskroom`, or its app (`commands::cask_places`). That
+///    claims a command inside a second `.app` of the same cask, and one
+///    of a cask whose `app` entry carries no absolute `target`; a
+///    command no `binary` stanza names (one a `pkg` put on the disk) is
+///    still listed, and so is a link of a stanza's name that leads
+///    anywhere else.
 /// 3. The entry resolves to a path under a directory the instance's
 ///    adapter *owns* -- `owned_roots`, the longest matching root when
 ///    roots nest (`owned` below).
@@ -485,6 +497,13 @@ struct Known {
     /// while it is empty, `claimant` looks up no broken link's `dead_end`.
     exe_dead_ends: Vec<(PathBuf, InstanceId)>,
     artifact_roots: Vec<(PathBuf, InstanceId)>,
+    /// Rule 2 for a cask's commands: each link a `binary` stanza put in a
+    /// folder (`CommandInputs.provided` of a `Cask` artifact), as its
+    /// folder leads (`leads_to`) and its own name -- the link itself, not
+    /// where it leads -- with the places it must lead into
+    /// (`ProvidedCommand.within` and `commands::cask_places`, each where
+    /// it leads) and the instance.
+    cask_commands: Vec<(PathBuf, Vec<PathBuf>, InstanceId)>,
     /// Rule 3: every `owned_roots` of every instance, where it leads
     /// (`leads_to`), with the instance that owns it. A root that does not
     /// exist (Homebrew with no casks has no `Caskroom`) is simply absent;
@@ -581,6 +600,35 @@ impl Known {
                 Some((leads, artifact.key.instance_id.clone()))
             })
             .collect();
+        let cask_commands = artifacts
+            .iter()
+            .filter(|artifact| artifact.key.kind == ArtifactKind::Cask)
+            .flat_map(|artifact| {
+                let prefix = instances
+                    .iter()
+                    .find(|inst| inst.id == artifact.key.instance_id)
+                    .map(|inst| inst.prefix.as_path());
+                let places: Vec<PathBuf> = prefix
+                    .map(|prefix| commands::cask_places(prefix, artifact))
+                    .unwrap_or_default();
+                artifact
+                    .facts
+                    .command_inputs
+                    .provided
+                    .iter()
+                    .filter_map(move |provided| {
+                        let folder = leads_to(provided.path.parent()?, protected)?;
+                        let link = folder.join(provided.path.file_name()?);
+                        let places: Vec<PathBuf> = provided
+                            .within
+                            .iter()
+                            .chain(&places)
+                            .filter_map(|place| leads_to(place, protected))
+                            .collect();
+                        Some((link, places, artifact.key.instance_id.clone()))
+                    })
+            })
+            .collect();
         let owned = instances
             .iter()
             .flat_map(|inst| {
@@ -608,6 +656,7 @@ impl Known {
             exe_canonical,
             exe_dead_ends,
             artifact_roots,
+            cask_commands,
             owned,
             backups,
         }
@@ -642,6 +691,16 @@ impl Known {
                 .find(|(root, _)| is_under(leads, root))
             {
                 return Some(id);
+            }
+            // A cask's `binary` link, by its own place, leading where the
+            // cask's command must.
+            if let Some(name) = raw.file_name() {
+                let at = dir.join(name);
+                if let Some((_, _, id)) = self.cask_commands.iter().find(|(link, places, _)| {
+                    same_place(link, &at) && places.iter().any(|place| is_under(leads, place))
+                }) {
+                    return Some(id);
+                }
             }
             // The longest matching root: the closest owner when roots nest.
             if let Some((_, id)) = self

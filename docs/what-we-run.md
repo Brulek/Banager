@@ -2065,11 +2065,18 @@ Everything else is listed, with where a broken link pointed, the app a
 program runs inside, and whether an installer with administrator rights
 put it there.
 
-Banager reads one path per cask, the first `app` stanza's, so two cask
-shapes are still listed here although Homebrew installed them: a command
-that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
-put on the disk, or one inside a second `.app` of the same cask), and a
-cask whose `brew info` entry carries no absolute `target` for its `app`.
+Banager reads one path per cask, the first `app` stanza's, and also the
+links the cask's `binary` stanzas put on the disk (the absolute `target`
+`brew info --installed --json=v2` writes beside each stanza): an entry
+that *is* one of those links, and resolves into the file the stanza
+names, the cask's folder in `Caskroom`, or that `.app`, is the cask's
+(the same rule as "Which copy a command runs") — so a command inside a
+second `.app` of the same cask, or of a cask whose `app` entry carries no
+absolute `target`, is not listed. A command that no `binary` stanza
+names and that lives neither inside that `.app` nor under `Caskroom`
+(one a `pkg` put on the disk) is still listed here although Homebrew
+installed it, and so is a link of a stanza's name that leads somewhere
+else.
 
 Each row's ⋯ menu has *Show in Finder* and *Copy Path*. Show in Finder
 asks Finder to show the program and runs nothing else: no command runs

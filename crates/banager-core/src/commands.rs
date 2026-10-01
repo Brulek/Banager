@@ -735,6 +735,17 @@ fn cask(
     look: &mut Look,
     claims: &mut Vec<Claim>,
 ) {
+    let roots = cask_places(&inst.prefix, artifact);
+    named(index, artifact, &roots, look, claims);
+}
+
+/// Where a cask's `binary` link may lead, besides the file its stanza
+/// names (`ProvidedCommand.within`), to be the cask's: its folder in
+/// `<prefix>/Caskroom` and the app it moved (`InstalledArtifact.path`).
+/// Read by `cask` here and by the unknown-source scan (`scan::Known`), so
+/// the Other Programs page and "which copy runs" claim a cask's command
+/// by one rule.
+pub(crate) fn cask_places(prefix: &Path, artifact: &InstalledArtifact) -> Vec<PathBuf> {
     // `Caskroom/<token>`: the short token, which a tapped cask's key
     // (`user/tap/token`) ends with.
     let token = artifact
@@ -743,9 +754,9 @@ fn cask(
         .rsplit('/')
         .next()
         .unwrap_or(&artifact.key.name);
-    let mut roots = vec![inst.prefix.join("Caskroom").join(token)];
+    let mut roots = vec![prefix.join("Caskroom").join(token)];
     roots.extend(artifact.path.clone());
-    named(index, artifact, &roots, look, claims);
+    roots
 }
 
 /// The commands an artifact's source named (`CommandInputs.provided`),

@@ -209,7 +209,8 @@ fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<
 /// is the cask's `path`. A `binary` stanza's `target` is the link in
 /// `<prefix>/bin` itself -- the command -- which the unknown-source scan
 /// finds by reading that directory and `cask_commands` names for
-/// `commands::judge`; no other stanza's entry is read.
+/// `commands::judge` and for that scan's rule 2 (`scan::Known`); no other
+/// stanza's entry is read.
 #[derive(Debug, Deserialize)]
 struct CaskArtifact {
     /// Present exactly when this entry is an `app` stanza. What it holds
@@ -291,9 +292,12 @@ fn cask_commands(artifacts: &[CaskArtifact]) -> Vec<ProvidedCommand> {
 /// cask sat under Homebrew on the Installed page. One `path` per
 /// artifact, so it is the first `app` stanza's; a cask with none (a
 /// `pkg`, a font), or whose entry carries no absolute `target`, keeps
-/// `None`, and a command such a cask puts outside `Caskroom` stays on the
-/// Unknown page. A formula's `path` stays `None`: its keg is under
-/// `Cellar`, which the scan gives Homebrew outright.
+/// `None`. Rule 2 also claims the links the cask's `binary` stanzas name
+/// (`CommandInputs.provided`, `cask_commands`), so a command inside a
+/// second `.app`, or of a cask with no `path`, is not listed; one no
+/// stanza names that such a cask puts outside `Caskroom` (a `pkg`'s)
+/// stays on the Unknown page. A formula's `path` stays `None`: its keg is
+/// under `Cellar`, which the scan gives Homebrew outright.
 ///
 /// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
 /// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or

@@ -692,6 +692,112 @@ fn test_rule_2_claims_a_cask_binary_link_into_the_app_the_cask_installed() {
 }
 
 #[test]
+fn test_rule_2_claims_a_cask_binary_link_into_a_second_app_or_an_app_with_no_target() {
+    // A cask's `path` is one place, its first `app`'s. Two shapes Homebrew
+    // installed were still listed (backlog, "cask 的命令行链接只认第一个
+    // `app`"): a `binary` link into a second `.app` of the same cask, and
+    // one of a cask whose `app` entry carries no absolute `target`. The
+    // cask's own word for its commands -- the link a `binary` stanza put
+    // in `<prefix>/bin`, from `brew info`'s `artifacts` -- claims them,
+    // when the link resolves into the file the stanza names, the cask's
+    // folder in `Caskroom`, or its app (`commands::cask_places`, the rule
+    // "which copy runs" uses). A `pkg`-installed command no stanza names
+    // stays listed, and so does a link of a stanza's name that now leads
+    // somewhere else.
+    let home = Home::new("rule-2-cask-commands");
+    let prefix = home.dir("usr/local");
+    let prefix_bin = home.dir("usr/local/bin");
+    let main_app = home.path().join("Applications/Suite.app");
+    home.dir("Applications/Suite.app/Contents/MacOS");
+    let helper_bin = home.dir("Applications/Suite Helper.app/Contents/bin");
+    let helper = exe(&helper_bin, "suite-helper", b"#!/bin/sh\n");
+    let helper_link = link(&prefix_bin, "suite-helper", &helper);
+    let bare_bin = home.dir("Applications/Bare.app/Contents/bin");
+    let bare = exe(&bare_bin, "bare", b"#!/bin/sh\n");
+    let bare_link = link(&prefix_bin, "bare", &bare);
+    // Named by a stanza, but the link there now leads elsewhere.
+    let elsewhere = exe(&home.dir("opt/other"), "moved", b"#!/bin/sh\n");
+    let moved_link = link(&prefix_bin, "moved", &elsewhere);
+    // A `pkg`'s command: no `binary` stanza names it.
+    let pkg_bin = home.dir("Library/Suite/bin");
+    let pkg_cmd = exe(&pkg_bin, "suite-pkg", b"#!/bin/sh\n");
+    link(&prefix_bin, "suite-pkg", &pkg_cmd);
+    let brew = ManagerInstance {
+        exe_path: prefix.join("bin/brew"),
+        prefix: prefix.clone(),
+        ..manager_instance("brew", &format!("brew:{}", prefix.display()))
+    };
+    let info = serde_json::json!({
+        "formulae": [],
+        "casks": [
+            {
+                "token": "suite",
+                "name": ["Suite"],
+                "installed": "3.0",
+                "artifacts": [
+                    { "app": ["Suite.app"], "target": main_app.display().to_string() },
+                    {
+                        "app": ["Suite Helper.app"],
+                        "target": home.path().join("Applications/Suite Helper.app").display().to_string()
+                    },
+                    { "pkg": ["Suite.pkg"] },
+                    {
+                        "binary": [helper.display().to_string()],
+                        "target": helper_link.display().to_string()
+                    },
+                    {
+                        "binary": [main_app.join("Contents/MacOS/moved").display().to_string()],
+                        "target": moved_link.display().to_string()
+                    }
+                ]
+            },
+            {
+                "token": "bare",
+                "name": ["Bare"],
+                "installed": "1.0",
+                "artifacts": [
+                    { "app": ["Bare.app"] },
+                    {
+                        "binary": [bare.display().to_string()],
+                        "target": bare_link.display().to_string()
+                    }
+                ]
+            }
+        ]
+    });
+    let artifacts = parse_info_installed(&info.to_string(), &brew.id).expect("parse");
+    assert_eq!(
+        artifacts
+            .iter()
+            .find(|a| a.key.name == "bare")
+            .unwrap()
+            .path,
+        None,
+        "no absolute target beside the app: no path"
+    );
+
+    let scan = scan_dirs(
+        &[prefix_bin],
+        &home.env(vec![]),
+        &[brew],
+        &artifacts,
+        &[],
+        ScanBudget::default(),
+    );
+
+    let mut listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    listed.sort();
+    assert_eq!(
+        listed,
+        vec![
+            tilde("usr/local/bin/moved"),
+            tilde("usr/local/bin/suite-pkg")
+        ]
+    );
+    assert_eq!(scan.attributed, 2, "suite-helper and bare");
+}
+
+#[test]
 fn test_rule_3_claims_a_link_into_homebrews_cellar_but_not_into_the_rest_of_its_prefix() {
     // An Intel Mac: `/usr/local/bin` is both Homebrew's bin and where
     // third-party installers drop things. A link into `Cellar` is
