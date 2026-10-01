@@ -27,6 +27,7 @@ import { useDockBadge } from "./lib/dockBadge";
 import { useUpdateNotification } from "./lib/updateNotification";
 import { useOperationsNotification } from "./lib/operationsNotification";
 import { useSnoozeExpiry } from "./lib/snoozeExpiry";
+import { useFocusOnPageChange } from "./lib/pageFocus";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -234,6 +235,7 @@ function App() {
   useOperationEvents();
   useStartupRefresh();
   useMenuCommands();
+  useFocusOnPageChange(page);
   // The toolbar's box for the page's own actions (`ToolbarItems`), once
   // it is drawn, and the page's own box, whose scroll the toolbar follows.
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);

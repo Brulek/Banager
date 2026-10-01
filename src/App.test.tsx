@@ -483,6 +483,33 @@ describe("App", () => {
     expect(within(getByRole("banner")).getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
   });
 
+  it("puts the focus on the Updates page's title after Review Updates, which went with the Overview", async () => {
+    const brew = snapshot.instances[0];
+    mockBackend({
+      ...snapshot,
+      updates: [
+        {
+          key: { instance_id: brew.id, kind: "Formula" as const, name: "wget" },
+          current: "1.0.0",
+          target: "1.1.0",
+          channel: "Native" as const,
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ],
+    });
+    const { findByRole, getByRole } = renderWithProviders(<App />);
+    const review = await findByRole("button", { name: "Review Updates" });
+    review.focus();
+    fireEvent.click(review);
+
+    await waitFor(() => expect(getByRole("heading", { level: 1 })).toHaveTextContent("Updates"));
+    expect(review.isConnected).toBe(false);
+    // Not the window's body, from where the next Tab would start over.
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("heading", { level: 1 })));
+  });
+
   it("opens the Installed page on a launcher left without its program from the Overview's Show, the tool selected", async () => {
     // Rows need a height to be drawn in jsdom.
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
