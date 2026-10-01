@@ -256,7 +256,7 @@ describe("OperationBar", () => {
     expect(off.queryByText(/os error 13/)).toBeNull();
   });
 
-  it("says how many of a run need a look where one of them only asks to be checked", async () => {
+  it("names a failure as a failure beside one that only asks to be checked, never both as needing attention", async () => {
     const { findByText, queryClient } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
     await listNow(queryClient, [op(2, "jq", "Queued"), op(1, "git", "Running")]);
@@ -264,7 +264,60 @@ describe("OperationBar", () => {
       op(2, "jq", "Done", { NeedsAttention: "UnchangedAfterUpgrade" }),
       op(1, "git", "Done", { Failed: { exit_code: 1, summary: "Error: git is pinned" } }),
     ]);
-    await findByText("2 of 2 need attention");
+    await findByText("1 update failed, 1 needs attention");
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("1个更新失败，1个需要查看");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("keeps 需要查看 for a run whose endings only ask to be checked", async () => {
+    const { findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [op(3, "wget", "Queued"), op(2, "jq", "Queued"), op(1, "git", "Running")]);
+    await listNow(queryClient, [
+      op(3, "wget", "Done", "Succeeded"),
+      op(2, "jq", "Done", { NeedsAttention: "UnchangedAfterUpgrade" }),
+      op(1, "git", "Done", "Unconfirmed"),
+    ]);
+    await findByText("2 of 3 need attention");
+    // Orange, not red: nothing in it failed.
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("3个中有2个需要查看");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("counts the failures, the successes and the cancelled of a run that was not all one kind", async () => {
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [
+      op(4, "ripgrep", "Queued", null, { kind: "Install" }),
+      op(3, "wget", "Queued"),
+      op(2, "jq", "Queued"),
+      op(1, "git", "Running"),
+    ]);
+    await listNow(queryClient, [
+      op(4, "ripgrep", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } }, { kind: "Install" }),
+      op(3, "wget", "Done", "Cancelled"),
+      op(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("2 failed, 1 succeeded, 1 cancelled");
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("2个失败，1个已成功，1个已取消");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
   });
 
   it("says a run that was not all updates in words for any operation", async () => {
@@ -399,12 +452,19 @@ describe("OperationBar", () => {
       op(12, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
       op(11, "git", "Done", "Succeeded"),
     ]);
-    // Only failures, of updates: how many did not update.
-    await findByText("1 couldn't be updated");
+    // The failure said as one, with the ones that worked beside it.
+    await findByText("1 update failed, 2 succeeded");
     expect(queryByRole("button", { name: /^Stop/ })).toBeNull();
     // Its log is the one that needs it.
     fireEvent.click(getByRole("button", { name: "View Log" }));
     expect(useUiStore.getState().focusedOpId).toBe(12);
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("1个更新失败，2个已成功");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
   });
 
   it("says each step and how it went in one live line, the same node throughout, so a screen reader hears the change", async () => {
@@ -738,6 +798,25 @@ describe("OperationBar, after a batch uninstall", () => {
       await i18n.changeLanguage("zh-CN");
     });
     await findByText("已卸载1个，2个没有卸载");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("counts a cancelled uninstall as cancelled, not as uninstalled, beside a failed one", async () => {
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [uninstall(3, "wget", "Queued"), uninstall(2, "jq", "Queued"), uninstall(1, "git", "Running")]);
+    await listNow(queryClient, [
+      uninstall(3, "wget", "Done", "Cancelled"),
+      uninstall(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall" } }),
+      uninstall(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Uninstalled 1; 1 wasn't uninstalled, 1 cancelled");
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("已卸载1个，1个没有卸载，1个已取消");
     await act(async () => {
       await i18n.changeLanguage("en");
     });

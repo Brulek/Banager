@@ -505,3 +505,124 @@ describe("LogDrawer", () => {
     }
   });
 });
+
+describe("LogDrawer, under a tool's own words", () => {
+  const failedUpdate = (summary: string, extra: Partial<OpSummary> = {}): OpSummary => ({
+    ...runningOp,
+    kind: "Upgrade",
+    name: "wget",
+    status: "Done",
+    outcome: { Failed: { exit_code: 1, summary } },
+    ...extra,
+  });
+  const said = (line: string) =>
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line });
+    });
+
+  it("says whose words they are and what to do next, under the log and above Copy Log", async () => {
+    operations = [failedUpdate("Error: wget: something went wrong")];
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+    said("Error: wget: something went wrong");
+
+    const step = await findByText(
+      "The lines above are Homebrew's own error. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
+    );
+    // After the log, in the dialog's body; Copy Log is in the foot below it.
+    const log = getByRole("log");
+    expect(log.compareDocumentPosition(step) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(step).toHaveClass("text-body", "text-foreground");
+    // With no step over the log, it is what the dialog says it is about.
+    expect(getByRole("dialog").getAttribute("aria-describedby")?.split(" ")).toContain(step.id);
+  });
+
+  it("says it in Chinese, fitted to the cause the tool's words give", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      operations = [failedUpdate("Error: wget: something went wrong")];
+      const generic = renderWithProviders(<LogDrawer />);
+      said("Error: wget: something went wrong");
+      await generic.findByText(
+        "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。",
+      );
+      generic.unmount();
+
+      const cases: Array<[string, string]> = [
+        ["curl: (6) Could not resolve host: ghcr.io", "上面是Homebrew自己的报错。网络恢复后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
+        ["Error: No space left on device @ rb_sysopen", "上面是Homebrew自己的报错。腾出磁盘空间后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
+        ["Error: Permission denied @ dir_s_mkdir - /opt/homebrew/Cellar", "上面是Homebrew自己的报错。要先改好它的文件权限，才能点按“重试”；可以点按“拷贝日志”，发给懂的人看。"],
+        ["Error: Another active Homebrew process is already in progress.", "上面是Homebrew自己的报错。等另一个操作结束后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
+        ["sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper", "上面是Homebrew自己的报错。在这里点按“重试”还会停在同一步；可以点按“拷贝日志”，发给懂的人看。"],
+        ["sudo: 3 incorrect password attempts", "上面是Homebrew自己的报错。可以点按“重试”，在弹出的密码窗口中输入Mac的登录密码；还是失败，就点按“拷贝日志”，发给懂的人看。"],
+      ];
+      for (const [line, sentence] of cases) {
+        useUiStore.setState({ logs: [] });
+        operations = [failedUpdate(line)];
+        const view = renderWithProviders(<LogDrawer />);
+        said(line);
+        expect(await view.findByText(sentence)).toBeInTheDocument();
+        view.unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("names the source that wrote the lines and how to try again for an uninstall, in both languages", async () => {
+    operations = [
+      failedUpdate("npm error code ETIMEDOUT", {
+        kind: "Uninstall",
+        instance_id: "npm:/opt/homebrew/bin/npm",
+        argv_preview: ["/opt/homebrew/bin/npm", "uninstall", "-g", "prettier"],
+      }),
+    ];
+    const en = renderWithProviders(<LogDrawer />);
+    said("npm error code ETIMEDOUT");
+    await en.findByText(
+      "The lines above are npm's own error. Once you're back online, you can uninstall it again. If it still fails, click Copy Log and send the log to someone who can help.",
+    );
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const zh = renderWithProviders(<LogDrawer />);
+      await zh.findByText("上面是npm自己的报错。网络恢复后可以重新卸载；还是失败，就点按“拷贝日志”，发给懂的人看。");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says nothing of the kind where no tool's words are above it", async () => {
+    // Banager's own failure: its words, not a tool's.
+    operations = [{ ...runningOp, status: "Done", outcome: { BanagerFailed: "Panicked" } }];
+    const own = renderWithProviders(<LogDrawer />);
+    await own.findByText("Couldn't finish because of an internal error");
+    expect(own.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+    own.unmount();
+
+    // A failure whose log this window does not have: nothing is above.
+    operations = [failedUpdate("Error: wget: something went wrong")];
+    const empty = renderWithProviders(<LogDrawer />);
+    await empty.findByText("Couldn't finish");
+    expect(empty.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+    empty.unmount();
+
+    // A success, with lines on stderr all the same.
+    operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
+    const fine = renderWithProviders(<LogDrawer />);
+    said("Warning: jq 1.8.1 is already installed");
+    await fine.findByText("Warning: jq 1.8.1 is already installed");
+    expect(fine.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
+  });
+
+  it("leaves the cause's step over the log as what the dialog is about", async () => {
+    operations = [failedUpdate("curl: (6) Could not resolve host: ghcr.io")];
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+    said("curl: (6) Could not resolve host: ghcr.io");
+    const over = await findByText("Check your internet connection, then try again.");
+    const under = await findByText(/^The lines above are Homebrew's own error\. Once you're back online/);
+    const described = getByRole("dialog").getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(described).toContain(over.id);
+    expect(described).not.toContain(under.id);
+  });
+});

@@ -672,8 +672,6 @@
       "allUpdated_other": "Updated {{count}} tools",
       "needsAttention_one": "{{count}} of {{total}} needs attention",
       "needsAttention_other": "{{count}} of {{total}} need attention",
-      "notUpdated_one": "{{count}} couldn't be updated",
-      "notUpdated_other": "{{count}} couldn't be updated",
       "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
       "cancelAll": "Cancel All",
       "cancelRest": "Cancel the Rest"
@@ -1291,6 +1289,35 @@
       "homebrewUpdating": "Homebrew is updating its software list. Try again later.",
       "needsPassword": "This needs your Mac login password, which can't be entered here.",
       "passwordNotAccepted": "The password wasn't accepted. Enter your Mac login password in the password window, then try again."
+    }
+  },
+  "failureSteps": {
+    "bar": {
+      "updatesFailed_one": "{{count}} update failed",
+      "updatesFailed_other": "{{count}} updates failed",
+      "failed_one": "{{count}} failed",
+      "failed_other": "{{count}} failed",
+      "succeeded_one": "{{count}} succeeded",
+      "succeeded_other": "{{count}} succeeded",
+      "needsAttention_one": "{{count}} needs attention",
+      "needsAttention_other": "{{count}} need attention",
+      "cancelled_one": "{{count}} cancelled",
+      "cancelled_other": "{{count}} cancelled"
+    },
+    "again": {
+      "Upgrade": "click Retry",
+      "Uninstall": "uninstall it again",
+      "Install": "install it again"
+    },
+    "log": {
+      "generic": "The lines above are {{program}}'s own error. You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "network": "The lines above are {{program}}'s own error. Once you're back online, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
+      "diskFull": "The lines above are {{program}}'s own error. After freeing up disk space, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
+      "permission": "The lines above are {{program}}'s own error. Its file permissions need fixing before you can {{again}}. You can click Copy Log and send the log to someone who can help.",
+      "busy": "The lines above are {{program}}'s own error. When the other operation is done, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
+      "homebrewUpdating": "The lines above are {{program}}'s own error. In a few minutes, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
+      "needsPassword": "The lines above are {{program}}'s own error. If you {{again}} here, it stops at the same step. You can click Copy Log and send the log to someone who can help.",
+      "passwordNotAccepted": "The lines above are {{program}}'s own error. You can {{again}} and enter your Mac login password in the password window. If it still fails, click Copy Log and send the log to someone who can help."
     }
   },
   "needsPassword": {

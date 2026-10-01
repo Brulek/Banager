@@ -15,6 +15,7 @@ import {
   type OperationRun,
   type OutcomeTone,
 } from "../lib/operations";
+import { failedRunWords } from "../lib/runResult";
 import { useUiStore } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
@@ -47,7 +48,7 @@ function needsALook(tone: OutcomeTone): boolean {
  * along the run is: 「正在处理第2个，共3个」 and a 4 by 60 bar, and 「全部取消」
  * for all of it that can still be stopped -- 「取消其余」 while one of it
  * runs that nothing can stop. Once everything is done, how it went in
- * place of where it stood -- 「已更新3个工具」, 「1个未能更新」, 「更新git：
+ * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「更新git：
  * 网络连接失败」 -- with its log where it needs a look, and a close ×.
  * What a program wrote -- a tool's error, macOS's reason a program would
  * not start -- is said here only with "Show technical details" on
@@ -223,16 +224,10 @@ export function OperationBar() {
       logOf = tone === "success" ? undefined : op;
     } else if (newestToLook !== undefined) {
       tone = tones.includes("failure") ? "failure" : "attention";
-      // Only failures, of updates or of uninstalls: how many did not update, or uninstall.
-      const onlyFailed = (updates || uninstalls) && toLook.every((op) => outcomeTone(op.outcome) === "failure");
-      words = !onlyFailed
-        ? t("operations.batch.needsAttention", { count: toLook.length, total })
-        : uninstalls
-          ? // The same words as the result block over the list.
-            total > toLook.length
-            ? t("batchUninstallMore.mixed", { done: total - toLook.length, count: toLook.length })
-            : t("batchUninstall.bar.notUninstalled", { count: toLook.length })
-          : t("operations.batch.notUpdated", { count: toLook.length });
+      // Failures said as failures, with what else the run came to --
+      // 「2个更新失败，3个已成功」; 「需要查看」 only for a run with none.
+      words =
+        failedRunWords(t, inRun) ?? t("operations.batch.needsAttention", { count: toLook.length, total });
       logOf = newestToLook;
     } else if (tones.every((each) => each === "success")) {
       tone = "success";

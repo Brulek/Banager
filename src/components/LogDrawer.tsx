@@ -21,6 +21,7 @@ import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { PasswordCommand } from "./PasswordCommand";
+import { FailureNextStep, failureLogStep } from "./FailureNextStep";
 import { SpinnerIcon } from "./icons";
 
 const NEAR_BOTTOM_PX = 32;
@@ -75,7 +76,9 @@ function noteText(t: TFunction, note: LogNote): string {
  * the tool printed, in its own words, in
  * a grouped container in 11/14 monospace, what it wrote to stderr in red,
  * keeping to its end while more arrives, with Banager's own notes among
- * the lines as plain sentences. That text selects, as nothing else in the
+ * the lines as plain sentences; under it, where it holds a tool's words
+ * for a failure, whose words they are and what to do next, Copy Log among
+ * it (`FailureNextStep`). That text selects, as nothing else in the
  * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
  * operation can still be stopped, a button beside Done stops it: the page
@@ -163,6 +166,9 @@ export function LogDrawer() {
 
   const parts = operation === undefined ? null : partsOf(operation);
   const nextId = useId();
+  const stepId = useId();
+  // The sentence under the log, where a tool's own words are in it.
+  const step = operation === undefined ? null : failureLogStep(operation, logs);
   const copyWords = copyStatusText(t, copyStatus);
 
   return (
@@ -176,8 +182,9 @@ export function LogDrawer() {
       // operation starts -- the dialog is simply the operation log.
       title={parts?.title ?? t("operations.logDrawerTitle")}
       subtitle={parts?.subtitle}
-      // What to do next, where the log says: said after its subtitle as it opens.
-      describedBy={parts?.next ? nextId : undefined}
+      // What to do next, where the log says: said after its subtitle as it
+      // opens -- the cause's step over the log, else the one under it.
+      describedBy={parts?.next ? nextId : step !== null ? stepId : undefined}
       focusSelf
       fillBody
       footerStart={
@@ -243,6 +250,8 @@ export function LogDrawer() {
           )}
         </div>
       </ScrollArea>
+      {/* Under the tool's own words: whose they are, and what to do next. */}
+      {operation !== undefined ? <FailureNextStep op={operation} logs={logs} id={stepId} /> : null}
     </Dialog>
   );
 }
