@@ -42,11 +42,14 @@
 //! it does not answer, never a round itself.
 //!
 //! No verdict at all (`CommandFact.state: None`) for a Homebrew dependency
-//! or keg-only formula -- left off `PATH` on purpose, or never asked for --
-//! and for every command while the `PATH` Banager has is not the one its
-//! login shell exports (`Session::note_login_path`): judged against the
-//! small default `PATH` an app opened from Finder starts with, nearly
-//! every tool would read as "not found".
+//! -- never asked for -- and for every command while the `PATH` Banager
+//! has is not the one its login shell exports (`Session::note_login_path`):
+//! judged against the small default `PATH` an app opened from Finder
+//! starts with, nearly every tool would read as "not found". A keg-only
+//! formula is never said to be "not found" -- Homebrew leaves it off
+//! `PATH` on purpose -- but one linked by hand (`brew link --force`) has
+//! its links in `<prefix>/bin`, and which copy runs is said of them as of
+//! any formula's.
 
 use crate::adapters::standalone::recipe::RouteKind;
 use crate::adapters::standalone::recipes::RECIPES;
@@ -332,10 +335,17 @@ struct Claim {
 }
 
 /// Whether Banager says which copy runs for this artifact's commands: not
-/// for a Homebrew dependency (nobody typed its name to install it) or a
-/// keg-only formula (Homebrew leaves its commands off `PATH` on purpose).
+/// for a Homebrew dependency (nobody typed its name to install it).
 fn judged(artifact: &InstalledArtifact) -> bool {
-    artifact.reason != InstallReason::Dependency && !artifact.facts.command_inputs.keg_only
+    artifact.reason != InstallReason::Dependency
+}
+
+/// Whether "not found" may be said of this artifact's commands: not of a
+/// keg-only formula's, which Homebrew leaves off `PATH` on purpose. Its
+/// commands are there at all only when it was linked by hand (`brew link
+/// --force`), and then whether that copy runs is said as of any other.
+fn may_be_not_found(artifact: &InstalledArtifact) -> bool {
+    !artifact.facts.command_inputs.keg_only
 }
 
 /// What every artifact's commands run, in `artifacts`' order, each list
@@ -419,6 +429,9 @@ pub fn judge(
                 // Nothing on `PATH` that was read leads here, and an
                 // unread folder could hold a link that does: no verdict.
                 _ if matches.contains(&Seen::Unread) => None,
+                // A keg-only formula linked by hand, off `PATH` after all:
+                // never "not found" (`may_be_not_found`).
+                _ if !may_be_not_found(&artifacts[claim.artifact]) => None,
                 // Nothing on `PATH` leads here: "not found" is said only
                 // of a folder Banager knows and `PATH` lacks. A copy whose
                 // folder is on `PATH` and was still not found there (its

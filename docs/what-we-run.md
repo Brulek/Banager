@@ -1909,9 +1909,11 @@ failed, the shell says so (`Session::note_login_path` in `run()`,
 said about which copy runs. An alias, a shell function, or a `PATH` that
 only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
-differ. Nothing is said about a Homebrew formula that is keg-only
-(Homebrew keeps it off `PATH` on purpose) or was installed as a
-dependency. The folder of a
+differ. Nothing is said about a Homebrew formula installed as a
+dependency, and a keg-only one is never said to be missing from Terminal
+(Homebrew keeps it off `PATH` on purpose); one linked by hand (`brew link
+--force`) has its links in `<prefix>/bin`, and which copy runs is said of
+them as of any formula's. The folder of a
 command Terminal cannot find can be copied (*Copy Path*, in
 `CommandsGroup` in `src/components/CommandFacts.tsx`, through
 `useCopyCommand`), `~` and all; nothing edits a shell file.

@@ -580,21 +580,29 @@ fn three_formulae(home: &Home) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>,
 }
 
 #[test]
-fn test_a_keg_only_or_dependency_formula_gets_no_verdict() {
+fn test_a_keg_only_formula_linked_by_hand_is_judged_but_never_said_not_found() {
+    // A keg-only formula has commands in `<prefix>/bin` only when someone
+    // linked it there by hand (`brew link --force`, as this Mac's author
+    // did with `node@22`): what Terminal runs is then said of it as of any
+    // formula. A dependency still gets no verdict.
     let home = Home::new("keg-only");
     let (instances, artifacts, bin) = three_formulae(&home);
-    let found = verdicts(&home, &[bin], &instances, &artifacts);
+    let found = verdicts(&home, std::slice::from_ref(&bin), &instances, &artifacts);
     assert_eq!(
         found,
         vec![
             vec![runs("jq")],
-            vec![unjudged("curl")],
+            vec![runs("curl")],
             vec![unjudged("onig-config")]
         ]
     );
-    // Off PATH altogether, still nothing about curl's: Homebrew leaves it
-    // there on purpose. (This prefix is under the test's home, so its
-    // folder is shown from `~`.)
+    // macOS's own curl first: the hand-linked one waits behind it.
+    home.exe("system/bin/curl");
+    let found = verdicts(&home, &[home.at("system/bin"), bin], &instances, &artifacts);
+    assert_eq!(found[1], vec![shadowed("curl", None)]);
+    // Off PATH altogether, still never "not found" for curl's: Homebrew
+    // leaves a keg-only formula off it on purpose. (This prefix is under
+    // the test's home, so its folder is shown from `~`.)
     let found = verdicts(&home, &[], &instances, &artifacts);
     assert_eq!(
         found,

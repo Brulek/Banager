@@ -37,8 +37,8 @@ struct FormulaInfo {
     #[serde(default)]
     linked_keg: Option<String>,
     /// `keg_only` (`formula.rb`'s `"keg_only" => keg_only?`): Homebrew
-    /// keeps the formula out of its `bin` on purpose, so Banager says
-    /// nothing about its commands (`CommandInputs.keg_only`). Read as any
+    /// keeps the formula out of its `bin` on purpose, so Banager never says
+    /// its commands are not found (`CommandInputs.keg_only`). Read as any
     /// JSON value, so a brew that one day writes something else costs this
     /// one judgement and not the whole inventory: anything but `true` is
     /// not keg-only.

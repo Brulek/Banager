@@ -1047,7 +1047,7 @@ function runs(names: string[]): CommandFact[] {
   return names.map((name) => ({ name, state: "Runs" }));
 }
 
-/** Commands Banager names and says nothing about: a keg-only formula's, a dependency's. */
+/** Commands Banager names and says nothing about: a dependency's. */
 function unjudged(names: string[]): CommandFact[] {
   return names.map((name) => ({ name, state: null }));
 }
@@ -1073,9 +1073,10 @@ const COMMANDS: Record<string, CommandFact[]> = {
   ]),
   "brew|Formula|htop": runs(["htop"]),
   "brew|Formula|jq": runs(["jq"]),
-  // Keg-only, linked by hand: named, never judged. Its `npm` and `npx`
-  // links are npm's own now (`npm install -g npm`).
-  "brew|Formula|node@22": unjudged(["node"]),
+  // Keg-only, linked by hand (`brew link --force`): judged as any
+  // formula's, never said to be "not found". Its `npm` and `npx` links are
+  // npm's own now (`npm install -g npm`).
+  "brew|Formula|node@22": runs(["node"]),
   "brew|Formula|ollama": runs(["ollama"]),
   "brew|Formula|pipx": runs(["pipx"]),
   "brew|Formula|postgresql@17": runs(["pg_dump", "pg_restore", "postgres", "psql"]),

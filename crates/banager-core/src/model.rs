@@ -409,8 +409,9 @@ pub struct CommandInputs {
     /// installer's launcher and the commands its recipe names.
     pub provided: Vec<ProvidedCommand>,
     /// Homebrew's `keg_only` for a formula: Homebrew keeps it out of its
-    /// `bin` folder on purpose (macOS has its own `curl`), so no judgement
-    /// is made about its commands, even when it was linked by hand.
+    /// `bin` folder on purpose (macOS has its own `curl`), so its commands
+    /// are never said to be "not found"; linked by hand (`brew link
+    /// --force`), which copy runs is said of them as of any formula's.
     pub keg_only: bool,
 }
 

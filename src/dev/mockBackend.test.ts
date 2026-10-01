@@ -615,8 +615,8 @@ describe("the preview's commands, and which copy runs", () => {
       { name: "grok", state: notFound },
     ]);
     expect(factsOf(full, "standalone-claude", "claude")?.commands).toEqual([{ name: "claude", state: "Runs" }]);
-    // Keg-only: named, not judged.
-    expect(factsOf(full, "brew:/opt/homebrew", "node@22")?.commands).toEqual([{ name: "node", state: null }]);
+    // Keg-only, linked by hand: judged as any formula's.
+    expect(factsOf(full, "brew:/opt/homebrew", "node@22")?.commands).toEqual([{ name: "node", state: "Runs" }]);
 
     const notices = await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
     const npmClaude = notices.artifacts.find((a) => a.key.name === "@anthropic-ai/claude-code");
