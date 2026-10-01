@@ -793,4 +793,26 @@ describe("the mock backend's facts for the diagnostic text (get_system_facts)", 
       "~/.local/bin/claude",
     );
   });
+
+  it("says what the last refresh made of the PATH folders, as ?path= asks (Check Tool Setup)", async () => {
+    const read = backendFor().backend;
+    expect((await answer<SystemFacts>(read.invoke("get_system_facts"))).path_folders).toBeNull();
+    await answer<Snapshot>(read.invoke("refresh"));
+    const facts = await answer<SystemFacts>(read.invoke("get_system_facts"));
+    expect(facts.path_folders).toEqual({ read: facts.path_dirs.length, unread: [] });
+
+    const unread = backendFor({ path: "unread" }).backend;
+    await answer<Snapshot>(unread.invoke("refresh"));
+    const some = await answer<SystemFacts>(unread.invoke("get_system_facts"));
+    expect(some.path_folders).toEqual({ read: some.path_dirs.length - 1, unread: ["~/Documents/bin"] });
+
+    // Never restored: the system's few folders, and no command judged.
+    const unrestored = backendFor({ path: "default" }).backend;
+    const snapshot = await answer<Snapshot>(unrestored.invoke("refresh"));
+    const none = await answer<SystemFacts>(unrestored.invoke("get_system_facts"));
+    expect(none).toMatchObject({ login_path: false, path_folders: null, path_dirs: ["/usr/bin", "/bin", "/usr/sbin", "/sbin"] });
+    const commands = snapshot.artifacts.flatMap((artifact) => artifact.facts.commands);
+    expect(commands.length).toBeGreaterThan(0);
+    expect(commands.every((command) => command.state === null)).toBe(true);
+  });
 });
