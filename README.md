@@ -87,8 +87,8 @@ report them all.
 - **Check Tool Setup…** in the Help menu, or **Check…** beside it in Settings, says in short lines
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
   isn't answering, how many tools Terminal can't find or has twice, what Homebrew disabled or keeps
-  other versions of, and the disk measured — with a **Show** on each line that opens the list it
-  counted. It has no score; it is built from what the last check found, and runs nothing.
+  other versions of, and the disk measured. A line that counts something has a **Show** that opens
+  the list it counted. It has no score; it is built from what the last check found, and runs nothing.
 
 Banager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
@@ -450,8 +450,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   工具清单，个人文件夹的路径写成 `~`。
 - 菜单栏“帮助”里的“检查工具环境…”（设置里诊断信息旁边的“检查…”也一样）用几行短句说明这台 Mac 上的工具
   环境：有没有读取终端登录时的设置、哪个来源没有响应、终端里找不到或装了不止一份的工具有几个、Homebrew
-  停用或保留了其他版本的工具、实测占用的空间；每行的“查看”会打开它数到的那份列表。不打分，只用上次检查的
-  结果，不运行任何命令。
+  停用或保留了其他版本的工具、实测占用的空间；数到了东西的那一行有“查看”，会打开它数到的那份列表。不打分，
+  只用上次检查的结果，不运行任何命令。
 - 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的
   `@openai/codex` 和 Homebrew 的 `codex` cask 仍算在各自来源下。用它自己的安装脚本装的 opencode 也只列出来：
   它的安装脚本没留下写着版本的文件，Banager 也不为它运行任何命令，所以版本不知道。
