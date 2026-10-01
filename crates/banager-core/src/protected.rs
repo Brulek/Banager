@@ -10,9 +10,9 @@
 //! `docs/what-we-run.md` names each one in both sections
 //! (`what_we_run_test`).
 
+use crate::dirfd::{Dir, Stat};
 use std::collections::VecDeque;
 use std::ffi::OsString;
-use std::fs::Metadata;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
@@ -181,37 +181,52 @@ impl Protected {
 #[derive(Clone, Debug)]
 pub enum Resolution {
     /// The path with every link on the way followed, and what is there
-    /// (`lstat`: a link at the end, when not followed, is the link).
-    Found(PathBuf, Metadata),
+    /// (`fstatat` without following: a link at the end, when not
+    /// followed, is the link).
+    Found(PathBuf, Stat),
     Missing,
     /// It is, or leads, into a protected place: nothing there was looked
     /// at, so nobody knows what is there. The path it leads to as far as
     /// the links outside were followed, the rest of it taken as written
     /// (`..` folded by name).
     Protected(PathBuf),
-    /// A folder on the way could not be read; or it is not absolute; or
-    /// too many links.
+    /// A folder on the way could not be read or searched, or was replaced
+    /// while it was looked at; or it is not absolute; or too many links.
     Refused,
 }
 
 /// `path`, with each link among its folders followed, one component at a
 /// time, so that no step is ever taken into a protected place: each next
-/// component is checked against `protected` before it is `lstat`ed, and a
-/// link's text is read (`readlink`) and spliced in before anything it
-/// names is looked at. The last component is followed only with
-/// `follow_last`. Reads nothing but `lstat` and `readlink` of the folders
+/// component is checked against `protected` before it is looked at, and a
+/// link's text is read and spliced in before anything it names is looked
+/// at. The last component is followed only with `follow_last`.
+///
+/// Every step is taken from the folder before it, held open (`dirfd::Dir`,
+/// for search only): `fstatat` and `readlinkat` of a name in it, and
+/// `openat` of the next folder with `O_NOFOLLOW`, checked to be the folder
+/// `fstatat` saw. No folder already checked is looked up again by its
+/// path, so one replaced by a link in the meantime is never followed:
+/// the step is refused instead. Reads nothing but those, of the folders
 /// and links on the way.
 pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
     if !path.is_absolute() {
         return Resolution::Refused;
     }
+    let Ok(root) = Dir::root() else {
+        return Resolution::Refused;
+    };
+    // `dirs[i]` is open on the folder `resolved` names at depth `i`.
+    let mut dirs: Vec<Dir> = vec![root];
     let mut pending: VecDeque<OsString> = names(path).collect();
     let mut resolved = PathBuf::from("/");
-    let mut found: Option<Metadata> = None;
+    let mut found: Option<Stat> = None;
     let mut links = 0;
     while let Some(name) = pending.pop_front() {
         if name == ".." {
             resolved.pop();
+            if dirs.len() > 1 {
+                dirs.pop();
+            }
             found = None;
             continue;
         }
@@ -227,21 +242,25 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
             }
             return Resolution::Protected(at);
         }
-        let meta = match std::fs::symlink_metadata(&candidate) {
-            Ok(meta) => meta,
+        let Some(here) = dirs.last() else {
+            return Resolution::Refused;
+        };
+        let stat = match here.stat_at(&name) {
+            Ok(stat) => stat,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Resolution::Missing,
             Err(_) => return Resolution::Refused,
         };
-        if meta.file_type().is_symlink() && (!pending.is_empty() || follow_last) {
+        if stat.is_symlink() && (!pending.is_empty() || follow_last) {
             links += 1;
             if links > MAX_LINKS {
                 return Resolution::Refused;
             }
-            let Ok(target) = std::fs::read_link(&candidate) else {
+            let Ok(target) = here.read_link_at(&name) else {
                 return Resolution::Refused;
             };
             if target.is_absolute() {
                 resolved = PathBuf::from("/");
+                dirs.truncate(1);
             }
             let spliced: Vec<OsString> = names(&target).collect();
             for name in spliced.into_iter().rev() {
@@ -250,17 +269,28 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
             found = None;
             continue;
         }
+        if !pending.is_empty() {
+            // A folder on the way: stepped into through its descriptor,
+            // the very one just looked at. Not a folder, or not one this
+            // may search, is where the kernel's own lookup stops too.
+            if !stat.is_dir() {
+                return Resolution::Refused;
+            }
+            match here.open_dir_at(&name, Some(&stat), false) {
+                Ok((next, _)) => dirs.push(next),
+                Err(_) => return Resolution::Refused,
+            }
+        }
         resolved = candidate;
-        found = Some(meta);
+        found = Some(stat);
     }
     match found {
-        Some(meta) => Resolution::Found(resolved, meta),
+        Some(stat) => Resolution::Found(resolved, stat),
         // Ended on `..` (or is the root): the folder reached, already
-        // checked on the way down.
-        None => match std::fs::symlink_metadata(&resolved) {
-            Ok(meta) => Resolution::Found(resolved, meta),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Resolution::Missing,
-            Err(_) => Resolution::Refused,
+        // checked on the way down, and open.
+        None => match dirs.last().map(Dir::stat) {
+            Some(Ok(stat)) => Resolution::Found(resolved, stat),
+            _ => Resolution::Refused,
         },
     }
 }

@@ -9,7 +9,6 @@ use super::recipe::RouteKind;
 use crate::model::InstanceNote;
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 
 /// A recipe path (`~/.local/bin/claude`) under `home`. `HostEnv.home` is
@@ -353,9 +352,9 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     let protected = Protected::new(&env.home);
     let mut found = env.path_dirs.iter().filter_map(|dir| {
         match protected::resolve(&dir.join(command), &protected, true) {
-            Resolution::Found(path, meta) => (meta.is_file()
-                && meta.permissions().mode() & 0o111 != 0)
-                .then_some(OnPath::Executable(path)),
+            Resolution::Found(path, meta) => {
+                (meta.is_file() && meta.mode() & 0o111 != 0).then_some(OnPath::Executable(path))
+            }
             Resolution::Protected(_) => Some(OnPath::Unknown),
             Resolution::Missing | Resolution::Refused => None,
         }
@@ -405,6 +404,7 @@ enum OnPath {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     // Named here as well as through `super::*`, so these tests do not lean
     // on the imports above them; an explicit import beside a glob is not a
     // warning.

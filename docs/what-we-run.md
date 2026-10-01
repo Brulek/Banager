@@ -98,7 +98,7 @@ install, uninstall and upgrade previews read four more, to find its
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name, or a link that
 leads to one. It is looked for one step at a time (`lstat` and `readlink`,
-`protected::resolve`): a `PATH` folder in, or a file there that leads
+each from the folder before it, held open; `protected::resolve`): a `PATH` folder in, or a file there that leads
 into, one of the places Banager never looks into (Disk use, below: the
 one list in `crates/banager-core/src/protected.rs`) is passed over as if
 the file were not there, and nothing in it is read. Homebrew is looked
@@ -2004,7 +2004,10 @@ It reads:
 
 "Where it leads" is found one step at a time, as `realpath` would, but
 with only `lstat` of each folder and link on the way and `readlink` of
-each link, each step checked against the places below before it is taken
+each link -- each asked of the folder before it, held open, and the next
+folder opened from it with `O_NOFOLLOW` and checked to be the one seen, so
+a folder replaced by a link meanwhile is never followed (a folder is
+listed the same way, from `/`, with no link followed) -- each step checked against the places below before it is taken
 (`protected::resolve`, the same walk the disk-use measurement uses).
 Unlike `realpath`, it keeps each name as `PATH` or the link's text spells
 it, so two paths are compared without regard to ASCII case, as a Mac's
@@ -2116,7 +2119,15 @@ each refresh has finished — the sources' state committed and the
 refresh's locks released — a thread of its own (`SizeMeter` in
 `crates/banager-core/src/size.rs`, started by
 `Session::refresh_recording`) looks at these folders and files with
-`lstat`, the folder listing (`readdir`) and `readlink`, and nothing else:
+`lstat`, the folder listing (`readdir`) and `readlink`, and nothing else.
+Each is asked of a folder held open rather than by a path: a folder is
+opened (`openat` with `O_NOFOLLOW`, never following a link) from the
+folder it is in, checked to be the very folder seen there, and what is
+in it is listed and looked at from that descriptor (`fstatat`,
+`readlinkat`), so a folder another program replaces with a link while
+Banager is looking -- a link to `~/Documents`, say -- is never followed,
+and the size is shown as partial. A folder that is moved there, rather
+than linked, is a folder like any other there and is measured:
 
 | For | It measures |
 |---|---|
@@ -2132,7 +2143,8 @@ Nothing else is measured: not pip's packages, not a cask with no app (a
 font, a `pkg`), not a tool's settings, caches or downloads. On the way to
 each folder, every folder above it is `lstat`ed and a link among them read
 (`readlink`), so that where it leads is known before anything there is
-looked at. A model's own size is the one Ollama reports; the models
+looked at; the folder before each step is held open, so a folder already
+checked is never looked up by its path again. A model's own size is the one Ollama reports; the models
 together are their folder's, each layer once, since models share layers.
 That folder is all of `blobs`, so a layer no model uses any more (left
 by a removed model, or by a download that stopped) counts in it too.
@@ -2236,7 +2248,8 @@ here").
 
 How: during the uninstall preview only, each path is looked at as disk
 use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and
-`readlink`; no file is opened), with a budget of 100,000 entries and 1
+`readlink`; no file is opened -- each asked of a folder held open, opened
+with `O_NOFOLLOW`), with a budget of 100,000 entries and 1
 second for all of them together (`kept_data::BUDGET`). A size it stopped
 short of is shown as "or more" (「…以上」), and a path it did not reach,
 or could not read, or that measured 0, is named with no size. A path that leads into one of

@@ -35,7 +35,9 @@
 //! `read_dir` of each folder once -- `PATH`'s, and the bin folders of
 //! Homebrew's and npm's prefixes -- then where the entries a command could
 //! be lead, followed one step at a time (`lstat` and `readlink` of each
-//! step, `protected::resolve`), never a file's contents, never a command
+//! step, from the folder before it held open, `protected::resolve`; each
+//! folder listed from `/` with no link followed, `dirfd`), never a file's
+//! contents, never a command
 //! run (docs/what-we-run.md, "Which copy a command runs"). No step is ever
 //! taken into a protected place (`protected`): a folder, an entry or a
 //! link that leads there counts as unread, and no verdict it could change
@@ -57,6 +59,7 @@
 
 use crate::adapters::standalone::recipe::RouteKind;
 use crate::adapters::standalone::recipes::RECIPES;
+use crate::dirfd::{Dir, Stat};
 use crate::model::{
     ArtifactKind, CommandFact, CommandState, InstallReason, InstalledArtifact, ManagerInstance,
 };
@@ -65,9 +68,7 @@ use crate::runner::HostEnv;
 use crate::scan::display_path;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ffi::OsString;
-use std::fs::Metadata;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -267,8 +268,8 @@ fn read_one(
         folded: HashSet::new(),
         read: false,
     };
-    let canonical = match protected::resolve(dir, protected, true) {
-        Resolution::Found(canonical, meta) if meta.is_dir() => canonical,
+    let (canonical, meta) = match protected::resolve(dir, protected, true) {
+        Resolution::Found(canonical, meta) if meta.is_dir() => (canonical, meta),
         Resolution::Found(..) | Resolution::Missing | Resolution::Refused => return Ok(None),
         Resolution::Protected(leads_to) => {
             if seen
@@ -288,7 +289,14 @@ fn read_one(
         return Ok(None);
     }
     seen.push(canonical.clone());
-    let Ok(read) = std::fs::read_dir(&canonical) else {
+    // Listed from `/` with no link followed on the way (`dirfd`), and only
+    // when it is still the folder `resolve` found: one replaced by a link
+    // since is not listed through it.
+    let read = Dir::open_path(&canonical, true)
+        .ok()
+        .filter(|(_, opened)| opened.same_as(&meta))
+        .and_then(|(folder, _)| folder.entries().ok());
+    let Some(read) = read else {
         // There, but not listable: a shell may still run what is in a
         // folder it may search but not read.
         return Ok(Some(unread(canonical)));
@@ -299,8 +307,8 @@ fn read_one(
             return Err(Stopped);
         }
         *examined += 1;
-        if let Ok(entry) = entry {
-            names.insert(entry.file_name());
+        if let Ok(name) = entry {
+            names.insert(name);
         }
     }
     let folded = names
@@ -370,8 +378,8 @@ impl Look {
 /// A file a shell would run: a regular file, links followed, with an
 /// execute bit (`route::shadow_note`'s test, not `resolve_exe`'s, which
 /// takes any file).
-fn executable(meta: &Metadata) -> bool {
-    meta.is_file() && meta.permissions().mode() & 0o111 != 0
+fn executable(meta: &Stat) -> bool {
+    meta.is_file() && meta.mode() & 0o111 != 0
 }
 
 /// What one `PATH` folder holds of a name: an executable file, by where it
@@ -967,6 +975,7 @@ async fn judged_in_background(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn test_command_budget_default_is_the_documented_numbers() {

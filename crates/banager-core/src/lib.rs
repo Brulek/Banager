@@ -63,6 +63,9 @@ pub mod commands;
 /// version, the chip, the `PATH` folders and each source's program, with
 /// the home folder as `~` -- read-only, no command runs.
 pub mod diagnostics;
+/// Folders looked at through an open descriptor, with no symbolic link
+/// followed: what keeps the read-only walks where they checked they were.
+pub mod dirfd;
 pub mod events;
 /// Which AI coding tool an installed artifact is a copy of, from a table
 /// bundled into the binary (`data/ai-tools.json`).

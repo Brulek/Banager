@@ -25,7 +25,11 @@
 //! A pip package and anything else is not measured.
 //!
 //! How (`walk`): `lstat` and `readdir`, nothing else -- no file is opened.
-//! A symbolic link is never followed: the link itself counts, not what it
+//! Each is asked of a folder held open (`crate::dirfd`): a folder is opened
+//! with `O_NOFOLLOW` from the folder it is in, checked to be the folder met
+//! there, and listed and looked into from that descriptor (`fstatat`), so
+//! a folder replaced by a link while the walk is under way is never
+//! followed. A symbolic link is never followed: the link itself counts, not what it
 //! points at. A folder on another volume (another `st_dev`) is never
 //! entered. A file counts the blocks the disk holds for it, `st_blocks`
 //! × 512, so a sparse file counts what it really takes; a file with
@@ -45,7 +49,8 @@
 //! through a link into one, gets no size, so measuring never makes macOS
 //! ask anything. Each folder on the way to a tool's folder is `lstat`ed,
 //! and a link among them read (`readlink`) and followed only after where
-//! it leads has been checked against that list.
+//! it leads has been checked against that list -- each from the folder
+//! before it, held open (`protected::resolve`).
 //!
 //! Numbers are rough by nature, and the window says so ("约", "about"): an
 //! APFS clone shares its blocks with the file it was cloned from and still
@@ -53,12 +58,13 @@
 //! cache), and a folder that changes while it is walked is counted as it
 //! was when each part of it was read.
 
+use crate::dirfd::{Dir, Stat};
 use crate::model::{ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs::Metadata;
-use std::os::unix::fs::MetadataExt;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -247,7 +253,7 @@ struct Tally {
 }
 
 impl Tally {
-    fn count(&mut self, meta: &Metadata) {
+    fn count(&mut self, meta: &Stat) {
         let bytes = meta.blocks().saturating_mul(512);
         if !meta.is_dir() && meta.nlink() > 1 {
             self.shared.entry((meta.dev(), meta.ino())).or_insert(bytes);
@@ -360,10 +366,22 @@ fn walk_leaving_out(
             tally.at_least = true;
             break;
         }
-        let meta = match std::fs::symlink_metadata(root) {
-            Ok(meta) => meta,
-            // Gone since it was planned, or no longer readable: whatever
-            // else this measures is not all of it.
+        // Never one `plan_round` let through; checked all the same.
+        if protected.contains(root) {
+            tally.partial = true;
+            continue;
+        }
+        // Reached from `/` with no link followed on the way (`dirfd`):
+        // the root was resolved when it was planned, so a link on its way
+        // now is one put there since.
+        let looked = Dir::open_parent(root).and_then(|(parent, name)| {
+            let meta = parent.stat_at(&name)?;
+            Ok((parent, name, meta))
+        });
+        let (parent, name, meta) = match looked {
+            Ok(looked) => looked,
+            // Gone since it was planned, no longer readable, or a link
+            // now: whatever else this measures is not all of it.
             Err(_) => {
                 tally.partial = true;
                 continue;
@@ -374,8 +392,14 @@ fn walk_leaving_out(
             tally.reached = true;
             continue;
         }
+        let folder = Pending {
+            path: root.clone(),
+            parent: Rc::new(parent),
+            name,
+            meta,
+        };
         match walk_folder(
-            root,
+            folder,
             meta.dev(),
             &mut tally,
             budget,
@@ -405,10 +429,27 @@ enum Flow {
     Superseded,
 }
 
+/// A folder a walk has yet to list: its path, the folder it is in (held
+/// open), its name there, and what `fstatat` said of it when it was met.
+struct Pending {
+    path: PathBuf,
+    parent: Rc<Dir>,
+    name: OsString,
+    meta: Stat,
+}
+
 /// Everything under `root`, a folder on the volume `device`, into `tally`:
 /// a folder on any other volume is neither counted nor entered.
+///
+/// Each folder is opened from the folder it is in, held open, with
+/// `O_NOFOLLOW`, and must be the very folder that was met there
+/// (`dirfd::Dir::open_dir_at`): one replaced since -- by a link to
+/// `~/Documents`, say -- is not entered, and the result is `partial`.
+/// What is in it is listed and looked at from that descriptor alone
+/// (`readdir`, `fstatat`). A folder held open stays so only while a
+/// folder in it waits to be listed: as many as the walk is deep.
 fn walk_folder(
-    root: &Path,
+    root: Pending,
     device: u64,
     tally: &mut Tally,
     budget: &mut Budget,
@@ -416,8 +457,14 @@ fn walk_folder(
     wanted: &mut dyn FnMut() -> bool,
     leave_out: &mut LeaveOut,
 ) -> Flow {
-    let mut folders = vec![root.to_path_buf()];
-    while let Some(folder) = folders.pop() {
+    let mut folders = vec![root];
+    while let Some(Pending {
+        path: folder,
+        parent,
+        name,
+        meta,
+    }) = folders.pop()
+    {
         if !wanted() {
             return Flow::Superseded;
         }
@@ -431,13 +478,20 @@ fn walk_folder(
             tally.at_least = true;
             return Flow::OutOfBudget;
         }
-        let entries = match std::fs::read_dir(&folder) {
+        let opened = parent.open_dir_at(&name, Some(&meta), true);
+        drop(parent);
+        let Ok((dir, _)) = opened else {
+            tally.partial = true;
+            continue;
+        };
+        let entries = match dir.entries() {
             Ok(entries) => entries,
             Err(_) => {
                 tally.partial = true;
                 continue;
             }
         };
+        let dir = Rc::new(dir);
         tally.reached = true;
         for entry in entries {
             if !wanted() {
@@ -445,8 +499,8 @@ fn walk_folder(
             }
             // What the walk leaves out costs nothing: it is known by its
             // name alone, with nothing looked at.
-            if let Ok(entry) = &entry {
-                if !leave_out.paths.is_empty() && leave_out.leaves_out(&entry.path()) {
+            if let Ok(name) = &entry {
+                if !leave_out.paths.is_empty() && leave_out.leaves_out(&folder.join(name)) {
                     continue;
                 }
             }
@@ -456,12 +510,12 @@ fn walk_folder(
                 tally.at_least = true;
                 return Flow::OutOfBudget;
             }
-            let Ok(entry) = entry else {
+            let Ok(name) = entry else {
                 tally.partial = true;
                 continue;
             };
-            // `lstat`: a link is the link.
-            let meta = match entry.metadata() {
+            // `fstatat` without following: a link is the link.
+            let meta = match dir.stat_at(&name) {
                 Ok(meta) => meta,
                 Err(_) => {
                     tally.partial = true;
@@ -474,7 +528,12 @@ fn walk_folder(
             }
             tally.count(&meta);
             if meta.is_dir() {
-                folders.push(entry.path());
+                folders.push(Pending {
+                    path: folder.join(&name),
+                    parent: Rc::clone(&dir),
+                    name,
+                    meta,
+                });
             }
         }
     }
@@ -558,13 +617,13 @@ pub(crate) fn look_at(
         // `lstat` of `path`, which would follow a link among its folders
         // (`~/.ollama` in `~/.ollama/models`) into that place.
         Resolution::Protected(_) => (Looked::There(None), Vec::new()),
-        // `resolve` stopped at a step it could not read, before any
-        // protected place: the kernel's `lstat` takes the same steps (and
-        // fails at the same one), unless the step was through the last
-        // link, which `lstat` does not follow.
-        Resolution::Refused => match std::fs::symlink_metadata(path) {
-            Ok(_) => (Looked::There(None), Vec::new()),
-            Err(_) => (Looked::Missing, Vec::new()),
+        // `resolve` stopped at a step it could not take, before any
+        // protected place: the same steps without following the last
+        // link fail at the same one too, unless the step was through
+        // that link -- then the link is there.
+        Resolution::Refused => match resolve(path, protected, false) {
+            Resolution::Found(..) => (Looked::There(None), Vec::new()),
+            _ => (Looked::Missing, Vec::new()),
         },
         Resolution::Found(real, _) => {
             let mut left = LeaveOut::new(
@@ -794,7 +853,10 @@ fn read_crates_bins(
     if !meta.is_file() {
         return None;
     }
-    let json = std::fs::read_to_string(path).ok()?;
+    // Read from the folder it was found in, the very file found there
+    // (`dirfd`): never through a link put in its place since.
+    let (folder, name) = Dir::open_parent(&path).ok()?;
+    let json = String::from_utf8(folder.read_file_at(&name, Some(&meta)).ok()?).ok()?;
     let parsed = crate::adapters::cargo::parse_crates2_bins(&json).ok()?;
     Some(
         parsed
@@ -814,7 +876,7 @@ fn resolve_roots(roots: &[PathBuf], protected: &Protected) -> Option<(Vec<PathBu
     let mut partial = false;
     for (index, root) in roots.iter().enumerate() {
         let usable = match resolve(root, protected, false) {
-            Resolution::Found(path, meta) if !meta.file_type().is_symlink() => {
+            Resolution::Found(path, meta) if !meta.is_symlink() => {
                 if protected.under(&path) {
                     partial = true;
                     None
@@ -855,12 +917,18 @@ fn old_versions_job(cellar_name: &Path, current: &str, protected: &Protected) ->
     if !meta.is_dir() || protected.under(&folder) {
         return None;
     }
-    let mut versions: Vec<String> = std::fs::read_dir(&folder)
+    // Listed and looked at from the folder found, held open (`dirfd`).
+    let (dir, opened) = Dir::open_path(&folder, true).ok()?;
+    if !opened.same_as(&meta) {
+        return None;
+    }
+    let mut versions: Vec<String> = dir
+        .entries()
         .ok()?
         .filter_map(|entry| {
             let entry = entry.ok()?;
-            let name = entry.file_name().to_str()?.to_string();
-            let meta = entry.metadata().ok()?;
+            let name = entry.to_str()?.to_string();
+            let meta = dir.stat_at(&entry).ok()?;
             (plain(&name) && name != current && meta.is_dir()).then_some(name)
         })
         .collect();
@@ -1285,6 +1353,7 @@ impl<'a> Counted<'a> {
 mod tests {
     use super::*;
     use crate::model::InstallReason;
+    use std::os::unix::fs::MetadataExt;
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::sync::{OnceLock, Weak};
 
@@ -1304,7 +1373,9 @@ mod tests {
                     .as_nanos()
             ));
             std::fs::create_dir_all(&dir).unwrap();
-            Scratch(dir)
+            // Canonical (`/var` is a link on a Mac): a walk refuses a root
+            // with a link on its way, as a planned root never has one.
+            Scratch(std::fs::canonicalize(&dir).unwrap())
         }
 
         fn path(&self, relative: &str) -> PathBuf {
@@ -1340,6 +1411,19 @@ mod tests {
                 }
             }
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// `path`'s folder as `walk_folder` takes it: met in the folder it is
+    /// in, held open.
+    fn pending(path: &Path) -> Pending {
+        let (parent, name) = Dir::open_parent(path).unwrap();
+        let meta = parent.stat_at(&name).unwrap();
+        Pending {
+            path: path.to_path_buf(),
+            parent: Rc::new(parent),
+            name,
+            meta,
         }
     }
 
@@ -1643,6 +1727,43 @@ mod tests {
     }
 
     #[test]
+    fn test_a_folder_replaced_by_a_link_while_it_waits_to_be_walked_is_not_followed() {
+        // `sub` is seen as a real folder and queued; before it is listed,
+        // another program puts a link to `~/Documents` in its place. The
+        // walk must not list `~/Documents` through it.
+        let scratch = Scratch::new("swap");
+        let home = scratch.dir("home");
+        scratch.file("home/Documents/private.bin", 500_000);
+        let tool = scratch.dir("tool");
+        scratch.file("tool/sub/small.bin", 1_000);
+        let protected = Protected::new(&home);
+        let mut calls = 0;
+        let mut swap = || {
+            calls += 1;
+            // 1: the root; 2: the root folder popped; 3: its entry `sub`;
+            // 4: `sub` popped, before it is listed.
+            if calls == 4 {
+                std::fs::rename(tool.join("sub"), scratch.path("aside")).unwrap();
+                symlink(home.join("Documents"), tool.join("sub")).unwrap();
+            }
+            true
+        };
+        let mut budget = Budget::new(SizeBudget::default());
+        let walked = walked(walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &protected,
+            &mut swap,
+        ));
+        assert!(calls >= 4, "the walk got to `sub`");
+        assert!(
+            walked.measured.bytes < 500_000,
+            "~/Documents was listed through the link: {walked:?}"
+        );
+        assert!(walked.measured.partial, "{walked:?}");
+    }
+
+    #[test]
     fn test_a_newer_round_stops_a_walk_at_its_next_entry() {
         let scratch = Scratch::new("superseded");
         let tool = scratch.dir("tool");
@@ -1668,7 +1789,7 @@ mod tests {
         let mut tally = Tally::default();
         let mut budget = Budget::new(SizeBudget::default());
         let flow = walk_folder(
-            &tool,
+            pending(&tool),
             device.wrapping_add(1),
             &mut tally,
             &mut budget,
@@ -1681,7 +1802,7 @@ mod tests {
         // On its own volume, the same folder counts everything.
         let mut tally = Tally::default();
         walk_folder(
-            &tool,
+            pending(&tool),
             device,
             &mut tally,
             &mut budget,

@@ -23,7 +23,8 @@
 //! line names only the part that is Antigravity CLI's and claims no more.
 //!
 //! How: read-only, as disk use is measured (`size::look_at`: `lstat`,
-//! `readdir`, `readlink`; nothing opened, nothing written), under a budget
+//! `readdir`, `readlink`, from folders held open with `O_NOFOLLOW`; no
+//! file opened, nothing written), under a budget
 //! small enough that the preview stays quick (`BUDGET`), and never into
 //! the places macOS asks about (`size::Protected`, built from the one list
 //! in `crate::protected` that the command check uses too, whatever case
