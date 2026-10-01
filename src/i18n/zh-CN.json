@@ -144,6 +144,10 @@
     "hideNotes_other": "收起{{count}}条提示",
     "checkFailedTryLater": "请稍后再试。"
   },
+  "overviewMore": {
+    "toolSetupLine": "终端能否找到这些工具，各来源是否正常。",
+    "autoCheckLabel": "检查更新的频率"
+  },
   "adapters": {
     "brew": "Homebrew",
     "npm": "npm",

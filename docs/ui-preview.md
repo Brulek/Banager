@@ -290,7 +290,7 @@ Paths are under a generic home folder, `/Users/you`.
   console shows the welcome sheet again over any page, with or without `?welcome=1`.
   Closing it saves nothing when it was seen already.
 - Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
-  in the console, or 「检查…」 beside 「诊断信息」 in Settings' 关于, opens the
+  in the console, or 「检查…」 beside 「工具环境」 on the Overview or in Settings' 关于, opens the
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应
   (each with 查看 to its page), 1 tool Terminal can't find and 1 installed twice
   (查看 opens Installed on that 「显示」 choice), 2 that Homebrew disabled or

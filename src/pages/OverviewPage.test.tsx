@@ -10,6 +10,7 @@ import { BUTTON } from "../components/ui/controls";
 import { refreshIntoCache } from "../lib/events";
 import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
+import { useToolSetupSheet } from "../lib/toolSetupCheck";
 import type {
   ArtifactKey,
   InstalledArtifact,
@@ -204,7 +205,7 @@ describe("OverviewPage", () => {
       "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     );
     // Once the settings are in, as they are long before the first check.
-    expect(await findByRole("button", { name: "Check for updates: Manually" })).toBeInTheDocument();
+    expect(await findByRole("button", { name: "Update checks: Manually" })).toBeInTheDocument();
     expect(heading).toHaveTextContent("Checking…");
     // Nothing to press in the row yet, no number, no ring.
     expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
@@ -266,7 +267,7 @@ describe("OverviewPage", () => {
     expect(button).toHaveAccessibleName("Check Again");
     expect(button.className).toBe(BUTTON.regular.grey);
     // The daily check under it, as in every other state.
-    expect(getByRole("button", { name: "Check for updates: Manually" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Update checks: Manually" })).toBeInTheDocument();
     fireEvent.click(button);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
@@ -788,7 +789,7 @@ describe("OverviewPage", () => {
     useUiStore.setState({ page: "overview" });
     const { findByRole } = renderOverview();
 
-    const row = await findByRole("button", { name: "Check for updates: Daily" });
+    const row = await findByRole("button", { name: "Update checks: Daily" });
     // A button to Settings, not a switch: what pressing it does, said.
     expect(row).toHaveAccessibleDescription("Opens Settings");
     expect(row).not.toHaveAttribute("role");
@@ -807,18 +808,33 @@ describe("OverviewPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByRole } = renderOverview();
-      const row = await findByRole("button", { name: "检查更新：不自动检查" });
+      const row = await findByRole("button", { name: "检查更新的频率：不自动检查" });
       expect(row).toHaveAccessibleDescription("在“设置”中更改");
     } finally {
       await i18n.changeLanguage("en");
     }
   });
 
+  it("offers Check Tool Setup under the automatic check, as Settings' 关于 does", async () => {
+    const { findByRole } = renderOverview();
+    const open = await findByRole("button", { name: "Check Tool Setup…" });
+    expect(open).toHaveTextContent(/^Check…$/);
+    const row = open.closest("[data-overview-tool-setup]") as HTMLElement;
+    expect(row).toHaveTextContent("Tool setup");
+    expect(row).toHaveTextContent("Whether Terminal finds your tools, and how each source is doing.");
+    // In the automatic check's group.
+    expect(row.parentElement).toContainElement(await findByRole("button", { name: /^Update checks: / }));
+    expect(useToolSetupSheet.getState().open).toBe(false);
+    fireEvent.click(open);
+    expect(useToolSetupSheet.getState().open).toBe(true);
+    useToolSetupSheet.setState({ open: false });
+  });
+
   it("says a weekly check is weekly", async () => {
     settings.auto_check = true;
     settings.auto_check_every = "Week";
     const { findByRole } = renderOverview();
-    expect(await findByRole("button", { name: "Check for updates: Weekly" })).toBeInTheDocument();
+    expect(await findByRole("button", { name: "Update checks: Weekly" })).toBeInTheDocument();
   });
 
   it("turns the symbol and says Checking… under the verdict while a check runs", async () => {

@@ -27,6 +27,7 @@ import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
 import { useShowSourceTool } from "../components/SourceNotices";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
+import { ToolSetupRow } from "../components/ToolSetupRow";
 import { Popover } from "../components/ui/Popover";
 import { BUTTON, LINK } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from "../components/ui/group";
@@ -296,7 +297,9 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
   const { t } = useTranslation();
   const setPage = useUiStore((s) => s.setPage);
   const hintId = useId();
-  const label = t("settings.autoCheck.label");
+  // 「检查更新的频率」 here, not Settings' 「检查更新」: on its own, over a
+  // button-like row, that reads as a button that checks now.
+  const label = t("overviewMore.autoCheckLabel");
   const value = t(AUTO_CHECK_CHOICE_KEYS[autoCheckChoice(settings)]);
   return (
     <div className={GROUP}>
@@ -316,6 +319,7 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
           {t("overview.autoCheckOpensSettings")}
         </span>
       </button>
+      <ToolSetupRow />
     </div>
   );
 }

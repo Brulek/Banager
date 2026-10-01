@@ -161,6 +161,10 @@
     "hideNotes_other": "Hide {{count}} notes",
     "checkFailedTryLater": "Try again later."
   },
+  "overviewMore": {
+    "toolSetupLine": "Whether Terminal finds your tools, and how each source is doing.",
+    "autoCheckLabel": "Update checks"
+  },
   "adapters": {
     "brew": "Homebrew",
     "npm": "npm",
