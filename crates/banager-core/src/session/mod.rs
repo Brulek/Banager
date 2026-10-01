@@ -712,7 +712,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_registers_all_twelve_adapters() {
+    fn test_new_registers_all_thirteen_adapters() {
         let sink = Arc::new(VecSink::new());
         let session = Session::new(sink, None);
         assert_eq!(
@@ -728,6 +728,7 @@ mod tests {
                 "standalone-claude".to_string(),
                 "standalone-codex".to_string(),
                 "standalone-grok".to_string(),
+                "standalone-opencode".to_string(),
                 "standalone-rustup".to_string(),
                 "uv".to_string(),
             ]

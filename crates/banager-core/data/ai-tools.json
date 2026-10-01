@@ -1,6 +1,6 @@
 {
   "verified": "2026-10-01",
-  "method": "Each member checked on 2026-10-01: npm names against registry.npmjs.org/<name> (bin, and for an unscoped name the maintainers and repository; opencode-ai has no repository, author or homepage there, so it is tied to its vendor by the opencode project's own install instructions and the Homebrew opencode formula, which builds from the same project); Homebrew names against formulae.brew.sh/api/{formula,cask}/<name>.json; PyPI names against pypi.org/pypi/<name>/json; standalone names are Banager's own recipe ids (src/adapters/standalone/recipes.rs); the Codex standalone member (added 2026-10-01) against Codex's official install script, read as text and not run (releases.openai.com/codex/install.sh: launcher ~/.local/bin/codex into ~/.codex/packages/standalone). Commands from the npm bin field, the formula's install/test block, the cask's binary stanza or the project's pyproject [project.scripts]. Data folders from the vendor's own docs or source; Antigravity CLI's (~/.gemini/antigravity-cli, added 2026-10-01) from its own recipe, which keeps that folder on uninstall (its install script and the Homebrew cask's zap name it). See families.rs.",
+  "method": "Each member checked on 2026-10-01: npm names against registry.npmjs.org/<name> (bin, and for an unscoped name the maintainers and repository; opencode-ai has no repository, author or homepage there, so it is tied to its vendor by the opencode project's own install instructions and the Homebrew opencode formula, which builds from the same project); Homebrew names against formulae.brew.sh/api/{formula,cask}/<name>.json; PyPI names against pypi.org/pypi/<name>/json; standalone names are Banager's own recipe ids (src/adapters/standalone/recipes.rs); the Codex standalone member (added 2026-10-01) against Codex's official install script, read as text and not run (releases.openai.com/codex/install.sh: launcher ~/.local/bin/codex into ~/.codex/packages/standalone); the opencode standalone member (added 2026-10-01) against opencode's official install script, read as text and not run (opencode.ai/install: one executable moved to ~/.opencode/bin/opencode). Commands from the npm bin field, the formula's install/test block, the cask's binary stanza or the project's pyproject [project.scripts]. Data folders from the vendor's own docs or source; Antigravity CLI's (~/.gemini/antigravity-cli, added 2026-10-01) from its own recipe, which keeps that folder on uninstall (its install script and the Homebrew cask's zap name it). See families.rs.",
   "families": [
     {
       "id": "claude-code",
@@ -90,7 +90,8 @@
       "name_zh": "opencode",
       "members": [
         { "source": "npm", "name": "opencode-ai" },
-        { "source": "formula", "name": "opencode" }
+        { "source": "formula", "name": "opencode" },
+        { "source": "standalone", "name": "opencode" }
       ],
       "commands": ["opencode"],
       "data_paths": []

@@ -71,7 +71,7 @@ pub enum MemberSource {
     /// A PyPI project, on pipx, uv or pip.
     Pypi,
     /// One of Banager's standalone recipes, by its id (`claude`, `agy`,
-    /// `grok`), on that recipe's own source.
+    /// `grok`, `codex`, `opencode`), on that recipe's own source.
     Standalone,
 }
 
@@ -288,6 +288,9 @@ mod tests {
         (MemberSource::Npm, "@qoder-ai/qodercli"),
         (MemberSource::Npm, "opencode-ai"),
         (MemberSource::Formula, "opencode"),
+        // Not in appendix B: opencode's own install, from its install
+        // script read as text on 2026-10-01 (recipes::OPENCODE).
+        (MemberSource::Standalone, "opencode"),
         (MemberSource::Npm, "@charmland/crush"),
         (MemberSource::Npm, "@ampcode/cli"),
         (MemberSource::Npm, "@sourcegraph/amp"),
@@ -562,6 +565,12 @@ mod tests {
         assert_eq!(
             id_for("standalone-claude", ArtifactKind::Binary, "codex"),
             None
+        );
+        // opencode's own install joins npm's `opencode-ai` and the formula
+        // `opencode`.
+        assert_eq!(
+            id_for("standalone-opencode", ArtifactKind::Binary, "opencode"),
+            Some("opencode")
         );
         // Cargo's binaries and Ollama's models belong to no family.
         assert_eq!(id_for("cargo", ArtifactKind::Binary, "claude"), None);

@@ -11,7 +11,8 @@
 //! launcher), the two `Latest` sources a manifest and a tool's own check
 //! need, and an optional `upgrade` (agy updates itself only). The
 //! advantages round adds, for Codex, listed only, `VersionSource::ReleaseLink`
-//! (a version read with no command) and `Latest::Unchecked`. A
+//! (a version read with no command) and `Latest::Unchecked`, and, for
+//! opencode, `VersionSource::NotRead` (no version read at all). A
 //! variant or field defined before anything produces it is this project's
 //! most common defect (spec §十三 #41).
 
@@ -159,6 +160,13 @@ pub enum VersionSource {
     /// `…/releases/0.159.3-aarch64-apple-darwin`). Its producer is
     /// `recipes::CODEX`; read by `release_link::read`.
     ReleaseLink(ReleaseLink),
+    /// No version at all: the installer leaves no file that names it, and
+    /// Banager does not run the tool to ask (opencode: its script moves one
+    /// executable into `~/.opencode/bin` and writes nothing else). The row
+    /// is listed with its version unknown -- an empty version, which the
+    /// window leaves out -- and never as a tool that stopped answering.
+    /// Its producer is `recipes::OPENCODE`.
+    NotRead,
 }
 
 impl VersionSource {
@@ -179,6 +187,7 @@ impl VersionSource {
         match self {
             VersionSource::Command(cmd) => cmd,
             VersionSource::ReleaseLink(_) => panic!("this recipe reads its version from a link"),
+            VersionSource::NotRead => panic!("this recipe reads no version"),
         }
     }
 }
@@ -301,7 +310,7 @@ pub enum Latest {
     /// and the front end, knowing the source by its id
     /// (`UNCHECKED_STANDALONE` in src/lib/uncheckedStandalone.ts), puts no
     /// 「已是最新」 on the row, which would be a claim nobody checked. Its
-    /// producer is the `CODEX` recipe.
+    /// producers are the `CODEX` and `OPENCODE` recipes.
     Unchecked,
 }
 

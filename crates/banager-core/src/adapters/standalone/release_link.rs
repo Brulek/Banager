@@ -121,7 +121,9 @@ mod tests {
     fn spec() -> &'static ReleaseLink {
         match &CODEX.version {
             VersionSource::ReleaseLink(spec) => spec,
-            VersionSource::Command(_) => panic!("Codex reads its version from a link"),
+            VersionSource::Command(_) | VersionSource::NotRead => {
+                panic!("Codex reads its version from a link")
+            }
         }
     }
 

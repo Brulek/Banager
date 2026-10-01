@@ -629,10 +629,66 @@ pub static CODEX: Recipe = Recipe {
     other_commands: &[],
 };
 
+/// opencode (`opencode`), the terminal agent of the opencode project,
+/// installed by its own script (`curl -fsSL https://opencode.ai/install |
+/// bash`, run by the user; never by Banager). Listed only, like Codex:
+/// Banager reads what is on the disk and runs nothing for it -- no version
+/// command, no update check, no update, no uninstall (the author's
+/// decision).
+///
+/// Every value here is from that script, fetched as text on 2026-10-01 and
+/// read, never executed (`adapters/fixtures/standalone-opencode/
+/// install-script-2026-10-01/README.md` names the lines):
+/// - `INSTALL_DIR=$HOME/.opencode/bin`, a fixed path (no variable moves
+///   it): the script unpacks the release's one executable and moves it to
+///   `$INSTALL_DIR/opencode` (`mv`, then `chmod 755`; or copies one with
+///   `--binary`). So the launcher `~/.opencode/bin/opencode` is a regular
+///   file, the whole program (`RouteKind::FlatFile`), and the root is
+///   `~/.opencode`. A link at that path is not this install. npm's
+///   `opencode-ai` and Homebrew's formula `opencode` are other paths and
+///   other sources' rows; the families table puts all three in one family;
+/// - the version: the script writes nothing that names it -- it checks
+///   the installed version only by running `opencode --version`, which
+///   Banager does not do. The `package.json`, `package-lock.json` and
+///   `node_modules` found in `~/.opencode` on the author's Mac are not the
+///   script's (it writes none of them); they name a plugin package's
+///   version, not the program's. So no version is read
+///   (`VersionSource::NotRead`): the row is listed with its version
+///   unknown, and the details say why;
+/// - opencode's own documentation (opencode.ai/docs/config, "Autoupdate",
+///   read 2026-10-01): it "will automatically download any new updates
+///   when it starts up" unless its `autoupdate` setting turns that off.
+///   Banager does not read that setting, so the row says it updates itself
+///   by default (`self_updates`);
+/// - the newest version comes from GitHub (`api.github.com`, the script's
+///   own lookup), a host not on Banager's list, so nothing is asked
+///   (`Latest::Unchecked`) and there is no `upgrade`: Banager must not
+///   re-run the script's `curl | bash`;
+/// - no uninstall (`NoSafeMethod`), the author's decision: the script also
+///   adds a marked `PATH` line to a shell file, and no vendor document says
+///   what an uninstall should remove.
+pub static OPENCODE: Recipe = Recipe {
+    id: "opencode",
+    meta_toml: include_str!("../../../../../adapters/meta/standalone-opencode.toml"),
+    route: Route {
+        kind: RouteKind::FlatFile,
+        launcher: "~/.opencode/bin/opencode",
+        root: "~/.opencode",
+    },
+    version: VersionSource::NotRead,
+    latest: Latest::Unchecked,
+    self_updates: true,
+    upgrade: None,
+    uninstall: None,
+    extra_locks: no_extra_locks,
+    backup_globs: &[],
+    other_commands: &[],
+};
+
 /// Every tool this adapter type registers, in registration order. The
 /// refresh fans out alphabetically by adapter id regardless
 /// (`refresh_round`), so this order is only the reading order.
-pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP, &CODEX];
+pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP, &CODEX, &OPENCODE];
 
 /// Every registered tool's backup-file patterns, keyed by its adapter id
 /// (`standalone-<id>`), for the Unknown page's rule 4
@@ -850,12 +906,13 @@ mod tests {
 
     #[test]
     fn test_recipes_lists_each_registered_tool_once_in_reading_order() {
-        assert_eq!(RECIPES.len(), 5);
+        assert_eq!(RECIPES.len(), 6);
         assert!(std::ptr::eq(RECIPES[0], &CLAUDE));
         assert!(std::ptr::eq(RECIPES[1], &AGY));
         assert!(std::ptr::eq(RECIPES[2], &GROK));
         assert!(std::ptr::eq(RECIPES[3], &RUSTUP));
         assert!(std::ptr::eq(RECIPES[4], &CODEX));
+        assert!(std::ptr::eq(RECIPES[5], &OPENCODE));
         let mut ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
         ids.dedup();
         assert_eq!(ids.len(), RECIPES.len(), "one recipe per tool");

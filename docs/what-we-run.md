@@ -1792,6 +1792,48 @@ uninstall". Moving `~/.local/bin/codex`,
 the Trash, keeping the rest of `~/.codex`, is a decision for the author
 (D5) and is not built.
 
+## opencode
+
+Adapter: `StandaloneAdapter` over the `OPENCODE` recipe in
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`route.rs` the recognition). Listed only, like Codex: **no command runs for
+it, ever** — not `opencode --version`, not an update check, not an update,
+not an uninstall. The row is opencode installed by its own script (`curl
+-fsSL https://opencode.ai/install | bash`, run by the user — Banager never
+runs it); what the recipe expects was read from that script as text on
+2026-10-01 (the fixture README,
+`adapters/fixtures/standalone-opencode/install-script-2026-10-01/README.md`,
+names the lines). npm's `opencode-ai` and the Homebrew formula `opencode`
+are other paths and stay npm's and Homebrew's rows; the AI Tools filter
+puts all three in one family.
+
+**Detect.** Banager looks at the fixed path the script writes,
+`~/.opencode/bin/opencode` — never an `opencode` found through `PATH` —
+with `lstat` and `realpath`: the script moves one executable there, so a
+regular file is this row, and a link at that path is not.
+
+**Version: not read.** The script writes nothing that names the version
+(it learns an installed version only by running `opencode --version`,
+which Banager does not do), so the row is listed with its version unknown,
+and not marked as not responding, since nothing was asked. The
+`package.json`, `package-lock.json` and `node_modules` opencode itself may
+keep in `~/.opencode` name a plugin package, not the program, and are not
+read. opencode's documentation says it downloads its updates itself when
+it starts, unless its `autoupdate` setting turns that off; Banager does not
+read that setting, so the row says it updates itself by default.
+
+Banager also asks where `opencode` would run from if typed in Terminal, as
+it does for Claude Code, and says so under the source and in the details'
+"Typed in Terminal" group — that is reading `PATH` folders, not a command.
+
+**Read-only commands and requests**: none. opencode's newest version comes
+from GitHub, which is not a host Banager connects to, so its updates are
+not checked at all: the Updates page lists nothing for it, and the
+Installed page does not call it up to date.
+
+**Write commands**: none. No Update button (Banager must not re-run the
+script's `curl | bash`), and no uninstall: the row says "Manual uninstall".
+
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
 The *Other Programs* page -- the last row under the sidebar's *Sources* --
@@ -1987,7 +2029,7 @@ refresh's locks released — a thread of its own (`SizeMeter` in
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |
 | a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this) |
-| Claude Code, Antigravity CLI, Grok Build, rustup, Codex | the program file its launcher leads to |
+| Claude Code, Antigravity CLI, Grok Build, rustup, Codex, opencode | the program file its launcher leads to |
 | Ollama's models | `~/.ollama/models/blobs`, once for all of them, when the Ollama Banager asks is on this Mac |
 
 Nothing else is measured: not pip's packages, not a cask with no app (a
@@ -2216,6 +2258,11 @@ All read-only, none saved anywhere else, none uploaded:
   when it is a regular file (`lstat`); for the notice under the source,
   each `PATH` directory's `codex`, as for Claude Code. Nothing else under
   `~/.codex` is read, and no command runs (Codex's section).
+- opencode (its own install, listed only): whether
+  `~/.opencode/bin/opencode` exists, whether it is a regular file and
+  where it leads (`lstat`, `realpath`); for the notice under the source,
+  each `PATH` directory's `opencode`, as for Claude Code. No file's
+  contents are read, and no command runs (opencode's section).
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents. A row's Show in Finder: where the path it shows

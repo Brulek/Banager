@@ -313,7 +313,9 @@ impl StandaloneAdapter {
     /// not exit 0, timed out, could not be spawned, or printed no version.
     /// For a `VersionSource::ReleaseLink` recipe (Codex) nothing runs: the
     /// version is the release folder `root`'s link points at
-    /// (`release_link::read`), `None` when that gives none.
+    /// (`release_link::read`), `None` when that gives none. For a
+    /// `VersionSource::NotRead` recipe (opencode) nothing runs and nothing
+    /// is read: `None`.
     async fn read_version(&self, launcher: &Path, root: &Path) -> VersionRead {
         let cmd = match &self.recipe.version {
             VersionSource::Command(cmd) => cmd,
@@ -323,6 +325,13 @@ impl StandaloneAdapter {
                     version: reading.version,
                     follows_latest: Some(reading.follows_latest),
                 };
+            }
+            // Nothing names it on the disk, and nothing is run to ask.
+            VersionSource::NotRead => {
+                return VersionRead {
+                    version: None,
+                    follows_latest: None,
+                }
             }
         };
         let output = self
@@ -527,7 +536,7 @@ impl StandaloneAdapter {
         // the latest release; a launcher alone follows nothing.
         let auto_updates = self.recipe.self_updates
             && match &self.recipe.version {
-                VersionSource::Command(_) => true,
+                VersionSource::Command(_) | VersionSource::NotRead => true,
                 VersionSource::ReleaseLink(_) => look.follows_latest == Some(true),
             };
         let (version, path) = match look.probe {
@@ -3153,7 +3162,8 @@ mod tests {
                 "standalone-agy".to_string(),
                 "standalone-grok".to_string(),
                 "standalone-rustup".to_string(),
-                "standalone-codex".to_string()
+                "standalone-codex".to_string(),
+                "standalone-opencode".to_string()
             ]
         );
         assert_eq!(adapters.len(), super::recipes::RECIPES.len());
