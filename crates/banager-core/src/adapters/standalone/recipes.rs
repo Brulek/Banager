@@ -665,8 +665,13 @@ pub static CODEX: Recipe = Recipe {
 ///   (`Latest::Unchecked`) and there is no `upgrade`: Banager must not
 ///   re-run the script's `curl | bash`;
 /// - no uninstall (`NoSafeMethod`), the author's decision: the script also
-///   adds a marked `PATH` line to a shell file, and no vendor document says
-///   what an uninstall should remove.
+///   adds a marked `PATH` line to a shell file, which Banager does not
+///   edit. opencode's own `opencode uninstall` exists (recorded in
+///   `families.rs`), but Banager does not run it;
+/// - the family's data and settings folders, `~/.local/share/opencode`
+///   and `~/.config/opencode`, are outside `~/.opencode`: `kept_data`
+///   names them (what an uninstall of opencode's npm or Homebrew row
+///   leaves), not this recipe.
 pub static OPENCODE: Recipe = Recipe {
     id: "opencode",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-opencode.toml"),
