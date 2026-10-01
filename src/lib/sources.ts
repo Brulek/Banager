@@ -15,6 +15,7 @@ import type {
   Unavailable,
   UpdateBlocked,
 } from "./types";
+import type { InstalledShow } from "./families";
 import { displayToken } from "./format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
 
@@ -245,9 +246,10 @@ export function uninstallHoldKey(instance: ManagerInstance): string | null {
  * this module stays pure so every page can call it, and `SourceNotices`
  * wires the id to what carries it out -- `checkAgain` to the header's
  * Check again (`useCheckAgain`), `showTool` to the Installed page with
- * the source's tool selected (`useShowSourceTool`).
+ * the source's tool selected (`useShowSourceTool`), `showList` to the
+ * Installed page's 「显示」 popup.
  */
-export type SourceNoticeActionId = "openOllama" | "checkAgain" | "showTool";
+export type SourceNoticeActionId = "openOllama" | "checkAgain" | "showTool" | "showList";
 
 /**
  * A notice's button, as data: which action, and its words. `showTool`
@@ -255,7 +257,13 @@ export type SourceNoticeActionId = "openOllama" | "checkAgain" | "showTool";
  */
 export type SourceNoticeAction =
   | { id: "openOllama" | "checkAgain"; labelKey: string }
-  | { id: "showTool"; labelKey: string; instanceId: string };
+  | { id: "showTool"; labelKey: string; instanceId: string }
+  /**
+   * The Installed page's own lines over 所有工具 (`discoverNotices`,
+   * src/lib/families.ts), never a source's: the list under the 「显示」
+   * popup's choice `show`.
+   */
+  | { id: "showList"; labelKey: string; show: InstalledShow };
 
 /**
  * One notice a source needs rendered, as data: which i18n keys say it,

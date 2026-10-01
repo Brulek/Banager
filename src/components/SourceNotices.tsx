@@ -95,7 +95,8 @@ export interface SourceNoticesProps {
  * Renders the notices `sourceNoticesFor` decided a source needs, and wires
  * each one's action to what carries it out: Open Ollama to its mutation,
  * Check again to the header's (`useCheckAgain`), off while a check runs,
- * and Show to the Installed page's inspector (`useShowSourceTool`).
+ * Show to the Installed page's inspector (`useShowSourceTool`), and the
+ * Installed page's own 查看 to its 「显示」 popup's choice.
  *
  * The split is deliberate: `sourceNoticesFor` (src/lib/sources.ts) decides
  * *what* to say from the instance alone and is pure, this decides how to
@@ -122,6 +123,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   // check runs, it would queue a second one after it.
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
+  const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const linesId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   // Set by the fold's own button, and only by it: the lines folding up
@@ -166,6 +168,8 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
         return { label, onClick: () => showTool(action.instanceId) };
       case "checkAgain":
         return { label, onClick: checkAgain, disabled: checking };
+      case "showList":
+        return { label, onClick: () => setInstalledShow(action.show) };
     }
   };
 

@@ -88,7 +88,12 @@
     "notOnPathNone": "没有发现终端里找不到的工具",
     "notOnPathNoneInSource": "{{source}}中没有发现终端里找不到的工具",
     "brewRetiredNone": "没有发现Homebrew已停用或弃用的工具",
-    "brewRetiredNoneInSource": "{{source}}中没有发现Homebrew已停用或弃用的工具"
+    "brewRetiredNoneInSource": "{{source}}中没有发现Homebrew已停用或弃用的工具",
+    "notOnPathNotice_other": "{{count}}个工具在终端里找不到",
+    "notOnPathNoticeDetail": "它们的命令所在的文件夹不在终端的搜索路径里，在终端里输入这些命令会找不到。",
+    "brewRetiredNotice_other": "{{count}}个工具已被Homebrew停用或弃用",
+    "brewRetiredNoticeDetail": "Homebrew不再为停用的工具提供更新，弃用的以后可能会停用。已经装好的不会被删除。",
+    "view": "查看"
   },
   "twinsFilter": {
     "show": "装了不止一份",

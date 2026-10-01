@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DISCOVER_SHOWS,
   discoverCounts,
+  discoverNotices,
   hasCommandNotOnPath,
   isAiTool,
   isBrewRetired,
@@ -93,5 +94,35 @@ describe("the discovery choices", () => {
     expect(discoverCounts(all)).toEqual({ notOnPath: 1, brewRetired: 2 });
     expect(discoverCounts([])).toEqual({ notOnPath: 0, brewRetired: 0 });
     expect(DISCOVER_SHOWS).toEqual(["notOnPath", "brewRetired"]);
+  });
+});
+
+describe("discoverNotices", () => {
+  it("points at each choice with tools to show, in the popup's order, only over every tool", () => {
+    expect(discoverNotices("all", { notOnPath: 2, brewRetired: 1 })).toEqual([
+      {
+        id: "discover:notOnPath",
+        variant: "info",
+        titleKey: "families.notOnPathNotice",
+        descriptionKey: "families.notOnPathNoticeDetail",
+        values: { count: 2 },
+        action: { id: "showList", labelKey: "families.view", show: "notOnPath" },
+      },
+      {
+        id: "discover:brewRetired",
+        variant: "info",
+        titleKey: "families.brewRetiredNotice",
+        descriptionKey: "families.brewRetiredNoticeDetail",
+        values: { count: 1 },
+        action: { id: "showList", labelKey: "families.view", show: "brewRetired" },
+      },
+    ]);
+    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 3 }).map((n) => n.id)).toEqual([
+      "discover:brewRetired",
+    ]);
+    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 0 })).toEqual([]);
+    for (const show of ["ai", "twins", "notOnPath", "brewRetired"] as const) {
+      expect(discoverNotices(show, { notOnPath: 2, brewRetired: 1 })).toEqual([]);
+    }
   });
 });

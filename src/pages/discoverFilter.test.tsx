@@ -241,3 +241,73 @@ describe("the Installed page's discovery choices", () => {
     expect(useUiStore.getState().installedShow).toBe("all");
   });
 });
+
+describe("the lines over 所有工具 that point at them", () => {
+  function noticeLines(): string[] {
+    return [...document.querySelectorAll("[data-notice-line]")].map((line) => line.textContent ?? "");
+  }
+
+  async function unfold() {
+    const more = await screen.findByRole("button", { name: /more issue/ });
+    fireEvent.click(more);
+  }
+
+  it("says how many of each there are, each with a Show of its own", async () => {
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    await unfold();
+    expect(screen.getByText("2 tools can't be found in Terminal")).toBeInTheDocument();
+    expect(screen.getByText("2 tools were disabled or deprecated by Homebrew")).toBeInTheDocument();
+    expect(noticeLines()).toHaveLength(2);
+  });
+
+  it("shows the tools Terminal can't find when its Show is pressed, and the line goes", async () => {
+    artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(noticeLines()).toEqual([expect.stringContaining("2 tools can't be found in Terminal")]);
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+    expect(useUiStore.getState().installedShow).toBe("notOnPath");
+    expect(screen.getByRole("combobox", { name: "Show" })).toHaveValue("notOnPath");
+    expect(screen.queryByText("2 tools can't be found in Terminal")).not.toBeInTheDocument();
+  });
+
+  it("shows what Homebrew disabled or deprecated when that one's Show is pressed", async () => {
+    artifacts = fullWorld().filter((a) => a.key.instance_id === BREW);
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(noticeLines()).toEqual([expect.stringContaining("2 tools were disabled or deprecated by Homebrew")]);
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(rowNames()).toEqual(["QuickJot", "youtube-dl"]));
+  });
+
+  it("counts only the source in view, and says one in the singular", async () => {
+    useUiStore.getState().openInstalled(PIPX);
+    renderInstalled();
+    await screen.findByText("httpie", { selector: "[data-tool-row] p" });
+    expect(noticeLines()).toEqual([expect.stringContaining("1 tool can't be found in Terminal")]);
+  });
+
+  it("says nothing while another choice is shown, or when there is none of either", async () => {
+    useUiStore.getState().setInstalledShow("ai");
+    const { unmount } = renderInstalled();
+    await screen.findByText("No common AI coding tools were found on this Mac");
+    expect(noticeLines()).toEqual([]);
+    unmount();
+
+    useUiStore.getState().setInstalledShow("all");
+    artifacts = [artifact(wget, [{ name: "wget", state: "Runs" }])];
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(noticeLines()).toEqual([]);
+  });
+
+  it("says it in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    artifacts = fullWorld().filter((a) => a.key.instance_id !== BREW);
+    renderInstalled();
+    expect(await screen.findByText("2个工具在终端里找不到")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看" })).toBeInTheDocument();
+  });
+});

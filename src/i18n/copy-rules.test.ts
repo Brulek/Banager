@@ -173,6 +173,7 @@ describe("the polish-3 copy rules, in English", () => {
       "families.showNotOnPathCount",
       "families.showBrewRetired",
       "families.showBrewRetiredCount",
+      "families.view",
       "updates.update",
       "updates.retry",
       "updates.skipVersion",

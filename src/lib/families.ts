@@ -1,4 +1,5 @@
 import type { InstalledArtifact } from "./types";
+import type { SourceNoticeSpec } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
 /**
@@ -86,4 +87,31 @@ export function shownBy(
   if (show === "notOnPath") return hasCommandNotOnPath(artifact);
   if (show === "brewRetired") return isBrewRetired(artifact);
   return artifact !== undefined && twins !== undefined && twins.has(artifactKeyId(artifact.key));
+}
+
+/** Each discovery choice's line over the list: its words and their ⓘ. */
+const DISCOVER_NOTICE_KEYS: Record<DiscoverShow, { title: string; description: string }> = {
+  notOnPath: { title: "families.notOnPathNotice", description: "families.notOnPathNoticeDetail" },
+  brewRetired: { title: "families.brewRetiredNotice", description: "families.brewRetiredNoticeDetail" },
+};
+
+/**
+ * The lines the Installed page adds after the sources' own notices while
+ * it shows every tool: one for each discovery choice that has tools to
+ * show, 「2个工具在终端里找不到」, whose 查看 picks that choice in the
+ * 「显示」 popup. An info line, as a source's 「终端找不到它」 is: the tools
+ * work, the user just would not see it without opening each one. With
+ * another choice picked, none -- the list already is one of them, or
+ * says what it shows.
+ */
+export function discoverNotices(show: InstalledShow, counts: DiscoverCounts): SourceNoticeSpec[] {
+  if (show !== "all") return [];
+  return DISCOVER_SHOWS.filter((choice) => counts[choice] > 0).map((choice) => ({
+    id: `discover:${choice}`,
+    variant: "info",
+    titleKey: DISCOVER_NOTICE_KEYS[choice].title,
+    descriptionKey: DISCOVER_NOTICE_KEYS[choice].description,
+    values: { count: counts[choice] },
+    action: { id: "showList", labelKey: "families.view", show: choice },
+  }));
 }

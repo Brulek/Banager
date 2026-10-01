@@ -45,7 +45,7 @@ import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "
 import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { ToolShowButton } from "../components/ToolShowButton";
-import { discoverCounts, shownBy, type InstalledShow } from "../lib/families";
+import { discoverCounts, discoverNotices, shownBy, type InstalledShow } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
@@ -789,8 +789,12 @@ export function InstalledPage() {
             values: { source: labelOf(instance), version: instance.unverified_version ?? "" },
           }),
         ),
+      // Last, while every tool is shown: how many Terminal can't find, and
+      // how many Homebrew disabled or deprecated, each with a 查看 that
+      // shows them (`discoverNotices`).
+      ...discoverNotices(show, discover),
     ],
-    [unfinished, instancesInView, labelOf, countByInstance],
+    [unfinished, instancesInView, labelOf, countByInstance, show, discover],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the
