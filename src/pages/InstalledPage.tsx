@@ -1614,7 +1614,7 @@ export function InstalledPage() {
             each of its rows (`PREVIEW_HOLD_ID`), and not folded away among
             the sources' notices. */}
         {preview ? (
-          <p data-preview-hold="" className="flex shrink-0 items-center gap-1 px-5 pt-2 text-small text-muted">
+          <p data-preview-hold="" className="shrink-0 px-5 pt-2 text-small text-muted">
             <TextWithInfo text={t("clarity.previewHold")} label={t("common.detailsLabel", { title: t("clarity.previewHold") })}>
               {t("clarity.previewHoldDetail")}
             </TextWithInfo>

@@ -263,6 +263,12 @@ describe("the window while the first check still checks for updates", () => {
       expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
       const line = container.querySelector("[data-preview-hold]") as HTMLElement;
       expect(line).toHaveTextContent("You can uninstall once the check is done");
+      // One run of text, as a footnote is: not a flex row, whose gap would
+      // set the ⓘ's last word apart from the words before it.
+      expect(line.className).not.toMatch(/\b(flex|gap-\S+)\b/);
+      const tail = line.querySelector("[data-info-tail]") as HTMLElement;
+      expect(tail.parentElement).toBe(line);
+      expect(tail).toHaveTextContent(/^done/);
       expect(uninstallJq.closest("[data-row-action-why]")).toHaveAttribute(
         "title",
         "Checking for updates. You can uninstall once it's done.",
