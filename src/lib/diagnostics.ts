@@ -25,7 +25,8 @@ import { twinsByArtifact } from "./commands";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeText } from "./sizes";
-import { failedSourceNames, instanceLabels, namesInSentence } from "./sources";
+import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence } from "./sources";
+import { checkedInFull } from "./updateState";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs to look a key up. */
@@ -75,6 +76,29 @@ export function diagnosticsTime(date: Date): string {
  */
 export function withoutHomePaths(text: string): string {
   return text.replace(/\/Users\/(?!Shared(?:\/|\s|$))[^/\s]+/g, "~");
+}
+
+/**
+ * The sources the last check did not cover in full, by name, in the
+ * order the snapshot lists them: each one a call failed for
+ * (`failedSourceAdapters`), and each other one that did not answer or
+ * whose updates went unchecked this time (`checkedInFull`) -- but not one
+ * whose updates Banager never checks (`updatesUnchecked`), which the line
+ * names apart.
+ */
+function notCheckedNames(t: Translate, instances: ManagerInstance[], errors: Snapshot["errors"]): string[] {
+  const failed = failedSourceAdapters(errors, instances);
+  const adapters: string[] = [];
+  const add = (adapterId: string) => {
+    if (!adapters.includes(adapterId)) adapters.push(adapterId);
+  };
+  for (const instance of instances) {
+    if (failed.includes(instance.adapter_id) || (!updatesUnchecked(instance) && !checkedInFull(instance))) {
+      add(instance.adapter_id);
+    }
+  }
+  for (const adapterId of failed) add(adapterId);
+  return adapters.map((adapterId) => adapterLabel(t, adapterId));
 }
 
 /** What one source's status line says: each thing that holds, or 「正常」. */
@@ -197,12 +221,17 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     const unchecked = instances
       .filter(updatesUnchecked)
       .map((instance) => labels.get(instance.id) ?? instance.adapter_id);
-    if (snapshot?.stale) {
-      const names = failedSourceNames(t, snapshot.errors, instances);
+    // Complete only as the Updates page and the Overview say "up to date"
+    // (`everySourceChecked`): no call failed, and every other source
+    // answered and had its updates checked in full -- not a Homebrew still
+    // rewriting its list, nor an Ollama that is not running. Those that
+    // fell short are named, as a failed one is.
+    const short = notCheckedNames(t, instances, snapshot?.errors ?? []);
+    if ((snapshot?.errors.length ?? 0) > 0 || short.length > 0) {
       const check =
-        names.length === 0
+        short.length === 0
           ? t("diagnostics.text.incompletePlain")
-          : t("diagnostics.text.incomplete", { sources: namesInSentence(t, names) });
+          : t("diagnostics.text.incomplete", { sources: namesInSentence(t, short) });
       lines.push(
         unchecked.length === 0
           ? check

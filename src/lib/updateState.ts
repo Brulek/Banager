@@ -272,7 +272,7 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
  * install, whose check lists nothing, so no update there is no news). A
  * read-only source is one Banager *can* check.
  */
-function checkedInFull(instance: ManagerInstance): boolean {
+export function checkedInFull(instance: ManagerInstance): boolean {
   return (
     isAvailable(instance) &&
     !updatesUnchecked(instance) &&

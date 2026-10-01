@@ -2215,7 +2215,8 @@ focused, so the copy is always the button's click. It puts a short plain text on
 language, for the user to paste to whoever helps them: Banager's version,
 macOS's version and the chip, the window's language; each source's kind,
 version, program and status; the folders on `PATH` and whether they are the
-login shell's; when the last check was and whether it finished; how many
+login shell's; when the last check was and whether it covered every
+source, as the Updates page counts it, naming those it did not; how many
 tools Terminal cannot find and how many are installed more than once; and the disk
 they take, once measured. Settings' checkbox, off each time Settings opens,
 adds each source's tools by name and version.

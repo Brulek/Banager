@@ -173,7 +173,7 @@ describe("diagnosticsText", () => {
         "  /bin",
         "",
         "Last check: 2026-10-01 13:58",
-        "Check: incomplete, npm didn't finish",
+        "Check: incomplete, Homebrew, npm and uv didn't finish",
         "Not found in Terminal: 1",
         "Tools installed more than once: 1",
         "Space used: About 1.2 GB",
@@ -223,7 +223,7 @@ describe("diagnosticsText", () => {
         "  /bin",
         "",
         "上次检查：2026-10-01 13:58",
-        "检查结果：不完整，npm未检查完",
+        "检查结果：不完整，Homebrew、npm和uv未检查完",
         "终端找不到：1个",
         "装了不止一份的工具：1个",
         "占用空间：约1.2 GB",
@@ -312,7 +312,11 @@ describe("diagnosticsText", () => {
   });
 
   it("says a check that finished is complete, one never made, and no disk total until it is measured", () => {
-    const finished = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, stale: false, errors: [] } }));
+    // Every source answered, and none has a note that left its updates
+    // unchecked: complete.
+    const allClean = SNAPSHOT.instances.map((one) => ({ ...one, status: { unavailable: null, notes: [] } }));
+    const clean = { ...SNAPSHOT, stale: false, errors: [], instances: allClean };
+    const finished = diagnosticsText(en, input({ snapshot: clean }));
     expect(finished).toContain("\nCheck: complete\n");
     const never = diagnosticsText(
       zh,
@@ -330,13 +334,13 @@ describe("diagnosticsText", () => {
       exe_path: "/Users/you/.local/bin/codex",
       prefix: "/Users/you/.codex/packages/standalone",
     };
-    const withCodex = { ...SNAPSHOT, stale: false, errors: [], instances: [...SNAPSHOT.instances, codex] };
+    const withCodex = { ...clean, instances: [...allClean, codex] };
     expect(diagnosticsText(en, input({ snapshot: withCodex }))).toContain(
       "\nCheck: complete, except for updates to Codex\n",
     );
     expect(diagnosticsText(zh, input({ snapshot: withCodex }))).toContain("\n检查结果：完整，不含Codex的更新\n");
     // And when another source did not finish, both are said, one after the other.
-    const staleWithCodex = { ...SNAPSHOT, instances: [...SNAPSHOT.instances, codex] };
+    const staleWithCodex = { ...SNAPSHOT, instances: [...allClean, codex] };
     expect(diagnosticsText(en, input({ snapshot: staleWithCodex }))).toContain(
       "\nCheck: incomplete, npm didn't finish; updates to Codex aren't checked either\n",
     );
@@ -358,5 +362,30 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/Users/alice/.local/bin and /Users/bob")).toBe("~/.local/bin and ~");
     expect(withoutHomePaths("/Users/Shared/tools/bin")).toBe("/Users/Shared/tools/bin");
     expect(withoutHomePaths("/opt/homebrew/bin")).toBe("/opt/homebrew/bin");
+  });
+});
+
+describe("the check line", () => {
+  // No call failed this round, yet a source was not checked in full: the
+  // Updates page then says it found no update among the sources it could
+  // check (`everySourceChecked`), and the pasted text must not say
+  // "complete" either.
+  it("names a source that answered without its updates checked, as the Updates page counts it", () => {
+    const quiet = (notes: ManagerInstance["status"]["notes"], unavailable: ManagerInstance["status"]["unavailable"] = null) => ({
+      ...SNAPSHOT,
+      stale: false,
+      errors: [],
+      instances: [
+        instance(BREW, "/opt/homebrew/bin/brew", { status: { unavailable: null, notes } }),
+        instance("ollama:/opt/homebrew/bin/ollama", "/opt/homebrew/bin/ollama", { status: { unavailable, notes: [] } }),
+      ],
+    });
+    expect(diagnosticsText(en, input({ snapshot: quiet(["IndexUpdating"]) }))).toContain(
+      "\nCheck: incomplete, Homebrew didn't finish\n",
+    );
+    expect(diagnosticsText(zh, input({ snapshot: quiet([], "NotRunning") }))).toContain(
+      "\n检查结果：不完整，Ollama未检查完\n",
+    );
+    expect(diagnosticsText(en, input({ snapshot: quiet([]) }))).toContain("\nCheck: complete\n");
   });
 });
