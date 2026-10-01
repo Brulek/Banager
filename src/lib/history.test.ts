@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { failureCause, type FailureCause } from "./failureCause";
 import { RECENT_DAYS, clearedHere, recentUpdates, verifiedHere } from "./history";
+import { artifactKeyId } from "../store/ui";
 import type { HistoryRecord, HistoryView, OpSummary } from "./types";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -29,6 +30,11 @@ function record(name: string, fields: Partial<HistoryRecord> = {}): HistoryRecor
 
 function view(records: HistoryRecord[], fields: Partial<HistoryView> = {}): HistoryView {
   return { run: "now", cleared_before: null, records, ...fields };
+}
+
+/** The tools the last check still offers an update for, by name. */
+function offered(...names: string[]): Set<string> {
+  return new Set(names.map((name) => artifactKeyId(record(name).key)));
 }
 
 function op(id: number, name: string): OpSummary {
@@ -85,6 +91,7 @@ describe("recentUpdates", () => {
       ]),
       [],
       NOW,
+      offered(),
     );
     expect(listed.map((r) => [r.key.name, r.to_version])).toEqual([
       ["cmake", "4.0"],
@@ -111,6 +118,8 @@ describe("recentUpdates", () => {
       ),
       [],
       NOW,
+      // Every one still offered, so that is not what leaves them out.
+      offered("old", "cleared", "oldFailure", "clearedFailure", "stopped", "gone", "removed", "kept"),
     );
     expect(listed.map((r) => r.key.name)).toEqual(["kept"]);
   });
@@ -125,6 +134,7 @@ describe("recentUpdates", () => {
       ]),
       [],
       NOW,
+      offered("failed", "unchanged", "unconfirmed"),
     );
     expect(listed.map((r) => [r.key.name, r.result])).toEqual([
       ["unchanged", { NeedsAttention: "UnchangedAfterUpgrade" }],
@@ -148,6 +158,7 @@ describe("recentUpdates", () => {
       ]),
       [],
       NOW,
+      offered("cmake", "git", "jq"),
     );
     expect(listed.map((r) => [r.key.name, r.result])).toEqual([
       ["git", { Failed: { cause: "network" } }],
@@ -161,7 +172,29 @@ describe("recentUpdates", () => {
       record("git", { run: "earlier", op_id: 7, finished_at: NOW - 9 * DAY }),
       record("jq"),
     ]);
-    expect(recentUpdates(history, [op(7, "cmake"), op(8, "git")], NOW).map((r) => r.key.name)).toEqual(["jq"]);
+    expect(recentUpdates(history, [op(7, "cmake"), op(8, "git")], NOW, offered()).map((r) => r.key.name)).toEqual([
+      "jq",
+    ]);
+  });
+
+  it("lists a failure or one to check only while the last check still offers that tool an update", () => {
+    // Each updated in Terminal since, or uninstalled outside Banager: no
+    // update offered any more, so 「未能更新」 would no longer be known true.
+    const history = view([
+      record("failed", { to_version: null, result: { Failed: { cause: "network" } } }),
+      record("unchanged", { finished_at: NOW - 2 * DAY, result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+      record("unconfirmed", { finished_at: NOW - 3 * DAY, result: "Unconfirmed" }),
+      record("worked", { finished_at: NOW - 4 * DAY }),
+    ]);
+    expect(recentUpdates(history, [], NOW, offered()).map((r) => r.key.name)).toEqual(["worked"]);
+    // A success is listed whether or not a newer update is offered.
+    expect(recentUpdates(history, [], NOW, offered("failed", "worked")).map((r) => r.key.name)).toEqual([
+      "failed",
+      "worked",
+    ]);
+    // Offered under another source is not this tool.
+    const elsewhere = new Set([artifactKeyId({ instance_id: "npm:/usr/local", kind: "Formula", name: "failed" })]);
+    expect(recentUpdates(history, [], NOW, elsewhere).map((r) => r.key.name)).toEqual(["worked"]);
   });
 
   it("finds whether this launch's operation was verified, by its run and id", () => {

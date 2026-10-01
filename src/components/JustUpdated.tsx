@@ -106,7 +106,10 @@ export interface JustUpdatedFilter {
  * and then the tick moves here -- never in both places, never in neither.
  * One that failed or asks to be checked keeps its row, with its outcome,
  * its log and Retry, for as long as that update is still offered; it is
- * listed here only once the row has gone.
+ * listed here only once the row has gone. (A failure the history kept
+ * from an earlier launch is listed beside its row on purpose: that row,
+ * after a restart, is a plain update that does not know the last try --
+ * `recentUpdates` in src/lib/history.ts.)
  * Nothing Clear took off; the order is by when each finished, and an
  * update this window did not see finish -- one from before it was opened
  * -- comes after the ones it did, newest first by its number.
@@ -235,7 +238,7 @@ export interface JustUpdatedProps {
  * ended in 11 (`EndingWords`: 「已更新」 or 「已核实」, 「未能更新」 with
  * its cause, or 「结果不符」), and when it finished, 11 muted. Nothing to
  * select or press but Clear, which hides what it lists, after a restart
- * too, until the next update succeeds, and, past `JUST_UPDATED_SHOWN`
+ * too, until the next update ends, and, past `JUST_UPDATED_SHOWN`
  * lines, the "N More" line that shows the rest; it is no part of the
  * page's count or of Select all.
  */

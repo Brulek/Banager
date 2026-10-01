@@ -500,7 +500,10 @@ export function UpdatesPage() {
   // version the tool was updated to.
   //
   // Then what the history kept from before this window, of the last 30
-  // days (`recentUpdates`): never a tool this window has an operation of.
+  // days (`recentUpdates`): never a tool this window has an operation of,
+  // and one that did not work or asks to be checked only while the last
+  // check still offers that tool an update. Its row then lists it too, on
+  // purpose: the row is a plain update that does not know the last try.
   // The two together newest first; this window's own that it did not see
   // finish last, as before.
   const justUpdated = useMemo((): JustUpdatedEntry[] => {
@@ -540,7 +543,9 @@ export function UpdatesPage() {
         },
       ];
     });
-    const kept = recentUpdates(history, operations ?? [], Date.now()).flatMap((record): JustUpdatedEntry[] => {
+    // A failure or one to check, only while its update is still offered.
+    const offered = new Set((snapshot?.updates ?? []).map((candidate) => artifactKeyId(candidate.key)));
+    const kept = recentUpdates(history, operations ?? [], Date.now(), offered).flatMap((record): JustUpdatedEntry[] => {
       const ending = endingOfRecord(record.result);
       if (ending === null) return [];
       return [
@@ -566,6 +571,7 @@ export function UpdatesPage() {
     });
   }, [
     history,
+    snapshot,
     visibleUpdates,
     operationFor,
     operations,

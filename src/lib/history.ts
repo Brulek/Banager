@@ -68,8 +68,20 @@ export function listedResult(result: HistoryResult): boolean {
  * None for a tool this window has an operation of (`operations`): that
  * operation decides, whatever the history says, so an update this window
  * saw finish is listed once.
+ *
+ * One that did not work or asks to be checked only while the last check
+ * still offers the tool an update (`offered`, by `artifactKeyId`): updated
+ * in Terminal since, or uninstalled, it no longer is, and 「未能更新」
+ * would say what Banager cannot know is still true. While it is offered,
+ * its row lists it too, as an update like any other -- that row does not
+ * know the last try did not work, so this line is where that is said.
  */
-export function recentUpdates(view: HistoryView, operations: readonly OpSummary[], now: number): HistoryRecord[] {
+export function recentUpdates(
+  view: HistoryView,
+  operations: readonly OpSummary[],
+  now: number,
+  offered: ReadonlySet<string>,
+): HistoryRecord[] {
   const seenHere = new Set(
     operations.map((op) => artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name })),
   );
@@ -87,6 +99,7 @@ export function recentUpdates(view: HistoryView, operations: readonly OpSummary[
         !seenHere.has(id) &&
         record.kind === "Update" &&
         listedResult(record.result) &&
+        (record.result === "Succeeded" || offered.has(id)) &&
         record.finished_at >= since &&
         record.finished_at > cleared,
     )

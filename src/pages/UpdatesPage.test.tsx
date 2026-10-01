@@ -3283,7 +3283,7 @@ describe("UpdatesPage", () => {
       expect(document.activeElement?.closest("[data-tool-row]")).toHaveTextContent("OnyX");
     });
 
-    it("hides itself on Clear, until the next update succeeds", async () => {
+    it("hides itself on Clear, until the next update ends", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
       updates = [snapshot.updates[1]];
@@ -3370,6 +3370,8 @@ describe("UpdatesPage", () => {
             kept("broken", new Date(2026, 8, 27, 9, 0).getTime(), { result: { Failed: { cause: "network" } } }),
           ],
         });
+        // The last check still offers broken an update: its last try is news.
+        updates = [...snapshot.updates, brewCandidate("broken")];
         const { container } = renderPage();
 
         const section = await screen.findByRole("region", { name: "Recently Updated" });
@@ -3439,6 +3441,7 @@ describe("UpdatesPage", () => {
             }),
           ],
         });
+        updates = [...snapshot.updates, brewCandidate("cmake"), brewCandidate("wget"), brewCandidate("git")];
         await i18n.changeLanguage("zh-CN");
         try {
           renderPage();
@@ -3470,7 +3473,7 @@ describe("UpdatesPage", () => {
             kept("wget", Date.now() - 180_000, { result: "Unconfirmed" }),
           ],
         });
-        updates = [snapshot.updates[1]];
+        updates = [snapshot.updates[1], brewCandidate("git"), brewCandidate("wget")];
         renderPage();
 
         const section = await screen.findByRole("region", { name: "Recently Updated" });
@@ -3478,6 +3481,45 @@ describe("UpdatesPage", () => {
         fireEvent.click(within(section).getByRole("button", { name: "Clear the Recently Updated list" }));
         await waitFor(() => expect(justUpdated()).toBeNull());
         expect(mockInvoke).toHaveBeenCalledWith("clear_history");
+      });
+
+      it("leaves out a failure or one to check once no update is offered for the tool: updated in Terminal, or uninstalled", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", Date.now() - 60_000),
+            kept("jq", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "network" } } }),
+            kept("wget", Date.now() - 180_000, { result: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+          ],
+        });
+        // Neither jq nor wget is offered an update any more.
+        updates = [snapshot.updates[1]];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake"]);
+        expect(section.textContent).not.toMatch(/Couldn't update|Unexpected result/);
+      });
+
+      it("lists a kept failure beside the tool's row on purpose: the row is a plain update, the line says the last try did not work", async () => {
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [kept("jq", Date.now() - 120_000, { to_version: null, result: { Failed: { cause: "network" } } })],
+        });
+        updates = [snapshot.updates[1], brewCandidate("jq")];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines).toHaveLength(1);
+        expect(within(lines[0]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
+        // Its row offers the update as any other, and says nothing of the failure.
+        const row = rowOf("jq");
+        expect(within(row).getByRole("button", { name: /Update/ })).toBeInTheDocument();
+        expect(row.textContent).not.toMatch(/Couldn't update/);
       });
 
       it("lists an update this window saw finish once, with Verified from its record", async () => {
