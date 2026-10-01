@@ -222,9 +222,12 @@ describe("the Dock's badge", () => {
 
     await waitFor(() => expect(dock.badge()).toBe(1));
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
-    await waitFor(() => expect(dock.badge()).toBe(2), { timeout: 3000 });
+    // Real time: the snooze runs out about a second from now. The wait is
+    // generous because a busy machine (several builds at once) has made a
+    // 3 s wait time out before the page's own timer fired.
+    await waitFor(() => expect(dock.badge()).toBe(2), { timeout: 10_000 });
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
-  });
+  }, 15_000);
 
   it("leaves the page as it is when the Dock cannot be badged", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
