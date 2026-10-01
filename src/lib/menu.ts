@@ -29,6 +29,11 @@ import { useUiStore } from "../store/ui";
  *   the turn the item is chosen in, which is what lets the page write the
  *   clipboard -- then opens Settings, where 「已拷贝」 (or 「无法拷贝」)
  *   shows under that button, beside the checkbox that adds the list.
+ *   Opening Settings is deliberate, beyond what the item's name says: the
+ *   window has no other place to say whether the copy worked, and if the
+ *   webview refused a write not started by a click, the button there is
+ *   one click away. Whether WKWebView lets a menu item's event write the
+ *   clipboard is still to be tried in a real window.
  */
 export function useMenuCommands(): void {
   const openPage = useUiStore((s) => s.openPage);

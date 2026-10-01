@@ -55,7 +55,8 @@ never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
 Again, Search or Help's Copy Diagnostic Info, which Rust sends only to a
 page that asked it to listen:
 in this window those items do nothing but bring the window back when it
-is closed or minimized. Nor does the page
+is closed or minimized. (The page hears one only when
+`window.mockMenu(...)` in the browser's console sends it; see below.) Nor does the page
 badge Banager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
 `src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Other
