@@ -305,8 +305,8 @@
     "allHiddenDescription": "其余更新已隐藏。",
     "showHidden": "查看已隐藏的更新",
     "snooze": "30天内不提醒",
-    "snoozeHint": "30天后再提醒你此工具的更新。可以在“设置”中撤销。",
-    "snoozedUntil": "{{date}}前不提醒"
+    "snoozeHint": "此工具的更新30天后会重新列出。可以在“设置”中撤销。",
+    "snoozedUntil": "{{date}}起恢复提醒"
   },
   "history": {
     "today": "今天{{time}}",
@@ -763,8 +763,8 @@
       "label": "操作完成时通知"
     },
     "snoozedUpdates": {
-      "title": "暂不提醒的工具",
-      "until": "{{date}}前不提醒"
+      "title": "30天内不提醒的工具",
+      "until": "{{date}}起恢复提醒"
     }
   },
   "settingsSaveFailed": {

@@ -141,7 +141,7 @@ function NoEntries({ text }: { text: string }) {
  * -- 「更新」 -- how often to check (「检查更新」: 不自动检查, 每天 or
  * 每周), 「有更新时通知我」 under it, and
  * whether Homebrew's self-updating apps are listed -- then the three kinds
- * of hidden update, 「已跳过的版本」, 「暂不提醒的工具」 (with the day each
+ * of hidden update, 「已跳过的版本」, 「30天内不提醒的工具」 (with the day each
  * comes back) and 「不再提醒的工具」, each entry with the button that
  * takes it back, where the Overview's count of
  * hidden updates opens the page -- and 「关于」: the app's 「版本」, then

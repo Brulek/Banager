@@ -328,7 +328,7 @@
     "allHiddenDescription": "The rest are hidden.",
     "showHidden": "Show Hidden Updates",
     "snooze": "Remind Me in 30 Days",
-    "snoozeHint": "You'll be reminded about this tool's updates again in 30 days. Undo it in Settings.",
+    "snoozeHint": "This tool's updates will be listed again in 30 days. Undo it in Settings.",
     "snoozedUntil": "Hidden until {{date}}"
   },
   "history": {
@@ -818,7 +818,7 @@
       "label": "Notify me when operations finish"
     },
     "snoozedUpdates": {
-      "title": "Tools with reminders put off",
+      "title": "Tools put off for 30 days",
       "until": "Until {{date}}"
     }
   },

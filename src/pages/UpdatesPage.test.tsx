@@ -2346,7 +2346,7 @@ describe("UpdatesPage", () => {
       .map((item) => item.textContent);
     expect(names.indexOf("Remind Me in 30 Days")).toBe(names.indexOf("Skip This Version") + 1);
     expect(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" })).toHaveAccessibleDescription(
-      "You'll be reminded about this tool's updates again in 30 days. Undo it in Settings.",
+      "This tool's updates will be listed again in 30 days. Undo it in Settings.",
     );
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" }));
 

@@ -1,7 +1,7 @@
 /**
  * The words for an update put off with "Remind Me in 30 Days"
  * (「30天内不提醒」): the date it comes back, as the Installed page's
- * chip and Settings' list of snoozed updates say it -- 「11月1日前不提醒」.
+ * chip and Settings' list of snoozed updates say it -- 「11月1日起恢复提醒」.
  */
 import type { TFunction } from "i18next";
 import { artifactKeyId } from "../store/ui";
@@ -22,7 +22,7 @@ export function snoozeDate(until: number, language: string): string {
   return new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(new Date(until * 1000));
 }
 
-/** 「11月1日前不提醒」, "Hidden until Nov 1". */
+/** 「11月1日起恢复提醒」, "Hidden until Nov 1". */
 export function snoozedUntilText(t: TFunction, until: number, language: string): string {
   return t("updates.snoozedUntil", { date: snoozeDate(until, language) });
 }

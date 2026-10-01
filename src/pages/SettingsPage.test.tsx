@@ -1022,7 +1022,7 @@ describe("SettingsPage", () => {
       "General",
       "Updates",
       "Skipped versions",
-      "Tools with reminders put off",
+      "Tools put off for 30 days",
       "Tools with reminders off",
       "About",
     ]);
@@ -1059,7 +1059,7 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const snoozed = await screen.findByRole("region", { name: "Tools with reminders put off" });
+    const snoozed = await screen.findByRole("region", { name: "Tools put off for 30 days" });
     const date = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(until * 1000));
     expect(within(snoozed).getByText("wget")).toBeInTheDocument();
     expect(within(snoozed).getByText(`Homebrew · Until ${date}`)).toBeInTheDocument();
