@@ -425,7 +425,9 @@ body {
  * words are the accent darkened by 15%, as Increase Contrast darkens it:
  * the default blue on white is 4:1, under the 4.5:1 a 13 point word
  * needs; darkened, 5.3:1 -- in the dark appearance too, whose selection
- * is the same accent.
+ * is the same accent. The row's other words, white on that same blue,
+ * are 4:1 as well: the focused selection is drawn as a Mac list's, and
+ * only Increase Contrast's darker accent (#0060df) takes them over 4.5:1.
  */
 [data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled {
   background-color: #fff;

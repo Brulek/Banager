@@ -71,8 +71,13 @@ describe("Increase contrast", () => {
     // The default blue on white is 4:1; 15% darker, 5.3:1, over the 4.5:1
     // a 13 point word needs -- in either appearance, and darker still
     // under Increase Contrast, which darkens the accent it is mixed from.
-    expect(CSS).toContain(
-      "[data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled { background-color: #fff; color: color-mix(in srgb, var(--color-accent) 85%, black); }",
+    // The rule's declarations, in any order or spacing.
+    const rule = CSS.match(
+      /\[data-list\]:focus-within \[data-tool-row\]\[data-selected\] button\.bg-fill:enabled ?\{([^}]*)\}/,
     );
+    expect(rule).not.toBeNull();
+    const body = rule?.[1] ?? "";
+    expect(body).toMatch(/background-color: ?#fff ?;/);
+    expect(body).toMatch(/(^|;) ?color: ?color-mix\(in srgb, ?var\(--color-accent\) 85%, ?black\) ?(;|$)/);
   });
 });
