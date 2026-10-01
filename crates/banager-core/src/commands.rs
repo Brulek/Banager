@@ -255,14 +255,20 @@ fn read_one(
         Resolution::Found(canonical, meta) if meta.is_dir() => canonical,
         Resolution::Found(..) | Resolution::Missing | Resolution::Refused => return Ok(None),
         Resolution::Protected(leads_to) => {
-            if seen.iter().any(|seen| protected::same_path(seen, &leads_to)) {
+            if seen
+                .iter()
+                .any(|seen| protected::same_path(seen, &leads_to))
+            {
                 return Ok(None);
             }
             seen.push(leads_to.clone());
             return Ok(Some(unread(leads_to)));
         }
     };
-    if seen.iter().any(|seen| protected::same_path(seen, &canonical)) {
+    if seen
+        .iter()
+        .any(|seen| protected::same_path(seen, &canonical))
+    {
         return Ok(None);
     }
     seen.push(canonical.clone());
@@ -459,9 +465,7 @@ pub fn judge(
                 {
                     Some(CommandState::Runs)
                 }
-                Some(Seen::Executable(first))
-                    if matches.iter().skip(1).any(is_this) =>
-                {
+                Some(Seen::Executable(first)) if matches.iter().skip(1).any(is_this) => {
                     Some(CommandState::ShadowedBy {
                         by: owner_of(first).map(|i| artifacts[i].key.clone()),
                     })

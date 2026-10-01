@@ -144,12 +144,15 @@ pub(crate) fn tool_home(setting: Option<&Path>, home: &Path, default_dir: &str) 
 /// gone.
 pub fn resolve_exe(name: &str, env: &HostEnv) -> Option<PathBuf> {
     let protected = Protected::new(&env.home);
-    env.path_dirs.iter().map(|dir| dir.join(name)).find(|candidate| {
-        matches!(
-            resolve(candidate, &protected, true),
-            Resolution::Found(_, meta) if meta.is_file()
-        )
-    })
+    env.path_dirs
+        .iter()
+        .map(|dir| dir.join(name))
+        .find(|candidate| {
+            matches!(
+                resolve(candidate, &protected, true),
+                Resolution::Found(_, meta) if meta.is_file()
+            )
+        })
 }
 
 #[cfg(test)]

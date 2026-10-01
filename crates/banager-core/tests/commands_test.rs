@@ -1464,5 +1464,8 @@ fn test_a_path_folder_spelled_in_another_case_is_the_same_folder() {
         home.path(),
         CommandBudget::default(),
     );
-    assert_eq!(folders.path_folders(), vec![home.at(".CARGO/bin").as_path()]);
+    assert_eq!(
+        folders.path_folders(),
+        vec![home.at(".CARGO/bin").as_path()]
+    );
 }
