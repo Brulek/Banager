@@ -732,6 +732,9 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
   });
 
   it("serves a few weeks of history, two of them today, and keeps each operation of its own as Rust does", async () => {
+    // Midday: the two of today are 25 and 70 minutes old, so just after
+    // midnight they would be yesterday's.
+    vi.setSystemTime(new Date(2026, 9, 1, 12, 0));
     const { backend } = backendFor();
     const start = await answer<HistoryView>(backend.invoke("get_history"));
     const today = new Date().toDateString();

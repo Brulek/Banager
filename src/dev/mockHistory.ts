@@ -6,8 +6,10 @@
  * Updates page's 「最近更新」 shows both of its date forms, one older than
  * the 30 days the page lists, an uninstall it never lists, and an update
  * that failed (「未能更新：网络连接失败」) and one that changed nothing
- * (「结果不符」), which it lists among the rest. Times count back from when
- * the preview opened.
+ * (「结果不符」), which it lists among the rest while the last check still
+ * offers each an update. jq's failure is not listed: no update is offered
+ * for it any more, as if it had been updated in Terminal since. Times count
+ * back from when the preview opened.
  */
 import { failureCause } from "../lib/failureCause";
 import type { ArtifactKey, HistoryRecord, HistoryResult, HistoryView, OpRequest, Outcome } from "../lib/types";
@@ -60,6 +62,11 @@ const SEEDED = [
   // npm said it updated, and the version read back had not changed.
   kept(11, 5 * DAY, key(IDS.npm, "Package", "typescript"), "npm", "6.0.2", "6.0.2", {
     result: { NeedsAttention: "UnchangedAfterUpgrade" },
+    verified: false,
+  }),
+  // Failed, and the last check still offers httpie 3.3.0: listed.
+  kept(10, 4 * DAY, key(IDS.pipx, "Tool", "httpie"), "pipx", "3.2.4", null, {
+    result: { Failed: { cause: "network" } },
     verified: false,
   }),
 ];
