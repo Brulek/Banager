@@ -200,7 +200,10 @@ not only by the page. On confirmation
 locks, runs the command (or moves the listed paths to the
 Trash), and then re-reads the inventory to check what actually happened;
 an upgrade is also preceded by a reading,
-so the version before can be compared with the version after. An install
+so the version before can be compared with the version after. Operations
+that need the same lock start in the order they were confirmed: one waits
+while an earlier one that needs any of its locks is still waiting
+(`run_operation`'s queue in `crates/banager-core/src/ops/mod.rs`). An install
 after which the package is not present, an uninstall after which it still
 is, and an upgrade that exits 0 with the version unchanged are all
 reported as needing attention, never as success. The one case with less
@@ -217,6 +220,18 @@ succeeded, and one the user cancelled that did not take effect as
 cancelled; an upgrade stopped partway is never settled either way
 (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
+
+**Uninstalling several tools at once** runs nothing a single uninstall
+does not. The Installed page's 「卸载所选」 previews each ticked tool exactly
+as that tool's own Uninstall does: one `plan_operation` each, at most three
+at a time (`PLAN_CONCURRENCY` in `src/lib/batchUninstall.ts`) — so on
+Homebrew one `brew uses --installed <name>` per formula or cask (Homebrew's
+section). It lists the tools it will not include and why, and on
+confirmation submits one uninstall per included tool, each an operation of
+its own through the same queue, a Homebrew formula's ticked dependents
+before the formula (`useBatchUninstall` in
+`src/components/BatchUninstallSheet.tsx`). Nothing it keeps — a tool's
+settings and data — is deleted: the batch has no control that deletes it.
 
 **Quitting while an operation is under way.** Closing the window leaves
 Banager and its operations running (`src-tauri/src/window.rs`). Quitting
