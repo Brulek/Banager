@@ -2142,7 +2142,9 @@ not what it points at; a folder on another volume is never entered; a file
 counts the blocks the disk holds for it (`st_blocks`), and a file with
 several hard links counts once. A folder that cannot be read is skipped and
 the size is shown as partial (「部分无法读取」). One round looks at
-300,000 entries and spends 30 seconds at most (`SizeBudget::default`); a
+300,000 entries and spends 30 seconds at most (`SizeBudget::default`) --
+every entry a listing names counts, also one that then cannot be looked
+at, and the time is checked before each one; a
 size it stopped short of is shown as "or more" (「…以上」), and a tool
 it did not reach before the budget ran out shows no size that round. One
 that measured 0 -- only links, as npm's `corepack` under Homebrew's node --

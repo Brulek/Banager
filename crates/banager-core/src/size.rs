@@ -194,6 +194,15 @@ impl Budget {
         }
     }
 
+    /// Whether the entries or the time have run out, spending nothing.
+    fn spent(&mut self) -> bool {
+        if self.entries_left == 0 || Instant::now() >= self.deadline {
+            self.entries_left = 0;
+            return true;
+        }
+        false
+    }
+
     /// One more entry: false once the entries or the time have run out,
     /// and from then on.
     fn take(&mut self) -> bool {
@@ -418,6 +427,10 @@ fn walk_folder(
             tally.partial = true;
             continue;
         }
+        if budget.spent() {
+            tally.at_least = true;
+            return Flow::OutOfBudget;
+        }
         let entries = match std::fs::read_dir(&folder) {
             Ok(entries) => entries,
             Err(_) => {
@@ -429,6 +442,19 @@ fn walk_folder(
         for entry in entries {
             if !wanted() {
                 return Flow::Superseded;
+            }
+            // What the walk leaves out costs nothing: it is known by its
+            // name alone, with nothing looked at.
+            if let Ok(entry) = &entry {
+                if !leave_out.paths.is_empty() && leave_out.leaves_out(&entry.path()) {
+                    continue;
+                }
+            }
+            // Every other entry costs one, before anything is asked of it:
+            // one that cannot be looked at as much as one that can.
+            if !budget.take() {
+                tally.at_least = true;
+                return Flow::OutOfBudget;
             }
             let Ok(entry) = entry else {
                 tally.partial = true;
@@ -445,13 +471,6 @@ fn walk_folder(
             if meta.is_dir() && meta.dev() != device {
                 // Another volume mounted here: not this tool's.
                 continue;
-            }
-            if !leave_out.paths.is_empty() && leave_out.leaves_out(&entry.path()) {
-                continue;
-            }
-            if !budget.take() {
-                tally.at_least = true;
-                return Flow::OutOfBudget;
             }
             tally.count(&meta);
             if meta.is_dir() {
@@ -1594,6 +1613,33 @@ mod tests {
             walk(&[tool], &mut budget, &Protected::default(), &mut || true),
             WalkEnd::OutOfBudget
         );
+    }
+
+    #[test]
+    fn test_entries_that_cannot_be_looked_at_still_spend_the_budget() {
+        // A folder that may be listed but not searched: every name in it
+        // comes back, and every `lstat` of one fails. Each still costs an
+        // entry, so the budget stops such a folder as it stops any other.
+        let scratch = Scratch::new("budget-unsearchable");
+        let tool = scratch.dir("tool");
+        for index in 0..50 {
+            scratch.file(&format!("tool/{index}.bin"), 1_000);
+        }
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let mut budget = Budget::new(SizeBudget {
+            max_entries: 5,
+            max_duration: Duration::from_secs(30),
+        });
+        let end = walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &Protected::default(),
+            &mut || true,
+        );
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let walked = walked(end);
+        assert!(walked.measured.at_least, "{walked:?}");
+        assert_eq!(budget.entries_left, 0);
     }
 
     #[test]
