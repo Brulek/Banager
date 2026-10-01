@@ -17,8 +17,9 @@
 //! How: read-only, as disk use is measured (`size::look_at`: `lstat`,
 //! `readdir`, `readlink`; nothing opened, nothing written), under a budget
 //! small enough that the preview stays quick (`BUDGET`), and never into
-//! the places macOS asks about (`size::Protected`): a path that leads into
-//! one is named with no size. Nothing here deletes anything, and nothing
+//! the places macOS asks about (`size::Protected`, built from the one list
+//! in `crate::protected` that the command check uses too, whatever case
+//! spells a place): a path that leads into one is named with no size. Nothing here deletes anything, and nothing
 //! offers to.
 
 use crate::families;
@@ -283,6 +284,31 @@ mod tests {
             None,
             "a folder in ~/Documents is never walked"
         );
+    }
+
+    #[test]
+    fn test_a_path_leading_into_any_place_on_the_shared_list_whatever_its_case_is_never_measured() {
+        // `size::Protected` is built from `crate::protected`, the one list
+        // the command check keeps out of too: the two Containers folders
+        // were on its list only, and a place is matched whatever its case.
+        let home = Home::new("shared-list");
+        home.file("Library/Group Containers/group.claude/big.bin", 90_000);
+        home.file("Library/Containers/codex/big.bin", 90_000);
+        symlink(
+            home.0.join("Library/Group Containers/group.claude"),
+            home.0.join(".claude"),
+        )
+        .unwrap();
+        symlink(
+            home.0.join("library/containers/codex"),
+            home.0.join(".codex"),
+        )
+        .unwrap();
+        for (family, path) in [("claude-code", "~/.claude"), ("codex", "~/.codex")] {
+            let warnings = kept_data(&home.0, family, &[], BUDGET);
+            assert_eq!(paths_of(&warnings), vec![path.to_string()], "{family}");
+            assert_eq!(size_of(&warnings[0]), None, "{path} is named, never walked");
+        }
     }
 
     #[test]

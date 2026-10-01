@@ -2003,8 +2003,9 @@ use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and
 second for all of them together (`kept_data::BUDGET`). A size it stopped
 short of is shown as "at least" (「至少约…」), and a path it did not reach,
 or could not read, is named with no size. A path that leads into one of
-the places disk use never looks into (Disk use, above) is named with no
-size, and nothing there is read. A path that is not there, or a link that
+the places disk use never looks into (Disk use, above: the one list in
+`crates/banager-core/src/protected.rs`, whatever case spells them) is
+named with no size, and nothing there is read. A path that is not there, or a link that
 leads nowhere, gets no line.
 
 Nothing is written, and nothing is deleted: the preview has no button or
