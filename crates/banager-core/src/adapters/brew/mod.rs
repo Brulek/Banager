@@ -10,7 +10,7 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
     InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
-    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, Warning,
+    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateBlocked, Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -1138,10 +1138,19 @@ impl BrewAdapter {
         // not a failed check: `qualified_key` returns the key it was
         // given when nothing matches, so the worst case is the short
         // spelling that shipped before.
+        //
+        // The same reading marks a package Homebrew disabled
+        // (`UpdateBlocked::Disabled`): `brew outdated` lists it like any
+        // other, and only `brew info` carries the mark. With no inventory
+        // nothing is marked, and an upgrade of it fails or changes nothing
+        // as before (`UnchangedAfterUpgrade`).
         let installed = self.inventory(inst).await.unwrap_or_default();
         if !installed.is_empty() {
             for candidate in &mut candidates {
                 candidate.key = qualified_key(&installed, &candidate.key);
+                if is_disabled(&installed, &candidate.key) {
+                    candidate.blocked = Some(UpdateBlocked::Disabled);
+                }
             }
         }
         Ok(CheckOutcome { candidates, notes })
@@ -1553,6 +1562,20 @@ fn qualified_key(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> Artifact
         })
         .map(|a| a.key.clone())
         .unwrap_or_else(|| key.clone())
+}
+
+/// Whether the inventory lists exactly this package (`key`, already
+/// qualified by `qualified_key`) with Homebrew's `disabled` mark. The key
+/// must match in full: a formula and a cask may share a name, and only
+/// the one Homebrew disabled is held back.
+fn is_disabled(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> bool {
+    artifacts.iter().any(|a| {
+        a.key == *key
+            && a.facts
+                .homebrew
+                .as_ref()
+                .is_some_and(|homebrew| homebrew.disabled.is_some())
+    })
 }
 
 impl BrewAdapter {
@@ -2578,6 +2601,147 @@ mod tests {
             .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "jq");
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_what_homebrew_disabled_and_nothing_else() {
+        // `brew outdated --json=v2` lists a disabled formula or cask like
+        // any other (its five keys say nothing of the mark), and a named
+        // `brew upgrade` of it then fails (a formula) or changes nothing
+        // and exits 0 (a cask). The mark is in `brew info --installed
+        // --json=v2`, which this check already reads, so the row is held
+        // back before anyone presses Update: `UpdateBlocked::Disabled`.
+        // Inline JSON: no recorded fixture has a disabled package.
+        //
+        // - `oldtool`: a formula Homebrew disabled -- Disabled.
+        // - `jq`: disabled *and* pinned -- Disabled, since unpinning it
+        //   would not make it updatable.
+        // - `twin`: a formula and a cask of one name, only the cask
+        //   disabled -- only the cask is held back.
+        // - `quickjot`: a tapped cask Homebrew disabled, listed by
+        //   `outdated` under its short name -- found once qualified.
+        // - `git`: nothing of the kind -- free to update.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let installed = r#"{
+            "formulae": [
+                {"name": "oldtool", "installed": [{"version": "1.0", "installed_on_request": true}],
+                 "disabled": true, "disable_date": "2026-09-01", "disable_reason": "unmaintained"},
+                {"name": "jq", "installed": [{"version": "1.6", "installed_on_request": true}],
+                 "pinned": true, "disabled": true},
+                {"name": "twin", "installed": [{"version": "1.0", "installed_on_request": true}],
+                 "disabled": false},
+                {"name": "git", "installed": [{"version": "2.55.0", "installed_on_request": true}]}
+            ],
+            "casks": [
+                {"token": "twin", "installed": "1.0", "disabled": true},
+                {"token": "quickjot", "full_token": "acme/tap/quickjot", "installed": "2.3.1",
+                 "disabled": true, "disable_reason": "fails_gatekeeper_check"}
+            ]
+        }"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: installed.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outdated = r#"{
+            "formulae": [
+                {"name": "oldtool", "installed_versions": ["1.0"], "current_version": "1.1", "pinned": false, "pinned_version": null},
+                {"name": "jq", "installed_versions": ["1.6"], "current_version": "1.7.1", "pinned": true, "pinned_version": "1.6"},
+                {"name": "twin", "installed_versions": ["1.0"], "current_version": "1.1", "pinned": false, "pinned_version": null},
+                {"name": "git", "installed_versions": ["2.55.0"], "current_version": "2.55.1", "pinned": false, "pinned_version": null}
+            ],
+            "casks": [
+                {"name": "twin", "installed_versions": ["1.0"], "current_version": "1.1"},
+                {"name": "quickjot", "installed_versions": ["2.3.1"], "current_version": "2.4.0"}
+            ]
+        }"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        let blocked: Vec<(&str, ArtifactKind, Option<UpdateBlocked>)> = candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.key.kind, c.blocked))
+            .collect();
+        assert_eq!(
+            blocked,
+            vec![
+                ("oldtool", ArtifactKind::Formula, Some(UpdateBlocked::Disabled)),
+                ("jq", ArtifactKind::Formula, Some(UpdateBlocked::Disabled)),
+                ("twin", ArtifactKind::Formula, None),
+                ("git", ArtifactKind::Formula, None),
+                ("twin", ArtifactKind::Cask, Some(UpdateBlocked::Disabled)),
+                (
+                    "acme/tap/quickjot",
+                    ArtifactKind::Cask,
+                    Some(UpdateBlocked::Disabled)
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_nothing_disabled_when_the_inventory_cannot_be_read() {
+        // Marking is the same best effort as qualifying: with no inventory
+        // the candidates are what `brew outdated` said, `pinned` and all,
+        // and no row is held back for a mark Banager did not read.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outdated = r#"{"formulae":[{"name":"jq","installed_versions":["1.6"],"current_version":"1.7.1","pinned":true,"pinned_version":"1.6"},{"name":"git","installed_versions":["2.55.0"],"current_version":"2.55.1"}],"casks":[]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a failed inventory must not fail the update check")
+            .candidates;
+        assert_eq!(candidates[0].blocked, Some(UpdateBlocked::Pinned));
+        assert_eq!(candidates[1].blocked, None);
     }
 
     #[tokio::test]

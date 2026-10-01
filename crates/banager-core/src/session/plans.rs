@@ -874,6 +874,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_issue_plan_refuses_an_upgrade_of_a_package_homebrew_disabled() {
+        // `UpdateBlocked::Disabled` goes through the same gate as a pin:
+        // the reason comes back as it was listed, for the page to word.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("quickjot", Some(UpdateBlocked::Disabled))]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        match session.issue_plan(&request(OpKind::Upgrade, "quickjot")).await {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::Disabled);
+            }
+            other => panic!("expected UpdateBlocked(Disabled), got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_a_pinned_formula_does_not_block_the_unpinned_cask_of_the_same_name() {
         // A formula and a cask can share a name (`docker` is both), and
         // `brew pin` pins one of them. The gate must refuse the pinned one

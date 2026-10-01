@@ -1181,10 +1181,13 @@ pub enum RemoveCheck {
 ///
 /// A variant belongs here only when the tool *reports* the state in the
 /// output Banager already reads to list updates, so the row can be marked
-/// before anyone clicks. States a tool only reveals by refusing (a
-/// disabled formula, a cask whose installer must be run by hand) do not
-/// qualify: `brew outdated --json=v2` carries no field for them
-/// (`cmd/outdated.rb:196-200` in Homebrew 7.0.6 lists all five keys).
+/// before anyone clicks. States a tool only reveals by refusing (a cask
+/// whose installer must be run by hand) do not qualify: `brew outdated
+/// --json=v2` carries no field for them (`cmd/outdated.rb:196-200` in
+/// Homebrew 7.0.7 lists all five keys). A disabled package does qualify,
+/// although `brew outdated` says nothing of it either, because the same
+/// check already reads `brew info --installed --json=v2`, which does
+/// (`Disabled` below).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateBlocked {
     /// Someone pinned this package in its tool, which holds it at the
@@ -1218,6 +1221,24 @@ pub enum UpdateBlocked {
     /// sentence tells the user to open the tool once and that it checks at
     /// most every 15 minutes.
     SelfUpdatesOnly,
+    /// Homebrew disabled this formula or cask (`disable!` in its tap), so
+    /// it installs no newer version of it, although `brew outdated` still
+    /// lists one: neither reader of `outdated` looks at the mark
+    /// (`Formula#outdated?`, `formula.rb:2138-2142`; `Cask#outdated?`,
+    /// `cask/cask.rb:424-427`, Homebrew 7.0.7). A named `brew upgrade` of
+    /// a formula then fails (`FormulaInstaller#prelude_fetch` raises
+    /// `CannotInstallFormulaError` without `--force`,
+    /// `formula_installer.rb:317-331`); of a cask it prints "Not upgrading
+    /// <token>, it is disabled" and exits 0 having changed nothing
+    /// (`cask/upgrade.rb:60-63`). Produced by `BrewAdapter::check_updates`
+    /// (`adapters/brew/mod.rs`) from the `disabled` mark that `brew info
+    /// --installed --json=v2` carries (`ArtifactFacts.homebrew.disabled`),
+    /// for a candidate the inventory of the same check lists as disabled.
+    /// Wins over `Pinned`: unpinning a disabled package would not make it
+    /// updatable. Read by the gate (`blocked_upgrade`), by `updateStateOf`
+    /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.Disabled` in
+    /// src/lib/sources.ts.
+    Disabled,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1733,6 +1754,16 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&UpdateBlocked::SelfUpdatesOnly).unwrap(),
             r#""SelfUpdatesOnly""#
+        );
+        // A package Homebrew disabled (`BrewAdapter::check_updates`), read
+        // by `UPDATE_BLOCKED_KEYS.Disabled`.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::Disabled).unwrap(),
+            r#""Disabled""#
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateBlocked>(r#""Disabled""#).unwrap(),
+            UpdateBlocked::Disabled
         );
     }
 

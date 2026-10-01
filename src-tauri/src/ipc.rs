@@ -2092,6 +2092,14 @@ mod tests {
             v,
             serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
         );
+        // A package Homebrew disabled, the same way.
+        let v = parse(AdapterError::UpdateBlocked {
+            reason: banager_core::model::UpdateBlocked::Disabled,
+        });
+        assert_eq!(
+            v,
+            serde_json::json!({ "kind": "update_blocked", "reason": "Disabled" })
+        );
         // A pinned package on a stale Installed page: a kind of its own,
         // for `parseUninstallBlocked` in src/lib/sources.ts to word.
         let v = parse(AdapterError::UninstallBlocked {
