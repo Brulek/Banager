@@ -157,6 +157,8 @@ describe("InstalledPage, Homebrew's state", () => {
     expect(within(pane).queryByRole("button", { name: /Install/ })).toBeNull();
     expect(within(pane).getByText("Homepage").nextElementSibling).toHaveTextContent("https://oldapp.example/");
     expect(within(pane).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
+    // No update will come, so it is not called up to date either.
+    expect(within(pane).queryByText("Up to date")).toBeNull();
   });
 
   it("says a formula's other installed version and keeps its caveats folded", async () => {

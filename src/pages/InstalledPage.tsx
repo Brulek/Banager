@@ -1063,7 +1063,9 @@ export function InstalledPage() {
       chips.push(hiddenChip(hidden));
     } else if (
       upToDateIsKnown(instance, snapshot.errors) &&
-      !leftOutOfUpdateCheck(artifact, settings?.include_self_updating ?? false)
+      !leftOutOfUpdateCheck(artifact, settings?.include_self_updating ?? false) &&
+      // Disabled: no update will come, which 「已是最新」 would blur.
+      (artifact.facts.homebrew?.disabled ?? null) === null
     ) {
       chips.push({ id: "up-to-date", label: t("installed.upToDate"), tone: "upToDate" });
     }
