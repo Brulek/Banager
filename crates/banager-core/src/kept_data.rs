@@ -251,10 +251,6 @@ mod tests {
         }
     }
 
-    fn paths_of(warnings: &[Warning]) -> Vec<String> {
-        named_paths(warnings)
-    }
-
     #[test]
     fn test_the_paths_are_the_tables_and_ollamas_models_folder() {
         assert_eq!(
@@ -319,7 +315,7 @@ mod tests {
         home.file(".claude/settings.json", 300);
         // No `~/.claude.json`.
         let warnings = kept_data(&home.0, "claude-code", &[], BUDGET);
-        assert_eq!(paths_of(&warnings), vec!["~/.claude".to_string()]);
+        assert_eq!(named_paths(&warnings), vec!["~/.claude".to_string()]);
         let size = size_of(&warnings[0]).expect("a folder it could read has a size");
         assert!(size.bytes >= 40_000, "{size:?}");
         assert!(!size.partial && !size.at_least, "{size:?}");
@@ -334,7 +330,7 @@ mod tests {
         home.file(".claude.json", 10);
         let warnings = kept_data(&home.0, "claude-code", &[], BUDGET);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec!["~/.claude".to_string(), "~/.claude.json".to_string()]
         );
     }
@@ -382,7 +378,7 @@ mod tests {
         };
         let warnings = kept_data(&home.0, "claude-code", &[], tight);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec!["~/.claude".to_string(), "~/.claude.json".to_string()]
         );
         let first = size_of(&warnings[0]).expect("part of it was reached");
@@ -398,7 +394,7 @@ mod tests {
         home.file("Documents/claude-data/big.bin", 90_000);
         symlink(home.0.join("Documents/claude-data"), home.0.join(".claude")).unwrap();
         let warnings = kept_data(&home.0, "claude-code", &[], BUDGET);
-        assert_eq!(paths_of(&warnings), vec!["~/.claude".to_string()]);
+        assert_eq!(named_paths(&warnings), vec!["~/.claude".to_string()]);
         assert_eq!(
             size_of(&warnings[0]),
             None,
@@ -421,7 +417,7 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
         let warnings = kept_data(&home.0, "ollama", &[], BUDGET);
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert_eq!(paths_of(&warnings), vec!["~/.ollama/models".to_string()]);
+        assert_eq!(named_paths(&warnings), vec!["~/.ollama/models".to_string()]);
         assert_eq!(size_of(&warnings[0]), None);
     }
 
@@ -434,7 +430,7 @@ mod tests {
         )
         .unwrap();
         let warnings = kept_data(&home.0, "ollama", &[], BUDGET);
-        assert_eq!(paths_of(&warnings), vec!["~/.ollama/models".to_string()]);
+        assert_eq!(named_paths(&warnings), vec!["~/.ollama/models".to_string()]);
         assert_eq!(size_of(&warnings[0]), None);
     }
 
@@ -458,7 +454,7 @@ mod tests {
         .unwrap();
         for (family, path) in [("claude-code", "~/.claude"), ("codex", "~/.codex")] {
             let warnings = kept_data(&home.0, family, &[], BUDGET);
-            assert_eq!(paths_of(&warnings), vec![path.to_string()], "{family}");
+            assert_eq!(named_paths(&warnings), vec![path.to_string()], "{family}");
             assert_eq!(size_of(&warnings[0]), None, "{path} is named, never walked");
         }
     }
@@ -486,7 +482,7 @@ mod tests {
             &named_paths(&standalone[..1]),
             BUDGET,
         );
-        assert_eq!(paths_of(&warnings), vec!["~/.claude.json".to_string()]);
+        assert_eq!(named_paths(&warnings), vec!["~/.claude.json".to_string()]);
     }
 
     #[test]
@@ -577,7 +573,7 @@ mod tests {
         home.file(".config/opencode/opencode.json", 1_000);
         let warnings = kept_data(&home.0, "opencode", &[], BUDGET);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec![
                 "~/.local/share/opencode".to_string(),
                 "~/.config/opencode".to_string()
@@ -588,7 +584,7 @@ mod tests {
         home.file(".local/share/opencode/log/x.log", 500);
         let warnings = kept_data(&home.0, "opencode", &[], BUDGET);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec!["~/.local/share/opencode".to_string()]
         );
     }
@@ -876,7 +872,7 @@ mod tests {
         // No model settings or metadata file: no line for them.
         let warnings = kept_data(&home.0, "aider", &[], BUDGET);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec!["~/.aider".to_string(), "~/.aider.conf.yml".to_string()]
         );
         assert!(size_of(&warnings[0]).unwrap().bytes >= 50_300);
@@ -890,7 +886,7 @@ mod tests {
         home.file(".kimi-code/sessions/wd_a/s1/state.json", 3_000);
         home.file(".kimi/config.json", 400);
         assert_eq!(
-            paths_of(&kept_data(&home.0, "kimi-code", &[], BUDGET)),
+            named_paths(&kept_data(&home.0, "kimi-code", &[], BUDGET)),
             vec!["~/.kimi-code".to_string(), "~/.kimi".to_string()]
         );
     }
@@ -904,7 +900,7 @@ mod tests {
         home.file(".cursor/cli-config.json", 700);
         let warnings = kept_data(&home.0, "cursor-cli", &[], BUDGET);
         assert_eq!(
-            paths_of(&warnings),
+            named_paths(&warnings),
             vec!["~/.cursor/cli-config.json".to_string()]
         );
         let bytes = size_of(&warnings[0]).unwrap().bytes;
