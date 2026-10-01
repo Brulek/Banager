@@ -492,7 +492,7 @@
     },
     "opencode": {
       "updatesItselfDetail": "By default, {{source}} downloads new versions itself when it starts. Its updates aren't checked or installed here.",
-      "versionNotRead": "{{source}}'s install script leaves no file that names its version, and it isn't run here, so its version isn't known.",
+      "versionNotRead": "{{source}}'s install script leaves no file that names its version, and {{source}} isn't run here to ask, so its version isn't known.",
       "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
     }
   },

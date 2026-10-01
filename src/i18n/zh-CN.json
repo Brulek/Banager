@@ -451,7 +451,7 @@
     },
     "opencode": {
       "updatesItselfDetail": "{{source}}默认会在启动时自己下载新版本。这里不检查也不安装它的更新。",
-      "versionNotRead": "{{source}}的安装脚本没有留下写着版本的文件，这里也不运行它，所以不知道它的版本。",
+      "versionNotRead": "{{source}}的安装脚本没有留下写着版本的文件，这里也不运行{{source}}去查询，所以不知道它的版本。",
       "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
     }
   },

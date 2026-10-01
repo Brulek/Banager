@@ -154,7 +154,7 @@ describe("InstalledPage, opencode's own install", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "opencode's install script leaves no file that names its version, and it isn't run here, so its version isn't known.",
+        "opencode's install script leaves no file that names its version, and opencode isn't run here to ask, so its version isn't known.",
       ),
     ).toBeInTheDocument();
     fireEvent.click(within(status).getByRole("button", { name: "Details: Manual uninstall" }));
