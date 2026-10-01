@@ -2811,7 +2811,11 @@ error. Nothing is ever sent by any method but `GET`.
 
 Three things are outside that client and worth saying out loud. The
 window itself cannot make a network request: its content security policy
-is `connect-src 'self'` (`src-tauri/tauri.conf.json`). The Tauri opener
+is `connect-src 'self'` (`src-tauri/tauri.conf.json`), and a navigation
+to another address, which that policy does not stop, is refused
+(`src-tauri/src/navigation.rs`: the window loads Banager's own page,
+`tauri://localhost`, and in a development build the Vite server on
+`localhost`, and no other address). The Tauri opener
 plugin — the one that opens a URL or a path in another application — is
 registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
 call none of its commands: `src-tauri/capabilities/default.json` gives it

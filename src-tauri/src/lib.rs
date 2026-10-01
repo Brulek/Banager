@@ -3,6 +3,7 @@ pub mod events;
 mod history;
 mod ipc;
 mod menu;
+mod navigation;
 mod notify;
 mod notify_ops;
 mod quit;
@@ -36,6 +37,8 @@ pub fn run() {
     println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
 
     tauri::Builder::default()
+        // The window never leaves Banager's own page (navigation.rs).
+        .plugin(navigation::stay_on_the_page())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // The update notification's plugin (notify.rs): asked for

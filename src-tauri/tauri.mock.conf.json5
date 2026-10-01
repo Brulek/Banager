@@ -13,8 +13,8 @@
 //   the one module that talks to the backend, talks to the mock: no
 //   command reaches src-tauri/src/ipc.rs. Nor does the page badge the
 //   Dock icon: `@tauri-apps/api/window` is src/dev/mockTauriWindow.ts. Nor
-//   does the Unknown page's Show in Finder reach Finder:
-//   `@tauri-apps/plugin-opener` is src/dev/mockTauriOpener.ts.
+//   does the Unknown page's Show in Finder reach Finder: the mock
+//   backend's `reveal_in_finder` (src/dev/mockBackend.ts) shows nothing.
 // - The Rust side starts nothing by itself. `run()` in
 //   src-tauri/src/lib.rs builds `AppState` (it reads settings.json and
 //   runs nothing) and spawns `ipc::refresh_on_background_change`, which

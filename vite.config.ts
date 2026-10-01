@@ -21,9 +21,8 @@ const APP_VERSION: string = JSON.parse(
 // mock backend and no Tauri, for screenshots (docs/ui-preview.md). Only
 // that mode aliases "@tauri-apps/api/core" to src/dev/mockTauri.ts,
 // "@tauri-apps/api/event" to src/dev/mockTauriEvent.ts,
-// "@tauri-apps/api/window" to src/dev/mockTauriWindow.ts and
-// "@tauri-apps/plugin-opener" to src/dev/mockTauriOpener.ts, and serves on
-// its own port; every other mode -- `pnpm dev` under `pnpm tauri dev`,
+// "@tauri-apps/api/window" to src/dev/mockTauriWindow.ts, and serves on its
+// own port; every other mode -- `pnpm dev` under `pnpm tauri dev`,
 // `pnpm build` under `pnpm tauri build`, vitest's `test` -- resolves
 // exactly the config it did before the mode existed.
 const MOCK_MODE = "mock";
