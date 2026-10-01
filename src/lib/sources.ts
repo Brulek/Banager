@@ -543,7 +543,7 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
  * path with a space in it still pastes as one argument.
  */
 export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undefined): string {
-  const adapterId = instance?.adapter_id ?? key.instance_id.split(":")[0];
+  const adapterId = instance?.adapter_id ?? adapterIdOf(key.instance_id);
   // The bare program name only for an instance the snapshot does not
   // have, which `UpdateBlockedCopy.command`'s doc says cannot happen.
   if (adapterId === "pipx") {

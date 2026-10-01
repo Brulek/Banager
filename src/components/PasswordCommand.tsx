@@ -4,6 +4,7 @@ import { outcomeCause } from "../lib/failureCause";
 import type { OpSummary } from "../lib/types";
 import { commandText } from "./CommandPreview";
 import { displayToken } from "../lib/format";
+import { adapterIdOf } from "../lib/sources";
 import { BUTTON } from "./ui/controls";
 
 /**
@@ -67,7 +68,7 @@ function unbrokenTokens(tokens: string[]) {
  */
 function fromHomebrew(op: OpSummary): boolean {
   const program = op.argv_preview[0] ?? "";
-  return op.instance_id.split(":")[0] === "brew" && program.split("/").pop() === "brew";
+  return adapterIdOf(op.instance_id) === "brew" && program.split("/").pop() === "brew";
 }
 
 /**

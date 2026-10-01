@@ -1,6 +1,7 @@
 import { formatBytes } from "./format";
 import type { InstalledArtifact, Measured, Sizes } from "./types";
 import { artifactKeyId } from "../store/ui";
+import { adapterIdOf } from "./sources";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 export type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -71,7 +72,7 @@ export function sizeText(t: Translate, measured: Measured): string {
  *   which count in full.
  */
 export function sizeNoteOf(artifact: InstalledArtifact): "sizes.programOnly" | "sizes.sharedWithCache" | null {
-  const adapterId = artifact.key.instance_id.split(":")[0];
+  const adapterId = adapterIdOf(artifact.key.instance_id);
   if (adapterId === "cargo" || adapterId.startsWith("standalone-")) return "sizes.programOnly";
   if (adapterId === "uv") return "sizes.sharedWithCache";
   return null;

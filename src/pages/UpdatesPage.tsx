@@ -1033,7 +1033,7 @@ export function UpdatesPage() {
     const status = retry ? outcome : word === undefined ? undefined : <StatusChip {...word} />;
     // The same, in words, for the row's name.
     const statusText = retry && progress !== null ? progressWord(t, progress) : word?.label;
-    const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
+    const adapterId = instance?.adapter_id ?? adapterIdOf(candidate.key.instance_id);
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     const column = updateVersionColumn(t, candidate);
     const action =
