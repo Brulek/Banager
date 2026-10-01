@@ -7,7 +7,9 @@
 //! and shows each entry, the three Homebrew flags the file promises are
 //! never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
-//! enforces, the one thing the allowlist refuses that a reader would not
+//! enforces, the section on which copy a command runs with the two
+//! `CommandBudget::default()` enforces, the folders it reads and the words
+//! that it runs no command, the one thing the allowlist refuses that a reader would not
 //! expect (an `https://` `OLLAMA_HOST`), every path each path-list
 //! uninstall (Claude Code's, Antigravity CLI's, Grok Build's) moves or
 //! keeps with that uninstall's time budget, and the never-list's promise
@@ -50,6 +52,7 @@ use banager_core::adapters::standalone::recipes::RECIPES;
 use banager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
 use banager_core::adapters::standalone::route::shadow_note;
 use banager_core::adapters::AdapterMeta;
+use banager_core::commands::CommandBudget;
 use banager_core::events::VecSink;
 use banager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
 use banager_core::http::HttpError;
@@ -357,6 +360,50 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
             "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
         );
     }
+}
+
+#[test]
+fn test_what_we_run_has_the_command_check_section_with_its_folders_and_both_of_its_limits() {
+    let doc = read_doc();
+    // Not a registered source either: `commands` reads folders after each
+    // refresh's inventories, and the per-source test never asks for it.
+    let body = section_body(&doc, "Which copy a command runs").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Which copy a command runs` section for commands.rs")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let budget = CommandBudget::default();
+    for limit in [
+        format!("{} entries", budget.max_entries),
+        format!("{} seconds", budget.max_duration.as_secs()),
+    ] {
+        assert!(
+            folded.contains(&limit),
+            "the `## Which copy a command runs` section of docs/what-we-run.md does not state the limit {limit:?}, which CommandBudget::default() enforces"
+        );
+    }
+    // What it reads, that it runs nothing, and the one flag that turns
+    // its verdicts off.
+    for phrase in [
+        "every `PATH` folder",
+        "`bin` and `sbin` folders of every Homebrew prefix",
+        "`bin` folder of every npm prefix",
+        "runs no command",
+        "Nothing's contents are read",
+        "`Session::note_login_path`",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## Which copy a command runs` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+    // And the list of files Banager reads names it too.
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        reads.contains("Which copy a command runs, at every refresh"),
+        "`## Files Banager reads` does not list what the command check reads"
+    );
 }
 
 #[test]

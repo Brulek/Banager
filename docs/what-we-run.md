@@ -15,8 +15,10 @@ variables in `CargoAdapter::ENV` and shows each one, the three Homebrew
 flags this file promises are never passed, that pip's section shows the
 `xcode-select -p` it asks before running an interpreter in `/usr/bin` and
 says one with no developer tools behind it is skipped, that the
-unknown-source scan's section states the two limits the code enforces,
-that the sections of the three tools uninstalled by moving files to the
+unknown-source scan's section and the section on which copy a command
+runs each state the two limits the code enforces, that the latter says
+it runs no command and which folders it reads, that the sections of the
+three tools uninstalled by moving files to the
 Trash (Claude Code, Antigravity CLI, Grok Build) name every path those
 uninstalls move or keep and their time budget, and the never-list every
 path of settings or state they keep, that Grok Build's section shows the
@@ -1787,6 +1789,41 @@ plugin and no other (Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
 
+## Which copy a command runs: read-only, no command runs
+
+A tool's details on the Installed page say, for each command it puts on
+the Mac, what typing that name in Terminal runs: this copy, another file
+that comes first on `PATH`, or nothing of this copy's because the folder
+its command is in is not on `PATH` (`ArtifactFacts.commands`). Working
+that out runs no command. Every refresh does it after the sources'
+inventories (`commands::start_reading` and `commands::finish` in
+`crates/banager-core/src/commands.rs`, called from `Session::refresh`),
+on a background thread, and reads:
+
+| It looks at | How |
+|---|---|
+| every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | `realpath` of the folder, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or cannot be read (`read_folders`) |
+| each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | `realpath`: which formula's folder in `Cellar`, or which package's in `lib/node_modules`, it leads into |
+| each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | `realpath`: whether it leads into that tool's own folder; `stat`: whether it is a file with an execute bit |
+| in each `PATH` folder, the entry of each name some tool provides | `stat` (a file with an execute bit) and `realpath` (where it leads), in `PATH`'s order |
+
+Nothing's contents are read, nothing found is run or changed, and no
+lock is taken. Each of the two halves stops after 20000 entries or 5
+seconds (`CommandBudget::default`), and that refresh then says nothing
+about which copy runs; a read that has not come back a second after that
+is no longer waited for, and no new one starts while it is still running.
+The answer is judged against the `PATH` Banager has: the login shell's,
+restored at launch (How Banager runs anything, above). When restoring it
+failed, the shell says so (`Session::note_login_path` in `run()`,
+`src-tauri/src/lib.rs`) and nothing is said about which copy runs. An
+alias, a shell function, or a `PATH` that only a new terminal window or
+an editor's terminal sets is not seen, and the details say so. Nothing
+is said about a Homebrew formula that is keg-only (Homebrew keeps it off
+`PATH` on purpose) or was installed as a dependency. The folder of a
+command Terminal cannot find can be copied (*Copy Path*, in
+`CommandsGroup` in `src/components/CommandFacts.tsx`, through
+`useCopyCommand`), `~` and all; nothing edits a shell file.
+
 ## App icons: read through macOS, no command runs
 
 The window asks for the icon of the app a Homebrew cask installed, the
@@ -1928,6 +1965,11 @@ All read-only, none saved anywhere else, none uploaded:
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents. A row's Show in Finder: where the path it shows
   leads (`realpath`), and nothing else (Unknown-source scan, above).
+- Which copy a command runs, at every refresh: the names in each `PATH`
+  folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
+  `sbin`), one level deep, and where each entry a command could be leads
+  and whether it can run (`realpath`, `stat`) — never a file's contents
+  (Which copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 - Banager's own `.window-state.json` beside it, once, as the window opens:
