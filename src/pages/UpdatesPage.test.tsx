@@ -3341,6 +3341,48 @@ describe("UpdatesPage", () => {
       });
     });
 
+    it("keeps an update this window saw hidden after a kept Clear, when the web view has reloaded since", async () => {
+      // A reload forgets `clearedJustUpdated`; the backend still lists
+      // op 7, and the history says Clear came after it finished.
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const answer = mockInvoke.getMockImplementation()!;
+      const history: HistoryView = {
+        run: "this-launch",
+        cleared_before: Date.now() - 1_000,
+        records: [
+          {
+            run: "this-launch",
+            op_id: 7,
+            finished_at: Date.now() - 2_000,
+            key: glibKey,
+            display_name: "glib",
+            adapter_id: "brew",
+            kind: "Update",
+            from_version: "2.88.3",
+            to_version: "2.90.0",
+            result: "Succeeded",
+            verified: true,
+          },
+        ],
+      };
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "get_history" ? Promise.resolve(history) : answer(cmd, args),
+      );
+      renderPage();
+
+      // The page has its rows and the history its answer; then nothing
+      // is listed, and stays so.
+      await screen.findByText("OnyX");
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_history"));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(justUpdated()).toBeNull();
+    });
+
     it("calls itself 刚更新的 in Chinese, with 清除 and 已更新", () => {
       expect(zhCN.updates.justUpdated.title).toBe("最近更新");
       expect(zhCN.updates.justUpdated.clear).toBe("清除");

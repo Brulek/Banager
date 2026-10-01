@@ -19,7 +19,7 @@ import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
-import { recentUpdates, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { clearedHere, recentUpdates, useClearHistory, useHistory, verifiedHere } from "../lib/history";
 import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
@@ -488,7 +488,9 @@ export function UpdatesPage() {
       cleared: clearedJustUpdated,
       finishedAt: opFinishedAt,
     });
-    const here = ops.map((op): JustUpdatedEntry => {
+    // And nothing a kept Clear came after, should the web view have
+    // reloaded since and forgotten `clearedJustUpdated`.
+    const here = ops.filter((op) => !clearedHere(history, op.id)).map((op): JustUpdatedEntry => {
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
       const installed = artifactsById.get(artifactKeyId(key))?.version;

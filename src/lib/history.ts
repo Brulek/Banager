@@ -38,6 +38,9 @@ export function useClearHistory(): UseMutationResult<HistoryView, Error, void> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: clearHistory,
+    // A Clear that did not reach the backend would come back after a
+    // restart: try it again before giving up.
+    retry: 2,
     onSuccess: (view) => {
       if (view) queryClient.setQueryData(queryKeys.history, view);
       else queryClient.invalidateQueries({ queryKey: queryKeys.history });
@@ -76,6 +79,20 @@ export function recentUpdates(view: HistoryView, operations: readonly OpSummary[
     )
     .map(([, record]) => record)
     .sort((a, b) => b.finished_at - a.finished_at);
+}
+
+/**
+ * Whether the page's Clear, as the history keeps it (`cleared_before`),
+ * came after an operation this window ran finished: its record of this
+ * launch says when. The window's own note of what Clear took off
+ * (`clearedJustUpdated`) lives only as long as the web view, which can
+ * reload while Banager runs on; this does not. False until the history
+ * has the record.
+ */
+export function clearedHere(view: HistoryView, opId: number): boolean {
+  const cleared = view.cleared_before;
+  if (cleared === null) return false;
+  return view.records.some((record) => record.run === view.run && record.op_id === opId && record.finished_at <= cleared);
 }
 
 /**

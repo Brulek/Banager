@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { failureCause, type FailureCause } from "./failureCause";
-import { RECENT_DAYS, recentUpdates, verifiedHere } from "./history";
+import { RECENT_DAYS, clearedHere, recentUpdates, verifiedHere } from "./history";
 import type { HistoryRecord, HistoryView, OpSummary } from "./types";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -131,5 +131,21 @@ describe("recentUpdates", () => {
     expect(verifiedHere(history, 7)).toBe(true);
     expect(verifiedHere(history, 8)).toBe(false);
     expect(verifiedHere(history, 9)).toBe(false);
+  });
+
+  it("finds whether a kept Clear came after this launch's operation finished, by its record", () => {
+    const records = [
+      record("cmake", { run: "now", op_id: 7, finished_at: NOW - 2_000 }),
+      record("git", { run: "now", op_id: 8, finished_at: NOW }),
+      record("jq", { run: "earlier", op_id: 9, finished_at: NOW - 2_000 }),
+    ];
+    const cleared = view(records, { cleared_before: NOW - 1_000 });
+    expect(clearedHere(cleared, 7)).toBe(true);
+    expect(clearedHere(cleared, 8)).toBe(false);
+    // Another launch's op 9 is not this window's op 9.
+    expect(clearedHere(cleared, 9)).toBe(false);
+    // No record yet, or never cleared: not hidden by this.
+    expect(clearedHere(cleared, 10)).toBe(false);
+    expect(clearedHere(view(records), 7)).toBe(false);
   });
 });
