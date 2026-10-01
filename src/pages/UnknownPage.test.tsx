@@ -207,7 +207,12 @@ describe("UnknownPage", () => {
     expect(helper.querySelector("[data-status]")).toBeNull();
     // Only what can be confirmed: the file is not the user's.
     expect(tooltipOf(helper)).toEqual(["Part of Helper", "Owned by the system or another account"]);
-    expect(within(helper).getByText("Part of Helper, Owned by the system or another account")).toHaveClass("sr-only");
+    // In sight after the path, the app it leads into and its owner; the
+    // avatar tells a screen reader only what the line does not say.
+    expect(within(helper).getByText("Points into Helper.app · Owned by the system or another account")).not.toHaveClass(
+      "sr-only",
+    );
+    expect(within(helper).getByText("Part of Helper")).toHaveClass("sr-only");
   });
 
   it("starts every row's name and path at one x: no status column on any row, the ⓘ only after a broken link's word", async () => {
@@ -895,7 +900,10 @@ describe("in a narrow window (R9)", () => {
     }
     expect(queryByText("Points into Removed.app")).toBeNull();
     expect(queryByText("Points into Helper.app")).toBeNull();
-    expect(tooltipOf(rowOf(await findByText("helper-cli")))).toContain("Part of Helper");
+    const helper = rowOf(await findByText("helper-cli"));
+    expect(tooltipOf(helper)).toContain("Part of Helper");
+    // Its owner leaves the line too: the avatar says both to a screen reader.
+    expect(within(helper).getByText("Part of Helper, Owned by the system or another account")).toHaveClass("sr-only");
     // Said at more length behind the ⓘ, as before.
     fireEvent.click(word);
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
@@ -942,7 +950,7 @@ describe("the app a link points into", () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
     const helper = rowOf(await findByText("helper-cli"));
-    const note = within(helper).getByText("Points into Helper.app");
+    const note = within(helper).getByText("Points into Helper.app · Owned by the system or another account");
     const path = within(helper).getByText("/usr/local/bin/helper-cli");
     // One line, the path first; only the path selects.
     expect(note.closest("p")).toBe(path.closest("p"));
@@ -992,14 +1000,18 @@ describe("the app a link points into", () => {
     expect(queryByText(/^Points into/)).toBeNull();
     // Its tooltip still says whose part it is.
     expect(tooltipOf(kit)).toEqual(["Part of Kit"]);
-    expect(getByText("kit-helper")).toBeInTheDocument();
+    // And its line, in sight: whose part it is, as the link's that leads out.
+    expect(within(kit).getByText("Part of Kit")).not.toHaveClass("sr-only");
+    expect(within(rowOf(getByText("kit-helper"))).getByText("Part of Kit")).not.toHaveClass("sr-only");
   });
 
   it("says 指向 in Chinese, as its ⓘ does of where a link leads", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, getByText } = renderWithProviders(<UnknownPage />);
-      expect(within(rowOf(await findByText("helper-cli"))).getByText("指向Helper.app")).toBeInTheDocument();
+      expect(
+        within(rowOf(await findByText("helper-cli"))).getByText("指向Helper.app · 属于系统或其他账户"),
+      ).toBeInTheDocument();
       expect(within(rowOf(getByText("old-script"))).getByText("指向Removed.app")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

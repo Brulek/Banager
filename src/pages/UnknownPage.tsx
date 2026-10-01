@@ -161,6 +161,26 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
 }
 
 /**
+ * What the row's line says after its path, in sight, in the secondary
+ * text a link's 「指向Docker.app」 already had (`ToolRow`'s
+ * `descriptionNote`): the app it belongs to -- a link by where it leads
+ * (`linkedApp`), a program inside an app by whose part it is -- and that
+ * another account owns it, 「属于系统或其他账户」, a dot between them.
+ * Nothing for a program of the user's own that is none of these. The
+ * longer facts -- what a broken link pointed at, why a protected one was
+ * not followed, where a link leads -- stay behind the word's ⓘ or in the
+ * tooltip (`factsOf`).
+ */
+function noteFactsOf(entry: UnknownEntry, t: Translate): string[] {
+  const notes: string[] = [];
+  const app = linkedApp(entry);
+  if (app !== null) notes.push(t("unknown.pointsInto", { app }));
+  else if (entry.app_bundle !== null) notes.push(t("unknown.partOfApp", { app: entry.app_bundle }));
+  if (!entry.owned_by_me) notes.push(t("unknown.adminOwned"));
+  return notes;
+}
+
+/**
  * The app a link leads into, by its folder's name -- "Docker.app" -- for
  * the row's line under its name: "Points into Docker.app", which its
  * tooltip (a broken link's ⓘ) says at more length. Only for a link, and
@@ -263,8 +283,8 @@ export function ScanAgain() {
 /**
  * The command-line programs on this Mac that no source accounts for, as
  * rows like every other list's (spec §3.3): a neutral avatar, the name
- * with the path it was found at -- and, after it, the app a link points
- * into -- its size and its date in two columns where a tool's version
+ * with the path it was found at -- and, after it, the app it belongs to and
+ * whether another account owns it (`noteFactsOf`) -- its size and its date in two columns where a tool's version
  * would be, headed 「大小」 and 「修改日期」 as Finder heads them
  * (`ColumnHeads`), or, for a broken link, its status word there with an ⓘ; what
  * more there is to say of any other row in its tooltip (`factsOf`); and a
@@ -442,7 +462,9 @@ export function UnknownPage() {
                 <StatusColumnProvider value={false}>
                   {result.entries.map((entry) => {
                     const name = fileName(entry.path);
-                    const app = linkedApp(entry);
+                    // In sight after the path where the row has room; else
+                    // its tooltip says them with the rest.
+                    const notes = roomForNote ? noteFactsOf(entry, t) : [];
                     const facts = factsOf(entry, t, technical);
                     const statusKey = STATUS_KEYS[entry.kind];
                     // A broken link's word, its facts behind its ⓘ. Any other
@@ -464,7 +486,11 @@ export function UnknownPage() {
                           }
                         />
                       );
+                    // What the line says in sight is not said again to a
+                    // screen reader by the avatar (`ProgramAvatar`); the
+                    // pointer's tooltip keeps every fact.
                     const tooltip = status === undefined ? facts : [];
+                    const unseen = tooltip.filter((fact) => !notes.includes(fact));
                     return (
                       // A slot of its own, as a virtualized list's rows have:
                       // a stacking context each, and the one with an open ⓘ
@@ -477,12 +503,12 @@ export function UnknownPage() {
                         className="relative z-0"
                       >
                         <ToolRow
-                          avatar={<ProgramAvatar facts={tooltip.join(t("common.listSeparator"))} />}
+                          avatar={<ProgramAvatar facts={unseen.join(t("common.listSeparator"))} />}
                           name={name}
                           // Home abbreviated as Rust sent it (`UnknownEntry.path`).
                           description={entry.path}
                           selectableDescription
-                          descriptionNote={app === null || !roomForNote ? undefined : t("unknown.pointsInto", { app })}
+                          descriptionNote={notes.length === 0 ? undefined : notes.join(" · ")}
                           version={<SizeAndDate entry={entry} language={i18n.language} status={status} />}
                           menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                         />
