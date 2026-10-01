@@ -2475,7 +2475,9 @@ or uv's tools need it when their environment's `bin/python` leads into
 it. A source with no such tool is not named: a Node.js with only its own
 npm left can be uninstalled. A `node@22` that is keg-only and not linked
 is nobody's `node`: nothing Banager runs leads into it, and nothing is
-said of it.
+said of it. An Ollama whose `OLLAMA_HOST` names another machine is not
+looked at: its models are kept and run there, and the `ollama` on this
+Mac is only a client.
 
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --
@@ -2489,8 +2491,9 @@ How: read-only, as the command check is (Which copy a command runs,
 above): each path is followed one step at a time (`protected::resolve`:
 `lstat` and `readlink`, each asked of the folder before it, held open),
 and never into the places macOS asks about first nor onto another disk --
-the same places the command check never reads. No file is opened, nothing
-is written, and no command runs. At most 2,000 paths and 1 second for one
+the same places the command check never reads. Only folders are opened,
+to follow each link: no file's contents are read, nothing is written, and
+no command runs. At most 2,000 paths and 1 second for one
 preview (`needed_by::BUDGET`), and the preview waits one second more at
 most for a step that does not answer at all (a folder on a disk that
 stopped answering), then goes on without it; a look that did not finish
