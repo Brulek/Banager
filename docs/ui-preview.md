@@ -142,20 +142,24 @@ Paths are under a generic home folder, `/Users/you`.
   font and the cask with no app have none.
 - **npm**: 4 global packages, one update. **pipx**: 2 tools, one update.
   **uv**: 2 tools, but uv did not answer, so its rows and its one update
-  are last time's. **pip**: read-only, 5 packages, one update listed.
+  are last time's. **pip**: read-only, 5 packages, one update listed; its
+  page says why over the list, where other pages have 「全选」.
   **Cargo**: one crate from crates.io with an update that compiles
   locally, one installed from git that can never be checked. **Ollama**:
   two models, one with a new version from a third-party registry.
 - **Tools with their own installer**: Claude Code (updates itself, and has
   an update), rustup (an update that cannot be cancelled once it starts),
   Antigravity CLI (a newer version it can only install itself), Grok
-  Build (an update, and a notice that it is not on the PATH) and Codex,
+  Build (an update, a notice that it is not on the PATH, and
+  「终端里找不到」 on its Installed row) and Codex,
   installed by its own script and listed only, beside npm's @openai/codex.
 - **Other Programs page**: six programs no source accounts for -- two plain
   files, two links an installer with administrator rights put there (one
   into an app), a broken link to an app that was deleted, and a link into
   `~/Documents` (`notes-cli`) that is listed by its own name and not
-  followed. Under the list, a line says two folders were left unread
+  followed. A row's line names, after its path, the app it belongs to
+  and 「属于系统或其他账户」 where another account owns it (aws, docker).
+  Under the list, a line says two folders were left unread
   because they are in protected places; with Show technical details on,
   its ⓘ names them.
 
