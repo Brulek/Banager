@@ -124,6 +124,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
+  const setQuery = useUiStore((s) => s.setQuery);
   const linesId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   // Set by the fold's own button, and only by it: the lines folding up
@@ -169,7 +170,15 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       case "checkAgain":
         return { label, onClick: checkAgain, disabled: checking };
       case "showList":
-        return { label, onClick: () => setInstalledShow(action.show) };
+        // The count over the list is search aside, so the search goes too,
+        // as `openInstalled` lets it go: what 查看 lists is what it said.
+        return {
+          label,
+          onClick: () => {
+            setQuery("");
+            setInstalledShow(action.show);
+          },
+        };
     }
   };
 

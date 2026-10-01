@@ -293,6 +293,18 @@ describe("the lines over 所有工具 that point at them", () => {
     expect(screen.queryByText("2 tools can't be found in Terminal")).not.toBeInTheDocument();
   });
 
+  it("lets the search go when its Show is pressed, as the count was search aside", async () => {
+    artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "wget" } });
+    await waitFor(() => expect(rowNames()).toEqual(["wget"]));
+    expect(noticeLines()).toEqual([expect.stringContaining("2 tools can't be found in Terminal")]);
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
+    expect(useUiStore.getState().query).toBe("");
+  });
+
   it("shows what Homebrew disabled or deprecated when that one's Show is pressed", async () => {
     artifacts = fullWorld().filter((a) => a.key.instance_id === BREW);
     renderInstalled();
