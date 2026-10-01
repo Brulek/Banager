@@ -93,8 +93,8 @@ Ollama button is pressed, and at the start of every Other Programs scan,
 (`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Banager's
 environment and the effective user id from the process. Homebrew's
-install, uninstall and upgrade previews read four more, to find its
-`brew.env` files, and uv's inventory and uninstall preview read
+install, uninstall and upgrade previews read six more, four to find its
+`brew.env` files and two Homebrew reads from them as well, and uv's inventory and uninstall preview read
 `UV_TOOL_DIR` (their sections). Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name, or a link that
@@ -578,7 +578,9 @@ Banager's environment or one of the first two files sets that, else
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` is set once that file has been read.
 To find them it reads `HOME`, `XDG_CONFIG_HOME`,
 `HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
-Banager's environment (`env_var_fn`, per preview). A file's lines count as
+Banager's environment (`env_var_fn`, per preview), and it follows
+`HOMEBREW_NO_CLEANUP_FORMULAE` and `HOMEBREW_NO_REQUIRE_TAP_TRUST` there
+and in the files too. A file's lines count as
 bash reads them: the last line to set a variable wins, and a last line
 with no newline after it is not read. Homebrew counts
 `HOMEBREW_NO_AUTOREMOVE` as unset when it is empty, only whitespace, or
@@ -595,7 +597,16 @@ downloads, and, when its periodic clean-up is due, those of all Homebrew
 software (`Warning::HomebrewPeriodicCleanup`); when they
 leave both variables unset, the next line adds that the periodic clean-up
 also removes those packages (`Warning::HomebrewCleanupAutoremoves`).
-Banager changes nothing in those files.
+After those lines, when `HOMEBREW_NO_CLEANUP_FORMULAE` names a formula —
+split at each comma as Homebrew splits it, nothing trimmed — one more line
+names what it lists and says what Homebrew leaves out for them
+(`Warning::HomebrewNoCleanupFormulae`; Homebrew 7.0.7-9,
+`Cleanup.skip_clean_formula?`, `cleanup.rb:409-415`, by name or alias):
+their older versions, which neither the clean-up after an install or
+upgrade (`cleanup.rb:339-346`) nor the periodic one (`:453-454`) deletes,
+and, where the autoremove is back, they and the formulae they need at run
+time, which it keeps (`:1051-1055`). Banager changes nothing in those
+files.
 
 **What an uninstall says it removes.** Under the tool, the uninstall
 confirmation says in one sentence what the command removes and what it
@@ -859,8 +870,9 @@ uninstall and upgrade preview also reads the `brew.env` files named above
 once open, and read only when that says it is a regular file of at most
 16 MiB (`read_file::LIMIT`) — otherwise it is skipped as unreadable;
 only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
-`HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME` or
-`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` are used. A cask's uninstall preview
+`HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME`,
+`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, `HOMEBREW_NO_CLEANUP_FORMULAE` or
+`HOMEBREW_NO_REQUIRE_TAP_TRUST` are used. A cask's uninstall preview
 also reads, under `<prefix>/Caskroom/<token>` — the last part of the
 cask's name, and only when that is a folder and not a link
 (`read_recorded`) — the names in its `.metadata` folder and in each folder

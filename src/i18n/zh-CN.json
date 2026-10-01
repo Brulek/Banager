@@ -746,7 +746,12 @@
     "trashPreview_other": "这{{count}}项会移到废纸篓，可以从那里拖回来。",
     "cannotUndo": "此操作无法撤销。",
     "endsCannotUndo": "{{sentence}}此操作无法撤销。",
-    "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
+    "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。",
+    "noCleanupFormulae": {
+      "oldVersions": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不会删除它们的旧版本。",
+      "autoremove": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不会自动删除它们，也不会自动删除它们运行时需要的软件。",
+      "both": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不会删除它们的旧版本，也不会自动删除它们和它们运行时需要的软件。"
+    }
   },
   "runtimeGuard": {
     "program_other": "{{source}}及其{{count}}个工具",

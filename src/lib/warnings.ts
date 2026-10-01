@@ -56,6 +56,19 @@ export const KEPT_WHAT_DETAIL_KEYS: Record<KeptWhat, string | null> = {
 };
 
 /**
+ * The line for what `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out of the
+ * Homebrew lines before it: their older versions (after
+ * `HomebrewPeriodicCleanup`), the autoremove (after `HomebrewAutoremoves`),
+ * or both (after `HomebrewCleanupAutoremoves`). Spelled out, so the
+ * reachability test finds every key.
+ */
+const NO_CLEANUP_FORMULAE_KEYS = {
+  oldVersions: "uninstall.noCleanupFormulae.oldVersions",
+  autoremove: "uninstall.noCleanupFormulae.autoremove",
+  both: "uninstall.noCleanupFormulae.both",
+} as const;
+
+/**
  * The sentence for each source's uninstall: what goes and what stays. A
  * `Record` over `UninstallScope`, so a kind without copy fails `tsc`. Each
  * interpolates `{{name}}`, the row's name, which the uninstall
@@ -263,6 +276,10 @@ export function warningKey(warning: Warning): string | null {
       ? "warnings.leavesShellConfigLine"
       : "warnings.leavesShellConfigLineMaybe";
   }
+  if ("HomebrewNoCleanupFormulae" in warning) {
+    const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
+    return NO_CLEANUP_FORMULAE_KEYS[oldVersions ? (autoremove ? "both" : "oldVersions") : "autoremove"];
+  }
   if ("UninstallScope" in warning) return UNINSTALL_SCOPE_KEYS[warning.UninstallScope.what];
   if ("CaskUninstallStep" in warning) {
     const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
@@ -307,6 +324,10 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     return { count: names.length, names: names.join(separator) };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
+  if ("HomebrewNoCleanupFormulae" in warning) {
+    const names = warning.HomebrewNoCleanupFormulae.names;
+    return { count: names.length, names: names.join(separator) };
+  }
   // Its `{{name}}` is the row's, which only the page has (`warningText`).
   if ("UninstallScope" in warning) return {};
   if ("CaskUninstallStep" in warning) {
@@ -421,6 +442,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "WillTrash" in warning ||
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
+    "HomebrewNoCleanupFormulae" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -465,6 +487,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "HomebrewNoCleanupFormulae" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
@@ -530,6 +553,7 @@ export function deletesForGood(warning: Warning): boolean {
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "HomebrewNoCleanupFormulae" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -644,6 +668,7 @@ export function isCaution(warning: Warning): boolean {
     "WillTrash" in warning ||
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||
+    "HomebrewNoCleanupFormulae" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning
   ) {

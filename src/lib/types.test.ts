@@ -438,6 +438,14 @@ describe("types", () => {
     expect(JSON.stringify([autoremoves, periodicCleanup, cleanupAutoremoves])).toBe(
       '["HomebrewAutoremoves","HomebrewPeriodicCleanup","HomebrewCleanupAutoremoves"]',
     );
+    // Round 5: what HOMEBREW_NO_CLEANUP_FORMULAE leaves out of them.
+    const noCleanup: Warning = {
+      HomebrewNoCleanupFormulae: { names: ["python@3.13"], old_versions: true, autoremove: false },
+    };
+    expect(JSON.stringify(noCleanup)).toBe(
+      '{"HomebrewNoCleanupFormulae":{"names":["python@3.13"],"old_versions":true,"autoremove":false}}',
+    );
+    expect(roundTrip(noCleanup)).toEqual(noCleanup);
 
     // Round 2: an uninstall's sentence about what goes and what stays, and
     // a cask's extra steps. Pinned against the same Rust test.

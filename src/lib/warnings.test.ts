@@ -15,6 +15,7 @@ import {
 import type { CaskStep, KeptWhat, RemoveCheck, UninstallScope, Warning } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import i18n from "../i18n";
 
 /** A stub `t`: returns the key with its interpolations inlined, which is
  *  enough to prove `warningText` looked the right key up with the right
@@ -98,6 +99,33 @@ describe("warningKey", () => {
     );
     expect(warningKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toBe(
       "warnings.leavesShellConfigLineMaybe",
+    );
+  });
+
+  it("says which formulae HOMEBREW_NO_CLEANUP_FORMULAE leaves out, after the lines it leaves them out of", () => {
+    const line = (old_versions: boolean, autoremove: boolean, names = ["python@3.13", "node"]) => {
+      const warning: Warning = { HomebrewNoCleanupFormulae: { names, old_versions, autoremove } };
+      return {
+        en: i18n.getFixedT("en")(warningKey(warning) as string, warningArgs(warning, en.common.listSeparator)),
+        zh: i18n.getFixedT("zh-CN")(warningKey(warning) as string, warningArgs(warning, zhCN.common.listSeparator)),
+        group: warningGroup(warning),
+        caution: isCaution(warning),
+      };
+    };
+    expect(line(true, false)).toEqual({
+      en: "Homebrew leaves out python@3.13, node, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions.",
+      zh: "HOMEBREW_NO_CLEANUP_FORMULAE列出的python@3.13、node除外：Homebrew不会删除它们的旧版本。",
+      group: "note",
+      caution: false,
+    });
+    expect(line(false, true).zh).toBe(
+      "HOMEBREW_NO_CLEANUP_FORMULAE列出的python@3.13、node除外：Homebrew不会自动删除它们，也不会自动删除它们运行时需要的软件。",
+    );
+    expect(line(true, true).en).toBe(
+      "Homebrew leaves out python@3.13, node, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions, or autoremove them or what they need to run.",
+    );
+    expect(line(true, true).zh).toBe(
+      "HOMEBREW_NO_CLEANUP_FORMULAE列出的python@3.13、node除外：Homebrew不会删除它们的旧版本，也不会自动删除它们和它们运行时需要的软件。",
     );
   });
 
@@ -205,6 +233,7 @@ describe("warningKey", () => {
       "HomebrewAutoremoves",
       "HomebrewPeriodicCleanup",
       "HomebrewCleanupAutoremoves",
+      { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
       { UninstallScope: { what: "Pipx" } },
       { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
       { Message: "boom" },
@@ -391,6 +420,7 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewAutoremoves",
   "HomebrewPeriodicCleanup",
   "HomebrewCleanupAutoremoves",
+  { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
@@ -499,7 +529,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(17);
+    expect(notes).toHaveLength(18);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -867,6 +897,7 @@ describe("isCaution", () => {
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
       { WillKeep: { path: "~/.claude.json", what: "Settings" } },
       { AlreadyGone: { path: "~/.grok/downloads" } },
+      { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: false } },
       { UninstallScope: { what: "HomebrewFormula" } },
     ];
     expect(cautions.filter((warning) => !isCaution(warning))).toEqual([]);

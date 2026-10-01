@@ -565,6 +565,8 @@ impl BrewAdapter {
     /// downloads of the package it names, every time, and runs the
     /// periodic cleanup when one is due, which deletes those of every
     /// formula and autoremoves too unless `HOMEBREW_NO_AUTOREMOVE` holds.
+    /// Then, when `HOMEBREW_NO_CLEANUP_FORMULAE` names a formula, what it
+    /// leaves out of those (`Warning::HomebrewNoCleanupFormulae`).
     fn brew_env_warnings(
         &self,
         inst: &ManagerInstance,
@@ -573,13 +575,27 @@ impl BrewAdapter {
     ) -> Vec<Warning> {
         let switches =
             brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn);
+        // What `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out of the lines before
+        // it, when it names any formula.
+        let except = |old_versions: bool, autoremove: bool| {
+            (!switches.no_cleanup_formulae.is_empty()).then(|| Warning::HomebrewNoCleanupFormulae {
+                names: switches.no_cleanup_formulae.clone(),
+                old_versions,
+                autoremove,
+            })
+        };
         match kind {
-            OpKind::Uninstall if !switches.no_autoremove => vec![Warning::HomebrewAutoremoves],
+            OpKind::Uninstall if !switches.no_autoremove => {
+                let mut warnings = vec![Warning::HomebrewAutoremoves];
+                warnings.extend(except(false, true));
+                warnings
+            }
             OpKind::Install | OpKind::Upgrade if !switches.no_install_cleanup => {
                 let mut warnings = vec![Warning::HomebrewPeriodicCleanup];
                 if !switches.no_autoremove {
                     warnings.push(Warning::HomebrewCleanupAutoremoves);
                 }
+                warnings.extend(except(true, !switches.no_autoremove));
                 warnings
             }
             _ => Vec::new(),
@@ -3528,6 +3544,78 @@ mod plan_execute_tests {
                 plan.warnings, expected,
                 "{:?} {}",
                 plan.request.kind, plan.request.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_plan_says_what_homebrew_no_cleanup_formulae_leaves_out_of_the_cleanup_it_names()
+    {
+        // `Cleanup.skip_clean_formula?` (`cleanup.rb:409-415`) keeps the
+        // listed formulae out of every clean-up, and `Cleanup.autoremove`
+        // keeps them and what they need at run time (`:1051-1055`): said
+        // right after the lines it leaves them out of, in the list's order.
+        let names = vec!["python@3.13".to_string(), "node".to_string()];
+        let except = |old_versions, autoremove| Warning::HomebrewNoCleanupFormulae {
+            names: names.clone(),
+            old_versions,
+            autoremove,
+        };
+        type Files = fn(&Path) -> Option<Vec<u8>>;
+        let both: Files = |path| {
+            (path == Path::new("/etc/homebrew/brew.env")).then(|| {
+                b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_AUTOREMOVE=off\nHOMEBREW_NO_CLEANUP_FORMULAE=python@3.13,node\n"
+                    .to_vec()
+            })
+        };
+        let cleanup_only: Files = |path| {
+            (path == Path::new("/etc/homebrew/brew.env")).then(|| {
+                b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_CLEANUP_FORMULAE=python@3.13,node\n"
+                    .to_vec()
+            })
+        };
+        for (files, autoremoves) in [(both, true), (cleanup_only, false)] {
+            let runner = Arc::new(MockRunner::new());
+            let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(files);
+            for plan in every_plan(&runner, &adapter).await {
+                let expected = match (plan.request.kind, autoremoves) {
+                    (OpKind::Uninstall, true) => vec![
+                        scope_of(plan.request.artifact_kind, true),
+                        Warning::HomebrewAutoremoves,
+                        except(false, true),
+                    ],
+                    (OpKind::Uninstall, false) => vec![scope_of(plan.request.artifact_kind, false)],
+                    (_, true) => vec![
+                        Warning::HomebrewPeriodicCleanup,
+                        Warning::HomebrewCleanupAutoremoves,
+                        except(true, true),
+                    ],
+                    (_, false) => vec![Warning::HomebrewPeriodicCleanup, except(true, false)],
+                };
+                assert_eq!(
+                    plan.warnings, expected,
+                    "{:?} {}",
+                    plan.request.kind, plan.request.name
+                );
+            }
+        }
+
+        // With Banager's two variables standing, the list changes nothing:
+        // there is no clean-up for it to leave anything out of.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
+            (path == Path::new("/etc/homebrew/brew.env"))
+                .then(|| b"HOMEBREW_NO_CLEANUP_FORMULAE=python@3.13\n".to_vec())
+        });
+        for plan in every_plan(&runner, &adapter).await {
+            assert!(
+                !plan
+                    .warnings
+                    .iter()
+                    .any(|w| matches!(w, Warning::HomebrewNoCleanupFormulae { .. })),
+                "{:?} {}",
+                plan.request.kind,
+                plan.request.name
             );
         }
     }

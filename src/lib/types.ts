@@ -308,6 +308,14 @@ export type Warning =
   | "HomebrewAutoremoves"
   | "HomebrewPeriodicCleanup"
   | "HomebrewCleanupAutoremoves"
+  /**
+   * The formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names, which the lines
+   * before it leave out: their older versions (`old_versions`, after
+   * `HomebrewPeriodicCleanup`), and they and what they need at run time
+   * from the autoremove (`autoremove`, after `HomebrewAutoremoves` or
+   * `HomebrewCleanupAutoremoves`).
+   */
+  | { HomebrewNoCleanupFormulae: { names: string[]; old_versions: boolean; autoremove: boolean } }
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**

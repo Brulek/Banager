@@ -800,7 +800,12 @@
     "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out.",
     "cannotUndo": "You can't undo this action.",
     "endsCannotUndo": "{{sentence}} You can't undo this action.",
-    "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
+    "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash.",
+    "noCleanupFormulae": {
+      "oldVersions": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions.",
+      "autoremove": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't autoremove them or what they need to run.",
+      "both": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions, or autoremove them or what they need to run."
+    }
   },
   "runtimeGuard": {
     "program_one": "{{source}} with its {{count}} tool",

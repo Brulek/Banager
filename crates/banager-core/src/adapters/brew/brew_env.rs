@@ -56,13 +56,27 @@ const SYSTEM_TAKES_PRIORITY: &str = "HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY";
 
 /// The system-wide file, the first `bin/brew` reads (`bin/brew:153`).
 pub(crate) const SYSTEM_FILE: &str = "/etc/homebrew/brew.env";
+/// The formulae Homebrew neither cleans up nor autoremoves, a
+/// comma-separated list (`env_config.rb:557-560` in Homebrew 7.0.7-9):
+/// `Cleanup.skip_clean_formula?` (`cleanup.rb:409-415`) keeps them out of
+/// the cleanup after an install or upgrade (`:339-346`) and out of the
+/// periodic one (`:453-454`), and `Cleanup.autoremove` keeps them and the
+/// formulae they need at run time (`:1051-1055`).
+pub(crate) const NO_CLEANUP_FORMULAE: &str = "HOMEBREW_NO_CLEANUP_FORMULAE";
+/// Turns tap trust off (`env_config.rb:632-638`, a `boolean: :set`
+/// variable). Otherwise `HOMEBREW_REQUIRE_TAP_TRUST` holds, set or not
+/// (`env_config.rb:686-695`: `default: true`, `disabled_by` this one; the
+/// method `env_config.rb:916-926` builds).
+pub(crate) const NO_REQUIRE_TAP_TRUST: &str = "HOMEBREW_NO_REQUIRE_TAP_TRUST";
 
 /// The variables the replay follows, in `Vars`' order.
-const FOLLOWED: [&str; 4] = [
+const FOLLOWED: [&str; 6] = [
     NO_AUTOREMOVE,
     NO_INSTALL_CLEANUP,
     XDG_CONFIG_FALLBACK,
     SYSTEM_TAKES_PRIORITY,
+    NO_CLEANUP_FORMULAE,
+    NO_REQUIRE_TAP_TRUST,
 ];
 
 /// `Homebrew::EnvConfig`'s `FALSY_VALUES` (`env_config.rb:871`): a
@@ -70,9 +84,9 @@ const FOLLOWED: [&str; 4] = [
 /// set (`env_config.rb:926`).
 const FALSY_VALUES: [&str; 5] = ["false", "no", "off", "nil", "0"];
 
-/// What Homebrew's Ruby makes of the two switches once `bin/brew` has read
-/// the `brew.env` files.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What Homebrew's Ruby makes of the followed variables once `bin/brew`
+/// has read the `brew.env` files.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HomebrewSwitches {
     /// `Homebrew::EnvConfig.no_autoremove?`: false means Homebrew
     /// autoremoves after an uninstall, and in a cleanup.
@@ -81,6 +95,21 @@ pub(crate) struct HomebrewSwitches {
     /// upgrade cleans up after the package it names, and ends in a full
     /// cleanup when one is due.
     pub(crate) no_install_cleanup: bool,
+    /// `HOMEBREW_NO_CLEANUP_FORMULAE` split as `skip_clean_formula?` splits
+    /// it (`no_cleanup_formula.split(",")`, `cleanup.rb:413`): at each
+    /// comma, nothing trimmed, the empty names Ruby's `split` drops at the
+    /// end dropped, and the empty ones it keeps left out too -- no formula
+    /// is named "". Empty when the variable is blank (`.blank?`,
+    /// `cleanup.rb:411`) or not UTF-8, which Ruby's `split` refuses.
+    pub(crate) no_cleanup_formulae: Vec<String>,
+    /// `Homebrew::EnvConfig.require_tap_trust?`: true unless
+    /// `HOMEBREW_NO_REQUIRE_TAP_TRUST` is set to something not blank.
+    pub(crate) require_tap_trust: bool,
+    /// `HOMEBREW_USER_CONFIG_HOME` as `bin/brew` sets it
+    /// (`bin/brew:165-173`), the folder of the user's `brew.env` and of
+    /// Homebrew's trust list (`Homebrew::Trust.trust_file`, `trust.rb:27-42`).
+    /// `None` when `HOME` is unset or empty: `bin/brew` stops then.
+    pub(crate) user_config_home: Option<PathBuf>,
 }
 
 /// What Homebrew will make of `HOMEBREW_NO_AUTOREMOVE` and
@@ -117,8 +146,12 @@ pub(crate) fn after_brew_env(
         &mut vars,
         &concat(prefix.as_os_str(), "/etc/homebrew/brew.env"),
     );
-    if let Some(user_file) = user_file(&vars, banager_var) {
-        export(&mut vars, &user_file);
+    // `HOMEBREW_USER_CONFIG_HOME` is chosen here, once, and no file can
+    // change it afterwards: it is one of the names `bin/brew` keeps for
+    // itself (`BIN_BREW_EXPORTED_VARS`, `bin/brew:117-125`, `:140`).
+    let user_config_home = user_config_home(&vars, banager_var);
+    if let Some(home) = &user_config_home {
+        export(&mut vars, &concat(home.as_os_str(), "/brew.env"));
     }
     if system_takes_priority {
         export(&mut vars, Path::new(SYSTEM_FILE));
@@ -126,23 +159,43 @@ pub(crate) fn after_brew_env(
     HomebrewSwitches {
         no_autoremove: boolean_true(vars.get(NO_AUTOREMOVE)),
         no_install_cleanup: present(vars.get(NO_INSTALL_CLEANUP)),
+        no_cleanup_formulae: comma_list(vars.get(NO_CLEANUP_FORMULAE)),
+        require_tap_trust: !present(vars.get(NO_REQUIRE_TAP_TRUST)),
+        user_config_home,
     }
 }
 
-/// `${HOMEBREW_USER_CONFIG_HOME}/brew.env` as `bin/brew:165-175` builds it,
-/// by joining strings as bash does. `None` when `HOME` is unset or empty
-/// as well: `bin/brew` then stops before it reads any file
-/// (`bin/brew:39-43`), and nothing runs.
-fn user_file(vars: &Vars, banager_var: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+/// `HOMEBREW_USER_CONFIG_HOME` as `bin/brew:165-173` builds it, by joining
+/// strings as bash does. `None` when `HOME` is unset or empty as well:
+/// `bin/brew` then stops before it reads any file (`bin/brew:39-43`), and
+/// nothing runs.
+fn user_config_home(
+    vars: &Vars,
+    banager_var: &dyn Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
     let set = |value: Option<OsString>| value.filter(|v| !v.is_empty());
-    let config_home = if let Some(xdg) = set(banager_var("XDG_CONFIG_HOME")) {
+    Some(if let Some(xdg) = set(banager_var("XDG_CONFIG_HOME")) {
         concat(&xdg, "/homebrew")
     } else if let Some(fallback) = vars.get(XDG_CONFIG_FALLBACK).filter(|v| !v.is_empty()) {
         concat(OsStr::from_bytes(fallback), "/homebrew")
     } else {
         concat(&set(banager_var("HOME"))?, "/.homebrew")
+    })
+}
+
+/// A comma-separated list as `HomebrewSwitches::no_cleanup_formulae` reads
+/// it.
+fn comma_list(value: Option<&[u8]>) -> Vec<String> {
+    if !present(value) {
+        return Vec::new();
+    }
+    let Some(text) = value.and_then(|bytes| std::str::from_utf8(bytes).ok()) else {
+        return Vec::new();
     };
-    Some(concat(config_home.as_os_str(), "/brew.env"))
+    text.split(',')
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// `"${head}${tail}"`, as bash joins them: no separator added or removed.
@@ -154,7 +207,7 @@ fn concat(head: &OsStr, tail: &str) -> PathBuf {
 
 /// The followed variables as `bin/brew` holds them, as bytes: neither a
 /// value in the environment nor one in a file need be UTF-8.
-struct Vars([Option<Vec<u8>>; 4]);
+struct Vars([Option<Vec<u8>>; 6]);
 
 impl Vars {
     /// What `bin/brew` starts from: the plan's own value, which the runner
@@ -328,8 +381,68 @@ mod tests {
             HomebrewSwitches {
                 no_autoremove: true,
                 no_install_cleanup: true,
+                no_cleanup_formulae: Vec::new(),
+                require_tap_trust: true,
+                user_config_home: Some(PathBuf::from("/Users/someone/.homebrew")),
             }
         );
+    }
+
+    #[test]
+    fn test_no_cleanup_formulae_is_split_at_each_comma_as_ruby_splits_it() {
+        let names = |value: &str| {
+            let file = format!("HOMEBREW_NO_CLEANUP_FORMULAE={value}\n");
+            switches(&[(HOME_FILE, &file)], &[]).no_cleanup_formulae
+        };
+        assert_eq!(names("python@3.13,node"), ["python@3.13", "node"]);
+        // Nothing trimmed: " node" names no formula, as in Homebrew.
+        assert_eq!(names("python@3.13, node"), ["python@3.13", " node"]);
+        assert_eq!(names(",wget,,jq,"), ["wget", "jq"]);
+        // Blank: no list at all (`cleanup.rb:411`).
+        assert!(names("").is_empty());
+        assert!(names("   ").is_empty());
+        // From Banager's own environment too, and the files go over it.
+        let from_env = switches(&[], &[("HOMEBREW_NO_CLEANUP_FORMULAE", "wget")]);
+        assert_eq!(from_env.no_cleanup_formulae, ["wget"]);
+        let over = switches(
+            &[(PREFIX_FILE, "HOMEBREW_NO_CLEANUP_FORMULAE=jq\n")],
+            &[("HOMEBREW_NO_CLEANUP_FORMULAE", "wget")],
+        );
+        assert_eq!(over.no_cleanup_formulae, ["jq"]);
+    }
+
+    #[test]
+    fn test_tap_trust_is_required_unless_no_require_tap_trust_is_set() {
+        assert!(switches(&[], &[]).require_tap_trust);
+        // `boolean: :set`: any value not blank, "0" and "false" included.
+        for value in ["1", "0", "false"] {
+            let file = format!("HOMEBREW_NO_REQUIRE_TAP_TRUST={value}\n");
+            assert!(
+                !switches(&[(HOME_FILE, &file)], &[]).require_tap_trust,
+                "{value:?}"
+            );
+        }
+        assert!(
+            switches(&[(HOME_FILE, "HOMEBREW_NO_REQUIRE_TAP_TRUST=\n")], &[]).require_tap_trust
+        );
+        assert!(!switches(&[], &[("HOMEBREW_NO_REQUIRE_TAP_TRUST", "1")]).require_tap_trust);
+    }
+
+    #[test]
+    fn test_the_users_config_folder_is_where_bin_brew_puts_it() {
+        assert_eq!(
+            switches(&[], &[("XDG_CONFIG_HOME", "/Users/someone/.config")]).user_config_home,
+            Some(PathBuf::from("/Users/someone/.config/homebrew"))
+        );
+        assert_eq!(
+            switches(
+                &[(PREFIX_FILE, "HOMEBREW_XDG_CONFIG_HOME=/srv/conf\n")],
+                &[]
+            )
+            .user_config_home,
+            Some(PathBuf::from("/srv/conf/homebrew"))
+        );
+        assert_eq!(switches(&[], &[("HOME", "")]).user_config_home, None);
     }
 
     #[test]

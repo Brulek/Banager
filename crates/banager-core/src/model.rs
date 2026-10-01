@@ -897,6 +897,24 @@ pub enum Warning {
     /// `HomebrewPeriodicCleanup`. Produced by `BrewAdapter::plan` for an
     /// `Install` or an `Upgrade`; same readers.
     HomebrewCleanupAutoremoves,
+    /// What the lines before it say Homebrew deletes leaves out the
+    /// formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names (`names`, as
+    /// `brew_env::HomebrewSwitches::no_cleanup_formulae` splits it, in its
+    /// order): `Cleanup.skip_clean_formula?` (`cleanup.rb:409-415` in
+    /// Homebrew 7.0.7-9, by name or alias) keeps their older versions out
+    /// of the clean-up after an install or upgrade (`:339-346`) and of the
+    /// periodic one (`:453-454`) -- `old_versions`, beside
+    /// `HomebrewPeriodicCleanup` -- and `Cleanup.autoremove` keeps them and
+    /// the formulae they need at run time (`:1051-1055`) -- `autoremove`,
+    /// beside `HomebrewAutoremoves` or `HomebrewCleanupAutoremoves`.
+    /// Produced by `BrewAdapter::plan` right after those, only when the
+    /// variable names at least one formula (`brew_env.rs`); read by
+    /// `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewNoCleanupFormulae {
+        names: Vec<String>,
+        old_versions: bool,
+        autoremove: bool,
+    },
     /// What this uninstall removes and what it leaves, in the one sentence
     /// the uninstall confirmation shows under the tool: which sentence is
     /// `what` (`UninstallScope`). At most one per plan, and only on an
@@ -2222,6 +2240,16 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Warning::HomebrewCleanupAutoremoves).unwrap(),
             r#""HomebrewCleanupAutoremoves""#
+        );
+        // Round 5: what HOMEBREW_NO_CLEANUP_FORMULAE leaves out of them.
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewNoCleanupFormulae {
+                names: vec!["python@3.13".to_string()],
+                old_versions: true,
+                autoremove: false
+            })
+            .unwrap(),
+            r#"{"HomebrewNoCleanupFormulae":{"names":["python@3.13"],"old_versions":true,"autoremove":false}}"#
         );
 
         // Round 2: an uninstall's one sentence about what goes and what
