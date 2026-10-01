@@ -50,7 +50,7 @@ function artifact(key: ArtifactKey, family: string | null, displayName = key.nam
     path: null,
     auto_updates: false,
     uninstall_blocked: null,
-    facts: family === null ? NO_FACTS : { family },
+    facts: { ...NO_FACTS, family },
   };
 }
 
