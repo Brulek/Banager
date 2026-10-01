@@ -268,6 +268,9 @@ mod tests {
         (MemberSource::Standalone, "claude"),
         (MemberSource::Npm, "@openai/codex"),
         (MemberSource::Cask, "codex"),
+        // Not in appendix B: Codex's own install, from its install script
+        // read as text on 2026-10-01 (research S §3f; recipes::CODEX).
+        (MemberSource::Standalone, "codex"),
         (MemberSource::Npm, "@google/gemini-cli"),
         (MemberSource::Formula, "gemini-cli"),
         (MemberSource::Npm, "@qwen-code/qwen-code"),
@@ -532,6 +535,17 @@ mod tests {
         );
         assert_eq!(
             id_for("standalone-agy", ArtifactKind::Binary, "claude"),
+            None
+        );
+        // Codex's own install joins npm's `@openai/codex` and the cask
+        // `codex` in one family; a `codex` on another recipe's source does
+        // not.
+        assert_eq!(
+            id_for("standalone-codex", ArtifactKind::Binary, "codex"),
+            Some("codex")
+        );
+        assert_eq!(
+            id_for("standalone-claude", ArtifactKind::Binary, "codex"),
             None
         );
         // Cargo's binaries and Ollama's models belong to no family.

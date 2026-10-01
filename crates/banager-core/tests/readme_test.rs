@@ -4,7 +4,8 @@
 //! English. Prose cannot be compiled, so these pin both lists to the
 //! recipes. `StandaloneAdapter::check_updates` gives "cannot read the
 //! installed version now" before it asks for a published version at all,
-//! so every recipe's row can show it; it gives "cannot compare the
+//! so every checked recipe's row can show it (a `Latest::Unchecked` one,
+//! Codex, listed only, returns before it looks); it gives "cannot compare the
 //! installed version ... with the published ..." only when
 //! `latest::compare_dotted` finds no order, and it asks that only of a
 //! `Published::Version` -- never of a `Latest::Command` recipe's answer
@@ -52,14 +53,33 @@ fn compares_versions(latest: &Latest) -> bool {
         Latest::ClaudeChannel { .. }
         | Latest::HttpTomlVersion { .. }
         | Latest::HttpJsonField { .. } => true,
-        Latest::Command { .. } => false,
+        Latest::Command { .. } | Latest::Unchecked => false,
     }
 }
 
-/// In `RECIPES` order: every recipe's name, and the names of the recipes
-/// whose update check compares versions.
+/// Whether `check_updates` gets as far as the installed version at all: it
+/// returns nothing for a `Latest::Unchecked` recipe (Codex, listed only)
+/// before it looks, so that row never says "cannot read the installed
+/// version now". No wildcard arm, as above.
+fn checks_updates(latest: &Latest) -> bool {
+    match latest {
+        Latest::ClaudeChannel { .. }
+        | Latest::HttpTomlVersion { .. }
+        | Latest::HttpJsonField { .. }
+        | Latest::Command { .. } => true,
+        Latest::Unchecked => false,
+    }
+}
+
+/// In `RECIPES` order: the name of every recipe whose updates are checked,
+/// and the names of the recipes whose update check compares versions.
 fn every_and_comparing() -> (Vec<String>, Vec<String>) {
-    let every = RECIPES.iter().copied().map(name_of).collect();
+    let every = RECIPES
+        .iter()
+        .copied()
+        .filter(|recipe| checks_updates(&recipe.latest))
+        .map(name_of)
+        .collect();
     let comparing = RECIPES
         .iter()
         .copied()

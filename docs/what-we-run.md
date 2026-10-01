@@ -1732,6 +1732,64 @@ Banager runs nothing and reads only the variable it was started with, so
 a `ZDOTDIR` set only inside a zsh startup file is not modelled, and a zsh
 whose files live under such a `ZDOTDIR` is not read.
 
+## Codex
+
+Adapter: `StandaloneAdapter` over the `CODEX` recipe in
+`crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`release_link.rs` the version read, `route.rs` the recognition). Listed
+only: **no command runs for it, ever** — not `codex --version`, not an
+update check, not an update, not an uninstall. The row is Codex installed
+by OpenAI's own script (`curl -fsSL https://chatgpt.com/codex/install.sh |
+sh`, run by the user — Banager never runs it); what the recipe expects
+was read from that script as text on 2026-10-01 (the fixture README,
+`adapters/fixtures/standalone-codex/install-script-2026-10-01/README.md`,
+names the lines). npm's `@openai/codex` and the Homebrew cask `codex` are
+other paths and stay npm's and Homebrew's rows; the AI Tools filter puts
+all three in one family.
+
+**Detect.** Banager looks at the fixed path the installer writes,
+`~/.local/bin/codex` — never a `codex` found through `PATH` — and checks
+with `lstat`, `readlink` and `realpath` that it is a symbolic link whose
+text and final target are both inside `~/.codex/packages/standalone` (the
+script links it to `…/packages/standalone/current/bin/codex`). A link into
+`node_modules` or Homebrew's `Caskroom` is not this row. Only the default
+folders are looked at: `CODEX_HOME` and `CODEX_INSTALL_DIR` are not read,
+because a Mac app started from the Finder inherits no variable from your
+shell except the `PATH` Banager asks your login shell for, so a
+`CODEX_HOME` set in `~/.zshrc` is invisible to it. A Codex installed under
+another `CODEX_HOME` is not listed here (the Other Programs page lists its
+launcher instead). `~/.codex` itself, with your settings, login and
+sessions, is never read.
+
+**Version, with no command.** `readlink` and `realpath` of
+`~/.codex/packages/standalone/current`, which the installer points at
+`~/.codex/packages/standalone/releases/<version>-<target>`: the version is
+that folder's name less `-aarch64-apple-darwin` or `-x86_64-apple-darwin`.
+A missing, dangling or unexpected link gives no version (the row is
+listed with its version unknown, and is not marked as not responding,
+since nothing was asked). Then one small file,
+`~/.codex/packages/standalone/auto-update-version` (at most 256 bytes,
+only when it is a regular file): the installer writes the release's name
+there when it installs the latest release, and its scheduled updates run
+only while that file names the release in use. When it does, the row says
+Codex updates itself; otherwise it says nothing about updates.
+
+Banager also asks where `codex` would run from if typed in Terminal, as it
+does for Claude Code, and says so under the source and in the details'
+"Typed in Terminal" group — that is reading `PATH` folders, not a command.
+
+**Read-only commands and requests**: none. Codex's newest version comes
+from `releases.openai.com` or GitHub, which are not hosts Banager
+connects to, so its updates are not checked at all: the Updates page lists
+nothing for it, and the Installed page does not call it up to date.
+
+**Write commands**: none. No Update button (Banager must not re-run the
+installer's `curl | sh`), and no uninstall: the row says "Manual
+uninstall". Moving `~/.local/bin/codex`,
+`~/.local/bin/codex-code-mode-host` and `~/.codex/packages/standalone` to
+the Trash, keeping the rest of `~/.codex`, is a decision for the author
+(D5) and is not built.
+
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
 The *Other Programs* page -- the last row under the sidebar's *Sources* --
@@ -2102,6 +2160,15 @@ All read-only, none saved anywhere else, none uploaded:
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.
+- Codex (its own install, listed only): whether `~/.local/bin/codex`
+  exists and where it links to (`lstat`, `readlink`, `realpath`, also for
+  the folder the link is in and for `~/.codex/packages/standalone`); where
+  `~/.codex/packages/standalone/current` links to and whether that is a
+  folder directly in `releases/` (`readlink`, `realpath`, `stat`);
+  `~/.codex/packages/standalone/auto-update-version`, at most 256 bytes,
+  when it is a regular file (`lstat`); for the notice under the source,
+  each `PATH` directory's `codex`, as for Claude Code. Nothing else under
+  `~/.codex` is read, and no command runs (Codex's section).
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents. A row's Show in Finder: where the path it shows
