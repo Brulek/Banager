@@ -4,6 +4,7 @@ mod history;
 mod ipc;
 mod menu;
 mod notify;
+mod notify_ops;
 mod quit;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
@@ -117,6 +118,9 @@ pub fn run() {
         // Whether an update notification waits on the window (window.rs):
         // set as one is handed off, cleared as the window comes back.
         .manage(window::NotificationPending::default())
+        // The runs of operations the page has reported finished, for the
+        // notification when operations finish (notify_ops.rs).
+        .manage(notify_ops::OperationRuns::default())
         // Whether a quit asks first (quit.rs): while the page listens for
         // the question, until the user answers 「退出」; and which
         // questions the page has said are on screen.
@@ -147,6 +151,7 @@ pub fn run() {
             menu::set_menu_language,
             notify::report_update_set,
             notify::request_notification_permission,
+            notify_ops::report_finished_run,
             quit::ask_before_quit,
             quit::quit_question_shown,
             quit::quit_kept_waiting,

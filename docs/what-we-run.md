@@ -258,8 +258,8 @@ holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 ## The daily check: off unless turned on
 
 Settings → Updates has a popup, "Check for updates" (「检查更新」):
-"Manually" (「不自动检查」), the default, "Daily" (「每天」) or "Weekly"
-(「每周」) (`Settings::auto_check` and `Settings::auto_check_every` in
+"Manually" (「不自动检查」), "Daily" (「每天」) or "Weekly" (「每周」),
+set to Manually, and so off by default (`Settings::auto_check` and `Settings::auto_check_every` in
 `crates/banager-core/src/settings.rs`; a settings.json saved by the
 Banager that had a "Check for updates every day" switch, on, reads as
 Daily). Set to Manually, the daily check starts nothing. Set to Weekly,
@@ -422,6 +422,42 @@ The window is given one of the plugin's commands, `is_permission_granted`
 calls as the page loads, and which answers yes on a Mac. Asking for
 permission and posting go through Banager's own commands, so the page
 cannot post a notification itself.
+
+## The notification when operations finish: off unless turned on
+
+Settings → Updates has a switch, "Notify me when operations finish"
+(「操作完成时通知」), off by default (`Settings::notify_operations`), and
+independent of the automatic check. Turning it on asks for permission to
+post as "Notify me when there are updates" does, through the same
+command (`request_notification_permission`): no permission of its own.
+
+Closing the window does not stop an operation, nor the page, which is
+hidden with the window and hears the operation finish (`window.rs`). Once
+every operation of a run has finished — an Update All, one update or
+uninstall, and whatever was started while those were under way, as the
+operation bar groups them (`trackRun` in `src/lib/operations.ts`) — the
+page tells Rust how many of it worked, failed or need a look, what kind
+they were, and the number of its newest operation (`report_finished_run`
+in `src-tauri/src/notify_ops.rs`). Rust posts one notification only when
+the switch is on and another app is in front, not Banager — never for a
+run that finished while the window had the focus, which the user watched
+on the operation bar, and nothing while Banager is in front with its
+window closed, as for the update notification — and only once for a run
+(`notify_operations::decide` in
+`crates/banager-core/src/notify_operations.rs`). A run whose every
+operation was cancelled posts nothing.
+
+It is titled Banager and says how the run went in the window's language:
+"Updated N tools" (「已更新N个工具」) when every one worked, and otherwise
+each way they ended, "N updated, N couldn't be updated"
+(「N个已更新，N个未能更新」), with "N need attention" (「N个需要查看」)
+for one the tool said worked and Banager could not confirm; uninstalls
+say "Uninstalled" and "couldn't be uninstalled" (「已卸载」, 「未能卸载」).
+It is handed to macOS the way the update notification is (`notify::post`):
+no command runs, nothing connects, and Banager writes no file for it. A
+click on it brings Banager to the front, and with the window closed or in
+the Dock brings the window back as it was left
+(`NotificationPending::set_window` in `src-tauri/src/window.rs`).
 
 ## Homebrew
 

@@ -946,6 +946,8 @@ export function initialSettings(scenario: Scenario): Settings {
     include_self_updating: false,
     auto_check: false,
     notify_updates: false,
+    auto_check_every: "Day",
+    notify_operations: false,
   };
 }
 

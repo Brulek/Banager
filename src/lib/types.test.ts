@@ -24,6 +24,7 @@ import type {
   ScanStop,
   UnknownScan,
   UpdatePair,
+  FinishedRun,
   Sizes,
 } from "./types";
 import { NO_FACTS, NO_SIZES } from "./types";
@@ -606,10 +607,18 @@ describe("types", () => {
       auto_check: false,
       notify_updates: false,
       auto_check_every: "Day",
+      notify_operations: false,
     };
     expect(JSON.stringify(defaults)).toBe(
-      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day"}',
+      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false}',
     );
+  });
+
+  it("spells FinishedRun as notify_operations.rs's shape test reads it", () => {
+    // `test_finished_run_is_the_json_the_page_sends` in
+    // crates/banager-core/src/notify_operations.rs parses this exact string.
+    const run: FinishedRun = { last_op: 7, kind: "Upgrade", succeeded: 2, failed: 1, attention: 0 };
+    expect(JSON.stringify(run)).toBe('{"last_op":7,"kind":"Upgrade","succeeded":2,"failed":1,"attention":0}');
   });
 
   it("spells UpdatePair as notify_updates.rs's shape test reads it", () => {

@@ -108,7 +108,10 @@ to the front, and if Banager's window is closed or minimized into the Dock and h
 since the notification, the window comes back on the Updates page. Banager isn't told of the click
 itself, only that it has come to the front, so until the window has been in front again, anything
 else that brings Banager to the front with the window closed or minimized — ⌘-Tab, its Dock icon —
-does the same. The Other Programs page's header has *Scan Again* in its place, with how long ago
+does the same. Closing the window doesn't stop an operation; turn on **Notify me when operations
+finish** (off until you do) and a run of updates or uninstalls that finishes while another app is in
+front posts one notification saying how it went, such as "Updated 3 tools" — never one you watched
+finish in the window (`docs/what-we-run.md`, "The notification when operations finish"). The Other Programs page's header has *Scan Again* in its place, with how long ago
 that page last scanned: it re-runs only that page's scan of your bin folders, against the sources'
 last known state — it does not refresh the sources. Settings' header has neither.
 
@@ -453,6 +456,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Banager 收不到点击本身，只知道自己到了
 最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Banager 切到前面——⌘-Tab、
 点程序坞图标——也会这样。
+关掉窗口不会停止正在进行的操作；打开“操作完成时通知”（默认关闭）后，一批更新或卸载在别的应用位于最前面时做完，
+会发一条通知说结果，比如“已更新3个工具”——你在窗口里看着做完的不会通知。
 “其他程序”页（边栏“来源”下的最后一行）的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。

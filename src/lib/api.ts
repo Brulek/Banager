@@ -16,6 +16,7 @@ import type {
   UiEvent,
   UnknownScan,
   UpdatePair,
+  FinishedRun,
 } from "./types";
 
 /**
@@ -259,6 +260,16 @@ export async function setDockBadge(count: number): Promise<void> {
  */
 export function reportUpdateSet(round: number, updates: UpdatePair[]): Promise<void> {
   return call<void>("report_update_set", { round, updates });
+}
+
+/**
+ * The page's report of a run of operations that has finished, for the
+ * notification when operations finish (`report_finished_run` in
+ * src-tauri/src/notify_ops.rs), which decides there whether one goes out.
+ * `useOperationsNotification` sends one as each run ends.
+ */
+export function reportFinishedRun(run: FinishedRun): Promise<void> {
+  return call<void>("report_finished_run", { run });
 }
 
 /**

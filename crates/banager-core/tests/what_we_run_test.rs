@@ -1078,6 +1078,66 @@ fn test_what_we_run_names_the_notification_plugins_permissions_and_says_the_swit
 }
 
 #[test]
+fn test_what_we_run_says_the_weekly_check_waits_a_week_and_an_old_daily_switch_reads_as_daily() {
+    // The popup's three choices, the week `CheckEvery::Week` waits, and
+    // that a settings.json from the switch's days reads as Daily -- which
+    // `auto_check_every`'s `#[serde(default)]`, `Day`, makes true.
+    use banager_core::auto_check::{CheckEvery, WEEKLY_DUE_AFTER_SECS};
+    use banager_core::settings::Settings;
+    assert_eq!(CheckEvery::Week.due_after_secs(), WEEKLY_DUE_AFTER_SECS);
+    assert_eq!(WEEKLY_DUE_AFTER_SECS % (24 * 60 * 60), 0);
+    assert_eq!(Settings::default().auto_check_schedule(), None);
+    let old: Settings = serde_json::from_str(
+        r#"{"language":"En","show_technical_details":false,"ignored_updates":[],"include_self_updating":false,"auto_check":true}"#,
+    )
+    .expect("a settings.json from the switch's days");
+    assert_eq!(old.auto_check_schedule(), Some(CheckEvery::Day));
+    let doc = read_doc();
+    let body = section_body(&doc, "The daily check")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## The daily check` section"));
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "\"Manually\" (「不自动检查」), \"Daily\" (「每天」) or \"Weekly\" (「每周」), set to Manually, and so off by default".to_string(),
+        format!(
+            "everything below holds with {} days",
+            WEEKLY_DUE_AFTER_SECS / (24 * 60 * 60)
+        ),
+        "reads as Daily".to_string(),
+    ] {
+        assert!(
+            folded.contains(&phrase),
+            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_the_notification_when_operations_finish_is_off_by_default_and_asks_no_permission_of_its_own(
+) {
+    use banager_core::settings::Settings;
+    assert!(
+        !Settings::default().notify_operations,
+        "the notification when operations finish is off by default today; if that has changed, the section must say so"
+    );
+    let doc = read_doc();
+    let body = section_body(&doc, "The notification when operations finish").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## The notification when operations finish` section")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "\"Notify me when operations finish\" (「操作完成时通知」), off by default (`Settings::notify_operations`)",
+        "no permission of its own",
+        "never for a run that finished while the window had the focus",
+        "no command runs, nothing connects, and Banager writes no file for it",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## The notification when operations finish` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+}
+
+#[test]
 fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_never_holds() {
     let doc = read_doc();
     let body = section_body(&doc, "Diagnostic info").unwrap_or_else(|| {

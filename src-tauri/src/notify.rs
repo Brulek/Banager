@@ -51,7 +51,7 @@ pub async fn report_update_set(
     let language = language(&app, &state);
     let title = app.package_info().name.clone();
     let reported = report(&state, round, &updates, focus, |count| {
-        post(&app, &title, &body(language, count))
+        post(&app, &title, &body(language, count), Answer::OpenUpdates)
     });
     match reported {
         Ok(Notice::Post { .. }) => app.state::<NotificationPending>().set(),
@@ -91,8 +91,9 @@ pub(crate) fn report(
 }
 
 /// Where the focus is now: `focus_of` over whether the window has the
-/// focus and whether Banager is the active app.
-fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
+/// focus and whether Banager is the active app. The notification when
+/// operations finish asks it too (notify_ops.rs).
+pub(crate) fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
     focus_of(window_focused(app), app_active())
 }
 
@@ -140,7 +141,7 @@ fn window_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
 /// The window's language, which the menu bar follows
 /// (`menu::set_menu_language`); before the page has said which, the one
 /// the menu bar was built in, or would be.
-fn language<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> MenuLanguage {
+pub(crate) fn language<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> MenuLanguage {
     app.state::<MenuBar>().language().unwrap_or_else(|| {
         menu::initial_language(state.get_settings().language, &menu::preferred_languages())
     })
@@ -156,6 +157,19 @@ pub fn body(language: MenuLanguage, count: usize) -> String {
         MenuLanguage::En => format!("{count} tools can be updated"),
         MenuLanguage::ZhCn => format!("{count}个工具可以更新"),
     }
+}
+
+/// What a click on a notification is for: the update notification's
+/// opens the Updates page; the one when operations finish (notify_ops.rs)
+/// brings the window back as it was left, where the operation bar says
+/// how the run went. What `post`'s handler -- never handed a click on a
+/// Mac -- would do, and what the notification left waiting on the window
+/// does when Banager next comes to the front (`window::NotificationPending`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub enum Answer {
+    OpenUpdates,
+    ShowWindow,
 }
 
 /// Starts `deliver` on a thread of its own and returns once the thread
@@ -199,7 +213,12 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
 /// on the Updates page (`window::on_activate`). What `wait_for_response`
 /// reports as an error is logged.
 #[cfg(target_os = "macos")]
-fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
+pub(crate) fn post<R: Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+    answer: Answer,
+) -> Result<(), String> {
     use notify_rust::error::{ApplicationError, MacOsError};
     // Which app macOS shows the notification as, set before the first
     // one, as tauri-plugin-notification sets it: Banager, by its bundle
@@ -228,7 +247,10 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
         handle
             .wait_for_response(|response: &notify_rust::NotificationResponse| {
                 if response.is_default_action() {
-                    open_updates(&app);
+                    match answer {
+                        Answer::OpenUpdates => open_updates(&app),
+                        Answer::ShowWindow => crate::window::show(&app),
+                    }
                 }
             })
             .map_err(|e| e.to_string())
@@ -239,7 +261,12 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
 /// hands it to a task of its own and returns: what becomes of it is not
 /// reported. No click is heard: the plugin reports none on a desktop.
 #[cfg(not(target_os = "macos"))]
-fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
+pub(crate) fn post<R: Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+    _answer: Answer,
+) -> Result<(), String> {
     app.notification()
         .builder()
         .title(title)

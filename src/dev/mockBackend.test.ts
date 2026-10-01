@@ -127,6 +127,16 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("request_notification_permission")).resolves.toBe(true);
   });
 
+  it("takes the report of a finished run as the real command does, and posts nothing", async () => {
+    const { backend } = backendFor();
+    const run = { last_op: 3, kind: "Upgrade", succeeded: 2, failed: 1, attention: 0 };
+    await expect(backend.invoke("report_finished_run", { run })).resolves.toBeUndefined();
+    await expect(backend.invoke("report_finished_run", {})).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("report_finished_run", { run: { ...run, kind: "Install" } })).rejects.toMatch(
+      /^invalid args/,
+    );
+  });
+
   it("takes the page's word on the question before a quit as the real commands do, and quits nothing", async () => {
     // The preview never hears the question (./mockTauriEvent.ts listens to
     // nothing), and a page cannot quit the browser. Like the real commands,

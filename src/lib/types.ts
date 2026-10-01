@@ -606,6 +606,13 @@ export interface Settings {
    * Rust reads a settings.json without it the same way (`#[serde(default)]`).
    */
   auto_check_every?: CheckEvery;
+  /**
+   * 「操作完成时通知」 in Settings: a notification when a run of operations
+   * finishes while the window does not have the focus
+   * (src-tauri/src/notify_ops.rs). Off by default. Optional for the reason
+   * `auto_check_every` is: missing reads as off, in Rust as here.
+   */
+  notify_operations?: boolean;
 }
 /**
  * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row
@@ -616,6 +623,22 @@ export interface Settings {
 export interface UpdatePair {
   key_id: string;
   target: string;
+}
+/** Rust `RunKind` (crates/banager-core/src/notify_operations.rs): what a finished run's operations did. */
+export type RunKind = "Upgrade" | "Uninstall" | "Other";
+/**
+ * Rust `FinishedRun` (crates/banager-core/src/notify_operations.rs): a run
+ * of operations that has finished, as the page reports it for the
+ * notification when operations finish -- its newest operation's id, what
+ * they did, and how many worked, failed or need a look. A cancelled one is
+ * in none of the three.
+ */
+export interface FinishedRun {
+  last_op: number;
+  kind: RunKind;
+  succeeded: number;
+  failed: number;
+  attention: number;
 }
 export type Stream = "Stdout" | "Stderr";
 // A line of Banager's own in an operation's log (Rust `LogNote`): a key the

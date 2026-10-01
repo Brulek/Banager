@@ -56,6 +56,7 @@ export const MOCK_COMMANDS = [
   "set_menu_language",
   "report_update_set",
   "request_notification_permission",
+  "report_finished_run",
   "ask_before_quit",
   "quit_question_shown",
   "quit_kept_waiting",
@@ -650,6 +651,22 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // Tauri turns anything else away.
       if (typeof args.round !== "number" || !Array.isArray(args.updates)) {
         throw `invalid args for command \`report_update_set\`: ${JSON.stringify(args)}`;
+      }
+    },
+    async report_finished_run(args) {
+      // No notification to post: the preview's window is the browser's
+      // tab, and nothing in it tells focus as macOS does
+      // (src-tauri/src/notify_ops.rs). It takes what the real command
+      // takes, one finished run; Tauri turns anything else away.
+      const run = args.run as Record<string, unknown> | undefined;
+      const counts = ["last_op", "succeeded", "failed", "attention"];
+      if (
+        typeof run !== "object" ||
+        run === null ||
+        !counts.every((field) => typeof run[field] === "number") ||
+        !["Upgrade", "Uninstall", "Other"].includes(run.kind as string)
+      ) {
+        throw `invalid args for command \`report_finished_run\`: ${JSON.stringify(args)}`;
       }
     },
     async request_notification_permission() {

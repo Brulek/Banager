@@ -76,6 +76,11 @@ pub mod icon;
 /// models -- named in its preview, measured read-only, never deleted.
 pub mod kept_data;
 pub mod model;
+/// The notification when a run of operations finishes, Settings'
+/// 「操作完成时通知」: whether the page's report of a finished run posts
+/// one, and which runs were reported. Pure: the shell reads the window's
+/// focus, words it and posts.
+pub mod notify_operations;
 /// The update notification's decision -- whether the page's report of the
 /// updates it offers posts one -- and the record of what was told. Pure:
 /// the shell reads the window's focus and posts.

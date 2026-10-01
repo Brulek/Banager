@@ -628,6 +628,58 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("combobox", { name: "Check for updates" })).toHaveValue("Day");
   });
 
+  it("offers a notification when operations finish, off, without the automatic check, on once permission is granted", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ notify_operations: false });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") return true;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const updates = await screen.findByRole("region", { name: "Updates" });
+    const ops = within(updates).getByRole("switch", { name: "Notify me when operations finish" });
+    expect(ops).not.toBeChecked();
+    expect(ops).toBeEnabled();
+    // Under 「有更新时通知我」, over the self-updating apps.
+    const switches = within(updates).getAllByRole("switch");
+    expect(switches.indexOf(ops)).toBe(
+      switches.indexOf(within(updates).getByRole("switch", { name: "Notify me when there are updates" })) + 1,
+    );
+
+    fireEvent.click(ops);
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ notify_operations: true })));
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "request_notification_permission")).toHaveLength(1);
+    expect(ops).toBeChecked();
+
+    fireEvent.click(ops);
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ notify_operations: false })));
+    expect(ops).not.toBeChecked();
+  });
+
+  it("turns the notification when operations finish back off when permission is refused, and says where to allow it", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "request_notification_permission") return false;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const ops = await screen.findByRole("switch", { name: "Notify me when operations finish" });
+    fireEvent.click(ops);
+    await waitFor(() =>
+      expect(ops).toHaveAccessibleDescription("Allow Banager to send notifications in System Settings > Notifications."),
+    );
+    expect(ops).not.toBeChecked();
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
+  });
+
+  it("names the notification when operations finish in Chinese as the task does", () => {
+    expect(zhCN.settings.notifyOperations.label).toBe("操作完成时通知");
+  });
+
   it("says nothing about the next automatic check before any check has counted", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });

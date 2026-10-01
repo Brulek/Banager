@@ -810,6 +810,9 @@
       "off": "Manually",
       "day": "Daily",
       "week": "Weekly"
+    },
+    "notifyOperations": {
+      "label": "Notify me when operations finish"
     }
   },
   "settingsSaveFailed": {

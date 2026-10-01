@@ -107,6 +107,13 @@ pub struct Settings {
     /// on, keeps checking every day.
     #[serde(default)]
     pub auto_check_every: CheckEvery,
+    /// Settings → Updates' 「操作完成时通知」: one notification when a run
+    /// of operations finishes while the window does not have the focus
+    /// (`notify_operations::decide`). Independent of the automatic check.
+    /// Off by default, and `#[serde(default)]` for the same reason as
+    /// `auto_check`.
+    #[serde(default)]
+    pub notify_operations: bool,
 }
 
 impl Settings {
@@ -128,6 +135,7 @@ impl Default for Settings {
             auto_check: false,
             notify_updates: false,
             auto_check_every: CheckEvery::Day,
+            notify_operations: false,
         }
     }
 }
@@ -206,6 +214,10 @@ mod tests {
         assert!(!settings.notify_updates, "and so are its notifications");
         assert_eq!(settings.auto_check_every, CheckEvery::Day);
         assert_eq!(settings.auto_check_schedule(), None, "不自动检查");
+        assert!(
+            !settings.notify_operations,
+            "no notification when operations finish"
+        );
     }
 
     #[test]
@@ -224,6 +236,7 @@ mod tests {
         assert!(json.contains("\"auto_check\":false"));
         assert!(json.contains("\"notify_updates\":false"));
         assert!(json.contains("\"auto_check_every\":\"Day\""));
+        assert!(json.contains("\"notify_operations\":false"));
     }
 
     #[test]
@@ -233,7 +246,7 @@ mod tests {
         // this order, the daily check's two last.
         assert_eq!(
             serde_json::to_string(&Settings::default()).expect("serialize"),
-            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day"}"#
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false}"#
         );
     }
 
@@ -337,6 +350,7 @@ mod tests {
                 auto_check: false,
                 notify_updates: false,
                 auto_check_every: CheckEvery::Day,
+                notify_operations: false,
             }
         );
         let _ = std::fs::remove_file(&path);
@@ -375,6 +389,10 @@ mod tests {
         assert!(loaded.auto_check && loaded.notify_updates);
         assert_eq!(loaded.auto_check_every, CheckEvery::Day);
         assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Day));
+        assert!(
+            !loaded.notify_operations,
+            "nor was there a notification when operations finish"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -431,6 +449,7 @@ mod tests {
             auto_check: true,
             notify_updates: true,
             auto_check_every: CheckEvery::Week,
+            notify_operations: true,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

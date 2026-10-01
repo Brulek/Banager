@@ -159,6 +159,9 @@ export function SettingsPage() {
   // (`turnNotifyOn`), and whether it was refused the last time it was.
   const [askingToNotify, setAskingToNotify] = useState(false);
   const [notifyRefused, setNotifyRefused] = useState(false);
+  // The same two for 「操作完成时通知」.
+  const [askingToNotifyOps, setAskingToNotifyOps] = useState(false);
+  const [notifyOpsRefused, setNotifyOpsRefused] = useState(false);
   // The settings the page holds, as of its last render: what the answer to
   // that permission is saved over, since it arrives after the click.
   const held = useRef<Settings | undefined>(undefined);
@@ -242,6 +245,26 @@ export function SettingsPage() {
         }
         const now = held.current;
         if (now?.auto_check) persist({ ...now, notify_updates: true }, now);
+      });
+  };
+
+  // 「操作完成时通知」 turned on: as 「有更新时通知我」 is, permission
+  // first -- the same permission, asked the same way -- and saved on only
+  // once it is granted, over what the page holds by then. It needs no
+  // automatic check.
+  const turnNotifyOpsOn = () => {
+    setNotifyOpsRefused(false);
+    setAskingToNotifyOps(true);
+    void requestNotificationPermission()
+      .catch(() => false)
+      .then((granted) => {
+        setAskingToNotifyOps(false);
+        if (!granted) {
+          setNotifyOpsRefused(true);
+          return;
+        }
+        const now = held.current;
+        if (now) persist({ ...now, notify_operations: true }, now);
       });
   };
 
@@ -435,6 +458,37 @@ export function SettingsPage() {
               disabled={!current.auto_check || askingToNotify}
               onCheckedChange={(checked) =>
                 checked ? turnNotifyOn() : persist({ ...current, notify_updates: false })
+              }
+            />
+          }
+        />
+        {/* A run of operations that finished while the window was not in
+            front: closing the window does not stop one
+            (src-tauri/src/notify_ops.rs). Off by default; on only with
+            permission to post (`turnNotifyOpsOn`). */}
+        <SettingRow
+          label={
+            <label htmlFor="settings-notify-operations" className={ROW_LABEL}>
+              {t("settings.notifyOperations.label")}
+            </label>
+          }
+          subtitle={
+            // Only a state that passes, as under 「有更新时通知我」: the
+            // group keeps one standing second line, the check's.
+            notifyOpsRefused ? (
+              <p id="settings-notify-operations-desc" role="status" className={ROW_SUBTITLE}>
+                {t("settings.notifyUpdates.refused")}
+              </p>
+            ) : undefined
+          }
+          control={
+            <Switch
+              id="settings-notify-operations"
+              aria-describedby={notifyOpsRefused ? "settings-notify-operations-desc" : undefined}
+              checked={(current.notify_operations ?? false) || askingToNotifyOps}
+              disabled={askingToNotifyOps}
+              onCheckedChange={(checked) =>
+                checked ? turnNotifyOpsOn() : persist({ ...current, notify_operations: false })
               }
             />
           }

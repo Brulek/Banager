@@ -755,6 +755,9 @@
       "off": "不自动检查",
       "day": "每天",
       "week": "每周"
+    },
+    "notifyOperations": {
+      "label": "操作完成时通知"
     }
   },
   "settingsSaveFailed": {

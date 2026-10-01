@@ -26,7 +26,7 @@
 //! so closing the window closes it, and Banager quits with its last
 //! window, as tauri has it.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, Window, WindowEvent};
 
 /// The window's label: tauri.conf.json's one window, which gives none, so
@@ -78,24 +78,66 @@ pub fn on_reopen(has_visible_windows: bool) -> bool {
 /// it is on screen, a click on it (`on_window_event`). What `on_activate`
 /// goes by. Managed on the builder in `run()`, so it is there before
 /// anything can read it; in memory only.
+///
+/// The notification when operations finish (notify_ops.rs) waits on the
+/// window too, to bring it back as it was left rather than on the Updates
+/// page (`set_window`); an update notification waiting as well wins, and
+/// opens the Updates page (`opens_updates`).
 #[derive(Debug, Default)]
-pub struct NotificationPending(AtomicBool);
+pub struct NotificationPending(AtomicU8);
+
+/// What waits on the window, in `NotificationPending`.
+const NOTHING_WAITS: u8 = 0;
+const WINDOW_WAITS: u8 = 1;
+const UPDATES_WAIT: u8 = 2;
 
 impl NotificationPending {
-    /// A notification has been handed off.
+    /// An update notification has been handed off.
     pub fn set(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.0.store(UPDATES_WAIT, Ordering::SeqCst);
+    }
+
+    /// A notification that operations finished has been handed off: the
+    /// window waits to come back, as it was left -- unless an update
+    /// notification already waits, whose Updates page it leaves as it is.
+    pub fn set_window(&self) {
+        let _ = self.0.compare_exchange(
+            NOTHING_WAITS,
+            WINDOW_WAITS,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
     }
 
     /// The window is in front: nothing waits on it any more.
     pub fn clear(&self) {
-        self.0.store(false, Ordering::SeqCst);
+        self.0.store(NOTHING_WAITS, Ordering::SeqCst);
     }
 
     /// Whether a notification waits on the window.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn get(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::SeqCst) != NOTHING_WAITS
+    }
+
+    /// Whether what waits is an update notification, which brings the
+    /// window back on the Updates page; else the window comes back as it
+    /// was left.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn opens_updates(&self) -> bool {
+        self.0.load(Ordering::SeqCst) == UPDATES_WAIT
+    }
+}
+
+/// The notification waiting on the window, answered: the window back on
+/// the Updates page for an update notification, and as it was left for one
+/// that operations finished (`NotificationPending::opens_updates`).
+#[cfg(target_os = "macos")]
+fn answer_notification<R: Runtime>(app: &AppHandle<R>, opens_updates: bool) {
+    if opens_updates {
+        crate::notify::open_updates(app);
+    } else {
+        show(app);
     }
 }
 
@@ -169,9 +211,9 @@ pub fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
         ..
     } = event
     {
-        let pending = app.state::<NotificationPending>().get();
-        if on_activate(pending, || has_visible_windows) {
-            crate::notify::open_updates(app);
+        let pending = app.state::<NotificationPending>();
+        if on_activate(pending.get(), || has_visible_windows) {
+            answer_notification(app, pending.opens_updates());
         } else if on_reopen(has_visible_windows) {
             show(app);
         }
@@ -234,9 +276,9 @@ fn observe(
 /// touches the window.
 #[cfg(target_os = "macos")]
 fn on_activated<R: Runtime>(app: &AppHandle<R>) {
-    let pending = app.state::<NotificationPending>().get();
-    if on_activate(pending, || window_on_screen(app)) {
-        crate::notify::open_updates(app);
+    let pending = app.state::<NotificationPending>();
+    if on_activate(pending.get(), || window_on_screen(app)) {
+        answer_notification(app, pending.opens_updates());
     }
 }
 
@@ -302,6 +344,30 @@ pub fn show_and_send<R: Runtime, S: serde::Serialize + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_what_waits_on_the_window_is_the_update_notifications_page_or_the_window_as_left() {
+        let pending = NotificationPending::default();
+        assert!(!pending.get());
+        pending.set_window();
+        assert!(
+            pending.get() && !pending.opens_updates(),
+            "operations finished"
+        );
+        pending.set();
+        assert!(pending.opens_updates(), "an update notification wins");
+        pending.set_window();
+        assert!(
+            pending.opens_updates(),
+            "and stays when operations finish after it"
+        );
+        pending.clear();
+        assert!(!pending.get());
+        pending.set();
+        pending.clear();
+        pending.set_window();
+        assert!(pending.get() && !pending.opens_updates());
+    }
 
     #[test]
     fn test_closing_the_window_hides_it_and_in_full_screen_hides_banager() {

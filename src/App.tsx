@@ -25,6 +25,7 @@ import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
 import { useDockBadge } from "./lib/dockBadge";
 import { useUpdateNotification } from "./lib/updateNotification";
+import { useOperationsNotification } from "./lib/operationsNotification";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -217,6 +218,7 @@ function PageToolbar({
 function UpdateWatchers() {
   useDockBadge();
   useUpdateNotification();
+  useOperationsNotification();
   return null;
 }
 
