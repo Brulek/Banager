@@ -53,12 +53,25 @@ pub const BUDGET: SizeBudget = SizeBudget {
 };
 
 /// What a data path holds that is not the tool's data, by the path as the
-/// table spells it, relative to it: another copy of the tool, installed by
-/// its own installer. `~/.codex/packages/standalone` is Codex's own install
-/// (`adapters/standalone/release_link.rs`), which uninstalling npm's
-/// `@openai/codex` leaves where it is, and which the size of what stays as
-/// "this tool's settings and data" must not count.
-const LEFT_OUT: &[(&str, &str)] = &[("~/.codex", "packages/standalone")];
+/// table spells it, relative to it: another copy of the tool, put there by
+/// its own installer or updater, which uninstalling the copy a source
+/// manages leaves where it is, and which the size of what stays as "this
+/// tool's settings and data" must not count (`families.rs` module doc has
+/// each one's source):
+/// - `~/.codex/packages/standalone`: Codex's own install
+///   (`adapters/standalone/release_link.rs`), beside npm's `@openai/codex`;
+/// - `~/.qoder/bin/qodercli`: the versioned programs Qoder CLI's install
+///   script puts there, beside npm's `@qoder-ai/qodercli`;
+/// - `~/.copilot/pkg`: the copies of the program GitHub Copilot CLI's
+///   updater downloads;
+/// - `~/.grok/downloads`: Grok Build's install script's program (Banager's
+///   `grok` recipe), beside Homebrew's cask `grok-build`.
+const LEFT_OUT: &[(&str, &str)] = &[
+    ("~/.codex", "packages/standalone"),
+    ("~/.qoder", "bin/qodercli"),
+    ("~/.copilot", "pkg"),
+    ("~/.grok", "downloads"),
+];
 
 /// The paths an uninstall of a tool of `family` leaves behind, if they are
 /// there, as the table spells them, with what each holds: the family's
@@ -274,8 +287,26 @@ mod tests {
                 ("~/.config/opencode", KeptData::ToolData)
             ]
         );
-        // A family with no verified folder, and no family at all.
-        assert!(data_paths("aider").is_empty());
+        // Aider's folder, then the three settings files its docs say it
+        // reads from the home folder.
+        assert_eq!(
+            data_paths("aider"),
+            vec![
+                ("~/.aider", KeptData::ToolData),
+                ("~/.aider.conf.yml", KeptData::ToolData),
+                ("~/.aider.model.settings.yml", KeptData::ToolData),
+                ("~/.aider.model.metadata.json", KeptData::ToolData)
+            ]
+        );
+        assert_eq!(
+            data_paths("grok-build"),
+            vec![("~/.grok", KeptData::ToolData)]
+        );
+        // Every family has its folders now but Ollama, whose models folder
+        // is kept_data's own; and no family at all has none.
+        for family in families::families() {
+            assert!(!data_paths(&family.id).is_empty(), "{}", family.id);
+        }
         assert!(data_paths("no-such-family").is_empty());
     }
 
@@ -502,6 +533,9 @@ mod tests {
             matched.contains(&"~/.gemini/antigravity-cli"),
             "{matched:?}"
         );
+        // And Grok Build's: its own uninstall keeps `~/.grok`, the folder
+        // the table names for the family.
+        assert!(matched.contains(&"~/.grok"), "{matched:?}");
     }
 
     #[test]
@@ -716,5 +750,162 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("config.toml")]);
+    }
+
+    #[test]
+    fn test_every_left_out_folder_is_inside_a_path_the_table_names() {
+        // A `LEFT_OUT` entry whose folder the table no longer names would
+        // never be used; one spelled differently would never match.
+        for (of, inside) in LEFT_OUT {
+            assert!(
+                families::families()
+                    .iter()
+                    .any(|f| f.data_paths.iter().any(|p| p == of)),
+                "{of} is no family's data path"
+            );
+            assert!(
+                !inside.is_empty() && !inside.starts_with('/') && !inside.ends_with('/'),
+                "{of}: {inside}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_grok_builds_folder_stays_after_homebrews_cask_without_the_install_scripts_program() {
+        // Homebrew's cask `grok-build` uninstalled while grok's own
+        // install is there too: `~/.grok` stays, and its size is the
+        // settings, login and sessions, not that copy's program in
+        // `downloads/`.
+        let home = Home::new("grok-cask");
+        home.file(".grok/config.toml", 2_000);
+        home.file(".grok/auth.json", 500);
+        home.file(".grok/sessions/a/session.jsonl", 40_000);
+        home.file(".grok/downloads/grok-1.0.41-macos-aarch64", 900_000);
+        let warnings = kept_data(&home.0, "grok-build", &[], BUDGET);
+        match &warnings[..] {
+            [Warning::KeepsData {
+                path,
+                what,
+                size,
+                left_out,
+                others,
+            }] => {
+                assert_eq!(path, "~/.grok");
+                assert_eq!(*what, KeptData::ToolData);
+                assert_eq!(left_out, &vec!["~/.grok/downloads".to_string()]);
+                assert!(others.is_empty(), "{others:?}");
+                let bytes = size.expect("measured").bytes;
+                assert!((42_500..900_000).contains(&bytes), "{bytes}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_grok_builds_own_uninstall_names_its_folder_once_where_it_keeps_it() {
+        // Banager's `grok` recipe keeps `~/.grok` and says so
+        // (`Warning::WillKeep`): the line kept_data would add is not said
+        // twice.
+        use crate::adapters::standalone::recipe::Uninstall;
+        use crate::adapters::standalone::recipes::GROK;
+        let Some(Uninstall::Paths { keep, .. }) = &GROK.uninstall else {
+            panic!("grok's recipe uninstalls by paths");
+        };
+        let plan: Vec<Warning> = keep
+            .iter()
+            .map(|spec| Warning::WillKeep {
+                path: spec.path.to_string(),
+                what: spec.what,
+            })
+            .collect();
+        let home = Home::new("grok-own");
+        home.file(".grok/config.toml", 2_000);
+        assert!(kept_data(&home.0, "grok-build", &named_paths(&plan), BUDGET).is_empty());
+        assert_eq!(kept_data(&home.0, "grok-build", &[], BUDGET).len(), 1);
+    }
+
+    #[test]
+    fn test_qoder_and_copilot_leave_their_programs_copies_out_of_what_stays() {
+        let home = Home::new("qoder");
+        home.file(".qoder/settings.json", 1_000);
+        home.file(".qoder/projects/a/session.jsonl", 30_000);
+        home.file(".qoder/bin/qodercli/qodercli-1.1.65", 800_000);
+        match &kept_data(&home.0, "qoder-cli", &[], BUDGET)[..] {
+            [Warning::KeepsData {
+                path,
+                size,
+                left_out,
+                ..
+            }] => {
+                assert_eq!(path, "~/.qoder");
+                assert_eq!(left_out, &vec!["~/.qoder/bin/qodercli".to_string()]);
+                let bytes = size.expect("measured").bytes;
+                assert!((31_000..800_000).contains(&bytes), "{bytes}");
+            }
+            other => panic!("{other:?}"),
+        }
+
+        let home = Home::new("copilot");
+        home.file(".copilot/settings.json", 1_000);
+        home.file(".copilot/session-state/a/events.jsonl", 20_000);
+        home.file(".copilot/pkg/universal/1.0.91/index.js", 700_000);
+        match &kept_data(&home.0, "copilot-cli", &[], BUDGET)[..] {
+            [Warning::KeepsData {
+                path,
+                size,
+                left_out,
+                ..
+            }] => {
+                assert_eq!(path, "~/.copilot");
+                assert_eq!(left_out, &vec!["~/.copilot/pkg".to_string()]);
+                let bytes = size.expect("measured").bytes;
+                assert!((21_000..700_000).contains(&bytes), "{bytes}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_aider_names_its_folder_and_the_settings_files_that_are_there_in_the_tables_order() {
+        let home = Home::new("aider");
+        home.file(".aider/analytics.json", 300);
+        home.file(".aider/caches/model_prices.json", 50_000);
+        home.file(".aider.conf.yml", 400);
+        // No model settings or metadata file: no line for them.
+        let warnings = kept_data(&home.0, "aider", &[], BUDGET);
+        assert_eq!(
+            paths_of(&warnings),
+            vec!["~/.aider".to_string(), "~/.aider.conf.yml".to_string()]
+        );
+        assert!(size_of(&warnings[0]).unwrap().bytes >= 50_300);
+        assert!(size_of(&warnings[1]).unwrap().bytes >= 400);
+    }
+
+    #[test]
+    fn test_kimi_code_names_its_folder_and_the_older_kimi_clis() {
+        let home = Home::new("kimi");
+        home.file(".kimi-code/config.toml", 500);
+        home.file(".kimi-code/sessions/wd_a/s1/state.json", 3_000);
+        home.file(".kimi/config.json", 400);
+        assert_eq!(
+            paths_of(&kept_data(&home.0, "kimi-code", &[], BUDGET)),
+            vec!["~/.kimi-code".to_string(), "~/.kimi".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_cursor_cli_names_only_its_own_file_in_the_editors_folder() {
+        // `~/.cursor` is the Cursor editor's too: its extensions are not
+        // the CLI's data, and are neither named nor counted.
+        let home = Home::new("cursor");
+        home.file(".cursor/extensions/some.ext/big.bin", 900_000);
+        home.file(".cursor/cli-config.json", 700);
+        let warnings = kept_data(&home.0, "cursor-cli", &[], BUDGET);
+        assert_eq!(
+            paths_of(&warnings),
+            vec!["~/.cursor/cli-config.json".to_string()]
+        );
+        let bytes = size_of(&warnings[0]).unwrap().bytes;
+        assert!(bytes < 100_000, "{bytes}");
     }
 }

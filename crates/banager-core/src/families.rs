@@ -53,8 +53,109 @@
 //!   launch has only the shell's `PATH`), so data moved elsewhere is not
 //!   named. Nothing of them is inside the
 //!   folder its own install uses (`~/.opencode`, `recipes::OPENCODE`),
-//!   whose row Banager never uninstalls. Every other family has none
-//!   until verified.
+//!   whose row Banager never uninstalls. The rest are below.
+//!
+//! # Data folders added 2026-10-02
+//!
+//! Each from that vendor's own docs or source, read as text and never run:
+//! a docs page fetched with `curl`, a file of its public repository read
+//! through the GitHub API, or the files of its published npm or PyPI
+//! package, unpacked and read. Every one is the default: Banager inherits
+//! only the shell's `PATH`, so the variable a tool lets a shell move its
+//! folder with (named below) is never read, and data moved that way is not
+//! named.
+//!
+//! - Kimi Code: `~/.kimi-code`, where `@moonshot-ai/kimi-code` keeps its
+//!   settings, sessions, logins and logs (MoonshotAI/kimi-code,
+//!   `docs/en/configuration/data-locations.md`; `apps/kimi-code/src/
+//!   utils/paths.ts`, `getDataDir`; `KIMI_CODE_HOME`), and `~/.kimi`, the
+//!   older Python Kimi CLI's (`kimi-cli` on PyPI and Homebrew:
+//!   `kimi_cli/share.py`, `Path.home() / ".kimi"`, in the published
+//!   1.52.0 wheel; `KIMI_SHARE_DIR`), which Kimi Code's migration guide
+//!   (moonshotai.github.io/kimi-code/en/guides/migration) says it never
+//!   modifies or deletes.
+//! - iFlow CLI: `~/.iflow` (the published 0.5.19 bundle,
+//!   `bundle/iflow.js`: `homedir()` joined with `.iflow` unless
+//!   `IFLOW_HOME`; its README: `~/.iflow/settings.json`).
+//! - CodeBuddy Code: `~/.codebuddy` (the docs it ships, `dist/web-ui/docs/
+//!   en/cli/installation.md`, "Configuration Directory", and
+//!   `codebuddy-dir.md`: settings, sessions, history, logs;
+//!   `CODEBUDDY_CONFIG_DIR`). Not named: `~/.local/share/codebuddy`, which
+//!   its bundle uses for its own installer's program versions.
+//! - Qoder CLI: `~/.qoder` (docs.qoder.com/cli/settings, /cli/config-scope
+//!   and /cli/installation: settings, login, plugins, sessions and
+//!   memories; `QODER_CONFIG_DIR`). Its install script's copy keeps its versioned
+//!   programs in `~/.qoder/bin/qodercli` (the published 1.1.65 bundle,
+//!   `bundle/qodercli.js`, decoded: `join(homedir(), ".qoder", "bin",
+//!   "qodercli")`), left out of the size (`kept_data::LEFT_OUT`).
+//! - Crush: `~/.local/share/crush` and `~/.config/crush` (charmbracelet/
+//!   crush, `internal/config/load.go`, `GlobalConfigData` and
+//!   `GlobalConfig`, with `internal/home/home.go`; its README;
+//!   `CRUSH_GLOBAL_DATA`, `CRUSH_GLOBAL_CONFIG`, `XDG_*`). Not named:
+//!   `~/.cache/crush`, a cache, and the sessions it keeps in each
+//!   project's own `.crush`.
+//! - Amp: `~/.config/amp` (ampcode.com/docs/cli/settings: "macOS:
+//!   ~/.config/amp/settings.json"; skills and plugins there too). Not
+//!   named: `~/.local/share/amp`, which its program defines but no doc
+//!   says what it holds.
+//! - Kilo: `~/.local/share/kilo` and `~/.config/kilo` (Kilo-Org/kilocode,
+//!   `packages/core/src/global.ts`: `xdgData` and `xdgConfig` joined with
+//!   `kilo`, as opencode's; kilo.ai/docs/cli: config in
+//!   `~/.config/kilo/`). Not named: its cache and state folders, as
+//!   opencode's.
+//! - GitHub Copilot CLI: `~/.copilot` (docs.github.com, "GitHub Copilot
+//!   CLI configuration directory": configuration, session history, logs
+//!   and customizations; `COPILOT_HOME`). Its updater's copies of the
+//!   program in `~/.copilot/pkg` (github/copilot-cli `changelog.md`,
+//!   0.0.421: "Use consistent ~/.copilot/pkg path for auto-update") are
+//!   left out of the size.
+//! - Auggie: `~/.augment` (docs.augmentcode.com/cli/config:
+//!   `~/.augment/settings.json`; the published 0.36.0 `augment.mjs`:
+//!   sessions in `~/.augment/sessions`).
+//! - Factory Droid: `~/.factory` (docs.factory.ai/cli/configuration/
+//!   settings: `~/.factory/settings.json`, specs and worktrees there).
+//! - Cursor CLI: the file `~/.cursor/cli-config.json` only
+//!   (cursor.com/docs/cli/reference/configuration). `~/.cursor` itself is
+//!   the Cursor editor's folder too, and no Cursor doc names the CLI's
+//!   other files; Homebrew's `zap` for the cask names three more folders,
+//!   a list Homebrew's, not Cursor's.
+//! - Aider: `~/.aider` (the published 0.86.2 wheel: `oauth-keys.env` and
+//!   `installs.json` in `aider/main.py`, `analytics.json` in
+//!   `aider/analytics.py`, `caches` in `aider/models.py`) and the three
+//!   settings files its docs say it reads from the home folder,
+//!   `~/.aider.conf.yml`, `~/.aider.model.settings.yml` and
+//!   `~/.aider.model.metadata.json` (aider.chat/docs/config/aider_conf.html
+//!   and adv-model-settings.html). Not named: the chat and input history
+//!   it keeps in each git repository.
+//! - Goose: `~/.local/share/goose` (sessions) and `~/.config/goose`
+//!   (settings and command history) (goose-docs.ai/docs/guides/logs and
+//!   config-files; aaif-goose/goose `crates/goose/src/config/paths.rs`
+//!   with etcetera 0.11, whose `choose_app_strategy` is XDG on macOS;
+//!   `GOOSE_PATH_ROOT`). Not named: `~/.local/state/goose`, logs it
+//!   deletes itself after two weeks.
+//! - Mistral Vibe: `~/.vibe` (the published 2.25.8 wheel,
+//!   `vibe/utils/paths.py`: `Path.home() / ".vibe"` unless `VIBE_HOME`;
+//!   its README: `config.toml`, the `.env` holding its key, skills).
+//! - OpenClaw: `~/.openclaw`, and `~/.clawdbot`, the older name it still
+//!   uses when `~/.openclaw` is not there (openclaw/openclaw,
+//!   `src/config/state-dir.ts`; docs.openclaw.ai/install/uninstall:
+//!   "Delete state + config: rm -rf ... $HOME/.openclaw";
+//!   `OPENCLAW_STATE_DIR`). Its own `install-cli.sh` installs a Node and
+//!   a copy of OpenClaw under `~/.openclaw/tools` and `~/.openclaw/bin`
+//!   in a folder named after the Node version, which a fixed name in
+//!   `kept_data::LEFT_OUT` cannot match, and `tools/` also holds what its
+//!   skills download: the size counts both, and docs/what-we-run.md says
+//!   so.
+//! - Grok Build: `~/.grok` (xai-org/grok-build, `crates/codegen/
+//!   xai-grok-shell/README.md`, "File Locations", and
+//!   `crates/codegen/xai-dirs/src/lib.rs`; `GROK_HOME`), which Banager's
+//!   own recipe keeps too (`recipes::GROK`), so its preview names it
+//!   once, there. Its install script's program in `~/.grok/downloads`
+//!   (x.ai/cli/install.sh, read as text: `DOWNLOAD_DIR`) is left out of
+//!   the size when Homebrew's cask `grok-build` is the one uninstalled.
+//!
+//! Ollama has none in the table: its models folder is named by
+//! `kept_data::OLLAMA_MODELS`, and the rest of `~/.ollama` is not named.
 //!
 //! Versions are deliberately not in the table: they change weekly.
 //!
@@ -407,40 +508,93 @@ mod tests {
     }
 
     #[test]
-    fn test_data_paths_are_only_the_six_verified_and_under_home() {
-        let with_data: Vec<_> = families()
-            .iter()
-            .filter(|f| !f.data_paths.is_empty())
-            .map(|f| f.id.as_str())
-            .collect();
-        assert_eq!(
-            with_data,
-            [
-                "claude-code",
-                "codex",
-                "gemini-cli",
-                "qwen-code",
+    fn test_data_paths_are_the_verified_ones_and_under_home() {
+        // Every family's, as the vendors' own docs or source name them
+        // (module doc): a family added without its folders, or a folder
+        // changed without its evidence in the module doc, fails here.
+        let expected: &[(&str, &[&str])] = &[
+            ("claude-code", &["~/.claude", "~/.claude.json"]),
+            ("codex", &["~/.codex"]),
+            ("gemini-cli", &["~/.gemini"]),
+            ("qwen-code", &["~/.qwen"]),
+            ("kimi-code", &["~/.kimi-code", "~/.kimi"]),
+            ("iflow-cli", &["~/.iflow"]),
+            ("codebuddy-code", &["~/.codebuddy"]),
+            ("qoder-cli", &["~/.qoder"]),
+            (
                 "opencode",
-                "antigravity-cli"
-            ]
-        );
-        assert_eq!(
-            family("opencode").unwrap().data_paths,
-            ["~/.local/share/opencode", "~/.config/opencode"]
-        );
-        assert_eq!(
-            family("antigravity-cli").unwrap().data_paths,
-            ["~/.gemini/antigravity-cli"]
-        );
+                &["~/.local/share/opencode", "~/.config/opencode"],
+            ),
+            ("crush", &["~/.local/share/crush", "~/.config/crush"]),
+            ("amp", &["~/.config/amp"]),
+            ("kilo", &["~/.local/share/kilo", "~/.config/kilo"]),
+            ("copilot-cli", &["~/.copilot"]),
+            ("auggie", &["~/.augment"]),
+            ("droid", &["~/.factory"]),
+            ("cursor-cli", &["~/.cursor/cli-config.json"]),
+            (
+                "aider",
+                &[
+                    "~/.aider",
+                    "~/.aider.conf.yml",
+                    "~/.aider.model.settings.yml",
+                    "~/.aider.model.metadata.json",
+                ],
+            ),
+            ("goose", &["~/.local/share/goose", "~/.config/goose"]),
+            ("mistral-vibe", &["~/.vibe"]),
+            ("openclaw", &["~/.openclaw", "~/.clawdbot"]),
+            // Ollama's models folder is kept_data's, not the table's.
+            ("ollama", &[]),
+            ("antigravity-cli", &["~/.gemini/antigravity-cli"]),
+            ("grok-build", &["~/.grok"]),
+        ];
+        let listed: Vec<(&str, Vec<&str>)> = families()
+            .iter()
+            .map(|f| {
+                (
+                    f.id.as_str(),
+                    f.data_paths.iter().map(String::as_str).collect(),
+                )
+            })
+            .collect();
+        let expected: Vec<(&str, Vec<&str>)> = expected
+            .iter()
+            .map(|(id, paths)| (*id, paths.to_vec()))
+            .collect();
+        assert_eq!(listed, expected);
         for f in families() {
+            let mut seen = HashSet::new();
             for p in &f.data_paths {
                 assert!(p.starts_with("~/") && !p.contains(".."), "{}: {p}", f.id);
+                assert!(!p.ends_with('/'), "{}: {p} ends with a slash", f.id);
+                assert!(seen.insert(p.as_str()), "{} repeats {p}", f.id);
             }
         }
-        assert_eq!(
-            family("claude-code").unwrap().data_paths,
-            ["~/.claude", "~/.claude.json"]
-        );
+    }
+
+    #[test]
+    fn test_no_data_path_is_a_folder_many_programs_share() {
+        // A tool's own folder or file, never the shared folder it sits in:
+        // `~/.cursor` is the Cursor editor's too, so Cursor CLI names only
+        // its own file there, and the XDG folders hold every tool's.
+        const SHARED: &[&str] = &[
+            "~/.config",
+            "~/.local",
+            "~/.local/share",
+            "~/.local/state",
+            "~/.local/bin",
+            "~/.cache",
+            "~/.cursor",
+            "~/.agents",
+            "~/Library",
+        ];
+        for f in families() {
+            for p in &f.data_paths {
+                assert!(!SHARED.contains(&p.as_str()), "{}: {p}", f.id);
+                assert!(!p.starts_with("~/Library/"), "{}: {p}", f.id);
+            }
+        }
     }
 
     #[test]
