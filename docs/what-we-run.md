@@ -1990,6 +1990,10 @@ It reads:
 with only `lstat` of each folder and link on the way and `readlink` of
 each link, each step checked against the places below before it is taken
 (`protected::resolve`, the same walk the disk-use measurement uses).
+Unlike `realpath`, it keeps each name as `PATH` or the link's text spells
+it, so two paths are compared without regard to ASCII case, as a Mac's
+disk names them: `~/.CARGO/bin` on `PATH` is `~/.cargo/bin`
+(`protected::same_path`).
 
 A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies` or `~/Music`, in iCloud Drive or another cloud folder

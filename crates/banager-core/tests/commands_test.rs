@@ -1431,3 +1431,38 @@ fn test_a_path_folder_that_is_there_but_cannot_be_listed_is_kept_unread() {
     );
     assert_eq!(found, vec![vec![unjudged("myproj")]]);
 }
+
+#[test]
+fn test_a_path_folder_spelled_in_another_case_is_the_same_folder() {
+    // On a Mac's disk `~/.CARGO/bin` is `~/.cargo/bin`: a `PATH` entry
+    // and a tool's folder that differ only in case are one folder, as
+    // `realpath` would say, whatever spelling each was given.
+    let home = Home::new("case");
+    fs::create_dir_all(home.at(".case-probe")).unwrap();
+    if !home.at(".CASE-PROBE").exists() {
+        return; // a case-sensitive disk: two folders after all
+    }
+    let cargo_home = home.dir(".cargo");
+    let rg = home.exe(".cargo/bin/rg");
+    let id = format!("cargo:{}", cargo_home.display());
+    let instances = vec![instance(
+        "cargo",
+        &id,
+        &cargo_home,
+        &cargo_home.join("bin/cargo"),
+    )];
+    let artifacts = vec![with_provided(
+        artifact(&id, ArtifactKind::Binary, "ripgrep"),
+        vec![provided("rg", &rg, &[])],
+    )];
+    let found = verdicts(&home, &[home.at(".CARGO/bin")], &instances, &artifacts);
+    assert_eq!(found, vec![vec![runs("rg")]]);
+    // Named twice, once in each case: read once.
+    let folders = read_folders(
+        &[home.at(".CARGO/bin"), home.at(".cargo/bin")],
+        &bin_folders(&instances),
+        home.path(),
+        CommandBudget::default(),
+    );
+    assert_eq!(folders.path_folders(), vec![home.at(".CARGO/bin").as_path()]);
+}

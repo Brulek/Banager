@@ -366,7 +366,7 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
         Some(OnPath::Unknown) => return None,
         Some(OnPath::Executable(first)) => first,
     };
-    if first == real {
+    if protected::same_path(&first, real) {
         return None;
     }
     // The first one is not this file. It shadows this copy only if this
@@ -376,7 +376,7 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     // could be this copy: then no note.
     let mut unknown = false;
     let behind = found.any(|later| match later {
-        OnPath::Executable(later) => later == real,
+        OnPath::Executable(later) => protected::same_path(&later, real),
         OnPath::Unknown => {
             unknown = true;
             false

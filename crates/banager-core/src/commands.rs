@@ -130,11 +130,13 @@ impl Folders {
         self.path
             .iter()
             .chain(&self.other)
-            .find(|folder| folder.canonical == canonical)
+            .find(|folder| protected::same_path(&folder.canonical, canonical))
     }
 
     fn on_path(&self, canonical: &Path) -> bool {
-        self.path.iter().any(|folder| folder.canonical == canonical)
+        self.path
+            .iter()
+            .any(|folder| protected::same_path(&folder.canonical, canonical))
     }
 
     /// The `PATH` folders that were read, as named (for the tests).
@@ -253,14 +255,14 @@ fn read_one(
         Resolution::Found(canonical, meta) if meta.is_dir() => canonical,
         Resolution::Found(..) | Resolution::Missing | Resolution::Refused => return Ok(None),
         Resolution::Protected(leads_to) => {
-            if seen.contains(&leads_to) {
+            if seen.iter().any(|seen| protected::same_path(seen, &leads_to)) {
                 return Ok(None);
             }
             seen.push(leads_to.clone());
             return Ok(Some(unread(leads_to)));
         }
     };
-    if seen.contains(&canonical) {
+    if seen.iter().any(|seen| protected::same_path(seen, &canonical)) {
         return Ok(None);
     }
     seen.push(canonical.clone());
@@ -398,9 +400,11 @@ pub fn judge(
     let mut look = Look::new(home, budget);
     let claims = claims(folders, instances, artifacts, home, &mut look)?;
     // The artifact each file is, for `ShadowedBy`: the first claim wins.
-    let mut owner: HashMap<&Path, usize> = HashMap::new();
+    let mut owner: HashMap<Vec<u8>, usize> = HashMap::new();
     for claim in &claims {
-        owner.entry(&claim.target).or_insert(claim.artifact);
+        owner
+            .entry(protected::folded(&claim.target))
+            .or_insert(claim.artifact);
     }
     // What each `PATH` folder holds of a name, in `PATH`'s order -- every
     // executable by where it leads, and every unread folder -- looked up
@@ -440,21 +444,23 @@ pub fn judge(
             let owner_of = |found: &Option<PathBuf>| {
                 found
                     .as_deref()
-                    .and_then(|target| owner.get(target))
+                    .and_then(|target| owner.get(&protected::folded(target)))
                     .copied()
             };
-            let this = Seen::Executable(Some(claim.target.clone()));
+            let is_this = |seen: &Seen| {
+                matches!(seen, Seen::Executable(Some(found))
+                    if protected::same_path(found, &claim.target))
+            };
             match matches.first() {
                 // An unread folder first: it may hold the name.
                 Some(Seen::Unread) => None,
-                Some(Seen::Executable(first))
-                    if first.as_deref() == Some(claim.target.as_path())
-                        || owner_of(first) == Some(claim.artifact) =>
+                Some(seen @ Seen::Executable(first))
+                    if is_this(seen) || owner_of(first) == Some(claim.artifact) =>
                 {
                     Some(CommandState::Runs)
                 }
                 Some(Seen::Executable(first))
-                    if matches.iter().skip(1).any(|seen| *seen == this) =>
+                    if matches.iter().skip(1).any(is_this) =>
                 {
                     Some(CommandState::ShadowedBy {
                         by: owner_of(first).map(|i| artifacts[i].key.clone()),
@@ -637,7 +643,7 @@ fn linked(
             let Some(target) = look.canonical(&canonical_dir.join(name)) else {
                 continue;
             };
-            let Ok(inside) = target.strip_prefix(&own) else {
+            let Some(inside) = protected::strip_prefix_folded(&target, &own) else {
                 continue;
             };
             let mut parts = inside.components().filter_map(|part| match part {
@@ -712,7 +718,11 @@ fn named(
             .filter_map(|root| look.canonical(root))
             .collect();
         let places = provided.within.len() + extra_roots.len();
-        if places > 0 && !roots.iter().any(|root| target.starts_with(root)) {
+        if places > 0
+            && !roots
+                .iter()
+                .any(|root| protected::starts_with_folded(&target, root))
+        {
             continue;
         }
         claims.push(Claim {
@@ -748,7 +758,9 @@ fn pipx(
         claims.push(Claim {
             artifact: index,
             name: provided.name.clone(),
-            folder: (exposed.as_deref() == Some(target.as_path())).then(|| bin.clone()),
+            folder: exposed
+                .is_some_and(|exposed| protected::same_path(&exposed, &target))
+                .then(|| bin.clone()),
             target,
         });
     }
@@ -786,7 +798,10 @@ fn standalone(inst: &ManagerInstance, index: usize, look: &mut Look, claims: &mu
         let Some(target) = look.canonical(&path) else {
             continue;
         };
-        if root.as_ref().is_some_and(|root| !target.starts_with(root)) {
+        if root
+            .as_ref()
+            .is_some_and(|root| !protected::starts_with_folded(&target, root))
+        {
             continue;
         }
         claims.push(Claim {

@@ -75,6 +75,36 @@ pub fn starts_with_folded(path: &Path, prefix: &Path) -> bool {
     })
 }
 
+/// Whether `a` and `b` are one path on a Mac's disk, whose names do not
+/// tell ASCII case apart: `resolve` keeps each name as it was given or as
+/// a link's text spells it, where `realpath` would answer the disk's own
+/// spelling, so `~/.CARGO/bin` and `~/.cargo/bin` must compare equal.
+/// For paths `resolve` built (no `.`, `..` or doubled `/`).
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    a.as_os_str()
+        .as_bytes()
+        .eq_ignore_ascii_case(b.as_os_str().as_bytes())
+}
+
+/// `path` as a key two spellings of it that `same_path` takes as one
+/// share.
+pub fn folded(path: &Path) -> Vec<u8> {
+    path.as_os_str().as_bytes().to_ascii_lowercase()
+}
+
+/// `Path::strip_prefix`, as `same_path` compares: what is left of `path`
+/// below `prefix`, or `None` when it is not below it.
+pub fn strip_prefix_folded<'a>(path: &'a Path, prefix: &Path) -> Option<&'a Path> {
+    if !starts_with_folded(path, prefix) {
+        return None;
+    }
+    let mut rest = path.components();
+    for _ in prefix.components() {
+        rest.next();
+    }
+    Some(rest.as_path())
+}
+
 /// The most links followed on the way to one path, as the kernel's own
 /// limit for a path (`MAXSYMLINKS`).
 const MAX_LINKS: u32 = 32;
@@ -323,6 +353,20 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn test_two_spellings_that_differ_only_in_case_are_one_path() {
+        let a = Path::new("/Users/x/.CARGO/bin/rg");
+        let b = Path::new("/Users/x/.cargo/bin/rg");
+        assert!(same_path(a, b));
+        assert_eq!(folded(a), folded(b));
+        assert!(!same_path(a, Path::new("/Users/x/.cargo/bin/fd")));
+        assert_eq!(
+            strip_prefix_folded(a, Path::new("/users/X/.cargo")),
+            Some(Path::new("bin/rg"))
+        );
+        assert_eq!(strip_prefix_folded(a, Path::new("/Users/x/.cargo2")), None);
     }
 
     #[test]
