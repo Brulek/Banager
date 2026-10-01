@@ -1,3 +1,4 @@
+use crate::protected::{resolve, Protected, Resolution};
 use std::path::{Path, PathBuf};
 use url::Url;
 
@@ -133,14 +134,22 @@ pub(crate) fn tool_home(setting: Option<&Path>, home: &Path, default_dir: &str) 
     }
 }
 
+/// The first `<dir>/<name>` on `PATH` that is, or leads to, a regular
+/// file, as `PATH` spells it. Each one is followed a step at a time
+/// (`protected::resolve`): a `PATH` folder in, or a `name` that leads
+/// into, one of the places Banager never looks into (`~/Documents`,
+/// iCloud Drive, `/Volumes`, ...) is passed over without being looked at,
+/// as if that file were not there -- so finding a package manager never
+/// raises the macOS prompt for those places, nor waits on a disk that is
+/// gone.
 pub fn resolve_exe(name: &str, env: &HostEnv) -> Option<PathBuf> {
-    for dir in &env.path_dirs {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
+    let protected = Protected::new(&env.home);
+    env.path_dirs.iter().map(|dir| dir.join(name)).find(|candidate| {
+        matches!(
+            resolve(candidate, &protected, true),
+            Resolution::Found(_, meta) if meta.is_file()
+        )
+    })
 }
 
 #[cfg(test)]
@@ -166,6 +175,68 @@ mod tests {
             ollama_host: None,
         };
         assert_eq!(resolve_exe("sh", &env), Some(PathBuf::from("/bin/sh")));
+    }
+
+    #[test]
+    fn test_resolve_exe_never_looks_into_a_protected_place_on_path() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let root = std::env::temp_dir().join(format!(
+            "banager-resolve-exe-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let home = std::fs::canonicalize({
+            std::fs::create_dir_all(&root).unwrap();
+            &root
+        })
+        .unwrap();
+        let mk = |relative: &str| {
+            let path = home.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+        // A `PATH` folder in ~/Documents (locked, so a look inside would
+        // fail rather than find it), a `~/bin` that is a link into iCloud
+        // Drive, a link onto another disk, then the real one.
+        let in_documents = mk("Documents/scripts/npm");
+        mk("Library/Mobile Documents/com~apple~CloudDocs/bin/npm");
+        symlink(
+            home.join("Library/Mobile Documents/com~apple~CloudDocs/bin"),
+            home.join("bin"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(home.join("links")).unwrap();
+        symlink(
+            "/Volumes/Banager-test-no-such-disk/npm",
+            home.join("links/npm"),
+        )
+        .unwrap();
+        let real = mk("tools/npm");
+        let locked = in_documents.parent().unwrap().to_path_buf();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let env = HostEnv {
+            path_dirs: vec![
+                locked.clone(),
+                home.join("bin"),
+                home.join("links"),
+                home.join("tools"),
+            ],
+            home: home.clone(),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let found = resolve_exe("npm", &env);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(found, Some(real));
     }
 
     #[test]

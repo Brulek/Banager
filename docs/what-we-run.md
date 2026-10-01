@@ -96,7 +96,12 @@ install, uninstall and upgrade previews read four more, to find its
 `brew.env` files, and uv's inventory and uninstall preview read
 `UV_TOOL_DIR` (their sections). Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
-on that `PATH` containing a regular file of that name. Homebrew is looked
+on that `PATH` containing a regular file of that name, or a link that
+leads to one. It is looked for one step at a time (`lstat` and `readlink`,
+`protected::resolve`): a `PATH` folder in, or a file there that leads
+into, one of the places Banager never looks into (Disk use, below: the
+one list in `crates/banager-core/src/protected.rs`) is passed over as if
+the file were not there, and nothing in it is read. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
 own installer: Claude Code at `~/.local/bin/claude`, Antigravity CLI at
 `~/.local/bin/agy`, Grok Build at `~/.grok/bin/grok`, rustup at
