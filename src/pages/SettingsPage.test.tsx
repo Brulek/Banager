@@ -7,6 +7,7 @@ import { SettingsPage } from "./SettingsPage";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
+import enUS from "../i18n/en.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
@@ -572,7 +573,7 @@ describe("SettingsPage", () => {
       "Weekly",
     ]);
     expect(daily).toHaveAccessibleDescription(
-      "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates on this schedule, even with its window closed, and doesn't install the updates it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
@@ -941,9 +942,24 @@ describe("SettingsPage", () => {
     // polish-3 copy table's 「不会自动安装」, which claims more than that.
     expect(zhCN.settings.autoCheck.label).toBe("检查更新");
     expect(zhCN.settings.checkEvery).toEqual({ off: "不自动检查", day: "每天", week: "每周" });
-    expect(zhCN.settings.autoCheck.description).toBe("Banager运行时按所选频率检查更新，查到的更新不会自动安装。");
+    expect(zhCN.settings.autoCheck.description).toBe(
+      "Banager按所选频率检查更新，关掉窗口也会检查，查到的更新不会自动安装。退出Banager或重启Mac后不再检查，直到再次打开它。",
+    );
     expect(zhCN.settings.notifyUpdates.label).toBe("有更新时通知我");
     expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Banager发送通知。");
+  });
+
+  it("says the automatic check goes on with the window closed and stops once Banager quits or the Mac restarts", () => {
+    // Banager has no login item: after a quit or a restart nothing checks
+    // until it is opened again, which the subtitle must not leave unsaid
+    // (backlog, 「每天自动检查和通知会悄悄停掉」). Closing the window only
+    // hides it (`on_window_event`, src-tauri/src/window.rs).
+    const zh = zhCN.settings.autoCheck.description;
+    expect(zh).toContain("关掉窗口也会检查");
+    expect(zh).toContain("退出Banager或重启Mac后不再检查，直到再次打开它。");
+    const en = enUS.settings.autoCheck.description;
+    expect(en).toContain("even with its window closed");
+    expect(en).toContain("Checks stop when you quit Banager or restart your Mac, until you open it again.");
   });
 
   it("says whose the logos are in the icon credits in few words, in Chinese as the review asked", () => {
@@ -1183,7 +1199,7 @@ describe("SettingsPage", () => {
     const updates = await screen.findByRole("region", { name: "Updates" });
     const daily = within(updates).getByRole("combobox", { name: "Check for updates" });
     const what = within(updates).getByText(
-      "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates on this schedule, even with its window closed, and doesn't install the updates it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
     );
     // In the daily check's own row, under its label.
     expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);

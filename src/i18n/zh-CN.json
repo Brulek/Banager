@@ -848,7 +848,7 @@
     },
     "autoCheck": {
       "label": "检查更新",
-      "description": "Banager运行时按所选频率检查更新，查到的更新不会自动安装。"
+      "description": "Banager按所选频率检查更新，关掉窗口也会检查，查到的更新不会自动安装。退出Banager或重启Mac后不再检查，直到再次打开它。"
     },
     "notifyUpdates": {
       "label": "有更新时通知我",

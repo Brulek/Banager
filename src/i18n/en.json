@@ -933,7 +933,7 @@
     },
     "autoCheck": {
       "label": "Check for updates",
-      "description": "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds."
+      "description": "Banager checks for updates on this schedule, even with its window closed, and doesn't install the updates it finds. Checks stop when you quit Banager or restart your Mac, until you open it again."
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
