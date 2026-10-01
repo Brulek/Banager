@@ -3,6 +3,7 @@ import { useCopyCommand } from "../lib/clipboard";
 import { outcomeCause } from "../lib/failureCause";
 import type { OpSummary } from "../lib/types";
 import { commandText } from "./CommandPreview";
+import { displayToken } from "../lib/format";
 import { BUTTON } from "./ui/controls";
 
 /**
@@ -27,6 +28,33 @@ export function terminalCommand(op: OpSummary): string | null {
   if (program === undefined) return null;
   const env = (op.env_preview ?? []).filter(([name]) => !LEFT_OUT.has(name));
   return commandText({ Command: { program, args, env } });
+}
+
+/**
+ * The same command in two parts, to be shown as two lines: the settings
+ * it runs with (`HOMEBREW_NO_AUTO_UPDATE=1 …`), technical and muted, and
+ * the command itself, each a list of tokens (`displayToken`) a line may
+ * break between and never inside -- 「upgrade --」 / 「cask …」 reads as
+ * something else. Copy still copies `terminalCommand`, one line.
+ */
+export function terminalCommandParts(op: OpSummary): { env: string[]; command: string[] } | null {
+  const [program, ...args] = op.argv_preview;
+  if (program === undefined) return null;
+  const env = (op.env_preview ?? []).filter(([name]) => !LEFT_OUT.has(name));
+  return {
+    env: env.map(([name, value]) => `${name}=${displayToken(value)}`),
+    command: [program, ...args].map(displayToken),
+  };
+}
+
+/** `tokens` set with a space between each two, a line breaking only there. */
+function unbrokenTokens(tokens: string[]) {
+  return tokens.flatMap((token, index) => [
+    ...(index === 0 ? [] : [" "]),
+    <span key={index} className="whitespace-nowrap">
+      {token}
+    </span>,
+  ]);
 }
 
 /**
@@ -66,7 +94,8 @@ export function PasswordCommand({ op }: { op: OpSummary }) {
   const cause = outcomeCause(op.outcome);
   if (cause !== "needsPassword" && cause !== "passwordNotAccepted") return null;
   const command = terminalCommand(op);
-  if (command === null) return null;
+  const parts = terminalCommandParts(op);
+  if (command === null || parts === null) return null;
   const copyWords = status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;
   return (
     <div className="mb-3 flex flex-col gap-2">
@@ -74,8 +103,18 @@ export function PasswordCommand({ op }: { op: OpSummary }) {
       {/* Named by a group around it: a name on <code> itself is not
           one assistive technology reliably reads. */}
       <div role="group" aria-label={t("needsPassword.commandLabel")}>
-        <code className="block select-all whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-          {command}
+        {/* The settings on a muted line of their own, then the command:
+            what a person reads first is the command they run. One code
+            block, which selects and copies as the one line it is. */}
+        <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
+          {parts.env.length > 0 ? (
+            <span data-command-env="" className="block text-muted">
+              {unbrokenTokens(parts.env)}{" "}
+            </span>
+          ) : null}
+          <span data-command-argv="" className="block">
+            {unbrokenTokens(parts.command)}
+          </span>
         </code>
       </div>
       <div className="flex items-center gap-2">

@@ -129,6 +129,15 @@ describe("LogDrawer, where sudo wanted a password", () => {
       const code = getByRole("dialog").querySelector("code") as HTMLElement;
       expect(code.textContent).toBe(EXPECTED_COMMAND);
       expect(code.className).toContain("select-all");
+      // The variables on a muted line of their own, the command on the
+      // next; a line breaks only between two tokens, never inside one.
+      const env = code.querySelector("[data-command-env]") as HTMLElement;
+      const argv = code.querySelector("[data-command-argv]") as HTMLElement;
+      expect(env).toHaveClass("text-muted");
+      expect(argv.textContent).toMatch(/\/brew upgrade --cask /);
+      expect(env.textContent?.trim()).toBe(EXPECTED_COMMAND.slice(0, EXPECTED_COMMAND.length - argv.textContent!.length).trim());
+      for (const token of argv.querySelectorAll("span")) expect(token).toHaveClass("whitespace-nowrap");
+      expect([...argv.querySelectorAll("span")].map((token) => token.textContent)).toContain("--cask");
       expect(getByRole("group", { name: "Command to run in Terminal" })).toContainElement(code);
       expect(await findByText("When it's done, come back here and press ⌘R to check again.")).toBeInTheDocument();
 
