@@ -596,16 +596,28 @@ pub async fn run_plan(
 /// print their version as the second whitespace-separated token of the first
 /// line; this is that rule, once. Tools that print it differently — pipx's
 /// bare `1.17.3`, Ollama's `ollama version is 0.34.1` — keep their own
-/// parser.
+/// parser. A token with a control character in it is no version
+/// (`sanity::version_token`).
 pub fn second_token(text: &str) -> Option<String> {
     let mut parts = text.lines().next()?.split_whitespace();
     let _label = parts.next()?;
-    parts.next().map(|token| token.to_string())
+    sanity::version_token(parts.next().map(|token| token.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regression_second_token_refuses_a_version_with_a_control_character() {
+        // Found by `adapters/robustness.rs` (a flipped byte in cargo's line).
+        assert_eq!(second_token("cargo 1.9\u{0}.1 (797e8a9bc)\n"), None);
+        assert_eq!(second_token("uv 0.12.1\u{17} (Homebrew)\n"), None);
+        assert_eq!(
+            second_token("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
+            Some("1.98.1".to_string())
+        );
+    }
 
     #[test]
     fn test_from_toml_parses_the_committed_brew_meta_file() {
