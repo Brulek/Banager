@@ -817,8 +817,10 @@ paths exist, the uninstall preview looks at Homebrew's own update lock,
 `<prefix>/var/homebrew/locks/update`, to make sure no `brew update` —
 Banager's or anyone's — overlapped its `brew uses` read
 (`probe_homebrew_update_lock`): the directory is `stat`ed, the file is
-opened read-only and never created, and `fcntl(F_GETLK)` asks whether the
-lock is held without taking it. Every install, uninstall and upgrade
+opened read-only, without waiting (`O_NONBLOCK`, so a named pipe there
+cannot stall the preview), and never created, and when `fstat` says it is
+a regular file `fcntl(F_GETLK)` asks whether the lock is held without
+taking it; anything else is a lock it cannot look at. Every install, uninstall and upgrade
 preview also reads the `brew.env` files named above
 (`read_brew_env_file`): each is opened without waiting (links followed,
 `O_NONBLOCK`, so a named pipe there cannot stall it), checked with `fstat`

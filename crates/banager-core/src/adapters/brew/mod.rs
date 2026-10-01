@@ -1311,19 +1311,28 @@ impl FileId {
 /// holds one exactly as `lock.sh` does and checks both that this sees it
 /// and that looking never stops `lockf -t 0` from taking it.
 /// The file is opened read-only and never created, and the directory is
-/// only `stat`ed, so looking leaves nothing behind.
+/// only `stat`ed, so looking leaves nothing behind. It is opened without
+/// waiting (`O_NONBLOCK`), as `read_file` opens a file a tool wrote: a
+/// named pipe there would otherwise block the open until something wrote
+/// to it, and the uninstall preview with it. Anything but a regular file
+/// is a lock this cannot look at.
 ///
 /// On Linux `flock` and `fcntl` locks do not see each other (flock(2)),
 /// so there this never reports `Held`; the `LockStamp` still changes when
 /// a `brew update` begins.
 fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
+    use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::io::AsRawFd;
 
     let dir_path = prefix.join("var/homebrew/locks");
     let dir = std::fs::metadata(&dir_path)
         .ok()
         .map(|meta| FileId::of(&meta));
-    let file = match std::fs::File::open(dir_path.join("update")) {
+    let opened = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(dir_path.join("update"));
+    let file = match opened {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return HomebrewUpdateLock::Free(LockStamp { dir, file: None })
@@ -1337,6 +1346,9 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
         dir,
         file: Some(FileId::of(&meta)),
     };
+    if !meta.is_file() {
+        return HomebrewUpdateLock::Unobservable(seen);
+    }
     // SAFETY: `flock` is a plain C struct for which all-zero bytes are a
     // valid value; every field `F_GETLK` reads is set below.
     let mut query: libc::flock = unsafe { std::mem::zeroed() };
@@ -5209,6 +5221,33 @@ mod plan_execute_tests {
             before,
             probe_homebrew_update_lock(&prefix),
             "an entry made and deleted beside a lock file that would not open went unseen"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn regression_update_lock_probe_does_not_wait_on_a_named_pipe() {
+        // The uninstall preview looks at `<prefix>/var/homebrew/locks/update`.
+        // A named pipe there, which nothing writes to, would block a plain
+        // `open` until a writer came -- the preview would never end. It is
+        // opened without waiting, and anything but a regular file is a lock
+        // Banager cannot look at.
+        use crate::adapters::read_file::tests::{finishes, make_fifo};
+        let prefix = scratch_prefix("fifo");
+        make_fifo(&prefix.join("var/homebrew/locks/update"));
+        let probed = {
+            let prefix = prefix.clone();
+            finishes(move || probe_homebrew_update_lock(&prefix))
+        };
+        assert!(
+            matches!(
+                probed,
+                HomebrewUpdateLock::Unobservable(LockStamp {
+                    dir: Some(_),
+                    file: Some(_)
+                })
+            ),
+            "got {probed:?}"
         );
         let _ = std::fs::remove_dir_all(&prefix);
     }
