@@ -7,7 +7,8 @@
 //! Each command source's uninstall is planned and then carried out by its
 //! own adapter against a runner that records every command: the one
 //! command run is the plan's, argument for argument, and the plan holds
-//! none of the words that would remove more. The path-list uninstalls
+//! none of the words that would remove more; the preview itself runs
+//! only the read-only commands its source's section shows. The path-list uninstalls
 //! (Claude Code, Antigravity CLI, Grok Build) are checked against every
 //! tool's kept data as a property of the recipes.
 
@@ -142,8 +143,68 @@ fn cases() -> Vec<Case> {
     cases
 }
 
+/// Each command source by adapter id: how `docs/what-we-run.md` writes its
+/// program, and the heading of its section.
+const SECTIONS: [(&str, &str, &str); 6] = [
+    ("npm", "<npm>", "npm"),
+    ("pipx", "<pipx>", "pipx"),
+    ("uv", "<uv>", "uv"),
+    ("cargo", "<cargo>", "Cargo"),
+    ("ollama", "<ollama>", "Ollama"),
+    ("brew", "<brew>", "Homebrew"),
+];
+
+/// `docs/what-we-run.md`'s section under `## {heading}`.
+fn section(doc: &str, heading: &str) -> String {
+    let start = doc
+        .find(&format!("\n## {heading}\n"))
+        .unwrap_or_else(|| panic!("a section ## {heading}"));
+    let rest = &doc[start + 1..];
+    let end = rest[3..].find("\n## ").map_or(rest.len(), |at| at + 3);
+    rest[..end].to_string()
+}
+
+/// The commands `section` writes starting with `program`: those outside
+/// its write tables (the tables with a "Needs a password" column), and
+/// those in them.
+fn commands_in(section: &str, program: &str) -> (Vec<String>, Vec<String>) {
+    let (mut reads, mut writes) = (Vec::new(), Vec::new());
+    let mut in_write_table = false;
+    for line in section.lines() {
+        if !line.starts_with('|') {
+            in_write_table = false;
+        } else if line.contains("Needs a password") {
+            in_write_table = true;
+        }
+        for (index, span) in line.split('`').enumerate() {
+            if index % 2 == 1 && span.starts_with(program) {
+                if in_write_table {
+                    writes.push(span.to_string());
+                } else {
+                    reads.push(span.to_string());
+                }
+            }
+        }
+    }
+    (reads, writes)
+}
+
+/// Whether `argv` is `written`, a `{...}` there standing for one argument.
+fn is(argv: &[String], written: &str) -> bool {
+    let words: Vec<&str> = written.split_whitespace().collect();
+    words.len() == argv.len()
+        && words
+            .iter()
+            .zip(argv)
+            .all(|(word, arg)| word == arg || (word.starts_with('{') && word.ends_with('}')))
+}
+
 #[tokio::test]
 async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothing_more() {
+    let doc = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/what-we-run.md"),
+    )
+    .unwrap();
     for case in cases() {
         let Case {
             what,
@@ -191,6 +252,24 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
                     "{what}: {switch}=1 is set, got {env:?}"
                 );
             }
+        }
+
+        // The preview itself runs only read-only commands its source's
+        // section shows (Homebrew's `brew uses --installed {name}`).
+        let (placeholder, heading) = SECTIONS
+            .iter()
+            .find(|(adapter_id, _, _)| *adapter_id == instance.adapter_id)
+            .map(|(_, placeholder, heading)| (*placeholder, *heading))
+            .unwrap();
+        let (reads, writes) = commands_in(&section(&doc, heading), placeholder);
+        for call in runner.calls() {
+            let mut shown = vec![placeholder.to_string()];
+            shown.extend(call[1..].iter().cloned());
+            assert!(
+                reads.iter().any(|read| is(&shown, read))
+                    && writes.iter().all(|write| !is(&shown, write)),
+                "{what}: the preview ran {shown:?}, not a read-only command of ## {heading}"
+            );
         }
 
         let planned = runner.calls().len();
