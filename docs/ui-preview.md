@@ -192,15 +192,17 @@ Paths are under a generic home folder, `/Users/you`.
   Sorted 「按来源」, each source's heading says what it takes after its
   count, 「Homebrew 33 · 至少约2.6 GB」 (the font has no size, so "at least"),
   「Ollama 2 · 约6.6 GB」 as its models' line says; pip has no number. The
-  toolbar says the whole list's, 「57个工具 · 共至少约10.5 GB」, or one
+  toolbar says the whole list's, 「58个工具 · 共至少约10.6 GB」, or one
   source's on its page. No number while the round measures, or while a
   search or the 「显示」 popup narrows a heading's count. A total counts a
   formula's other versions (其他版本), which its row's size leaves out, so a heading
   can be more than its rows add up to; hovering a heading or the subtitle
   with a total shows a tooltip that says so (other versions in, caches out).
-- The Installed page's 「显示」 popup also offers 「装了不止一份」: with
-  `?state=notices`, Claude Code and @anthropic-ai/claude-code; on the default
-  pretend Mac, 「没有发现装了不止一份的工具」.
+- The Installed page's 「显示」 popup also offers 「装了不止一份」: on the
+  default pretend Mac, Codex's own install and npm's @openai/codex; with
+  `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
+  `?state=uptodate`, which leaves Codex's own install out,
+  「没有发现装了不止一份的工具」.
 - youtube-dl's details have every row the details can have for a
   Homebrew formula at once, for checking their order: the facts (version,
   date installed, 占用空间, 其他版本 with its size, homepage, and 状态 with
