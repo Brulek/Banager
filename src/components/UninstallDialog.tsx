@@ -4,6 +4,7 @@ import { useSettings, useSnapshot, usePlanOperation, useSubmitOperation } from "
 import {
   adapterIdOf,
   adapterLabel,
+  canWrite,
   instanceLabels,
   parseUninstallBlocked,
   parseUninstallUnsafe,
@@ -156,6 +157,12 @@ export function UninstallDialog({
     const labels = instanceLabels(t, snapshot?.instances ?? []);
     return (instanceId: string) => labels.get(instanceId) ?? adapterLabel(t, adapterIdOf(instanceId));
   }, [t, snapshot]);
+  // Whether Banager can uninstall a source's tools at all: pip's are
+  // uninstalled in Terminal, and the sentence says so.
+  const canUninstallHere = (instanceId: string) => {
+    const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
+    return instance === undefined || canWrite(instance);
+  };
   // `warningLines` is the one rule for turning `plan.warnings` into lines
   // and groups; with the plan's `affected` list shown once below, a
   // `WouldBreak` naming the same packages is not said a second time, and
@@ -401,7 +408,7 @@ export function UninstallDialog({
                   <p className="mt-2 text-body text-danger-text">
                     {needed.length === 0
                       ? t("uninstall.affectedBlocksConfirm", { name: displayName })
-                      : neededBySentence(t, displayName, needed, sourceOf, affected.length > 0)}
+                      : neededBySentence(t, displayName, needed, sourceOf, affected.length > 0, canUninstallHere)}
                   </p>
                 </div>
               ) : null}

@@ -744,7 +744,11 @@
     "sourceProgram": "这是{{source}}自己。{{source}}装的工具都要靠它更新和卸载，所以不能在这里卸载。",
     "sourceProgramRefused": "无法卸载，因为它是{{source}}自己。",
     "neededBy": "还有别的来源要靠它运行，所以不能在这里卸载。",
-    "neededByRefused": "无法卸载，因为还有别的来源要靠它运行。"
+    "neededByRefused": "无法卸载，因为还有别的来源要靠它运行。",
+    "managedBy": "{{sources}}装的工具要靠它更新和卸载。",
+    "inTerminal": "{{sources}}装的工具无法在这里卸载，要在终端里卸载。",
+    "goFirst": "这些工具这次会卸载，之后可以再卸载它。",
+    "then": "{{first}}{{then}}"
   },
   "batchUninstall": {
     "selectRow": "选择要卸载的“{{name}}”",

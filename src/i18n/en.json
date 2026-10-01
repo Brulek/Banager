@@ -803,7 +803,11 @@
     "sourceProgram": "This is {{source}} itself. Every tool installed with {{source}} is updated and uninstalled with it, so it can't be uninstalled here.",
     "sourceProgramRefused": "Couldn't uninstall it because it's {{source}} itself.",
     "neededBy": "Another source runs on it, so it can't be uninstalled here.",
-    "neededByRefused": "Couldn't uninstall it because another source runs on it."
+    "neededByRefused": "Couldn't uninstall it because another source runs on it.",
+    "managedBy": "Tools installed with {{sources}} are updated and uninstalled with it.",
+    "inTerminal": "Tools installed with {{sources}} can't be uninstalled here. Uninstall them in Terminal.",
+    "goFirst": "Those tools are uninstalled in this batch. Uninstall it afterward.",
+    "then": "{{first}} {{then}}"
   },
   "batchUninstall": {
     "selectRow": "Select {{name}} to uninstall",
