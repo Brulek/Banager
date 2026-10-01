@@ -385,7 +385,13 @@ impl Watchdog {
             let current = state.lock().map(|s| s.clone()).unwrap_or_default();
             if let Some((label, since)) = current {
                 if since.elapsed() > HANG_LIMIT {
-                    eprintln!("{parser} <- {label}\n    still running after {HANG_LIMIT:?}");
+                    // Straight to stderr: the test harness captures
+                    // `eprintln!` and an exiting process never shows it.
+                    use std::io::Write as _;
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "{parser} <- {label}\n    still running after {HANG_LIMIT:?}"
+                    );
                     std::process::exit(101);
                 }
             }
