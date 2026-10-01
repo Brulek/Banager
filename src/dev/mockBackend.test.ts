@@ -284,9 +284,10 @@ describe("the browser preview's mock backend", () => {
     });
 
     const { artifacts, updates, instances } = snapshot;
-    // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one npm's Claude Code
-    // (`addMany`), whose uninstall preview names what stays (./mockKeptData.ts).
-    expect(artifacts.length).toBe(799);
+    // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds, one Codex's own install
+    // (`codexStandalone`), one npm's Claude Code (`addMany`), whose uninstall preview names what stays
+    // (./mockKeptData.ts).
+    expect(artifacts.length).toBe(800);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;

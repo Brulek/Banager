@@ -63,6 +63,8 @@ export const IDS = {
   grok: "standalone-grok",
   rustup: "standalone-rustup",
   uv: "uv",
+  /** Codex installed by its own script: listed only (`codexStandalone`). */
+  codex: "standalone-codex",
 } as const;
 
 /**
@@ -501,6 +503,40 @@ function aiTools(): { artifacts: InstalledArtifact[]; updates: UpdateCandidate[]
   };
 }
 
+/**
+ * Codex installed by its own script beside npm's `@openai/codex`
+ * (`aiTools`): listed only. Its version is the release folder
+ * `~/.codex/packages/standalone/current` points at; it follows the latest
+ * release, so it updates itself (`auto_updates`); Banager checks nothing
+ * and removes nothing (`NoSafeMethod`), so it is on no update list. Its
+ * metadata lists no verified version, so none is flagged.
+ */
+function codexStandalone(): { instance: ManagerInstance; artifact: InstalledArtifact } {
+  return {
+    instance: instance(
+      "standalone-codex",
+      IDS.codex,
+      inHome(".local/bin/codex"),
+      inHome(".codex/packages/standalone"),
+      "0.159.3",
+    ),
+    artifact: artifact(IDS.codex, "Binary", "codex", "0.159.3", {
+      display_name: "Codex",
+      homepage: "https://github.com/openai/codex",
+      path: inHome(".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex"),
+      auto_updates: true,
+      uninstall_blocked: "NoSafeMethod",
+      installed_at: daysAgo(2),
+    }),
+  };
+}
+
+/** `list` with `added` placed by adapter id, as `refresh_round` orders instances. */
+function withInstance(list: ManagerInstance[], added: ManagerInstance): ManagerInstance[] {
+  const at = list.findIndex((i) => i.adapter_id > added.adapter_id);
+  return at === -1 ? [...list, added] : [...list.slice(0, at), added, ...list.slice(at)];
+}
+
 function instances(): ManagerInstance[] {
   // Sorted by adapter id, as `refresh_round` fans them out.
   return [
@@ -547,10 +583,11 @@ export interface World {
 function fullWorld(): World {
   const rest = everythingElse();
   const ai = aiTools();
+  const codex = codexStandalone();
   return {
     detect: "Found",
-    instances: instances(),
-    artifacts: withHomebrewState([...formulae(), ...casks(), ...rest.artifacts, ...ai.artifacts]),
+    instances: withInstance(instances(), codex.instance),
+    artifacts: withHomebrewState([...formulae(), ...casks(), ...rest.artifacts, ...ai.artifacts, codex.artifact]),
     updates: [...brewUpdates(), ...rest.updates, ...ai.updates],
     greedyUpdates: brewGreedyUpdates(),
     errors: [],
@@ -825,6 +862,7 @@ function addMany(world: World): void {
 export function buildWorld(state: ScenarioState): World {
   const world = scenarioWorld(state);
   addCommands(world);
+  addCodexCommands(world);
   return world;
 }
 
@@ -1120,4 +1158,19 @@ function addCommands(world: World): void {
     }
     if (commands !== undefined) artifact.facts = { ...artifact.facts, family, commands };
   }
+}
+
+/**
+ * `codex` from the two copies of Codex: Codex's own install puts it in
+ * `~/.local/bin`, which comes first on this Mac's search path, so typing
+ * `codex` runs that one and npm's `@openai/codex` waits behind it -- 「装了两
+ * 份」 on both rows, as `commands::judge` would say. Either copy alone:
+ * nothing to add.
+ */
+function addCodexCommands(world: World): void {
+  const own = world.artifacts.find((a) => a.key.instance_id === IDS.codex);
+  const npm = world.artifacts.find((a) => a.key.kind === "Package" && a.key.name === "@openai/codex");
+  if (own === undefined || npm === undefined) return;
+  own.facts = { ...own.facts, commands: runs(["codex"]) };
+  npm.facts = { ...npm.facts, commands: [{ name: "codex", state: { ShadowedBy: { by: own.key } } }] };
 }

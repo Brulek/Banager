@@ -31,6 +31,7 @@ describe("the preview's AI tool families", () => {
       ["npm", "opencode-ai", "opencode"],
       ["brew", "gemini-cli", "gemini-cli"],
       ["pipx", "aider-chat", "aider"],
+      ["standalone-codex", "codex", "codex"],
     ]);
     // Three of them have an update the Updates page can offer.
     const updatable = snapshot.updates.filter((u) => ["@openai/codex", "gemini-cli", "aider-chat"].includes(u.key.name));
@@ -52,6 +53,7 @@ describe("the preview's AI tool families", () => {
     expect(mockFamilyOf("uv", key("Tool", "Aider_Chat"))).toBe("aider");
     expect(mockFamilyOf("standalone-claude", key("Binary", "claude"))).toBe("claude-code");
     expect(mockFamilyOf("standalone-rustup", key("Binary", "rustup"))).toBeNull();
+    expect(mockFamilyOf("standalone-codex", key("Binary", "codex"))).toBe("codex");
     expect(mockFamilyOf("ollama", key("Model", "llama3.2:3b"))).toBeNull();
   });
 });
