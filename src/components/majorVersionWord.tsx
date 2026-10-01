@@ -5,7 +5,7 @@ import type { StatusChipProps } from "./StatusChip";
 
 /**
  * The Updates page's status word for an update that changes the major
- * version (`majorJump`, research synthesis §4.2 item 3): 「大版本」, muted
+ * version (`majorJump`, research synthesis §4.2 item 3): 「大版本更新」, muted
  * like every other word in the column, with an ⓘ that says what changes --
  * 「从3升到4，用法或设置可能会变。」 -- and points at the row's own way to wait,
  * "Skip This Version" in its ⋯ menu, by that item's own words. It promises

@@ -345,8 +345,8 @@
     "needsPassword": "Some apps ask for your Mac password at this step."
   },
   "majorVersion": {
-    "tag": "Major version",
-    "tagLabel": "Major version: {{name}}",
+    "tag": "Major update",
+    "tagLabel": "Major update: {{name}}",
     "detail": "From {{from}} to {{to}}: how it's used or set up may change. If you're not sure, you can choose “{{skip}}” for now.",
     "zeroNote": "Tools whose version starts with 0 aren't marked."
   },
@@ -902,7 +902,8 @@
       "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it.",
       "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded."
     },
-    "freesModel": "Frees about {{size}}, less any part other models share."
+    "freesModel": "Frees about {{size}}, less any part other models share.",
+    "majorNote": "This is a major update; how it's used may change."
   },
   "unknown": {
     "columns": {

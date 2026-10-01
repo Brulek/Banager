@@ -2,7 +2,7 @@ import type { ArtifactKind, UpdateCandidate } from "./types";
 
 /**
  * A change of major version an update brings -- `3.31.6 → 4.0.0` is
- * `{ from: 3, to: 4 }` -- which the Updates page marks 「大版本」 on the row
+ * `{ from: 3, to: 4 }` -- which the Updates page marks 「大版本更新」 on the row
  * (research synthesis §4.2 item 3, appendix A3): such an upgrade is the
  * one most likely to change how the tool is used or set up.
  */

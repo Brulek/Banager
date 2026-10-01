@@ -4,6 +4,7 @@ import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
 import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
+import { majorJump } from "../lib/versionJump";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
@@ -565,6 +566,8 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     const { plan } = item.issued;
     const lines = warningLines(t, plan.warnings);
     return [
+      // The row's 「大版本更新」, said again where the update is confirmed.
+      ...(majorJump(item.candidate) !== null ? [{ text: t("clarity.majorNote"), detail: null, caution: false }] : []),
       ...lines.trash,
       ...lines.keep,
       ...lines.note,

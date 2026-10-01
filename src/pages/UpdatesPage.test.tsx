@@ -5035,15 +5035,15 @@ describe("UpdatesPage", () => {
       },
     ];
 
-    it("marks the row with 「Major version」, says so to a screen reader, and points at Skip This Version", async () => {
+    it("marks the row with 「Major update」, says so to a screen reader, and points at Skip This Version", async () => {
       instances = [...snapshot.instances, runningOllama];
       updates = majorUpdates();
       renderPage();
 
       const glib = await findRow("glib");
-      expect(glib.querySelector("[data-status-column]")).toHaveTextContent("Major version");
-      expect(glib).toHaveAccessibleName("glib, Major version, 2.88.3 → 3.0.0");
-      const detail = chipDetail(glib, "Major version: glib");
+      expect(glib.querySelector("[data-status-column]")).toHaveTextContent("Major update");
+      expect(glib).toHaveAccessibleName("glib, Major update, 2.88.3 → 3.0.0");
+      const detail = chipDetail(glib, "Major update: glib");
       expect(detail).toHaveTextContent(
         "From 2 to 3: how it's used or set up may change. If you're not sure, you can choose “Skip This Version” for now.",
       );
@@ -5052,12 +5052,17 @@ describe("UpdatesPage", () => {
       expect(within(openMenu(glib)).getByRole("menuitem", { name: /Skip This Version/ })).toBeInTheDocument();
 
       for (const name of ["onyx", "qwen3:8b"]) {
-        expect(within(rowOf(name)).queryByText("Major version")).toBeNull();
+        expect(within(rowOf(name)).queryByText("Major update")).toBeNull();
       }
+
+      // Said again where the update is confirmed, as one quiet line.
+      fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
+      const dialog = await screen.findByRole("dialog");
+      expect(await within(dialog).findByText("This is a major update; how it's used may change.")).toBeInTheDocument();
     });
 
     it("lets an app that updates itself keep its own word, across a major version too", async () => {
-      // One word a row: 「Updates itself」 wins over 「Major version」,
+      // One word a row: 「Updates itself」 wins over 「Major update」,
       // on purpose -- the app moves on by itself whatever the row says.
       instances = [...snapshot.instances, claudeInstance];
       updates = [{ ...claudeUpdate, current: "2.1.290", target: "3.0.0" }];
@@ -5066,7 +5071,7 @@ describe("UpdatesPage", () => {
 
       const claude = await findRow("Claude Code");
       expect(claude.querySelector("[data-status-column]")).toHaveTextContent("Updates itself");
-      expect(within(claude).queryByText("Major version")).toBeNull();
+      expect(within(claude).queryByText("Major update")).toBeNull();
     });
 
     it("leaves what is ticked, and the order of the rows, as they were", async () => {
@@ -5085,8 +5090,8 @@ describe("UpdatesPage", () => {
       try {
         renderPage();
         const glib = await findRow("glib");
-        expect(glib).toHaveAccessibleName("glib, 大版本, 2.88.3 → 3.0.0");
-        expect(chipDetail(glib, "大版本：glib")).toHaveTextContent(
+        expect(glib).toHaveAccessibleName("glib, 大版本更新, 2.88.3 → 3.0.0");
+        expect(chipDetail(glib, "大版本更新：glib")).toHaveTextContent(
           "从2升到3，用法或设置可能会变。不确定时可以先“跳过此版本”。",
         );
       } finally {

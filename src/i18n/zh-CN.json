@@ -320,8 +320,8 @@
     "needsPassword": "部分App在这一步会要求输入Mac密码。"
   },
   "majorVersion": {
-    "tag": "大版本",
-    "tagLabel": "大版本：{{name}}",
+    "tag": "大版本更新",
+    "tagLabel": "大版本更新：{{name}}",
     "detail": "从{{from}}升到{{to}}，用法或设置可能会变。不确定时可以先“{{skip}}”。",
     "zeroNote": "版本号以0开头的工具不标大版本。"
   },
@@ -841,7 +841,8 @@
       "Pipx": "删除pipx为“{{name}}”单独建立的Python环境和指向该环境的命令。",
       "Uv": "删除uv为“{{name}}”单独建立的Python环境和uv记下的命令。"
     },
-    "freesModel": "会腾出约{{size}}，与其他模型共用的部分除外。"
+    "freesModel": "会腾出约{{size}}，与其他模型共用的部分除外。",
+    "majorNote": "这是大版本更新，用法可能会变。"
   },
   "unknown": {
     "columns": {
