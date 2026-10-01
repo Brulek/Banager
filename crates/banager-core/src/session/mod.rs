@@ -272,6 +272,15 @@ pub struct Session {
     /// state on their own (Homebrew's background `brew update`) by
     /// `Session::new`.
     background_change: Arc<tokio::sync::Notify>,
+    /// Whether the `PATH` this process has is the one the user's login
+    /// shell exports: `note_login_path`. Read by every refresh round,
+    /// which says which copy of a command runs only while it holds.
+    login_path: std::sync::atomic::AtomicBool,
+    /// Set while the blocking half of a round's command check is running
+    /// (`commands::start_reading`, `commands::finish`), so that one stuck
+    /// on a folder that stopped answering is not joined by another each
+    /// round.
+    commands_in_flight: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Session {
@@ -369,7 +378,21 @@ impl Session {
             issued_plans: Mutex::new(HashMap::new()),
             now_fn,
             background_change,
+            login_path: std::sync::atomic::AtomicBool::new(true),
+            commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
+    }
+
+    /// Says whether restoring the login shell's `PATH` worked at launch
+    /// (`fix_path_env::fix()` in the Tauri shell's `run()`), which falls
+    /// back to the process's own small `PATH` without a word when it does
+    /// not. While it has not, no refresh says which copy of a command runs
+    /// (`commands::judge`): against the `PATH` an app opened from Finder
+    /// starts with, nearly every tool would read as "not found". Until a
+    /// host says otherwise, the `PATH` is taken to be the login shell's --
+    /// what a host that never restores it, such as a test, hands in itself.
+    pub fn note_login_path(&self, restored: bool) {
+        self.login_path.store(restored, Ordering::SeqCst);
     }
 
     /// Resolves when something a refresh reported has since changed by

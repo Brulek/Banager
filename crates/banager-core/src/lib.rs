@@ -55,6 +55,10 @@ pub mod adapters;
 /// and the record of who asked for each round. Pure: the shell runs the
 /// task and the round.
 pub mod auto_check;
+/// Which copy of each command runs when the user types its name in
+/// Terminal, judged against `PATH` after each refresh's inventory --
+/// read-only, behind a budget, like `scan`.
+pub mod commands;
 pub mod events;
 /// Which AI coding tool an installed artifact is a copy of, from a table
 /// bundled into the binary (`data/ai-tools.json`).

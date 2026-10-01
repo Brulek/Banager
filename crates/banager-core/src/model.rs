@@ -305,11 +305,13 @@ pub struct ArtifactFacts {
     /// runs when the user types each one in Terminal (`CommandFact`).
     /// Worked out after the inventory, once per refresh round, from the
     /// whole snapshot and the `PATH` Banager read at launch
-    /// (`commands::judge`, through `Session::refresh`); sorted by name.
-    /// Empty when the artifact provides no command Banager could find,
-    /// for every artifact while a round could not read the folders
-    /// (`commands::CommandBudget`), and for sources whose commands Banager
-    /// does not look for (Ollama models, pip).
+    /// (`commands::judge`, through `Session::refresh`); sorted by name. A
+    /// row carried from an earlier round keeps the ones it had
+    /// (`commands::finish`); an inventory never fills this. Empty when the
+    /// artifact provides no command Banager could find, for the rows of a
+    /// round that could not read the folders (`commands::CommandBudget`),
+    /// and for sources whose commands Banager does not look for (Ollama
+    /// models, pip).
     pub commands: Vec<CommandFact>,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,

@@ -369,6 +369,18 @@ impl Session {
         } else {
             DetectOutcome::Found
         };
+        // Which copy of each command runs (`commands`): the folders on
+        // `PATH` and the Homebrew and npm bin folders are read on the
+        // blocking pool while the fan-out below runs, and the verdicts
+        // made once its rows are in, before the commit.
+        let path_known = self.login_path.load(Ordering::SeqCst);
+        let commands = crate::commands::start_reading(
+            env,
+            &instances,
+            path_known,
+            &self.commands_in_flight,
+            crate::commands::CommandBudget::default(),
+        );
 
         // Seeded before the fan-out because a skipped instance contributes
         // its carried-forward rows -- and, when an operation holds it, last
@@ -655,6 +667,18 @@ impl Session {
                 }
             }
         }
+
+        // Every row, carried or fresh, judged against this round's reading.
+        crate::commands::finish(
+            commands,
+            &instances,
+            &mut artifacts,
+            &env.home,
+            path_known,
+            &self.commands_in_flight,
+            crate::commands::CommandBudget::default(),
+        )
+        .await;
 
         // Stamped because a refresh *ran*, not because it came back
         // perfect. Gated on `stale`, a Mac with one permanently unavailable
