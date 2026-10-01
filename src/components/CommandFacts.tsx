@@ -1,12 +1,11 @@
 import { useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCopyCommand } from "../lib/clipboard";
+import { CopyButton } from "./CopyButton";
 import { commandGroups, stateId, twinsByArtifact, type CommandGroup, type Twin } from "../lib/commands";
 import { namesInSentence } from "../lib/sources";
 import type { CommandState, InstalledArtifact } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { TextWithInfo } from "./InfoDetail";
-import { BUTTON } from "./ui/controls";
 import { GROUP, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "./ui/group";
 import { detailLines } from "./updateDetails";
 
@@ -90,7 +89,6 @@ export function CommandsGroup({
 }) {
   const { t } = useTranslation();
   const titleId = useId();
-  const { status, copy } = useCopyCommand();
   const groups: CommandGroup[] = commandGroups(artifact.facts.commands);
   if (groups.length === 0) return null;
   const title = t("commands.title");
@@ -120,22 +118,16 @@ export function CommandsGroup({
                 </p>
               </div>
               {verdict.dir !== null ? (
-                <button
-                  type="button"
-                  aria-label={t("commands.copyPathLabel", { dir: verdict.dir })}
-                  onClick={() => verdict.dir !== null && copy(verdict.dir)}
-                  className={BUTTON.small.grey}
-                >
-                  {t("commands.copyPath")}
-                </button>
+                <CopyButton
+                  text={verdict.dir}
+                  label={t("commands.copyPath")}
+                  ariaLabel={t("commands.copyPathLabel", { dir: verdict.dir })}
+                />
               ) : null}
             </li>
           );
         })}
       </ul>
-      <p role="status" className="mt-1.5 px-2.5 text-small text-muted empty:hidden">
-        {status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null}
-      </p>
     </section>
   );
 }

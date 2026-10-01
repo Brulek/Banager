@@ -126,6 +126,8 @@ describe("CommandsGroup", () => {
       fireEvent.click(copy);
       expect(writeText).toHaveBeenCalledWith("~/.local/bin");
       await waitFor(() => expect(getByRole("status")).toHaveTextContent(/^Copied$/));
+      // Beside the button it is about, as the homepage's Copy Link says it.
+      expect(getByRole("status").parentElement).toBe(copy.parentElement);
     });
 
     it("says it in Chinese as Apple's strings do", async () => {

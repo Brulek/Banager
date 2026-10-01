@@ -1291,7 +1291,7 @@ export function InstalledPage() {
         selectable: true,
       });
     }
-    const homepage = homepageFact(t, artifact.homepage, copyCommand);
+    const homepage = homepageFact(t, artifact.homepage);
     if (homepage !== null) facts.push(homepage);
     // Where its update stands, and what it is: a row of the group, each
     // word 13 in the label colour as the other values, its why behind an

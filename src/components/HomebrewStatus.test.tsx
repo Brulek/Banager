@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import en from "../i18n/en.json";
@@ -121,20 +121,37 @@ describe("homebrewStatusChip", () => {
 });
 
 describe("homepageFact", () => {
-  it("shows the address as text and copies it with Copy Link, opening nothing", () => {
-    const onCopy = vi.fn();
-    const fact = homepageFact(enT, "https://jqlang.github.io/jq/", onCopy);
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  });
+
+  it("shows the address as text and copies it with Copy Link, opening nothing", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const fact = homepageFact(enT, "https://jqlang.github.io/jq/");
     expect(fact?.term).toBe("Homepage");
-    render(<>{fact?.value}</>);
+    renderWithProviders(<>{fact?.value}</>);
     expect(screen.getByText("https://jqlang.github.io/jq/").tagName).toBe("SPAN");
     expect(screen.queryByRole("link")).toBeNull();
+    const button = screen.getByRole("button", { name: "Copy Link" });
+    fireEvent.click(button);
+    expect(writeText).toHaveBeenCalledWith("https://jqlang.github.io/jq/");
+    // Its word beside it, as every button in a pane says it -- not in the
+    // window's toolbar, which speaks for a row's ⋯ menu.
+    const status = await screen.findByRole("status");
+    await waitFor(() => expect(status).toHaveTextContent(/^Copied$/));
+    expect(status.parentElement).toBe(button.parentElement);
+  });
+
+  it("says when the clipboard refused, beside the button", async () => {
+    renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
     fireEvent.click(screen.getByRole("button", { name: "Copy Link" }));
-    expect(onCopy).toHaveBeenCalledWith("https://jqlang.github.io/jq/");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Couldn't copy$/));
   });
 
   it("is nothing where the source gave no address", () => {
-    expect(homepageFact(enT, null, vi.fn())).toBeNull();
-    expect(homepageFact(enT, "  ", vi.fn())).toBeNull();
+    expect(homepageFact(enT, null)).toBeNull();
+    expect(homepageFact(enT, "  ")).toBeNull();
   });
 });
 

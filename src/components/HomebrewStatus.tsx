@@ -5,7 +5,7 @@ import type { HomebrewLifecycle, InstalledArtifact, Sizes } from "../lib/types";
 import { otherVersionsSizeText, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureIcon } from "./icons";
-import { BUTTON } from "./ui/controls";
+import { CopyButton } from "./CopyButton";
 
 /**
  * Homebrew's reasons it knows by name (`DeprecateDisable`'s
@@ -111,16 +111,15 @@ export const HOMEBREW_STATUS_CHIP_IDS: ReadonlySet<string> = new Set(["homebrew-
 
 /**
  * The inspector's 「主页」 fact, for any source that reported one: the
- * address as text, and 「拷贝链接」 under it. Nothing opens it -- opening
- * a page from Banager is a decision not yet taken -- so the address is
- * only read and copied, by its button rather than by selecting it, as
- * the inspector selects only versions and a location. `onCopy` is the
- * page's copy, whose 「已拷贝」 the toolbar says.
+ * address as text, and 「拷贝链接」 under it, its 「已拷贝」 beside it
+ * (`CopyButton`). Nothing opens it -- opening a page from Banager is a
+ * decision not yet taken -- so the address is only read and copied, by
+ * its button rather than by selecting it, as the inspector selects only
+ * versions and a location.
  */
 export function homepageFact(
   t: TFunction,
   homepage: string | null,
-  onCopy: (text: string) => void,
 ): { term: string; value: ReactNode; selectable: boolean } | null {
   const address = homepage?.trim() ?? "";
   if (address === "") return null;
@@ -131,9 +130,7 @@ export function homepageFact(
         <span data-homepage="" className="break-all">
           {address}
         </span>
-        <button type="button" onClick={() => onCopy(address)} className={BUTTON.small.grey}>
-          {t("brewStatus.copyLink")}
-        </button>
+        <CopyButton text={address} label={t("brewStatus.copyLink")} />
       </span>
     ),
     selectable: false,
