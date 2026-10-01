@@ -821,31 +821,6 @@ impl Session {
     }
 }
 
-/// Keep the first instance for each id and drop every later one, with a
-/// `SourceError` for each drop naming both adapters involved.
-///
-/// Every step after detection keys on `ManagerInstance.id` and assumes it
-/// is unique: `merge_instance_notes` writes onto the *first* match, the
-/// carry-forward filters pull `previous` rows by id (so two instances
-/// sharing one would each carry the same rows, duplicating them), and
-/// `OperationManager::register_instance` overwrites by id (so a plan for
-/// one could run against the other's executable). `model::instance_id`
-/// makes a collision *across* adapters impossible, but a collision within
-/// one adapter is still possible -- pipx and uv have constant ids, so a
-/// second instance from either would repeat it -- and no step downstream
-/// would notice. Refusing it here, once, turns that silent
-/// misattribution into a visible error.
-///
-/// Dropped rather than merged or renamed: there is no correct owner to
-/// merge into, and a synthesised id would be a new source with no history
-/// the next round could not reproduce. The instance that is kept is the
-/// one detected first, in the adapter-id order `refresh` fans out in, then
-/// the order its adapter returned them, so the choice is stable from one
-/// refresh to the next and the same error does not bump `generation`.
-///
-/// `stale` follows from the error through the usual `!errors.is_empty()`:
-/// something the detector reported is not on screen, which is exactly
-/// what that banner means.
 /// An npm whose `npm prefix -g` did not answer, given back the id the
 /// same executable had last round. `NpmAdapter::detect` cannot know its
 /// global prefix -- the failing command is where every npm id comes from
@@ -891,6 +866,31 @@ fn resume_unanswered_npm(
         .collect()
 }
 
+/// Keep the first instance for each id and drop every later one, with a
+/// `SourceError` for each drop naming both adapters involved.
+///
+/// Every step after detection keys on `ManagerInstance.id` and assumes it
+/// is unique: `merge_instance_notes` writes onto the *first* match, the
+/// carry-forward filters pull `previous` rows by id (so two instances
+/// sharing one would each carry the same rows, duplicating them), and
+/// `OperationManager::register_instance` overwrites by id (so a plan for
+/// one could run against the other's executable). `model::instance_id`
+/// makes a collision *across* adapters impossible, but a collision within
+/// one adapter is still possible -- pipx and uv have constant ids, so a
+/// second instance from either would repeat it -- and no step downstream
+/// would notice. Refusing it here, once, turns that silent
+/// misattribution into a visible error.
+///
+/// Dropped rather than merged or renamed: there is no correct owner to
+/// merge into, and a synthesised id would be a new source with no history
+/// the next round could not reproduce. The instance that is kept is the
+/// one detected first, in the adapter-id order `refresh` fans out in, then
+/// the order its adapter returned them, so the choice is stable from one
+/// refresh to the next and the same error does not bump `generation`.
+///
+/// `stale` follows from the error through the usual `!errors.is_empty()`:
+/// something the detector reported is not on screen, which is exactly
+/// what that banner means.
 fn dedupe_instance_ids(
     instances: Vec<ManagerInstance>,
 ) -> (Vec<ManagerInstance>, Vec<SourceError>) {
