@@ -264,11 +264,12 @@ pnpm test
 pnpm typecheck
 ```
 
-`pnpm typecheck` runs two TypeScript programs. `tsconfig.json` checks the production code under `src/`
+`pnpm typecheck` runs three TypeScript programs. `tsconfig.json` checks the production code under `src/`
 with no ambient Node types, so `process`, `Buffer` or a `node:` import in code that will run inside the
 WebView is a type error; `tsconfig.test.json` checks the vitest files with `@types/node`, which
 `src/i18n/completeness.test.ts` and `src/i18n/no-literal-strings.test.ts` need to read the source tree
-through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
+through `node:fs`; `tsconfig.node.json` checks `vite.config.ts` (`--composite false`, so it leaves no
+`.tsbuildinfo` behind). `pnpm build` runs the same three programs before `vite build`.
 
 `cargo test --workspace` has four `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
 in `crates/banager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine

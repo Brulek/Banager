@@ -12,7 +12,7 @@
     "tauri": "tauri",
     "tauri:mock": "tauri dev --config src-tauri/tauri.mock.conf.json5",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json --noEmit --composite false",
     "icons:build": "node scripts/tool-icons/build.mjs"
   },
   "dependencies": {
