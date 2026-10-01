@@ -334,7 +334,7 @@ impl Session {
                 Detection::Spawned(handle) => handle,
             };
             match handle.await {
-                Ok(found) => instances.extend(found),
+                Ok(found) => instances.extend(resume_unanswered_npm(found, &previous.instances)),
                 Err(_join_err) => {
                     // A detection that panicked (or was cancelled) said
                     // nothing at all, which is not the same news as "this
@@ -846,6 +846,51 @@ impl Session {
 /// `stale` follows from the error through the usual `!errors.is_empty()`:
 /// something the detector reported is not on screen, which is exactly
 /// what that banner means.
+/// An npm whose `npm prefix -g` did not answer, given back the id the
+/// same executable had last round. `NpmAdapter::detect` cannot know its
+/// global prefix -- the failing command is where every npm id comes from
+/// -- so it names such an npm by its executable
+/// (`npm::unanswered_instance_id`). A row keyed on that stand-in is a new
+/// row: last round's packages, and the updates the user hid
+/// (`ignored_updates`, keyed on the instance id), would leave the window
+/// for as long as npm stays broken. So when last round has exactly one npm
+/// at the same executable under another id, that id is kept -- with last
+/// round's prefix and version, as a source that did not answer is carried
+/// everywhere else -- and the instance is reported as not responding,
+/// which is what routes its rows through the carry-forward below. Any
+/// other instance is returned as found; an npm that answers gets its own
+/// id from its own answer, as before.
+fn resume_unanswered_npm(
+    found: Vec<ManagerInstance>,
+    previous: &[ManagerInstance],
+) -> Vec<ManagerInstance> {
+    let found_ids: HashSet<InstanceId> = found.iter().map(|i| i.id.clone()).collect();
+    found
+        .into_iter()
+        .map(|inst| {
+            let stand_in = inst.adapter_id == "npm"
+                && inst.status.unavailable.is_some()
+                && inst.id == crate::adapters::npm::unanswered_instance_id(&inst.exe_path);
+            if !stand_in {
+                return inst;
+            }
+            let mut same_npm = previous.iter().filter(|p| {
+                p.adapter_id == "npm"
+                    && p.exe_path == inst.exe_path
+                    && p.id != inst.id
+                    && !found_ids.contains(&p.id)
+            });
+            match (same_npm.next(), same_npm.next()) {
+                (Some(last), None) => ManagerInstance {
+                    status: inst.status.clone(),
+                    ..last.clone()
+                },
+                _ => inst,
+            }
+        })
+        .collect()
+}
+
 fn dedupe_instance_ids(
     instances: Vec<ManagerInstance>,
 ) -> (Vec<ManagerInstance>, Vec<SourceError>) {
@@ -896,13 +941,14 @@ fn merge_instance_notes(
 
 #[cfg(test)]
 mod tests {
+    use super::resume_unanswered_npm;
     use crate::adapters::brew::BrewAdapter;
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceId, InstanceNote,
-        ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit,
-        Unavailable, UpdateCandidate, UpdateChannel,
+        InstanceStatus, ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled,
+        SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
     };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::test_support::{make_instance, non_root_env, root_env};
@@ -1215,6 +1261,133 @@ mod tests {
         assert!(snapshot.errors.is_empty());
         assert!(snapshot.refreshed_at.is_some());
         assert_eq!(snapshot.generation, 1);
+    }
+
+    /// An npm whose `npm prefix -g` stops answering keeps last round's id,
+    /// and so its rows, instead of turning into a new source with nothing
+    /// under it (`resume_unanswered_npm`).
+    #[tokio::test]
+    async fn test_refresh_keeps_an_npm_whose_prefix_stopped_answering_under_its_id() {
+        let (adapter, state) = FakeAdapter::new("npm");
+        let exe = PathBuf::from("/opt/homebrew/bin/npm");
+        let answering = ManagerInstance {
+            exe_path: exe.clone(),
+            prefix: PathBuf::from("/opt/homebrew"),
+            version: Some("12.0.2".to_string()),
+            ..make_instance("npm", "npm:/opt/homebrew")
+        };
+        let stand_in = ManagerInstance {
+            exe_path: exe.clone(),
+            prefix: PathBuf::from("/opt/homebrew/bin"),
+            version: None,
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+            },
+            ..make_instance("npm", &crate::adapters::npm::unanswered_instance_id(&exe))
+        };
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![answering.clone()];
+            s.artifacts.insert(
+                "npm:/opt/homebrew".to_string(),
+                vec![make_artifact("npm:/opt/homebrew", "typescript")],
+            );
+        }
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.artifacts.len(), 1);
+
+        // `~/.npmrc` broke: every npm command fails, `npm prefix -g` too.
+        state.lock().unwrap().instances = vec![stand_in.clone()];
+        for round in 2..=3 {
+            let snapshot = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            assert_eq!(snapshot.instances.len(), 1, "round {round}");
+            let npm = &snapshot.instances[0];
+            assert_eq!(npm.id, "npm:/opt/homebrew", "round {round}");
+            assert_eq!(npm.prefix, PathBuf::from("/opt/homebrew"));
+            assert_eq!(npm.version, Some("12.0.2".to_string()));
+            assert_eq!(npm.status.unavailable, Some(Unavailable::NotResponding));
+            let names: Vec<_> = snapshot
+                .artifacts
+                .iter()
+                .map(|a| (a.key.instance_id.as_str(), a.key.name.as_str()))
+                .collect();
+            assert_eq!(
+                names,
+                [("npm:/opt/homebrew", "typescript")],
+                "round {round}"
+            );
+        }
+
+        // With no npm at that executable last round, the stand-in is all
+        // there is: nothing to resume.
+        let (fresh, fresh_state) = FakeAdapter::new("npm");
+        fresh_state.lock().unwrap().instances = vec![stand_in.clone()];
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![fresh], None);
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(snapshot.instances[0].id, stand_in.id);
+    }
+
+    #[test]
+    fn test_resume_unanswered_npm_leaves_everything_else_as_found() {
+        let exe = PathBuf::from("/usr/local/bin/npm");
+        let last = ManagerInstance {
+            exe_path: exe.clone(),
+            ..make_instance("npm", "npm:/usr/local")
+        };
+        // An npm that answered keeps its own id, even if it moved.
+        let answered = ManagerInstance {
+            exe_path: exe.clone(),
+            ..make_instance("npm", "npm:/Users/you/.npm-global")
+        };
+        assert_eq!(
+            resume_unanswered_npm(vec![answered.clone()], std::slice::from_ref(&last)),
+            vec![answered]
+        );
+        // Another adapter whose id happens to be built from its executable.
+        let pip = ManagerInstance {
+            exe_path: exe.clone(),
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NoPip),
+                notes: Vec::new(),
+            },
+            ..make_instance("pip", "pip:/usr/local/bin/npm")
+        };
+        assert_eq!(
+            resume_unanswered_npm(vec![pip.clone()], std::slice::from_ref(&last)),
+            vec![pip]
+        );
+        // Two npms at that executable last round: which one is unknown.
+        let stand_in = ManagerInstance {
+            exe_path: exe.clone(),
+            status: InstanceStatus {
+                unavailable: Some(Unavailable::NotResponding),
+                notes: Vec::new(),
+            },
+            ..make_instance("npm", &crate::adapters::npm::unanswered_instance_id(&exe))
+        };
+        let other = ManagerInstance {
+            id: "npm:/opt/other".to_string(),
+            ..last.clone()
+        };
+        assert_eq!(
+            resume_unanswered_npm(vec![stand_in.clone()], &[last.clone(), other]),
+            vec![stand_in.clone()]
+        );
+        // Exactly one: its id, with this round's state.
+        let resumed = resume_unanswered_npm(vec![stand_in], std::slice::from_ref(&last));
+        assert_eq!(resumed[0].id, "npm:/usr/local");
+        assert_eq!(
+            resumed[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
     }
 
     /// Every artifact in a committed snapshot says which AI coding tool it

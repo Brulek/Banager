@@ -92,6 +92,15 @@ fn uninstall_scope(version: Option<&str>) -> Option<Warning> {
     })
 }
 
+/// The id `NpmAdapter::detect` gives an npm at `exe_path` whose `npm
+/// prefix -g` did not answer: built from the executable, since the global
+/// prefix every other npm id is built from is what failed. Read by
+/// `resume_unanswered_npm` (session/refresh.rs) to recognise that
+/// stand-in.
+pub(crate) fn unanswered_instance_id(exe_path: &std::path::Path) -> String {
+    crate::model::instance_id("npm", Some(&exe_path.display().to_string()))
+}
+
 pub struct NpmAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
@@ -207,12 +216,16 @@ impl NpmAdapter {
             // carry-forward, which is keyed on exactly this id being
             // stable while it recurs and does not promise continuity
             // across a source going from broken to working.
+            //
+            // Continuity across a source going from working to broken is
+            // `refresh_round`'s: it gives this instance back the id the
+            // same executable had last round (`resume_unanswered_npm` in
+            // session/refresh.rs, which knows this id by
+            // `unanswered_instance_id`), so its rows and the updates the
+            // user hid stay with it.
             _ => {
                 return vec![ManagerInstance {
-                    id: crate::model::instance_id(
-                        &self.meta.id,
-                        Some(&exe_path.display().to_string()),
-                    ),
+                    id: unanswered_instance_id(&exe_path),
                     adapter_id: self.meta.id.clone(),
                     exe_path: exe_path.clone(),
                     prefix: exe_path
