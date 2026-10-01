@@ -1012,3 +1012,208 @@ fn test_rule_4_claims_a_backup_the_updaters_pattern_names_only_while_the_tool_is
     );
     assert_eq!(scan.attributed, 0);
 }
+
+// ------------------------------------------------- protected places
+//
+// The scan keeps the command check's and the disk-use measurement's
+// promise: nothing inside `~/Documents`, `~/Desktop`, iCloud, `/Volumes`
+// and the rest of `protected::PROTECTED_IN_HOME` is listed, `lstat`ed,
+// read as a link or resolved, through any link. Each test's home is a temp
+// folder, and `Protected::new(home)` puts its own `Documents` and the like
+// out of bounds; `/Volumes` is out of bounds by name, so a test can name a
+// disk that is not there and nothing is looked up on it.
+
+/// A disk no Mac running these tests has: `/Volumes` is never entered, so
+/// nothing finds out.
+const NO_SUCH_DISK: &str = "/Volumes/Banager-test-no-such-disk";
+
+/// Where macOS mounts the data volume, when this Mac has it: the second
+/// spelling of `/Users` and `/Volumes` (`protected::DATA_VOLUME`).
+fn data_volume() -> Option<PathBuf> {
+    let data = Path::new(banager_core::protected::DATA_VOLUME);
+    data.is_dir().then(|| data.to_path_buf())
+}
+
+#[test]
+fn test_a_scanned_folder_in_a_protected_place_is_not_read_and_is_named_once() {
+    let home = Home::new("protected-dirs");
+    let local = home.dir(".local/bin");
+    exe(&local, "mine", b"x");
+    // A `PATH` entry in Documents, and the same folder spelled in lower
+    // case, as a case-insensitive disk takes it: one place, named once.
+    let scripts = home.dir("Documents/scripts");
+    exe(&scripts, "in-documents", b"x");
+    let scripts_lower = home.path().join("documents/scripts");
+    // `~/bin` as a link to a folder on the Desktop.
+    let desktop_bin = home.dir("Desktop/bin");
+    exe(&desktop_bin, "on-desktop", b"x");
+    let bin = link(home.path(), "bin", &desktop_bin);
+    // `$CARGO_HOME/bin` on another disk, by name only.
+    let cargo_bin = PathBuf::from(NO_SUCH_DISK).join("cargo/bin");
+    let mut dirs = vec![
+        local.clone(),
+        scripts.clone(),
+        scripts_lower,
+        bin,
+        cargo_bin.clone(),
+    ];
+    // And the data volume's spelling of `/Volumes`.
+    let aliased = data_volume().map(|data| data.join("Volumes/Banager-test-no-such-disk/bin"));
+    if let Some(aliased) = &aliased {
+        dirs.push(aliased.clone());
+    }
+
+    let scan = scan_dirs(
+        &dirs,
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    // Only `~/.local/bin` was read, and only its program is listed.
+    assert_eq!(
+        scan.scanned,
+        vec![ScannedDir {
+            path: tilde(".local/bin"),
+            entries: 1
+        }]
+    );
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(listed, vec![tilde(".local/bin/mine")]);
+    let mut expected = vec![tilde("Documents/scripts"), tilde("bin"), cargo_bin];
+    if let Some(aliased) = aliased {
+        expected.push(aliased);
+    }
+    assert_eq!(scan.protected_dirs, expected);
+}
+
+#[test]
+fn test_a_link_into_documents_is_listed_by_its_own_name_and_not_followed() {
+    let home = Home::new("protected-link");
+    let bin = home.dir(".local/bin");
+    let project_bin = home.dir("Documents/proj/bin");
+    let tool = exe(&project_bin, "tool", b"#!/bin/sh\n");
+    // Straight in, by a relative text, and through a folder that is itself
+    // a link into Documents.
+    link(&bin, "tool", &tool);
+    link(&bin, "relative", Path::new("../../Documents/proj/bin/tool"));
+    link(home.path(), "proj", &home.path().join("Documents/proj"));
+    link(&bin, "through", &home.path().join("proj/bin/tool"));
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 0);
+    assert!(scan.protected_dirs.is_empty(), "{:?}", scan.protected_dirs);
+    let mut rows: Vec<_> = scan.entries.iter().collect();
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
+    let names: Vec<PathBuf> = rows.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        names,
+        vec![
+            tilde(".local/bin/relative"),
+            tilde(".local/bin/through"),
+            tilde(".local/bin/tool"),
+        ]
+    );
+    for entry in rows {
+        // Its own name and its own text; nothing of what it leads to.
+        assert_eq!(entry.kind, EntryKind::ProtectedSymlink, "{entry:?}");
+        assert_eq!(entry.resolved, None, "{entry:?}");
+        assert_eq!(entry.size_bytes, None, "{entry:?}");
+        assert_eq!(entry.modified_at, None, "{entry:?}");
+        assert!(entry.link_target.is_some(), "{entry:?}");
+        assert!(entry.owned_by_me);
+    }
+}
+
+#[test]
+fn test_a_homebrew_prefix_on_volumes_still_claims_its_programs_by_name() {
+    // Homebrew installed on an external disk: its roots are on `/Volumes`,
+    // which is never entered, so its links are placed by name -- and are
+    // Homebrew's, not other programs.
+    let home = Home::new("protected-brew");
+    let bin = home.dir(".local/bin");
+    let prefix = PathBuf::from(NO_SUCH_DISK).join("homebrew");
+    link(&bin, "jq", &prefix.join("Cellar/jq/1.8.1/bin/jq"));
+    link(&bin, "brew", &prefix.join("bin/brew"));
+    // Under the prefix, but in none of its roots: not Homebrew's by name.
+    link(&bin, "dropped-in", &prefix.join("bin/dropped-in"));
+    // The same disk, named from the data volume, into Homebrew's `opt`.
+    if let Some(data) = data_volume() {
+        let aliased = data.join("Volumes/Banager-test-no-such-disk/homebrew/opt/jq/bin/jq");
+        link(&bin, "jq-aliased", &aliased);
+    }
+    let brew = ManagerInstance {
+        exe_path: prefix.join("bin/brew"),
+        prefix: prefix.clone(),
+        ..manager_instance("brew", &format!("brew:{}", prefix.display()))
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[brew],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let expected_attributed = if data_volume().is_some() { 3 } else { 2 };
+    assert_eq!(scan.attributed, expected_attributed, "{:?}", scan.entries);
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    let entry = &scan.entries[0];
+    assert_eq!(entry.path, tilde(".local/bin/dropped-in"));
+    assert_eq!(entry.kind, EntryKind::ProtectedSymlink);
+    assert_eq!(entry.resolved, None);
+}
+
+#[test]
+fn test_a_folder_that_cannot_be_read_is_left_untouched_and_not_reported() {
+    let home = Home::new("mode-000");
+    let local = home.dir(".local/bin");
+    let locked = home.dir("bin");
+    exe(&locked, "inside", b"x");
+    // A link through a locked folder leads nowhere Banager can see.
+    let shut = home.dir("shut");
+    exe(&shut, "tool", b"x");
+    link(&local, "through-shut", &shut.join("tool"));
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("lock");
+    fs::set_permissions(&shut, fs::Permissions::from_mode(0o000)).expect("lock");
+
+    let scan = scan_dirs(
+        &[locked.clone(), local],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+    let locked_mode = fs::symlink_metadata(&locked).expect("stat").mode() & 0o777;
+    let shut_mode = fs::symlink_metadata(&shut).expect("stat").mode() & 0o777;
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("unlock");
+    fs::set_permissions(&shut, fs::Permissions::from_mode(0o755)).expect("unlock");
+
+    // Left as it was, not reported as read, and not a protected place.
+    assert_eq!(locked_mode, 0o000);
+    assert_eq!(shut_mode, 0o000);
+    assert_eq!(
+        scan.scanned,
+        vec![ScannedDir {
+            path: tilde(".local/bin"),
+            entries: 1
+        }]
+    );
+    assert!(scan.protected_dirs.is_empty(), "{:?}", scan.protected_dirs);
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries[0].path, tilde(".local/bin/through-shut"));
+    assert_eq!(scan.entries[0].kind, EntryKind::BrokenSymlink);
+}
