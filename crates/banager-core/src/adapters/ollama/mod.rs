@@ -204,6 +204,16 @@ fn host_is_this_mac(host: &str) -> bool {
     }
 }
 
+/// Whether `url` is an `https` URL that `RealHttpClient::send` refuses
+/// without connecting: an `https://` `OLLAMA_HOST`, whose host is not on
+/// `ALLOWED_HTTPS_HOSTS` (`http::real::host_allowed`). Only `https`: a
+/// plain `http` URL is always allowed, and `normalize_ollama_host`
+/// (`runner/path_env.rs`) lets no other scheme through.
+fn https_refused(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https")
+        && crate::http::real::host_allowed(url).is_err()
+}
+
 /// Whether `inst`'s models are on this Mac, in its `prefix`'s `models`
 /// folder: the daemon it was detected against is this Mac's
 /// (`host_is_this_mac`). With `OLLAMA_HOST` naming another machine they are
@@ -279,22 +289,29 @@ impl OllamaAdapter {
             _ => None,
         };
         let host = host_for(env);
-        // The error is discarded, so a request `RealHttpClient::send`
-        // refused without sending -- an `https://` `OLLAMA_HOST`, which
-        // its allowlist exempts no more than any other https host -- is
-        // indistinguishable here from a daemon that did not answer, and
-        // is reported below as one (`docs/what-we-run.md`, Ollama).
-        let answering = self
-            .http
-            .send(HttpRequest {
-                method: "GET",
-                url: format!("{host}/api/tags"),
-                headers: Vec::new(),
-                timeout: Duration::from_secs(10),
-            })
-            .await
-            .map(|r| r.status == 200)
-            .unwrap_or(false);
+        let url = format!("{host}/api/tags");
+        // An `https://` `OLLAMA_HOST` is one `RealHttpClient::send` would
+        // refuse before connecting: its allowlist exempts `http` only, and
+        // no daemon's host is on it. So it is not sent at all, and the
+        // instance says why (`HttpsHostRefused`) instead of passing the
+        // refusal off as a daemon that did not answer. The same rule the
+        // client applies, read from the same function, so the two cannot
+        // disagree about which addresses are refused.
+        let refused = https_refused(&url);
+        // Any other error -- no connection, a timeout -- is a daemon that
+        // did not answer, which is all `detect` needs to know of it.
+        let answering = !refused
+            && self
+                .http
+                .send(HttpRequest {
+                    method: "GET",
+                    url,
+                    headers: Vec::new(),
+                    timeout: Duration::from_secs(10),
+                })
+                .await
+                .map(|r| r.status == 200)
+                .unwrap_or(false);
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
             id: crate::model::instance_id(&self.meta.id, Some(&host)),
@@ -325,6 +342,8 @@ impl OllamaAdapter {
                 // asked.
                 unavailable: if answering {
                     None
+                } else if refused {
+                    Some(Unavailable::HttpsHostRefused)
                 } else if host_is_this_mac(&host) && (self.app_present_fn)(env) {
                     Some(Unavailable::NotRunning)
                 } else {
@@ -1372,6 +1391,89 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_detect_says_an_https_ollama_host_is_refused_and_never_asks_it() {
+        // `RealHttpClient` connects to no https host off its allowlist, and
+        // a daemon's never is on it. That refusal used to be discarded and
+        // shown as a daemon that did not answer -- or, on this Mac with
+        // Ollama.app installed, as one that was not running, over an Open
+        // Ollama button that could not help, since the next request is
+        // refused the same way. Now it is its own state, and the request
+        // is not even made: the mock would answer 200 if it were.
+        let tmp_dir = isolated_path_dir("detect-https-host");
+        let exe_path = tmp_dir.join("ollama");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "ollama version is 9.9.9\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        for host in ["https://localhost:11434", "https://ollama.home.lan"] {
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                &format!("{host}/api/tags"),
+                HttpResponse {
+                    status: 200,
+                    body: r#"{"models":[]}"#.to_string(),
+                },
+            );
+            let env = HostEnv {
+                path_dirs: vec![tmp_dir.clone()],
+                home: PathBuf::from("/tmp/fake-home"),
+                euid: 501,
+                cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
+                ollama_host: Some(host.to_string()),
+            };
+            let adapter = OllamaAdapter::new(runner.clone(), http.clone())
+                // Ollama.app is here: without the refusal, a localhost
+                // daemon that did not answer would be `NotRunning`.
+                .with_app_present_fn(|_| true);
+            let instances = adapter.detect(&env).await;
+
+            assert_eq!(
+                instances.len(),
+                1,
+                "{host}: the source must still be listed"
+            );
+            assert_eq!(instances[0].id, format!("ollama:{host}"));
+            assert_eq!(
+                instances[0].status.unavailable,
+                Some(Unavailable::HttpsHostRefused),
+                "{host}"
+            );
+            assert_eq!(instances[0].version, Some("9.9.9".to_string()));
+            assert!(
+                http.calls().is_empty(),
+                "{host}: a request the client would refuse must not be made: {:?}",
+                http.calls()
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_https_refused_is_the_clients_own_rule() {
+        // Exactly what `host_allowed` refuses, and only for https: a plain
+        // http daemon is always asked.
+        assert!(https_refused("https://ollama.home.lan/api/tags"));
+        assert!(https_refused("https://127.0.0.1:11434/api/tags"));
+        assert!(!https_refused("http://ollama.home.lan/api/tags"));
+        assert!(!https_refused(&format!("{DEFAULT_HOST}/api/tags")));
+        // On the allowlist, so the client would send it.
+        assert!(!https_refused("https://registry.ollama.ai/api/tags"));
+        // Not a URL at all: not this state (normalize_ollama_host never
+        // lets one through).
+        assert!(!https_refused("not a url"));
     }
 
     #[test]

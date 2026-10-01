@@ -72,6 +72,18 @@ pub(crate) fn parse_pip_outdated(
     ))
 }
 
+/// Whether `stderr` is Python's own answer to `-m pip` when it has no
+/// module named `pip`: `<python>: No module named pip`, alone on its line.
+/// Not `No module named pip.__main__; 'pip' is a package and cannot be
+/// directly executed`, which is a pip that is there but broken, nor any
+/// other module's name: those stay "did not answer".
+fn says_no_pip_module(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        let line = line.trim_end();
+        line == "No module named pip" || line.ends_with(": No module named pip")
+    })
+}
+
 pub struct PipAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
@@ -184,14 +196,15 @@ impl PipAdapter {
                     CancellationToken::new(),
                 )
                 .await;
-            let version = match output {
+            let (version, no_pip) = match output {
                 // "pip 26.2.1 from … (python 3.14)" — the shared
                 // second-token rule (crate::adapters::second_token, Task 5)
                 // yields pip's own version, which is what
                 // `ManagerInstance::version` means here, not the
                 // interpreter's Python version.
-                Ok(o) if o.exit_code == Some(0) => second_token(&o.stdout),
-                _ => None,
+                Ok(o) if o.exit_code == Some(0) => (second_token(&o.stdout), false),
+                Ok(o) => (None, says_no_pip_module(&o.stderr)),
+                Err(_) => (None, false),
             };
             let prefix = python_path
                 .parent()
@@ -211,9 +224,12 @@ impl PipAdapter {
                 // interpreter would not run `-m pip --version` -- no pip
                 // module for it, or pip crashed, or it timed out; either
                 // way this Python was found but pip could not be reached
-                // through it, the same "found the executable, it didn't
-                // answer" state brew/cargo/pipx/uv/ollama report as
-                // `NotResponding` on their own failed `--version`. This
+                // through it. With no pip at all -- Python said so
+                // itself (`says_no_pip_module`) -- that is `NoPip`, which
+                // checking again does not change; anything else is the
+                // same "found the executable, it didn't answer" state
+                // brew/cargo/pipx/uv/ollama report as `NotResponding` on
+                // their own failed `--version`. This
                 // instance's id needs no command to exist -- it is built
                 // from `python_path`, which `resolve_exe` already
                 // resolved -- so there is no reason to drop the row
@@ -222,7 +238,11 @@ impl PipAdapter {
                 // `SourceError`, indistinguishable from "there never was a
                 // pip here to ask about".
                 status: InstanceStatus {
-                    unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                    unavailable: match (&version, no_pip) {
+                        (Some(_), _) => None,
+                        (None, true) => Some(Unavailable::NoPip),
+                        (None, false) => Some(Unavailable::NotResponding),
+                    },
                     notes: Vec::new(),
                 },
                 version,
@@ -731,10 +751,9 @@ mod tests {
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].id, format!("pip:{}", python_path.display()));
         assert_eq!(instances[0].version, None);
-        assert_eq!(
-            instances[0].status.unavailable,
-            Some(Unavailable::NotResponding)
-        );
+        // Python said there is no pip: not "did not answer", which
+        // checking again would fix, but `NoPip`, which it will not.
+        assert_eq!(instances[0].status.unavailable, Some(Unavailable::NoPip));
         assert!(!instances[0].available());
         // Read-only by design is a property of pip itself, independent of
         // whether this round could reach it.
@@ -742,6 +761,67 @@ mod tests {
             instances[0].read_only_reason,
             Some(ReadOnlyReason::ByDesign)
         );
+    }
+
+    #[tokio::test]
+    async fn test_detect_keeps_not_responding_for_a_pip_that_is_there_but_broken() {
+        // Only Python's own "No module named pip" is `NoPip`. A pip whose
+        // package is there but will not run says something else, and
+        // checking again after fixing it can help: still `NotResponding`.
+        let dir = temp_folder("detect-broken-pip");
+        let python_path = dir.join("python3.13");
+        std::fs::write(&python_path, b"#!/bin/sh\n").expect("write fake python");
+        let python_path_str = python_path.to_str().expect("utf8 path");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![python_path_str, "-m", "pip", "--version"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: format!(
+                    "{python_path_str}: No module named pip.__main__; 'pip' is a package and cannot be directly executed\n"
+                ),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let instances = PipAdapter::new(runner).detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+    }
+
+    #[test]
+    fn test_says_no_pip_module_reads_pythons_own_line_and_nothing_else() {
+        // As `python3 -m pip` prints it, with the interpreter's path first.
+        assert!(says_no_pip_module(
+            "/opt/local/bin/python3.13: No module named pip\n"
+        ));
+        assert!(says_no_pip_module("No module named pip"));
+        // A pip that is there but broken, another module, a crash.
+        assert!(!says_no_pip_module(
+            "/opt/local/bin/python3.13: No module named pip.__main__; 'pip' is a package and cannot be directly executed\n"
+        ));
+        assert!(!says_no_pip_module(
+            "/usr/bin/python3: No module named pipx\n"
+        ));
+        assert!(!says_no_pip_module(
+            "Traceback (most recent call last):\n  ModuleNotFoundError: No module named 'pip._internal'\n"
+        ));
+        assert!(!says_no_pip_module(""));
     }
 
     /// A fresh folder of the test's own, by its canonical path: `detect`

@@ -71,10 +71,7 @@ pub enum Unavailable {
     /// The executable is on PATH but would not run, or its version could
     /// not be recognised, or a service did not answer and Banager has no
     /// way to start it (an Ollama installed as the command-line tool only,
-    /// or one whose `OLLAMA_HOST` names another machine) -- or was never
-    /// asked: an `https://` `OLLAMA_HOST` is refused by `RealHttpClient`'s
-    /// allowlist, and `OllamaAdapter::detect` cannot tell that refusal
-    /// from a daemon that did not answer (`docs/what-we-run.md`, Ollama).
+    /// or one whose `OLLAMA_HOST` names another machine).
     NotResponding,
     /// The tool is installed but refuses to do anything while Banager is
     /// running as root, so Banager never even asked it (Homebrew).
@@ -86,6 +83,20 @@ pub enum Unavailable {
     /// without `sudo`" -- a specific, different, and actually effective
     /// action, which is exactly what the notice says.
     RefusesAsRoot,
+    /// Banager never asked: `OLLAMA_HOST` is an `https://` address, and
+    /// `RealHttpClient` connects to no https host off its allowlist
+    /// (`http::real::host_allowed`), so `OllamaAdapter::detect` does not
+    /// send the request at all. Not `NotResponding`, whose notice sends
+    /// the user to check again -- which refuses the same way every time --
+    /// and not `NotRunning`, whose Open Ollama button cannot help either:
+    /// the address is the problem, and only the user can change it.
+    HttpsHostRefused,
+    /// This Python has no pip: `<python> -m pip --version` failed with
+    /// Python's own "No module named pip" (`PipAdapter::detect`). Nothing
+    /// is broken and checking again changes nothing; any other failure of
+    /// that command -- a pip that crashed, timed out, or answered in a
+    /// way Banager does not recognise -- stays `NotResponding`.
+    NoPip,
 }
 
 /// Something a source answered *with*, that changes how its answer should
@@ -2493,6 +2504,8 @@ mod tests {
             Unavailable::NotRunning,
             Unavailable::NotResponding,
             Unavailable::RefusesAsRoot,
+            Unavailable::HttpsHostRefused,
+            Unavailable::NoPip,
         ] {
             let status = InstanceStatus {
                 unavailable: Some(unavailable),
