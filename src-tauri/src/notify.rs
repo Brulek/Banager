@@ -209,7 +209,11 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
 
 /// Posts the notification through notify-rust, the crate
 /// tauri-plugin-notification posts through, on the thread `hand_off`
-/// starts, and returns once that thread has started.
+/// starts (`deliver`), and returns once that thread has started. Nothing
+/// else happens on the caller's thread, which may be the main thread
+/// (`notify_ops::on_left_front`) or hold a lock (`notify_ops::report`):
+/// the thread is handed the words and the bundle identifier, so one that
+/// cannot be started drops only those, and nothing is delivered.
 ///
 /// On a Mac, notify-rust's `show` sends nothing and never fails: it wraps
 /// the notification in a handle, and the handle's `wait_for_response`, on
@@ -234,42 +238,54 @@ pub(crate) fn post<R: Runtime>(
     body: &str,
     answer: Answer,
 ) -> Result<(), String> {
-    use notify_rust::error::{ApplicationError, MacOsError};
-    // Which app macOS shows the notification as, set before the first
-    // one, as tauri-plugin-notification sets it: Banager, by its bundle
+    // Which app macOS shows the notification as: Banager, by its bundle
     // identifier; under `tauri dev`, which runs no app bundle, Terminal.
-    // mac-notification-sys sets it once for the life of the process, by
-    // answering that identifier for the app's own bundle from then on, so
-    // every later call answers `AlreadySet`, which is no failure. Should
-    // LaunchServices not know the identifier, it answers Terminal's
-    // instead, and the notification is still posted, as Terminal's.
     let bundle = if tauri::is_dev() {
         "com.apple.Terminal".to_string()
     } else {
         app.config().identifier.clone()
     };
-    match notify_rust::set_application(&bundle) {
+    let (title, body) = (title.to_string(), body.to_string());
+    let app = app.clone();
+    hand_off(move || deliver(&app, &bundle, &title, &body, answer))
+}
+
+/// What `post`'s thread does. First, which app macOS shows the
+/// notification as, set before the first one, as tauri-plugin-notification
+/// sets it. mac-notification-sys sets it once for the life of the process
+/// -- a LaunchServices lookup of `bundle`, then answering that identifier
+/// for the app's own bundle -- behind a `Once`, so a second thread waits
+/// for the first's, and every later call answers `AlreadySet`, which is no
+/// failure. Should LaunchServices not know the identifier, it answers
+/// Terminal's instead, and the notification is still posted, as
+/// Terminal's. Then the notification itself, as `post` tells.
+#[cfg(target_os = "macos")]
+fn deliver<R: Runtime>(
+    app: &AppHandle<R>,
+    bundle: &str,
+    title: &str,
+    body: &str,
+    answer: Answer,
+) -> Result<(), String> {
+    use notify_rust::error::{ApplicationError, MacOsError};
+    match notify_rust::set_application(bundle) {
         Ok(()) | Err(MacOsError::Application(ApplicationError::AlreadySet(_))) => {}
         Err(e) => eprintln!("[banager] could not post notifications as {bundle}: {e}"),
     }
-    let handle = notify_rust::Notification::new()
+    notify_rust::Notification::new()
         .summary(title)
         .body(body)
         .show()
-        .map_err(|e| e.to_string())?;
-    let app = app.clone();
-    hand_off(move || {
-        handle
-            .wait_for_response(|response: &notify_rust::NotificationResponse| {
-                if response.is_default_action() {
-                    match answer {
-                        Answer::OpenUpdates => open_updates(&app),
-                        Answer::ShowWindow => crate::window::show(&app),
-                    }
+        .map_err(|e| e.to_string())?
+        .wait_for_response(|response: &notify_rust::NotificationResponse| {
+            if response.is_default_action() {
+                match answer {
+                    Answer::OpenUpdates => open_updates(app),
+                    Answer::ShowWindow => crate::window::show(app),
                 }
-            })
-            .map_err(|e| e.to_string())
-    })
+            }
+        })
+        .map_err(|e| e.to_string())
 }
 
 /// Posts the notification through tauri-plugin-notification, whose `show`
