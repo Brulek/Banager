@@ -52,7 +52,7 @@ page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
 never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
-Again, Search or Help's Copy Diagnostic Info…, which Rust sends only to a
+Again, Search or Help's Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
 page that asked it to listen:
 in this window those items do nothing but bring the window back when it
 is closed or minimized. (The page hears one only when
@@ -283,6 +283,16 @@ Paths are under a generic home folder, `/Users/you`.
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
   says it couldn't.
+- Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
+  in the console, or 「检查…」 beside 「诊断信息」 in Settings' 关于, opens the
+  sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应
+  (each with 查看 to its page), 1 tool Terminal can't find and 1 installed twice
+  (查看 opens Installed on that 「显示」 choice), 2 that Homebrew disabled or
+  deprecated, 8 keeping other versions with their measured size, and the disk.
+  `?state=notices` names the Intel Homebrew; `?state=preview` shows it while
+  the first check runs; `?path=unread&tech=1` adds an unread folder in
+  Documents, by path; `?path=default` shows it with Terminal's login settings
+  unread.
 
 ## URL switches
 
@@ -310,6 +320,7 @@ value falls back to the default and logs a warning in the console.
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager`, `password` | How every operation ends. Only `succeeded` changes anything. `password`: the command stops where `sudo` wanted the Mac's password, as a cask's own step does under Banager; its log shows the command to run in Terminal. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
+| `path` | `read` (default), `unread`, `default` | What the last refresh made of the login shell's folders, which Check Tool Setup says: every one read; one in `~/Documents` that couldn't be; or the login shell's settings never read -- the system's four folders, and no command judged. |
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
 
 ## Large list
