@@ -111,6 +111,7 @@ const SIZES: Sizes = {
   artifacts: [],
   models: [],
   total: { bytes: 1_234_000_000, partial: false, at_least: false },
+  sources: [],
 };
 
 function input(more: Partial<DiagnosticsInput> = {}): DiagnosticsInput {
