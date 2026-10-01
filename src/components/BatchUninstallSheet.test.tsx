@@ -524,10 +524,10 @@ describe("the batch uninstall's sheet", () => {
     expect(listOf(dialog, "Won't be uninstalled")).toEqual(["python@3.13", "pipx", "ollama"]);
     const reason = (name: string) => toolItem(dialog, name).querySelector<HTMLElement>("[data-sheet-reason]");
     expect(reason("pipx")).toHaveTextContent(
-      "Still used by pipx and its 1 tool. To uninstall it, first uninstall the tool installed with pipx.",
+      "Still used by pipx with its 1 tool. To uninstall it, first uninstall the tool installed with pipx.",
     );
     expect(reason("ollama")).toHaveTextContent(
-      "Still used by Ollama and its 2 models. To uninstall it, first uninstall Ollama's 2 models.",
+      "Still used by Ollama with its 2 models. To uninstall it, first uninstall Ollama's 2 models.",
     );
     expect(reason("python@3.13")).toHaveTextContent("pipx still uses it and won't be uninstalled, so it won't be either.");
     // An explanation, not a refusal: the secondary colour.

@@ -69,7 +69,7 @@ export interface UninstallDialogProps {
  * package -- with why, and what to do about it, in the dialog's body next
  * to the list of what needs it, not in a `title` on the disabled button.
  * What needs it is what Homebrew names (`affected`), and the other sources
- * that run on it, which Homebrew cannot know (`neededBy`): 「npm和它的4个
+ * that run on it, which Homebrew cannot know (`neededBy`): 「npm及其4个
  * 工具」 under a `node@22` npm runs on.
  */
 export function UninstallDialog({
@@ -382,7 +382,7 @@ export function UninstallDialog({
                         {name}
                       </li>
                     ))}
-                    {/* Then the sources Homebrew does not name: 「npm和它的4个工具」. */}
+                    {/* Then the sources Homebrew does not name: 「npm及其4个工具」. */}
                     {needed.map((entry) => (
                       <li key={entry.instance_id} className={`text-foreground ${SMALL_WRAPPING}`}>
                         {neededByItem(t, entry, sourceOf(entry.instance_id))}

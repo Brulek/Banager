@@ -2479,7 +2479,7 @@ said of it.
 
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --
-「npm和它的4个工具」, 「pipx装的2个工具」 -- Uninstall stays off, and the
+「npm及其4个工具」, 「pipx装的2个工具」 -- Uninstall stays off, and the
 sentence under the list names the tools to uninstall first. Whatever the
 window sends, `Session::submit` refuses such a preview
 (`UninstallBlocked::NeededBySource`), and a batch leaves the package out

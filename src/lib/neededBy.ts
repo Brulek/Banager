@@ -36,7 +36,7 @@ function models(entry: NeededBy): boolean {
 
 /**
  * How the list of what still needs the package names one source, beside
- * Homebrew's dependents: 「npm和它的4个工具」, 「Ollama和它的2个模型」 -- the
+ * Homebrew's dependents: 「npm及其4个工具」, 「Ollama及其2个模型」 -- the
  * source with every tool it lists -- or 「pipx装的2个工具」, those of its
  * tools whose environment's Python it is. `source` is its name, as the
  * sidebar has it (`instanceLabels`).
@@ -77,7 +77,7 @@ export function neededBySentence(
 
 /**
  * Why a batch leaves a package out that sources run on: 「还有软件要用到它：
- * npm和它的4个工具。要卸载它，请先卸载npm装的4个工具。」 -- what still needs
+ * npm及其4个工具。要卸载它，请先卸载npm装的4个工具。」 -- what still needs
  * it, Homebrew's dependents (`dependents`, as `brew uses` names them)
  * first, then what to uninstall before it.
  */

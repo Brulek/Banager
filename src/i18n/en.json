@@ -787,10 +787,10 @@
     "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
   },
   "runtimeGuard": {
-    "program_one": "{{source}} and its {{count}} tool",
-    "program_other": "{{source}} and its {{count}} tools",
-    "programModels_one": "{{source}} and its {{count}} model",
-    "programModels_other": "{{source}} and its {{count}} models",
+    "program_one": "{{source}} with its {{count}} tool",
+    "program_other": "{{source}} with its {{count}} tools",
+    "programModels_one": "{{source}} with its {{count}} model",
+    "programModels_other": "{{source}} with its {{count}} models",
     "environments_one": "{{count}} tool installed with {{source}}",
     "environments_other": "{{count}} tools installed with {{source}}",
     "remove_one": "the tool installed with {{source}}",

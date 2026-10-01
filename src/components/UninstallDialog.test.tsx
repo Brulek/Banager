@@ -341,7 +341,7 @@ describe("UninstallDialog", () => {
         [formula("node@22")],
       );
 
-      expect(await screen.findByText("npm and its 4 tools")).toBeInTheDocument();
+      expect(await screen.findByText("npm with its 4 tools")).toBeInTheDocument();
       within(group("Notes")).getByText("Software that uses it");
       expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
       expect(screen.getByText("Uninstall the 4 tools installed with npm first to remove node@22.")).toBeInTheDocument();
@@ -396,7 +396,7 @@ describe("UninstallDialog", () => {
           { warnings: [{ NeededBySource: { instance_id: ollama.id, program: true, tools: 2 } }] },
           [formula("ollama")],
         );
-        expect(await screen.findByText("Ollama和它的2个模型")).toBeInTheDocument();
+        expect(await screen.findByText("Ollama及其2个模型")).toBeInTheDocument();
         expect(screen.getByText(zhCN.uninstall.affectedTitle)).toBeInTheDocument();
         expect(screen.getByText("要卸载“ollama”，请先卸载Ollama的2个模型。")).toBeInTheDocument();
       } finally {

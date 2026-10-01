@@ -31,12 +31,12 @@ describe("neededBy", () => {
 
 describe("neededByItem", () => {
   it("names the source with every tool, or the tools whose environment it is", () => {
-    expect(neededByItem(zh, NPM, "npm")).toBe("npm和它的4个工具");
+    expect(neededByItem(zh, NPM, "npm")).toBe("npm及其4个工具");
     expect(neededByItem(zh, PIPX, "pipx")).toBe("pipx装的2个工具");
-    expect(neededByItem(zh, OLLAMA, "Ollama")).toBe("Ollama和它的1个模型");
-    expect(neededByItem(en, NPM, "npm")).toBe("npm and its 4 tools");
+    expect(neededByItem(zh, OLLAMA, "Ollama")).toBe("Ollama及其1个模型");
+    expect(neededByItem(en, NPM, "npm")).toBe("npm with its 4 tools");
     expect(neededByItem(en, PIPX, "pipx")).toBe("2 tools installed with pipx");
-    expect(neededByItem(en, { ...OLLAMA, tools: 3 }, "Ollama")).toBe("Ollama and its 3 models");
+    expect(neededByItem(en, { ...OLLAMA, tools: 3 }, "Ollama")).toBe("Ollama with its 3 models");
     expect(neededByItem(en, { ...PIPX, tools: 1 }, "uv")).toBe("1 tool installed with uv");
   });
 });
@@ -67,13 +67,13 @@ describe("neededBySentence", () => {
 describe("neededByReason", () => {
   it("says what still needs the package, Homebrew's dependents first, and what to uninstall before it", () => {
     expect(neededByReason(zh, [NPM], [], sourceOf)).toBe(
-      "还有软件要用到它：npm和它的4个工具。要卸载它，请先卸载npm装的4个工具。",
+      "还有软件要用到它：npm及其4个工具。要卸载它，请先卸载npm装的4个工具。",
     );
     expect(neededByReason(zh, [PIPX], ["pipx"], sourceOf)).toBe(
       "还有软件要用到它：pipx和pipx装的2个工具。要卸载它，请先卸载pipx和pipx装的2个工具。",
     );
     expect(neededByReason(en, [NPM], [], sourceOf)).toBe(
-      "Still used by npm and its 4 tools. To uninstall it, first uninstall the 4 tools installed with npm.",
+      "Still used by npm with its 4 tools. To uninstall it, first uninstall the 4 tools installed with npm.",
     );
   });
 });

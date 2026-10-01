@@ -733,8 +733,8 @@
     "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
   },
   "runtimeGuard": {
-    "program_other": "{{source}}和它的{{count}}个工具",
-    "programModels_other": "{{source}}和它的{{count}}个模型",
+    "program_other": "{{source}}及其{{count}}个工具",
+    "programModels_other": "{{source}}及其{{count}}个模型",
     "environments_other": "{{source}}装的{{count}}个工具",
     "remove_other": "{{source}}装的{{count}}个工具",
     "removeModels_other": "{{source}}的{{count}}个模型",

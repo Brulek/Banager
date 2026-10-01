@@ -288,11 +288,11 @@ Paths are under a generic home folder, `/Users/you`.
 - The uninstall of a Homebrew package another source runs on lists that
   source under 「依赖此工具的软件」, with Homebrew's own dependents, and offers
   no Uninstall (`src/dev/mockNeededBy.ts`, as the app's preview finds them
-  by following links): `node@22`, 「npm和它的4个工具」 (npm's own `npm` and
+  by following links): `node@22`, 「npm及其4个工具」 (npm's own `npm` and
   `corepack` are not counted); `python@3.13`, `pipx` (from Homebrew),
-  「pip和它的1个工具」 and 「pipx装的3个工具」, whose venvs' Python it is;
-  Homebrew's `pipx`, 「pipx和它的3个工具」; Homebrew's `ollama`, 「Ollama和
-  它的2个模型」. The sentence under the list says which tools to uninstall
+  「pip及其1个工具」 and 「pipx装的3个工具」, whose venvs' Python it is;
+  Homebrew's `pipx`, 「pipx及其3个工具」; Homebrew's `ollama`, 「Ollama及其
+  2个模型」. The sentence under the list says which tools to uninstall
   first. With `?state=notices`, npm is the one from nodejs.org, and nothing
   runs on `node@22`. npm's own `npm` row says 「无法在此卸载」 where its
   Uninstall would be, and why behind it.
@@ -368,7 +368,7 @@ say is on the `full` Mac:
 - Claude Code: what moves to the Trash, and `~/.claude` kept, Copy Path only;
 - Homebrew's `node@22`, `python@3.13`, `pipx` or `ollama`, alone or with
   anything: it stays, because other sources run on it, said as its own
-  confirmation says it (「还有软件要用到它：npm和它的4个工具。要卸载它，请先卸载
+  confirmation says it (「还有软件要用到它：npm及其4个工具。要卸载它，请先卸载
   npm装的4个工具。」); what only they still need stays with them (`mpdecimal`
   ticked with `python@3.13`);
 - rustup: it cannot be cancelled once it starts, so it is left to its row;
