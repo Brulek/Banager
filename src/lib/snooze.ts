@@ -5,6 +5,7 @@
  */
 import type { TFunction } from "i18next";
 import { artifactKeyId } from "../store/ui";
+import { shortDateText } from "./shortDate";
 import type { ArtifactKey, Settings, SnoozedUpdate } from "./types";
 
 /** The snooze of `key` in `settings`, if there is one. */
@@ -15,11 +16,11 @@ export function snoozeOf(settings: Pick<Settings, "snoozed_updates">, key: Artif
 
 /**
  * `until` (Unix seconds) as a day of the month in `language`: 「11月1日」,
- * "Nov 1" -- the Overview's next-check line's style for a date. A snooze
- * lasts 30 days, so the year goes without saying.
+ * "Nov 1" (`shortDateText`). A snooze lasts 30 days, so the year goes
+ * without saying.
  */
 export function snoozeDate(until: number, language: string): string {
-  return new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(new Date(until * 1000));
+  return shortDateText(new Date(until * 1000), language);
 }
 
 /** 「11月1日起恢复提醒」, "Hidden until Nov 1". */

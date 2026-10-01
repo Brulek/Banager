@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import { shortDateText } from "../lib/shortDate";
 
 /**
  * The line under Settings' 「检查更新」 popup, while it is set to 「每天」 or
@@ -53,7 +54,7 @@ export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, langu
   const days = calendarDaysBetween(new Date(nowMs), due);
   if (days === 0) return t("nextAutoCheck.today", { time });
   if (days === 1) return t("nextAutoCheck.tomorrow", { time });
-  const date = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(due);
+  const date = shortDateText(due, language);
   return t("nextAutoCheck.date", { date, time });
 }
 

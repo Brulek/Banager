@@ -1,3 +1,4 @@
+import { shortDateText } from "./shortDate";
 import type { InstalledArtifact } from "./types";
 
 /**
@@ -24,10 +25,7 @@ export function compareByInstalledAt(a: InstalledArtifact, b: InstalledArtifact)
 export function installedDateText(seconds: number, language: string, nowMs: number): string {
   const date = new Date(seconds * 1000);
   const thisYear = date.getFullYear() === new Date(nowMs).getFullYear();
-  const format = thisYear
-    ? new Intl.DateTimeFormat(language, { month: "short", day: "numeric" })
-    : new Intl.DateTimeFormat(language, { dateStyle: "medium" });
-  return format.format(date);
+  return thisYear ? shortDateText(date, language) : new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(date);
 }
 
 /**
