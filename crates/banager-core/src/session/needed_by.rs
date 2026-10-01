@@ -85,9 +85,10 @@ impl Session {
     /// `plan`, with a `Warning::NeededBySource` after its own warnings for
     /// each source that runs on `subject`'s package (`needed_by::needed_by`,
     /// on a blocking thread, within `needed_by::BUDGET`), and with
-    /// `Warning::DependentsUnknown` when that look did not finish and the
-    /// plan does not say it already. `plan` as it is with no subject, and
-    /// before any refresh.
+    /// `Warning::DependentsUnknown` when that look did not finish -- or did
+    /// not come back within `GRACE` of its budget -- and the plan does not
+    /// say it already. `plan` as it is with no subject, and before any
+    /// refresh.
     pub(super) async fn with_needed_by(&self, mut plan: Plan, subject: Option<Subject>) -> Plan {
         let Some(subject) = subject else {
             return plan;
@@ -95,29 +96,52 @@ impl Session {
         let Some(env) = self.needed_by_env.lock().unwrap().clone() else {
             return plan;
         };
-        let found = tokio::task::spawn_blocking(move || {
-            needed_by::needed_by(
-                &subject.package,
-                &subject.brew,
-                &subject.instances,
-                &subject.artifacts,
-                &env,
-                needed_by::BUDGET,
-            )
-        })
+        let budget = needed_by::BUDGET;
+        let found = bounded(
+            move || {
+                needed_by::needed_by(
+                    &subject.package,
+                    &subject.brew,
+                    &subject.instances,
+                    &subject.artifacts,
+                    &env,
+                    budget,
+                )
+            },
+            budget.max_duration + GRACE,
+        )
         .await;
         let complete = match found {
-            Ok(found) => {
+            Some(found) => {
                 plan.warnings.extend(found.warnings);
                 found.complete
             }
-            Err(_) => false,
+            None => false,
         };
         if !complete && !plan.warnings.contains(&Warning::DependentsUnknown) {
             plan.warnings.push(Warning::DependentsUnknown);
         }
         plan
     }
+}
+
+/// How long past its own budget the look may take before the preview stops
+/// waiting for it, as the command check's halves are given
+/// (`commands::GRACE`): a step stuck in the kernel -- a folder on a disk
+/// that stopped answering -- never comes back to look at the clock. The
+/// look then goes on alone, and the preview says it did not finish.
+const GRACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What `look` found, run on the blocking pool; `None` when it panicked or
+/// did not end within `wait`.
+async fn bounded<F>(look: F, wait: std::time::Duration) -> Option<needed_by::NeededBy>
+where
+    F: FnOnce() -> needed_by::NeededBy + Send + 'static,
+{
+    tokio::time::timeout(wait, tokio::task::spawn_blocking(look))
+        .await
+        .ok()?
+        .ok()
 }
 
 #[cfg(test)]
@@ -135,6 +159,7 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::time::Duration;
     use tokio_util::sync::CancellationToken;
 
     /// A source of a test's own, under a real adapter id, listing `rows`.
@@ -459,6 +484,42 @@ mod tests {
         };
         let issued = session.issue_plan(&package).await.unwrap();
         assert_eq!(needed(&issued.plan), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn test_a_look_that_does_not_come_back_in_time_or_panics_is_not_waited_for() {
+        // A step stuck in the kernel never returns to check the budget: the
+        // preview stops waiting, and says the look did not finish.
+        let done = crate::needed_by::NeededBy {
+            warnings: Vec::new(),
+            complete: true,
+        };
+        let quick = done.clone();
+        assert_eq!(
+            super::bounded(move || quick, Duration::from_secs(5)).await,
+            Some(done.clone())
+        );
+        let started = std::time::Instant::now();
+        let slow = done.clone();
+        let stuck = super::bounded(
+            move || {
+                std::thread::sleep(Duration::from_millis(400));
+                slow
+            },
+            Duration::from_millis(50),
+        )
+        .await;
+        assert_eq!(stuck, None);
+        assert!(
+            started.elapsed() < Duration::from_millis(350),
+            "it did not wait for the look"
+        );
+        let panicked = super::bounded(
+            || -> crate::needed_by::NeededBy { panic!("a look that panics") },
+            Duration::from_secs(5),
+        )
+        .await;
+        assert_eq!(panicked, None);
     }
 
     #[test]

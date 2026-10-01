@@ -2491,10 +2491,12 @@ above): each path is followed one step at a time (`protected::resolve`:
 and never into the places macOS asks about first nor onto another disk --
 the same places the command check never reads. No file is opened, nothing
 is written, and no command runs. At most 2,000 paths and 1 second for one
-preview (`needed_by::BUDGET`); a look that did not finish says so
-(「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what else
-needs this. Check yourself before you uninstall.", `Warning::DependentsUnknown`),
-never that nothing runs on it.
+preview (`needed_by::BUDGET`), and the preview waits one second more at
+most for a step that does not answer at all (a folder on a disk that
+stopped answering), then goes on without it; a look that did not finish
+says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what
+else needs this. Check yourself before you uninstall.",
+`Warning::DependentsUnknown`), never that nothing runs on it.
 
 ## Diagnostic info: read-only, no command runs
 
