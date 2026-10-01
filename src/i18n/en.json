@@ -7,11 +7,11 @@
   "welcome": {
     "title": "Welcome to {{name}}",
     "listTitle": "See What's Installed",
-    "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list.",
+    "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs none of them installed are under Other Programs.",
     "confirmTitle": "You Confirm Every Update and Uninstall",
-    "confirmText": "Before an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
+    "confirmText": "Before an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
     "settingsTitle": "No Shell Edits, No Data Collected",
-    "settingsText": "Doesn't edit your shell's startup files, collects no usage data, and needs no account.",
+    "settingsText": "Doesn't edit your shell's startup files; only rustup's own uninstall does, and it says so first. Collects no usage data and needs no account.",
     "start": "Get Started"
   },
   "inventoryPreview": {

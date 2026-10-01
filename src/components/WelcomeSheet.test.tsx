@@ -93,9 +93,9 @@ describe("WelcomeSheet", () => {
     const sheet = await findSheet();
     const points = within(sheet).getAllByRole("listitem");
     expect(points.map((point) => point.textContent)).toEqual([
-      "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list.",
-      "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
-      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files, collects no usage data, and needs no account.",
+      "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs none of them installed are under Other Programs.",
+      "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
+      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; only rustup's own uninstall does, and it says so first. Collects no usage data and needs no account.",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {
@@ -115,8 +115,12 @@ describe("WelcomeSheet", () => {
     expect(within(sheet).getByText("更新、卸载都由你确认")).toBeInTheDocument();
     expect(within(sheet).getByText("不改终端配置，不收集数据")).toBeInTheDocument();
     expect(
-      within(sheet).getByText("更新或卸载前，先写明要做什么，确认后才开始；完成后会再检查一遍。"),
+      within(sheet).getByText("更新或卸载前，先写明要做什么和要运行的命令，确认后才开始；完成后会再检查一遍。"),
     ).toBeInTheDocument();
+    expect(
+      within(sheet).getByText("不改终端的配置文件，只有rustup自己的卸载会改，卸载前会写明；不收集使用情况，也不需要账号。"),
+    ).toBeInTheDocument();
+    expect(within(sheet).getByText(/不是它们装的程序，列在“其他程序”里/)).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
   });
 
