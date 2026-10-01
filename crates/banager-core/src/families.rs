@@ -8,6 +8,9 @@
 //! standalone recipes), and the folders it keeps its data in where that is
 //! verified. It names no commands: which copy a typed name runs is read
 //! from each source's own answer (`commands.rs`), never from this table.
+//! (Until f764134 it also listed each family's command names, checked the
+//! same day against npm `bin` fields, formula test blocks and pyproject
+//! scripts; they are in git history at a00395b.)
 //!
 //! # How the table was verified (2026-10-01)
 //!
@@ -434,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn test_every_family_has_a_unique_kebab_case_id_names_and_a_member() {
+    fn test_every_family_has_a_unique_kebab_case_id_a_name_and_a_member() {
         let mut ids = HashSet::new();
         for f in families() {
             assert!(ids.insert(f.id.as_str()), "duplicate id {}", f.id);
