@@ -1,4 +1,4 @@
-import type { KeptData, Measured, Warning } from "./types";
+import type { KeptData, Measured, OthersData, Warning } from "./types";
 
 /**
  * One folder or file an uninstall leaves behind, as its preview names it
@@ -14,6 +14,8 @@ export interface KeptDataItem {
   size: Measured | null;
   /** Folders inside it that `size` does not count (`Warning.KeepsData`'s `left_out`). */
   leftOut: string[];
+  /** Another tool's data inside it, not counted in `size` (`~/.gemini/antigravity-cli` in `~/.gemini`). */
+  others: OthersData[];
 }
 
 /** The `KeepsData` lines of a plan's warnings, in order. */
@@ -21,9 +23,9 @@ export function keptDataOf(warnings: readonly Warning[]): KeptDataItem[] {
   const items: KeptDataItem[] = [];
   for (const warning of warnings) {
     if (typeof warning !== "string" && "KeepsData" in warning) {
-      const { path, what, size, left_out } = warning.KeepsData;
-      // An older line may have none.
-      items.push({ path, what, size, leftOut: left_out ?? [] });
+      const { path, what, size, left_out, others } = warning.KeepsData;
+      // An older line may have neither.
+      items.push({ path, what, size, leftOut: left_out ?? [], others: others ?? [] });
     }
   }
   return items;

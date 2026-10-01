@@ -12,7 +12,12 @@
 //! models folder elsewhere is not named). Only a path that is there gets a
 //! line, and only one the plan does not already name: Claude Code's own
 //! installer's uninstall lists `~/.claude` and `~/.claude.json` among what
-//! it keeps (`Warning::WillKeep`), which is said once, there.
+//! it keeps (`Warning::WillKeep`), which is said once, there. A folder two
+//! tools share is measured without the part the table gives the other one
+//! (`others_inside`): `~/.gemini` is Gemini CLI's, but Antigravity CLI
+//! keeps everything of its own in `~/.gemini/antigravity-cli`, which on
+//! the author's Mac was 99 % of `~/.gemini`; Gemini CLI's line leaves it
+//! out and says so.
 //!
 //! How: read-only, as disk use is measured (`size::look_at`: `lstat`,
 //! `readdir`, `readlink`; nothing opened, nothing written), under a budget
@@ -23,7 +28,7 @@
 //! offers to.
 
 use crate::families;
-use crate::model::{KeptData, Warning};
+use crate::model::{KeptData, OthersData, Warning};
 use crate::size::{look_at, LookBudget, Looked, Protected, SizeBudget};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -67,6 +72,27 @@ pub fn data_paths(family: &str) -> Vec<(&'static str, KeptData)> {
         paths.push((OLLAMA_MODELS, KeptData::Models));
     }
     paths
+}
+
+/// What other families keep inside `path`, a data path of `family`: each
+/// other family's data path that lies under it, as the table spells it,
+/// with that family's name -- `~/.gemini/antigravity-cli`, Antigravity
+/// CLI's, inside Gemini CLI's `~/.gemini`. Left out of `path`'s size and
+/// named on its line, so one tool's uninstall does not call another's data
+/// its own.
+pub fn others_inside(family: &str, path: &str) -> Vec<(&'static str, &'static str)> {
+    let folder = format!("{}/", path.trim_end_matches('/'));
+    families::families()
+        .iter()
+        .filter(|other| other.id != family)
+        .flat_map(|other| {
+            other
+                .data_paths
+                .iter()
+                .filter(|inner| inner.starts_with(&folder) && inner.len() > folder.len())
+                .map(move |inner| (inner.as_str(), other.name_en.as_str()))
+        })
+        .collect()
 }
 
 /// `~/…` under `home`; `None` for anything not spelled from the home folder.
@@ -114,21 +140,46 @@ pub fn kept_data(
         let Some(absolute) = under_home(home, path) else {
             continue;
         };
-        let leave_out: Vec<&str> = LEFT_OUT
+        // What the size leaves out: another copy of this tool
+        // (`LEFT_OUT`, said as `left_out`), then what other tools keep
+        // inside (`others_inside`, said as `others`), relative to `path`.
+        let copies: Vec<&str> = LEFT_OUT
             .iter()
             .filter(|(of, _)| *of == path)
             .map(|(_, inside)| *inside)
             .collect();
+        let inside = others_inside(family, path);
+        let leave_out: Vec<&str> = copies
+            .iter()
+            .copied()
+            .chain(inside.iter().map(|(inner, _)| {
+                inner[path.trim_end_matches('/').len() + 1..].trim_end_matches('/')
+            }))
+            .collect();
         let (looked, met) = look_at(&absolute, &protected, &mut budget, &leave_out);
         if let Looked::There(size) = looked {
+            let left_out = met
+                .iter()
+                .filter(|index| **index < copies.len())
+                .map(|index| format!("{path}/{}", copies[*index]))
+                .collect();
+            let others = met
+                .iter()
+                .filter(|index| **index >= copies.len())
+                .map(|index| {
+                    let (inner, tool) = inside[index - copies.len()];
+                    OthersData {
+                        path: inner.to_string(),
+                        tool: tool.to_string(),
+                    }
+                })
+                .collect();
             warnings.push(Warning::KeepsData {
                 path: path.to_string(),
                 what,
                 size,
-                left_out: met
-                    .into_iter()
-                    .map(|index| format!("{path}/{}", leave_out[index]))
-                    .collect(),
+                left_out,
+                others,
             });
         }
     }
@@ -206,6 +257,10 @@ mod tests {
         assert_eq!(
             data_paths("ollama"),
             vec![("~/.ollama/models", KeptData::Models)]
+        );
+        assert_eq!(
+            data_paths("antigravity-cli"),
+            vec![("~/.gemini/antigravity-cli", KeptData::ToolData)]
         );
         // A family with no verified folder, and no family at all.
         assert!(data_paths("aider").is_empty());
@@ -397,6 +452,110 @@ mod tests {
         // Claude Code's two, at least: not a test that compares nothing.
         assert!(matched.contains(&"~/.claude"), "{matched:?}");
         assert!(matched.contains(&"~/.claude.json"), "{matched:?}");
+        // And Antigravity CLI's, which its own uninstall keeps, so the
+        // dialog names it once, there.
+        assert!(
+            matched.contains(&"~/.gemini/antigravity-cli"),
+            "{matched:?}"
+        );
+    }
+
+    #[test]
+    fn test_antigravitys_folder_is_the_only_other_tools_data_inside_one() {
+        assert_eq!(
+            others_inside("gemini-cli", "~/.gemini"),
+            vec![("~/.gemini/antigravity-cli", "Antigravity CLI")]
+        );
+        // Its own family's path is not "another tool's", and a sibling
+        // spelled with the same start is not inside.
+        assert!(others_inside("antigravity-cli", "~/.gemini/antigravity-cli").is_empty());
+        assert!(others_inside("claude-code", "~/.claude").is_empty());
+        // Every pair in the table: the name on the line is the family's,
+        // and the table spells it the same in both languages, since the
+        // wire carries one spelling.
+        for family in families::families() {
+            for path in &family.data_paths {
+                for (inner, tool) in others_inside(&family.id, path) {
+                    let owner = families::families()
+                        .iter()
+                        .find(|f| f.data_paths.iter().any(|p| p == inner))
+                        .unwrap();
+                    assert_eq!(owner.name_en, tool);
+                    assert_eq!(owner.name_en, owner.name_zh, "{}", owner.id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_gemini_clis_line_leaves_antigravitys_folder_out_and_names_it() {
+        let home = Home::new("gemini");
+        home.file(".gemini/users/a.json", 3_000);
+        home.file(".gemini/config/settings.json", 1_000);
+        home.file(".gemini/antigravity-cli/log/big.log", 900_000);
+        home.file(".gemini/antigravity-cli/cache/blob", 400_000);
+        let warnings = kept_data(&home.0, "gemini-cli", &[], BUDGET);
+        assert_eq!(warnings.len(), 1);
+        match &warnings[0] {
+            Warning::KeepsData {
+                path, size, others, ..
+            } => {
+                assert_eq!(path, "~/.gemini");
+                let size = size.expect("measured");
+                assert!(size.bytes >= 4_000, "{size:?}");
+                assert!(
+                    size.bytes < 100_000,
+                    "Antigravity's 1.3 MB is not counted: {size:?}"
+                );
+                assert_eq!(
+                    others,
+                    &vec![OthersData {
+                        path: "~/.gemini/antigravity-cli".to_string(),
+                        tool: "Antigravity CLI".to_string(),
+                    }]
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_gemini_clis_line_names_no_other_tool_when_antigravitys_folder_is_not_there() {
+        let home = Home::new("gemini-alone");
+        home.file(".gemini/users/a.json", 3_000);
+        // A file of Gemini CLI's own whose name only starts the same.
+        home.file(".gemini/antigravity-cli-notes.txt", 2_000);
+        let warnings = kept_data(&home.0, "gemini-cli", &[], BUDGET);
+        match &warnings[..] {
+            [Warning::KeepsData { size, others, .. }] => {
+                assert!(others.is_empty(), "{others:?}");
+                assert!(size.unwrap().bytes >= 5_000, "{size:?}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_antigravity_as_a_link_is_left_out_and_never_followed() {
+        // `~/.gemini/antigravity-cli` as a link elsewhere: the link is
+        // skipped like the folder would be, and what it leads to is not
+        // walked as part of `~/.gemini` (a walk never follows links).
+        let home = Home::new("gemini-link");
+        home.file(".gemini/users/a.json", 3_000);
+        home.file("elsewhere/big.bin", 800_000);
+        symlink(
+            home.0.join("elsewhere"),
+            home.0.join(".gemini/antigravity-cli"),
+        )
+        .unwrap();
+        let warnings = kept_data(&home.0, "gemini-cli", &[], BUDGET);
+        match &warnings[..] {
+            [Warning::KeepsData { size, others, .. }] => {
+                assert_eq!(others.len(), 1);
+                assert!(size.unwrap().bytes < 100_000, "{size:?}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

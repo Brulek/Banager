@@ -628,6 +628,16 @@ pub enum KeptData {
     Models,
 }
 
+/// Another tool's data inside a folder an uninstall leaves behind
+/// (`Warning::KeepsData.others`): the path as the table spells it, and the
+/// tool's name, which the table spells the same in English and Chinese
+/// (`families::Family.name_en`, pinned by `kept_data`'s tests).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OthersData {
+    pub path: String,
+    pub tool: String,
+}
+
 /// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
 /// render it in the user's language rather than the English sentence Rust
 /// would otherwise have to assemble -- the trap `UpdateCandidate.warnings`
@@ -697,7 +707,8 @@ pub enum Warning {
     /// tool keeps its own data in, which none of the sources' uninstall
     /// commands touches -- the data folders of the tool's family in the
     /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
-    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, `~/.qwen`) and, for the
+    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, `~/.qwen`,
+    /// `~/.gemini/antigravity-cli`) and, for the
     /// Ollama family (formula `ollama`, cask `ollama-app`), the models
     /// folder `~/.ollama/models`. One per path that is there, in the
     /// table's order, `path` as the table spells it (`~` for the home
@@ -714,12 +725,22 @@ pub enum Warning {
     /// this tool's data -- `~/.codex/packages/standalone`, Codex's own
     /// install, when npm's copy is the one uninstalled -- spelled as
     /// `path` is; empty for most.
+    ///
+    /// `others`: what another tool keeps inside this folder, which `size`
+    /// leaves out and the line says is not counted -- `~/.gemini` is
+    /// Gemini CLI's and Antigravity CLI's alike, and Antigravity's
+    /// `~/.gemini/antigravity-cli` can be nearly all of it. Each is
+    /// another family's data path inside `path` that the walk found there
+    /// (`kept_data::others_inside`). Left off the wire when empty, so a
+    /// line without one reads as it always has.
     KeepsData {
         path: String,
         what: KeptData,
         size: Option<crate::size::Measured>,
         #[serde(default)]
         left_out: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        others: Vec<OthersData>,
     },
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
     /// `~/.rustup`; the standard layout is the only one Banager offers
@@ -1875,6 +1896,7 @@ mod tests {
                 at_least: true,
             }),
             left_out: Vec::new(),
+            others: Vec::new(),
         };
         let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&measured).unwrap(), wire);
@@ -1884,6 +1906,7 @@ mod tests {
             what: KeptData::Models,
             size: None,
             left_out: Vec::new(),
+            others: Vec::new(),
         };
         let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&unknown).unwrap(), wire);
@@ -1894,6 +1917,7 @@ mod tests {
             what: KeptData::ToolData,
             size: None,
             left_out: vec!["~/.codex/packages/standalone".to_string()],
+            others: Vec::new(),
         };
         let wire = r#"{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}"#;
         assert_eq!(serde_json::to_string(&codex).unwrap(), wire);
@@ -1905,6 +1929,24 @@ mod tests {
             .unwrap(),
             unknown
         );
+        // Another tool's data inside the folder, left out of its size.
+        let shared = Warning::KeepsData {
+            path: "~/.gemini".to_string(),
+            what: KeptData::ToolData,
+            size: Some(crate::size::Measured {
+                bytes: 7_553_024,
+                partial: false,
+                at_least: false,
+            }),
+            left_out: Vec::new(),
+            others: vec![OthersData {
+                path: "~/.gemini/antigravity-cli".to_string(),
+                tool: "Antigravity CLI".to_string(),
+            }],
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":{"bytes":7553024,"partial":false,"at_least":false},"left_out":[],"others":[{"path":"~/.gemini/antigravity-cli","tool":"Antigravity CLI"}]}}"#;
+        assert_eq!(serde_json::to_string(&shared).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), shared);
     }
 
     #[test]

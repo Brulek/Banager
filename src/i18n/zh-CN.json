@@ -684,7 +684,8 @@
       "Models": "下载的模型"
     },
     "copyPath": "拷贝路径",
-    "copyPathLabel": "拷贝路径：{{path}}"
+    "copyPathLabel": "拷贝路径：{{path}}",
+    "notCounting": "{{path}}是{{tool}}的数据，不算在内"
   },
   "settings": {
     "groups": {

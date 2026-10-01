@@ -2049,15 +2049,27 @@ family on any source (`crates/banager-core/src/kept_data.rs`):
 |---|---|
 | Claude Code | `~/.claude`, `~/.claude.json` |
 | Codex | `~/.codex` |
-| Gemini CLI | `~/.gemini` |
+| Gemini CLI | `~/.gemini`, measured without `~/.gemini/antigravity-cli` |
 | Qwen Code | `~/.qwen` |
+| Antigravity CLI | `~/.gemini/antigravity-cli` |
 | Ollama (Homebrew's formula `ollama`, cask `ollama-app`) | `~/.ollama/models` |
 
 The paths come from the bundled table of AI coding tools
 (`data/ai-tools.json`, `data_paths`) and, for Ollama, its FAQ. A path the
 preview already names is not named twice: Claude Code's own installer's
 uninstall lists `~/.claude` and `~/.claude.json` among what it keeps
-(Claude Code, above).
+(Claude Code, above), and Antigravity CLI's lists
+`~/.gemini/antigravity-cli` (Antigravity CLI, above).
+
+`~/.gemini` is shared: Gemini CLI keeps its settings there, and
+Antigravity CLI keeps everything of its own in `~/.gemini/antigravity-cli`
+(on the author's Mac, 99 % of `~/.gemini`). So Gemini CLI's line leaves
+another tool's path that the table puts inside its folder out of the size
+(`kept_data::others_inside`): the walk skips that entry -- it neither
+counts nor enters it, nor spends the budget on it -- and, when it met it,
+the line says whose it is and that it is not counted (「…是Antigravity
+CLI的数据，不算在内」, "… is Antigravity CLI's data and isn't counted
+here").
 
 How: during the uninstall preview only, each path is looked at as disk
 use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and

@@ -168,6 +168,17 @@ export type KeptWhat =
  */
 export type KeptData = "ToolData" | "Models";
 /**
+ * Another tool's data inside a folder an uninstall leaves behind, which the
+ * folder's size leaves out (`Warning.KeepsData.others`, absent on the wire
+ * when there is none): the path as the table spells it, and the tool's name,
+ * spelled the same in both languages. Mirrors `OthersData` in
+ * crates/banager-core/src/model.rs.
+ */
+export interface OthersData {
+  path: string;
+  tool: string;
+}
+/**
  * Which sentence an uninstall says under the tool about what goes and what
  * stays, the payload of `Warning.UninstallScope`. Mirrors `UninstallScope`
  * in crates/banager-core/src/model.rs: bare-string unit variants. Homebrew's
@@ -289,8 +300,18 @@ export type Warning =
   /**
    * `left_out`: folders inside `path` its size does not count, not being
    * this tool's data (`~/.codex/packages/standalone`, Codex's own install).
+   * `others`: what another tool keeps inside `path`, also not counted
+   * (`~/.gemini/antigravity-cli` in `~/.gemini`); off the wire when empty.
    */
-  | { KeepsData: { path: string; what: KeptData; size: Measured | null; left_out: string[] } }
+  | {
+      KeepsData: {
+        path: string;
+        what: KeptData;
+        size: Measured | null;
+        left_out: string[];
+        others?: OthersData[];
+      };
+    }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

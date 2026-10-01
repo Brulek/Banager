@@ -31,8 +31,13 @@
 //!   repository); command names from that repository's `pyproject.toml`
 //!   `[project.scripts]`.
 //! - Standalone: the recipe ids in `adapters/standalone/recipes.rs`.
-//! - Data folders: only the four the vendors document (Claude Code, Codex,
-//!   Gemini CLI, Qwen Code); every other family has none until verified.
+//! - Data folders: the four the vendors document (Claude Code, Codex,
+//!   Gemini CLI, Qwen Code), and Antigravity CLI's
+//!   `~/.gemini/antigravity-cli`, which its own recipe already keeps on
+//!   uninstall (`recipes::AGY`; the install script and the cask's `zap`
+//!   name it) -- inside Gemini CLI's `~/.gemini`, so Gemini CLI's line
+//!   leaves it out (`kept_data::others_inside`). Every other family has
+//!   none until verified.
 //!
 //! Versions are deliberately not in the table: they change weekly.
 //!
@@ -382,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn test_data_paths_are_only_the_four_verified_and_under_home() {
+    fn test_data_paths_are_only_the_five_verified_and_under_home() {
         let with_data: Vec<_> = families()
             .iter()
             .filter(|f| !f.data_paths.is_empty())
@@ -390,7 +395,17 @@ mod tests {
             .collect();
         assert_eq!(
             with_data,
-            ["claude-code", "codex", "gemini-cli", "qwen-code"]
+            [
+                "claude-code",
+                "codex",
+                "gemini-cli",
+                "qwen-code",
+                "antigravity-cli"
+            ]
+        );
+        assert_eq!(
+            family("antigravity-cli").unwrap().data_paths,
+            ["~/.gemini/antigravity-cli"]
         );
         for f in families() {
             for p in &f.data_paths {

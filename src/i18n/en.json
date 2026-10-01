@@ -739,7 +739,8 @@
       "Models": "Downloaded models"
     },
     "copyPath": "Copy Path",
-    "copyPathLabel": "Copy path: {{path}}"
+    "copyPathLabel": "Copy path: {{path}}",
+    "notCounting": "{{path}} is {{tool}}'s data and isn't counted here"
   },
   "settings": {
     "groups": {

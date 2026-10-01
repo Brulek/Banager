@@ -26,6 +26,8 @@ interface KeptLine {
   size: ReactNode | null;
   what: string;
   why: string | null;
+  /** Under it: whose data inside it the size does not count, one line each (`KeepsData`'s `others`). */
+  others: string[];
 }
 
 /**
@@ -39,7 +41,9 @@ interface KeptLine {
  * copies the path as shown, `~` and all, and says 「已拷贝」 beside itself
  * (`CopyButton`, as the details' copy buttons do). These are hidden folders,
  * so Show in Finder would show nothing; and there is no button, menu or
- * command here that deletes one. Nothing when the plan names none.
+ * command here that deletes one. Nothing when the plan names none. A folder
+ * two tools share says, under it, which other tool's data it does not count
+ * (`~/.gemini` without Antigravity CLI's `~/.gemini/antigravity-cli`).
  */
 export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
   const { t } = useTranslation();
@@ -48,7 +52,13 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
     if (typeof warning !== "string" && "WillKeep" in warning) {
       const { path, what } = warning.WillKeep;
       const why = KEPT_WHAT_DETAIL_KEYS[what];
-      lines.push({ path, size: null, what: t(WILL_KEEP_WHAT_KEYS[what]), why: why === null ? null : t(why) });
+      lines.push({
+        path,
+        size: null,
+        what: t(WILL_KEEP_WHAT_KEYS[what]),
+        why: why === null ? null : t(why),
+        others: [],
+      });
     }
   }
   for (const item of keptDataOf(warnings)) {
@@ -66,7 +76,9 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
       );
     // With no size to hang it on, it goes behind the ⓘ of what it holds.
     const why = item.size === null ? leftOut : null;
-    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why });
+    // Another tool's data inside it, which the size leaves out: said under it.
+    const others = item.others.map((other) => t("keepsData.notCounting", { tool: other.tool, path: other.path }));
+    lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others });
   }
   if (lines.length === 0) return null;
   return (
@@ -93,6 +105,11 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
                   </TextWithInfo>
                 )}
               </p>
+              {line.others.map((other) => (
+                <p key={other} data-kept-others="" className={`break-words text-muted ${SMALL_WRAPPING}`}>
+                  {other}
+                </p>
+              ))}
             </div>
             <CopyButton
               text={line.path}
