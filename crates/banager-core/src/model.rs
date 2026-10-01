@@ -615,6 +615,18 @@ pub enum KeptWhat {
     InstallerCache,
 }
 
+/// What a folder an uninstall leaves behind holds, for its line
+/// (`Warning::KeepsData`); read by `KEPT_DATA_KEYS` in src/lib/warnings.ts,
+/// a `Record` over the mirror, so a variant added here without copy fails
+/// `tsc`. Says no more than the vendors' own documents do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeptData {
+    /// The tool's own settings and data (`~/.claude`, `~/.codex`, ...).
+    ToolData,
+    /// The models Ollama downloaded (`~/.ollama/models`).
+    Models,
+}
+
 /// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
 /// render it in the user's language rather than the English sentence Rust
 /// would otherwise have to assemble -- the trap `UpdateCandidate.warnings`
@@ -680,6 +692,28 @@ pub enum Warning {
     /// launcher-only state) -- so there is nothing to move there. Said, so
     /// the list adds up. Same producer and reader as `WillTrash`.
     AlreadyGone { path: String },
+    /// After this uninstall, `path` stays where it is: a folder or file a
+    /// tool keeps its own data in, which none of the sources' uninstall
+    /// commands touches -- the data folders of the tool's family in the
+    /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
+    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, `~/.qwen`) and, for the
+    /// Ollama family (formula `ollama`, cask `ollama-app`), the models
+    /// folder `~/.ollama/models`. One per path that is there, in the
+    /// table's order, `path` as the table spells it (`~` for the home
+    /// folder): data for a sentence, never a path Banager acts on. `size`
+    /// is how much it takes, measured read-only under a small budget
+    /// (`kept_data::BUDGET`); `None` when that is not known -- it leads
+    /// into a place Banager never looks into, it could not be read, or
+    /// the budget ran out first. Never for a path the plan already names
+    /// (`WillKeep` of a path-list uninstall). Added by
+    /// `Session::issue_plan` to every `Uninstall` plan of an artifact
+    /// with such a family (`kept_data::kept_data`); read by `warningKey`
+    /// and the uninstall dialog's 「卸载后会保留」 group.
+    KeepsData {
+        path: String,
+        what: KeptData,
+        size: Option<crate::size::Measured>,
+    },
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
     /// `~/.rustup`; the standard layout is the only one Banager offers
     /// the uninstall for, `rustup::standard_roots`) permanently -- not
@@ -1820,6 +1854,31 @@ mod tests {
             serde_json::to_string(&UninstallBlocked::UvToolDirSet).unwrap(),
             r#""UvToolDirSet""#
         );
+    }
+
+    #[test]
+    fn test_keeps_data_is_the_json_the_typescript_mirror_reads() {
+        // Pinned in src/lib/warnings.test.ts, which reads the same strings.
+        let measured = Warning::KeepsData {
+            path: "~/.claude".to_string(),
+            what: KeptData::ToolData,
+            size: Some(crate::size::Measured {
+                bytes: 432_013_312,
+                partial: false,
+                at_least: true,
+            }),
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true}}}"#;
+        assert_eq!(serde_json::to_string(&measured).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), measured);
+        let unknown = Warning::KeepsData {
+            path: "~/.ollama/models".to_string(),
+            what: KeptData::Models,
+            size: None,
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}"#;
+        assert_eq!(serde_json::to_string(&unknown).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), unknown);
     }
 
     #[test]

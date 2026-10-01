@@ -133,7 +133,7 @@ impl Session {
         // The package's own verdicts (`blocked`, `uninstall_blocked`) are
         // read under that same lock, so all of them come from the one
         // snapshot `generation` names.
-        let (generation, instance, blocked, uninstall_blocked) = {
+        let (generation, instance, blocked, uninstall_blocked, family) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -144,6 +144,7 @@ impl Session {
                     .cloned(),
                 blocked_upgrade(&snapshot.updates, req),
                 blocked_uninstall(&snapshot.artifacts, req),
+                super::kept::family_of_uninstall(&snapshot.artifacts, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -190,6 +191,8 @@ impl Session {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
         })?;
         let plan = adapter.plan(&instance, req).await?;
+        // What the uninstall leaves behind, named (`kept.rs`).
+        let plan = self.with_kept_data(plan, family).await;
         let id = random_plan_id();
         let issued_at = self.now();
         let issued_monotonic = Instant::now();

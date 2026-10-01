@@ -67,6 +67,9 @@ pub mod http;
 /// The icon Finder shows for a cask's app, drawn by macOS for the window
 /// and remembered in memory -- read-only, behind a seam like `trash`.
 pub mod icon;
+/// What an uninstall leaves behind -- a tool's settings and data, Ollama's
+/// models -- named in its preview, measured read-only, never deleted.
+pub mod kept_data;
 pub mod model;
 /// The update notification's decision -- whether the page's report of the
 /// updates it offers posts one -- and the record of what was told. Pure:

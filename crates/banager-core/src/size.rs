@@ -543,6 +543,52 @@ fn total<'a>(walks: impl IntoIterator<Item = &'a Walked>) -> Option<Measured> {
     })
 }
 
+/// What `look_at` found at one path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Looked {
+    /// Nothing is there, or the path is in a protected place itself and
+    /// was not looked at.
+    Missing,
+    /// Something is there; how much it takes, or `None` when that is not
+    /// known: it leads into a protected place (never entered), it could
+    /// not be read, or the budget ran out before any of it was reached.
+    There(Option<Measured>),
+}
+
+/// A budget several `look_at`s share: what one uninstall preview may
+/// spend measuring what the uninstall leaves behind (`kept_data`).
+pub(crate) struct LookBudget(Budget);
+
+impl LookBudget {
+    pub(crate) fn new(budget: SizeBudget) -> LookBudget {
+        LookBudget(Budget::new(budget))
+    }
+}
+
+/// Whether anything is at `path` -- an absolute path, links on the way
+/// and at the end followed (`resolve`), each step checked against
+/// `protected` before it is looked at -- and how much it takes, measured
+/// as a tool's folder is (`walk`: `lstat`, `readdir`, `readlink`, nothing
+/// opened), spending `budget`. A path that is itself in a protected place
+/// is not looked at; one that leads into one is there, with no size: its
+/// own `lstat` is all that is read of it.
+pub(crate) fn look_at(path: &Path, protected: &Protected, budget: &mut LookBudget) -> Looked {
+    if protected.contains(path) {
+        return Looked::Missing;
+    }
+    match resolve(path, protected, true) {
+        Resolution::Missing => Looked::Missing,
+        Resolution::Refused => match std::fs::symlink_metadata(path) {
+            Ok(_) => Looked::There(None),
+            Err(_) => Looked::Missing,
+        },
+        Resolution::Found(real, _) => match walk(&[real], &mut budget.0, protected, &mut || true) {
+            WalkEnd::Walked(walked) => Looked::There(Some(walked.measured)),
+            WalkEnd::Nothing | WalkEnd::OutOfBudget | WalkEnd::Superseded => Looked::There(None),
+        },
+    }
+}
+
 /// What a measurement is remembered by between rounds: the folder (or
 /// file) it starts from and the version it was measured at -- not a
 /// modified time, which an upgrade that rewrites a tool's files in place

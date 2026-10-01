@@ -7,6 +7,7 @@
 //! (preview-then-confirm); no behaviour changed in the split itself.
 
 mod icon;
+mod kept;
 mod plans;
 mod refresh;
 mod scan;
@@ -329,6 +330,11 @@ pub struct Session {
     /// test seam, so that a test refreshing a fake source never walks a
     /// folder it did not make.
     sizes: Option<Arc<crate::size::SizeMeter>>,
+    /// The home folder the last refresh read, where an uninstall preview
+    /// looks for the data the uninstall leaves behind (`kept.rs`); `None`
+    /// before the first refresh, and always in a session that does not
+    /// measure sizes.
+    kept_data_home: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl Session {
@@ -464,6 +470,7 @@ impl Session {
             login_path: std::sync::atomic::AtomicBool::new(true),
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             sizes,
+            kept_data_home: Mutex::new(None),
         })
     }
 

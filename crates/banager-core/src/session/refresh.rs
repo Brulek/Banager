@@ -164,6 +164,7 @@ impl Session {
         // Committed, and the gate released: sizes are measured on a thread
         // of their own from here, outside the snapshot (`sizes.rs`).
         self.measure_sizes(round, &snapshot, env);
+        self.note_kept_data_home(&env.home);
         (round, snapshot)
     }
 
