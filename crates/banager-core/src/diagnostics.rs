@@ -129,14 +129,29 @@ pub fn current(login_path: bool, instances: &[ManagerInstance]) -> SystemFacts {
 }
 
 /// `path` with the home folder written as `~`, as Finder and Terminal show
-/// one. A home that is missing, relative or the root folder abbreviates
-/// nothing: every path would start with `/`.
+/// one -- also when either spells it through the data volume
+/// (`/System/Volumes/Data/Users/…`, `protected::without_data_volume`), so
+/// the account's name does not show either way. A home that is missing,
+/// relative or the root folder abbreviates nothing: every path would start
+/// with `/`.
 pub(crate) fn shown_path(path: &Path, home: Option<&Path>) -> String {
     let home = home.filter(|home| home.is_absolute() && home.parent().is_some());
-    match home.map(|home| path.strip_prefix(home)) {
-        Some(Ok(rest)) if rest.as_os_str().is_empty() => "~".to_string(),
-        Some(Ok(rest)) => Path::new("~").join(rest).to_string_lossy().into_owned(),
-        _ => path.to_string_lossy().into_owned(),
+    let rest = home.and_then(|home| {
+        path.strip_prefix(home)
+            .map(Path::to_path_buf)
+            .ok()
+            .or_else(|| {
+                let home = crate::protected::without_data_volume(home);
+                crate::protected::without_data_volume(path)
+                    .strip_prefix(&home)
+                    .map(Path::to_path_buf)
+                    .ok()
+            })
+    });
+    match rest {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Some(rest) => Path::new("~").join(rest).to_string_lossy().into_owned(),
+        None => path.to_string_lossy().into_owned(),
     }
 }
 
@@ -267,6 +282,43 @@ mod tests {
         assert_eq!(facts.macos_version.as_deref(), Some("27.0"));
         assert_eq!(facts.chip.as_deref(), Some("Apple M2 Pro"));
         assert_eq!(facts.arch, std::env::consts::ARCH);
+    }
+
+    #[test]
+    fn test_a_home_spelled_through_the_data_volume_is_written_with_a_tilde() {
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            shown_path(
+                Path::new("/System/Volumes/Data/Users/someone/Desktop/tools"),
+                Some(home)
+            ),
+            "~/Desktop/tools"
+        );
+        assert_eq!(
+            shown_path(Path::new("/System/Volumes/Data/Users/someone"), Some(home)),
+            "~"
+        );
+        // The home spelled that way, the path not.
+        assert_eq!(
+            shown_path(
+                Path::new("/Users/someone/bin"),
+                Some(Path::new("/System/Volumes/Data/Users/someone"))
+            ),
+            "~/bin"
+        );
+        // Another account's folder, or another place on the data volume,
+        // stays as it is.
+        assert_eq!(
+            shown_path(
+                Path::new("/System/Volumes/Data/Users/other/bin"),
+                Some(home)
+            ),
+            "/System/Volumes/Data/Users/other/bin"
+        );
+        assert_eq!(
+            shown_path(Path::new("/System/Volumes/Data/opt/tools"), Some(home)),
+            "/System/Volumes/Data/opt/tools"
+        );
     }
 
     #[test]
