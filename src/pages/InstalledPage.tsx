@@ -1509,6 +1509,10 @@ export function InstalledPage() {
     const refusals = confirm.pageErrors.filter((item) => artifactKeyId(item.candidate.key) === id);
     return (
       <aside
+        // One per tool: what a section of it holds for itself -- Homebrew's
+        // notes opened, a Copy button's 「已拷贝」 -- stays with the tool it
+        // was for, not the next one selected.
+        key={id}
         aria-labelledby={inspectorTitleId}
         data-inspector={narrow ? "narrow" : "wide"}
         onKeyDown={onEscape}

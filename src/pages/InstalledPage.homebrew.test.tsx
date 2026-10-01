@@ -181,4 +181,33 @@ describe("InstalledPage, Homebrew's state", () => {
     );
     expect(within(pane).queryByText(/Certificates live in/)).toBeNull();
   });
+  it("starts the next tool's details with its notes folded, whatever the last tool's were", async () => {
+    // The inspector is one per tool: Homebrew's notes opened on one formula
+    // do not come up open on the next one selected.
+    const python = artifact({
+      name: "python@3.13",
+      kind: "Formula",
+      facts: {
+        ...NO_FACTS,
+        homebrew: { deprecated: null, disabled: null, caveats: "Python has been installed as\n  python3", other_versions: [] },
+      },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, artifacts: [...snapshot.artifacts, python] });
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    renderWithProviders(
+      <WithToolbarSlot>
+        <InstalledPage />
+      </WithToolbarSlot>,
+    );
+    const first = await openDetails("openssl@3");
+    fireEvent.click(within(first).getByRole("button", { name: "Homebrew's notes" }));
+    expect(within(first).getByRole("button", { name: "Homebrew's notes" })).toHaveAttribute("aria-expanded", "true");
+    const next = await openDetails("python@3.13");
+    expect(within(next).getByRole("button", { name: "Homebrew's notes" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(next).queryByText(/Python has been installed/)).toBeNull();
+  });
 });
