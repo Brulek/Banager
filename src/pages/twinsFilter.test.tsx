@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesToolbar } from "../test/updatesToolbar";
@@ -7,6 +7,7 @@ import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import { shownBy } from "../lib/families";
 import { twinsByArtifact } from "../lib/commands";
@@ -228,6 +229,32 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     show("twins");
     expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
     expect(screen.queryByText("No tools installed more than once were found")).not.toBeInTheDocument();
+  });
+
+  it("closes the details of a tool a new check takes out of the choice, and keeps those it doesn't", async () => {
+    // Under 装了不止一份, npm's Claude Code is selected; its other copy is
+    // uninstalled and the next check lists it alone. Its details close
+    // with its row, as when the choice itself hides it.
+    const { queryClient } = renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    show("twins");
+    const label = await screen.findByText("@anthropic-ai/claude-code", { selector: "[data-tool-row] p" });
+    const row = label.closest("[data-tool-row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Details: @anthropic-ai/claude-code" }));
+    await screen.findByRole("complementary", { name: "@anthropic-ai/claude-code" });
+    const served = queryClient.getQueryData<Snapshot>(queryKeys.snapshot)!;
+    // A check that changes nothing the choice goes by keeps it open.
+    act(() => queryClient.setQueryData(queryKeys.snapshot, { ...served, generation: 2, artifacts: [...served.artifacts] }));
+    expect(screen.getByRole("complementary", { name: "@anthropic-ai/claude-code" })).toBeInTheDocument();
+    act(() =>
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...served,
+        generation: 3,
+        artifacts: served.artifacts.filter((a) => a.key.instance_id !== CLAUDE),
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(await screen.findByText("No tools installed more than once were found")).toBeInTheDocument();
   });
 
   it("names the source when the page shows one source that has none", async () => {

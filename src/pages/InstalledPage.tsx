@@ -770,13 +770,24 @@ export function InstalledPage() {
   // the closed details -- it goes to the list's first row, or, with none,
   // the page's title: never the window's body, from where the next Tab
   // would start over at the sidebar. The popup itself keeps the focus.
+  // So does a new check that takes the selected tool out of the choice
+  // while it is still installed -- its other copy uninstalled under
+  // 「装了不止一份」, its folder put on `PATH` under 「终端里找不到」 -- and
+  // only then: a check that hides nothing moves no focus.
   const shownBefore = useRef(show);
+  const twinsBefore = useRef(twins);
+  const artifactsBefore = useRef(artifactsById);
   useEffect(() => {
-    if (shownBefore.current === show) return;
+    const showChanged = shownBefore.current !== show;
+    const listChanged = artifactsBefore.current !== artifactsById || twinsBefore.current !== twins;
+    if (!showChanged && !listChanged) return;
     shownBefore.current = show;
+    twinsBefore.current = twins;
+    artifactsBefore.current = artifactsById;
     const selected = selectedId === null ? undefined : artifactsById.get(selectedId);
     const hidden = selected !== undefined && !shownBy(show, selected, twins);
     if (hidden) setSelection(null);
+    if (!showChanged && !hidden) return;
     const focus = document.activeElement;
     const lost =
       focus === null ||
