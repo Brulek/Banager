@@ -899,7 +899,12 @@
       "volumes": "other disks"
     },
     "selectHint": "Select tools to uninstall together",
-    "selectHintLimit": "Select tools to uninstall together, up to {{max}} at a time"
+    "selectHintLimit": "Select tools to uninstall together, up to {{max}} at a time",
+    "keys": {
+      "page": "Page Up / Page Down",
+      "ends": "Home / End",
+      "space": "Space"
+    }
   },
   "keepsData": {
     "title": "Stays after uninstalling",

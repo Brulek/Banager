@@ -43,6 +43,12 @@ export interface Shortcut {
    * the key; two keys that do the same in either direction, a space apart.
    */
   keys: string;
+  /**
+   * The keys in words instead, by i18n key, where their glyphs (⇞ ⇟ ↖ ↘ ␣)
+   * draw too small to read in the system font: 「Page Up / Page Down」,
+   * 「空格键」. `keys` stays their glyphs, for the sheet's tests and docs.
+   */
+  keysText?: string;
   /** The menu bar's item it is the shortcut of, where it is one of Banager's own. */
   menu?: MenuCommand;
   /** macOS's own item it is the shortcut of, where Banager decides what that item does. */
@@ -73,9 +79,9 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     id: "list",
     shortcuts: [
       { id: "move", keys: "↑ ↓" },
-      { id: "page", keys: "⇞ ⇟" },
-      { id: "ends", keys: "↖ ↘" },
-      { id: "tick", keys: "␣" },
+      { id: "page", keys: "⇞ ⇟", keysText: "reviewFixes.keys.page" },
+      { id: "ends", keys: "↖ ↘", keysText: "reviewFixes.keys.ends" },
+      { id: "tick", keys: "␣", keysText: "reviewFixes.keys.space" },
       { id: "details", keys: "↩" },
       { id: "closeDetails", keys: "⎋" },
       { id: "tab", keys: "⇥ ⇧⇥" },

@@ -814,7 +814,12 @@
       "volumes": "其他磁盘"
     },
     "selectHint": "选择要一起卸载的工具",
-    "selectHintLimit": "选择要一起卸载的工具，一次最多{{max}}个"
+    "selectHintLimit": "选择要一起卸载的工具，一次最多{{max}}个",
+    "keys": {
+      "page": "Page Up / Page Down",
+      "ends": "Home / End",
+      "space": "空格键"
+    }
   },
   "keepsData": {
     "title": "卸载后会保留",

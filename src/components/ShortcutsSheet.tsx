@@ -77,7 +77,7 @@ function Row({ shortcut }: { shortcut: Shortcut }) {
     <li data-shortcut={shortcut.id} className={GROUP_ROW}>
       <span className="min-w-0 flex-1 break-words text-body text-foreground">{t(SHORTCUT_TEXT_KEYS[shortcut.id])}</span>
       <kbd className="shrink-0 whitespace-nowrap font-sans text-body text-muted">
-        <span aria-hidden="true">{shortcut.keys}</span>
+        <span aria-hidden="true">{shortcut.keysText === undefined ? shortcut.keys : t(shortcut.keysText)}</span>
         <span className="sr-only">{t(KEY_NAME_KEYS[shortcut.id])}</span>
       </kbd>
     </li>
