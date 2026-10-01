@@ -131,7 +131,7 @@ fn on_data_volume(path: &Path) -> Option<PathBuf> {
 fn spellings(home: &Home, place: &str, n: usize) -> Vec<(String, PathBuf)> {
     let exact = home.path.join(place);
     let mut all = vec![
-        (format!("{place}"), exact.clone()),
+        (place.to_string(), exact.clone()),
         (
             format!("{place} in lower case"),
             home.path.join(place.to_lowercase()),
