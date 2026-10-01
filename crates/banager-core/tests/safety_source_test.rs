@@ -399,9 +399,6 @@ fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
         // Application Support folder, read as it starts: never a refresh.
         "crates/banager-core/src/settings.rs:",
         "crates/banager-core/src/history/mod.rs:",
-        // Codex's auto-update marker: opened only after `lstat` said it is
-        // a regular file (`marker_names`).
-        "crates/banager-core/src/adapters/standalone/release_link.rs:",
     ];
     let others: Vec<&String> = plain
         .iter()

@@ -179,9 +179,10 @@ fn test_disk_use_does_not_wait_on_a_named_pipe_in_a_tool() {
 
 #[test]
 fn test_codexs_version_marker_is_not_waited_on_when_it_is_a_named_pipe() {
-    // The marker (`auto-update-version`) is read only when `lstat` says it
-    // is a regular file: a pipe there is "does not follow the latest", at
-    // once.
+    // The marker (`auto-update-version`) is opened without waiting and
+    // read only when `fstat` on the opened file says it is a regular file:
+    // a pipe there, even one swapped in just before the open, is "does not
+    // follow the latest", at once.
     let VersionSource::ReleaseLink(spec) = &CODEX.version else {
         panic!("Codex reads its version from a link");
     };

@@ -1871,7 +1871,8 @@ A missing, dangling or unexpected link gives no version (the row is
 listed with its version unknown, and is not marked as not responding,
 since nothing was asked). Then one small file,
 `~/.codex/packages/standalone/auto-update-version` (at most 256 bytes,
-only when it is a regular file): the installer writes the release's name
+only when it is a regular file; opened without waiting and without
+following a link, then checked with `fstat`): the installer writes the release's name
 there when it installs the latest release, and its scheduled updates run
 only while that file names the release in use. When it does, the install
 follows Codex's latest release and the row says Codex can update itself
@@ -2558,7 +2559,8 @@ All read-only, none saved anywhere else, none uploaded:
   `~/.codex/packages/standalone/current` links to and whether that is a
   folder directly in `releases/` (`readlink`, `realpath`, `stat`);
   `~/.codex/packages/standalone/auto-update-version`, at most 256 bytes,
-  when it is a regular file (`lstat`); for the notice under the source,
+  when it is a regular file (opened without waiting or following a link,
+  then `fstat`); for the notice under the source,
   each `PATH` directory's `codex`, as for Claude Code. Nothing else under
   `~/.codex` is read for this row, and no command runs (Codex's section);
   the preview of uninstalling a Codex walks `~/.codex` for its size,

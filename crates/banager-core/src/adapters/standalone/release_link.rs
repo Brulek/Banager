@@ -10,6 +10,7 @@
 use super::recipe::ReleaseLink;
 use super::route::lexical_join;
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 /// The longest marker file read. The installer writes one release folder's
@@ -93,16 +94,22 @@ fn looks_like_a_version(s: &str) -> bool {
 /// Whether the regular file at `marker` holds `name` and nothing else
 /// (surrounding white space aside). A missing marker, a link, a folder or
 /// an unreadable file is "no".
+///
+/// Opened without following a link at its end (`O_NOFOLLOW`) and without
+/// waiting (`O_NONBLOCK`), then checked with `fstat` on the opened file:
+/// a named pipe there, even one swapped in just before the open, is "no"
+/// at once rather than a refresh that waits for a writer.
 fn marker_names(marker: &Path, name: &str) -> bool {
-    let Ok(meta) = std::fs::symlink_metadata(marker) else {
+    let Ok(file) = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(marker)
+    else {
         return false;
     };
-    if !meta.file_type().is_file() {
+    if !file.metadata().is_ok_and(|meta| meta.is_file()) {
         return false;
     }
-    let Ok(file) = std::fs::File::open(marker) else {
-        return false;
-    };
     let mut text = String::new();
     if file.take(MARKER_LIMIT).read_to_string(&mut text).is_err() {
         return false;
