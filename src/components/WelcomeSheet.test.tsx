@@ -91,8 +91,8 @@ describe("WelcomeSheet", () => {
     const points = within(sheet).getAllByRole("listitem");
     expect(points.map((point) => point.textContent)).toEqual([
       "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list.",
-      "Nothing Changes Until You ConfirmBefore an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
-      "Leaves Your Settings AloneDoesn't edit your shell's startup files, collects no usage data, and needs no account.",
+      "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
+      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files, collects no usage data, and needs no account.",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {
@@ -109,8 +109,8 @@ describe("WelcomeSheet", () => {
     renderWithProviders(<WelcomeSheet />);
     const sheet = await screen.findByRole("dialog", { name: "欢迎使用Banager" });
     expect(within(sheet).getByText("看清装了什么")).toBeInTheDocument();
-    expect(within(sheet).getByText("改之前先给你看")).toBeInTheDocument();
-    expect(within(sheet).getByText("不改系统设置")).toBeInTheDocument();
+    expect(within(sheet).getByText("更新、卸载都由你确认")).toBeInTheDocument();
+    expect(within(sheet).getByText("不改终端配置，不收集数据")).toBeInTheDocument();
     expect(
       within(sheet).getByText("更新或卸载前，先写明要做什么，确认后才开始；完成后会再检查一遍。"),
     ).toBeInTheDocument();

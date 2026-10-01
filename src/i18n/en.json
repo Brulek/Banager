@@ -8,9 +8,9 @@
     "title": "Welcome to {{name}}",
     "listTitle": "See What's Installed",
     "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list.",
-    "confirmTitle": "Nothing Changes Until You Confirm",
+    "confirmTitle": "You Confirm Every Update and Uninstall",
     "confirmText": "Before an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
-    "settingsTitle": "Leaves Your Settings Alone",
+    "settingsTitle": "No Shell Edits, No Data Collected",
     "settingsText": "Doesn't edit your shell's startup files, collects no usage data, and needs no account.",
     "start": "Get Started"
   },
