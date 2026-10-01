@@ -2482,7 +2482,8 @@ Mac is only a client.
 Each source with any tool that needs the package is listed under 「依赖此
 工具的软件」 ("Software that uses it"), after what Homebrew names --
 「npm及其4个工具」, 「pipx装的2个工具」 -- Uninstall stays off, and the
-sentence under the list names the tools to uninstall first. Whatever the
+sentence under the list names the tools to uninstall first (pip's, which
+Banager does not uninstall, in Terminal). Whatever the
 window sends, `Session::submit` refuses such a preview
 (`UninstallBlocked::NeededBySource`), and a batch leaves the package out
 with the same words.
