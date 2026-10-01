@@ -252,16 +252,25 @@ pub fn observe_activation<R: Runtime>(_app: &AppHandle<R>) {}
 /// Runs `on_notice` each time `name` is posted to Foundation's default
 /// notification center, from any object, on the thread that posts it and
 /// before the post returns, for as long as the process runs: the observer
-/// is never removed.
+/// is never removed. Nothing unwinds into Foundation or AppKit, which post
+/// it, as with quit.rs's `applicationShouldTerminate:`: a panic in
+/// `on_notice` -- a lock poisoned by an earlier one -- is caught and
+/// logged, and the observer runs again at the next post.
 #[cfg(target_os = "macos")]
 fn observe(
     name: &objc2_foundation::NSNotificationName,
     on_notice: impl Fn() + Send + Sync + 'static,
 ) {
     use objc2_foundation::{NSNotification, NSNotificationCenter};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::ptr::NonNull;
 
-    let block = block2::RcBlock::new(move |_: NonNull<NSNotification>| on_notice());
+    let named = name.to_string();
+    let block = block2::RcBlock::new(move |_: NonNull<NSNotification>| {
+        if catch_unwind(AssertUnwindSafe(&on_notice)).is_err() {
+            eprintln!("[banager] what Banager does at {named} panicked");
+        }
+    });
     // SAFETY: no object is given, so none can be of the wrong type; with
     // no queue, the block runs on the thread that posts, whichever that
     // is, which `on_notice` being `Send` and `Sync` allows.
@@ -440,6 +449,41 @@ mod tests {
         // SAFETY: as above.
         unsafe { center.postNotificationName_object(&other, None) };
         assert_eq!(heard.lock().unwrap().len(), 2);
+    }
+
+    /// A panic in what an observer runs -- a lock poisoned by an earlier
+    /// one, say -- is caught in the block: it never unwinds into the
+    /// notification center that posts, and the observer runs again.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_a_panic_in_an_observer_does_not_unwind_into_the_post_and_it_runs_again_at_the_next() {
+        use objc2_foundation::{NSNotificationCenter, NSString};
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Arc;
+
+        let name = NSString::from_str(&format!(
+            "BanagerTestPanickingNotice-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let heard = Arc::new(AtomicUsize::new(0));
+        observe(&name, {
+            let heard = heard.clone();
+            move || {
+                heard.fetch_add(1, Ordering::SeqCst);
+                panic!("an observer panicked, as a poisoned lock's unwrap would");
+            }
+        });
+        let center = NSNotificationCenter::defaultCenter();
+        // SAFETY: no object is given, so none can be of the wrong type.
+        unsafe { center.postNotificationName_object(&name, None) };
+        // SAFETY: as above.
+        unsafe { center.postNotificationName_object(&name, None) };
+        assert_eq!(
+            heard.load(Ordering::SeqCst),
+            2,
+            "both posts returned, and the observer ran at each"
+        );
     }
 
     #[test]
