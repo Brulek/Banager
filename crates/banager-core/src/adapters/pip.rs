@@ -19,13 +19,24 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Deserialize)]
-struct PipPackage {
-    name: String,
-    version: String,
+pub(crate) struct PipPackage {
+    pub(crate) name: String,
+    pub(crate) version: String,
 }
 
-fn parse_pip_list(json: &str) -> Result<Vec<PipPackage>, AdapterError> {
-    serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))
+/// Parses `pip list --format=json`. A package with no usable name is
+/// left out and a version that is not text is unknown
+/// (`adapters::sanity`).
+pub(crate) fn parse_pip_list(json: &str) -> Result<Vec<PipPackage>, AdapterError> {
+    let mut packages: Vec<PipPackage> =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    packages.retain(|p| crate::adapters::sanity::is_name(&p.name));
+    for p in &mut packages {
+        if !crate::adapters::sanity::is_version(&p.version) {
+            p.version.clear();
+        }
+    }
+    Ok(packages)
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,25 +46,30 @@ struct PipOutdatedPackage {
     latest_version: String,
 }
 
-fn parse_pip_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandidate>, AdapterError> {
+pub(crate) fn parse_pip_outdated(
+    json: &str,
+    instance_id: &str,
+) -> Result<Vec<UpdateCandidate>, AdapterError> {
     let items: Vec<PipOutdatedPackage> =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
-    Ok(items
-        .into_iter()
-        .map(|p| UpdateCandidate {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Package,
-                name: p.name,
-            },
-            current: p.version,
-            target: p.latest_version,
-            channel: UpdateChannel::Native,
-            checkable: true,
-            warnings: Vec::new(),
-            blocked: None,
-        })
-        .collect())
+    Ok(crate::adapters::sanity::candidates(
+        items
+            .into_iter()
+            .map(|p| UpdateCandidate {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Package,
+                    name: p.name,
+                },
+                current: p.version,
+                target: p.latest_version,
+                channel: UpdateChannel::Native,
+                checkable: true,
+                warnings: Vec::new(),
+                blocked: None,
+            })
+            .collect(),
+    ))
 }
 
 pub struct PipAdapter {
@@ -527,6 +543,30 @@ impl Adapter for PipAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_pip_list_drops_a_nameless_package_and_reads_a_broken_version_as_unknown() {
+        let json = r#"[{"name":"","version":"1"},{"name":"six","version":"1.17\n0"}]"#;
+        let packages = parse_pip_list(json).unwrap();
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].name, "six");
+        assert_eq!(packages[0].version, "");
+    }
+
+    #[test]
+    fn regression_parse_pip_outdated_drops_an_update_to_nothing() {
+        let json = r#"[{"name":"a","version":"1","latest_version":""},
+            {"name":"","version":"1","latest_version":"2"},
+            {"name":"six","version":"1.16.0","latest_version":"1.17.0"}]"#;
+        let names: Vec<String> = parse_pip_outdated(json, "pip:/x")
+            .unwrap()
+            .into_iter()
+            .map(|c| c.key.name)
+            .collect();
+        assert_eq!(names, vec!["six".to_string()]);
+    }
 
     #[test]
     fn test_second_token_reads_pips_recorded_version_line() {

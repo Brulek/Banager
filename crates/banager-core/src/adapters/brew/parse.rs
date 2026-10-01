@@ -1288,7 +1288,10 @@ mod tests {
 
     #[test]
     fn regression_parse_uses_and_parse_version_refuse_control_characters() {
-        assert_eq!(parse_uses("jq\u{1b}[0m\npcre2\n"), vec!["pcre2".to_string()]);
+        assert_eq!(
+            parse_uses("jq\u{1b}[0m\npcre2\n"),
+            vec!["pcre2".to_string()]
+        );
         assert_eq!(parse_version("Homebrew 7.0\u{0}3\n"), None);
         assert_eq!(parse_version("Homebrew 7.0.3\n"), Some("7.0.3".to_string()));
     }

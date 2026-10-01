@@ -73,10 +73,25 @@ mod tests {
 
     #[test]
     fn test_a_name_is_visible_text_on_one_line() {
-        for ok in ["jq", "gautham-v/tap/claudebar", "qwen3.8:27b-mlx", "black@3.12", "名字"] {
+        for ok in [
+            "jq",
+            "gautham-v/tap/claudebar",
+            "qwen3.8:27b-mlx",
+            "black@3.12",
+            "名字",
+        ] {
             assert!(is_name(ok), "{ok:?}");
         }
-        for bad in ["", "  ", "\t", "a\nb", "jq\r", "\u{1b}[31mjq", "a\0b", "\u{7f}"] {
+        for bad in [
+            "",
+            "  ",
+            "\t",
+            "a\nb",
+            "jq\r",
+            "\u{1b}[31mjq",
+            "a\0b",
+            "\u{7f}",
+        ] {
             assert!(!is_name(bad), "{bad:?}");
         }
     }
