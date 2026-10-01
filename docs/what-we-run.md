@@ -2015,7 +2015,9 @@ A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies` or `~/Music`, in iCloud Drive or another cloud folder
 (`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
 app's data (`~/Library/Containers`, `~/Library/Group Containers`) or on
-another disk (`/Volumes`), whatever case spells them, is not read at all,
+another disk (`/Volumes`), whatever case spells them and also when
+spelled from `/System/Volumes/Data` (the same folders, through macOS's
+firmlinks; `protected::DATA_VOLUME`), is not read at all,
 as named or where it leads (`protected::resolve`): macOS asks you before
 an app looks there, and a network disk that went away does not answer. It
 is the same list the disk-use measurement keeps out of
@@ -2158,8 +2160,10 @@ measuring never makes macOS ask for permission: `~/Desktop`,
 `~/Library/Mobile Documents` (iCloud Drive), `~/Library/CloudStorage`
 (apps that keep files in the cloud), `~/Library/Containers` and
 `~/Library/Group Containers` (other apps' data), and `/Volumes` (every
-other disk), whatever case spells them. A tool kept in one of them shows
-no size (`Protected`). It is the same list the command check keeps out
+other disk), whatever case spells them, and also as spelled from the
+volume that holds them, `/System/Volumes/Data` (`/System/Volumes/Data/Users/<you>/Documents`
+is `~/Documents`, through the firmlinks macOS keeps; `protected::DATA_VOLUME`).
+A tool kept in one of them shows no size (`Protected`). It is the same list the command check keeps out
 of (`crates/banager-core/src/protected.rs`).
 
 Nothing is written: the sizes stay in Banager's memory until it quits, and

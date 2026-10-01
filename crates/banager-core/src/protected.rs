@@ -55,9 +55,36 @@ pub fn places(homes: &[PathBuf]) -> Vec<PathBuf> {
     places
 }
 
-/// Whether `path` is one of `places` or inside one, case aside.
+/// Where macOS mounts the volume that holds everything that is not the
+/// system itself: `/Users` and `/Volumes`, among others, are the same
+/// folders spelled from `/` (firmlinks, `/usr/share/firmlinks`), so
+/// `/System/Volumes/Data/Users/you/Documents` is `~/Documents` and
+/// `/System/Volumes/Data/Volumes` is `/Volumes`. Neither `lstat` nor
+/// `readlink` tells: a firmlink is not a symbolic link.
+pub const DATA_VOLUME: &str = "/System/Volumes/Data";
+
+/// `path` as `/` spells it: each leading `DATA_VOLUME` taken off, case
+/// aside, so that a place is the same place whichever of its two
+/// spellings names it. Every check against the places compares this.
+pub fn without_data_volume(path: &Path) -> PathBuf {
+    let mut path = path.to_path_buf();
+    while let Some(rest) = strip_prefix_folded(&path, Path::new(DATA_VOLUME)) {
+        let below = Path::new("/").join(rest);
+        if below == path {
+            break;
+        }
+        path = below;
+    }
+    path
+}
+
+/// Whether `path` is one of `places` or inside one, case aside, whichever
+/// spelling of the data volume either names it with (`DATA_VOLUME`).
 pub fn is_within(path: &Path, places: &[PathBuf]) -> bool {
-    places.iter().any(|place| starts_with_folded(path, place))
+    let path = without_data_volume(path);
+    places
+        .iter()
+        .any(|place| starts_with_folded(&path, &without_data_volume(place)))
 }
 
 /// `Path::starts_with`, comparing each component without regard to ASCII
@@ -127,7 +154,10 @@ impl Protected {
             }
         }
         Protected {
-            places: places(&homes),
+            places: places(&homes)
+                .iter()
+                .map(|place| without_data_volume(place))
+                .collect(),
         }
     }
 
@@ -137,11 +167,13 @@ impl Protected {
     }
 
     /// Whether one of the places is inside `path` (or is it): walking
-    /// `path` would reach it.
+    /// `path` would reach it, whichever spelling of the data volume either
+    /// names it with (`DATA_VOLUME`).
     pub fn under(&self, path: &Path) -> bool {
+        let path = without_data_volume(path);
         self.places
             .iter()
-            .any(|place| starts_with_folded(place, path))
+            .any(|place| starts_with_folded(place, &path))
     }
 }
 
@@ -328,6 +360,74 @@ mod tests {
                 "{place}"
             );
         }
+    }
+
+    #[test]
+    fn test_the_data_volume_spelling_of_a_protected_place_is_protected() {
+        // `/Users` and `/Volumes` are firmlinks into the data volume: the
+        // same folders, which neither `lstat` nor `readlink` says.
+        for home in ["/Users/you", "/System/Volumes/Data/Users/you"] {
+            let protected = Protected {
+                places: places(&[PathBuf::from(home)])
+                    .iter()
+                    .map(|place| without_data_volume(place))
+                    .collect(),
+            };
+            for path in [
+                "/System/Volumes/Data/Users/you/Documents",
+                "/System/Volumes/Data/Users/you/Documents/proj/bin",
+                "/system/volumes/DATA/users/you/library/containers/x",
+                "/System/Volumes/Data/Volumes",
+                "/System/Volumes/Data/Volumes/Backup/bin",
+                "/System/Volumes/Data/System/Volumes/Data/Users/you/Desktop",
+                "/Users/you/Documents/bin",
+                "/Volumes/Backup",
+            ] {
+                assert!(protected.contains(Path::new(path)), "{home}: {path}");
+            }
+            for path in [
+                "/System/Volumes/Data/Users/you/.cargo/bin",
+                "/System/Volumes/Data/opt/homebrew/bin",
+                "/System/Volumes/DataX/Users/you/Documents",
+                "/System/Volumes/Data",
+            ] {
+                assert!(!protected.contains(Path::new(path)), "{home}: {path}");
+            }
+            // Walking the data volume, or a home spelled on it, reaches them.
+            for path in [
+                "/System/Volumes/Data",
+                "/System/Volumes/Data/Users",
+                "/System/Volumes/Data/Users/you",
+                "/System/Volumes/Data/Users/you/Library",
+            ] {
+                assert!(protected.under(Path::new(path)), "{home}: {path}");
+            }
+            assert!(!protected.under(Path::new("/System/Volumes/Data/opt/homebrew")));
+        }
+    }
+
+    #[test]
+    fn test_resolve_stops_at_the_data_volume_spelling_of_the_real_home() {
+        // On a Mac, `/System/Volumes/Data<home>` is the home folder itself;
+        // `resolve` must stop before `Documents` there, as it does under
+        // `<home>`. Only folders above it are `lstat`ed.
+        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+            return;
+        };
+        let Ok(below_root) = home.strip_prefix("/") else {
+            return;
+        };
+        let aliased = Path::new(DATA_VOLUME).join(below_root);
+        if !aliased.is_dir() {
+            return;
+        }
+        let protected = Protected::new(&home);
+        let path = aliased.join("Documents/banager-test-no-such-folder/bin");
+        let resolution = resolve(&path, &protected, true);
+        assert!(
+            matches!(&resolution, Resolution::Protected(at) if *at == path),
+            "{resolution:?}"
+        );
     }
 
     /// A fresh folder for one test, canonical (`/var` is a link on a Mac),
