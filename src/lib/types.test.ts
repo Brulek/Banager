@@ -611,10 +611,32 @@ describe("types", () => {
       auto_check_every: "Day",
       notify_operations: false,
       snoozed_updates: [],
+      welcome_seen: false,
     };
     expect(JSON.stringify(defaults)).toBe(
-      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[]}',
+      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[],"welcome_seen":false}',
     );
+  });
+
+  it("round-trips welcome_seen, and reads its absence as not stated", () => {
+    // `test_welcome_seen_saved_true_loads_true` in
+    // crates/banager-core/src/settings.rs: Rust always sends it. Settings a
+    // page or test builds by hand may leave it out, and the welcome sheet
+    // shows only for an explicit false (`welcomeDue`).
+    const seen: Settings = {
+      language: "ZhCn",
+      show_technical_details: false,
+      ignored_updates: [],
+      skipped_versions: [],
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
+      welcome_seen: true,
+    };
+    expect(roundTrip(seen).welcome_seen).toBe(true);
+    const without: Settings = { ...seen };
+    delete without.welcome_seen;
+    expect(roundTrip(without).welcome_seen).toBeUndefined();
   });
 
   it("spells SnoozedUpdate as settings.rs's shape test does", () => {

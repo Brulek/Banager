@@ -641,6 +641,15 @@ export interface Settings {
    * reason `auto_check_every` is: missing reads as none, in Rust as here.
    */
   snoozed_updates?: SnoozedUpdate[];
+  /**
+   * Whether the welcome sheet (src/components/WelcomeSheet.tsx) has been
+   * shown: false until it is first closed. Rust always sends it, and reads
+   * a settings.json without it as false; optional here only so that the
+   * settings a page or test builds by hand need not spell it, and the
+   * sheet shows only for an explicit false (`welcomeDue`), so those never
+   * show it.
+   */
+  welcome_seen?: boolean;
 }
 /**
  * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row
