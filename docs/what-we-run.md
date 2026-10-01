@@ -2356,7 +2356,12 @@ Three, all in Banager's application data directory
 (`~/Library/Application Support/com.brulek.banager`). `settings.json`
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
-directory is created if it is missing).
+directory is created if it is missing). It holds the Settings page's
+choices, among them the updates hidden from the Updates page: versions
+skipped (`skipped_versions`), tools never to remind about
+(`ignored_updates`) and tools put off for 30 days (`snoozed_updates`,
+each with the time it ends; it hides every version of the tool, not only
+the one offered, and is dropped as the file is loaded after that time).
 
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近更新」 lists after a restart
