@@ -16,6 +16,9 @@ import type { OpRequest } from "../lib/types";
 import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
+import { twinUninstallLine } from "./TwinAdvice";
+import { twinsByArtifact } from "../lib/commands";
+import { artifactKeyId } from "../store/ui";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { Dialog } from "./ui/Dialog";
@@ -155,7 +158,17 @@ export function UninstallDialog({
   // and that it may ask for the Mac's password. Every Cask uninstall sets
   // `needs_password`, though not every app then asks (the copy table's
   // T3). Spec §6: a password is never a surprise.
+  // The tool's other copies, installed by other sources: each stays, and
+  // where Terminal runs one of them now, its command still works after
+  // (`twinUninstallLine`).
+  const twinLine = useMemo(() => {
+    if (artifact === undefined || snapshot === undefined) return null;
+    const labels = instanceLabels(t, snapshot.instances);
+    const labelFor = (instanceId: string) => labels.get(instanceId) ?? adapterLabel(t, adapterIdOf(instanceId));
+    return twinUninstallLine(t, artifact, twinsByArtifact(snapshot.artifacts).get(artifactKeyId(artifact.key)), labelFor);
+  }, [t, artifact, snapshot]);
   const notes: WarningLine[] = [
+    ...(twinLine === null ? [] : [{ text: twinLine, detail: null, caution: false }]),
     ...lines.note,
     ...(plan?.cancel_policy === "NoCancel"
       ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]

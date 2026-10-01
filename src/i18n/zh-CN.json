@@ -254,7 +254,7 @@
     "versionTo": "→ {{target}}",
     "newVersion": "有新版本",
     "newBuild": "此模型有新版本",
-    "selfUpdating": "也会自行更新",
+    "selfUpdating": "会自行更新",
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "无法查到它的最新版本。",
@@ -802,7 +802,25 @@
   "clarity": {
     "diagnosticsDetail": "其中有macOS版本、各来源的位置和状态，以及查找命令的文件夹。个人文件夹写成“~”，除这些文件夹外不含其他环境变量的值。",
     "keptLeftOut": "不含{{path}}，那里是另一份单独安装的程序。",
-    "keptLeftOutLabel": "大小说明：{{path}}"
+    "keptLeftOutLabel": "大小说明：{{path}}",
+    "ownInstaller": "{{source}}自带的安装程序",
+    "twinUnused": "在终端里输入“{{command}}”，运行的是{{by}}装的那一份，版本{{version}}；终端不会用到这一份。",
+    "twinUnusedNoVersion": "在终端里输入“{{command}}”，运行的是{{by}}装的那一份；终端不会用到这一份。",
+    "twinUnusedRemovable": "不需要的话，可以卸载这一份。",
+    "twinUsed": "在终端里输入“{{command}}”，运行的是这一份；{{by}}装的那一份，版本{{version}}，终端不会用到。",
+    "twinUsedNoVersion": "在终端里输入“{{command}}”，运行的是这一份；{{by}}装的那一份终端不会用到。",
+    "twinUsedMany_other": "在终端里输入“{{command}}”，运行的是这一份；另外{{count}}份终端不会用到。",
+    "twinUninstallStays": "{{by}}装的那一份不受影响。",
+    "twinUninstallStillRuns": "{{by}}装的那一份不受影响，终端里的“{{command}}”还能用。",
+    "twinUninstallOthersStay_other": "另外{{count}}份不受影响。",
+    "notUsedWord": "终端用另一份",
+    "notUsedAria": "终端用另一份：{{name}}",
+    "previewHold": "检查完成后才能卸载",
+    "previewHoldDetail": "首次检查要联网查询每个工具的新版本，有时要一两分钟。",
+    "otherVersionsDetail": "Homebrew还留着的其他版本，不是上面列出的这一版。目前不能在这里清理它们。",
+    "listedOnly": "只列出",
+    "notUsedUpdate": "更新这一份不会改变终端里运行的那一份。",
+    "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。"
   },
   "unknown": {
     "columns": {

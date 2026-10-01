@@ -66,11 +66,13 @@ import { GROUP, SMALL_WRAPPING } from "../components/ui/group";
 import { InfoDetail } from "../components/InfoDetail";
 import {
   HOMEBREW_STATUS_CHIP_IDS,
-  HomebrewNotes,
+  HomebrewCaveats,
+  homebrewMarkLines,
   homebrewStatusChip,
   homepageFact,
   otherVersionsFact,
 } from "../components/HomebrewStatus";
+import { InspectorCallout, twinAdviceLines } from "../components/TwinAdvice";
 import { uncheckedUpdatesChip } from "../components/UncheckedUpdates";
 import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
@@ -132,17 +134,29 @@ interface RowChip {
 }
 
 /**
- * The one word a row shows (spec §3.4: one at most): the first of its
- * chips that is not a normal state, in `chipsOf`'s order -- what the
- * source allows, then the tool's own refusal to be removed, why its
- * Uninstall waits, then Homebrew's own mark, then whether it is installed
- * twice, then (on the first check's list only, where every row's
- * Uninstall waits for that check) that wait, then where its update
- * stands, then how the user hid it.
+ * The one word a row shows (spec §3.4: one at most): why its Uninstall
+ * waits, where it does -- the one word that explains a disabled button --
+ * then 「装了两份」, so that every row the 「装了不止一份」 filter lists says
+ * so; else the first of its chips that is not a normal state, in
+ * `chipsOf`'s order -- what the source allows, then the tool's own refusal
+ * to be removed, then Homebrew's own mark, then where its update stands,
+ * then how the user hid it. Never the first check's wait, the same on
+ * every row: the list's own line says it once (`PREVIEW_HOLD_ID`).
  */
 function rowChipOf(chips: RowChip[]): RowChip | undefined {
-  return chips.find((chip) => chip.tone === "neutral");
+  return (
+    chips.find((chip) => chip.id === "uninstall-held") ??
+    chips.find((chip) => chip.id === "twin") ??
+    chips.find((chip) => chip.tone === "neutral" && chip.id !== PREVIEW_HOLD_ID)
+  );
 }
+
+/**
+ * The first check's hold on every Uninstall, in the inspector's 「状态」
+ * only: on the list, one line over the rows says it, and each row's
+ * button keeps it as its tooltip.
+ */
+const PREVIEW_HOLD_ID = "uninstall-held-preview";
 
 /**
  * One slot in the virtualized list: first, while there is anything to
@@ -777,6 +791,18 @@ export function InstalledPage() {
   );
   const notices = useMemo(
     () => [
+      // The first check's hold on every Uninstall, said once for the list
+      // rather than as a word on each of its rows (`PREVIEW_HOLD_ID`).
+      ...(preview
+        ? [
+            {
+              id: "preview-hold",
+              variant: "info",
+              titleKey: "clarity.previewHold",
+              descriptionKey: "clarity.previewHoldDetail",
+            } satisfies SourceNoticeSpec,
+          ]
+        : []),
       ...(unfinished === null ? [] : [unfinished]),
       ...instancesInView.flatMap((instance) =>
         sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
@@ -797,7 +823,7 @@ export function InstalledPage() {
       // shows them (`discoverNotices`).
       ...discoverNotices(show, discover, discoverNamed),
     ],
-    [unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
+    [preview, unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the
@@ -1103,7 +1129,7 @@ export function InstalledPage() {
       });
     }
     // Homebrew's own mark: 「已停用」 or 「已弃用」.
-    const homebrewChip = homebrewStatusChip(t, artifact);
+    const homebrewChip = homebrewStatusChip(t, artifact, i18n.language);
     if (homebrewChip !== null) chips.push(homebrewChip);
     // 「装了两份」: after what the source and the tool allow, and before
     // where its update stands, which the Updates page says too.
@@ -1111,11 +1137,11 @@ export function InstalledPage() {
     if (twin !== null) chips.push(twin);
     // The first check's list holds every Uninstall until that check is
     // done (the button stays disabled, `uninstallHeld`). The same for
-    // every row, and the toolbar says why, so a row's own word -- the
-    // list knows Homebrew's mark already -- comes before it.
+    // every row: the list's line says it once, and the row says its own
+    // word, Homebrew's mark among them (`rowChipOf`).
     if (holdDetail === null && preview && canUninstall(artifact, instance)) {
       chips.push({
-        id: "uninstall-held",
+        id: PREVIEW_HOLD_ID,
         label: t("installed.uninstallHold.label"),
         ariaLabel: t("installed.uninstallHold.ariaLabel", { name: artifact.display_name }),
         detail: detailLines([t("inventoryPreview.uninstallHold")]),
@@ -1257,6 +1283,8 @@ export function InstalledPage() {
           canUninstall(artifact, instance) ? (
             <RowAction
               disabled={uninstallHeld(artifact, instance)}
+              // The first check's hold, which the row has no word for.
+              title={preview ? t("inventoryPreview.uninstallHold") : undefined}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
               ariaLabel={uninstallName(artifact)}
             >
@@ -1333,9 +1361,16 @@ export function InstalledPage() {
       candidate.target !== artifact.version
         ? candidate.target
         : null;
+    // The facts as a Mac's info pane orders them: versions, what it takes
+    // on disk -- its own, then its other versions' -- when it came, where
+    // it is, its site, and last its state.
     const facts: InspectorFact[] = [];
     if (version !== null) facts.push({ term: t("installed.version"), value: version, selectable: true });
     if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer, selectable: true });
+    const size = sizeFact(t, artifact, sizes);
+    if (size !== null) facts.push(size);
+    const otherVersions = otherVersionsFact(t, artifact, sizes);
+    if (otherVersions !== null) facts.push(otherVersions);
     if (artifact.installed_at !== null) {
       facts.push({
         term: t("installed.installedOn"),
@@ -1343,10 +1378,6 @@ export function InstalledPage() {
         selectable: true,
       });
     }
-    const size = sizeFact(t, artifact, sizes);
-    if (size !== null) facts.push(size);
-    const otherVersions = otherVersionsFact(t, artifact, sizes);
-    if (otherVersions !== null) facts.push(otherVersions);
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
     if (showTechnicalDetails && artifact.path !== null) {
@@ -1358,20 +1389,35 @@ export function InstalledPage() {
     }
     const homepage = homepageFact(t, artifact.homepage);
     if (homepage !== null) facts.push(homepage);
+    // What asks something of the user, in the callout under the
+    // description (`InspectorCallout`): what Homebrew's mark means, and
+    // which copy of a tool installed more than once Terminal runs. The
+    // facts' 「状态」 then leaves those words out: said once, up there.
+    const markLines = homebrewMarkLines(t, artifact, i18n.language);
+    const twinLines = twinAdviceLines(
+      t,
+      artifact,
+      twins.get(id),
+      sourceLabelFor,
+      canUninstall(artifact, instance),
+    );
+    const statusChips = chips.filter(
+      (chip) => !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) && !(chip.id === "twin" && twinLines !== null),
+    );
     // Where its update stands, and what it is: a row of the group, each
     // word 13 in the label colour as the other values, its why behind an
     // ⓘ after it -- not a line of its own under the facts -- and after a
     // hidden update's, the way back, a small grey button (under the word
     // where the pane is too narrow for both).
-    if (chips.length > 0) {
+    if (statusChips.length > 0) {
       facts.push({
         term: t("installed.status"),
         value: (
           <ul data-status-list="" className="flex flex-col items-end gap-1">
-            {chips.map((chip) => (
+            {statusChips.map((chip) => (
               <li key={chip.id} className="flex flex-wrap items-center justify-end gap-1">
                 <span data-status-word="">{chip.label}</span>
-                {chip.detail !== undefined && !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) ? (
+                {chip.detail !== undefined ? (
                   <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>
                     {chip.inspectorDetail ?? chip.detail}
                   </InfoDetail>
@@ -1442,15 +1488,24 @@ export function InstalledPage() {
           <p data-description="" className="mt-4 whitespace-normal break-words text-body-long text-foreground">
             {line}
           </p>
-          {/* What it is (the heading, the description), its facts --
-              versions, when, how big, where -- ending on its state,
-              「状态」, with right under it what Homebrew's mark there
-              means; then the commands it gives Terminal, and last the
-              technical: Homebrew's own notes, in English, folded. */}
+          {/* What it is (the heading, the description), then what asks
+              something of the user -- Homebrew's mark, which copy runs --
+              its facts -- versions, how big, when, where -- ending on its
+              state, 「状态」; then the commands it gives Terminal, and last
+              the technical: Homebrew's own notes, in English, folded. */}
+          <InspectorCallout>
+            {[
+              ...markLines,
+              ...(twinLines ?? []).map((text) => (
+                <p key={text} data-twin-advice="" className="text-body-long text-foreground">
+                  {text}
+                </p>
+              )),
+            ]}
+          </InspectorCallout>
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
-          <HomebrewNotes artifact={artifact} part="mark" />
           <CommandsGroup artifact={artifact} artifacts={snapshot?.artifacts ?? []} sourceLabelFor={sourceLabelFor} />
-          <HomebrewNotes artifact={artifact} part="caveats" />
+          <HomebrewCaveats artifact={artifact} />
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
             <p role="alert" className={`mt-2 ${SMALL_WRAPPING} text-danger-text`}>

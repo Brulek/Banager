@@ -62,7 +62,7 @@ describe("tools whose updates Banager does not check", () => {
     expect(en.codexStandalone.summary).toBe("OpenAI's AI coding assistant");
     expect(zhCN.codexStandalone.summary).toBe("OpenAI的AI编程助手");
     const copy = uninstallBlockedCopy("NoSafeMethod", "standalone-codex");
-    expect(copy.badge).toBe("installed.blocked.NoSafeMethod.badge");
+    expect(copy.badge).toBe("clarity.listedOnly");
     // Not "has no uninstall command": whether it has one was not looked into.
     expect(copy.description).toBe("codexStandalone.uninstallDescription");
     expect(zhCN.codexStandalone.uninstallDescription).not.toMatch(/没有卸载命令/);

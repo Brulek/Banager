@@ -5,7 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { twinsByArtifact } from "../lib/commands";
 import type { ArtifactKey, CommandFact, InstalledArtifact } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
-import { CommandsGroup, twinChip } from "./CommandFacts";
+import { CommandsGroup, mainCommandFirst, twinChip } from "./CommandFacts";
 import { BUTTON } from "./ui/controls";
 
 const npmKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" };
@@ -97,7 +97,25 @@ describe("CommandsGroup", () => {
         names.map((name) => ({ name, state: "Runs" as const })),
       ),
     );
-    expect(lines(container)).toEqual([["cargo, cargo-clippy, cargo-fmt and 2 more", "Runs this copy"]]);
+    // The tool's own command first, then the rest in order.
+    expect(lines(container)).toEqual([["rustup, cargo, cargo-clippy and 2 more", "Runs this copy"]]);
+    // The last name and the count held on one line.
+    expect(container.querySelector("[data-command-line] .whitespace-nowrap")?.textContent).toBe(
+      "cargo-clippy and 2 more",
+    );
+  });
+
+  it("puts a versioned formula's own command first: python3.13 for python@3.13", () => {
+    expect(
+      mainCommandFirst(
+        ["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"],
+        artifact(formulaKey, null, []),
+      ),
+    ).toEqual(["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"]);
+    const python = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "python@3.13" };
+    expect(
+      mainCommandFirst(["idle3.13", "pip3.13", "pydoc3.13", "python3.13", "python3.13-config"], artifact(python, null, [])),
+    ).toEqual(["python3.13", "idle3.13", "pip3.13", "pydoc3.13", "python3.13-config"]);
   });
 
   describe("a folder Terminal does not search", () => {

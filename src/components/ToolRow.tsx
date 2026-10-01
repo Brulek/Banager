@@ -23,6 +23,8 @@ export interface RowActionProps {
    * ten "Update"s.
    */
   ariaLabel?: string;
+  /** Why it is off, as a tooltip, where the row has no word that says so. */
+  title?: string;
   children: ReactNode;
 }
 
@@ -33,11 +35,19 @@ export interface RowActionProps {
  * thing a screen asks for -- and Uninstall is not tinted red, under the
  * pointer or not, as a Mac's button for something the user chose is not.
  */
-export function RowAction({ onClick, disabled, ariaLabel, children }: RowActionProps) {
-  return (
+export function RowAction({ onClick, disabled, ariaLabel, title, children }: RowActionProps) {
+  const button = (
     <button type="button" aria-label={ariaLabel} onClick={onClick} disabled={disabled} className={BUTTON.regular.grey}>
       {children}
     </button>
+  );
+  // On a box around it: a disabled button gets no pointer, so no tooltip of its own.
+  return title === undefined ? (
+    button
+  ) : (
+    <span title={title} data-row-action-why="" className="inline-flex">
+      {button}
+    </span>
   );
 }
 

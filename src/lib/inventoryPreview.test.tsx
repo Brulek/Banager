@@ -257,21 +257,23 @@ describe("the window while the first check still checks for updates", () => {
       expect(getByRole("button", { name: "Uninstall ripgrep…" })).toBeDisabled();
       expect(container.querySelector("[data-first-check]")).toBeNull();
       expect(app.subtitle()).toBe("Found 2 tools · Checking for updates…");
-      // Each row says why its Uninstall is off, with the held chip the
-      // page gives any Uninstall it holds.
-      const heldJq = getByRole("button", { name: "Can't uninstall jq now" });
-      fireEvent.click(heldJq);
-      expect(document.getElementById(heldJq.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      // The list says once why every Uninstall is off, in its first line,
+      // not as the same word on each of its rows; each button keeps it as
+      // its tooltip.
+      expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
+      const line = container.querySelector("[data-notice-line]") as HTMLElement;
+      expect(line).toHaveTextContent("You can uninstall once the check is done");
+      expect(uninstallJq.closest("[data-row-action-why]")).toHaveAttribute(
+        "title",
         "Checking for updates. You can uninstall once it's done.",
       );
-      fireEvent.click(heldJq);
-      expect(getByRole("button", { name: "Can't uninstall ripgrep now" })).toBeInTheDocument();
 
       // Its details: what it is, and nothing to do yet -- no Update, an
-      // Uninstall held off, and no word on updates.
+      // Uninstall held off, which its 「状态」 says, and no word on updates.
       fireEvent.click(getByRole("button", { name: "Details: jq" }));
       const inspector = await findByRole("complementary", { name: "jq" });
       expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
+      expect(within(inspector).getByText("Can't uninstall now")).toBeInTheDocument();
       expect(within(inspector).queryByRole("button", { name: "Update" })).toBeNull();
       expect(within(inspector).queryByText("Up to date")).toBeNull();
       expect(queryByRole("button", { name: "Update" })).toBeNull();
@@ -314,14 +316,15 @@ describe("the window while the first check still checks for updates", () => {
       expect(await findByRole("button", { name: "Uninstall oldapp…" })).toBeDisabled();
       expect(getByRole("button", { name: "Disabled: oldapp" })).toHaveTextContent("Disabled");
       expect(queryByRole("button", { name: "Can't uninstall oldapp now" })).toBeNull();
-      // A row with no word of its own still says why its Uninstall is off.
-      expect(getByRole("button", { name: "Can't uninstall jq now" })).toBeInTheDocument();
+      // A row with no word of its own says nothing: the list's line says it.
+      expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
 
       fireEvent.click(getByRole("button", { name: "Details: oldapp" }));
       const inspector = await findByRole("complementary", { name: "oldapp" });
+      // The mark is said in the callout; 「状态」 keeps the wait.
+      expect(inspector.querySelector("[data-inspector-callout] [data-homebrew-mark]")).not.toBeNull();
       const status = within(inspector).getByText("Status").nextElementSibling as HTMLElement;
       expect([...status.querySelectorAll("[data-status-word]")].map((word) => word.textContent)).toEqual([
-        "Disabled",
         "Can't uninstall now",
       ]);
       expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeDisabled();

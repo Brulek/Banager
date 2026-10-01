@@ -275,7 +275,7 @@
     "versionTo": "→ {{target}}",
     "newVersion": "New version",
     "newBuild": "This model has a new version",
-    "selfUpdating": "Also updates itself",
+    "selfUpdating": "Updates itself",
     "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Couldn't find its latest version.",
@@ -857,7 +857,27 @@
   "clarity": {
     "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
-    "keptLeftOutLabel": "About the size: {{path}}"
+    "keptLeftOutLabel": "About the size: {{path}}",
+    "ownInstaller": "{{source}}'s own installer",
+    "twinUnused": "Typing {{command}} in Terminal runs the copy from {{by}}, version {{version}}, so Terminal doesn't use this one.",
+    "twinUnusedNoVersion": "Typing {{command}} in Terminal runs the copy from {{by}}, so Terminal doesn't use this one.",
+    "twinUnusedRemovable": "If you don't need it, you can uninstall this copy.",
+    "twinUsed": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the one from {{by}}, version {{version}}.",
+    "twinUsedNoVersion": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the one from {{by}}.",
+    "twinUsedMany_one": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the other {{count}}.",
+    "twinUsedMany_other": "Typing {{command}} in Terminal runs this copy; Terminal doesn't use the other {{count}}.",
+    "twinUninstallStays": "The copy from {{by}} stays.",
+    "twinUninstallStillRuns": "The copy from {{by}} stays, and {{command}} still works in Terminal.",
+    "twinUninstallOthersStay_one": "The other {{count}} copy stays.",
+    "twinUninstallOthersStay_other": "The other {{count}} copies stay.",
+    "notUsedWord": "Not used in Terminal",
+    "notUsedAria": "Not used in Terminal: {{name}}",
+    "previewHold": "You can uninstall once the check is done",
+    "previewHoldDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. They can't be cleaned up here yet.",
+    "listedOnly": "Listed only",
+    "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
+    "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here."
   },
   "unknown": {
     "columns": {

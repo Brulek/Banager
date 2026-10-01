@@ -7,6 +7,7 @@ import type { CommandState, InstalledArtifact } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { TextWithInfo } from "./InfoDetail";
 import { GROUP, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "./ui/group";
+import { installedBy } from "./TwinAdvice";
 import { detailLines } from "./updateDetails";
 
 /**
@@ -25,8 +26,50 @@ type Translate = ReturnType<typeof useTranslation>["t"];
 /** At most this many names on one line; the rest are counted (`commands.names`). */
 const NAMES_SHOWN = 3;
 
-/** A group's commands, as its line names them: 「cargo、cargo-clippy、cargo-fmt等14个」. */
-function namesOf(t: Translate, names: string[]): string {
+/** Where the shown names go in `commands.names`, to set them apart from the words around them. */
+const NAMES_SLOT = "\u0000names\u0000";
+
+/**
+ * `names` with the tool's own command first, where it has one: the name
+ * the tool goes by (`python3.13` for `python@3.13`, `git` for `git`), not
+ * `idle3.13` because it sorts first.
+ */
+export function mainCommandFirst(names: string[], artifact: InstalledArtifact): string[] {
+  const base = (artifact.key.name.split("/").pop() ?? artifact.key.name).toLowerCase();
+  const wanted = new Set([base, base.replace("@", ""), artifact.display_name.toLowerCase()]);
+  const main = names.findIndex((name) => wanted.has(name.toLowerCase()));
+  return main <= 0 ? names : [names[main], ...names.slice(0, main), ...names.slice(main + 1)];
+}
+
+/**
+ * A group's commands, as its line names them: 「cargo、cargo-clippy、
+ * cargo-fmt等14个」 -- the last name and 「等14个」 held on one line, so the
+ * count never stands alone on the next.
+ */
+function namesOf(t: Translate, names: string[]): ReactNode {
+  const separator = t("common.listSeparator");
+  if (names.length <= NAMES_SHOWN) return names.join(separator);
+  const shown = names.slice(0, NAMES_SHOWN);
+  const [before, after = ""] = t("commands.names", {
+    names: NAMES_SLOT,
+    count: names.length,
+    rest: names.length - NAMES_SHOWN,
+  }).split(NAMES_SLOT);
+  const last = shown[shown.length - 1];
+  return (
+    <>
+      {before}
+      {shown.slice(0, -1).map((name) => name + separator)}
+      <span className="whitespace-nowrap">
+        {last}
+        {after}
+      </span>
+    </>
+  );
+}
+
+/** `namesOf` as plain text, for an accessible name. */
+function namesText(t: Translate, names: string[]): string {
   const separator = t("common.listSeparator");
   if (names.length <= NAMES_SHOWN) return names.join(separator);
   return t("commands.names", {
@@ -62,7 +105,12 @@ function verdictOf(
   const family = artifact.facts.family;
   const sameTool = family !== null && owner?.facts.family === family;
   return {
-    text: sameTool ? t("commands.runsCopyFrom", { source }) : t("commands.runsNamesakeFrom", { source }),
+    // The copy from a tool's own installer by that installer
+    // (「Codex自带的安装程序」), not by the tool's name, which reads as the
+    // tool itself (`installedBy`).
+    text: sameTool
+      ? t("commands.runsCopyFrom", { source: installedBy(t, by.instance_id, sourceLabelFor) })
+      : t("commands.runsNamesakeFrom", { source }),
     detail,
     dir: null,
   };
@@ -101,7 +149,8 @@ export function CommandsGroup({
       </h3>
       <ul className={GROUP}>
         {groups.map((group) => {
-          const names = namesOf(t, group.names);
+          const ordered = mainCommandFirst(group.names, artifact);
+          const names = namesOf(t, ordered);
           const verdict = verdictOf(t, artifact, group.state, artifacts, sourceLabelFor);
           return (
             <li key={`${group.names[0]}`} data-command-line="" className={GROUP_ROW_TWO_LINES}>
@@ -111,7 +160,7 @@ export function CommandsGroup({
                   {verdict.detail === null ? (
                     verdict.text
                   ) : (
-                    <TextWithInfo text={verdict.text} label={t("common.detailsLabel", { title: names })}>
+                    <TextWithInfo text={verdict.text} label={t("common.detailsLabel", { title: namesText(t, ordered) })}>
                       {verdict.detail}
                     </TextWithInfo>
                   )}
@@ -207,7 +256,7 @@ export function twinChip(
     else if (state.ShadowedBy.by !== null) {
       const by = state.ShadowedBy.by;
       if (twins.some((twin) => artifactKeyId(twin.artifact.key) === artifactKeyId(by))) {
-        runs = t("commands.twinRunsCopyFrom", { command, source: sourceLabelFor(by.instance_id) });
+        runs = t("commands.twinRunsCopyFrom", { command, source: installedBy(t, by.instance_id, sourceLabelFor) });
       }
     }
   }

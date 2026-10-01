@@ -775,7 +775,8 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
   // be a claim; what is true is that this build does not remove it (D5).
   "standalone-codex": {
     NoSafeMethod: {
-      badge: "installed.blocked.NoSafeMethod.badge",
+      // 「只列出」, not 「需手动卸载」: nothing here knows a manual way to give.
+      badge: "clarity.listedOnly",
       description: "codexStandalone.uninstallDescription",
       command: () => "",
       refused: "installed.blocked.NoSafeMethod.refused",

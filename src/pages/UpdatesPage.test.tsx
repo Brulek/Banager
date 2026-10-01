@@ -4461,10 +4461,13 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
-    // A plain label: its old ⓘ only said the label over again (polish-3
-    // copy table, updates.selfUpdatingDetail).
-    expect(within(claude).getByText("Also updates itself")).toBeInTheDocument();
-    expect(within(claude).queryByRole("button", { name: "Also updates itself" })).toBeNull();
+    // One term for it across the app, 「会自行更新」, with an ⓘ that says
+    // more than the label: when it updates itself, and that Update here
+    // works too.
+    const word = within(claude).getByRole("button", { name: "Updates itself" });
+    fireEvent.click(word);
+    expect(document.body).toHaveTextContent("It installs new versions itself when it runs. You can also update it here.");
+    fireEvent.click(word);
     expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
@@ -4490,7 +4493,7 @@ describe("UpdatesPage", () => {
     artifacts = [...snapshot.artifacts, claudeArtifact];
     renderPage();
     await findRow("Claude Code");
-    expect(rowOf("Claude Code").querySelector("[data-status-column]")).toHaveTextContent("Also updates itself");
+    expect(rowOf("Claude Code").querySelector("[data-status-column]")).toHaveTextContent("Updates itself");
     for (const name of ["glib", "onyx"]) {
       const slot = rowOf(name).querySelector("[data-status-column]");
       expect(slot).not.toBeNull();
@@ -4521,7 +4524,7 @@ describe("UpdatesPage", () => {
       if (chips === null) throw new Error("the row has no chips' column");
       expect(await within(chips).findByText(words)).toBeInTheDocument();
       expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
-      expect(within(claude).queryByText("Also updates itself")).toBeNull();
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
       expect(within(claude).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
 
       // Retried: the update under way stands where the button was, and
@@ -4529,7 +4532,7 @@ describe("UpdatesPage", () => {
       operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
       expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(rowOf("Claude Code")).getByText("Also updates itself")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
       expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
     },
   );
@@ -4550,13 +4553,13 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(await within(claude).findByText("Couldn't update")).toBeInTheDocument();
-    expect(within(claude).queryByText("Also updates itself")).toBeNull();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
 
     // "Couldn't update" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
     updates = [{ ...claudeUpdate, target: "2.1.291" }];
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
     await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Couldn't update")).toBeNull());
-    expect(within(rowOf("Claude Code")).getByText("Also updates itself")).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
@@ -4586,7 +4589,7 @@ describe("UpdatesPage", () => {
 
     const onyx = await findRow("OnyX");
     expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
-    expect(within(onyx).queryByText("Also updates itself")).toBeNull();
+    expect(within(onyx).queryByText("Updates itself")).toBeNull();
   });
 
   it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
@@ -4642,7 +4645,7 @@ describe("UpdatesPage", () => {
     const grok = await findRow("Grok Build");
     expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
-    expect(within(grok).queryByText("Also updates itself")).toBeNull();
+    expect(within(grok).queryByText("Updates itself")).toBeNull();
     expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
   });
 
@@ -4816,7 +4819,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
-    expect(within(claude).queryByText("Also updates itself")).toBeNull();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
 
@@ -4835,7 +4838,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(within(claude).queryByText("Also updates itself")).toBeNull();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
     expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
@@ -4920,7 +4923,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByText(noticeTitle)).toBeInTheDocument();
       const claude = await findRow("Claude Code");
-      expect(within(claude).queryByText("Also updates itself")).toBeNull();
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
       expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
       expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
       expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
@@ -4964,16 +4967,18 @@ describe("UpdatesPage", () => {
   });
 
   it("calls the two self-updating chips by what each leaves the user, in both languages", () => {
-    // 也会自行更新: a tool with an Update button here, which also updates
-    // itself. 打开它来更新: one only it can update, so its row has no
-    // button, and the way to update it is to open it. They once read
-    // 会自行更新 and 只能自行更新, which looked alike and meant opposite
-    // things to someone deciding whether to press Update -- and before
-    // that 会自动更新 and 自动更新, and one English word for both.
-    expect(zhCN.updates.selfUpdating).toBe("也会自行更新");
-    expect("selfUpdatingDetail" in zhCN.updates).toBe(false);
+    // 会自行更新: a tool with an Update button here, which also updates
+    // itself (its ⓘ says both) -- the one term the Installed page uses
+    // too, for Codex's own install. 打开它来更新: one only it can update, so
+    // its row has no button, and the way to update it is to open it. They
+    // once read 会自行更新 and 只能自行更新, which looked alike and meant
+    // opposite things to someone deciding whether to press Update -- and
+    // before that 会自动更新 and 自动更新, and one English word for both;
+    // then 也会自行更新, a second wording of one idea.
+    expect(zhCN.updates.selfUpdating).toBe("会自行更新");
+    expect(zhCN.codexStandalone.updatesItself).toBe(zhCN.updates.selfUpdating);
     expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("打开它来更新");
-    expect(en.updates.selfUpdating).toBe("Also updates itself");
+    expect(en.updates.selfUpdating).toBe("Updates itself");
     expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Open to update");
     // Status words: six characters at most, and neither one the other's
     // echo -- no shared tail for the eye to take them as one word by.
@@ -5052,7 +5057,7 @@ describe("UpdatesPage", () => {
     });
 
     it("lets an app that updates itself keep its own word, across a major version too", async () => {
-      // One word a row: 「Also updates itself」 wins over 「Major version」,
+      // One word a row: 「Updates itself」 wins over 「Major version」,
       // on purpose -- the app moves on by itself whatever the row says.
       instances = [...snapshot.instances, claudeInstance];
       updates = [{ ...claudeUpdate, current: "2.1.290", target: "3.0.0" }];
@@ -5060,7 +5065,7 @@ describe("UpdatesPage", () => {
       renderPage();
 
       const claude = await findRow("Claude Code");
-      expect(claude.querySelector("[data-status-column]")).toHaveTextContent("Also updates itself");
+      expect(claude.querySelector("[data-status-column]")).toHaveTextContent("Updates itself");
       expect(within(claude).queryByText("Major version")).toBeNull();
     });
 

@@ -165,7 +165,7 @@ describe("the Installed page's details, on disk use", () => {
     expect(factsOf(inspector)["Space used"]).toBe("About\u00a0312.6 MB");
     // One word for those kegs, 「其他版本」, and their size beside them, in
     // the row right under the tool's own.
-    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0" + "About\u00a0298.4 MB");
+    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0 " + "About\u00a0298.4 MB");
     const other = inspector.querySelector("[data-other-versions-size]");
     expect(other?.textContent).toBe("About\u00a0298.4 MB");
     expect(other).toHaveClass("text-muted");
@@ -197,7 +197,7 @@ describe("the Installed page's details, on disk use", () => {
     expect(measuring).toHaveClass("text-muted");
     expect(within(inspector).getByText("Space used").nextElementSibling).not.toHaveClass("select-text");
     // The other versions are said all the same; their size once it is in.
-    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0");
+    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0 ");
 
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("Calculating…")).toBeInTheDocument();
@@ -266,7 +266,7 @@ describe("the Installed page's details, on disk use", () => {
     const inspector = await openDetails("node@22");
     await within(inspector).findByText("占用空间");
     expect(factsOf(inspector)["占用空间"]).toBe("约312.6 MB");
-    expect(factsOf(inspector)["其他版本"]).toBe("22.22.0" + "约1.2 GB");
+    expect(factsOf(inspector)["其他版本"]).toBe("22.22.0 " + "约1.2 GB");
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("正在计算…")).toBeInTheDocument();
   });

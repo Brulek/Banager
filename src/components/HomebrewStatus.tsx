@@ -6,6 +6,7 @@ import { otherVersionsSizeText, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureIcon } from "./icons";
 import { CopyButton } from "./CopyButton";
+import { TextWithInfo } from "./InfoDetail";
 import { COMMAND_SLOT } from "./withCommand";
 
 /**
@@ -53,8 +54,9 @@ function markOf(artifact: InstalledArtifact): HomebrewMark | null {
  * deprecated one may be disabled later; nothing is said about when, which
  * Banager does not know. The date is Homebrew's, as it writes it.
  */
-export function lifecycleSentence(t: TFunction, mark: HomebrewMark): string {
-  const { date, reason } = mark.lifecycle;
+export function lifecycleSentence(t: TFunction, mark: HomebrewMark, language?: string): string {
+  const { reason } = mark.lifecycle;
+  const date = mark.lifecycle.date === null ? null : shownDate(mark.lifecycle.date, language);
   // An own key only: a free-text reason such as "constructor" must be
   // quoted, not looked up on Object's prototype.
   const why =
@@ -82,6 +84,7 @@ export function lifecycleSentence(t: TFunction, mark: HomebrewMark): string {
 export function homebrewStatusChip(
   t: TFunction,
   artifact: InstalledArtifact,
+  language?: string,
 ): { id: string; label: string; ariaLabel: string; detail: ReactNode; tone: "neutral" } | null {
   const mark = markOf(artifact);
   if (mark === null) return null;
@@ -91,14 +94,14 @@ export function homebrewStatusChip(
         id: "homebrew-disabled",
         label: t("brewStatus.disabledWord"),
         ariaLabel: t("brewStatus.disabledAria", { name }),
-        detail: detailLines([lifecycleSentence(t, mark)]),
+        detail: detailLines([lifecycleSentence(t, mark, language)]),
         tone: "neutral",
       }
     : {
         id: "homebrew-deprecated",
         label: t("brewStatus.deprecatedWord"),
         ariaLabel: t("brewStatus.deprecatedAria", { name }),
-        detail: detailLines([lifecycleSentence(t, mark)]),
+        detail: detailLines([lifecycleSentence(t, mark, language)]),
         tone: "neutral",
       };
 }
@@ -142,12 +145,28 @@ export function addressWithBreaks(address: string): ReactNode {
 }
 
 /**
- * `sentence` with each date in it (`2026-09-01`, as Homebrew writes it)
- * kept on one line: "2025-" / "11-01" reads as two numbers.
+ * Homebrew's date (`2025-11-01`) as the inspector's other dates read --
+ * 「2025年11月1日」, "Nov 1, 2025" (`installed.installedOn`) -- in
+ * `language`; as Homebrew wrote it where no language is given or the date
+ * is not one of that shape. A calendar day, so read in UTC: never the day
+ * before west of Greenwich.
  */
-function datesUnbroken(sentence: string): ReactNode {
+export function shownDate(date: string, language: string | undefined): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (language === undefined || parts === null) return date;
+  const day = Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+  return new Intl.DateTimeFormat(language, { dateStyle: "medium", timeZone: "UTC" }).format(day);
+}
+
+/**
+ * `sentence` with its date in it kept on one line: "2025-" / "11-01", or
+ * "Nov 1," / "2025", reads as two things.
+ */
+function datesUnbroken(sentence: string, date: string | null): ReactNode {
+  if (date === null || !sentence.includes(date)) return sentence;
   return sentence
-    .split(/(\d{4}-\d{2}-\d{2})/)
+    .split(date)
+    .flatMap((part, index) => (index === 0 ? [part] : [date, part]))
     .map((part, index) =>
       index % 2 === 1 ? (
         <span key={index} className="whitespace-nowrap">
@@ -250,7 +269,15 @@ export function otherVersionsFact(
     term: t("brewStatus.otherVersionsTerm"),
     value: (
       <span data-other-versions="" className="flex flex-col items-end">
-        <span>{others.join(t("common.listSeparator"))}</span>
+        {/* What they are, behind an ⓘ: a 小白 asks whether they are in use. */}
+        <span>
+          <TextWithInfo
+            text={others.join(t("common.listSeparator"))}
+            label={t("common.detailsLabel", { title: t("brewStatus.otherVersionsTerm") })}
+          >
+            {t("clarity.otherVersionsDetail")}
+          </TextWithInfo>
+        </span>
         {measured !== null ? (
           <span data-other-versions-size="" className="text-muted">
             {otherVersionsSizeText(t, measured, others.length)}
@@ -299,43 +326,54 @@ function Caveats({ text }: { text: string }) {
 }
 
 /**
- * What Homebrew says about a package beyond its facts: what its mark
- * means and the name Homebrew suggests instead (a name only: installing
- * it is not offered here) -- `part="mark"`, right under the inspector's
- * group, whose last row, 「状态」, says the mark's word -- and its caveats
- * -- `part="caveats"`, technical, after everything else the inspector
- * says of it. Both, one after the other, without `part`. Nothing for a
- * package Homebrew has nothing to say about. Its other versions are a
- * fact of the group (`otherVersionsFact`).
+ * What Homebrew's mark on a package means, and the name Homebrew suggests
+ * instead (a name only: installing it is not offered here): a paragraph
+ * each, for the inspector's callout under the description
+ * (`InspectorCallout`), the facts' 「状态」 then leaving the mark's word
+ * out. None for a package Homebrew has not marked.
  */
-export function HomebrewNotes({ artifact, part }: { artifact: InstalledArtifact; part?: "mark" | "caveats" }) {
-  const { t } = useTranslation();
+export function homebrewMarkLines(t: TFunction, artifact: InstalledArtifact, language: string): ReactNode[] {
   const homebrew = artifact.facts.homebrew;
-  if (homebrew === null) return null;
+  if (homebrew === null) return [];
   const mark = markOf(artifact);
   // A package both deprecated and disabled may name its replacement on the
   // deprecation only; Homebrew still said it.
   const replacement = mark?.lifecycle.replacement ?? homebrew.deprecated?.replacement ?? null;
   const lines: ReactNode[] = [];
-  if (part !== "caveats" && mark !== null) {
+  if (mark !== null) {
     lines.push(
       <p key="mark" data-homebrew-mark="" className="text-body-long text-foreground">
-        {datesUnbroken(lifecycleSentence(t, mark))}
+        {datesUnbroken(
+          lifecycleSentence(t, mark, language),
+          mark.lifecycle.date === null ? null : shownDate(mark.lifecycle.date, language),
+        )}
       </p>,
     );
   }
-  if (part !== "caveats" && replacement !== null) {
+  if (replacement !== null) {
     lines.push(
       <p key="replacement" data-homebrew-replacement="" className="text-body-long text-foreground">
         {nameUnbroken(t("brewStatus.replacement", { name: COMMAND_SLOT }), replacement)}
       </p>,
     );
   }
-  if (part !== "mark" && homebrew.caveats !== null) lines.push(<Caveats key="caveats" text={homebrew.caveats} />);
-  if (lines.length === 0) return null;
+  return lines;
+}
+
+/**
+ * Homebrew's caveats about a package, technical, after everything else the
+ * inspector says of it: folded, as Homebrew wrote them, in English.
+ * Nothing for a package with none. What its mark means is said higher up
+ * (`homebrewMarkLines`); its other versions are a fact of the group
+ * (`otherVersionsFact`).
+ */
+export function HomebrewCaveats({ artifact }: { artifact: InstalledArtifact }) {
+  const caveats = artifact.facts.homebrew?.caveats ?? null;
+  if (caveats === null) return null;
   return (
-    <div data-homebrew-notes={part ?? ""} className="mt-4 flex flex-col gap-2">
-      {lines}
+    <div data-homebrew-notes="caveats" className="mt-4 flex flex-col gap-2">
+      <Caveats text={caveats} />
     </div>
   );
 }
+

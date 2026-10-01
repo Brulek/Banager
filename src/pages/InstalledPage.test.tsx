@@ -2278,11 +2278,12 @@ describe("InstalledPage", () => {
         expect.arrayContaining(["mt-4", "rounded-group", "bg-group", "[&>*+*]:before:left-2.5", "[&>*+*]:before:right-2.5"]),
       );
       const rows = [...facts.children] as HTMLElement[];
+      // As a Mac's info pane orders them: versions, size, date, site, state.
       expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
         "Version",
         "New version",
-        "Date installed",
         "Size",
+        "Date installed",
         "Homepage",
         "Status",
       ]);
@@ -3172,14 +3173,21 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
       "Details: In Terminal",
       "Details: claude",
     ]);
-    // Which copy runs is said once in the details, by the group: the
-    // status word's ⓘ there says only where the other copy is from.
-    const status = within(inspector).getByText("Status").nextElementSibling as HTMLElement;
-    const info = within(status).getByRole("button", { name: "Details: Installed twice" });
-    fireEvent.click(info);
-    const panel = document.getElementById(info.getAttribute("aria-controls") ?? "");
-    expect(panel).toHaveTextContent(/^npm has a copy too\.$/);
-    expect(inspector).not.toHaveTextContent("Typing claude in Terminal");
+    // What to make of it, under the description: which copy Terminal
+    // runs, that it does not use this one, and that this one may go. The
+    // facts' 「状态」 leaves the word out: said once, up there.
+    const callout = inspector.querySelector("[data-description] + [data-inspector-callout]") as HTMLElement;
+    expect([...callout.querySelectorAll("[data-twin-advice]")].map((line) => line.textContent)).toEqual([
+      `Typing claude in Terminal runs the copy from npm, version ${npmClaude.version}, so Terminal doesn't use this one.`,
+      "If you don't need it, you can uninstall this copy.",
+    ]);
+    expect(within(inspector).queryByText("Installed twice")).toBeNull();
+
+    // The copy Terminal runs says which one it does not use.
+    const npmDetails = await openDetails("@anthropic-ai/claude-code");
+    expect(npmDetails.querySelector("[data-twin-advice]")?.textContent).toBe(
+      `Typing claude in Terminal runs this copy; Terminal doesn't use the one from Claude Code's own installer, version ${nativeClaude.version}.`,
+    );
   });
 
   it("still tells two copies apart when nothing was said about which runs, and shows no group", async () => {

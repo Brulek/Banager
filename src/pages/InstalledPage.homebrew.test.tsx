@@ -149,22 +149,22 @@ describe("InstalledPage, Homebrew's state", () => {
     const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(INSTALLED * 1000));
     expect(within(pane).getByText("Date installed").nextElementSibling).toHaveTextContent(date);
     expect(pane.querySelector("[data-homebrew-mark]")?.textContent).toBe(
-      "It doesn't pass the macOS security check. Homebrew disabled it on 2026-09-01 and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+      "It doesn't pass the macOS security check. Homebrew disabled it on Sep 1, 2026 and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
     );
-    // Right under the facts, whose last row, 状态, says the mark's word;
-    // the folded notes come last, after the commands.
-    expect(pane.querySelector("[data-facts] + [data-homebrew-notes='mark']")).not.toBeNull();
+    // In the callout right under the description, before the facts; the
+    // folded notes come last, after the commands.
+    expect(pane.querySelector("[data-description] + [data-inspector-callout] + [data-facts]")).not.toBeNull();
+    expect(pane.querySelector("[data-inspector-callout] [data-homebrew-mark]")).not.toBeNull();
     expect(pane.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newapp” instead.");
     expect(within(pane).queryByRole("button", { name: /Install/ })).toBeNull();
     expect(within(pane).getByText("Homepage").nextElementSibling).toHaveTextContent("oldapp.example");
     expect(within(pane).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
     // No update will come, so it is not called up to date either.
     expect(within(pane).queryByText("Up to date")).toBeNull();
-    // The status row says the word; the sentence is said once, under the
-    // facts, not again behind an ⓘ on the word.
-    const status = within(pane).getByText("Status").nextElementSibling as HTMLElement;
-    expect(within(status).getByText("Disabled")).toBeInTheDocument();
-    expect(within(status).queryByRole("button", { name: "Details: Disabled" })).toBeNull();
+    // The callout says it, once: no status word for it in the facts, and
+    // nothing else to say there -- no update will come.
+    expect(within(pane).queryByText("Status")).toBeNull();
+    expect(within(pane).queryByText("Disabled")).toBeNull();
   });
 
   it("says a formula's other installed version as a fact and keeps its caveats folded", async () => {

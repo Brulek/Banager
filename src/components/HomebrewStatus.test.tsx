@@ -7,13 +7,15 @@ import zhCN from "../i18n/zh-CN.json";
 import type { HomebrewFacts, InstalledArtifact, Measured, Sizes } from "../lib/types";
 import { NO_FACTS, NO_SIZES } from "../lib/types";
 import {
-  HomebrewNotes,
+  HomebrewCaveats,
   addressWithBreaks,
   REASON_KEYS,
   homebrewStatusChip,
   homepageFact,
   homepageHost,
+  homebrewMarkLines,
   lifecycleSentence,
+  shownDate,
   otherVersionsFact,
 } from "./HomebrewStatus";
 
@@ -183,26 +185,40 @@ describe("homepageFact", () => {
   });
 });
 
-describe("HomebrewNotes", () => {
-  it("says the suggested name with no button to install it, and leaves the other versions to the facts", async () => {
-    const { container } = renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
+describe("homebrewMarkLines and HomebrewCaveats", () => {
+  const Mark = ({ target, language }: { target: InstalledArtifact; language?: string }) => (
+    <>{homebrewMarkLines(enT, target, language ?? "en")}</>
+  );
+
+  it("says the suggested name with no button to install it, the date as the pane's other dates read", async () => {
+    const { container } = renderWithProviders(<Mark target={deprecatedFormula} />);
     expect(container.querySelector("[data-homebrew-mark]")?.textContent).toBe(
-      `Homebrew's reason: “${FREE_TEXT}”. Homebrew deprecated it on 2026-06-15 and may disable it later.`,
+      `Homebrew's reason: “${FREE_TEXT}”. Homebrew deprecated it on Jun 15, 2026 and may disable it later.`,
     );
-    // The date is never broken at its hyphens ("2026-" / "06-15").
-    expect(screen.getByText("2026-06-15")).toHaveClass("whitespace-nowrap");
+    // The date is never broken ("Jun 15," / "2026").
+    expect(screen.getByText("Jun 15, 2026")).toHaveClass("whitespace-nowrap");
     expect(document.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newtool” instead.");
     // The name is never broken across lines ("yt-" / "dlp").
     expect(screen.getByText("newtool")).toHaveClass("whitespace-nowrap");
-    // Said once, as the facts' 「其他版本」 row (`otherVersionsFact`).
+    // Said once, as the facts' 「其他版本」 row (`otherVersionsFact`), and the caveats come last, apart.
     expect(container.textContent).not.toContain("1.9");
-    // The one control is the caveats' disclosure: nothing installs, opens or copies.
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Homebrew's notes"]);
+    expect(screen.queryAllByRole("button")).toEqual([]);
     expect(screen.queryByRole("link")).toBeNull();
   });
 
+  it("writes Homebrew's date in Chinese as the install date reads, 「2026年6月15日」", () => {
+    const { container } = renderWithProviders(<>{homebrewMarkLines(zh, deprecatedFormula, "zh-CN")}</>);
+    expect(container.querySelector("[data-homebrew-mark]")?.textContent).toBe(
+      `Homebrew给出的原因：“${FREE_TEXT}”。Homebrew自2026年6月15日起将它标为弃用，以后可能会停用。`,
+    );
+    expect(shownDate("2026-06-15", "zh-CN")).toBe("2026年6月15日");
+    // A date of another shape, or no language, as Homebrew wrote it.
+    expect(shownDate("2026-06-15", undefined)).toBe("2026-06-15");
+    expect(shownDate("June 2026", "en")).toBe("June 2026");
+  });
+
   it("keeps the caveats closed until asked, then shows them verbatim, still with no Copy", () => {
-    const { container } = renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
+    const { container } = renderWithProviders(<HomebrewCaveats artifact={deprecatedFormula} />);
     const disclosure = screen.getByRole("button", { name: "Homebrew's notes" });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
     expect(container.querySelector("[data-caveats]")).toBeNull();
@@ -217,8 +233,8 @@ describe("HomebrewNotes", () => {
 
   it("says the replacement a disabled package named only when Homebrew deprecated it", () => {
     renderWithProviders(
-      <HomebrewNotes
-        artifact={artifact("both", {
+      <Mark
+        target={artifact("both", {
           ...EMPTY,
           deprecated: { date: "2026-01-01", reason: null, replacement: "newtool" },
           disabled: { date: "2026-09-01", reason: null, replacement: null },
@@ -229,7 +245,8 @@ describe("HomebrewNotes", () => {
   });
 
   it("says nothing for a package Homebrew has nothing to say about", () => {
-    const { container } = renderWithProviders(<HomebrewNotes artifact={artifact("jq", null)} />);
+    expect(homebrewMarkLines(enT, artifact("jq", null), "en")).toEqual([]);
+    const { container } = renderWithProviders(<HomebrewCaveats artifact={artifact("jq", null)} />);
     expect(container.querySelector("[data-homebrew-notes]")).toBeNull();
   });
 });
@@ -262,19 +279,28 @@ describe("otherVersionsFact", () => {
     const fact = otherVersionsFact(zh, openssl, sizesOf(openssl, about(120_000_000)));
     expect(fact?.term).toBe("其他版本");
     expect(fact?.selectable).toBe(true);
-    expect(textOf(fact?.value)).toBe("3.6.3" + "约120 MB");
+    expect(textOf(fact?.value)).toBe("3.6.3 " + "约120 MB");
     // Several: 、 between them, and the size is theirs together.
     const two = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.2", "3.6.3"] });
-    expect(textOf(otherVersionsFact(zh, two, sizesOf(two, about(240_000_000)))?.value)).toBe("3.6.2、3.6.3" + "共约240 MB");
+    expect(textOf(otherVersionsFact(zh, two, sizesOf(two, about(240_000_000)))?.value)).toBe("3.6.2、3.6.3 " + "共约240 MB");
     expect(textOf(otherVersionsFact(enT, two, sizesOf(two, about(240_000_000, { partial: true })))?.value)).toBe(
-      "3.6.2, 3.6.3" + "At least about\u00a0240 MB in all",
+      "3.6.2, 3.6.3 " + "At least about\u00a0240 MB in all",
     );
+  });
+
+  it("says what other versions are behind an ⓘ, without blaming anyone", () => {
+    const openssl = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.3"] });
+    renderWithProviders(<>{otherVersionsFact(enT, openssl, undefined)?.value}</>);
+    fireEvent.click(screen.getByRole("button", { name: "Details: Other versions" }));
+    expect(
+      screen.getByText("Other versions Homebrew still keeps, besides the one listed above. They can't be cleaned up here yet."),
+    ).toBeInTheDocument();
   });
 
   it("names the versions alone while they are measured, or when no size came", () => {
     const openssl = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.3"] });
-    expect(textOf(otherVersionsFact(enT, openssl, undefined)?.value)).toBe("3.6.3");
-    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null, null))?.value)).toBe("3.6.3");
-    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null))?.value)).toBe("3.6.3");
+    expect(textOf(otherVersionsFact(enT, openssl, undefined)?.value)).toBe("3.6.3 ");
+    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null, null))?.value)).toBe("3.6.3 ");
+    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null))?.value)).toBe("3.6.3 ");
   });
 });

@@ -54,6 +54,8 @@ import {
   unavailableDetail,
   updateVersionColumn,
 } from "../components/updateDetails";
+import { useTwins } from "../components/CommandFacts";
+import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
 import type {
@@ -342,6 +344,9 @@ export function UpdatesPage() {
     }
     return byId;
   }, [snapshot]);
+
+  // Each tool's other copies, for the word on a copy Terminal does not run (`notUsedWord`).
+  const twins = useTwins(snapshot?.artifacts);
 
   // The source's name in the user's language, as the sidebar lists it --
   // with which one it is after it where this Mac has two of its kind,
@@ -677,12 +682,19 @@ export function UpdatesPage() {
     const showTechnicalDetails = settings?.show_technical_details ?? false;
     const source = sourceLabelFor(candidate.key.instance_id);
     switch (state.kind) {
-      case "actionable":
-        // One word a row: an app that updates itself says so; any other
-        // update that changes the major version says 「大版本」.
-        return saysItUpdatesItself(candidate, instance)
-          ? { label: t("updates.selfUpdating") }
-          : majorVersionWord(t, candidate, nameOf(candidate));
+      case "actionable": {
+        // One word a row: a copy Terminal does not run says so -- updating
+        // it changes nothing the user types; an app that updates itself
+        // says that; any other update that changes the major version says
+        // 「大版本更新」.
+        const id = artifactKeyId(candidate.key);
+        return (
+          notUsedWord(t, artifactsById.get(id), twins.get(id), sourceLabelFor, nameOf(candidate)) ??
+          (saysItUpdatesItself(candidate, instance)
+            ? { label: t("updates.selfUpdating"), detail: t("clarity.selfUpdatingDetail") }
+            : majorVersionWord(t, candidate, nameOf(candidate)))
+        );
+      }
       case "readOnly":
         return candidate.checkable
           ? { label: t("updates.readOnly"), detail: readOnlyDetail(t, instance) }
