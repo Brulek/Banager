@@ -189,6 +189,11 @@ Paths are under a generic home folder, `/Users/you`.
   the Ollama source's page says 「Ollama模型共约6.6 GB」 under its title.
   The Installed page's sort has 「按大小」 ("By Size"): the two models
   first, then Visual Studio Code and node@22, a tool with no size last.
+- youtube-dl's details have every row the details can have for a
+  Homebrew formula at once, for checking their order: the facts (version,
+  date installed, 占用空间, 其他版本 with its size, homepage, and 状态 with
+  「已弃用」), under them what that mark means and the name Homebrew
+  suggests, then 「在终端里输入」, and last Homebrew's notes, folded.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise

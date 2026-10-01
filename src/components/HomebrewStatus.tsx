@@ -6,6 +6,7 @@ import { otherVersionsSizeText, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureIcon } from "./icons";
 import { CopyButton } from "./CopyButton";
+import { COMMAND_SLOT } from "./withCommand";
 
 /**
  * Homebrew's reasons it knows by name (`DeprecateDisable`'s
@@ -110,6 +111,61 @@ export function homebrewStatusChip(
 export const HOMEBREW_STATUS_CHIP_IDS: ReadonlySet<string> = new Set(["homebrew-disabled", "homebrew-deprecated"]);
 
 /**
+ * `address` with a line allowed to break only where an address reads
+ * well broken -- after `//`, and before each `/`, `.`, `?`, `#`, `&` and
+ * `=` after it -- not in the middle of a name, as "youtube-dl.o" / "rg/"
+ * in a narrow pane. A part too long for a line still breaks
+ * (`break-words`).
+ */
+export function addressWithBreaks(address: string): ReactNode {
+  const scheme = address.indexOf("//");
+  const head = scheme === -1 ? "" : address.slice(0, scheme + 2);
+  const rest = scheme === -1 ? address : address.slice(scheme + 2);
+  const parts = rest.split(/(?=[/.?#&=])/);
+  // Text and <wbr> side by side, so the address is still one text to
+  // find and to read aloud.
+  return [
+    head,
+    ...parts.flatMap((part, index) => (index > 0 || head !== "" ? [<wbr key={index} />, part] : [part])),
+  ];
+}
+
+/**
+ * `sentence` with each date in it (`2026-09-01`, as Homebrew writes it)
+ * kept on one line: "2025-" / "11-01" reads as two numbers.
+ */
+function datesUnbroken(sentence: string): ReactNode {
+  return sentence
+    .split(/(\d{4}-\d{2}-\d{2})/)
+    .map((part, index) =>
+      index % 2 === 1 ? (
+        <span key={index} className="whitespace-nowrap">
+          {part}
+        </span>
+      ) : (
+        part
+      ),
+    );
+}
+
+/**
+ * A translated sentence with `name` set into it at `COMMAND_SLOT`, never
+ * broken across lines: "yt-" / "dlp" reads as two names. A translation
+ * without the slot exactly once gets the name back as plain text.
+ */
+function nameUnbroken(sentence: string, name: string): ReactNode {
+  const parts = sentence.split(COMMAND_SLOT);
+  if (parts.length !== 2) return parts.join(name);
+  return (
+    <>
+      {parts[0]}
+      <span className="whitespace-nowrap">{name}</span>
+      {parts[1]}
+    </>
+  );
+}
+
+/**
  * The inspector's 「主页」 fact, for any source that reported one: the
  * address as text, and 「拷贝链接」 under it, its 「已拷贝」 beside it
  * (`CopyButton`). Nothing opens it -- opening a page from Banager is a
@@ -127,8 +183,8 @@ export function homepageFact(
     term: t("brewStatus.homepage"),
     value: (
       <span className="flex flex-col items-end gap-1">
-        <span data-homepage="" className="break-all">
-          {address}
+        <span data-homepage="" className="break-words">
+          {addressWithBreaks(address)}
         </span>
         <CopyButton text={address} label={t("brewStatus.copyLink")} />
       </span>
@@ -212,13 +268,16 @@ function Caveats({ text }: { text: string }) {
 }
 
 /**
- * What Homebrew says about a package beyond its facts, under the
- * inspector's group: what its mark means, the name Homebrew suggests
- * instead (a name only: installing it is not offered here), and its
- * caveats. Nothing for a package Homebrew has nothing to say about. Its
- * other versions are a fact of the group (`otherVersionsFact`).
+ * What Homebrew says about a package beyond its facts: what its mark
+ * means and the name Homebrew suggests instead (a name only: installing
+ * it is not offered here) -- `part="mark"`, right under the inspector's
+ * group, whose last row, 「状态」, says the mark's word -- and its caveats
+ * -- `part="caveats"`, technical, after everything else the inspector
+ * says of it. Both, one after the other, without `part`. Nothing for a
+ * package Homebrew has nothing to say about. Its other versions are a
+ * fact of the group (`otherVersionsFact`).
  */
-export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
+export function HomebrewNotes({ artifact, part }: { artifact: InstalledArtifact; part?: "mark" | "caveats" }) {
   const { t } = useTranslation();
   const homebrew = artifact.facts.homebrew;
   if (homebrew === null) return null;
@@ -227,24 +286,24 @@ export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
   // deprecation only; Homebrew still said it.
   const replacement = mark?.lifecycle.replacement ?? homebrew.deprecated?.replacement ?? null;
   const lines: ReactNode[] = [];
-  if (mark !== null) {
+  if (part !== "caveats" && mark !== null) {
     lines.push(
       <p key="mark" data-homebrew-mark="" className="text-body-long text-foreground">
-        {lifecycleSentence(t, mark)}
+        {datesUnbroken(lifecycleSentence(t, mark))}
       </p>,
     );
   }
-  if (replacement !== null) {
+  if (part !== "caveats" && replacement !== null) {
     lines.push(
       <p key="replacement" data-homebrew-replacement="" className="text-body-long text-foreground">
-        {t("brewStatus.replacement", { name: replacement })}
+        {nameUnbroken(t("brewStatus.replacement", { name: COMMAND_SLOT }), replacement)}
       </p>,
     );
   }
-  if (homebrew.caveats !== null) lines.push(<Caveats key="caveats" text={homebrew.caveats} />);
+  if (part !== "mark" && homebrew.caveats !== null) lines.push(<Caveats key="caveats" text={homebrew.caveats} />);
   if (lines.length === 0) return null;
   return (
-    <div data-homebrew-notes="" className="mt-4 flex flex-col gap-2">
+    <div data-homebrew-notes={part ?? ""} className="mt-4 flex flex-col gap-2">
       {lines}
     </div>
   );

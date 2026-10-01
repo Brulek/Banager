@@ -131,7 +131,12 @@ describe("homepageFact", () => {
     const fact = homepageFact(enT, "https://jqlang.github.io/jq/");
     expect(fact?.term).toBe("Homepage");
     renderWithProviders(<>{fact?.value}</>);
-    expect(screen.getByText("https://jqlang.github.io/jq/").tagName).toBe("SPAN");
+    const shown = screen.getByText("https://jqlang.github.io/jq/");
+    expect(shown.tagName).toBe("SPAN");
+    // A line may break after // and before each / and ., never inside a
+    // name: "jqlang.github.io/jq/" has its five places.
+    expect(shown.querySelectorAll("wbr")).toHaveLength(5);
+    expect(shown).toHaveClass("break-words");
     expect(screen.queryByRole("link")).toBeNull();
     const button = screen.getByRole("button", { name: "Copy Link" });
     fireEvent.click(button);
@@ -158,8 +163,14 @@ describe("homepageFact", () => {
 describe("HomebrewNotes", () => {
   it("says the suggested name with no button to install it, and leaves the other versions to the facts", async () => {
     const { container } = renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
-    expect(screen.getByText(`Homebrew's reason: “${FREE_TEXT}”. Homebrew deprecated it on 2026-06-15 and may disable it later.`)).toBeInTheDocument();
-    expect(screen.getByText("Homebrew suggests “newtool” instead.")).toBeInTheDocument();
+    expect(container.querySelector("[data-homebrew-mark]")?.textContent).toBe(
+      `Homebrew's reason: “${FREE_TEXT}”. Homebrew deprecated it on 2026-06-15 and may disable it later.`,
+    );
+    // The date is never broken at its hyphens ("2026-" / "06-15").
+    expect(screen.getByText("2026-06-15")).toHaveClass("whitespace-nowrap");
+    expect(document.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newtool” instead.");
+    // The name is never broken across lines ("yt-" / "dlp").
+    expect(screen.getByText("newtool")).toHaveClass("whitespace-nowrap");
     // Said once, as the facts' 「其他版本」 row (`otherVersionsFact`).
     expect(container.textContent).not.toContain("1.9");
     // The one control is the caveats' disclosure: nothing installs, opens or copies.
@@ -191,7 +202,7 @@ describe("HomebrewNotes", () => {
         })}
       />,
     );
-    expect(screen.getByText("Homebrew suggests “newtool” instead.")).toBeInTheDocument();
+    expect(document.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newtool” instead.");
   });
 
   it("says nothing for a package Homebrew has nothing to say about", () => {

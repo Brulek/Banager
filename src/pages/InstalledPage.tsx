@@ -1398,9 +1398,15 @@ export function InstalledPage() {
           <p data-description="" className="mt-4 whitespace-normal break-words text-body-long text-foreground">
             {line}
           </p>
+          {/* What it is (the heading, the description), its facts --
+              versions, when, how big, where -- ending on its state,
+              「状态」, with right under it what Homebrew's mark there
+              means; then the commands it gives Terminal, and last the
+              technical: Homebrew's own notes, in English, folded. */}
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
+          <HomebrewNotes artifact={artifact} part="mark" />
           <CommandsGroup artifact={artifact} artifacts={snapshot?.artifacts ?? []} sourceLabelFor={sourceLabelFor} />
-          <HomebrewNotes artifact={artifact} />
+          <HomebrewNotes artifact={artifact} part="caveats" />
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
             <p role="alert" className={`mt-2 ${SMALL_WRAPPING} text-danger-text`}>

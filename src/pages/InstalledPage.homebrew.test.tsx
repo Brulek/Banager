@@ -148,12 +148,13 @@ describe("InstalledPage, Homebrew's state", () => {
     const pane = await openDetails("oldapp");
     const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(INSTALLED * 1000));
     expect(within(pane).getByText("Date installed").nextElementSibling).toHaveTextContent(date);
-    expect(
-      within(pane).getByText(
-        "It doesn't pass macOS's security check. Homebrew disabled it on 2026-09-01, so no more updates will come. The copy already installed is not removed.",
-      ),
-    ).toBeInTheDocument();
-    expect(within(pane).getByText("Homebrew suggests “newapp” instead.")).toBeInTheDocument();
+    expect(pane.querySelector("[data-homebrew-mark]")?.textContent).toBe(
+      "It doesn't pass macOS's security check. Homebrew disabled it on 2026-09-01, so no more updates will come. The copy already installed is not removed.",
+    );
+    // Right under the facts, whose last row, 状态, says the mark's word;
+    // the folded notes come last, after the commands.
+    expect(pane.querySelector("[data-facts] + [data-homebrew-notes='mark']")).not.toBeNull();
+    expect(pane.querySelector("[data-homebrew-replacement]")?.textContent).toBe("Homebrew suggests “newapp” instead.");
     expect(within(pane).queryByRole("button", { name: /Install/ })).toBeNull();
     expect(within(pane).getByText("Homepage").nextElementSibling).toHaveTextContent("https://oldapp.example/");
     expect(within(pane).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
