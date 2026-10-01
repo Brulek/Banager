@@ -32,6 +32,9 @@ pub struct Stat {
     nlink: u64,
     blocks: u64,
     mode: u32,
+    size: u64,
+    mtime: i64,
+    uid: u32,
 }
 
 impl Stat {
@@ -46,6 +49,9 @@ impl Stat {
             nlink: st.st_nlink as u64,
             blocks: st.st_blocks as u64,
             mode: st.st_mode as u32,
+            size: st.st_size as u64,
+            mtime: st.st_mtime as i64,
+            uid: st.st_uid as u32,
         }
     }
 
@@ -64,6 +70,21 @@ impl Stat {
     /// 512-byte blocks the disk holds for it (`st_blocks`).
     pub fn blocks(&self) -> u64 {
         self.blocks
+    }
+
+    /// Its length in bytes (`st_size`): a link's own is its text's.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// When its contents last changed, unix seconds (`st_mtime`).
+    pub fn mtime(&self) -> i64 {
+        self.mtime
+    }
+
+    /// The account that owns it (`st_uid`).
+    pub fn uid(&self) -> u32 {
+        self.uid
     }
 
     /// `st_mode`: its kind and its permission bits.
@@ -316,6 +337,9 @@ impl Dir {
             nlink: std::os::unix::fs::MetadataExt::nlink(&meta),
             blocks: std::os::unix::fs::MetadataExt::blocks(&meta),
             mode: std::os::unix::fs::MetadataExt::mode(&meta),
+            size: std::os::unix::fs::MetadataExt::size(&meta),
+            mtime: std::os::unix::fs::MetadataExt::mtime(&meta),
+            uid: std::os::unix::fs::MetadataExt::uid(&meta),
         };
         if !stat.is_file() || expected.is_some_and(|expected| !expected.same_as(&stat)) {
             return Err(io::Error::other("not the file that was looked at"));

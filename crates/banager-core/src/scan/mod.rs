@@ -14,20 +14,35 @@
 //! run on demand from the Unknown page -- never from a refresh, never
 //! into the `Snapshot`, never under a lock.
 //!
-//! Read-only in the strictest sense: `read_dir`, `symlink_metadata`,
-//! `metadata`, `read_link` and `canonicalize`, one level deep, over a
-//! fixed list of bin directories. No `CommandRunner`, so nothing it finds
-//! is ever run; no write of any kind.
+//! Read-only in the strictest sense: the folder listing, `lstat` and
+//! `readlink`, one level deep, over a fixed list of bin directories. No
+//! `CommandRunner`, so nothing it finds is ever run; no write of any kind.
+//!
+//! It keeps the promise the command check (`commands`) and the disk-use
+//! measurement (`size`) keep: nothing inside a protected place
+//! (`protected`: `~/Documents`, `~/Desktop`, `~/Downloads`, the media
+//! folders, iCloud Drive and other cloud folders, other apps' containers,
+//! and `/Volumes`, also as spelled from `/System/Volumes/Data`) is ever
+//! listed, `lstat`ed, its links read or its path resolved, through any
+//! link. Every path is found one step at a time from `/` and every step
+//! checked before it is taken (`protected::resolve`); each scanned folder
+//! is listed, and its entries looked at, through a descriptor held open on
+//! it (`dirfd`), so a folder replaced by a link meanwhile is never
+//! followed. A scanned folder in a protected place is not read and is
+//! named on the page (`UnknownScan::protected_dirs`); a link into one is
+//! listed by its own name and not followed (`EntryKind::ProtectedSymlink`).
 //!
 //! Under `scan/`, not `adapters/unknown.rs` as the design spec's §3 drew
 //! it: someone reading `adapters/` should not find a module there with no
 //! `impl Adapter` (phase 4 spec §8.1, Q12; its appendix C records the
 //! deviation).
 
+use crate::dirfd::Dir;
 use crate::model::{InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};
+use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
-use std::os::unix::fs::MetadataExt;
+use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -139,10 +154,18 @@ impl Glob {
 pub enum EntryKind {
     File,
     Symlink,
-    /// A symlink whose target `canonicalize` could not reach. `link_target`
+    /// A symlink whose target could not be reached: nothing there, a loop,
+    /// or a folder on the way that cannot be searched. `link_target`
     /// still carries what it says; the research machine had one pointing
     /// into an app that had since been deleted.
     BrokenSymlink,
+    /// A symlink that leads into a protected place (`protected`):
+    /// `~/Documents`, iCloud Drive, `/Volumes` and the rest. Listed by its
+    /// own name, and its target never followed -- so no `resolved`, size
+    /// or date. `link_target` is its text, read from the link itself, in
+    /// the folder being scanned; the page says 「指向受保护的位置」 in place
+    /// of a path.
+    ProtectedSymlink,
 }
 
 /// One program no registered source accounts for. Every field is read by
@@ -155,10 +178,11 @@ pub struct UnknownEntry {
     pub path: PathBuf,
     /// The badge.
     pub kind: EntryKind,
-    /// `canonicalize` of the entry: every link hop followed, absolute, never
-    /// abbreviated. `None` for a broken link, and for the rare regular
-    /// file whose parent cannot be resolved. Shown under technical details
-    /// as "Links to …" for a `Symlink`.
+    /// Where the entry leads: every link hop followed (`protected::resolve`,
+    /// as `realpath` would but never into a protected place, each name as
+    /// spelled), absolute, never abbreviated. `None` for a broken link and
+    /// for one that leads into a protected place. Shown under technical
+    /// details as "Links to …" for a `Symlink`.
     pub resolved: Option<PathBuf>,
     /// `readlink`'s text, verbatim, for links only -- relative or absolute
     /// as the installer wrote it. The `{{target}}` of the broken-link
@@ -193,6 +217,14 @@ pub struct UnknownScan {
     /// not exist are not here (29 of the research machine's 36 candidates
     /// did not).
     pub scanned: Vec<ScannedDir>,
+    /// Every directory that is, or leads into, a protected place
+    /// (`protected`), and so was not read: `~`-abbreviated like
+    /// `ScannedDir::path`, as it was looked for (a `PATH` entry in
+    /// `~/Documents`, or `~/bin` as a link to the Desktop), each place once.
+    /// The page's 「有N个文件夹在受保护的位置，没有读取」. Defaulted when
+    /// absent, so a scan from before it still reads.
+    #[serde(default)]
+    pub protected_dirs: Vec<PathBuf>,
     /// The programs nobody claimed: the rows.
     pub entries: Vec<UnknownEntry>,
     /// How many examined programs a registered source accounted for and
@@ -379,9 +411,20 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 }
 
 /// What the registered sources have said is theirs, indexed once per scan
-/// so the rules are lookups rather than a `canonicalize` per entry per
-/// instance. Built from a clone of the snapshot (`Session::scan_unknown`):
-/// a refresh committing meanwhile does not move it.
+/// so the rules are lookups rather than a resolve per entry per instance.
+/// Built from a clone of the snapshot (`Session::scan_unknown`): a refresh
+/// committing meanwhile does not move it.
+///
+/// "Resolves to" below is `leads_to`: every link followed one step at a
+/// time, never into a protected place. Where an entry, an `exe_path`, an
+/// artifact's path or an owned root is, or leads into, a protected place,
+/// it is compared by the path as far as that place and the rest as written
+/// -- by name, nothing there looked at. So an owned root on `/Volumes` (a
+/// Homebrew installed on an external disk) still claims what links into
+/// it by name, and is never turned into unknown programs; and a link that
+/// leads into `~/Documents`, under no source's root by name, is listed.
+/// Paths compare as a Mac's disk names them, case aside and whichever
+/// spelling of the data volume names them (`same_place`, `is_under`).
 ///
 /// The rules, in order; the first that matches wins (spec §8.3):
 ///
@@ -428,6 +471,9 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    `Recipe.backup_globs` (phase 4 step D); without the instance, listed.
 struct Known {
     exe_raw: Vec<(PathBuf, InstanceId)>,
+    /// Where each instance's `exe_path` leads (`leads_to`): every link
+    /// followed, or -- for one that leads into a protected place -- the
+    /// path as far as that, the rest as written.
     exe_canonical: Vec<(PathBuf, InstanceId)>,
     /// Rule 1 for a link that leads nowhere: where each instance's
     /// `exe_path` that leads nowhere would lead (`dead_end`), with the
@@ -435,17 +481,57 @@ struct Known {
     /// while it is empty, `claimant` looks up no broken link's `dead_end`.
     exe_dead_ends: Vec<(PathBuf, InstanceId)>,
     artifact_roots: Vec<(PathBuf, InstanceId)>,
-    /// Rule 3: every `owned_roots` of every instance, canonical, with the
-    /// instance that owns it. A root that does not exist (Homebrew with
-    /// no casks has no `Caskroom`) is simply absent.
+    /// Rule 3: every `owned_roots` of every instance, where it leads
+    /// (`leads_to`), with the instance that owns it. A root that does not
+    /// exist (Homebrew with no casks has no `Caskroom`) is simply absent;
+    /// one in a protected place -- a Homebrew prefix on `/Volumes` -- is
+    /// kept by its name, never looked at.
     owned: Vec<(PathBuf, InstanceId)>,
     /// Rule 4: for every instance whose adapter declares backup-file
     /// patterns (`Recipe.backup_globs`, handed in by `Session::scan_unknown`
-    /// keyed by adapter id), each pattern's directory, canonical, with the
-    /// pattern and the instance. A directory that does not exist is simply
-    /// absent; a tool with no instance contributes nothing, so its leftover
-    /// backup is listed.
+    /// keyed by adapter id), each pattern's directory, where it leads, with
+    /// the pattern and the instance. A directory that does not exist is
+    /// simply absent; a tool with no instance contributes nothing, so its
+    /// leftover backup is listed.
     backups: Vec<(PathBuf, Glob, InstanceId)>,
+}
+
+/// Where `path` leads, for attribution: every link on the way followed
+/// one step at a time, never into a protected place (`protected::resolve`).
+/// For a path that is, or leads into, a protected place, the path as far
+/// as the links outside it were followed and the rest as written
+/// (`Resolution::Protected`): nothing there is looked at, so it is
+/// compared by name alone. That is how a Homebrew whose prefix is on
+/// `/Volumes` keeps its programs: the link in `/usr/local/bin` leads, by
+/// name, under `/Volumes/<disk>/homebrew/Cellar`, and so does that root,
+/// and neither is entered. `None` when nothing is there, or a folder on
+/// the way cannot be searched.
+fn leads_to(path: &Path, protected: &Protected) -> Option<PathBuf> {
+    match protected::resolve(path, protected, true) {
+        Resolution::Found(real, _) => Some(real),
+        Resolution::Protected(at) => Some(at),
+        Resolution::Missing | Resolution::Refused => None,
+    }
+}
+
+/// Whether `a` and `b` are one place: compared as a Mac's disk compares
+/// names, without regard to ASCII case (`resolve` keeps each name as it is
+/// spelled, where `realpath` would answer the disk's spelling), and
+/// whichever spelling of the data volume names either
+/// (`protected::without_data_volume`).
+fn same_place(a: &Path, b: &Path) -> bool {
+    protected::same_path(
+        &protected::without_data_volume(a),
+        &protected::without_data_volume(b),
+    )
+}
+
+/// Whether `path` is `root` or under it, compared as `same_place` does.
+fn is_under(path: &Path, root: &Path) -> bool {
+    protected::starts_with_folded(
+        &protected::without_data_volume(path),
+        &protected::without_data_volume(root),
+    )
 }
 
 impl Known {
@@ -454,16 +540,17 @@ impl Known {
         artifacts: &[InstalledArtifact],
         globs: &[(String, &'static [Glob])],
         home: &Path,
+        protected: &Protected,
     ) -> Known {
         let mut exe_raw = Vec::with_capacity(instances.len());
         let mut exe_canonical = Vec::with_capacity(instances.len());
         let mut exe_dead_ends = Vec::new();
         for inst in instances {
             exe_raw.push((inst.exe_path.clone(), inst.id.clone()));
-            match std::fs::canonicalize(&inst.exe_path) {
-                Ok(canonical) => exe_canonical.push((canonical, inst.id.clone())),
-                Err(_) => {
-                    if let Some(end) = dead_end(&inst.exe_path) {
+            match leads_to(&inst.exe_path, protected) {
+                Some(leads) => exe_canonical.push((leads, inst.id.clone())),
+                None => {
+                    if let Some(end) = dead_end(&inst.exe_path, protected) {
                         exe_dead_ends.push((end, inst.id.clone()));
                     }
                 }
@@ -472,18 +559,16 @@ impl Known {
         let artifact_roots = artifacts
             .iter()
             .filter_map(|artifact| {
-                let path = artifact.path.as_ref()?;
-                let canonical = std::fs::canonicalize(path).ok()?;
-                Some((canonical, artifact.key.instance_id.clone()))
+                let leads = leads_to(artifact.path.as_ref()?, protected)?;
+                Some((leads, artifact.key.instance_id.clone()))
             })
             .collect();
         let owned = instances
             .iter()
             .flat_map(|inst| {
-                owned_roots(inst, home).into_iter().filter_map(move |root| {
-                    let canonical = std::fs::canonicalize(root).ok()?;
-                    Some((canonical, inst.id.clone()))
-                })
+                owned_roots(inst, home)
+                    .into_iter()
+                    .filter_map(move |root| Some((leads_to(&root, protected)?, inst.id.clone())))
             })
             .collect();
         let backups = instances
@@ -494,7 +579,7 @@ impl Known {
                     .filter(move |(adapter_id, _)| *adapter_id == inst.adapter_id)
                     .flat_map(move |(_, patterns)| {
                         patterns.iter().filter_map(move |glob| {
-                            let dir = std::fs::canonicalize(glob.dir_under(home)).ok()?;
+                            let dir = leads_to(&glob.dir_under(home), protected)?;
                             Some((dir, *glob, inst.id.clone()))
                         })
                     })
@@ -510,27 +595,33 @@ impl Known {
         }
     }
 
-    /// The source that put `raw` (in the canonical directory `dir`; real
-    /// path `resolved`, `None` for a broken link; `kind` what it is) there,
-    /// by the first rule that matches -- or `None`: unknown.
+    /// The source that put `raw` (in the folder `dir`, where it leads;
+    /// leading to `leads` -- `leads_to`, `None` for a broken link; `kind`
+    /// what it is) there, by the first rule that matches -- or `None`:
+    /// unknown.
     fn claimant(
         &self,
         raw: &Path,
         dir: &Path,
-        resolved: Option<&Path>,
+        leads: Option<&Path>,
         kind: EntryKind,
+        protected: &Protected,
     ) -> Option<&InstanceId> {
         if let Some((_, id)) = self.exe_raw.iter().find(|(exe, _)| exe == raw) {
             return Some(id);
         }
-        if let Some(resolved) = resolved {
-            if let Some((_, id)) = self.exe_canonical.iter().find(|(exe, _)| exe == resolved) {
+        if let Some(leads) = leads {
+            if let Some((_, id)) = self
+                .exe_canonical
+                .iter()
+                .find(|(exe, _)| same_place(exe, leads))
+            {
                 return Some(id);
             }
             if let Some((_, id)) = self
                 .artifact_roots
                 .iter()
-                .find(|(root, _)| resolved.starts_with(root))
+                .find(|(root, _)| is_under(leads, root))
             {
                 return Some(id);
             }
@@ -538,7 +629,7 @@ impl Known {
             if let Some((_, id)) = self
                 .owned
                 .iter()
-                .filter(|(root, _)| resolved.starts_with(root))
+                .filter(|(root, _)| is_under(leads, root))
                 .max_by_key(|(root, _)| root.as_os_str().len())
             {
                 return Some(id);
@@ -547,8 +638,12 @@ impl Known {
         // Rule 1 for a link that leads nowhere: the same missing file an
         // instance's `exe_path`, leading nowhere too, would lead to.
         if kind == EntryKind::BrokenSymlink && !self.exe_dead_ends.is_empty() {
-            if let Some(end) = dead_end(raw) {
-                if let Some((_, id)) = self.exe_dead_ends.iter().find(|(exe, _)| *exe == end) {
+            if let Some(end) = dead_end(raw, protected) {
+                if let Some((_, id)) = self
+                    .exe_dead_ends
+                    .iter()
+                    .find(|(exe, _)| same_place(exe, &end))
+                {
                     return Some(id);
                 }
             }
@@ -558,11 +653,9 @@ impl Known {
         // somebody's link, not the updater's copy.
         if kind == EntryKind::File {
             if let Some(name) = raw.file_name().and_then(|name| name.to_str()) {
-                if let Some((_, _, id)) = self
-                    .backups
-                    .iter()
-                    .find(|(glob_dir, glob, _)| glob_dir == dir && glob.matches_name(name))
-                {
+                if let Some((_, _, id)) = self.backups.iter().find(|(glob_dir, glob, _)| {
+                    same_place(glob_dir, dir) && glob.matches_name(name)
+                }) {
                     return Some(id);
                 }
             }
@@ -583,33 +676,61 @@ const MOST_LINKS: usize = 32;
 /// launcher and for `~/.grok/bin/agent` beside it, and for a fallback link
 /// in `~/.local/bin` whose text names either. `None` when a place on the
 /// way is there and is not a link (the link leads somewhere after all) or
-/// cannot be placed or looked at, and when more than `MOST_LINKS` links
-/// stand in the way. Read by `Known::index`, for an instance's `exe_path`,
-/// and by `Known::claimant`, for a broken link (rule 1).
-fn dead_end(link: &Path) -> Option<PathBuf> {
+/// cannot be placed or looked at, when it is in or leads into a protected
+/// place (nothing there is looked at, so nobody knows whether it is
+/// there), and when more than `MOST_LINKS` links stand in the way. Every
+/// look is a guarded one (`protected::resolve`, `link_text`). Read by
+/// `Known::index`, for an instance's `exe_path`, and by `Known::claimant`,
+/// for a broken link (rule 1).
+fn dead_end(link: &Path, protected: &Protected) -> Option<PathBuf> {
     let mut link = link.to_path_buf();
     for _ in 0..MOST_LINKS {
-        let text = std::fs::read_link(&link).ok()?;
+        let (folder, text) = link_text(&link, protected)?;
         // `join` with an absolute text is that text.
-        let place = placed(&link.parent()?.join(text))?;
-        match std::fs::symlink_metadata(&place) {
-            Ok(meta) if meta.file_type().is_symlink() => link = place,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(place),
-            Ok(_) | Err(_) => return None,
+        let place = placed(&folder.join(text), protected)?;
+        match protected::resolve(&place, protected, false) {
+            Resolution::Found(_, stat) if stat.is_symlink() => link = place,
+            Resolution::Missing => return Some(place),
+            Resolution::Found(..) | Resolution::Protected(_) | Resolution::Refused => return None,
         }
     }
     None
 }
 
+/// The text of the link at `path`, and the folder it is in, every link on
+/// the way to that folder followed (`protected::resolve`). The text is
+/// read from that folder held open -- reached from `/` with no link
+/// followed and checked to be the folder `resolve` found (`dirfd`) --
+/// never by the link's own path. `None` when the folder is, or leads into,
+/// a protected place, or the link itself is one (`~/Documents` as a link):
+/// nothing there is looked at. Also `None` when it is not a link.
+fn link_text(path: &Path, protected: &Protected) -> Option<(PathBuf, PathBuf)> {
+    let name = path.file_name()?;
+    let Resolution::Found(folder, stat) = protected::resolve(path.parent()?, protected, true)
+    else {
+        return None;
+    };
+    if !stat.is_dir() || protected.contains(&folder.join(name)) {
+        return None;
+    }
+    let (held, opened) = Dir::open_path(&folder, false).ok()?;
+    if !opened.same_as(&stat) || !held.stat_at(name).ok()?.is_symlink() {
+        return None;
+    }
+    let text = held.read_link_at(name).ok()?;
+    Some((folder, text))
+}
+
 /// The place `path` names, its last name not followed: every folder on the
-/// way resolved while it is there -- `canonicalize` on each in turn, so a
-/// linked folder is followed and a `..` after it climbs from where it led,
-/// as the system's lookup does -- and, from the first folder that is not
-/// there, the rest folded without touching the disk. `None` for a relative
-/// `path`, one ending in `..` or naming `/`, and one with a folder on the
-/// way that is there but cannot be resolved (a link to nothing, a loop, a
-/// file, a folder Banager may not look into). Read by `dead_end`.
-fn placed(path: &Path) -> Option<PathBuf> {
+/// way resolved while it is there -- `protected::resolve` on each in turn,
+/// so a linked folder is followed and a `..` after it climbs from where it
+/// led, as the system's lookup does -- and, from the first folder that is
+/// not there, the rest folded without touching the disk. `None` for a
+/// relative `path`, one ending in `..` or naming `/`, and one with a folder
+/// on the way that is there but cannot be resolved (a link to nothing, a
+/// loop, a file, a folder Banager may not look into) or that is, or leads
+/// into, a protected place. Read by `dead_end`.
+fn placed(path: &Path, protected: &Protected) -> Option<PathBuf> {
     if !path.is_absolute() {
         return None;
     }
@@ -621,17 +742,18 @@ fn placed(path: &Path) -> Option<PathBuf> {
             Component::Normal(part) => {
                 folder.push(part);
                 if there {
-                    match std::fs::canonicalize(&folder) {
-                        Ok(real) => folder = real,
-                        Err(error)
-                            if error.kind() == std::io::ErrorKind::NotFound
-                                && std::fs::symlink_metadata(&folder).is_err_and(|error| {
-                                    error.kind() == std::io::ErrorKind::NotFound
-                                }) =>
-                        {
-                            there = false;
+                    match protected::resolve(&folder, protected, true) {
+                        Resolution::Found(real, _) => folder = real,
+                        // Not there at all, rather than a link to
+                        // nothing: the folder it is in was resolved just
+                        // before, so this looks at that one name alone.
+                        Resolution::Missing => {
+                            match protected::resolve(&folder, protected, false) {
+                                Resolution::Missing => there = false,
+                                _ => return None,
+                            }
                         }
-                        Err(_) => return None,
+                        Resolution::Protected(_) | Resolution::Refused => return None,
                     }
                 }
             }
@@ -647,6 +769,13 @@ fn placed(path: &Path) -> Option<PathBuf> {
     Some(folder.join(name))
 }
 
+/// One entry `examine` describes: the row, and where it leads for the
+/// rules (`leads_to`'s answer; `None` for a broken link).
+struct Examined {
+    entry: UnknownEntry,
+    leads: Option<PathBuf>,
+}
+
 /// One directory entry as the page will describe it, or `None` for the
 /// ones the scan does not list at all: a subdirectory (depth 1, never
 /// recursed -- `~/Library/pnpm` on the research machine held `bin/` and
@@ -654,58 +783,95 @@ fn placed(path: &Path) -> Option<PathBuf> {
 /// position (checked on the target; a theoretical boundary, the
 /// research machine had none), anything that is neither a file nor a
 /// link, and an entry whose `lstat` failed -- one failed `stat` costs that
-/// entry and nothing else. Every file-system read the walk makes is here,
-/// in `scan_dirs`'s `read_dir`, or -- for a broken link, while some
-/// instance's launcher leads nowhere too -- in `dead_end` (rule 1).
-fn examine(raw: &Path, home: &Path, euid: u32) -> Option<UnknownEntry> {
-    let lstat = std::fs::symlink_metadata(raw).ok()?;
-    let file_type = lstat.file_type();
-    let (kind, resolved, link_target) = if file_type.is_symlink() {
-        let link_target = std::fs::read_link(raw)
-            .ok()
+/// entry and nothing else.
+///
+/// `name` is looked at in `folder`, held open on the scanned folder
+/// (`fstatat`, `readlinkat` from its descriptor); `dir` is that folder's
+/// path as `resolve` found it, `raw` the entry as the page names it. Where
+/// a link leads is found one step at a time and never into a protected
+/// place (`protected::resolve`): a link that leads into one is listed by
+/// its own name, as `EntryKind::ProtectedSymlink`, and nothing it leads to
+/// is looked at -- not its size, its date, nor whether it can be run.
+/// Every file-system read the walk makes is here, in `scan_dirs`'s
+/// listing, or -- for a broken link, while some instance's launcher leads
+/// nowhere too -- in `dead_end` (rule 1).
+fn examine(
+    folder: &Dir,
+    dir: &Path,
+    name: &OsStr,
+    raw: &Path,
+    env: &HostEnv,
+    protected: &Protected,
+) -> Option<Examined> {
+    let lstat = folder.stat_at(name).ok()?;
+    let at = dir.join(name);
+    let (kind, resolved, link_target, target, leads) = if lstat.is_symlink() {
+        let text = folder.read_link_at(name).ok();
+        let link_target = text
+            .as_ref()
             .map(|target| target.to_string_lossy().into_owned());
-        match std::fs::canonicalize(raw) {
-            Ok(resolved) => (EntryKind::Symlink, Some(resolved), link_target),
-            Err(_) => (EntryKind::BrokenSymlink, None, link_target),
+        match protected::resolve(&at, protected, true) {
+            Resolution::Found(real, stat) => (
+                EntryKind::Symlink,
+                Some(real.clone()),
+                link_target,
+                Some(stat),
+                Some(real),
+            ),
+            Resolution::Protected(leads) => (
+                EntryKind::ProtectedSymlink,
+                None,
+                link_target,
+                None,
+                Some(leads),
+            ),
+            Resolution::Missing | Resolution::Refused => {
+                (EntryKind::BrokenSymlink, None, link_target, None, None)
+            }
         }
-    } else if file_type.is_file() {
-        (EntryKind::File, std::fs::canonicalize(raw).ok(), None)
+    } else if lstat.is_file() {
+        (
+            EntryKind::File,
+            Some(at.clone()),
+            None,
+            Some(lstat),
+            Some(at),
+        )
     } else {
         return None;
     };
     // Size, date and the executable check are the target's: a link's own
     // say only when the installer made the link.
-    let target = match kind {
-        EntryKind::BrokenSymlink => None,
-        EntryKind::File | EntryKind::Symlink => Some(std::fs::metadata(raw).ok()?),
-    };
     if let Some(target) = &target {
         if target.is_dir() || (target.mode() & 0o111) == 0 {
             return None;
         }
     }
     let (size_bytes, modified_at) = match &target {
-        Some(target) => (Some(target.len()), Some(target.mtime())),
+        Some(target) => (Some(target.size()), Some(target.mtime())),
         None => (None, None),
     };
     let mut bundle_candidates: Vec<&Path> = Vec::new();
-    if let Some(resolved) = &resolved {
-        bundle_candidates.push(resolved);
+    if let Some(leads) = &leads {
+        bundle_candidates.push(leads);
     }
     if let Some(target) = &link_target {
         bundle_candidates.push(Path::new(target));
     }
     bundle_candidates.push(raw);
     let app_bundle = app_bundle(bundle_candidates);
-    Some(UnknownEntry {
-        path: display_path(raw, home),
-        kind,
-        resolved,
-        link_target,
-        size_bytes,
-        modified_at,
-        owned_by_me: lstat.uid() == euid,
-        app_bundle,
+    Some(Examined {
+        entry: UnknownEntry {
+            path: display_path(raw, &env.home),
+            kind,
+            resolved,
+            link_target,
+            size_bytes,
+            modified_at,
+            owned_by_me: lstat.uid() == env.euid,
+            app_bundle,
+        },
+        leads,
     })
 }
 
@@ -713,10 +879,17 @@ fn examine(raw: &Path, home: &Path, euid: u32) -> Option<UnknownEntry> {
 /// production calls; this is what the synthetic-tree tests call, so a
 /// test never reads the `/usr/local/bin` of the machine running it.
 ///
-/// Directories that do not exist are skipped without a trace; each
-/// distinct directory (by canonical path) is read once; entries are taken
-/// in name order so a stop at the budget is reproducible. The time budget
-/// is checked before every `read_dir`, and both limits before every entry
+/// Each directory is found one step at a time from `/`, every step
+/// checked against the protected places before it is taken
+/// (`protected::resolve`, with the places of `env.home`): one that is, or
+/// leads into, a protected place is not read, nor anything in it looked
+/// at, and is named in `UnknownScan::protected_dirs` instead. Directories
+/// that do not exist, or that cannot be reached or listed, are skipped
+/// without a trace; each distinct directory (by where it leads) is read
+/// once, listed from `/` with no link followed and only while it is still
+/// the folder `resolve` found (`dirfd`); entries are taken in name order
+/// so a stop at the budget is reproducible. The time budget is checked
+/// before every listing, and both limits before every entry
 /// (`ScanBudget`); when one trips, what was examined so far is returned
 /// as it is, with `stopped` saying which limit -- a directory whose first
 /// entry tripped it is not reported as read. `globs` are the installed
@@ -735,21 +908,33 @@ pub fn scan_dirs(
     let time_stop = ScanStop::TimeLimit {
         max_secs: u32::try_from(budget.max_duration.as_secs()).unwrap_or(u32::MAX),
     };
-    let known = Known::index(instances, artifacts, globs, &env.home);
+    let protected = Protected::new(&env.home);
+    let known = Known::index(instances, artifacts, globs, &env.home, &protected);
     // The clock starts here, after indexing: `ScanBudget::max_duration`
-    // bounds the walk, not the `canonicalize` per known path above.
+    // bounds the walk, not the resolving of each known path above.
     let started = Instant::now();
     let mut scanned = Vec::new();
+    let mut protected_dirs = Vec::new();
     let mut entries = Vec::new();
     let mut attributed = 0u32;
     let mut stopped = None;
     let mut examined = 0usize;
     let mut seen: Vec<PathBuf> = Vec::new();
     'dirs: for dir in dirs {
-        let Ok(canonical) = std::fs::canonicalize(dir) else {
-            continue;
+        let (canonical, stat) = match protected::resolve(dir, &protected, true) {
+            Resolution::Found(canonical, stat) if stat.is_dir() => (canonical, stat),
+            Resolution::Found(..) | Resolution::Missing | Resolution::Refused => continue,
+            Resolution::Protected(leads) => {
+                // Named once, by the name it was looked for under, however
+                // many entries lead there.
+                if !seen.iter().any(|seen| same_place(seen, &leads)) {
+                    seen.push(leads);
+                    protected_dirs.push(display_path(dir, &env.home));
+                }
+                continue;
+            }
         };
-        if seen.contains(&canonical) {
+        if seen.iter().any(|seen| same_place(seen, &canonical)) {
             continue;
         }
         seen.push(canonical.clone());
@@ -757,14 +942,19 @@ pub fn scan_dirs(
             stopped = Some(time_stop.clone());
             break;
         }
-        // Unreadable (permissions) is not "read": it is not reported either.
-        let Ok(read) = std::fs::read_dir(dir) else {
+        // Unreadable (permissions) is not "read": it is not reported
+        // either. Nor is a folder that was replaced since `resolve` saw it.
+        let listed = Dir::open_path(&canonical, true)
+            .ok()
+            .filter(|(_, opened)| opened.same_as(&stat))
+            .and_then(|(folder, _)| {
+                let names = folder.entries().ok()?;
+                Some((folder, names))
+            });
+        let Some((folder, read)) = listed else {
             continue;
         };
-        let mut names: Vec<_> = read
-            .filter_map(Result::ok)
-            .map(|entry| entry.file_name())
-            .collect();
+        let mut names: Vec<OsString> = read.filter_map(Result::ok).collect();
         names.sort();
         let mut count = 0u32;
         for name in names {
@@ -787,13 +977,19 @@ pub fn scan_dirs(
             }
             examined += 1;
             count += 1;
-            let raw = dir.join(name);
-            let Some(entry) = examine(&raw, &env.home, env.euid) else {
+            let raw = dir.join(&name);
+            let Some(found) = examine(&folder, &canonical, &name, &raw, env, &protected) else {
                 continue;
             };
-            match known.claimant(&raw, &canonical, entry.resolved.as_deref(), entry.kind) {
+            match known.claimant(
+                &raw,
+                &canonical,
+                found.leads.as_deref(),
+                found.entry.kind,
+                &protected,
+            ) {
                 Some(_) => attributed += 1,
-                None => entries.push(entry),
+                None => entries.push(found.entry),
             }
         }
         scanned.push(ScannedDir {
@@ -803,6 +999,7 @@ pub fn scan_dirs(
     }
     UnknownScan {
         scanned,
+        protected_dirs,
         entries,
         attributed,
         stopped,
@@ -874,11 +1071,17 @@ mod tests {
             r#"{"TimeLimit":{"max_secs":10}}"#
         );
 
+        assert_eq!(
+            serde_json::to_string(&EntryKind::ProtectedSymlink).unwrap(),
+            r#""ProtectedSymlink""#
+        );
+
         let scan = UnknownScan {
             scanned: vec![ScannedDir {
                 path: PathBuf::from("~/.local/bin"),
                 entries: 5,
             }],
+            protected_dirs: vec![PathBuf::from("~/Documents/scripts")],
             entries: vec![UnknownEntry {
                 path: PathBuf::from("~/.local/bin/old-script"),
                 kind: EntryKind::BrokenSymlink,
@@ -902,9 +1105,21 @@ mod tests {
         assert!(json.contains(r#""kind":"BrokenSymlink""#), "{json}");
         assert!(json.contains(r#""resolved":null"#), "{json}");
         assert!(json.contains(r#""owned_by_me":true"#), "{json}");
+        assert!(
+            json.contains(r#""protected_dirs":["~/Documents/scripts"]"#),
+            "{json}"
+        );
         assert_eq!(
             serde_json::from_str::<UnknownScan>(&json).expect("deserialize"),
             scan
+        );
+        // A scan sent before `protected_dirs` existed reads as none.
+        let older = r#"{"scanned":[],"entries":[],"attributed":0,"stopped":null}"#;
+        assert_eq!(
+            serde_json::from_str::<UnknownScan>(older)
+                .expect("deserialize")
+                .protected_dirs,
+            Vec::<PathBuf>::new()
         );
 
         let stopped = UnknownScan {
@@ -1201,10 +1416,17 @@ mod tests {
             prefix: inner.clone(),
             ..crate::testing::manager_instance("ollama", "ollama:http://inner:11434")
         };
-        let known = Known::index(&[outer_inst, inner_inst], &[], &[], &tmp);
+        let protected = Protected::new(&tmp);
+        let known = Known::index(&[outer_inst, inner_inst], &[], &[], &tmp, &protected);
         assert_eq!(
             known
-                .claimant(&entry, &inner_bin, Some(&entry), EntryKind::File)
+                .claimant(
+                    &entry,
+                    &inner_bin,
+                    Some(&entry),
+                    EntryKind::File,
+                    &protected
+                )
                 .map(String::as_str),
             Some("ollama:http://inner:11434")
         );
