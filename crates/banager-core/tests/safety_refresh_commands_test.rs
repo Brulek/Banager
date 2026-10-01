@@ -11,9 +11,11 @@
 //! as it was (promise 4).
 //!
 //! Homebrew is left out here only because it is found at fixed paths on
-//! this Mac's own disk (`/opt/homebrew`), which a test cannot point
-//! elsewhere; its refresh commands are pinned in `adapters/brew/mod.rs`'s
-//! own tests, and `brew update` has a section of its own.
+//! this Mac's own disk (`/opt/homebrew`), which a test out here cannot
+//! point elsewhere. The same check for it is a unit test in
+//! `adapters/brew/mod.rs`
+//! (`test_a_refresh_runs_only_the_read_only_commands_homebrews_section_shows`),
+//! with `brew update`, which has a table of its own, checked apart.
 
 use async_trait::async_trait;
 use banager_core::adapters::cargo::CargoAdapter;

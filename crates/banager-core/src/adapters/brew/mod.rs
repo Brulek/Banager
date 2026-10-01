@@ -5457,4 +5457,154 @@ mod plan_execute_tests {
         );
         let _ = std::fs::remove_dir_all(&prefix);
     }
+
+    /// Promise 3 of docs/what-we-run.md for Homebrew, which
+    /// `tests/safety_refresh_commands_test.rs` cannot reach (Homebrew is
+    /// found at fixed paths): every command a refresh asks of Homebrew --
+    /// `detect`, `inventory` and `check_updates` with and without
+    /// `--greedy` -- is one the Homebrew section shows outside its
+    /// "Needs a password" table, with `{name}` standing for one argument,
+    /// and none is one of that table's. `brew update` is the one command
+    /// that changes Homebrew itself; it is checked apart: it runs once,
+    /// and the section gives it a table of its own.
+    #[tokio::test]
+    async fn test_a_refresh_runs_only_the_read_only_commands_homebrews_section_shows() {
+        const BREW: &str = "/opt/homebrew/bin/brew";
+        let ok = |stdout: &str| CommandOutput {
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![BREW, "--version"],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.3/version.txt"
+            )),
+        );
+        runner.respond(vec![BREW, "update"], ok(""));
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            ok(include_str!(
+                "../../../../../adapters/fixtures/brew/7.0.3/info-installed.json"
+            )),
+        );
+        let outdated = include_str!("../../../../../adapters/fixtures/brew/7.0.3/outdated.json");
+        runner.respond(vec![BREW, "outdated", "--json=v2"], ok(outdated));
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2", "--greedy"],
+            ok(outdated),
+        );
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_path_exists_fn(|path| path == Path::new("/opt/homebrew/bin/brew"));
+        let env = HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+
+        let instances = adapter.detect(&env).await;
+        assert_eq!(instances.len(), 1, "{instances:?}");
+        let inst = &instances[0];
+        assert!(inst.status.unavailable.is_none(), "{inst:?}");
+        // Their answers are not asserted: a command the runner was not
+        // given an answer for fails the call, and the check below must
+        // still see the command it was asked.
+        let inventory = adapter.inventory(inst).await;
+        let mut checks = Vec::new();
+        for greedy in [false, true] {
+            let opts = CheckOptions {
+                include_self_updating: greedy,
+                ..CheckOptions::default()
+            };
+            checks.push(adapter.check_updates(inst, &opts).await.map(|_| ()));
+        }
+
+        let doc = include_str!("../../../../../docs/what-we-run.md");
+        let start = doc.find("\n## Homebrew\n").expect("a section ## Homebrew") + 1;
+        let section = &doc[start..];
+        let section = &section[..section[3..]
+            .find("\n## ")
+            .map_or(section.len(), |at| at + 3)];
+        let mut reads: Vec<String> = Vec::new();
+        let mut writes: Vec<String> = Vec::new();
+        let mut in_write_table = false;
+        for line in section.lines() {
+            if !line.starts_with('|') {
+                in_write_table = false;
+            } else if line.contains("Needs a password") {
+                in_write_table = true;
+            }
+            for (index, span) in line.split('`').enumerate() {
+                if index % 2 == 1 && span.starts_with("<brew> ") {
+                    if in_write_table {
+                        writes.push(span.to_string());
+                    } else {
+                        reads.push(span.to_string());
+                    }
+                }
+            }
+            // The `outdated` row adds its flag in words.
+            if line.contains("`<brew> outdated --json=v2`, plus `--greedy`") {
+                reads.push("<brew> outdated --json=v2 --greedy".to_string());
+            }
+        }
+        assert!(
+            reads.contains(&"<brew> outdated --json=v2 --greedy".to_string()),
+            "the section says when `--greedy` is added"
+        );
+        assert!(
+            section.contains("| Update Homebrew and its local package index (`maybe_update`) | `<brew> update` |"),
+            "`brew update` has its own row"
+        );
+        assert!(!writes.is_empty(), "the section's write table was read");
+        let is = |argv: &[String], written: &str| {
+            let words: Vec<&str> = written.split_whitespace().collect();
+            words.len() == argv.len()
+                && words.iter().zip(argv).all(|(word, arg)| {
+                    *word == arg || (word.starts_with('{') && word.ends_with('}'))
+                })
+        };
+
+        let calls = runner.calls();
+        let mut updates = 0;
+        for call in &calls {
+            assert_eq!(call[0], BREW, "{call:?}");
+            let mut argv = vec!["<brew>".to_string()];
+            argv.extend(call[1..].iter().cloned());
+            assert!(
+                writes.iter().all(|write| !is(&argv, write)),
+                "a refresh ran {argv:?}, a write command of Homebrew"
+            );
+            if argv[1..] == ["update"] {
+                updates += 1;
+                continue;
+            }
+            assert!(
+                reads.iter().any(|read| is(&argv, read)),
+                "a refresh ran {argv:?}, which ## Homebrew does not show as read-only: {reads:?}"
+            );
+        }
+        assert_eq!(updates, 1, "`brew update` ran once: {calls:?}");
+        assert!(inventory.is_ok_and(|found| !found.is_empty()));
+        assert!(checks.iter().all(Result::is_ok), "{checks:?}");
+        // Not a test that ran nothing: each kind of command was asked.
+        for wanted in [
+            vec!["--version"],
+            vec!["info", "--installed", "--json=v2"],
+            vec!["outdated", "--json=v2"],
+            vec!["outdated", "--json=v2", "--greedy"],
+        ] {
+            assert!(
+                calls.iter().any(|call| call[1..] == wanted[..]),
+                "{wanted:?} ran: {calls:?}"
+            );
+        }
+    }
 }
