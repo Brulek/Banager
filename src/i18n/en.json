@@ -889,17 +889,9 @@
     "mixed_other": "Uninstalled {{done}}; {{count}} weren't uninstalled"
   },
   "reviewFixes": {
-    "hostedManages_one": "{{names}}, installed with {{program}}, will stay, but can't be updated or uninstalled here after this.",
-    "hostedManages_other": "{{names}}, installed with {{program}}, will stay, but can't be updated or uninstalled here after this.",
-    "hostedRuns_one": "{{names}}, installed with {{program}}, needs {{runsOn}} and may stop working after this.",
-    "hostedRuns_other": "{{names}}, installed with {{program}}, need {{runsOn}} and may stop working after this.",
-    "hostedBoth_one": "{{names}}, installed with {{program}}, will stay, but may stop working after this and can't be updated or uninstalled here.",
-    "hostedBoth_other": "{{names}}, installed with {{program}}, will stay, but may stop working after this and can't be updated or uninstalled here.",
     "cannotUninstallOne": "“{{name}}” can't be uninstalled here",
     "passwordNamed_one": "{{names}} may ask for your Mac password.",
     "passwordNamed_other": "{{names}} may ask for your Mac password.",
-    "hostedThrough_one": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
-    "hostedThrough_other": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
     "selectAgain_one": "Select It Again",
     "selectAgain_other": "Select Them Again",
     "setupAttention_one": "{{count}} item needs attention",

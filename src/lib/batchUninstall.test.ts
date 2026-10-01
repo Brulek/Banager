@@ -3,7 +3,7 @@ import {
   batchSizeOf,
   classify,
   countedTicks,
-  hostedTools,
+  hosting,
   itemSizeOf,
   MAX_BATCH_UNINSTALL,
   mergeKept,
@@ -259,6 +259,56 @@ describe("which ticked tools a batch uninstalls", () => {
       ["unreadable", "unseen"],
       ["pkg", "unseen"],
     ]);
+  });
+
+  describe("a package other sources run on (X1b, Warning.NeededBySource)", () => {
+    const npmOnIt: Warning = { NeededBySource: { instance_id: npm.id, program: true, tools: 4 } };
+    const pipxToolsOnIt: Warning = { NeededBySource: { instance_id: pipx.id, program: false, tools: 2 } };
+
+    it("leaves it out with the sources and what Homebrew names, before any other reason", () => {
+      const result = classify(
+        [
+          candidate(node, { warnings: [npmOnIt], cancel_policy: "NoCancel" }),
+          candidate(python, { affected: ["pipx"], warnings: [{ WouldBreak: { names: ["pipx"] } }, pipxToolsOnIt] }),
+          candidate(git),
+        ],
+        everything,
+      );
+      expect(ids(result.included)).toEqual(["git"]);
+      expect(result.excluded.map((item) => [item.candidate.name, item.reason])).toEqual([
+        ["node@22", { kind: "neededBy", sources: [npmOnIt.NeededBySource], dependents: [] }],
+        ["python@3.13", { kind: "neededBy", sources: [pipxToolsOnIt.NeededBySource], dependents: ["pipx"] }],
+      ]);
+    });
+
+    it("leaves it out even with every tool of that source ticked: their uninstalls run beside it", () => {
+      const codex = artifact(npm, "Package", "@openai/codex");
+      const nodeLinked = formula("node", { facts: { ...NO_FACTS, commands: runs("node", "npm", "npx") } });
+      const result = classify(
+        [candidate(codex), candidate(nodeLinked, { warnings: [{ NeededBySource: { instance_id: npm.id, program: true, tools: 1 } }] })],
+        [...everything, codex, nodeLinked],
+      );
+      expect(ids(result.included)).toEqual(["@openai/codex"]);
+      // Not X5's reason, though X5 would leave it out too: the preview's own.
+      expect(result.excluded.map((item) => item.reason.kind)).toEqual(["neededBy"]);
+    });
+
+    it("keeps what it depends on, as any package left out does (X6)", () => {
+      // Homebrew's pipx, which the pipx source runs, and python@3.13, which
+      // only it still needs among what is ticked.
+      const result = classify(
+        [
+          candidate(pipxFormula, { warnings: [{ NeededBySource: { instance_id: pipx.id, program: true, tools: 2 } }] }),
+          candidate(python, { affected: ["pipx"] }),
+        ],
+        everything,
+      );
+      expect(ids(result.included)).toEqual([]);
+      expect(result.excluded.map((item) => [item.candidate.name, item.reason.kind])).toEqual([
+        ["pipx", "neededBy"],
+        ["python@3.13", "neededByExcluded"],
+      ]);
+    });
   });
 
   it("includes a tool whose dependents could not be checked, after the rest of its source", () => {
@@ -558,37 +608,28 @@ describe("what the included tools take", () => {
   });
 });
 
-describe("hostedTools", () => {
-  const instances = [brew, npm, pipx, ollama, uv];
+describe("hosting (X5's match, by command name)", () => {
   const codex = artifact(npm, "Package", "@openai/codex");
   const nodeLinked = formula("node", { facts: { ...NO_FACTS, commands: runs("node", "npm", "npx") } });
 
-  it("names the pipx tools Homebrew's pipx manages, and nothing it does not", () => {
-    const hosted = hostedTools(pipxFormula, instances, everything);
-    expect(hosted.map(({ program, manages, runs: runsThem, tools }) => [program, manages, runsThem, tools.map((tool) => tool.key.name)])).toEqual([
-      ["pipx", true, false, ["httpie", "poetry"]],
-    ]);
-    expect(hostedTools(git, instances, everything)).toEqual([]);
-    expect(hostedTools(httpie, instances, everything)).toEqual([]);
+  it("takes Homebrew's pipx for the pipx tools' program, and nothing else for it", () => {
+    expect(hosting(pipxFormula, brew, pipx, everything)).toEqual({ manages: true, runs: false });
+    expect(hosting(git, brew, pipx, everything)).toBeNull();
+    expect(hosting(httpie, pipx, pipx, everything)).toBeNull();
   });
 
   it("says npm's packages run on a Homebrew node, and that one with npm also manages them", () => {
-    const all = [...everything, codex, nodeLinked];
-    const hosted = hostedTools(nodeLinked, instances, all);
-    expect(hosted.map(({ program, runsOn, manages, runs: runsThem, tools }) => [program, runsOn, manages, runsThem, tools.length])).toEqual([
-      ["npm", "node", true, true, 1],
-    ]);
+    expect(hosting(nodeLinked, brew, npm, [...everything, codex, nodeLinked])).toEqual({ manages: true, runs: true });
   });
 
   it("takes no program outside this Homebrew's folder, nor a keg-only formula's beside the one Terminal finds", () => {
     const usrLocalNpm: ManagerInstance = { ...npm, id: "npm:/usr/local", exe_path: "/usr/local/bin/npm" };
-    const theirs = artifact(usrLocalNpm, "Package", "typescript");
     const node22 = formula("node@22", { facts: { ...NO_FACTS, commands: [{ name: "node", state: null }] } });
-    expect(hostedTools(nodeLinked, [brew, usrLocalNpm], [nodeLinked, theirs])).toEqual([]);
+    expect(hosting(nodeLinked, brew, usrLocalNpm, [nodeLinked])).toBeNull();
     // Keg-only, with a linked `node` beside it: not the one npm runs on.
-    expect(hostedTools(node22, instances, [node22, nodeLinked, codex])).toEqual([]);
+    expect(hosting(node22, brew, npm, [node22, nodeLinked, codex])).toBeNull();
     // Alone, it is the only `node` this Homebrew has.
-    expect(hostedTools(node22, instances, [node22, codex]).map(({ tools }) => tools.length)).toEqual([1]);
+    expect(hosting(node22, brew, npm, [node22, codex])).toEqual({ manages: false, runs: true });
   });
 
   it("leaves a Homebrew node out of a batch with an npm package, as it does pipx with a pipx tool (X5)", () => {

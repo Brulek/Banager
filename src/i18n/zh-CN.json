@@ -808,12 +808,8 @@
     "mixed_other": "已卸载{{done}}个，{{count}}个没有卸载"
   },
   "reviewFixes": {
-    "hostedManages_other": "用“{{program}}”装的{{names}}会留下，但卸载后无法再在这里更新或卸载。",
-    "hostedRuns_other": "用“{{program}}”装的{{names}}要用到{{runsOn}}，卸载后可能无法运行。",
-    "hostedBoth_other": "用“{{program}}”装的{{names}}会留下，但卸载后可能无法运行，也无法再在这里更新或卸载。",
     "cannotUninstallOne": "无法在这里卸载“{{name}}”",
     "passwordNamed_other": "{{names}}可能会要求输入Mac的密码。",
-    "hostedThrough_other": "用“{{program}}”装的{{names}}可能也在用它，卸载后可能无法运行。",
     "selectAgain_other": "重新选择这些工具",
     "setupAttention_other": "{{count}}项需要查看",
     "protectedFoldersIn_other": "有{{count}}个文件夹在受保护的位置，没有读取：{{places}}。",

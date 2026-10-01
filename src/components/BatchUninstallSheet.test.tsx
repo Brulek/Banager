@@ -216,7 +216,11 @@ function planOf(request: OpRequest): Plan {
         timeout_secs: 120,
       };
     default:
-      return { ...base, warnings: [scope("HomebrewFormulaOnly")], affected: DEPENDENTS[request.name] ?? [] };
+      return {
+        ...base,
+        warnings: [scope("HomebrewFormulaOnly"), ...(neededByOf[request.name] ?? [])],
+        affected: DEPENDENTS[request.name] ?? [],
+      };
   }
 }
 
@@ -225,6 +229,8 @@ let settings: Settings;
 let sizes: Sizes;
 /** Each plan request in the order it was asked for. */
 let planned: string[];
+/** The sources each Homebrew formula's preview says run on it (`Warning::NeededBySource`). */
+let neededByOf: Record<string, Warning[]>;
 /** When set, previews wait until a test lets them go. */
 let holdPlans: boolean;
 let held: Array<() => void>;
@@ -268,6 +274,7 @@ beforeEach(() => {
     ],
   };
   planned = [];
+  neededByOf = {};
   holdPlans = false;
   held = [];
   submitted = [];
@@ -502,14 +509,32 @@ describe("the batch uninstall's sheet", () => {
     ).toBeInTheDocument();
     // Said once: the plan's own "still needed by" is left out.
     expect(within(item).queryByText(/pipx uses it/)).toBeNull();
-    // What pipx leaves: its tools stay, with nothing here to update them, and
-    // may have run on this Python -- a caution under each.
-    expect(within(toolItem(dialog, "pipx")).getByText(
-      "httpie, installed with pipx, will stay, but can't be updated or uninstalled here after this.",
-    ).closest("li")).toHaveAttribute("data-caution");
-    expect(within(item).getByText("httpie, installed with pipx, may use it too, and may stop working after this.").closest("li")).toHaveAttribute(
-      "data-caution",
+    // Neither preview names a source that runs on it, so neither says
+    // anything of pipx's tools: no guess from command names.
+    expect(within(dialog).queryByText(/installed with pipx/)).toBeNull();
+  });
+
+  it("leaves out a Homebrew package another source runs on, in the single dialog's words, and what only it needed", async () => {
+    // The real preview of Homebrew's pipx, while the pipx source runs it
+    // and lists httpie (`Warning::NeededBySource`).
+    neededByOf.pipx = [{ NeededBySource: { instance_id: pipx.id, program: true, tools: 1 } }];
+    neededByOf.ollama = [{ NeededBySource: { instance_id: ollama.id, program: true, tools: 2 } }];
+    const dialog = await openSheet([python, pipxFormula, ollamaFormula, wget]);
+    expect(listOf(dialog, "Will be uninstalled")).toEqual(["wget"]);
+    expect(listOf(dialog, "Won't be uninstalled")).toEqual(["python@3.13", "pipx", "ollama"]);
+    const reason = (name: string) => toolItem(dialog, name).querySelector<HTMLElement>("[data-sheet-reason]");
+    expect(reason("pipx")).toHaveTextContent(
+      "Still used by pipx and its 1 tool. To uninstall it, first uninstall the tool installed with pipx.",
     );
+    expect(reason("ollama")).toHaveTextContent(
+      "Still used by Ollama and its 2 models. To uninstall it, first uninstall Ollama's 2 models.",
+    );
+    expect(reason("python@3.13")).toHaveTextContent("pipx still uses it and won't be uninstalled, so it won't be either.");
+    // An explanation, not a refusal: the secondary colour.
+    expect(reason("pipx")?.className).not.toMatch(/danger/);
+    // Nothing of theirs was started.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+    await waitFor(() => expect(submitted).toEqual(["wget"]));
   });
 
   it("says what each one deletes, where its files go, what it takes, and what they take together", async () => {

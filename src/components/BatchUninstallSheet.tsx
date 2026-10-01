@@ -36,7 +36,7 @@ import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapsho
 import { commandText } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
-import { hostedLines, hostedThroughLines } from "./hostedLines";
+import { neededByReason } from "../lib/neededBy";
 import { TextWithInfo } from "./InfoDetail";
 import {
   Refusal,
@@ -528,26 +528,12 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
       entry.artifact.key.kind === "Model" && entry.artifact.size_bytes !== null
         ? [plain(t("clarity.freesModel", { size: formatBytes(entry.artifact.size_bytes) }))]
         : [];
-    // What other sources installed through it: none of those tools is in
-    // the batch (X5 leaves a program out where one is), so each stays.
-    const hosted = [
-      ...hostedLines(t, entry.artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? []),
-      // And what those it runs after leave behind, which may have used it.
-      ...hostedThroughLines(
-        t,
-        after.flatMap((id) => {
-          const host = byId.get(id);
-          return host === undefined ? [] : [host.artifact];
-        }),
-        snapshot?.instances ?? [],
-        snapshot?.artifacts ?? [],
-      ),
-    ];
+    // Nothing about other sources' tools: a package any source runs on is
+    // left out (X1b, `Warning.NeededBySource`), so none that goes has one.
     return [
       ...said.map(plain),
       ...order,
       ...trash,
-      ...hosted,
       ...lines.note.filter((line) => line.caution),
       ...lines.note.filter((line) => !line.caution),
       ...(twin === null ? [] : [plain(twin)]),
@@ -590,6 +576,15 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         const { text, detail, title: detailTitle } = refusedText(t, reason.raw, entry, sourceLabelOf(entry.instance), technical);
         return <Refusal text={text} detail={detail} detailTitle={detailTitle} size="small" />;
       }
+      case "neededBy":
+        // The single confirmation's list and its sentence, in one reason:
+        // 「还有软件要用到它：npm和它的4个工具。要卸载它，请先卸载npm装的4个工具。」
+        return plainRefusal(
+          neededByReason(t, reason.sources, reason.dependents, (instanceId) => {
+            const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
+            return instance === undefined ? instanceId : sourceLabelOf(instance);
+          }),
+        );
       case "noCancel":
         return plainRefusal(t("batchUninstall.reason.noCancel"));
       case "permanent":

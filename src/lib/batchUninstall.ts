@@ -13,6 +13,7 @@
  */
 import { canWrite, isAvailable, uninstallHoldKey } from "./sources";
 import { deletesForGood } from "./warnings";
+import { neededBy, type NeededBy } from "./neededBy";
 import { saysSize, sizeNoteOf, sizeViewOf } from "./sizes";
 import { artifactKeyId } from "../store/ui";
 import type {
@@ -216,6 +217,14 @@ export interface BatchCandidate {
 export type Exclusion =
   /** X1: its preview was refused, in the backend's words. */
   | { kind: "refused"; raw: string }
+  /**
+   * X1b: its preview names other sources that run on it
+   * (`Warning.NeededBySource`): npm and its tools on `node@22`. Its own
+   * row offers no Uninstall for it either, and `Session::submit` refuses
+   * it; `dependents` is what Homebrew named beside them (`affected`), said
+   * with them.
+   */
+  | { kind: "neededBy"; sources: NeededBy[]; dependents: string[] }
   /** X2: it cannot be cancelled once it starts. */
   | { kind: "noCancel" }
   /** X3: it deletes something for good. */
@@ -342,38 +351,6 @@ export function hosting(
   return manages || runs ? { manages, runs } : null;
 }
 
-/** The tools of one other source that `artifact` is the program of. */
-export interface HostedTools extends Hosting {
-  instance: ManagerInstance;
-  /** The source's program, by name: 「pipx」. */
-  program: string;
-  /** The program its tools run on, by name, where it is another (`RUNS_ON`): 「node」 for npm's. */
-  runsOn: string | null;
-  tools: InstalledArtifact[];
-}
-
-/**
- * The tools other sources installed that need `artifact`'s program
- * (`hosting`): what a person uninstalling Homebrew's `pipx` leaves behind
- * with nothing in Banager able to update or uninstall it, and what
- * uninstalling a Homebrew `node` may stop from working. One entry a
- * source with any tool, in the snapshot's order of sources.
- */
-export function hostedTools(
-  artifact: InstalledArtifact,
-  instances: readonly ManagerInstance[],
-  artifacts: readonly InstalledArtifact[],
-): HostedTools[] {
-  const instance = instances.find((candidate) => candidate.id === artifact.key.instance_id);
-  if (instance === undefined) return [];
-  return instances.flatMap((other) => {
-    const how = hosting(artifact, instance, other, artifacts);
-    if (how === null) return [];
-    const tools = artifacts.filter((tool) => tool.key.instance_id === other.id);
-    return tools.length === 0 ? [] : [{ ...how, instance: other, program: programName(other), runsOn: RUNS_ON[other.adapter_id] ?? null, tools }];
-  });
-}
-
 /** The last part of a Homebrew name: `claudebar` of `gautham-v/tap/claudebar`. */
 function lastSegment(name: string): string {
   return name.slice(name.lastIndexOf("/") + 1);
@@ -389,10 +366,16 @@ function namesArtifact(affected: string, artifact: InstalledArtifact): boolean {
   return artifact.key.name === affected || lastSegment(artifact.key.name) === lastSegment(affected);
 }
 
-/** The first of X1-X4 a ticked tool meets, or null (spec §5.3). */
+/**
+ * The first of X1-X4 a ticked tool meets, or null (spec §5.3) -- with X1b
+ * after X1: a package other sources run on is not uninstalled at all, which
+ * is bigger news than how it would be.
+ */
 function ownExclusion(candidate: BatchCandidate): Exclusion | null {
   const { plan } = candidate;
   if (plan === null) return { kind: "refused", raw: candidate.planError ?? "" };
+  const sources = neededBy(plan.warnings);
+  if (sources.length > 0) return { kind: "neededBy", sources, dependents: plan.affected };
   if (SINGLE_ONLY.noCancel && plan.cancel_policy === "NoCancel") return { kind: "noCancel" };
   if (SINGLE_ONLY.permanent && plan.warnings.some(deletesForGood)) return { kind: "permanent" };
   const scope = scopeOf(plan.warnings);
@@ -452,13 +435,14 @@ function cycleMembers(ids: readonly string[], edges: ReadonlyMap<string, readonl
 
 /**
  * Which ticked tools one batch uninstalls, and why each other one is left
- * out (spec §5.3, X1 to X7), with the included ones in the order they run
- * (`runOrder`). `artifacts` is the snapshot's list, for what Homebrew
- * names as a tool's dependents (`affected`): a dependent ticked too is
- * uninstalled first, one not ticked keeps the tool. X5 and X6 are applied
- * until nothing changes, since leaving one tool out can leave out another:
- * Homebrew's `pipx`, the program of a ticked pipx tool, is left out, and
- * with it `python@3.13`, which that `pipx` still needs.
+ * out (spec §5.3, X1 to X7, and X1b: a Homebrew package its preview says
+ * other sources run on, `Warning.NeededBySource`), with the included ones
+ * in the order they run (`runOrder`). `artifacts` is the snapshot's list,
+ * for what Homebrew names as a tool's dependents (`affected`): a dependent
+ * ticked too is uninstalled first, one not ticked keeps the tool. X5 and
+ * X6 are applied until nothing changes, since leaving one tool out can
+ * leave out another: Homebrew's `pipx`, the program of a ticked pipx tool,
+ * is left out, and with it `python@3.13`, which that `pipx` still needs.
  *
  * `DependentsUnknown` is no reason: such a tool is included with its line,
  * and runs after the rest of its source, where Homebrew's own refusal
