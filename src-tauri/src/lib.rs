@@ -21,7 +21,12 @@ use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    if fix_path_env::fix().is_err() {
+    // Whether `PATH` is now the login shell's. `fix()` leaves the process's
+    // own small one in place when it fails, and says nothing else; the
+    // session is told below (`Session::note_login_path`), so that no
+    // refresh says which copy of a command runs against that one.
+    let login_path = fix_path_env::fix().is_ok();
+    if !login_path {
         eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }
     let host_env = banager_core::runner::HostEnv::discover();
@@ -64,10 +69,11 @@ pub fn run() {
         // Managed beside `AppState`, not in it: nothing but that command
         // reads it.
         .manage(std::sync::Arc::new(banager_core::icon::AppIcons::real()))
-        .setup(|app| {
+        .setup(move |app| {
             let settings_path = app.path().app_data_dir()?.join("settings.json");
             let channel_sink = events::ChannelSink::new();
             app.manage(AppState::new(settings_path, channel_sink));
+            app.state::<AppState>().session.note_login_path(login_path);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 ipc::refresh_on_background_change(&handle.state::<AppState>()).await
