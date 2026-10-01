@@ -33,9 +33,11 @@ looks, how long after a check it checks again and how long it waits
 after checks in which every source failed, says Banager itself runs no
 install from it and that `brew update` can install a package Homebrew
 moved between a formula and a cask, and names each permission of the
-notification plugin the window has, and that Homebrew's section keeps
+notification plugin the window has, that Homebrew's section keeps
 `brew update` out of its read-only table and cites the lines of
-Homebrew's own code at which it installs.
+Homebrew's own code at which it installs, and that the disk-use section
+states the two limits a round of measuring keeps to, names every place it
+never looks into and says nothing is written.
 `src-tauri/src/notify.rs`'s tests check that the section quotes what a
 notification says in both languages, and `src-tauri/src/ipc.rs`'s that
 the never-list says the window cannot ask for an install.
@@ -1888,6 +1890,63 @@ call and checks it is a 128 × 128 PNG drawn across the whole square; it
 reads that icon and writes nothing. Run it with `cargo test -p
 banager-core --lib icon::real -- --ignored`; CI does not.
 
+## Disk use: measured read-only, no command runs
+
+The Installed page's details say about how much disk a tool takes
+(「占用空间：约312 MB」, "Space used: About 312 MB"), and for a Homebrew
+formula the older versions Homebrew keeps beside it (「旧版本约1.2 GB」);
+the page of the Ollama source says how much its models take together.
+Measuring runs no command, and the one file it opens is
+`<CARGO_HOME>/.crates2.json`, which Cargo's inventory reads already. After
+each refresh has finished — the sources' state committed and the
+refresh's locks released — a thread of its own (`SizeMeter` in
+`crates/banager-core/src/size.rs`, started by
+`Session::refresh_recording`) looks at these folders and files with
+`lstat`, the folder listing (`readdir`) and `readlink`, and nothing else:
+
+| For | It measures |
+|---|---|
+| a Homebrew formula | `<prefix>/Cellar/<name>/<version>`; the names in `<prefix>/Cellar/<name>`, and each other version's folder there, as its old versions |
+| a Homebrew cask with an app | the `.app` Homebrew names for it (Homebrew's section, `brew info --installed --json=v2`) and `<prefix>/Caskroom/<token>` |
+| an npm package | `<prefix>/lib/node_modules/<name>` |
+| a pipx or uv tool | its environment, the folder its own listing names |
+| a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this) |
+| Claude Code, Antigravity CLI, Grok Build, rustup | the program file its launcher leads to |
+| Ollama's models | `~/.ollama/models/blobs`, once for all of them, when the Ollama Banager asks is on this Mac |
+
+Nothing else is measured: not pip's packages, not a cask with no app (a
+font, a `pkg`), not a tool's settings, caches or downloads. On the way to
+each folder, every folder above it is `lstat`ed and a link among them read
+(`readlink`), so that where it leads is known before anything there is
+looked at. A model's own size is the one Ollama reports; the models
+together are their folder's, each layer once, since models share layers.
+
+How it counts: a symbolic link is never followed — the link itself counts,
+not what it points at; a folder on another volume is never entered; a file
+counts the blocks the disk holds for it (`st_blocks`), and a file with
+several hard links counts once. A folder that cannot be read is skipped and
+the size is shown as partial (「部分无法读取」). One round looks at
+300,000 entries and spends 30 seconds at most (`SizeBudget::default`); a
+size it stopped short of is shown as "at least" (「至少约…」). Every number
+is shown as "about" (「约」): an APFS clone (uv builds its tools'
+environments that way from its cache) counts in full though it shares its
+blocks.
+
+It never looks into these places, nor follows a link into them, so
+measuring never makes macOS ask for permission: `~/Desktop`,
+`~/Documents`, `~/Downloads`, `~/Library/Mobile Documents` (iCloud
+Drive), `~/Library/CloudStorage` (apps that keep files in the cloud),
+`~/Pictures`, `~/Movies`, `~/Music`, and `/Volumes` (every other disk).
+A tool kept in one of them shows no size (`Protected`).
+
+Nothing is written: the sizes stay in Banager's memory until it quits, and
+a folder already measured in full at the same version is not walked again. They
+are not part of what a refresh reports, and measuring takes no lock an
+operation or a refresh waits on; a newer refresh stops a round still
+running and starts another. The window asks for the result with
+`get_sizes` (`src-tauri/src/ipc.rs`), which takes nothing from it, and
+hears that it moved through the event `SizesChanged`.
+
 ## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:
@@ -1980,7 +2039,12 @@ All read-only, none saved anywhere else, none uploaded:
   nothing else — no version is read.
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
-  a file's contents. A row's Show in Finder: where the path it shows
+  a file's contents.
+- Disk use, after each refresh: each tool's own folder or program file, the
+  names in each formula's `<prefix>/Cellar/<name>`, Ollama's
+  `~/.ollama/models/blobs` and `<CARGO_HOME>/.crates2.json`, with `lstat`,
+  `readdir` and `readlink` — never a file's contents but that one file's,
+  and never anything in the places its section names (Disk use, above). A row's Show in Finder: where the path it shows
   leads (`realpath`), and nothing else (Unknown-source scan, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's

@@ -38,7 +38,10 @@
 //! and a cask, names exactly the notification plugin's permissions the
 //! window is given, and says the notification's switch is off by default,
 //! and that Homebrew's read-only table leaves `brew update` out, whose own
-//! paragraph cites the Homebrew lines that install. A source, host,
+//! paragraph cites the Homebrew lines that install, and that the disk-use
+//! section states the two limits `SizeBudget::default()` keeps a round to,
+//! names every place `size::Protected` never looks into and says nothing is
+//! written. A source, host,
 //! variable, limit, path, check, pause, icon size, opener or notification
 //! permission or daily-check number added or changed, or that look
 //! shortened, without its line in the document fails here.
@@ -61,6 +64,7 @@ use banager_core::model::{InstanceNote, KeptWhat};
 use banager_core::runner::HostEnv;
 use banager_core::scan::ScanBudget;
 use banager_core::session::Session;
+use banager_core::size::{SizeBudget, OTHER_VOLUMES, PROTECTED_IN_HOME};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -358,6 +362,62 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
         assert!(
             body.contains(&limit),
             "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
+        );
+    }
+}
+
+/// `n` with a comma between each three digits, as the document writes a
+/// large number: `300000` is "300,000".
+fn with_commas(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+#[test]
+fn test_what_we_run_has_the_disk_use_section_with_its_limits_and_every_place_it_never_enters() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Disk use").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Disk use` section for size::SizeMeter")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    // The two limits a round keeps to, from `SizeBudget::default()`.
+    let budget = SizeBudget::default();
+    for limit in [
+        format!("{} entries", with_commas(budget.max_entries)),
+        format!("{} seconds", budget.max_duration.as_secs()),
+    ] {
+        assert!(
+            folded.contains(&limit),
+            "the `## Disk use` section of docs/what-we-run.md does not state the limit {limit:?}, which SizeBudget::default() enforces"
+        );
+    }
+    // Every place it never looks into, as the code lists them.
+    for place in PROTECTED_IN_HOME {
+        assert!(
+            folded.contains(&format!("`~/{place}`")),
+            "the `## Disk use` section of docs/what-we-run.md does not name `~/{place}`, which size::PROTECTED_IN_HOME keeps it out of"
+        );
+    }
+    assert!(
+        folded.contains(&format!("`{OTHER_VOLUMES}`")),
+        "the `## Disk use` section of docs/what-we-run.md does not name `{OTHER_VOLUMES}`"
+    );
+    for words in [
+        "Measuring runs no command, and the one file it opens is `<CARGO_HOME>/.crates2.json`",
+        "a symbolic link is never followed",
+        "Nothing is written",
+        "`get_sizes`",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Disk use` section of docs/what-we-run.md does not say {words:?}"
         );
     }
 }
