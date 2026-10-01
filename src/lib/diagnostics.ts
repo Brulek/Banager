@@ -283,8 +283,10 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
 
 /**
  * `get_system_facts`'s answer, asked for again when the snapshot's
- * generation moves (a source found or gone), the last answer kept
- * meanwhile. Mounted by `useMenuCommands` too, so that Help's item has it
+ * generation moves (a source found or gone) or a new round lands, the
+ * last answer kept meanwhile. The round counts too because
+ * `path_folders` is each round's own, also when the round found nothing
+ * new and kept the generation. Mounted by `useMenuCommands` too, so that Help's item has it
  * at hand: the clipboard is written in the same turn as the click, and an
  * answer awaited first could lose it. A command that answers nothing
  * reads as null.
@@ -292,7 +294,7 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
 export function useSystemFacts(): UseQueryResult<SystemFacts | null> {
   const { data: snapshot } = useSnapshot();
   return useQuery({
-    queryKey: ["systemFacts", snapshot?.generation ?? 0] as const,
+    queryKey: ["systemFacts", snapshot?.generation ?? 0, snapshot?.round ?? 0] as const,
     queryFn: async () => (await getSystemFacts()) ?? null,
     placeholderData: (previous) => previous,
     staleTime: Infinity,
