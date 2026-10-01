@@ -295,6 +295,18 @@ describe("the question before a quit", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("counts every unfinished uninstall of a batch, which submits them all at once", async () => {
+    const uninstall = { kind: "Uninstall" as const };
+    operations = [
+      op(1, "pipx", "Done", uninstall),
+      op(2, "wget", "Running", uninstall),
+      op(3, "jq", "Queued", uninstall),
+      op(4, "python@3.13", "Queued", uninstall),
+    ];
+    const { rust } = await mounted();
+    expect(await asked(rust, "3 operations haven't finished")).toBeInTheDocument();
+  });
+
   it("asks once, however many times Rust asks", async () => {
     operations = [op(1, "wget", "Running")];
     const { rust } = await mounted();
