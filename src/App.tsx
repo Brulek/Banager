@@ -14,6 +14,7 @@ import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { ToolSetupSheet } from "./components/ToolSetupSheet";
 import { QuitQuestion } from "./components/QuitQuestion";
+import { WelcomeSheet } from "./components/WelcomeSheet";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
 import { useInventoryPreview } from "./lib/inventoryPreview";
 import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
@@ -303,6 +304,9 @@ function App() {
       <QuitQuestion />
       {/* Help's Check Tool Setup… and Settings' Check… open it, over any page. */}
       <ToolSetupSheet />
+      {/* The first time Banager opens, and never again; the first check
+          runs behind it. */}
+      <WelcomeSheet />
     </div>
   );
 }

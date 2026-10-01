@@ -4,6 +4,16 @@
     "failed": "Couldn't show this page.",
     "reload": "Reload"
   },
+  "welcome": {
+    "title": "Welcome to {{name}}",
+    "listTitle": "See What's Installed",
+    "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list.",
+    "confirmTitle": "Nothing Changes Until You Confirm",
+    "confirmText": "Before an update or uninstall, you see what it will do. It starts only when you confirm, and it's checked again when it's done.",
+    "settingsTitle": "Leaves Your Settings Alone",
+    "settingsText": "Doesn't edit your shell's startup files, collects no usage data, and needs no account.",
+    "start": "Get Started"
+  },
   "inventoryPreview": {
     "subtitle_one": "Found {{count}} tool · Checking for updates…",
     "subtitle_other": "Found {{count}} tools · Checking for updates…",

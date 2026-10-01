@@ -4,6 +4,16 @@
     "failed": "无法显示此页面。",
     "reload": "重新载入"
   },
+  "welcome": {
+    "title": "欢迎使用{{name}}",
+    "listTitle": "看清装了什么",
+    "listText": "用Homebrew、npm、pipx等装的命令行工具和AI编程工具，都列在一处。",
+    "confirmTitle": "改之前先给你看",
+    "confirmText": "更新或卸载前，先写明要做什么，确认后才开始；完成后会再检查一遍。",
+    "settingsTitle": "不改系统设置",
+    "settingsText": "不改终端的配置文件，不收集使用情况，也不需要账号。",
+    "start": "开始使用"
+  },
   "inventoryPreview": {
     "subtitle_other": "已找到{{count}}个工具 · 正在检查更新…",
     "overviewLine_other": "已找到{{count}}个工具。首次检查需要联网查询每个工具的新版本，有时要一两分钟。",
