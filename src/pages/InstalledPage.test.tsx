@@ -2279,6 +2279,7 @@ describe("InstalledPage", () => {
         "New version",
         "Date installed",
         "Size",
+        "Homepage",
         "Status",
       ]);
       for (const row of rows) {
@@ -2291,7 +2292,7 @@ describe("InstalledPage", () => {
         expect(row.lastElementChild).toHaveClass("text-right", "tabular-nums", "text-foreground");
       }
       // The status a row of the group, in words: no line of its own, no tick.
-      const status = rows[4].lastElementChild as HTMLElement;
+      const status = rows[5].lastElementChild as HTMLElement;
       expect(status.querySelector("[data-status-list]")).not.toBeNull();
       expect(status).toHaveTextContent("Update available");
       expect(status).not.toHaveClass("select-text");

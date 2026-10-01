@@ -62,6 +62,7 @@ import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
 import { focusOrFallback } from "../components/ui/focus";
 import { GROUP, SMALL_WRAPPING } from "../components/ui/group";
 import { InfoDetail } from "../components/InfoDetail";
+import { HomebrewNotes, homebrewStatusChip, homepageFact } from "../components/HomebrewStatus";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -1013,6 +1014,9 @@ export function InstalledPage() {
         tone: "neutral",
       });
     }
+    // Homebrew's own mark: 「已停用」 or 「已弃用」.
+    const homebrewChip = homebrewStatusChip(t, artifact);
+    if (homebrewChip !== null) chips.push(homebrewChip);
     if (listed !== undefined) {
       // A `switch` with no default, so a state added to `UpdateState`
       // without a chip here fails `tsc`.
@@ -1238,6 +1242,8 @@ export function InstalledPage() {
         selectable: true,
       });
     }
+    const homepage = homepageFact(t, artifact.homepage, copyCommand);
+    if (homepage !== null) facts.push(homepage);
     // Where its update stands, and what it is: a row of the group, each
     // word 13 in the label colour as the other values, its why behind an
     // ⓘ after it -- not a line of its own under the facts -- and after a
@@ -1319,6 +1325,7 @@ export function InstalledPage() {
             {line}
           </p>
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
+          <HomebrewNotes artifact={artifact} />
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
             <p role="alert" className={`mt-2 ${SMALL_WRAPPING} text-danger-text`}>
