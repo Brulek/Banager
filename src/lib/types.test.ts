@@ -6,6 +6,7 @@ import type {
   Outcome,
   OperationEvent,
   UiEvent,
+  InventoryPreview,
   Plan,
   PlanAction,
   OpSummary,
@@ -634,5 +635,51 @@ describe("types", () => {
     expect(roundTrip(scan)).toEqual(scan);
     const stopped: UnknownScan = { ...scan, stopped: timeLimit };
     expect(roundTrip(stopped).stopped).toEqual({ TimeLimit: { max_secs: 10 } });
+  });
+
+  it("keeps the InventoryPreview event's wire shape intact", () => {
+    // Byte for byte what `events.rs`'s
+    // `test_inventory_preview_wire_shape_is_what_the_typescript_mirror_expects`
+    // asserts serde emits: a newtype variant, a one-key object carrying
+    // the preview, which has nothing about updates, errors or staleness.
+    const empty: UiEvent = { InventoryPreview: { round: 1, instances: [], artifacts: [] } };
+    expect(JSON.stringify(empty)).toBe('{"InventoryPreview":{"round":1,"instances":[],"artifacts":[]}}');
+
+    const preview: InventoryPreview = {
+      round: 3,
+      instances: [
+        {
+          id: "brew:1",
+          adapter_id: "brew",
+          exe_path: "/opt/homebrew/bin/brew",
+          prefix: "/opt/homebrew",
+          scope: "User",
+          version: "7.0.3",
+          status: { unavailable: null, notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "brew:1", kind: "Formula", name: "jq" },
+          display_name: "jq",
+          version: "1.8.2",
+          reason: "Requested",
+          description: null,
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+          uninstall_blocked: null,
+          facts: NO_FACTS,
+        },
+      ],
+    };
+    const event: UiEvent = { InventoryPreview: preview };
+    const parsed = roundTrip(event);
+    expect("InventoryPreview" in parsed && parsed.InventoryPreview).toEqual(preview);
+    expect(Object.keys(preview).sort()).toEqual(["artifacts", "instances", "round"]);
   });
 });

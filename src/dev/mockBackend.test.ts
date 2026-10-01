@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ArtifactKey,
+  InventoryPreview,
   IssuedPlan,
   OperationEvent,
   OpRequest,
@@ -17,7 +18,7 @@ import { NO_FACTS } from "../lib/types";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
-import { createMockBackend, MOCK_COMMANDS, type MockBackend } from "./mockBackend";
+import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
 
@@ -540,5 +541,67 @@ describe("the preview's commands, and which copy runs", () => {
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
     await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
     expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [] });
+  });
+});
+
+describe("the mock backend's first-round list (InventoryPreview)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function previewsIn(events: UiEvent[]): InventoryPreview[] {
+    return events.flatMap((e) => ("InventoryPreview" in e ? [e.InventoryPreview] : []));
+  }
+
+  it("sends the first round's list before that round commits, and no later round's", async () => {
+    const { backend, events } = backendFor();
+    const first = backend.invoke("refresh");
+    // Sent at `TIMING.inventory`, and reaching the page a task later.
+    await vi.advanceTimersByTimeAsync(TIMING.inventory + 1);
+    const [preview, ...more] = previewsIn(events);
+    expect(more).toEqual([]);
+    expect(preview.round).toBe(1);
+    expect(((await backend.invoke("get_snapshot")) as Snapshot).round).toBe(0);
+
+    const snapshot = await answer<Snapshot>(first);
+    expect(snapshot.round).toBe(preview.round);
+    expect(preview.instances).toEqual(snapshot.instances);
+    // What every answering source listed, and nothing of a source that is
+    // not running, which is never asked for its list.
+    const answering = new Set(snapshot.instances.filter((i) => i.status.unavailable === null).map((i) => i.id));
+    expect(preview.artifacts).toEqual(snapshot.artifacts.filter((a) => answering.has(a.key.instance_id)));
+    expect(preview.artifacts.length).toBeGreaterThan(0);
+
+    await answer(backend.invoke("refresh"));
+    await vi.runOnlyPendingTimersAsync();
+    expect(previewsIn(events)).toHaveLength(1);
+  });
+
+  it("?state=preview sends the list and never finishes checking", async () => {
+    expect(parseScenario("?state=preview")).toEqual({
+      scenario: { ...DEFAULT_SCENARIO, state: "preview" },
+      problems: [],
+    });
+    const { backend, events } = backendFor({ state: "preview" });
+    let settled = false;
+    void backend.invoke("refresh").then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    expect(previewsIn(events)).toHaveLength(1);
+    expect(((await backend.invoke("get_snapshot")) as Snapshot).round).toBe(0);
+  });
+
+  it("sends no list where nothing is installed, nor where loading fails", async () => {
+    for (const state of ["empty", "nothing", "refresh-error"] as const) {
+      const { backend, events } = backendFor({ state });
+      await answer(backend.invoke("refresh").catch(() => undefined));
+      await vi.runOnlyPendingTimersAsync();
+      expect(previewsIn(events), state).toEqual([]);
+    }
   });
 });
