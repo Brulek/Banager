@@ -200,9 +200,10 @@ impl Budget {
         }
     }
 
-    /// Whether the entries or the time have run out, spending nothing.
-    fn spent(&mut self) -> bool {
-        if self.entries_left == 0 || Instant::now() >= self.deadline {
+    /// Whether the time has run out, spending nothing; the entries are
+    /// left to `take`, so that what they run out on is something there.
+    fn out_of_time(&mut self) -> bool {
+        if Instant::now() >= self.deadline {
             self.entries_left = 0;
             return true;
         }
@@ -474,7 +475,11 @@ fn walk_folder(
             tally.partial = true;
             continue;
         }
-        if budget.spent() {
+        // The time before a folder is listed, as listing one takes time.
+        // Entries that have run out stop the walk at the first entry the
+        // folder lists (`take`): one that lists nothing -- or only what
+        // is left out -- leaves nothing unmeasured, so no "or more".
+        if budget.out_of_time() {
             tally.at_least = true;
             return Flow::OutOfBudget;
         }
@@ -1697,6 +1702,41 @@ mod tests {
             walk(&[tool], &mut budget, &Protected::default(), &mut || true),
             WalkEnd::OutOfBudget
         );
+    }
+
+    #[test]
+    fn test_a_budget_used_up_exactly_by_everything_there_is_not_at_least() {
+        // The root and its one folder, which is empty: two entries, and a
+        // budget of two. Nothing was left unmeasured, so no "or more".
+        let scratch = Scratch::new("budget-exact");
+        let tool = scratch.dir("tool");
+        scratch.dir("tool/empty");
+        let mut budget = Budget::new(SizeBudget {
+            max_entries: 2,
+            max_duration: Duration::from_secs(30),
+        });
+        let exact = walked(walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &Protected::default(),
+            &mut || true,
+        ));
+        assert_eq!(budget.entries_left, 0);
+        assert!(!exact.measured.at_least, "{exact:?}");
+        assert!(!exact.measured.partial, "{exact:?}");
+        // One more file in it, and the budget no longer reaches.
+        scratch.file("tool/empty/one.bin", 1_000);
+        let mut budget = Budget::new(SizeBudget {
+            max_entries: 2,
+            max_duration: Duration::from_secs(30),
+        });
+        let over = walked(walk(
+            std::slice::from_ref(&tool),
+            &mut budget,
+            &Protected::default(),
+            &mut || true,
+        ));
+        assert!(over.measured.at_least, "{over:?}");
     }
 
     #[test]
