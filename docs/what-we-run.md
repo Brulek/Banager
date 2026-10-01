@@ -2247,13 +2247,16 @@ name a folder in the home folder, as `cargo:/Users/you/.cargo` does — its
 kind and its name), the name its row had, the source's kind, the version
 before and the version read back after, how it ended (succeeded, needs
 attention with its reason, failed with the cause in one word when one is
-known, could not be confirmed, or cancelled after its command started), and
+known, could not be confirmed, or cancelled once Banager had handed it to
+the tool's adapter, which can be before the tool's own command started, as
+when Homebrew was still finishing a `brew update`), and
 whether Banager saw the change itself (the version it read before and after
 differ). Also the time the page's Clear was last pressed. Never a line of
 a log, a command line, an error message or any other path: a failure's
 cause is read from the tool's last lines as the operation finishes, and the
-lines are dropped. An operation cancelled before its command started is not
-recorded. Each record also carries a random id of the launch of Banager
+lines are dropped. An operation cancelled before Banager began carrying it
+out (while it waited for its turn, or while Banager read the installed
+version) is not recorded. Each record also carries a random id of the launch of Banager
 that ran it and the operation's number in that launch, so that the page
 lists an update it watched finish only once. The file keeps the newest 1,000 records and nothing older than
 180 days. It is written whole to a `history.json.tmp.<n>` beside it and

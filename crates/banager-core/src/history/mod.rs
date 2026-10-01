@@ -61,8 +61,13 @@ pub enum HistoryResult {
     Failed { cause: Option<FailureCause> },
     /// `Outcome::Unconfirmed`.
     Unconfirmed,
-    /// `Outcome::Cancelled`, for an operation whose command had been
-    /// started. One cancelled before that is not recorded at all.
+    /// `Outcome::Cancelled`, for an operation Banager had handed to its
+    /// source's adapter (`Adapter::execute`). That is not proof that the
+    /// tool's command ran: an adapter can be stopped while it is still
+    /// getting ready -- Homebrew's waits for a `brew update` to end first
+    /// -- and then nothing of the tool's ran at all. One cancelled before
+    /// it reached the adapter (waiting for its turn, or while the version
+    /// was read) is not recorded.
     Cancelled,
 }
 
@@ -147,8 +152,11 @@ pub struct Ended<'a> {
 }
 
 /// The record for an operation that ended, or `None` for one that is not
-/// kept: an install (Banager runs none), or one cancelled before its
-/// command started -- nothing was done, so there is nothing to remember.
+/// kept: an install (Banager runs none), or one cancelled before it reached
+/// its adapter's `execute` -- nothing was done, so there is nothing to
+/// remember. (One cancelled inside `execute` is kept as `Cancelled`, even
+/// where the adapter had not started the tool's command yet:
+/// `HistoryResult::Cancelled`.)
 pub fn record_for(
     ended: &Ended<'_>,
     started: &Started,
@@ -661,7 +669,7 @@ mod tests {
         let mut e = ended(&k, &Outcome::Cancelled);
         e.started = false;
         assert_eq!(record_for(&e, &started("cmake"), "r", NOW), None);
-        // Stopped once its command was under way: that is kept.
+        // Stopped once it had reached its adapter's `execute`: that is kept.
         e.started = true;
         assert_eq!(
             record_for(&e, &started("cmake"), "r", NOW).map(|r| r.result),

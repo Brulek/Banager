@@ -1083,7 +1083,8 @@ fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_r
         "Three, all in Banager's application data directory".to_string(),
         "`history.json`, Banager's record of the updates and uninstalls it ran".to_string(),
         "Never a line of a log, a command line, an error message or any other path".to_string(),
-        "An operation cancelled before its command started is not recorded.".to_string(),
+        "An operation cancelled before Banager began carrying it out (while it waited for its turn, or while Banager read the installed version) is not recorded.".to_string(),
+        "or cancelled once Banager had handed it to the tool's adapter, which can be before the tool's own command started".to_string(),
         format!(
             "The file keeps the newest {} records and nothing older than {} days.",
             with_commas(MAX_RECORDS as u64),

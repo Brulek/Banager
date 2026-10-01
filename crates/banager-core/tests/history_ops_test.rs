@@ -1,7 +1,8 @@
 //! The history's way in from `OperationManager`: what `submit_with`'s
 //! callback is handed as an operation finishes, and what the history then
-//! keeps -- an update's two readings of the version, and nothing for an
-//! operation cancelled before its command started.
+//! keeps -- an update's two readings of the version, nothing for an
+//! operation cancelled before it reached its adapter, and `Cancelled` for
+//! one its adapter gave up on before starting the tool's command.
 
 use async_trait::async_trait;
 use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
@@ -18,10 +19,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-/// Reads `1.0` before an update and `2.0` after it; its command exits 0.
+/// Reads `1.0` before an update and `2.0` after it; its `execute` answers
+/// `outcome` without running anything.
 struct FakeAdapter {
     meta: AdapterMeta,
     reconciles: Mutex<usize>,
+    outcome: Outcome,
 }
 
 #[async_trait]
@@ -75,7 +78,7 @@ impl Adapter for FakeAdapter {
         _op_id: OpId,
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
-        Ok(Outcome::Succeeded)
+        Ok(self.outcome.clone())
     }
     async fn reconcile(
         &self,
@@ -106,6 +109,10 @@ impl Drop for Fixture {
 }
 
 fn fixture(tag: &str) -> Fixture {
+    fixture_with(tag, Outcome::Succeeded)
+}
+
+fn fixture_with(tag: &str, outcome: Outcome) -> Fixture {
     let dir = std::env::temp_dir().join(format!(
         "banager-history-ops-{tag}-{}-{}",
         std::process::id(),
@@ -126,6 +133,7 @@ fn fixture(tag: &str) -> Fixture {
             verified_versions: vec![],
         },
         reconciles: Mutex::new(0),
+        outcome,
     });
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
@@ -232,4 +240,32 @@ async fn test_a_plain_submit_has_no_callback_and_still_finishes() {
     let op_id = f.manager.submit(plan);
     assert_eq!(f.manager.wait(op_id).await, Some(Outcome::Succeeded));
     assert_eq!(f.store.view().records, vec![]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_an_update_its_adapter_gave_up_before_starting_the_command_is_kept_as_cancelled() {
+    // Brew's `execute` answers `Cancelled` when a Cancel lands while it
+    // waits for a `brew update` to end: no command of the tool's ran. The
+    // operation had reached its adapter, so it is kept, as `Cancelled` --
+    // which is all `HistoryResult::Cancelled` and docs/what-we-run.md
+    // claim: handed to the adapter, not that the command started.
+    let f = fixture_with("adapter-cancel", Outcome::Cancelled);
+    let plan = f
+        .adapter
+        .plan(&f.instance, &upgrade(&f.instance))
+        .await
+        .unwrap();
+    let op_id = f.manager.submit_with(plan, Some(on_finish(&f.store)));
+    assert_eq!(f.manager.wait(op_id).await, Some(Outcome::Cancelled));
+
+    let view = f.store.view();
+    let [record] = view.records.as_slice() else {
+        panic!("one record: {:?}", view.records);
+    };
+    assert_eq!(record.result, HistoryResult::Cancelled);
+    assert!(!record.verified);
+    assert_eq!(
+        record.to_version, None,
+        "no new version for a stopped update"
+    );
 }
