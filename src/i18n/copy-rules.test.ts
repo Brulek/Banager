@@ -194,6 +194,7 @@ describe("the polish-3 copy rules, in English", () => {
       "unknown.copyPath",
       "unknown.scanAgain",
       "brewStatus.copyLink",
+      "commands.copyPath",
     ];
     // Words that stay lower case inside a title (Cancel the Rest, Show in
     // Finder), never as its first or last word.

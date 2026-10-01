@@ -373,6 +373,27 @@
       "systemNames_other": "在macOS中的名称：{{items}}"
     }
   },
+  "commands": {
+    "title": "在终端里输入",
+    "titleDetail": "按打开此App时读到的终端设置判断。别名、新开的终端窗口或编辑器里的终端可能不同。",
+    "names_other": "{{names}}等{{count}}个",
+    "runs": "运行的是这一份",
+    "runsCopyFrom": "运行的是{{source}}装的那一份",
+    "runsNamesakeFrom": "运行的是{{source}}装的另一个同名程序",
+    "runsNamesake": "运行的是另一个同名程序",
+    "behindDetail": "终端先找到那一个，这一份排在它后面。",
+    "notFound": "终端找不到它：它在{{dir}}，这个文件夹不在终端的搜索路径里",
+    "copyPath": "拷贝路径",
+    "copyPathLabel": "拷贝路径：{{dir}}",
+    "twin": "装了两份",
+    "twinMany": "装了{{number}}份",
+    "twinLabel": "{{word}}：{{name}}",
+    "twinOther": "{{source}}也装了一份。",
+    "twinOthers": "{{sources}}也各装了一份。",
+    "twinRuns": "在终端里输入“{{command}}”，运行的是这一份。",
+    "twinRunsCopyFrom": "在终端里输入“{{command}}”，运行的是{{source}}装的那一份。",
+    "twinNotFound": "在终端里输入“{{command}}”，找不到这一份。"
+  },
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic的AI编程助手",

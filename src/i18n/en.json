@@ -410,6 +410,27 @@
       "systemNames_other": "As macOS names them: {{items}}"
     }
   },
+  "commands": {
+    "title": "Typed in Terminal",
+    "titleDetail": "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",
+    "names_other": "{{names}} and {{rest}} more",
+    "runs": "Runs this copy",
+    "runsCopyFrom": "Runs the copy from {{source}}",
+    "runsNamesakeFrom": "Runs another program with this name, from {{source}}",
+    "runsNamesake": "Runs another program with this name",
+    "behindDetail": "Terminal finds that one first. This copy comes after it.",
+    "notFound": "Terminal can't find it: it's in {{dir}}, a folder Terminal doesn't search",
+    "copyPath": "Copy Path",
+    "copyPathLabel": "Copy path: {{dir}}",
+    "twin": "Installed twice",
+    "twinMany": "Installed {{number}} times",
+    "twinLabel": "{{word}}: {{name}}",
+    "twinOther": "{{source}} has a copy too.",
+    "twinOthers": "{{sources}} each have a copy too.",
+    "twinRuns": "Typing {{command}} in Terminal runs this copy.",
+    "twinRunsCopyFrom": "Typing {{command}} in Terminal runs the copy from {{source}}.",
+    "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy."
+  },
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic's AI coding assistant",

@@ -3115,3 +3115,100 @@ describe("InstalledPage", () => {
     });
   });
 });
+
+describe("which copy of a command runs (advantages round, item 4)", () => {
+  const npm: ManagerInstance = {
+    ...brew,
+    id: "npm:/opt/homebrew",
+    adapter_id: "npm",
+    exe_path: "/opt/homebrew/bin/npm",
+  };
+  const npmClaude: InstalledArtifact = {
+    ...formula("@anthropic-ai/claude-code"),
+    key: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" },
+    description: null,
+    installed_at: null,
+    facts: { family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+  };
+  const nativeClaude: InstalledArtifact = {
+    ...claudeArtifact,
+    facts: { family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude.key } } }] },
+  };
+
+  function serveBoth(native: InstalledArtifact, other: InstalledArtifact) {
+    served = {
+      ...snapshot,
+      instances: [brew, npm, claudeInstance],
+      artifacts: [...snapshot.artifacts, other, native],
+      updates: [],
+    };
+  }
+
+  it("marks both copies of one tool on their rows, and says in the details which one typing it runs", async () => {
+    serveBoth(nativeClaude, npmClaude);
+    renderInstalled();
+
+    const native = await findRow("Claude Code");
+    expect(chipsOf(native)).toEqual(["Installed twice"]);
+    expect(chipsOf(rowOf("@anthropic-ai/claude-code"))).toEqual(["Installed twice"]);
+    const why = chipDetail(native, "Installed twice");
+    expect(why).toHaveTextContent("npm has a copy too.");
+    expect(why).toHaveTextContent("Typing claude in Terminal runs the copy from npm.");
+
+    const inspector = await openDetails("Claude Code");
+    const group = inspector.querySelector("[data-commands]") as HTMLElement;
+    expect(within(group).getByRole("heading", { name: /Typed in Terminal/ })).toBeInTheDocument();
+    expect(group.querySelector("[data-command-line]")).toHaveTextContent(/^claudeRuns the copy from npm/);
+    // Nothing to press but the ⓘs: no button fixes anything.
+    expect(within(group).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Details: Typed in Terminal",
+      "Details: claude",
+    ]);
+  });
+
+  it("still tells two copies apart when nothing was said about which runs, and shows no group", async () => {
+    // `Session::note_login_path(false)`: the names, and no verdicts.
+    serveBoth(
+      { ...nativeClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
+      { ...npmClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
+    );
+    renderInstalled();
+
+    const native = await findRow("Claude Code");
+    expect(chipsOf(native)).toEqual(["Installed twice"]);
+    expect(chipDetail(native, "Installed twice")).toHaveTextContent(/^npm has a copy too\.$/);
+    const inspector = await openDetails("Claude Code");
+    expect(inspector.querySelector("[data-commands]")).toBeNull();
+  });
+
+  it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {
+    const formulaGrok: InstalledArtifact = {
+      ...formula("grok"),
+      facts: { family: null, commands: [{ name: "grok", state: "Runs" }] },
+    };
+    served = {
+      ...snapshot,
+      instances: [brew, claudeInstance],
+      artifacts: [
+        formulaGrok,
+        {
+          ...claudeArtifact,
+          facts: {
+            family: "claude-code",
+            commands: [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }],
+          },
+        },
+      ],
+      updates: [],
+    };
+    renderInstalled();
+
+    expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
+    expect(chipsOf(rowOf("grok"))).toEqual([]);
+    const inspector = await openDetails("Claude Code");
+    expect(inspector.querySelector("[data-command-line]")).toHaveTextContent(
+      "Terminal can't find it: it's in ~/.local/bin, a folder Terminal doesn't search",
+    );
+    expect(within(inspector).getByRole("button", { name: "Copy path: ~/.local/bin" })).toBeInTheDocument();
+  });
+});

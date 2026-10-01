@@ -70,6 +70,7 @@ import {
   homebrewStatusChip,
   homepageFact,
 } from "../components/HomebrewStatus";
+import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -509,6 +510,8 @@ export function InstalledPage() {
     },
     [instancesById, labelOf],
   );
+  // Each tool's other copies, installed by another source (`twinChip`).
+  const twins = useTwins(snapshot?.artifacts);
 
   // By name, as the user reads it -- a model's as its row shows it
   // (`listedName`) -- case and accents aside, and "node@22" after
@@ -1080,6 +1083,9 @@ export function InstalledPage() {
     ) {
       chips.push({ id: "up-to-date", label: t("installed.upToDate"), tone: "upToDate" });
     }
+    // 「装了两份」: last, so the row says it only when nothing above has.
+    const twin = twinChip(t, artifact, twins.get(id), sourceLabelFor);
+    if (twin !== null) chips.push(twin);
     return chips;
   };
 
@@ -1338,6 +1344,7 @@ export function InstalledPage() {
             {line}
           </p>
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
+          <CommandsGroup artifact={artifact} artifacts={snapshot?.artifacts ?? []} sourceLabelFor={sourceLabelFor} />
           <HomebrewNotes artifact={artifact} />
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
