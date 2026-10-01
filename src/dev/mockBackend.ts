@@ -164,6 +164,19 @@ interface Operation {
   started: boolean;
 }
 
+/** `artifacts` as they are when `judged`, else with every command's verdict taken away. */
+function unjudgedUnless(judged: boolean, artifacts: InstalledArtifact[]): InstalledArtifact[] {
+  if (judged) return artifacts;
+  return artifacts.map((artifact) =>
+    artifact.facts.commands.length === 0
+      ? artifact
+      : {
+          ...artifact,
+          facts: { ...artifact.facts, commands: artifact.facts.commands.map((command) => ({ ...command, state: null })) },
+        },
+  );
+}
+
 export function createMockBackend(scenario: Scenario): MockBackend {
   const world: World = buildWorld(scenario.state);
   let settings: Settings = initialSettings(scenario);
@@ -195,7 +208,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       instances: from.instances,
       // Which AI coding tool each is, set here once, as `families::assign`
       // does where Rust puts a snapshot together.
-      artifacts: withFamilies(from.instances, from.artifacts),
+      // With `?path=default` the login shell's `PATH` was never read: no
+      // command has a verdict (`commands::judge`), only its name.
+      artifacts: unjudgedUnless(scenario.path !== "default", withFamilies(from.instances, from.artifacts)),
       updates: current.include_self_updating
         ? [...from.updates, ...from.greedyUpdates]
         : from.updates,
@@ -633,7 +648,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     async get_system_facts() {
       // `diagnostics::current`: the committed snapshot's sources, none
       // before the first refresh.
-      return mockSystemFacts(committed?.instances ?? []);
+      return mockSystemFacts(committed?.instances ?? [], scenario.path, committed !== null);
     },
     async get_history() {
       // `Session::history`: every record, newest first.

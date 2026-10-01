@@ -574,7 +574,7 @@ describe("the preview's stand-ins for Tauri", () => {
 describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -585,6 +585,7 @@ describe("the preview's URL switches", () => {
       outcome: "failed",
       scan: "stopped",
       sizes: "pending",
+      path: "unread",
     });
   });
 

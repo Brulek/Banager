@@ -27,6 +27,7 @@ import type {
   FinishedRun,
   SnoozedUpdate,
   Sizes,
+  SystemFacts,
 } from "./types";
 import { NO_FACTS, NO_SIZES } from "./types";
 
@@ -799,5 +800,25 @@ describe("types", () => {
     // in src-tauri/src/events.rs: an object, so `in` can tell it apart.
     const changed: UiEvent = { SizesChanged: { round: 12 } };
     expect(JSON.stringify(changed)).toBe('{"SizesChanged":{"round":12}}');
+  });
+
+  it("spells SystemFacts' path_folders as diagnostics.rs's wire test does: null before a round, else read and unread", () => {
+    // `test_the_wire_format_is_the_one_src_lib_types_ts_mirrors` in
+    // crates/banager-core/src/diagnostics.rs asserts both from the Rust side.
+    const none: SystemFacts = {
+      macos_version: null,
+      chip: null,
+      arch: "",
+      login_path: false,
+      path_dirs: [],
+      sources: [],
+      path_folders: null,
+    };
+    expect(JSON.stringify(none)).toBe(
+      '{"macos_version":null,"chip":null,"arch":"","login_path":false,"path_dirs":[],"sources":[],"path_folders":null}',
+    );
+    const read: SystemFacts = { ...none, path_folders: { read: 9, unread: ["~/Documents/bin"] } };
+    expect(JSON.stringify(read).endsWith('"path_folders":{"read":9,"unread":["~/Documents/bin"]}}')).toBe(true);
+    expect(roundTrip(read)).toEqual(read);
   });
 });

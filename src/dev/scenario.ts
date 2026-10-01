@@ -77,6 +77,17 @@ export type ScenarioScan = (typeof SCENARIO_SCANS)[number];
 export const SCENARIO_SIZES = ["measured", "pending"] as const;
 export type ScenarioSizes = (typeof SCENARIO_SIZES)[number];
 
+/**
+ * `?path=`: what the last refresh made of the login shell's `PATH`, which
+ * Check Tool Setup says (`get_system_facts`'s `login_path` and
+ * `path_folders`). `read` (the default): restored, every folder read;
+ * `unread`: restored, with a folder in Documents that could not be read;
+ * `default`: never restored -- an app opened from Finder with the system's
+ * few folders -- so no command has a verdict.
+ */
+export const SCENARIO_PATHS = ["read", "unread", "default"] as const;
+export type ScenarioPath = (typeof SCENARIO_PATHS)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -97,6 +108,7 @@ export interface Scenario {
   outcome: ScenarioOutcome;
   scan: ScenarioScan;
   sizes: ScenarioSizes;
+  path: ScenarioPath;
 }
 
 export const DEFAULT_SCENARIO: Scenario = {
@@ -107,6 +119,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   outcome: "succeeded",
   scan: "found",
   sizes: "measured",
+  path: "read",
 };
 
 function pick<T extends string>(
@@ -154,6 +167,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       outcome: pick(params, "outcome", SCENARIO_OUTCOMES, DEFAULT_SCENARIO.outcome, problems),
       scan: pick(params, "scan", SCENARIO_SCANS, DEFAULT_SCENARIO.scan, problems),
       sizes: pick(params, "sizes", SCENARIO_SIZES, DEFAULT_SCENARIO.sizes, problems),
+      path: pick(params, "path", SCENARIO_PATHS, DEFAULT_SCENARIO.path, problems),
     },
     problems,
   };

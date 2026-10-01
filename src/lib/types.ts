@@ -810,7 +810,7 @@ export type UiEvent =
   | { InventoryPreview: InventoryPreview }
   | { SizesChanged: { round: number } };
 /**
- * What the window cannot read itself for 「拷贝诊断信息」 (`get_system_facts`
+ * What the window cannot read itself for 「拷贝诊断信息」 and 「检查工具环境」 (`get_system_facts`
  * in src-tauri/src/ipc.rs). Mirrors `SystemFacts` in
  * crates/banager-core/src/diagnostics.rs: every path with the home folder
  * as `~`, and no environment variable's value but the `PATH` folders.
@@ -828,6 +828,23 @@ export interface SystemFacts {
   path_dirs: string[];
   /** Each source's program, home folder as `~`, by instance id. */
   sources: SourcePath[];
+  /**
+   * What the last refresh round made of the `PATH` folders when it read
+   * them to say which copy of a command runs (`Session::path_folders`):
+   * null before a round has, and after one that did not read them in full.
+   * Always sent; optional only so the facts in tests that predate it need
+   * not spell it out -- a reader takes a missing one as null.
+   */
+  path_folders?: PathFolders | null;
+}
+/**
+ * Rust `PathFolders` (crates/banager-core/src/diagnostics.rs): how many of
+ * the `PATH` folders the last round read, and those it left unread -- in a
+ * protected place, or not listable -- as named, home folder as `~`.
+ */
+export interface PathFolders {
+  read: number;
+  unread: string[];
 }
 /** Rust `SourcePath`: one source's program, as `SystemFacts.sources` lists it. */
 export interface SourcePath {
