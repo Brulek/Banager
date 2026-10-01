@@ -452,13 +452,13 @@
   "sizes": {
     "term": "Space used",
     "measuring": "Calculating…",
-    "about": "About {{size}}",
+    "about": "About\u00a0{{size}}",
     "atLeast": "At least about\u00a0{{size}}",
-    "partial": "About {{size}}; some of it couldn't be read",
+    "partial": "About\u00a0{{size}}; some of it couldn't be read",
     "oldVersions": "Old versions: about\u00a0{{size}}",
     "oldVersionsAtLeast": "Old versions: at least about\u00a0{{size}}",
-    "ollamaModels": "Ollama models: about {{size}} in all",
-    "ollamaModelsAtLeast": "Ollama models: at least about {{size}} in all",
+    "ollamaModels": "Ollama models: about\u00a0{{size}} in all",
+    "ollamaModelsAtLeast": "Ollama models: at least about\u00a0{{size}} in all",
     "sortBySize": "By Size"
   },
   "sourceNotice": {

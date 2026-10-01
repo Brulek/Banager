@@ -153,7 +153,7 @@ describe("the Installed page's details, on disk use", () => {
     render();
     const inspector = await openDetails("node@22");
     expect(await within(inspector).findByText("About 312.6 MB")).toBeInTheDocument();
-    expect(factsOf(inspector)["Space used"]).toBe("About 312.6 MB" + "Old versions: about\u00a0298.4 MB");
+    expect(factsOf(inspector)["Space used"]).toBe("About\u00a0312.6 MB" + "Old versions: about\u00a0298.4 MB");
     const old = inspector.querySelector("[data-size-old-versions]");
     expect(old?.textContent).toBe("Old versions: about\u00a0298.4 MB");
     expect(old).toHaveClass("text-muted");

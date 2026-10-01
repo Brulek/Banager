@@ -113,7 +113,7 @@ describe("the Ollama source's page", () => {
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
     };
     const subtitle = await subtitleOn("Ollama");
-    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
+    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about\u00a06.6 GB in all"));
   });
 
   it("says only its count while they are measured", async () => {

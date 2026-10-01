@@ -60,11 +60,11 @@ describe("the size words", () => {
   it("say every number is rough, and how it is when part of it could not be measured", () => {
     const exact = { bytes: 312_600_000, partial: false, at_least: false };
     expect(sizeText(zh, exact)).toBe("约312.6 MB");
-    expect(sizeText(en, exact)).toBe("About 312.6 MB");
+    expect(sizeText(en, exact)).toBe("About\u00a0312.6 MB");
     expect(sizeText(zh, { ...exact, at_least: true })).toBe("至少约312.6 MB");
     expect(sizeText(en, { ...exact, at_least: true })).toBe("At least about\u00a0312.6 MB");
     expect(sizeText(zh, { ...exact, partial: true })).toBe("约312.6 MB，部分无法读取");
-    expect(sizeText(en, { ...exact, partial: true })).toBe("About 312.6 MB; some of it couldn't be read");
+    expect(sizeText(en, { ...exact, partial: true })).toBe("About\u00a0312.6 MB; some of it couldn't be read");
     // Both: the budget's word wins -- it is the larger "more than this".
     expect(sizeText(zh, { ...exact, partial: true, at_least: true })).toBe("至少约312.6 MB");
   });
@@ -82,7 +82,7 @@ describe("the size words", () => {
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
     });
     expect(modelsTotalText(zh, done, OLLAMA)).toBe("Ollama模型共约6.6 GB");
-    expect(modelsTotalText(en, done, OLLAMA)).toBe("Ollama models: about 6.6 GB in all");
+    expect(modelsTotalText(en, done, OLLAMA)).toBe("Ollama models: about\u00a06.6 GB in all");
     expect(modelsTotalText(zh, done, "brew:/opt/homebrew")).toBeNull();
     expect(modelsTotalText(zh, sizes({ models: [{ instance_id: OLLAMA, measured: null }] }), OLLAMA)).toBeNull();
     expect(modelsTotalText(zh, undefined, OLLAMA)).toBeNull();
