@@ -346,11 +346,11 @@ describe("the Installed page's source headings, on disk use", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 1" })).toBeInTheDocument();
   });
 
-  it("say in a tooltip that old versions count and caches do not, which the rows' sizes leave out", async () => {
+  it("say in a tooltip that other versions count and caches do not, which the rows' sizes leave out", async () => {
     served = measuredAll;
     await bySource();
     const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · about 616.4 MB" });
-    expect(heading).toHaveAttribute("title", expect.stringMatching(/including old versions but not caches/));
+    expect(heading).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
 
     cleanupAndServe({ ...measuredAll, done: false, total: null, sources: [] });
     await bySource();

@@ -121,7 +121,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
           .filter((part): part is string => part !== null)
           .join(" · ");
         if (text === "") return null;
-        // A total counts old versions, which the rows' sizes leave out: the tooltip says what it holds.
+        // A total counts a formula's other versions, which the rows' sizes leave out: the tooltip says what it holds.
         return total === null ? said(text) : { text, failed: false, note: t("sizeTotals.note") };
       }
     case "unknown":

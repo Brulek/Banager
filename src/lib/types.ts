@@ -630,7 +630,7 @@ export interface ArtifactSize {
 }
 /**
  * Rust `SourceSize`: everything measured of one source together -- its
- * tools, a formula's old versions, an Ollama's models folder -- a file
+ * tools, a formula's other versions, an Ollama's models folder -- a file
  * with several hard links once.
  */
 export interface SourceSize {

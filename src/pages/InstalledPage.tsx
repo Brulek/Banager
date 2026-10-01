@@ -1543,7 +1543,7 @@ export function InstalledPage() {
               // A group's heading, as a Mac's grouped list sets one: 13
               // bold, how many in the secondary colour after it, and the
               // source's mark at 16 -- no pill. With the whole source's
-              // size, a tooltip says what it holds: old versions, which
+              // size, a tooltip says what it holds: other versions, which
               // the rows' own sizes leave out.
               <h2
                 className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground"

@@ -484,7 +484,7 @@
     "sourceAtLeast": "at least about\u00a0{{size}}",
     "view": "about\u00a0{{size}} in all",
     "viewAtLeast": "at least about\u00a0{{size}} in all",
-    "note": "Measured sizes added up, including old versions but not caches. A file shared by several tools counts once."
+    "note": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once."
   },
   "sourceNotice": {
     "pipReadOnly": {

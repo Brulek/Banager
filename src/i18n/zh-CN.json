@@ -446,7 +446,7 @@
     "sourceAtLeast": "至少约{{size}}",
     "view": "共约{{size}}",
     "viewAtLeast": "共至少约{{size}}",
-    "note": "实测大小的合计，含旧版本，不含缓存。几个工具共用的文件只算一次。"
+    "note": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。"
   },
   "sourceNotice": {
     "pipReadOnly": {

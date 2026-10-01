@@ -192,7 +192,7 @@ describe("the Installed page's subtitle, on disk use", () => {
     const subtitle = await subtitleOn("Homebrew");
     await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB in all"));
     const line = () => screen.getByRole("heading", { level: 1 }).nextElementSibling;
-    expect(line()).toHaveAttribute("title", expect.stringMatching(/including old versions but not caches/));
+    expect(line()).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
     const sources = await screen.findByRole("list", { name: "Sources" });
     fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
     await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
