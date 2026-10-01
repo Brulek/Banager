@@ -196,7 +196,8 @@ offers one, and `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses
 an install before any source is asked. Before a plan is built,
 `Session::issue_plan` refuses an operation on a source that is read-only
 or not answering, an upgrade or uninstall the tool itself reports it will
-refuse (a pinned package), an update of a tool that installs its
+refuse (a pinned package), an upgrade of a package Homebrew disabled
+(Homebrew's section), an update of a tool that installs its
 updates itself and has no update command Banager may run (Antigravity
 CLI's section), and an uninstall of a uv tool while `UV_TOOL_DIR` is set
 (uv's section) — the buttons the pages hide are backed by that refusal,
@@ -721,10 +722,24 @@ list anything.
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
 | List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy` when the "include self-updating apps" setting is on | 120 s |
-| Qualify the names `outdated` reported (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
+| Qualify the names `outdated` reported, and read which of them Homebrew disabled (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
+
+`brew outdated` lists a formula or cask Homebrew disabled like any other —
+its JSON has no field for the mark, and neither `Formula#outdated?` nor
+`Cask#outdated?` looks at it (Homebrew 7.0.7) — while `brew upgrade` will
+not update it: a formula fails, and a cask prints "Not upgrading …, it is
+disabled" and exits 0 having changed nothing. The `brew info` reading in
+the same check carries the mark (`disabled: true`), so such a row is
+listed with Homebrew's word 「已停用」 and no Update button, says that
+Homebrew provides no more updates of it (and the replacement Homebrew
+suggests, when it names one), and `Session::issue_plan` refuses its
+upgrade (`UpdateBlocked::Disabled`, `BrewAdapter::check_updates`). Nothing
+more runs for this, and Banager never passes `--force`. When that reading
+fails, nothing is marked, and an upgrade is reported as before: failed, or
+needing attention when the version did not change.
 
 `brew uses` names only formulae and casks. The uninstall preview of a
 formula or cask also looks, read-only and running nothing, for the other
@@ -954,6 +969,16 @@ an error for the whole source. pipx has no search command Banager uses.
 | Install | `<pipx> install {name}` | 600 s | No |
 | Uninstall | `<pipx> uninstall {name}` | 600 s | No |
 | Upgrade | `<pipx> upgrade {name}` | 600 s | No |
+
+A tool pinned in pipx (`pipx pin`) is listed by `pipx list --outdated` as
+`name [pinned]: old -> new`; its row has no Update button and gives the
+command that releases the pin, `<pipx> unpin {name}`, for the user to run
+— Banager never runs it. The row also says that this command unpins the
+packages injected into the tool's environment as well (pipx 1.17.3's
+`unpin` releases every pinned package in the environment,
+`commands/pin.py:75-92`, and has no option for the tool alone). Banager
+does not list injected packages (it never passes `--include-injected`),
+so it says this on every pinned pipx row and never how many there are.
 
 ## uv
 
@@ -1482,7 +1507,11 @@ its `agy update` subcommand is undocumented, has no options and has never
 been run — so Banager offers no Update button: a newer version is listed
 with the badge "Open to update" and a sentence that says to open the tool
 once and quit it, after which it installs the new version unless its
-automatic updates have been turned off. Banager does not look for that
+automatic updates have been turned off. Where typing `agy` in Terminal
+runs this copy (Which copy a command runs, below — judged from the folders
+already read, nothing more), the sentence names `agy` as what to type;
+otherwise it does not say how, and the launcher's path is shown with Show
+Technical Details on. Banager does not look for that
 switch, so the sentence cannot say whether it is set.
 `Session::issue_plan` refuses the upgrade as well, and so does the
 adapter.
