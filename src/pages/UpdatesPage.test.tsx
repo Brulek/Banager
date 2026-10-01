@@ -1425,6 +1425,28 @@ describe("UpdatesPage", () => {
     expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
   });
 
+  it("puts no space after 「。」 when it says in Chinese why the rows could not be checked", async () => {
+    updates = Array.from({ length: 2 }, (_, index) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: `global-${index}` },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+      blocked: null,
+    }));
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderPage();
+      fireEvent.click(await findByText("另有2个无法在这里更新"));
+      expect((await findByText(/^2个工具无法检查更新。/)).textContent).toBe(
+        "2个工具无法检查更新。网络连接失败，请检查网络连接后重试。",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("names no cause over the rows when their words give none, or give different ones", async () => {
     // A registry that answered 500 says nothing a person can act on, and
     // one row offline beside one with a full disk is not "no network" for

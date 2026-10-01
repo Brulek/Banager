@@ -1279,8 +1279,13 @@ export function UpdatesPage() {
             <div className="px-5">
               <div className={`flex min-h-8 items-center gap-2 text-small text-muted ${NOTICE_GRID.checkbox.inset}`}>
                 <p className="min-w-0">
-                  {t("updates.cannotCheckSummary", { count: item.count })}
-                  {item.cause !== null && ` ${t(FAILURE_CAUSE_KEYS[item.cause].line)}`}
+                  {item.cause === null
+                    ? t("updates.cannotCheckSummary", { count: item.count })
+                    : // Two sentences as the language spaces them: none after 「。」.
+                      t("runtimeGuard.then", {
+                        first: t("updates.cannotCheckSummary", { count: item.count }),
+                        then: t(FAILURE_CAUSE_KEYS[item.cause].line),
+                      })}
                 </p>
                 <button
                   type="button"
