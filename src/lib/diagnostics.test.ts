@@ -362,6 +362,8 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/Users/alice/.local/bin and /Users/bob")).toBe("~/.local/bin and ~");
     expect(withoutHomePaths("/Users/Shared/tools/bin")).toBe("/Users/Shared/tools/bin");
     expect(withoutHomePaths("/opt/homebrew/bin")).toBe("/opt/homebrew/bin");
+    expect(withoutHomePaths("/System/Volumes/Data/Users/alice/bin")).toBe("~/bin");
+    expect(withoutHomePaths("/System/Volumes/Data/Users/Shared/bin")).toBe("/System/Volumes/Data/Users/Shared/bin");
   });
 });
 
@@ -434,11 +436,15 @@ describe("the command counts", () => {
 });
 
 describe("the home folder, wherever a path can carry it", () => {
-  // Promise 5 of docs/what-we-run.md, as a property: whatever the account
-  // is called and however its home is spelled, no path in the text names
-  // it -- not a source's program the facts did not cover, not a place
-  // that tells two sources of one kind apart (their prefixes, then their
-  // programs, then their ids), not a search folder Rust left unabbreviated.
+  // Promise 5 of docs/what-we-run.md, as a property of the whole text:
+  // whatever the account is called and however its home is spelled, no
+  // path in it names the account -- not a source's program the facts did
+  // not cover, not a place that tells two sources of one kind apart (their
+  // prefixes, then their programs, then their ids), not a search folder
+  // Rust left unabbreviated. Those layers write the paths as given; what
+  // keeps the name out is the last guard, `withoutHomePaths`, over the
+  // whole text, so this guards that guard on every path it can meet, not
+  // the layers' own spelling.
   const NAMES = ["x3secretuser", "x3.secret_user-2", "X3SECRET"];
   const spellings = (name: string) => [`/Users/${name}`, `/System/Volumes/Data/Users/${name}`];
 
@@ -473,6 +479,7 @@ describe("the home folder, wherever a path can carry it", () => {
             const text = diagnosticsText(t, input({ facts, snapshot: homeSnapshot(home), includeTools }));
             expect(text, `${home}, tools ${includeTools}`).not.toContain(name);
             expect(text).not.toContain("/Users/");
+            expect(text).not.toContain("/System/Volumes/Data");
           }
         }
       }
