@@ -2907,7 +2907,11 @@ Banager neither chooses nor sees them.
 - Never lets the window ask for an install: it can ask for the preview
   of an upgrade or an uninstall only, and `plan_operation_impl`
   (`src-tauri/src/ipc.rs`) refuses an install before any source is
-  asked, whatever it names.
+  asked, whatever it names. Nor by another name: the window may ask for
+  an upgrade only of an update the last check listed, and an uninstall
+  only of a tool it listed installed (`Session::issue_listed_plan`),
+  since npm, Cargo and Ollama would install a name they were asked to
+  upgrade.
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
 - Never opens a tool to make it update itself: a self-updating tool's row

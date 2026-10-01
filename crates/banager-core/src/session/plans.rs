@@ -114,7 +114,40 @@ fn blocked_uninstall(artifacts: &[InstalledArtifact], req: &OpRequest) -> Option
         .and_then(|a| a.uninstall_blocked)
 }
 
+/// Whether `updates` and `artifacts` -- one snapshot's -- list what `req`
+/// names: for an `Upgrade`, an update candidate of exactly that instance,
+/// kind and name; for an `Uninstall`, an installed row of it. An `Install`
+/// names nothing listed.
+fn lists_request(
+    updates: &[UpdateCandidate],
+    artifacts: &[InstalledArtifact],
+    req: &OpRequest,
+) -> bool {
+    let names = |key: &crate::model::ArtifactKey| {
+        key.instance_id == req.instance_id && key.kind == req.artifact_kind && key.name == req.name
+    };
+    match req.kind {
+        OpKind::Upgrade => updates.iter().any(|u| names(&u.key)),
+        OpKind::Uninstall => artifacts.iter().any(|a| names(&a.key)),
+        OpKind::Install => false,
+    }
+}
+
 impl Session {
+    /// `issue_plan` for the window (`plan_operation_impl` in
+    /// src-tauri/src/ipc.rs): the same, but only for what the snapshot it
+    /// reads lists (`lists_request`) -- an update the page was offered, a
+    /// tool it was shown installed -- refused as `AdapterError::NotListed`
+    /// otherwise, after the gates `issue_plan` keeps and before any adapter
+    /// is asked. Without it an `Upgrade` of a name no source lists is
+    /// planned as any upgrade is -- `npm install -g <name>@latest`, `cargo
+    /// install --force <name>`, `ollama pull <name>` -- which installs
+    /// whatever that name is: the install the window may not ask for, by
+    /// another name.
+    pub async fn issue_listed_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
+        self.issue(req, true).await
+    }
+
     /// Resolves `req` to its owning adapter, asks it to plan the operation,
     /// then stores the resulting `Plan` under a fresh `PlanId` and returns
     /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
@@ -124,6 +157,11 @@ impl Session {
     /// never submitted does not sit in the map forever. Both the sweep and
     /// `submit`'s expiry read `issued_monotonic`, not the wall clock.
     pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
+        self.issue(req, false).await
+    }
+
+    /// `issue_plan`, and `issue_listed_plan` when `listed_only`.
+    async fn issue(&self, req: &OpRequest, listed_only: bool) -> Result<IssuedPlan, AdapterError> {
         // Generation and instance are read under one lock, so the number
         // stored below really is the generation this exact instance came
         // from. Reading them separately would let a refresh land in
@@ -133,7 +171,7 @@ impl Session {
         // The package's own verdicts (`blocked`, `uninstall_blocked`) are
         // read under that same lock, so all of them come from the one
         // snapshot `generation` names.
-        let (generation, instance, blocked, uninstall_blocked, family) = {
+        let (generation, instance, blocked, uninstall_blocked, family, listed) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -145,6 +183,7 @@ impl Session {
                 blocked_upgrade(&snapshot.updates, req),
                 blocked_uninstall(&snapshot.artifacts, req),
                 super::kept::family_of_uninstall(&snapshot.artifacts, req),
+                lists_request(&snapshot.updates, &snapshot.artifacts, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -186,6 +225,12 @@ impl Session {
         }
         if let Some(reason) = uninstall_blocked {
             return Err(AdapterError::UninstallBlocked { reason });
+        }
+        // Last of the gates: a source that cannot act, or a package its
+        // tool will refuse, is the bigger news than a row gone from the
+        // list.
+        if listed_only && !listed {
+            return Err(AdapterError::NotListed);
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
@@ -896,6 +941,65 @@ mod tests {
             uninstall_blocked,
             facts: Default::default(),
         }
+    }
+
+    #[test]
+    fn test_lists_request_wants_the_exact_candidate_for_an_upgrade_and_the_exact_row_for_an_uninstall(
+    ) {
+        use super::lists_request;
+        let updates = [candidate("jq", None)];
+        let artifacts = [installed_on("fake:1", ArtifactKind::Formula, "wget", None)];
+        // What the window was offered, and shown installed.
+        assert!(lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Upgrade, "jq")
+        ));
+        assert!(lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Uninstall, "wget")
+        ));
+        // A name nothing lists: an upgrade of it would install it.
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Upgrade, "evil")
+        ));
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Uninstall, "evil")
+        ));
+        // Installed but offered no update; offered but asked to uninstall
+        // under that list's name only -- each list answers for its kind.
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Upgrade, "wget")
+        ));
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Uninstall, "jq")
+        ));
+        // The same name of another kind, or on another source.
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &upgrade_on("fake:1", ArtifactKind::Cask, "jq")
+        ));
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &upgrade_on("fake:2", ArtifactKind::Formula, "jq")
+        ));
+        // An install is never listed.
+        assert!(!lists_request(
+            &updates,
+            &artifacts,
+            &request(OpKind::Install, "jq")
+        ));
     }
 
     fn uninstall_on(instance_id: &str, kind: ArtifactKind, name: &str) -> OpRequest {

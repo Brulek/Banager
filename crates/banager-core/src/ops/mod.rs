@@ -58,6 +58,7 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
         | AdapterError::InvalidName(_)
         | AdapterError::Unsupported(_)
         | AdapterError::SourceGone { .. }
+        | AdapterError::NotListed
         | AdapterError::NotActionable { .. }
         | AdapterError::UpdateBlocked { .. }
         | AdapterError::UninstallBlocked { .. }

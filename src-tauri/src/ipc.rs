@@ -270,7 +270,9 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// - **Banager's own words** go out with no prose at all, only data the
 ///   front end can interpolate into its own sentence: `source_gone`,
 ///   `invalid_name` (the name), `program_missing` (the path),
-///   `output_too_large`, `uninstall_unsafe` (the path a path-list
+///   `output_too_large`, `not_listed` (an upgrade or an uninstall of
+///   what the snapshot does not list, `Session::issue_listed_plan`),
+///   `uninstall_unsafe` (the path a path-list
 ///   uninstall preview refused, and which check refused it),
 ///   `index_updating` (brew's uninstall preview
 ///   would not read Homebrew's catalogue while `brew update` rewrites
@@ -332,6 +334,8 @@ fn plan_operation_error(e: banager_core::adapters::AdapterError) -> String {
         // The same bare kind `submit_operation_error` sends for
         // `SubmitError::SourceGone`: one situation, one sentence.
         AdapterError::SourceGone { .. } => serde_json::json!({ "kind": "source_gone" }).to_string(),
+        // A row a refresh has just replaced: the page says to check again.
+        AdapterError::NotListed => serde_json::json!({ "kind": "not_listed" }).to_string(),
         AdapterError::InvalidName(name) => {
             serde_json::json!({ "kind": "invalid_name", "name": name }).to_string()
         }
@@ -441,6 +445,9 @@ fn submit_operation_error(e: banager_core::session::SubmitError) -> String {
 /// (§3.4), which will name a catalogue entry rather than a package.
 /// Refused as `refused`, the payload for Banager's own bug: a page asking
 /// for what no page offers.
+///
+/// An upgrade or an uninstall is planned only for what the snapshot lists
+/// (`Session::issue_listed_plan`), and refused as `not_listed` otherwise.
 pub(crate) async fn plan_operation_impl(
     state: &AppState,
     request: OpRequest,
@@ -453,9 +460,13 @@ pub(crate) async fn plan_operation_impl(
             )),
         ));
     }
+    // Only what the snapshot lists (`Session::issue_listed_plan`): an
+    // update the page was offered, a tool it was shown installed. An
+    // upgrade of a name no source lists is planned by npm, Cargo and Ollama
+    // as an install of that name, which the check above refuses.
     state
         .session
-        .issue_plan(&request)
+        .issue_listed_plan(&request)
         .await
         .map_err(plan_operation_error)
 }
@@ -885,6 +896,21 @@ mod tests {
         /// round that lists nothing previews nothing, and every other
         /// fixture keeps it empty.
         listed: Vec<InstalledArtifact>,
+        /// Formulas this source lists installed and offers an update for,
+        /// so the window may plan an upgrade or an uninstall of each
+        /// (`Session::issue_listed_plan`): the names the planning tests ask
+        /// for, in `state_with_fake_adapter_and_policy` alone.
+        offered: &'static [&'static str],
+    }
+
+    impl FakeAdapter {
+        fn offered_key(&self, name: &str) -> ArtifactKey {
+            ArtifactKey {
+                instance_id: self.instance.id.clone(),
+                kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            }
+        }
     }
 
     #[async_trait]
@@ -904,7 +930,22 @@ mod tests {
             &self,
             _inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-            Ok(self.listed.clone())
+            let mut listed = self.listed.clone();
+            listed.extend(self.offered.iter().map(|name| InstalledArtifact {
+                key: self.offered_key(name),
+                display_name: name.to_string(),
+                version: "1.0".to_string(),
+                reason: banager_core::model::InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: None,
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: Default::default(),
+            }));
+            Ok(listed)
         }
 
         async fn check_updates(
@@ -913,7 +954,22 @@ mod tests {
             opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
             self.check_options_calls.lock().unwrap().push(*opts);
-            Ok(CheckOutcome::default())
+            Ok(CheckOutcome {
+                candidates: self
+                    .offered
+                    .iter()
+                    .map(|name| banager_core::model::UpdateCandidate {
+                        key: self.offered_key(name),
+                        current: "1.0".to_string(),
+                        target: "1.1".to_string(),
+                        channel: banager_core::model::UpdateChannel::Native,
+                        checkable: true,
+                        warnings: Vec::new(),
+                        blocked: None,
+                    })
+                    .collect(),
+                ..CheckOutcome::default()
+            })
         }
 
         async fn search(
@@ -1087,6 +1143,7 @@ mod tests {
             execute_delay,
             cancel_policy,
             listed: Vec::new(),
+            offered: &["jq", "claude", "codex"],
         });
         let sink = ChannelSink::new();
         let session =
@@ -1130,6 +1187,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed: Vec::new(),
+            offered: &[],
         });
         let sink = ChannelSink::new();
         let session =
@@ -1182,6 +1240,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed: Vec::new(),
+            offered: &[],
         });
         let sink = ChannelSink::new();
         let session = banager_core::testing::session_with_background_change(
@@ -1839,8 +1898,69 @@ mod tests {
             ),
             "the never-list of docs/what-we-run.md does not say the window cannot ask for an install"
         );
+        assert!(
+            folded.contains(
+                "the window may ask for an upgrade only of an update the last check listed, and \
+                 an uninstall only of a tool it listed installed (`Session::issue_listed_plan`)"
+            ),
+            "the never-list of docs/what-we-run.md does not say the window plans only what was listed"
+        );
         assert!(!window_may_plan(OpKind::Install));
         assert!(window_may_plan(OpKind::Upgrade) && window_may_plan(OpKind::Uninstall));
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_refuses_an_upgrade_or_uninstall_of_a_name_the_snapshot_does_not_list(
+    ) {
+        // An upgrade is planned by npm as `npm install -g <name>@latest`,
+        // by Cargo as `cargo install --force <name>` and by Ollama as
+        // `ollama pull <name>`: of a name no source lists, an install of
+        // whatever that name is, one `submit_operation` away. The window
+        // only ever plans what it was shown, so anything else is refused
+        // as `not_listed` before any adapter is asked.
+        let (state, plan_calls) = state_with_instance_counting_plans(
+            banager_core::testing::manager_instance("fake", "fake:1"),
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        let unlisted = [
+            (OpKind::Upgrade, ArtifactKind::Formula, "evil"),
+            (OpKind::Uninstall, ArtifactKind::Formula, "evil"),
+            // The listed name, as another kind: not what the row is.
+            (OpKind::Upgrade, ArtifactKind::Cask, "jq"),
+            (OpKind::Uninstall, ArtifactKind::Package, "jq"),
+        ];
+        for (kind, artifact_kind, name) in unlisted {
+            let req = OpRequest {
+                kind,
+                instance_id: "fake:1".to_string(),
+                artifact_kind,
+                name: name.to_string(),
+            };
+            let err = plan_operation_impl(&state, req)
+                .await
+                .expect_err("only what the snapshot lists is planned");
+            assert_eq!(
+                err, r#"{"kind":"not_listed"}"#,
+                "{kind:?} {artifact_kind:?} {name}"
+            );
+        }
+        assert_eq!(
+            plan_calls.load(Ordering::SeqCst),
+            0,
+            "a name the snapshot does not list must never reach an adapter"
+        );
+        // Before the first check, the snapshot lists nothing at all.
+        let (fresh, fresh_calls) = state_with_instance_counting_plans(
+            banager_core::testing::manager_instance("fake", "fake:1"),
+        );
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        assert!(plan_operation_impl(&fresh, req).await.is_err());
+        assert_eq!(fresh_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -2072,6 +2192,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed: Vec::new(),
+            offered: &["jq"],
         });
         let sink = ChannelSink::new();
         let session =
@@ -2585,6 +2706,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed: Vec::new(),
+            offered: &[],
         });
         let sink = ChannelSink::new();
         let session = banager_core::session::Session::with_adapters_and_sizes(
@@ -2910,6 +3032,7 @@ mod tests {
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
             listed,
+            offered: &[],
         });
         let sink = ChannelSink::new();
         let session =

@@ -1201,11 +1201,14 @@ export function planErrorDetail(t: Translate, raw: string): string | null {
  * for logs and is dropped before it reaches the wire. `index_updating` is
  * brew's uninstall preview declining to read Homebrew's catalogue while
  * `brew update` rewrites it (`catalogue_stamp` in
- * crates/banager-core/src/adapters/brew/mod.rs).
+ * crates/banager-core/src/adapters/brew/mod.rs). `not_listed` is an
+ * upgrade or an uninstall of what the snapshot no longer lists
+ * (`Session::issue_listed_plan`): a row a refresh has just replaced.
  */
 const PLAN_FAILURE_KEYS: Record<string, string> = {
   output_too_large: "planRefused.outputTooLarge",
   index_updating: "planRefused.indexUpdating",
+  not_listed: "planRefused.notListed",
   refused: "planRefused.refused",
 };
 

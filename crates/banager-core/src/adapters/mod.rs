@@ -206,6 +206,14 @@ pub enum AdapterError {
     /// keeps that wording for logs and test failure output.
     #[error("unknown instance {instance_id}")]
     SourceGone { instance_id: String },
+    /// `Session::issue_listed_plan` -- the window's way to plan -- was
+    /// asked for an `Upgrade` of a package the snapshot offers no update
+    /// for, or an `Uninstall` of one it does not list as installed. The
+    /// window plans only rows it was shown, so this reaches a person only
+    /// through a row a refresh has just replaced; `plan_operation_error`
+    /// in src-tauri/src/ipc.rs sends it as `{"kind": "not_listed"}`.
+    #[error("the snapshot does not list what this request names")]
+    NotListed,
     /// The source's package catalogue is being rewritten right now, so the
     /// adapter did not read it. Only brew returns it: its `inventory`
     /// while a `brew update` is running for that instance, its

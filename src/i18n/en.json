@@ -646,6 +646,7 @@
     "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
     "indexUpdating": "Homebrew is updating its software list, so dependencies can't be checked reliably now. Try again in a minute or two.",
     "refused": "Couldn't continue because of an internal error.",
+    "notListed": "Couldn't start because it's no longer in the list. Click Check Again.",
     "uninstallUnsafe": {
       "outsideHome": "Couldn't move {{path}} because the folder holding it leads outside your home folder.",
       "sharedFolder": "Couldn't move {{path}} because it's in a folder other apps share.",

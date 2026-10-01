@@ -627,6 +627,7 @@ describe("planErrorMessage", () => {
     for (const [kind, key] of [
       ["output_too_large", "planRefused.outputTooLarge"],
       ["index_updating", "planRefused.indexUpdating"],
+      ["not_listed", "planRefused.notListed"],
       ["refused", "planRefused.refused"],
     ]) {
       expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew", false)).toBe(
