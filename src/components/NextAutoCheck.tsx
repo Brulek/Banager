@@ -17,6 +17,13 @@ import type { TFunction } from "i18next";
  *
  * Nothing while `at` is not known (`null`: no check has counted yet, the
  * check at launch still under way).
+ *
+ * Two edges the line does not chase, both hedged by 「左右」 / 「很快」: once
+ * the time has passed it says 「很快」 until the next snapshot, however long
+ * the check waits -- a round under way, a Mac just woken; and with the
+ * Mac's clock set back a minute or more (`SET_BACK_SLACK_SECS`), `tick`
+ * checks at its next look while this still shows the later time
+ * (`next_check_due` follows a clock that moves forward).
  */
 export function NextAutoCheck({ at, className }: { at: number | null | undefined; className?: string }) {
   const { t, i18n } = useTranslation();
