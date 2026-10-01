@@ -1918,6 +1918,15 @@ metadata and nothing else:
 | `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, plus every `PATH` entry under your home folder (`candidate_dirs`) | `read_dir`, one level deep — a subdirectory is never entered; a directory that does not exist, or that cannot be read, is skipped silently; two names for one directory are read once (`scan_dirs`) |
 | each entry | `lstat`, `readlink`, `realpath`, `stat` (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run. A broken link, while a source's own executable is a link that leads nowhere too, also gets `lstat`, `readlink` and `realpath` on the folders and links its text leads through, to see where it would lead (`dead_end`) |
 
+Unlike the commands check and the disk-use measurement, this scan reads
+by path, and it has no list of places it never looks into: if one of the
+folders above is in, or is a link into, `~/Documents`, iCloud Drive,
+`/Volumes` or another place Disk use (below) never looks into, that
+folder is read one level deep all the same, and macOS may ask for
+permission; so is a folder replaced by such a link while it is read, and
+the folder an entry's link leads to is resolved (`realpath`) wherever it
+is. This is a known exception, as the fixed-path probes above are.
+
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
 moves or deletes anything it finds. It takes no lock and is not part of a
