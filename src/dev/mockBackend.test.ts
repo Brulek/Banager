@@ -514,9 +514,14 @@ describe("the preview's commands, and which copy runs", () => {
 
     const notices = await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
     const npmClaude = notices.artifacts.find((a) => a.key.name === "@anthropic-ai/claude-code");
-    expect(npmClaude?.facts).toEqual({ family: "claude-code", commands: [{ name: "claude", state: "Runs" }] });
+    expect(npmClaude?.facts).toEqual({
+      family: "claude-code",
+      homebrew: null,
+      commands: [{ name: "claude", state: "Runs" }],
+    });
     expect(factsOf(notices, "standalone-claude", "claude")).toEqual({
       family: "claude-code",
+      homebrew: null,
       commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude?.key } } }],
     });
     // The launcher with no program: nothing to name.
@@ -534,6 +539,6 @@ describe("the preview's commands, and which copy runs", () => {
 
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
     await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
-    expect(NO_FACTS).toEqual({ family: null, commands: [] });
+    expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [] });
   });
 });

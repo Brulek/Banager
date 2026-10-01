@@ -3128,11 +3128,15 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     key: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "@anthropic-ai/claude-code" },
     description: null,
     installed_at: null,
-    facts: { family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
+    facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: "Runs" }] },
   };
   const nativeClaude: InstalledArtifact = {
     ...claudeArtifact,
-    facts: { family: "claude-code", commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude.key } } }] },
+    facts: {
+      ...NO_FACTS,
+      family: "claude-code",
+      commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude.key } } }],
+    },
   };
 
   function serveBoth(native: InstalledArtifact, other: InstalledArtifact) {
@@ -3169,8 +3173,8 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
   it("still tells two copies apart when nothing was said about which runs, and shows no group", async () => {
     // `Session::note_login_path(false)`: the names, and no verdicts.
     serveBoth(
-      { ...nativeClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
-      { ...npmClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
+      { ...nativeClaude, facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: null }] } },
+      { ...npmClaude, facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: null }] } },
     );
     renderInstalled();
 
@@ -3207,7 +3211,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
 
     // Nothing said about `claude`: the notice is all there is, and stays.
     serveBoth(
-      { ...nativeClaude, facts: { family: "claude-code", commands: [{ name: "claude", state: null }] } },
+      { ...nativeClaude, facts: { ...NO_FACTS, family: "claude-code", commands: [{ name: "claude", state: null }] } },
       npmClaude,
     );
     served = { ...served, instances: [brew, npm, shadowed] };
@@ -3219,7 +3223,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
   it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {
     const formulaGrok: InstalledArtifact = {
       ...formula("grok"),
-      facts: { family: null, commands: [{ name: "grok", state: "Runs" }] },
+      facts: { ...NO_FACTS, family: null, commands: [{ name: "grok", state: "Runs" }] },
     };
     served = {
       ...snapshot,
@@ -3229,6 +3233,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
         {
           ...claudeArtifact,
           facts: {
+            ...NO_FACTS,
             family: "claude-code",
             commands: [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }],
           },
