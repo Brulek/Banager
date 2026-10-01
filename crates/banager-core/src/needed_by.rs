@@ -49,7 +49,8 @@
 //! and `readlink` of each step, from the folder before it held open, and
 //! never a step into one of the places macOS asks about first, nor onto
 //! another disk), plus the same `PATH` look `resolve_exe` makes for the
-//! interpreter. No file is opened, nothing is written and no command runs.
+//! interpreter. Only folders are opened, to follow each link; no file's
+//! contents are read, nothing is written and no command runs.
 //! Bounded (`BUDGET`): a look it stopped short of is reported as one that
 //! did not finish (`NeededBy::complete`), never as "nothing runs on it".
 //! Run on the blocking pool by `Session::issue_plan`
@@ -90,6 +91,14 @@ fn comes_with_program(adapter_id: &str) -> &'static [&'static str] {
 /// tool environments.
 fn has_environments(adapter_id: &str) -> bool {
     matches!(adapter_id, "pipx" | "uv")
+}
+
+/// Whether `source`'s tools run on this Mac at all. An Ollama whose
+/// `OLLAMA_HOST` names another machine keeps its models, and runs them,
+/// there: the `ollama` here is only a client, and uninstalling it costs
+/// those models nothing (`models_on_this_mac`).
+fn runs_here(source: &ManagerInstance) -> bool {
+    source.adapter_id != "ollama" || crate::adapters::ollama::models_on_this_mac(source)
 }
 
 /// `name` as PyPI compares names (PEP 503): lower case, with `_` and `.`
@@ -160,7 +169,10 @@ pub fn needed_by(
         };
     }
     for source in instances {
-        if source.id == brew.id || !HOSTED.contains(&source.adapter_id.as_str()) {
+        if source.id == brew.id
+            || !HOSTED.contains(&source.adapter_id.as_str())
+            || !runs_here(source)
+        {
             continue;
         }
         let tools: Vec<&InstalledArtifact> = artifacts
@@ -892,6 +904,55 @@ mod tests {
                 .warnings
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn test_an_ollama_whose_models_are_on_another_machine_needs_nothing_here() {
+        let root = Root::new("ollama-remote");
+        root.program("opt/homebrew/Cellar/ollama/0.34.1/bin/ollama");
+        root.link(
+            "opt/homebrew/bin/ollama",
+            "../Cellar/ollama/0.34.1/bin/ollama",
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        let models_of =
+            |ollama: &ManagerInstance| vec![row(&ollama.id, ArtifactKind::Model, "llama3.2:3b")];
+        // `OLLAMA_HOST` names another machine: its models are there, and the
+        // `ollama` this formula put here is only a client.
+        let remote = instance(
+            "ollama",
+            "ollama:http://studio.local:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), remote.clone()];
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &models_of(&remote),
+            &env,
+            BUDGET,
+        );
+        assert!(found.warnings.is_empty());
+        assert!(found.complete);
+        // The same Mac spelled another way still counts.
+        let local = instance(
+            "ollama",
+            "ollama:http://localhost:11434",
+            root.path("opt/homebrew/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), local.clone()];
+        let found = needed_by(
+            &formula("ollama"),
+            &instances[0],
+            &instances,
+            &models_of(&local),
+            &env,
+            BUDGET,
+        );
+        assert_eq!(needed(&found.warnings), vec![(local.id.clone(), true, 1)]);
     }
 
     #[test]
