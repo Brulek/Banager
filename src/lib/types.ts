@@ -671,3 +671,28 @@ export type UiEvent =
   | { SnapshotChanged: { generation: number } }
   | { InventoryPreview: InventoryPreview }
   | { SizesChanged: { round: number } };
+/**
+ * What the window cannot read itself for 「拷贝诊断信息」 (`get_system_facts`
+ * in src-tauri/src/ipc.rs). Mirrors `SystemFacts` in
+ * crates/banager-core/src/diagnostics.rs: every path with the home folder
+ * as `~`, and no environment variable's value but the `PATH` folders.
+ */
+export interface SystemFacts {
+  /** "27.0"; null where the kernel would not say. */
+  macos_version: string | null;
+  /** "Apple M2 Pro"; null where the kernel would not say. */
+  chip: string | null;
+  /** What Banager was built for: "aarch64" or "x86_64". */
+  arch: string;
+  /** Whether `PATH` is the login shell's. */
+  login_path: boolean;
+  /** The `PATH` folders, in order, home folder as `~`. */
+  path_dirs: string[];
+  /** Each source's program, home folder as `~`, by instance id. */
+  sources: SourcePath[];
+}
+/** Rust `SourcePath`: one source's program, as `SystemFacts.sources` lists it. */
+export interface SourcePath {
+  instance_id: string;
+  exe_path: string;
+}

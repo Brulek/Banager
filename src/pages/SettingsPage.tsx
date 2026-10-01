@@ -10,6 +10,7 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
 import { NextAutoCheck } from "../components/NextAutoCheck";
+import { DiagnosticsRows } from "../components/DiagnosticsRows";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
 import {
@@ -140,7 +141,8 @@ function NoEntries({ text }: { text: string }) {
  * with the button that takes it back, where the Overview's count of
  * hidden updates opens the page -- and 「关于」: the app's 「版本」, then
  * the 「图标来源」 row that opens the credits for the logos built into
- * the app (`IconCreditsDrawer`). Every change is saved at once; one that cannot
+ * the app (`IconCreditsDrawer`), and 「拷贝诊断信息」 with the checkbox
+ * that adds the list of tools (`DiagnosticsRows`). Every change is saved at once; one that cannot
  * be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
@@ -523,7 +525,10 @@ export function SettingsPage() {
         </SettingsGroup>
       </div>
 
-      <SettingsGroup title={t("settings.groups.about")}>
+      <SettingsGroup
+        title={t("settings.groups.about")}
+        footnote={<p className={GROUP_FOOTNOTE}>{t("diagnostics.footnote")}</p>}
+      >
         {/* The version as System Settings' About shows one: a plain row,
             the value on the right in the muted colour, and text a user
             can select to copy into a report (`select-text`). */}
@@ -544,6 +549,7 @@ export function SettingsPage() {
             </button>
           }
         />
+        <DiagnosticsRows />
       </SettingsGroup>
       <IconCreditsDrawer open={creditsOpen} onOpenChange={setCreditsOpen} />
     </div>

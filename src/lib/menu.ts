@@ -1,13 +1,14 @@
 /**
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
  * Settings… (⌘,); the View menu's Overview, Updates, Installed and Other
- * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F). Each does what
- * the page's own control for it does, through the same code, so the two
- * cannot drift apart. The menu bar's other items are macOS's own and never
+ * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F); Help's Copy
+ * Diagnostic Info. Each does what the page's own control for it does,
+ * through the same code, so the two cannot drift apart. The menu bar's other items are macOS's own and never
  * reach the page.
  */
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
+import { useCopyDiagnostics } from "./diagnostics";
 import { useCheckAgain } from "./queries";
 import { useUiStore } from "../store/ui";
 
@@ -23,11 +24,17 @@ import { useUiStore } from "../store/ui";
  *   (`searchInstalled`), wherever the focus was -- the sidebar, a row, a
  *   field -- since what macOS hands the page is the item, not a key press
  *   on whatever had the focus.
+ * - Copy Diagnostic Info copies what Settings' button of that name copies,
+ *   without the list of tools whatever its checkbox says, at once -- in
+ *   the turn the item is chosen in, which is what lets the page write the
+ *   clipboard -- then opens Settings, where 「已拷贝」 (or 「无法拷贝」)
+ *   shows under that button, beside the checkbox that adds the list.
  */
 export function useMenuCommands(): void {
   const openPage = useUiStore((s) => s.openPage);
   const searchInstalled = useUiStore((s) => s.searchInstalled);
   const { checkAgain } = useCheckAgain();
+  const copyDiagnostics = useCopyDiagnostics();
 
   // These are the same functions from one render to the next, so the
   // window listens once.
@@ -40,6 +47,10 @@ export function useMenuCommands(): void {
       unknown: () => openPage("unknown"),
       checkAgain,
       search: searchInstalled,
+      copyDiagnostics: () => {
+        copyDiagnostics(false);
+        openPage("settings");
+      },
     };
     let stop: (() => void) | undefined;
     let cancelled = false;
@@ -64,5 +75,5 @@ export function useMenuCommands(): void {
       cancelled = true;
       stop?.();
     };
-  }, [openPage, searchInstalled, checkAgain]);
+  }, [openPage, searchInstalled, checkAgain, copyDiagnostics]);
 }

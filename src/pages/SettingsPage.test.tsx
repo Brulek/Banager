@@ -1105,11 +1105,14 @@ describe("SettingsPage's version", () => {
     expect(value.className.split(" ")).toEqual(
       expect.arrayContaining(["text-body", "text-muted", "select-text"]),
     );
-    // Nothing to press in it: the group's one button is the credits'.
+    // Nothing to press in it: the group's buttons are the credits' and
+    // Copy Diagnostic Info's.
     expect(within(row).queryByRole("button")).toBeNull();
-    expect(within(about).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-      "View icon credits",
-    ]);
+    expect(
+      within(about)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent),
+    ).toEqual(["View icon credits", "Copy Diagnostic Info"]);
   });
 
   it("is called 「版本」 in Chinese, with the same version beside it", async () => {
@@ -1184,6 +1187,12 @@ describe("SettingsPage's icon credits", () => {
       tauriConfig.version,
       "Icon credits",
       "View…",
+      // Then Copy Diagnostic Info, its checkbox and what the text holds
+      // (DiagnosticsRows.test.tsx).
+      "Diagnostic info",
+      "Copy Diagnostic Info",
+      "Include the list of installed tools",
+      "To paste to someone helping you. It has the macOS version and where each source is and how it's doing, with your home folder written as ~ and no values of environment variables.",
     ]);
     await user.click(open);
 

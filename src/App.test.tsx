@@ -820,13 +820,14 @@ describe("the menu bar's items that act in the page", () => {
     return mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
   }
 
-  it("are listened for from the start: Settings…, the View menu's four pages, Check Again and Search", async () => {
+  it("are listened for from the start: Settings…, the View menu's four pages, Check Again, Search and Help's Copy Diagnostic Info", async () => {
     const menu = fakeMenuBar();
     const { findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
 
     expect(menu.listening().filter((event) => event.startsWith("menu://"))).toEqual([
       "menu://check-again",
+      "menu://copy-diagnostics",
       "menu://installed",
       "menu://overview",
       "menu://search",
@@ -845,6 +846,27 @@ describe("the menu bar's items that act in the page", () => {
 
     expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("copy the diagnostic text on Help's Copy Diagnostic Info, without the tools, then open Settings where it says so", async () => {
+    const menu = fakeMenuBar();
+    const { findByText, findByRole, container } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    try {
+      menu.choose("copyDiagnostics");
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(writeText.mock.calls[0][0].startsWith("Diagnostic info\n")).toBe(true);
+      expect(writeText.mock.calls[0][0]).not.toMatch(/^ {4}\S/m);
+      expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(container.querySelector("[data-diagnostics-status]")).toHaveTextContent("Copied"),
+      );
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
   });
 
   it("open each page on its item in the View menu (⌘1 to ⌘4), as its row in the sidebar does", async () => {

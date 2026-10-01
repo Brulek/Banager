@@ -310,6 +310,7 @@ describe("the menu bar's events", () => {
   // spelled out, not read from MENU_EVENTS, so a name changed there alone fails.
   const ALL_MENU_EVENTS = [
     "menu://check-again",
+    "menu://copy-diagnostics",
     "menu://installed",
     "menu://overview",
     "menu://search",
@@ -333,7 +334,7 @@ describe("the menu bar's events", () => {
     });
   });
 
-  it("are the seven Rust sends, one per item acting in the page, each calling back with its item", async () => {
+  it("are the eight Rust sends, one per item acting in the page, each calling back with its item", async () => {
     const chosen: MenuCommand[] = [];
     await onMenuCommand((command) => chosen.push(command));
 
@@ -347,14 +348,15 @@ describe("the menu bar's events", () => {
       "menu://installed",
       "menu://unknown",
       "menu://check-again",
+      "menu://copy-diagnostics",
       "menu://search",
     ]) {
       handlers.get(event)?.({ event, id: 1, payload: null });
     }
-    expect(chosen).toEqual(["search", "settings", "overview", "updates", "installed", "unknown", "checkAgain", "search"]);
+    expect(chosen).toEqual(["search", "settings", "overview", "updates", "installed", "unknown", "checkAgain", "copyDiagnostics", "search"]);
   });
 
-  it("stop being listened for, all seven, through what onMenuCommand resolves to", async () => {
+  it("stop being listened for, all eight, through what onMenuCommand resolves to", async () => {
     const stop = await onMenuCommand(() => {});
     expect(stopped).toEqual([]);
 

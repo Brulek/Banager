@@ -786,6 +786,50 @@
     "readOnly": "the settings disk is read-only",
     "other": "{{detail}}"
   },
+  "diagnostics": {
+    "label": "Diagnostic info",
+    "copy": "Copy Diagnostic Info",
+    "includeTools": "Include the list of installed tools",
+    "footnote": "To paste to someone helping you. It has the macOS version and where each source is and how it's doing, with your home folder written as ~ and no values of environment variables.",
+    "text": {
+      "title": "Diagnostic info",
+      "time": "Date: {{time}}",
+      "app": "{{app}}: {{version}}",
+      "macos": "macOS: {{version}}",
+      "macosUnknown": "macOS: couldn't read",
+      "chip": "Chip: {{chip}}",
+      "chipAppleSilicon": "Apple silicon",
+      "chipIntel": "Intel",
+      "language": "Language: {{language}}",
+      "sources": "Sources: {{number}}",
+      "version": "Version: {{version}}",
+      "versionUnknown": "Version: unknown",
+      "path": "Location: {{path}}",
+      "status": "Status: {{status}}",
+      "notes": "Notes: {{number}}",
+      "tools": "Tools: {{number}}",
+      "statusWord": {
+        "ok": "OK",
+        "NotRunning": "Not running",
+        "NotResponding": "Not responding",
+        "RefusesAsRoot": "Can't run as administrator",
+        "readOnly": "View only",
+        "unverified": "Version not tested"
+      },
+      "searchPath": "Terminal search folders: {{number}}",
+      "loginRead": "Read from the login settings",
+      "loginNotRead": "Couldn't read the login settings, so these are the defaults",
+      "lastCheck": "Last check: {{time}}",
+      "neverChecked": "Last check: none yet",
+      "complete": "Check: complete",
+      "incomplete": "Check: incomplete, {{sources}} didn't finish",
+      "incompletePlain": "Check: incomplete",
+      "notFound": "Not found in Terminal: {{number}}",
+      "twins": "Installed twice: {{number}}",
+      "diskTotal": "Space used: {{size}}",
+      "noFacts": "System info: couldn't read"
+    }
+  },
   "unknown": {
     "columns": {
       "size": "Size",

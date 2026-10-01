@@ -10,6 +10,7 @@ import type {
   Settings,
   Snapshot,
   Sizes,
+  SystemFacts,
   OpSummary,
   UiEvent,
   UnknownScan,
@@ -144,6 +145,17 @@ export function getSizes(): Promise<Sizes> {
 }
 
 /**
+ * What 「拷贝诊断信息」 needs and the window cannot read itself
+ * (`get_system_facts` in src-tauri/src/ipc.rs): macOS's version, the chip,
+ * whether `PATH` is the login shell's and its folders, and each source's
+ * program -- home folder as `~`. Takes nothing; runs no command.
+ * `useSystemFacts` (src/lib/diagnostics.ts) is the caller.
+ */
+export function getSystemFacts(): Promise<SystemFacts> {
+  return call<SystemFacts>("get_system_facts");
+}
+
+/**
  * The languages the menu bar is written in: the window's two, by the names
  * its i18n gives them (`MenuLanguage` in src-tauri/src/menu.rs).
  */
@@ -162,8 +174,9 @@ export function setMenuLanguage(language: MenuLanguage): Promise<void> {
  * The event Rust sends the window when an item of the menu bar that acts in
  * the page is chosen, by what the page does for it: Settings… (⌘,); the
  * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Other
- * Programs (⌘4); Check Again (⌘R); Search (⌘F). `PageCommand` in
- * src-tauri/src/menu.rs sends these seven.
+ * Programs (⌘4); Check Again (⌘R); Search (⌘F); and Help's Copy
+ * Diagnostic Info. `PageCommand` in src-tauri/src/menu.rs sends these
+ * eight.
  */
 export const MENU_EVENTS = {
   settings: "menu://settings",
@@ -173,13 +186,14 @@ export const MENU_EVENTS = {
   unknown: "menu://unknown",
   checkAgain: "menu://check-again",
   search: "menu://search",
+  copyDiagnostics: "menu://copy-diagnostics",
 } as const;
 
 export type MenuCommand = keyof typeof MENU_EVENTS;
 
 /**
  * Calls `onCommand` each time one of those items is chosen, and resolves to
- * what stops that once the window listens for all seven. If one cannot be
+ * what stops that once the window listens for all eight. If one cannot be
  * listened for, those that could are stopped again and this rejects.
  * `useMenuCommands` is the caller.
  */
