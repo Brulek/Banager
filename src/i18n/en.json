@@ -475,7 +475,11 @@
     "programOnly": "Counts only its program files, not what it downloads or caches.",
     "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less.",
     "otherVersionsTotal": "About\u00a0{{size}} in all",
-    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all"
+    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all",
+    "sourceTotal": "about\u00a0{{size}}",
+    "sourceTotalAtLeast": "at least about\u00a0{{size}}",
+    "viewTotal": "about\u00a0{{size}} in all",
+    "viewTotalAtLeast": "at least about\u00a0{{size}} in all"
   },
   "sourceNotice": {
     "pipReadOnly": {

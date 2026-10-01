@@ -75,6 +75,7 @@ import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
 import { compareBySize, sizeOrderOf } from "../lib/sizes";
+import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -429,6 +430,8 @@ export function InstalledPage() {
     () => (sort === "size" ? sizeOrderOf(sizes, snapshot?.artifacts ?? []) : NO_SIZE_ORDER),
     [sort, sizes, snapshot],
   );
+  // What each source takes together, under its heading (`sizeTotalsOf`).
+  const sizeTotals = useMemo(() => sizeTotalsOf(sizes, snapshot), [sizes, snapshot]);
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
@@ -1538,7 +1541,13 @@ export function InstalledPage() {
               <h2 className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground">
                 <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
                 <span className="min-w-0 truncate">{item.label}</span>{" "}
-                <span className="shrink-0 text-body font-normal tabular-nums text-muted">{item.count}</span>
+                <span className="shrink-0 text-body font-normal tabular-nums text-muted">
+                  {item.count}
+                  {/* The whole source's size, only while the heading counts the whole source. */}
+                  {needle === "" && show === "all" && sizeTotals.bySource.has(item.instance.id)
+                    ? ` · ${sourceTotalText(t, sizeTotals.bySource.get(item.instance.id)!)}`
+                    : null}
+                </span>
               </h2>
             ) : item.type === "fold" ? (
               <FoldLine

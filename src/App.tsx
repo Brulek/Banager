@@ -17,6 +17,7 @@ import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib
 import { useInventoryPreview } from "./lib/inventoryPreview";
 import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
 import { modelsTotalText } from "./lib/sizes";
+import { sizeTotalsOf, viewTotalText } from "./lib/sizeTotals";
 import { instanceLabels } from "./lib/sources";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
@@ -59,7 +60,9 @@ function headerActions(page: Page): ReactNode {
  * bring up to date. On one source alone, the Installed page counts that
  * source's tools, 「30个工具」, under its name (`useShownSource`) -- and on
  * Ollama's, what its models take together, 「2个工具 · Ollama模型共约6.2 GB」
- * (`modelsTotalText`). Other Programs says 「正在扫描…」 while it scans.
+ * (`modelsTotalText`); on any other, or on all of them, what the tools
+ * counted take, 「55个工具 · 共约9.8 GB」 (`viewTotalText`). Other Programs
+ * says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
  * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
  * default, so a page added to `Page` without an answer here fails `tsc`.
@@ -80,6 +83,13 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   // nothing in a sentence of its own.
   const counted = (key: string, count: number | undefined) =>
     count === undefined || count === 0 ? null : t(key, { count });
+  // What the tools counted take together, once measured: 「共约9.8 GB」, or
+  // 「共至少约…」 when some of them have no size (`sizeTotalsOf`).
+  const viewTotal = (source: string | null): string | null => {
+    const totals = sizeTotalsOf(sizes, snapshot);
+    const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
+    return total === null ? null : viewTotalText(t, total);
+  };
   switch (page) {
     case "overview":
     case "settings":
@@ -94,7 +104,8 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
       if (page === "updates") return said(updatesHeadline);
       // On one source alone, that source's: its name is the title. On
-      // Ollama's, what its models take together after it, once measured.
+      // Ollama's, what its models take together after it, once measured;
+      // on any other, or all, what the tools counted take together.
       return said(
         [
           counted(
@@ -103,7 +114,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
               ? snapshot?.artifacts.length
               : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
           ),
-          shownSource === null ? null : modelsTotalText(t, sizes, shownSource),
+          (shownSource === null ? null : modelsTotalText(t, sizes, shownSource)) ?? viewTotal(shownSource),
         ]
           .filter((part): part is string => part !== null)
           .join(" · ") || null,

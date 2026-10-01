@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
@@ -131,5 +131,65 @@ describe("the Ollama source's page", () => {
     };
     const subtitle = await subtitleOn("Homebrew");
     await waitFor(() => expect(subtitle()).toBe("1 tool"));
+  });
+});
+
+/** Opens the Installed page on every source, as the sidebar's Installed row does. */
+async function subtitleOnAll(): Promise<() => string | null> {
+  const view = renderWithProviders(<App />);
+  await view.findByRole("heading", { level: 2, name: "Everything is up to date" });
+  const nav = await view.findByRole("navigation", { name: "Navigation" });
+  fireEvent.click(within(nav).getByRole("button", { name: /^Installed/ }));
+  await view.findByRole("heading", { level: 1, name: "Installed" });
+  return () => view.getByRole("heading", { level: 1 }).nextElementSibling?.textContent ?? null;
+}
+
+describe("the Installed page's subtitle, on disk use", () => {
+  // jq and the models measured; size.rs's totals (`Sizes.total`, `.sources`).
+  const measured: Sizes = {
+    ...NO_SIZES,
+    round: 2,
+    done: true,
+    artifacts: [
+      {
+        key: jq.key,
+        version: "1.8.2",
+        measured: { bytes: 1_200_000, partial: false, at_least: false },
+        old_versions: null,
+      },
+    ],
+    models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
+    total: { bytes: 6_621_200_000, partial: false, at_least: false },
+    sources: [
+      { instance_id: brew.id, measured: { bytes: 1_200_000, partial: false, at_least: false } },
+      { instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } },
+    ],
+  };
+
+  it("says what everything takes after the count on every source's list", async () => {
+    served = measured;
+    const subtitle = await subtitleOnAll();
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about 6.6 GB in all"));
+  });
+
+  it("says what one source's tools take on that source's list, and Ollama's models line on Ollama's", async () => {
+    served = measured;
+    const subtitle = await subtitleOn("Homebrew");
+    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB in all"));
+    const sources = await screen.findByRole("list", { name: "Sources" });
+    fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
+    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
+  });
+
+  it("says at least when a tool counted has no size, and nothing until the round is done", async () => {
+    served = { ...measured, artifacts: [] };
+    const subtitle = await subtitleOnAll();
+    await waitFor(() => expect(subtitle()).toBe("2 tools · at least about 6.6 GB in all"));
+  });
+
+  it("says only the count while the sizes are measured", async () => {
+    served = { ...measured, done: false, total: null, sources: [] };
+    const subtitle = await subtitleOnAll();
+    await waitFor(() => expect(subtitle()).toBe("2 tools"));
   });
 });

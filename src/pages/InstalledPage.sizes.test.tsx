@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import i18n from "../i18n";
+import { useUiStore } from "../store/ui";
 import type { InstalledArtifact, ManagerInstance, Measured, Settings, Sizes, Snapshot } from "../lib/types";
 import { NO_FACTS, NO_SIZES } from "../lib/types";
 
@@ -291,3 +292,70 @@ describe("the Installed page's details, on disk use", () => {
     expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Size$/);
   });
 });
+
+describe("the Installed page's source headings, on disk use", () => {
+  // What size.rs adds up per source (`Sizes.sources`): node@22 with its old
+  // versions, jq and wget; Ollama's models as their folder.
+  const measuredAll: Sizes = {
+    ...NO_SIZES,
+    round: 4,
+    done: true,
+    artifacts: [
+      { key: node.key, version: "22.23.3", measured: about(312_600_000), old_versions: about(298_400_000) },
+      { key: jq.key, version: "1.8.2", measured: about(1_200_000), old_versions: null },
+      { key: wget.key, version: "1.25.0", measured: about(4_200_000), old_versions: null },
+    ],
+    models: [{ instance_id: OLLAMA, measured: about(6_620_000_000) }],
+    total: about(7_236_400_000),
+    sources: [
+      { instance_id: brew.id, measured: about(616_400_000) },
+      { instance_id: OLLAMA, measured: about(6_620_000_000) },
+    ],
+  };
+
+  async function bySource() {
+    useUiStore.getState().setInstalledSort("source");
+    render();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+  }
+
+  it("say what each source takes after its count, as Ollama's own line says its models", async () => {
+    served = measuredAll;
+    await bySource();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · about 616.4 MB" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Ollama 1 · about 6.6 GB" })).toBeInTheDocument();
+  });
+
+  it("say at least where a tool of the source has no size, and nothing while it is measured", async () => {
+    served = { ...measuredAll, artifacts: measuredAll.artifacts.filter((size) => size.key.name !== "wget") };
+    await bySource();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · at least about 616.4 MB" }),
+    ).toBeInTheDocument();
+
+    cleanupAndServe({ ...measuredAll, done: false, total: null, sources: [] });
+    await bySource();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3" })).toBeInTheDocument();
+  });
+
+  it("say no size while a search narrows the count to part of the source", async () => {
+    served = measuredAll;
+    await bySource();
+    await screen.findByRole("heading", { level: 2, name: /^Homebrew 3 · / });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "j" } });
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 1" })).toBeInTheDocument();
+  });
+
+  it("say it in Chinese, 约 before the number", async () => {
+    await i18n.changeLanguage("zh-CN");
+    served = measuredAll;
+    await bySource();
+    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew 3 · 约616.4 MB" })).toBeInTheDocument();
+  });
+});
+
+/** Unmounts what is rendered and serves `sizes` from now on. */
+function cleanupAndServe(sizes: Sizes) {
+  cleanup();
+  served = sizes;
+}

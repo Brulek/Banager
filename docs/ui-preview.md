@@ -189,6 +189,15 @@ Paths are under a generic home folder, `/Users/you`.
   the Ollama source's page says 「Ollama模型共约6.6 GB」 under its title.
   The Installed page's sort has 「按大小」 ("By Size"): the two models
   first, then Visual Studio Code and node@22, a tool with no size last.
+  Sorted 「按来源」, each source's heading says what it takes after its
+  count, 「Homebrew 33 · 至少约2.6 GB」 (the font has no size, so "at least"),
+  「Ollama 2 · 约6.6 GB」 as its models' line says; pip has no number. The
+  toolbar says the whole list's, 「57个工具 · 共至少约10.5 GB」, or one
+  source's on its page. No number while the round measures, or while a
+  search or the 「显示」 popup narrows a heading's count.
+- The Installed page's 「显示」 popup also offers 「装了不止一份」: with
+  `?state=notices`, Claude Code and @anthropic-ai/claude-code; on the default
+  pretend Mac, 「没有发现装了不止一份的工具」.
 - youtube-dl's details have every row the details can have for a
   Homebrew formula at once, for checking their order: the facts (version,
   date installed, 占用空间, 其他版本 with its size, homepage, and 状态 with
