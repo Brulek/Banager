@@ -360,6 +360,9 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
   );
 }
 
+/** The size order under any sort but By Size: one map, so it never changes. */
+const NO_SIZE_ORDER: Map<string, number> = new Map();
+
 /**
  * 已安装: everything the sources list, to find and to uninstall
  * (docs/superpowers/2026-09-27-ui-redesign.md, 已安装页;
@@ -411,7 +414,12 @@ export function InstalledPage() {
   const { data: operations } = useOperations();
   // How much each tool takes on disk, measured after each check (`sizeFact`).
   const { data: sizes } = useSizes();
-  const sizeOrder = useMemo(() => sizeOrderOf(sizes, snapshot?.artifacts ?? []), [sizes, snapshot]);
+  // Only while the list is sorted by size: under any other sort, sizes
+  // coming in after a check do not rebuild the list's rows.
+  const sizeOrder = useMemo(
+    () => (sort === "size" ? sizeOrderOf(sizes, snapshot?.artifacts ?? []) : NO_SIZE_ORDER),
+    [sort, sizes, snapshot],
+  );
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
