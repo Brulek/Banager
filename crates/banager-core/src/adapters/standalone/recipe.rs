@@ -83,6 +83,14 @@ pub struct Recipe {
     /// `Session::scan_unknown`), so a fresh backup is the tool's and not a
     /// stranger while the tool is installed.
     pub backup_globs: &'static [Glob],
+    /// The other commands the installer puts in the launcher's folder,
+    /// besides the launcher itself (whose name is `id`): grok's `agent`, a
+    /// second link to the same download, and rustup's thirteen proxies
+    /// (`rustup::RUSTUP_PROXIES`, by name: they are links to rustup on
+    /// some Macs and hard links on others). Empty for a tool whose one
+    /// command is its launcher. Read by `commands::judge`, which says
+    /// which copy runs for each of them as for the launcher.
+    pub other_commands: &'static [&'static str],
 }
 
 /// `Recipe.extra_locks` for a tool that touches nothing another source

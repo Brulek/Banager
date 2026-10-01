@@ -120,6 +120,7 @@ pub static CLAUDE: Recipe = Recipe {
     }),
     extra_locks: no_extra_locks,
     backup_globs: &[],
+    other_commands: &[],
 };
 
 /// Antigravity CLI (`agy`), Google's terminal agent, installed by its own
@@ -231,6 +232,7 @@ pub static AGY: Recipe = Recipe {
         suffix: ".old",
         what: RemovedWhat::Backups,
     }],
+    other_commands: &[],
 };
 
 /// Grok Build (`grok`), xAI's terminal agent, installed by its own script
@@ -413,6 +415,9 @@ pub static GROK: Recipe = Recipe {
     }),
     extra_locks: no_extra_locks,
     backup_globs: &[],
+    // `~/.grok/bin/agent`: the installer's second name for the same
+    // download (spec §3.5, the recorded `layout.txt`).
+    other_commands: &["agent"],
 };
 
 /// What grok's links besides its launcher -- `~/.grok/bin/agent` and the
@@ -539,6 +544,8 @@ pub static RUSTUP: Recipe = Recipe {
     })),
     extra_locks: rustup::extra_locks,
     backup_globs: &[],
+    // `cargo`, `rustc`, `rustfmt`, …: what a person with Rust types most.
+    other_commands: &rustup::RUSTUP_PROXIES,
 };
 
 /// Every tool this adapter type registers, in registration order. The
@@ -589,6 +596,41 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_every_recipe_names_its_commands_as_file_names_beside_its_launcher() {
+        // `commands::judge` joins each of `other_commands` onto the
+        // launcher's folder, and names the launcher's own command by `id`:
+        // so the launcher's file name is `id`, and every other command is
+        // a plain file name, said once and not the launcher's.
+        for recipe in RECIPES {
+            assert_eq!(
+                Path::new(recipe.route.launcher)
+                    .file_name()
+                    .and_then(|name| name.to_str()),
+                Some(recipe.id),
+                "{}: the launcher's name is the command the user types",
+                recipe.id
+            );
+            let mut seen = vec![recipe.id];
+            for name in recipe.other_commands {
+                assert!(
+                    !name.is_empty() && !name.contains('/') && !name.starts_with('.'),
+                    "{}: {name:?} must be a plain file name",
+                    recipe.id
+                );
+                assert!(
+                    !seen.contains(name),
+                    "{}: {name:?} is named twice",
+                    recipe.id
+                );
+                seen.push(name);
+            }
+        }
+        assert_eq!(GROK.other_commands, &["agent"]);
+        assert_eq!(RUSTUP.other_commands, &rustup::RUSTUP_PROXIES);
+        assert!(CLAUDE.other_commands.is_empty() && AGY.other_commands.is_empty());
     }
 
     /// The kept paths of a `Paths` recipe that must live under home (every
