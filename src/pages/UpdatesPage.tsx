@@ -410,8 +410,9 @@ export function UpdatesPage() {
   // Clear was pressed, and the focus is to be found a place once its section is gone.
   const refocusAfterClear = useRef(false);
   // A row's ⋯ hid its update: the row the focus goes to once that row is
-  // gone (the next row, or the one before it at the list's end).
-  const refocusAfterHide = useRef<{ gone: string; next: string | null } | null>(null);
+  // gone (the next row, or the one before it at the list's end), and the
+  // settings the save was made from.
+  const refocusAfterHide = useRef<{ gone: string; next: string | null; base: Settings } | null>(null);
   const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
   const focusList = () => listHandle.current?.focusFirst();
 
@@ -697,9 +698,15 @@ export function UpdatesPage() {
   // than staying on the page's title (where the ⋯ left it as it went,
   // `Menu`), from where the keyboard would start over in the toolbar.
   // Only while the focus is still lost: not once the user has moved it.
+  // Forgotten once the settings have changed with the row still listed, so
+  // that a later removal by something else moves no focus.
   useEffect(() => {
     const hidden = refocusAfterHide.current;
-    if (hidden === null || items.some((item) => listItemKey(item) === hidden.gone)) return;
+    if (hidden === null) return;
+    if (items.some((item) => listItemKey(item) === hidden.gone)) {
+      if (settings !== hidden.base) refocusAfterHide.current = null;
+      return;
+    }
     refocusAfterHide.current = null;
     const focus = document.activeElement;
     const lost =
@@ -820,7 +827,7 @@ export function UpdatesPage() {
     const at = items.findIndex((item) => listItemKey(item) === gone);
     const neighbour =
       items.slice(at + 1).find(keyboardRow) ?? items.slice(0, Math.max(at, 0)).reverse().find(keyboardRow);
-    refocusAfterHide.current = { gone, next: neighbour === undefined ? null : listItemKey(neighbour) };
+    refocusAfterHide.current = { gone, next: neighbour === undefined ? null : listItemKey(neighbour), base: settings };
     saveSettings.mutate(next(settings), {
       onError: () => {
         refocusAfterHide.current = null;
