@@ -228,7 +228,7 @@
   "npm:@graphql-inspector/ci": "Compares GraphQL schemas and finds breaking changes",
   "npm:@graphql-inspector/cli": "Compares GraphQL schemas and finds breaking changes",
   "npm:@hasna/events": "Event envelopes and transports for Hasna apps",
-  "npm:@iflow-ai/iflow-cli": "iFlow's AI assistant for the terminal",
+  "npm:@iflow-ai/iflow-cli": "iFlow CLI, shut down by its maker on 17 April 2026",
   "npm:@infisical/cli": "Secrets management CLI",
   "npm:@ionic/cli": "Ionic Framework CLI for mobile apps",
   "npm:@kilocode/cli": "AI coding agent CLI for the terminal",

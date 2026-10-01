@@ -2971,7 +2971,7 @@
   "npm:@graphql-inspector/ci": "GraphQL模式对比与检测工具",
   "npm:@graphql-inspector/cli": "GraphQL模式对比与检测工具",
   "npm:@hasna/events": "Hasna应用事件传输库",
-  "npm:@iflow-ai/iflow-cli": "在终端里运行的iFlow AI助手",
+  "npm:@iflow-ai/iflow-cli": "iFlow命令行工具，已于2026年4月17日停止服务",
   "npm:@infisical/cli": "Infisical密钥管理命令行工具",
   "npm:@ionic/cli": "Ionic移动应用开发命令行工具",
   "npm:@kilocode/cli": "终端AI编程智能体工具",
