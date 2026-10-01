@@ -309,6 +309,29 @@ describe("Uninstall Selected, on the Installed page", () => {
     await waitFor(() => expect(document.activeElement?.closest("[data-tool-row]")).not.toBeNull());
   });
 
+  it("is shorter in a narrow window, beside a narrower search field, so the title keeps its room", async () => {
+    // A window at its narrowest: the page 592 wide.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
+      width: 592,
+      height: 500,
+      top: 0,
+      left: 0,
+      right: 592,
+      bottom: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }));
+    renderInstalled();
+    await findRow("jq");
+    const field = () => screen.getByRole("searchbox").parentElement as HTMLElement;
+    // Nothing ticked: the field as it always is.
+    expect(field().className.split(" ")).toContain("w-50");
+    fireEvent.click(boxOf("jq")!);
+    expect(await screen.findByRole("button", { name: "Uninstall (1)…" })).toBeEnabled();
+    expect(field().className.split(" ")).toContain("w-32");
+  });
+
   it("is off with more ticked than one batch takes", async () => {
     const many = Array.from({ length: 21 }, (_, index) => artifact(brew, "Formula", `tool-${String(index).padStart(2, "0")}`));
     served = { ...snapshot, artifacts: many };

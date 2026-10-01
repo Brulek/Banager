@@ -840,7 +840,8 @@
       "allUninstalled_other": "Uninstalled {{count}} tools",
       "notUninstalled_one": "{{count}} couldn't be uninstalled",
       "notUninstalled_other": "{{count}} couldn't be uninstalled"
-    }
+    },
+    "uninstallSelectedShort": "Uninstall ({{number}})…"
   },
   "keepsData": {
     "title": "Stays after uninstalling",

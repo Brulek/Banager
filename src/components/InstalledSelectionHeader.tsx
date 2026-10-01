@@ -89,6 +89,11 @@ export interface UninstallSelectedButtonProps {
   sheetOpen: boolean;
   /** Opens the sheet, handed the button, which gets the focus back when it closes. */
   onOpen: (opener: HTMLElement) => void;
+  /**
+   * The page is narrow (a window under 900 wide): 「卸载（3）…」, so the
+   * toolbar keeps room for the page's title beside the search field.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -97,7 +102,7 @@ export interface UninstallSelectedButtonProps {
  * something is ticked: there is no "uninstall all". Off past the most one
  * batch takes, and while its sheet is up.
  */
-export function UninstallSelectedButton({ count, sheetOpen, onOpen }: UninstallSelectedButtonProps) {
+export function UninstallSelectedButton({ count, sheetOpen, onOpen, compact = false }: UninstallSelectedButtonProps) {
   const { t } = useTranslation();
   if (count === 0) return null;
   return (
@@ -108,7 +113,7 @@ export function UninstallSelectedButton({ count, sheetOpen, onOpen }: UninstallS
       onClick={(event: MouseEvent<HTMLButtonElement>) => onOpen(event.currentTarget)}
       className={BUTTON.regular.grey}
     >
-      {t("batchUninstall.uninstallSelected", { number: count })}
+      {t(compact ? "batchUninstall.uninstallSelectedShort" : "batchUninstall.uninstallSelected", { number: count })}
     </button>
   );
 }

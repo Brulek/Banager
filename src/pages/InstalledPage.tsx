@@ -1735,7 +1735,9 @@ export function InstalledPage() {
           ]}
           onChange={setSort}
         />
-        <span className="relative flex h-6 w-50 shrink-0 items-center">
+        {/* 128 wide, not 200, while 「卸载（3）…」 stands beside it in a
+            narrow window: the page's title keeps its room. */}
+        <span className={`relative flex h-6 ${narrowInspector && counted.length > 0 ? "w-32" : "w-50"} shrink-0 items-center`}>
           <SearchIcon size={14} className="pointer-events-none absolute left-2 text-muted" />
           <input
             ref={attachSearch}
@@ -1757,6 +1759,7 @@ export function InstalledPage() {
         <UninstallSelectedButton
           count={counted.length}
           sheetOpen={batchUninstall.sheetOpen}
+          compact={narrowInspector}
           onOpen={(opener) =>
             batchUninstall.open(
               counted.map((artifact) => ({

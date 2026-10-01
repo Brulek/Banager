@@ -765,7 +765,8 @@
     "bar": {
       "allUninstalled_other": "已卸载{{count}}个工具",
       "notUninstalled_other": "{{count}}个未能卸载"
-    }
+    },
+    "uninstallSelectedShort": "卸载（{{number}}）…"
   },
   "keepsData": {
     "title": "卸载后会保留",

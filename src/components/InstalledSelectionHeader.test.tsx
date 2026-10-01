@@ -151,7 +151,14 @@ describe("Uninstall Selected", () => {
 
   it("says it in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
-    renderWithProviders(<UninstallSelectedButton count={3} sheetOpen={false} onOpen={vi.fn()} />);
+    const { rerender } = renderWithProviders(<UninstallSelectedButton count={3} sheetOpen={false} onOpen={vi.fn()} />);
     expect(screen.getByRole("button", { name: "卸载所选（3）…" })).toBeInTheDocument();
+    rerender(<UninstallSelectedButton count={3} sheetOpen={false} onOpen={vi.fn()} compact />);
+    expect(screen.getByRole("button", { name: "卸载（3）…" })).toBeInTheDocument();
+  });
+
+  it("is shorter in a narrow window, so the toolbar keeps room for the page's title", () => {
+    renderWithProviders(<UninstallSelectedButton count={3} sheetOpen={false} onOpen={vi.fn()} compact />);
+    expect(screen.getByRole("button", { name: "Uninstall (3)…" })).toBeEnabled();
   });
 });
