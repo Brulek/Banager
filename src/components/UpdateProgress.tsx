@@ -56,14 +56,26 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
  * asks to be checked -- so that its row, where it still offers Update,
  * offers Retry beside how it ended. A tick asks for nothing, and one still
  * under way has its own Cancel in the operation bar.
+ *
+ * Not one that stopped where sudo wanted the Mac's password with no way
+ * to ask (`needsPassword`): the same command from Banager stops there
+ * again, as Homebrew resets sudo's remembered password before every
+ * command and Banager has no terminal. Its row keeps how it ended, the
+ * word that opens the log with the command for Terminal, in Retry's
+ * place, and like a row an update holds it has no checkbox and is left
+ * out of Select all and Update all, until a check finds it updated or
+ * offers a newer version. One whose password window got no password
+ * (`passwordNotAccepted`) can ask again, and keeps Retry.
  */
 export function isRetryable(progress: RowProgress): boolean {
-  return progress.kind === "failed" || progress.kind === "cancelled" || progress.kind === "check";
+  if (progress.kind === "failed") return progress.cause !== "needsPassword";
+  return progress.kind === "cancelled" || progress.kind === "check";
 }
 
 /**
- * Whether an update takes its row: one still under way, or one that worked
- * and stands in the row as "Updated" until the next refresh drops it. Such
+ * Whether an update takes its row: one still under way, one that worked
+ * and stands in the row as "Updated" until the next refresh drops it, or
+ * one that needs a password Banager cannot ask for (`isRetryable`). Such
  * a row has no checkbox, and Select all, Invert selection, Update all and
  * the Overview's Review updates leave it out: a second update could only
  * queue the same one behind it. One that ended without updating

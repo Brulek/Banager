@@ -2728,6 +2728,52 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
     });
 
+    it("offers no Retry and no checkbox where sudo wanted a password Banager cannot ask for, only how it ended and its log", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: {
+            Failed: {
+              exit_code: 1,
+              summary:
+                "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+            },
+          },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { findByText, getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      const word = await within(glib).findByText("Needs your password");
+      expect(getByRole("button", { name: "View log: glib" })).toContainElement(word);
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      // Out of the count, Select all and Update all: a retry could only stop at sudo again.
+      expect(await findByText("1 update available")).toBeInTheDocument();
+      fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+    });
+
+    it("keeps Retry where a password window asked and got no password: it can ask again", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required" } },
+        }),
+      ];
+      started(9, "2.90.0");
+      renderPage();
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Password not accepted")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
+      expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+    });
+
     it("ticks a finished update Updated, while its row still offers the version it was for", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");
