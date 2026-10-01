@@ -11,8 +11,8 @@ import { mockFamilyOf } from "./mockFamilies";
  * and `~/.claude.json` (./mockPlans.ts), so its dialog shows them there.
  */
 
-const MB = 1024 * 1024;
-const GB = 1024 * MB;
+const MB = 1_000_000;
+const GB = 1_000_000_000;
 
 function about(bytes: number): Measured {
   return { bytes: Math.round(bytes), partial: false, at_least: false };
