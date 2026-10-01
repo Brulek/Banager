@@ -23,13 +23,12 @@ use tokio_util::sync::CancellationToken;
 /// Parses `pipx --version`'s output, which — unlike `brew --version`'s
 /// "Homebrew 7.0.3" — is the bare version string with no label
 /// (`adapters/fixtures/pipx/1.17.3/version.txt` is exactly `1.17.3\n`).
-fn parse_version(text: &str) -> Option<String> {
-    let v = text.trim();
-    if v.is_empty() {
-        None
-    } else {
-        Some(v.to_string())
-    }
+/// Only the first non-blank line is the version: a warning printed after
+/// it is not part of it, and a version with a control character in it is
+/// none (`sanity::version_token`).
+pub(crate) fn parse_version(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    crate::adapters::sanity::version_token(Some(line.to_string()))
 }
 
 /// True when `version` is pipx >= 1.16, the floor `pipx list --outdated`
@@ -115,7 +114,10 @@ fn pipx_commands(package: &PipxMainPackage) -> Vec<ProvidedCommand> {
 /// `venvs.<name>.metadata.main_package.package_version` (this phase's other
 /// documented trap for pipx). `venvs` is a `HashMap`, so entries are sorted
 /// by name before returning to keep output deterministic.
-fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, AdapterError> {
+pub(crate) fn parse_list(
+    json: &str,
+    instance_id: &str,
+) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let root: PipxListRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
     let mut out: Vec<InstalledArtifact> = root
@@ -165,7 +167,7 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
-    Ok(out)
+    Ok(crate::adapters::sanity::artifacts(out))
 }
 
 /// What `pipx list --outdated` puts between a pinned tool's name and the
@@ -191,7 +193,7 @@ const PINNED_MARKER: &str = " [pinned]";
 /// "Succeeded". Left on the name, the marker made the row's key
 /// `cowsay [pinned]`, which matches no installed tool and which
 /// `validate_package_name` refuses.
-fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
+pub(crate) fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
     let trimmed = text.trim();
     if trimmed.is_empty() || trimmed == "pipx found no available upgrades." {
         return Vec::new();
@@ -231,7 +233,7 @@ fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
             blocked,
         });
     }
-    out
+    crate::adapters::sanity::candidates(out)
 }
 
 #[derive(Debug, Deserialize)]
@@ -564,6 +566,41 @@ impl Adapter for PipxAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_version_reads_the_first_line_alone() {
+        assert_eq!(
+            parse_version("1.17.3\n1.17.3\n"),
+            Some("1.17.3".to_string())
+        );
+        assert_eq!(
+            parse_version("\n  1.17.3  \nwarning\n"),
+            Some("1.17.3".to_string())
+        );
+        assert_eq!(parse_version("1.17.3\u{1b}\n"), None);
+        assert_eq!(parse_version("1.17.3\n"), Some("1.17.3".to_string()));
+    }
+
+    #[test]
+    fn regression_parse_list_falls_back_to_the_venv_name_for_a_blank_package() {
+        let json = r#"{"venvs":{"black":{"metadata":{"main_package":
+            {"package":"","package_version":"25.1\n0"}}}}}"#;
+        let artifacts = parse_list(json, "pipx:/x").unwrap();
+        assert_eq!(artifacts[0].display_name, "black");
+        assert_eq!(artifacts[0].version, "");
+    }
+
+    #[test]
+    fn regression_parse_outdated_drops_a_line_with_a_control_character() {
+        let text = "r\ruff: 0.1 -> 0.2\nblack: 1\u{e} -> 2\ncowsay: 5.0 -> 6.1\n";
+        let names: Vec<String> = parse_outdated(text, "pipx:/x")
+            .into_iter()
+            .map(|c| c.key.name)
+            .collect();
+        assert_eq!(names, vec!["cowsay".to_string()]);
+    }
     use crate::model::Warning;
     use crate::testing::command_args;
 
