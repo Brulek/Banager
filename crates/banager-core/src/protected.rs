@@ -195,6 +195,16 @@ pub enum Resolution {
     Refused,
 }
 
+/// A test's hook, called with the path reached before each step of
+/// `resolve`: where a test changes the disk between two of them.
+#[cfg(test)]
+type StepHook = Box<dyn FnMut(&Path)>;
+
+#[cfg(test)]
+thread_local! {
+    static STEP: std::cell::RefCell<Option<StepHook>> = const { std::cell::RefCell::new(None) };
+}
+
 /// `path`, with each link among its folders followed, one component at a
 /// time, so that no step is ever taken into a protected place: each next
 /// component is checked against `protected` before it is looked at, and a
@@ -222,6 +232,12 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
     let mut found: Option<Stat> = None;
     let mut links = 0;
     while let Some(name) = pending.pop_front() {
+        #[cfg(test)]
+        STEP.with(|step| {
+            if let Some(step) = step.borrow_mut().as_mut() {
+                step(&resolved);
+            }
+        });
         if name == ".." {
             resolved.pop();
             if dirs.len() > 1 {
@@ -497,6 +513,66 @@ mod tests {
             Some(Path::new("bin/rg"))
         );
         assert_eq!(strip_prefix_folded(a, Path::new("/Users/x/.cargo2")), None);
+    }
+
+    /// `resolve` of `path` while `swap_at` is reached: there, `<home>/a`
+    /// is moved aside and a link to `<home>/Documents` put in its place.
+    fn resolve_while_a_is_swapped(home: &Temp, path: &Path, swap_at: &Path) -> Resolution {
+        let root = home.0.clone();
+        let swap_at = swap_at.to_path_buf();
+        STEP.with(|step| {
+            *step.borrow_mut() = Some(Box::new(move |reached: &Path| {
+                if reached == swap_at && root.join("a").is_dir() && !root.join("a").is_symlink() {
+                    std::fs::rename(root.join("a"), root.join("a-moved")).unwrap();
+                    std::os::unix::fs::symlink(root.join("Documents"), root.join("a")).unwrap();
+                }
+            }));
+        });
+        let found = resolve(path, &Protected::new(&home.0), true);
+        STEP.with(|step| *step.borrow_mut() = None);
+        found
+    }
+
+    #[test]
+    fn test_resolve_never_looks_an_ancestor_up_again_after_it_is_swapped_for_a_link() {
+        use std::os::unix::fs::MetadataExt;
+        // `<home>/a` and `<home>/Documents` hold the same names; once `a`
+        // is a link to `Documents`, a lookup by path would land there.
+        let set_up = |tag: &str| {
+            let home = Temp::new(tag);
+            for top in ["a", "Documents"] {
+                std::fs::create_dir_all(home.0.join(top).join("b")).unwrap();
+                std::fs::write(home.0.join(top).join("c"), top).unwrap();
+                std::fs::write(home.0.join(top).join("b/d"), top).unwrap();
+            }
+            let c = std::fs::metadata(home.0.join("a/c")).unwrap().ino();
+            let d = std::fs::metadata(home.0.join("a/b/d")).unwrap().ino();
+            (home, c, d)
+        };
+
+        // Back up through `..` to a folder swapped since it was entered:
+        // the folder held open, not the link now at its path.
+        let (home, c, _) = set_up("swap-dotdot");
+        let path = home.0.join("a/b/../c");
+        let found = resolve_while_a_is_swapped(&home, &path, &home.0.join("a/b"));
+        assert!(home.0.join("a").is_symlink(), "the swap happened");
+        // By its path, `a/c` is now `Documents/c`.
+        assert_ne!(std::fs::metadata(home.0.join("a/c")).unwrap().ino(), c);
+        assert!(
+            matches!(&found, Resolution::Found(at, stat) if *at == home.0.join("a/c") && stat.ino() == c),
+            "{found:?}"
+        );
+
+        // On down from a folder swapped once it was entered.
+        let (home, _, d) = set_up("swap-down");
+        let path = home.0.join("a/b/d");
+        let found = resolve_while_a_is_swapped(&home, &path, &home.0.join("a"));
+        assert!(home.0.join("a").is_symlink(), "the swap happened");
+        assert_ne!(std::fs::metadata(home.0.join("a/b/d")).unwrap().ino(), d);
+        assert!(
+            matches!(&found, Resolution::Found(at, stat) if *at == home.0.join("a/b/d") && stat.ino() == d),
+            "{found:?}"
+        );
     }
 
     #[test]
