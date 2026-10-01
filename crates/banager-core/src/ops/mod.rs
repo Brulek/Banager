@@ -180,6 +180,10 @@ struct OpInternal {
     lock_release: Option<Arc<LockRelease>>,
     /// `submit_with`'s callback, taken by `finish`.
     on_finish: Option<OnFinish>,
+    /// Set as `finish` begins: the outcome is decided, so a Cancel from
+    /// then on is too late (`cancel`), even while the status still says
+    /// `Running` for the instant the history's record takes.
+    finishing: bool,
     /// Set just before `execute` is called: an operation that ends before
     /// that started nothing.
     started: bool,
@@ -255,9 +259,10 @@ pub enum CancelRefused {
     /// nothing has been spawned and no timeout is counting, so `cancel`
     /// fires its token as for any plan and its command never starts.
     NoCancel,
-    /// No op has this id, or it is past `Running` (`Verifying`/`Done`), or
-    /// a cancel is already in flight (`CancelRequested`/`Cancelling`) --
-    /// whatever the plan's policy.
+    /// No op has this id, or it is past `Running` (`Verifying`/`Done`, or
+    /// `finish` has begun and its outcome is decided), or a cancel is
+    /// already in flight (`CancelRequested`/`Cancelling`) -- whatever the
+    /// plan's policy.
     NotPending,
 }
 
@@ -356,8 +361,11 @@ impl OperationManager {
         // CancelRequested/Cancelling — cancelling again must be a
         // no-op: forcing it back to CancelRequested here would corrupt
         // a finished record and make `wait()` (which only returns on
-        // Done) hang forever.
-        if !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
+        // Done) hang forever. One `finish` has begun on is past it too,
+        // though it says `Running` while its history record is kept: its
+        // outcome is decided, and a `CancelRequested` from it would come
+        // after its `Finished`.
+        if r.finishing || !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
             return Err(CancelRefused::NotPending);
         }
         // The policy is read only for an op that is Running, whose command
@@ -422,6 +430,7 @@ impl OperationManager {
             lock_release: None,
             on_finish,
             started: false,
+            finishing: false,
             before_version: None,
             after_version: None,
         };
@@ -925,6 +934,7 @@ impl OperationManager {
         let ended = {
             let mut records = self.records.lock().unwrap();
             if let Some(r) = records.get_mut(&op_id) {
+                r.finishing = true;
                 if release_locks {
                     if let Some(lr) = &r.lock_release {
                         lr.release_once();

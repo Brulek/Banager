@@ -308,3 +308,50 @@ async fn test_an_operation_is_not_done_until_its_record_is_kept() {
     // And once it is Done, the record is there.
     assert_eq!(f.store.view().records.len(), 1);
 }
+
+#[tokio::test]
+async fn test_a_cancel_that_arrives_while_the_record_is_kept_changes_nothing() {
+    // The outcome is decided before the record is kept; a Cancel pressed in
+    // that instant is too late, and must neither be accepted nor say
+    // CancelRequested after the operation has ended.
+    // An operation that ends while still `Running` -- its source is not
+    // one the manager knows, so it ends `BanagerFailed` before its command
+    // -- is the one a cancel could still be accepted for.
+    let f = fixture("cancel-while-kept");
+    let gone = banager_core::testing::manager_instance("fake", "fake:/gone");
+    let plan = f.adapter.plan(&gone, &upgrade(&gone)).await.unwrap();
+    let answer: Arc<Mutex<Option<(OpStatus, bool)>>> = Arc::new(Mutex::new(None));
+    let record = on_finish(&f.store);
+    let callback: OnFinish = {
+        let manager = f.manager.clone();
+        let answer = answer.clone();
+        Box::new(move |ended| {
+            let status = manager
+                .summaries()
+                .into_iter()
+                .find(|op| op.id == ended.op_id)
+                .map(|op| op.status)
+                .unwrap();
+            let accepted = manager.cancel(ended.op_id).is_ok();
+            *answer.lock().unwrap() = Some((status, accepted));
+            record(ended);
+        })
+    };
+    let op_id = f.manager.submit_with(plan, Some(callback));
+    assert!(matches!(
+        f.manager.wait(op_id).await,
+        Some(Outcome::BanagerFailed(_))
+    ));
+    let (status, accepted) = answer.lock().unwrap().expect("the callback ran");
+    assert!(
+        !accepted,
+        "a cancel was accepted after the outcome was decided (status {status:?})"
+    );
+    let summary = f
+        .manager
+        .summaries()
+        .into_iter()
+        .find(|op| op.id == op_id)
+        .unwrap();
+    assert_eq!(summary.status, OpStatus::Done);
+}
