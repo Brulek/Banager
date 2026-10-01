@@ -884,6 +884,15 @@ fn plan_round(
     units
 }
 
+/// `mutex`'s guard, even after a thread panicked holding it: what it
+/// guards is whole at every point a panic could leave it -- one
+/// assignment, one insert -- and `get_sizes` must keep answering.
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Measures, read-only and off the refresh's path, how much disk each
 /// installed thing takes; one per `Session` (`Session::new` makes it).
 ///
@@ -925,7 +934,7 @@ impl SizeMeter {
 
     /// What the last round has said so far.
     pub fn sizes(&self) -> Sizes {
-        self.published.lock().unwrap().clone()
+        lock(&self.published).clone()
     }
 
     /// Starts measuring what the snapshot of `round` lists, on a thread of
@@ -950,7 +959,24 @@ impl SizeMeter {
         // and the next round tries again.
         let _ = std::thread::Builder::new()
             .name("banager-sizes".to_string())
-            .spawn(move || meter.run_round(round, &instances, &artifacts, &home));
+            .spawn(move || {
+                let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    meter.run_round(round, &instances, &artifacts, &home)
+                }));
+                // A round that panicked would leave its sizes "measuring"
+                // for as long as Banager runs: it ends instead, with
+                // nothing to show.
+                if ran.is_err() {
+                    meter.publish(
+                        round,
+                        Sizes {
+                            round,
+                            done: true,
+                            ..Sizes::default()
+                        },
+                    );
+                }
+            });
     }
 
     fn wanted(&self, round: u64) -> bool {
@@ -962,7 +988,7 @@ impl SizeMeter {
     /// write over a newer one's.
     fn publish(&self, round: u64, sizes: Sizes) -> bool {
         {
-            let mut published = self.published.lock().unwrap();
+            let mut published = lock(&self.published);
             if !self.wanted(round) {
                 return false;
             }
@@ -986,7 +1012,7 @@ impl SizeMeter {
             return;
         }
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = lock(&self.cache);
             let planned: HashSet<&CacheKey> = units
                 .iter()
                 .flat_map(|unit| std::iter::once(&unit.main).chain(unit.old.as_ref()))
@@ -1019,10 +1045,7 @@ impl SizeMeter {
                         WalkEnd::Nothing => JobResult::Nothing,
                         WalkEnd::Walked(walked) => {
                             if walked.complete() {
-                                self.cache
-                                    .lock()
-                                    .unwrap()
-                                    .insert(job.key.clone(), walked.clone());
+                                lock(&self.cache).insert(job.key.clone(), walked.clone());
                             }
                             JobResult::Walked(walked)
                         }
@@ -1994,6 +2017,29 @@ mod tests {
         assert_eq!(meter.sizes().round, 3);
         assert!(rounds.lock().unwrap().iter().all(|round| *round == 3));
         assert!(!rounds.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_the_window_still_gets_sizes_after_a_measuring_thread_panicked_holding_them() {
+        let meter = SizeMeter::new(SizeBudget::default(), |_| {});
+        let poisoner = meter.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.published.lock().unwrap();
+            panic!("a measuring thread that died holding the sizes");
+        })
+        .join();
+        assert!(meter.published.is_poisoned());
+        assert_eq!(meter.sizes(), Sizes::default());
+        meter.current.store(1, Ordering::SeqCst);
+        assert!(meter.publish(
+            1,
+            Sizes {
+                round: 1,
+                done: true,
+                ..Sizes::default()
+            }
+        ));
+        assert!(meter.sizes().done);
     }
 
     #[test]
