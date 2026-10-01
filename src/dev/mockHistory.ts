@@ -9,7 +9,8 @@
  * (「结果不符」), which it lists among the rest while the last check still
  * offers each an update. jq's failure is not listed: no update is offered
  * for it any more, as if it had been updated in Terminal since. Times count
- * back from when the preview opened.
+ * back from when the preview opened; today's two never reach back past
+ * midnight, so they are today's at any hour.
  */
 import { failureCause } from "../lib/failureCause";
 import type { ArtifactKey, HistoryRecord, HistoryResult, HistoryView, OpRequest, Outcome } from "../lib/types";
@@ -21,9 +22,23 @@ const DAY = 24 * 60 * MINUTE;
 /** The earlier launches' id: none of the page's operations are theirs. */
 const EARLIER = "mock-earlier-launch";
 
+/**
+ * How long before `now` one of today's records finished: `ago`, or `share`
+ * of the time since midnight when the day is younger than that, so that it
+ * is still today's just after midnight, and still before now. With the
+ * smaller `ago` taking the smaller `share`, the newer stays the newer.
+ */
+function earlierToday(ago: number, share: number): (now: number) => number {
+  return (now) => {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    return Math.min(ago, (now - midnight.getTime()) * share);
+  };
+}
+
 function kept(
   opId: number,
-  ago: number,
+  ago: number | ((now: number) => number),
   artifact: ArtifactKey,
   adapterId: string,
   from: string | null,
@@ -33,7 +48,7 @@ function kept(
   return (now) => ({
     run: EARLIER,
     op_id: opId,
-    finished_at: now - ago,
+    finished_at: now - (typeof ago === "number" ? ago : ago(now)),
     key: artifact,
     display_name: artifact.name,
     adapter_id: adapterId,
@@ -47,8 +62,8 @@ function kept(
 }
 
 const SEEDED = [
-  kept(14, 25 * MINUTE, key(IDS.brew, "Formula", "htop"), "brew", "3.4.0", "3.4.1"),
-  kept(13, 70 * MINUTE, key(IDS.brew, "Formula", "ripgrep"), "brew", "15.0.0", "15.1.0"),
+  kept(14, earlierToday(25 * MINUTE, 1 / 3), key(IDS.brew, "Formula", "htop"), "brew", "3.4.0", "3.4.1"),
+  kept(13, earlierToday(70 * MINUTE, 2 / 3), key(IDS.brew, "Formula", "ripgrep"), "brew", "15.0.0", "15.1.0"),
   kept(9, 2 * DAY, key(IDS.brew, "Formula", "jq"), "brew", "1.8.2", null, {
     result: { Failed: { cause: "network" } },
     verified: false,

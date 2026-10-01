@@ -732,13 +732,17 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
   });
 
   it("serves a few weeks of history, two of them today, and keeps each operation of its own as Rust does", async () => {
-    // Midday: the two of today are 25 and 70 minutes old, so just after
-    // midnight they would be yesterday's.
-    vi.setSystemTime(new Date(2026, 9, 1, 12, 0));
+    // Today's two are 25 and 70 minutes old, younger just after midnight:
+    // today's at any hour, the last minutes of the day and the first too.
+    for (const [hour, minute] of [[0, 0], [0, 5], [12, 0], [23, 55]] as const) {
+      vi.setSystemTime(new Date(2026, 9, 1, hour, minute));
+      const { records } = await answer<HistoryView>(backendFor().backend.invoke("get_history"));
+      const today = records.filter((r) => new Date(r.finished_at).toDateString() === new Date().toDateString());
+      expect(today.map((r) => r.key.name), `at ${hour}:${minute}`).toEqual(["htop", "ripgrep"]);
+      expect(today.every((r) => r.finished_at <= Date.now()), `at ${hour}:${minute}`).toBe(true);
+    }
     const { backend } = backendFor();
     const start = await answer<HistoryView>(backend.invoke("get_history"));
-    const today = new Date().toDateString();
-    expect(start.records.filter((r) => new Date(r.finished_at).toDateString() === today).length).toBeGreaterThanOrEqual(1);
     expect(start.records.some((r) => r.result !== "Succeeded")).toBe(true);
     expect(start.records.some((r) => r.kind === "Uninstall")).toBe(true);
     // An update that failed and one to check, for 「最近更新」 to list among the rest.
