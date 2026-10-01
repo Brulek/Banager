@@ -115,7 +115,7 @@ describe("DiagnosticsRows", () => {
 
     expect(writeText).toHaveBeenCalledTimes(1);
     const text = writeText.mock.calls[0][0];
-    expect(text.startsWith("Diagnostic info\nDate: ")).toBe(true);
+    expect(text.startsWith("Diagnostic info\nTime: ")).toBe(true);
     expect(text).toContain("\nmacOS: 27.0\nChip: Apple M2 Pro\n");
     expect(text).toContain("\nHomebrew\n  Version: 7.0.3\n  Location: /opt/homebrew/bin/brew\n  Status: OK\n  Tools: 1\n");
     expect(text).not.toContain("jq 1.8.2");

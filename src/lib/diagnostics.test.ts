@@ -136,7 +136,7 @@ describe("diagnosticsText", () => {
     expect(diagnosticsText(en, input())).toBe(
       [
         "Diagnostic info",
-        "Date: 2026-10-01 14:03",
+        "Time: 2026-10-01 14:03",
         "Banager: 0.1.0",
         "macOS: 27.0",
         "Chip: Apple M2 Pro",
@@ -175,7 +175,7 @@ describe("diagnosticsText", () => {
         "Last check: 2026-10-01 13:58",
         "Check: incomplete, npm didn't finish",
         "Not found in Terminal: 1",
-        "Tools installed twice: 1",
+        "Tools installed more than once: 1",
         "Space used: About 1.2 GB",
         "",
       ].join("\n"),
@@ -225,7 +225,7 @@ describe("diagnosticsText", () => {
         "上次检查：2026-10-01 13:58",
         "检查结果：不完整，npm未检查完",
         "终端找不到：1个",
-        "装了两份的工具：1个",
+        "装了不止一份的工具：1个",
         "占用空间：约1.2 GB",
         "",
       ].join("\n"),
@@ -262,12 +262,12 @@ describe("diagnosticsText", () => {
       { name: "ruff", state: { ShadowedBy: { by: pipxRuff.key } } },
     ]);
     const three = diagnosticsText(en, input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude] } }));
-    expect(three).toContain("\nTools installed twice: 1\n");
+    expect(three).toContain("\nTools installed more than once: 1\n");
     const two = diagnosticsText(
       zh,
       input({ snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, brewClaude, pipxRuff, brewRuff] } }),
     );
-    expect(two).toContain("\n装了两份的工具：2个\n");
+    expect(two).toContain("\n装了不止一份的工具：2个\n");
   });
 
   it("cuts an Ollama model's digest to the twelve digits ollama list shows", () => {
@@ -297,7 +297,7 @@ describe("diagnosticsText", () => {
       input({ facts: { ...FACTS, login_path: false, chip: null, macos_version: null, arch: "x86_64" } }),
     );
     expect(text).toContain("\nmacOS: couldn't read\nChip: Intel\n");
-    expect(text).toContain("\n  Couldn't read the login settings, so these are the defaults, which Terminal may not use\n");
+    expect(text).toContain("\n  Couldn't read the login settings, so defaults were used, which Terminal may not use\n");
     const apple = diagnosticsText(zh, input({ facts: { ...FACTS, chip: null } }));
     expect(apple).toContain("\n芯片：Apple芯片\n");
   });
@@ -318,12 +318,12 @@ describe("diagnosticsText", () => {
       zh,
       input({ snapshot: { ...SNAPSHOT, refreshed_at: null, stale: false, errors: [] }, sizes: { ...SIZES, done: false } }),
     );
-    expect(never).toContain("\n上次检查：还没有检查过\n");
+    expect(never).toContain("\n上次检查：从未\n");
     expect(never).not.toContain("检查结果");
     expect(never).not.toContain("占用空间");
     const empty = diagnosticsText(en, input({ snapshot: null, sizes: null }));
     expect(empty).toContain("\nSources: 0\n\nCommand search folders: 4\n");
-    expect(empty).toContain("\nNot found in Terminal: 0\nTools installed twice: 0\n");
+    expect(empty).toContain("\nNot found in Terminal: 0\nTools installed more than once: 0\n");
   });
 });
 

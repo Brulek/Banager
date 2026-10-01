@@ -7,7 +7,7 @@ import { detailLines } from "./updateDetails";
 /**
  * The Installed page's word, in place of 「已是最新」, for a tool whose
  * updates Banager does not check (`UNCHECKED_STANDALONE`: Codex's own
- * install) -- 「它自己更新」 when its install follows the latest release,
+ * install) -- 「会自行更新」 when its install follows the latest release,
  * else 「不检查更新」 -- with the why behind its ⓘ, shaped as the page's
  * `RowChip`. `null` for every other row. Quiet like the page's other
  * neutral words: a source's own limits, not a problem.

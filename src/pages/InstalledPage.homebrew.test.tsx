@@ -149,7 +149,7 @@ describe("InstalledPage, Homebrew's state", () => {
     const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(INSTALLED * 1000));
     expect(within(pane).getByText("Date installed").nextElementSibling).toHaveTextContent(date);
     expect(pane.querySelector("[data-homebrew-mark]")?.textContent).toBe(
-      "It doesn't pass macOS's security check. Homebrew disabled it on 2026-09-01, so no more updates will come. The copy already installed is not removed.",
+      "It doesn't pass the macOS security check. Homebrew disabled it on 2026-09-01 and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
     );
     // Right under the facts, whose last row, 状态, says the mark's word;
     // the folded notes come last, after the commands.
@@ -175,7 +175,7 @@ describe("InstalledPage, Homebrew's state", () => {
     );
     const pane = await openDetails("openssl@3");
     expect(within(pane).getByText("Other versions").nextElementSibling).toHaveTextContent("3.6.3");
-    expect(within(pane).getByRole("button", { name: "Homebrew's notes in English" })).toHaveAttribute(
+    expect(within(pane).getByRole("button", { name: "Homebrew's notes" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );

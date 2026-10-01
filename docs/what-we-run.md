@@ -1778,7 +1778,7 @@ otherwise it says nothing about updates.
 
 Banager also asks where `codex` would run from if typed in Terminal, as it
 does for Claude Code, and says so under the source and in the details'
-"Typed in Terminal" group — that is reading `PATH` folders, not a command.
+"In Terminal" group — that is reading `PATH` folders, not a command.
 
 **Read-only commands and requests**: none. Codex's newest version comes
 from `releases.openai.com` or GitHub, which are not hosts Banager

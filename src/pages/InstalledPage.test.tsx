@@ -1900,7 +1900,7 @@ describe("InstalledPage", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
     expect(chipsOf(jq)).toEqual(["Can't uninstall now"]);
     expect(chipDetail(jq, "Can't uninstall now")).toHaveTextContent(
-      "Homebrew is updating its software list. Uninstall once it's done.",
+      "Homebrew is updating its software list. You can uninstall once it's done.",
     );
     // The word is the same on every row it holds: its button and the
     // row's Uninstall say whose, the words first; the row says the word.
@@ -1917,7 +1917,7 @@ describe("InstalledPage", () => {
     const drawer = await openDetails("jq");
     expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     expect(statusWhy(drawer, "Can't uninstall now")).toHaveTextContent(
-      "Homebrew is updating its software list. Uninstall once it's done.",
+      "Homebrew is updating its software list. You can uninstall once it's done.",
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     fireEvent.click(within(drawer).getByRole("button", { name: "Close Details" }));
@@ -3165,11 +3165,11 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
 
     const inspector = await openDetails("Claude Code");
     const group = inspector.querySelector("[data-commands]") as HTMLElement;
-    expect(within(group).getByRole("heading", { name: /Typed in Terminal/ })).toBeInTheDocument();
+    expect(within(group).getByRole("heading", { name: /In Terminal/ })).toBeInTheDocument();
     expect(group.querySelector("[data-command-line]")).toHaveTextContent(/^claudeRuns the copy from npm/);
     // Nothing to press but the ⓘs: no button fixes anything.
     expect(within(group).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Details: Typed in Terminal",
+      "Details: In Terminal",
       "Details: claude",
     ]);
     // Which copy runs is said once in the details, by the group: the

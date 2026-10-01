@@ -59,8 +59,8 @@ describe("CommandsGroup", () => {
 
   it("titles the group with what the verdicts are judged against behind its ⓘ", () => {
     const { getByRole, getByText } = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
-    expect(getByRole("heading", { name: /Typed in Terminal/ })).toBeInTheDocument();
-    fireEvent.click(getByRole("button", { name: "Details: Typed in Terminal" }));
+    expect(getByRole("heading", { name: /In Terminal/ })).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Details: In Terminal" }));
     expect(
       getByText(
         "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",

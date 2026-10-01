@@ -262,7 +262,7 @@ describe("the window while the first check still checks for updates", () => {
       const heldJq = getByRole("button", { name: "Can't uninstall jq now" });
       fireEvent.click(heldJq);
       expect(document.getElementById(heldJq.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-        "Checking for updates. Uninstall once it's done.",
+        "Checking for updates. You can uninstall once it's done.",
       );
       fireEvent.click(heldJq);
       expect(getByRole("button", { name: "Can't uninstall ripgrep now" })).toBeInTheDocument();

@@ -10,7 +10,7 @@
     "overviewLine_one": "Found {{count}} tool. The first check looks up its newest version online, and sometimes takes a minute or two.",
     "overviewLine_other": "Found {{count}} tools. The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     "seeTools": "See Tools",
-    "uninstallHold": "Checking for updates. Uninstall once it's done."
+    "uninstallHold": "Checking for updates. You can uninstall once it's done."
   },
   "nav": {
     "label": "Navigation",
@@ -156,31 +156,31 @@
     "deprecatedWord": "Deprecated",
     "disabledAria": "Disabled: {{name}}",
     "deprecatedAria": "Deprecated: {{name}}",
-    "disabledOn": "Homebrew disabled it on {{date}}, so no more updates will come. The copy already installed is not removed.",
-    "disabled": "Homebrew has disabled it, so no more updates will come. The copy already installed is not removed.",
+    "disabledOn": "Homebrew disabled it on {{date}} and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+    "disabled": "Homebrew has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
     "deprecatedOn": "Homebrew deprecated it on {{date}} and may disable it later.",
     "deprecated": "Homebrew has deprecated it and may disable it later.",
     "reasonThenMark": "{{why}} {{what}}",
     "reasonQuoted": "Homebrew's reason: “{{reason}}”.",
     "reason": {
       "does_not_build": "It no longer builds.",
-      "no_license": "It has no license.",
+      "no_license": "It doesn't declare a license.",
       "repo_archived": "Its source repository has been archived.",
       "repo_removed": "Its source repository has been removed.",
       "unmaintained": "It is no longer maintained.",
       "unreachable": "Its download can no longer be reached reliably.",
       "unsupported": "Its developer no longer supports it.",
       "deprecated_upstream": "Its developer has deprecated it.",
-      "versioned_formula": "It is a package for one specific version.",
+      "versioned_formula": "It is a package for one older version only.",
       "checksum_mismatch": "Its source file no longer matches the one first released, so the developer's repository may have been changed.",
       "discontinued": "Its developer has discontinued it.",
       "moved_to_mas": "It is now offered only in the App Store.",
       "no_longer_available": "Its download is no longer available.",
       "no_longer_meets_criteria": "It no longer meets Homebrew's criteria.",
-      "fails_gatekeeper_check": "It doesn't pass macOS's security check."
+      "fails_gatekeeper_check": "It doesn't pass the macOS security check."
     },
     "replacement": "Homebrew suggests “{{name}}” instead.",
-    "caveatsTitle": "Homebrew's notes in English",
+    "caveatsTitle": "Homebrew's notes",
     "homepage": "Homepage",
     "copyLink": "Copy Link",
     "otherVersionsTerm": "Other versions"
@@ -202,7 +202,7 @@
     "uninstallHold": {
       "label": "Can't uninstall now",
       "ariaLabel": "Can't uninstall {{name}} now",
-      "IndexUpdating": "Homebrew is updating its software list. Uninstall once it's done."
+      "IndexUpdating": "Homebrew is updating its software list. You can uninstall once it's done."
     },
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
@@ -460,7 +460,7 @@
     }
   },
   "commands": {
-    "title": "Typed in Terminal",
+    "title": "In Terminal",
     "titleDetail": "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",
     "names_other": "{{names}} and {{rest}} more",
     "runs": "Runs this copy",
@@ -495,7 +495,7 @@
     "updatesItself": "Updates itself",
     "updatesItselfAria": "Updates itself: {{name}}",
     "updatesItselfDetail": "{{source}} is set to follow its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
-    "notChecked": "Not checked",
+    "notChecked": "Updates not checked",
     "notCheckedAria": "Not checked for updates: {{name}}",
     "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
     "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
@@ -817,7 +817,7 @@
     "footnote": "Paste this to whoever is helping you. It lists the macOS version, where each source is and how it's doing, and the folders searched for commands. Your home folder is written as ~, and apart from those folders it holds no environment variable's value. The list of tools is included only when the box above is ticked.",
     "text": {
       "title": "Diagnostic info",
-      "time": "Date: {{time}}",
+      "time": "Time: {{time}}",
       "app": "{{app}}: {{version}}",
       "macos": "macOS: {{version}}",
       "macosUnknown": "macOS: couldn't read",
@@ -842,14 +842,14 @@
       },
       "searchPath": "Command search folders: {{number}}",
       "loginRead": "Read from the login settings",
-      "loginNotRead": "Couldn't read the login settings, so these are the defaults, which Terminal may not use",
+      "loginNotRead": "Couldn't read the login settings, so defaults were used, which Terminal may not use",
       "lastCheck": "Last check: {{time}}",
-      "neverChecked": "Last check: none yet",
+      "neverChecked": "Last check: never",
       "complete": "Check: complete",
       "incomplete": "Check: incomplete, {{sources}} didn't finish",
       "incompletePlain": "Check: incomplete",
       "notFound": "Not found in Terminal: {{number}}",
-      "twins": "Tools installed twice: {{number}}",
+      "twins": "Tools installed more than once: {{number}}",
       "diskTotal": "Space used: {{size}}",
       "noFacts": "System info: couldn't read"
     }

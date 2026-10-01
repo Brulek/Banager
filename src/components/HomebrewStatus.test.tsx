@@ -58,10 +58,10 @@ describe("lifecycleSentence", () => {
   it("says why, then that a disabled package gets no more updates and stays installed", () => {
     const mark = { kind: "disabled" as const, lifecycle: disabledCask.facts.homebrew!.disabled! };
     expect(lifecycleSentence(zh, mark)).toBe(
-      "它没有通过macOS的安全检查。Homebrew自2026-09-01起停用它，以后不再提供更新。已经装好的这一份不会被删除。",
+      "它没有通过macOS的安全性检查。Homebrew自2026-09-01起停用它，以后不再提供更新。已安装的这一份不会被删除；不再需要时可以卸载它。",
     );
     expect(lifecycleSentence(enT, mark)).toBe(
-      "It doesn't pass macOS's security check. Homebrew disabled it on 2026-09-01, so no more updates will come. The copy already installed is not removed.",
+      "It doesn't pass the macOS security check. Homebrew disabled it on 2026-09-01 and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
     );
   });
 
@@ -77,16 +77,16 @@ describe("lifecycleSentence", () => {
 
   it("leaves out what Homebrew did not say: no reason, no date", () => {
     const mark = { kind: "disabled" as const, lifecycle: { date: null, reason: null, replacement: null } };
-    expect(lifecycleSentence(zh, mark)).toBe("Homebrew已停用它，以后不再提供更新。已经装好的这一份不会被删除。");
+    expect(lifecycleSentence(zh, mark)).toBe("Homebrew已停用它，以后不再提供更新。已安装的这一份不会被删除；不再需要时可以卸载它。");
     const deprecated = { kind: "deprecated" as const, lifecycle: { date: null, reason: "unmaintained", replacement: null } };
-    expect(lifecycleSentence(zh, deprecated)).toBe("它已经没人维护。Homebrew已将它标为弃用，以后可能会停用。");
+    expect(lifecycleSentence(zh, deprecated)).toBe("它已无人维护。Homebrew已将它标为弃用，以后可能会停用。");
   });
 
   it("quotes a reason that happens to be the name of an object property, too", () => {
     for (const reason of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
       const mark = { kind: "disabled" as const, lifecycle: { date: null, reason, replacement: null } };
       expect(lifecycleSentence(enT, mark)).toBe(
-        `Homebrew's reason: “${reason}”. Homebrew has disabled it, so no more updates will come. The copy already installed is not removed.`,
+        `Homebrew's reason: “${reason}”. Homebrew has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.`,
       );
     }
   });
@@ -193,13 +193,13 @@ describe("HomebrewNotes", () => {
     // Said once, as the facts' 「其他版本」 row (`otherVersionsFact`).
     expect(container.textContent).not.toContain("1.9");
     // The one control is the caveats' disclosure: nothing installs, opens or copies.
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Homebrew's notes in English"]);
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Homebrew's notes"]);
     expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("keeps the caveats closed until asked, then shows them verbatim, still with no Copy", () => {
     const { container } = renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
-    const disclosure = screen.getByRole("button", { name: "Homebrew's notes in English" });
+    const disclosure = screen.getByRole("button", { name: "Homebrew's notes" });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
     expect(container.querySelector("[data-caveats]")).toBeNull();
     fireEvent.click(disclosure);

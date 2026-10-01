@@ -161,10 +161,10 @@ describe("InstalledPage, Codex's own install", () => {
     page();
     const pane = await openDetails("Codex");
     const status = within(pane).getByText("Status").nextElementSibling as HTMLElement;
-    expect(within(status).getByText("Not checked")).toBeInTheDocument();
+    expect(within(status).getByText("Updates not checked")).toBeInTheDocument();
     expect(within(status).queryByText("Updates itself")).toBeNull();
     expect(within(pane).queryByText("Up to date")).toBeNull();
-    fireEvent.click(within(status).getByRole("button", { name: "Details: Not checked" }));
+    fireEvent.click(within(status).getByRole("button", { name: "Details: Updates not checked" }));
     expect(await screen.findByText("Codex's updates aren't checked or installed here.")).toBeInTheDocument();
   });
 
