@@ -30,6 +30,19 @@ export function terminalCommand(op: OpSummary): string | null {
 }
 
 /**
+ * Whether `op` ran Homebrew: the one source whose steps run `sudo` (a
+ * cask's installer or uninstaller), and the one whose command this hands
+ * over -- the `brew` argv with Homebrew's variables. Another source whose
+ * output carried sudo's lines would hand over a command of its own that
+ * the words here were not written for; its log keeps the cause and the
+ * next step, without a command.
+ */
+function fromHomebrew(op: OpSummary): boolean {
+  const program = op.argv_preview[0] ?? "";
+  return op.instance_id.split(":")[0] === "brew" && program.split("/").pop() === "brew";
+}
+
+/**
  * Under a log's next step, where an operation failed because `sudo`
  * wanted the Mac's password and had no way to ask for it
  * (`needsPassword`, src/lib/failureCause.ts), or asked in a password
@@ -43,13 +56,13 @@ export function terminalCommand(op: OpSummary): string | null {
  * what to do after: come back and check again.
  *
  * Nothing here runs anything: the command is only text to copy.
- * Renders nothing for any other ending, or for an operation that ran no
- * command.
+ * Renders nothing for any other ending, for an operation that ran no
+ * command, or for one that did not run Homebrew (`fromHomebrew`).
  */
 export function PasswordCommand({ op }: { op: OpSummary }) {
   const { t } = useTranslation();
   const { status, copy } = useCopyCommand();
-  if (op.status !== "Done") return null;
+  if (op.status !== "Done" || !fromHomebrew(op)) return null;
   const cause = outcomeCause(op.outcome);
   if (cause !== "needsPassword" && cause !== "passwordNotAccepted") return null;
   const command = terminalCommand(op);
@@ -58,12 +71,13 @@ export function PasswordCommand({ op }: { op: OpSummary }) {
   return (
     <div className="mb-3 flex flex-col gap-2">
       <p className="break-words text-body text-foreground">{t("needsPassword.intro")}</p>
-      <code
-        aria-label={t("needsPassword.commandLabel")}
-        className="block select-all whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground"
-      >
-        {command}
-      </code>
+      {/* Named by a group around it: a name on <code> itself is not
+          one assistive technology reliably reads. */}
+      <div role="group" aria-label={t("needsPassword.commandLabel")}>
+        <code className="block select-all whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
+          {command}
+        </code>
+      </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => copy(command)} className={BUTTON.regular.grey}>
           {t("common.copyCommand")}

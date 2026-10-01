@@ -74,7 +74,7 @@ describe("terminalCommand", () => {
 });
 
 describe("PasswordCommand", () => {
-  it("shows nothing for a failure with another cause, one still running, or one that ran no command", () => {
+  it("shows nothing for a failure with another cause, one still running, one that ran no command, or one not Homebrew's", () => {
     const network = renderWithProviders(
       <PasswordCommand
         op={{ ...passwordOp, outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } } }}
@@ -89,6 +89,21 @@ describe("PasswordCommand", () => {
 
     const noCommand = renderWithProviders(<PasswordCommand op={{ ...passwordOp, argv_preview: [], env_preview: [] }} />);
     expect(noCommand.container).toBeEmptyDOMElement();
+    noCommand.unmount();
+
+    // Only Homebrew's command is handed over: not another source's, whose
+    // words these are not, even where its output carried sudo's lines.
+    const standalone = renderWithProviders(
+      <PasswordCommand
+        op={{
+          ...passwordOp,
+          instance_id: "standalone:claude",
+          argv_preview: ["/bin/bash", "-c", "curl -fsSL https://example.com/install.sh | bash"],
+          env_preview: [],
+        }}
+      />,
+    );
+    expect(standalone.container).toBeEmptyDOMElement();
   });
 });
 
@@ -107,14 +122,14 @@ describe("LogDrawer, where sudo wanted a password", () => {
       expect(await findByText("This step needs your Mac login password, which can't be entered here.")).toBeInTheDocument();
       expect(
         await findByText(
-          "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type — that's normal.",
+          "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type. That's normal.",
         ),
       ).toBeInTheDocument();
       // The command, whole, selectable in one click, and named for what it is.
       const code = getByRole("dialog").querySelector("code") as HTMLElement;
       expect(code.textContent).toBe(EXPECTED_COMMAND);
       expect(code.className).toContain("select-all");
-      expect(code.getAttribute("aria-label")).toBe("Command to run in Terminal");
+      expect(getByRole("group", { name: "Command to run in Terminal" })).toContainElement(code);
       expect(await findByText("When it's done, come back here and press ⌘R to check again.")).toBeInTheDocument();
 
       // Copying it puts exactly that on the clipboard, and says so.
@@ -140,7 +155,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
       expect(await findByText("需要输入密码")).toBeInTheDocument();
       expect(await findByText("这一步需要输入Mac的登录密码，无法在这里输入。")).toBeInTheDocument();
       expect(
-        await findByText("可以在“终端”里运行下面这条命令，按提示输入密码。输入时屏幕上不显示任何字符，这是正常的。"),
+        await findByText("可以在终端里运行下面这条命令，按提示输入密码。输入时屏幕上不显示任何字符，这是正常的。"),
       ).toBeInTheDocument();
       expect(await findByText("完成后回到这里，按⌘R重新检查。")).toBeInTheDocument();
       expect(await findByRole("button", { name: "拷贝命令" })).toBeInTheDocument();
