@@ -103,6 +103,13 @@ export function homebrewStatusChip(
 }
 
 /**
+ * The ids `homebrewStatusChip` gives. The inspector's 状态 row shows these
+ * words without their ⓘ: `HomebrewNotes` says the same sentence under the
+ * facts, and once is enough.
+ */
+export const HOMEBREW_STATUS_CHIP_IDS: ReadonlySet<string> = new Set(["homebrew-disabled", "homebrew-deprecated"]);
+
+/**
  * The inspector's 「主页」 fact, for any source that reported one: the
  * address as text, and 「拷贝链接」 under it. Nothing opens it -- opening
  * a page from Banager is a decision not yet taken -- so the address is

@@ -159,6 +159,11 @@ describe("InstalledPage, Homebrew's state", () => {
     expect(within(pane).getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
     // No update will come, so it is not called up to date either.
     expect(within(pane).queryByText("Up to date")).toBeNull();
+    // The status row says the word; the sentence is said once, under the
+    // facts, not again behind an ⓘ on the word.
+    const status = within(pane).getByText("Status").nextElementSibling as HTMLElement;
+    expect(within(status).getByText("Disabled")).toBeInTheDocument();
+    expect(within(status).queryByRole("button", { name: "Details: Disabled" })).toBeNull();
   });
 
   it("says a formula's other installed version and keeps its caveats folded", async () => {

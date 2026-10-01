@@ -62,7 +62,12 @@ import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
 import { focusOrFallback } from "../components/ui/focus";
 import { GROUP, SMALL_WRAPPING } from "../components/ui/group";
 import { InfoDetail } from "../components/InfoDetail";
-import { HomebrewNotes, homebrewStatusChip, homepageFact } from "../components/HomebrewStatus";
+import {
+  HOMEBREW_STATUS_CHIP_IDS,
+  HomebrewNotes,
+  homebrewStatusChip,
+  homepageFact,
+} from "../components/HomebrewStatus";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -1259,7 +1264,7 @@ export function InstalledPage() {
             {chips.map((chip) => (
               <li key={chip.id} className="flex flex-wrap items-center justify-end gap-1">
                 <span data-status-word="">{chip.label}</span>
-                {chip.detail !== undefined ? (
+                {chip.detail !== undefined && !HOMEBREW_STATUS_CHIP_IDS.has(chip.id) ? (
                   <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>{chip.detail}</InfoDetail>
                 ) : null}
                 {chip.undo !== undefined ? (
