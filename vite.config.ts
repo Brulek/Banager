@@ -93,6 +93,19 @@ export default defineConfig(({ mode }) => {
       environment: "jsdom",
       setupFiles: ["src/test/setup.ts"],
       css: false,
+      // Only the project's own test files: none from a build or output
+      // folder, where a vendor package unpacked by hand would otherwise be
+      // collected and its tests run (2026-10-02). The first two are
+      // vitest's defaults, which setting `exclude` replaces.
+      exclude: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "target/**",
+        "src-tauri/target/**",
+        "dist/**",
+        "dist-ssr/**",
+        ".superpowers/**",
+      ],
     },
   };
 });
