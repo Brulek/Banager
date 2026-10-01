@@ -761,7 +761,6 @@
     "takenOverAnother": "卸载后，终端里的“{{command}}”会改用另一份。",
     "keptAi_other": "其中{{count}}个AI工具的设置和数据会留在原处，不会删除。",
     "keptBy": "来自{{names}}",
-    "password": "其中部分App可能会要求输入Mac的密码。",
     "after": "在{{names}}卸载之后再卸载。",
     "afterDetail_other": "如果{{names}}没有卸载成功，Homebrew不会卸载它，因为还有软件要用到它。",
     "quoted": "“{{name}}”",
@@ -796,9 +795,12 @@
     "mixed_other": "已卸载{{done}}个，{{count}}个没有卸载"
   },
   "reviewFixes": {
-    "hostedManages_other": "用“{{program}}”装的{{names}}会留下，但卸载后无法再在Banager里更新或卸载。",
+    "hostedManages_other": "用“{{program}}”装的{{names}}会留下，但卸载后无法再在这里更新或卸载。",
     "hostedRuns_other": "用“{{program}}”装的{{names}}要用到{{runsOn}}，卸载后可能无法运行。",
-    "hostedBoth_other": "用“{{program}}”装的{{names}}会留下，但卸载后可能无法运行，也无法再在Banager里更新或卸载。"
+    "hostedBoth_other": "用“{{program}}”装的{{names}}会留下，但卸载后可能无法运行，也无法再在这里更新或卸载。",
+    "cannotUninstallOne": "无法在这里卸载“{{name}}”",
+    "passwordNamed_other": "{{names}}可能会要求输入Mac的密码。",
+    "hostedThrough_other": "用“{{program}}”装的{{names}}可能也在用它，卸载后可能无法运行。"
   },
   "keepsData": {
     "title": "卸载后会保留",

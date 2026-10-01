@@ -828,7 +828,6 @@
     "keptAi_one": "The settings and data of {{count}} AI tool stay after uninstalling.",
     "keptAi_other": "The settings and data of {{count}} AI tools stay after uninstalling.",
     "keptBy": "From {{names}}",
-    "password": "Some of these apps may ask for your Mac password.",
     "after": "Will be uninstalled after {{names}}.",
     "afterDetail_one": "If {{names}} isn't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
     "afterDetail_other": "If {{names}} aren't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
@@ -873,12 +872,17 @@
     "mixed_other": "Uninstalled {{done}}; {{count}} weren't uninstalled"
   },
   "reviewFixes": {
-    "hostedManages_one": "{{names}}, installed with {{program}}, will stay, but Banager won't be able to update or uninstall it after this.",
-    "hostedManages_other": "{{names}}, installed with {{program}}, will stay, but Banager won't be able to update or uninstall them after this.",
+    "hostedManages_one": "{{names}}, installed with {{program}}, will stay, but can't be updated or uninstalled here after this.",
+    "hostedManages_other": "{{names}}, installed with {{program}}, will stay, but can't be updated or uninstalled here after this.",
     "hostedRuns_one": "{{names}}, installed with {{program}}, needs {{runsOn}} and may stop working after this.",
     "hostedRuns_other": "{{names}}, installed with {{program}}, need {{runsOn}} and may stop working after this.",
-    "hostedBoth_one": "{{names}}, installed with {{program}}, will stay, but may stop working after this, and Banager won't be able to update or uninstall it.",
-    "hostedBoth_other": "{{names}}, installed with {{program}}, will stay, but may stop working after this, and Banager won't be able to update or uninstall them."
+    "hostedBoth_one": "{{names}}, installed with {{program}}, will stay, but may stop working after this and can't be updated or uninstalled here.",
+    "hostedBoth_other": "{{names}}, installed with {{program}}, will stay, but may stop working after this and can't be updated or uninstalled here.",
+    "cannotUninstallOne": "“{{name}}” can't be uninstalled here",
+    "passwordNamed_one": "{{names}} may ask for your Mac password.",
+    "passwordNamed_other": "{{names}} may ask for your Mac password.",
+    "hostedThrough_one": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
+    "hostedThrough_other": "{{names}}, installed with {{program}}, may use it too, and may stop working after this."
   },
   "keepsData": {
     "title": "Stays after uninstalling",

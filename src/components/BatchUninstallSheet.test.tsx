@@ -410,7 +410,19 @@ describe("the batch uninstall's sheet", () => {
       "openssl@3",
     ]);
     expect(within(dialog).getByText("7 more won't be uninstalled; see why below.")).toBeInTheDocument();
-    const reason = (name: string) => within(toolItem(dialog, name)).getByRole("alert");
+    // A refusal (X1) is an alert, in red; why a tool is left out otherwise
+    // is an explanation, in the secondary colour.
+    const reason = (name: string): HTMLElement => {
+      const item = toolItem(dialog, name);
+      const found = item.querySelector<HTMLElement>("[role=alert], [data-sheet-reason]");
+      if (found === null) throw new Error(`no reason under ${name}`);
+      return found;
+    };
+    for (const name of ["rustup", "zoom", "Adobe Creative Cloud", "ollama", "openssl@3"]) {
+      expect(reason(name)).toHaveAttribute("data-sheet-reason");
+      expect(reason(name).className).not.toMatch(/danger/);
+    }
+    expect(reason("jq")).toHaveAttribute("role", "alert");
     // Pinned: the single dialog's sentence, with the unpin command as code.
     expect(reason("postgresql@17")).toHaveTextContent(
       "Couldn't uninstall it because it's pinned in Homebrew. Run /opt/homebrew/bin/brew unpin postgresql@17 in Terminal to unpin it first.",
@@ -431,6 +443,19 @@ describe("the batch uninstall's sheet", () => {
     expect(reason("openssl@3")).toHaveTextContent(
       "postgresql@17 still uses it and won't be uninstalled, so it won't be either.",
     );
+  });
+
+  it("says of one ticked tool it cannot take that this one can't be uninstalled here, not these", async () => {
+    const dialog = await openSheet([rustupTool]);
+    expect(within(dialog).getByRole("heading", { name: "“rustup” can't be uninstalled here" })).toBeInTheDocument();
+  });
+
+  it("lists the tools in the body's own scroll, with no box scrolling inside it", async () => {
+    const dialog = await openSheet([python, pipxFormula, rustupTool]);
+    for (const list of dialog.querySelectorAll("[data-sheet-tools]")) {
+      expect(list.className).not.toMatch(/max-h|overflow/);
+      expect(list).not.toHaveAttribute("tabindex");
+    }
   });
 
   it("says why the other sources' refusals are, in the single dialog's words", async () => {
@@ -477,6 +502,14 @@ describe("the batch uninstall's sheet", () => {
     ).toBeInTheDocument();
     // Said once: the plan's own "still needed by" is left out.
     expect(within(item).queryByText(/pipx uses it/)).toBeNull();
+    // What pipx leaves: its tools stay, with nothing here to update them, and
+    // may have run on this Python -- a caution under each.
+    expect(within(toolItem(dialog, "pipx")).getByText(
+      "httpie, installed with pipx, will stay, but can't be updated or uninstalled here after this.",
+    ).closest("li")).toHaveAttribute("data-caution");
+    expect(within(item).getByText("httpie, installed with pipx, may use it too, and may stop working after this.").closest("li")).toHaveAttribute(
+      "data-caution",
+    );
   });
 
   it("says what each one deletes, where its files go, what it takes, and what they take together", async () => {
@@ -532,7 +565,8 @@ describe("the batch uninstall's sheet", () => {
   it("lists what stays once per path, whose it is, with Copy Path and no way to delete it", async () => {
     const dialog = await openSheet([claudeCode, npmClaude, codex, vscode]);
     expect(within(dialog).getByText("The settings and data of 2 AI tools stay after uninstalling.")).toBeInTheDocument();
-    expect(within(dialog).getByText("Some of these apps may ask for your Mac password.")).toBeInTheDocument();
+    // The app that may ask, by name: not 「some of these」.
+    expect(within(dialog).getByText("Microsoft Visual Studio Code may ask for your Mac password.")).toBeInTheDocument();
     const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
     expect([...kept.querySelectorAll("[data-kept-path]")].map((path) => path.textContent)).toEqual(["~/.claude", "~/.codex"]);
     expect(within(kept).getByText("From Claude Code and @anthropic-ai/claude-code")).toBeInTheDocument();
@@ -591,9 +625,9 @@ describe("the batch uninstall's sheet", () => {
     expect(within(toolItem(dialog, "pipx")).getByRole("alert")).toHaveTextContent(
       "Couldn't start the uninstall: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
-    expect(within(toolItem(dialog, "python@3.13")).getByRole("alert")).toHaveTextContent(
-      "Didn't start, because pipx didn't start uninstalling.",
-    );
+    const held = toolItem(dialog, "python@3.13").querySelector("[data-sheet-reason]");
+    expect(held).toHaveTextContent("Didn't start, because pipx didn't start uninstalling.");
+    expect(held?.querySelector("svg")).not.toBeNull();
     expect(within(toolItem(dialog, "wget")).getByText("Started")).toBeInTheDocument();
     await waitFor(() => expect(close).toHaveFocus());
     expect(useUiStore.getState().uninstallBatch?.items.map((item) => item.opId)).toEqual([null, null, 41]);

@@ -45,3 +45,35 @@ export function hostedLines(
   });
 }
 
+
+/**
+ * What a batch's Homebrew formula that runs after `hosts` -- its ticked
+ * dependents, the source programs among them -- may take from those
+ * sources' tools: `python@3.13` after Homebrew's `pipx`, whose tools'
+ * environments were most likely made with the Python pipx ran on. Banager
+ * cannot read which Python each one has, so it says "may". One caution a
+ * source, under the formula.
+ */
+export function hostedThroughLines(
+  t: Translate,
+  hosts: ReadonlyArray<InstalledArtifact>,
+  instances: readonly ManagerInstance[],
+  artifacts: readonly InstalledArtifact[],
+): WarningLine[] {
+  return hosts.flatMap((host) =>
+    hostedTools(host, instances, artifacts)
+      .filter(({ manages }) => manages)
+      .map(({ program, tools }) => ({
+        text: t("reviewFixes.hostedThrough", {
+          names: fewNames(
+            t,
+            tools.map((tool) => tool.display_name || tool.key.name),
+          ),
+          program,
+          count: tools.length,
+        }),
+        detail: null,
+        caution: true,
+      })),
+  );
+}

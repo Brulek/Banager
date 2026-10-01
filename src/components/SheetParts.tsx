@@ -163,15 +163,26 @@ export function SheetTool({
  * fill, corners of 10), as high as 320 and scrolling inside past that,
  * its rows parted by hairlines from where their names start. Its own Tab
  * stop, so the keyboard can scroll it: nothing in it but an ⓘ takes the
- * focus.
+ * focus. `contained={false}`: as high as its rows, scrolled with the rest
+ * of the dialog's body -- for a list with notes under every tool (a batch
+ * uninstall's, at most 20), where a box scrolling inside the body would
+ * hide a tool's only caution below its edge.
  */
-export function SheetToolList({ label, children }: { label?: string; children: ReactNode }) {
+export function SheetToolList({
+  label,
+  contained = true,
+  children,
+}: {
+  label?: string;
+  contained?: boolean;
+  children: ReactNode;
+}) {
   return (
     <ul
       aria-label={label}
       data-sheet-tools=""
-      tabIndex={0}
-      className="max-h-80 overflow-y-auto rounded-group bg-group py-1 [&>*+*]:relative [&>*+*]:before:absolute [&>*+*]:before:left-10.5 [&>*+*]:before:right-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-group-separator"
+      tabIndex={contained ? 0 : undefined}
+      className={`${contained ? "max-h-80 overflow-y-auto " : ""}rounded-group bg-group py-1 [&>*+*]:relative [&>*+*]:before:absolute [&>*+*]:before:left-10.5 [&>*+*]:before:right-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-group-separator`}
     >
       {children}
     </ul>
@@ -304,6 +315,22 @@ export interface RefusalProps {
   /** 13 unless said; 11 under a tool's name in a list of several. */
   size?: "body" | "small";
   className?: string;
+}
+
+/**
+ * Why a tool in a dialog about several is left out or held back -- an
+ * explanation, not an error: in the secondary colour at 11, as macOS says
+ * what a disabled choice needs, never in the refusal's red (round 3: an
+ * alert is not marked red). `caution` puts the ⚠︎ of `SheetLine` before
+ * it, for what the person should look at.
+ */
+export function SheetReason({ text, caution = false }: { text: string; caution?: boolean }) {
+  return (
+    <p data-sheet-reason="" className={`flex gap-1 text-muted ${SMALL_WRAPPING}`}>
+      {caution ? <WarningFilledIcon size={12} className="mt-0.5 shrink-0 text-warning" /> : null}
+      <span className="min-w-0 break-words">{text}</span>
+    </p>
+  );
 }
 
 /**

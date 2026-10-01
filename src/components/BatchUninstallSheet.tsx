@@ -35,13 +35,14 @@ import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapsho
 import { commandText } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
-import { hostedLines } from "./hostedLines";
+import { hostedLines, hostedThroughLines } from "./hostedLines";
 import { TextWithInfo } from "./InfoDetail";
 import {
   Refusal,
   SheetIcon,
   SheetLines,
   SheetPending,
+  SheetReason,
   SheetSection,
   SheetText,
   SheetTool,
@@ -423,7 +424,9 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
   const only = asked.length === 1 ? asked[0] : null;
   const title =
     !planning && included.length === 0
-      ? t("batchUninstall.titleNone")
+      ? entries.length === 1
+        ? t("reviewFixes.cannotUninstallOne", { name: entries[0].name })
+        : t("batchUninstall.titleNone")
       : only !== null
         ? t("uninstall.title", { name: only.name })
         : t("batchUninstall.title", { count: asked.length });
@@ -441,12 +444,14 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
   const keptAi = included.filter(({ entry }) =>
     entry.plan!.warnings.some((warning) => typeof warning !== "string" && "KeepsData" in warning),
   ).length;
+  const asksPassword = included.filter(({ entry }) => entry.plan!.needs_password).map(({ entry }) => entry.name);
   const batchNotes: WarningLine[] = [
     ...(commands.lost.length > 0
       ? [
           {
             text: t("batchUninstall.commandsLost", { names: someNames(t, commands.lost), count: commands.lost.length }),
-            detail: null,
+            // Every one of them, where the line names only the first three.
+            detail: commands.lost.length > 3 ? namesInSentence(t, commands.lost) : null,
             caution: true,
           },
         ]
@@ -458,14 +463,21 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
               names: someNames(t, commands.unjudged),
               count: commands.unjudged.length,
             }),
-            detail: null,
+            detail: commands.unjudged.length > 3 ? namesInSentence(t, commands.unjudged) : null,
             caution: false,
           },
         ]
       : []),
     ...(keptAi > 0 ? [{ text: t("batchUninstall.keptAi", { count: keptAi }), detail: null, caution: false }] : []),
-    ...(included.some(({ entry }) => entry.plan!.needs_password)
-      ? [{ text: t("batchUninstall.password"), detail: null, caution: false }]
+    // Which of them may ask, by name: every cask uninstall may, not every app does.
+    ...(asksPassword.length > 0
+      ? [
+          {
+            text: t("reviewFixes.passwordNamed", { names: quotedNames(t, asksPassword), count: asksPassword.length }),
+            detail: null,
+            caution: false,
+          },
+        ]
       : []),
   ];
   const kept = mergeKept(included.map(({ entry }) => ({ name: entry.name, warnings: entry.plan!.warnings })));
@@ -523,7 +535,19 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         : [];
     // What other sources installed through it: none of those tools is in
     // the batch (X5 leaves a program out where one is), so each stays.
-    const hosted = hostedLines(t, entry.artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? []);
+    const hosted = [
+      ...hostedLines(t, entry.artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? []),
+      // And what those it runs after leave behind, which may have used it.
+      ...hostedThroughLines(
+        t,
+        after.flatMap((id) => {
+          const host = byId.get(id);
+          return host === undefined ? [] : [host.artifact];
+        }),
+        snapshot?.instances ?? [],
+        snapshot?.artifacts ?? [],
+      ),
+    ];
     return [
       ...said.map(plain),
       ...order,
@@ -556,14 +580,16 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         names: quotedNames(t, entry.blockedBy.map(nameOf)),
         count: entry.blockedBy.length,
       });
-      return <Refusal text={text} detail={null} detailTitle={text} size="small" />;
+      return <SheetReason text={text} caution />;
     }
     return null;
   };
 
   /** Why a ticked tool is left out (spec §5.3). */
   const reasonOf = (entry: BatchEntry, reason: Exclusion): ReactNode => {
-    const plainRefusal = (text: string) => <Refusal text={text} detail={null} detailTitle={text} size="small" />;
+    // An explanation, in the secondary colour: only a preview Banager could
+    // not make (X1) is said as a refusal.
+    const plainRefusal = (text: string) => <SheetReason text={text} />;
     switch (reason.kind) {
       case "refused": {
         const { text, detail, title: detailTitle } = refusedText(t, reason.raw, entry, sourceLabelOf(entry.instance), technical);
@@ -707,7 +733,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
 
       {planning ? (
         <>
-          <SheetToolList label={t("batchUninstall.goTitle")}>{entries.map((entry) => toolOf(entry, null))}</SheetToolList>
+          <SheetToolList label={t("batchUninstall.goTitle")} contained={false}>{entries.map((entry) => toolOf(entry, null))}</SheetToolList>
           <SheetPending text={t("batchUninstall.checking", { done, total: entries.length })} />
         </>
       ) : (
@@ -719,7 +745,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           ) : null}
           {included.length > 0 ? (
             <div className="mt-3">
-              <SheetToolList label={t("batchUninstall.goTitle")}>
+              <SheetToolList label={t("batchUninstall.goTitle")} contained={false}>
                 {included.map(({ entry, after }) => {
                   const size = itemSizeOf(sizes, entry.artifact);
                   return toolOf(
@@ -736,7 +762,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           ) : null}
           {excluded.length > 0 ? (
             <SheetSection title={t("batchUninstall.stayTitle")}>
-              <SheetToolList label={t("batchUninstall.stayTitle")}>
+              <SheetToolList label={t("batchUninstall.stayTitle")} contained={false}>
                 {excluded.map(({ entry, reason }) => toolOf(entry, reasonOf(entry, reason)))}
               </SheetToolList>
             </SheetSection>
