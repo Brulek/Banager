@@ -2196,7 +2196,7 @@ describe("InstalledPage", () => {
       const { findByText, getByText, queryByText } = renderInstalled();
 
       expect(await findByText("python3.13 doesn't include pip")).toBeInTheDocument();
-      expect(getByText("This Python has no pip of its own, so pip has nothing to list for it.")).toBeInTheDocument();
+      expect(getByText("This Python doesn't include pip, so there's nothing to list.")).toBeInTheDocument();
       expect(queryByText("Nothing installed with pip")).toBeNull();
       expect(rowNames()).toEqual([]);
     });

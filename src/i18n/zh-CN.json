@@ -598,7 +598,7 @@
     },
     "noPip": {
       "title": "“{{command}}”没有附带pip",
-      "description": "这个Python没有自带pip，因此{{source}}无法为它列出任何内容。",
+      "description": "这个Python没有附带pip，所以没有可列出的内容。",
       "statusWord": "没有pip"
     }
   },

@@ -641,7 +641,7 @@
     },
     "noPip": {
       "title": "{{command}} doesn't include pip",
-      "description": "This Python has no pip of its own, so {{source}} has nothing to list for it.",
+      "description": "This Python doesn't include pip, so there's nothing to list.",
       "statusWord": "No pip"
     }
   },

@@ -408,7 +408,7 @@ export function sourceNoticesFor(
       variant: "info",
       titleKey: "sourceNotice.noPip.title",
       descriptionKey: "sourceNotice.noPip.description",
-      values: { source: sourceLabel, command: commandNameOf(instance) },
+      values: { command: commandNameOf(instance) },
     });
   }
 
@@ -1124,7 +1124,8 @@ export function sourceWarningOf(
  * Both halves can be set at once (a read-only source can also be silent),
  * so both parts are joined when present. The read-only copy needs no
  * source name (spec §7's wording is self-contained); the state copy
- * always names one, same as `sourceNoticesFor`.
+ * names one, same as `sourceNoticesFor`, except `NoPip`, whose sentence
+ * is about the Python and needs none.
  */
 export function notActionableMessage(
   t: Translate,
@@ -1146,7 +1147,7 @@ export function notActionableMessage(
   } else if (reason.unavailable === "HttpsHostRefused") {
     parts.push(t("sourceNotice.httpsHostRefused.description", { source: sourceLabel }));
   } else if (reason.unavailable === "NoPip") {
-    parts.push(t("sourceNotice.noPip.description", { source: sourceLabel }));
+    parts.push(t("sourceNotice.noPip.description"));
   }
   return parts.join(" ");
 }

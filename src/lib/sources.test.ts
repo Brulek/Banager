@@ -203,14 +203,14 @@ describe("sourceNoticesFor", () => {
       variant: "info",
       titleKey: "sourceNotice.noPip.title",
       descriptionKey: "sourceNotice.noPip.description",
-      values: { source: "pip（local）", command: "python3.13" },
+      values: { command: "python3.13" },
     });
     expect(sourceWarningOf(noPip, "pip（local）", 0)).toBeNull();
     expect(i18n.getFixedT("en")(notice.titleKey, notice.values)).toBe("python3.13 doesn't include pip");
     expect(i18n.getFixedT("zh-CN")(notice.titleKey, notice.values)).toBe("“python3.13”没有附带pip");
-    // A refusal names the source; read-only comes first, as for any pip.
+    // Read-only comes first, as for any pip; the no-pip half names no source.
     expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: "NoPip" }, "pip")).toBe(
-      'sourceNotice.pipReadOnly.description sourceNotice.noPip.description({"source":"pip"})',
+      'sourceNotice.pipReadOnly.description sourceNotice.noPip.description',
     );
     expect(UNAVAILABLE_DETAIL_KEYS.NoPip).toBe(notice.descriptionKey);
   });
