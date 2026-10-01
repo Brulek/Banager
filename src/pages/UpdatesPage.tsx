@@ -161,8 +161,10 @@ export function useUpdatesHeadline(): string | null {
  * where two sources list the same name, in place of the per-source
  * headings the list used to be grouped under. First, while there is
  * anything to say, what the sources had to say about this check -- the
- * list's first row, which scrolls away with it (spec §3.8) -- then, while
- * there is anything in it, "Recently Updated" (`JustUpdated`).
+ * list's first row, which scrolls away with it (spec §3.8) -- then the
+ * rows, and after them, while there is anything in it, "Recently Updated"
+ * (`JustUpdated`): under the updates still to install, as the App Store's
+ * is under Pending, or right under the notices when there are none.
  */
 type ListItem =
   | { type: "notices"; count: number }
@@ -612,10 +614,19 @@ export function UpdatesPage() {
           candidate.warnings.some((warning) => warningMessage(warning) !== null),
       ).length;
 
-  const items = useMemo<ListItem[]>(
-    () => [
+  // 「最近更新」 comes after the updates still to install, as the App
+  // Store's Recently Updated comes under Pending: what is to be done
+  // first, what was done after. An update that finishes in this window
+  // keeps its tick in its own row, where it was pressed, until the check
+  // after it lands (`justUpdatedOps`); only then does it move down to the
+  // top of 「最近更新」, as 「今天…」. With nothing to install, it is the
+  // only list, right under the notices.
+  const items = useMemo<ListItem[]>(() => {
+    const recent = justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : [];
+    const pending = actionableRows.length > 0 || otherRows.length > 0;
+    return [
       ...(notices.length > 0 ? [{ type: "notices", count: notices.length } as const] : []),
-      ...(justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : []),
+      ...(pending ? [] : recent),
       ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: true })),
       // Only the AI coding tools shown, and none of them listed: a line
       // that says so, where the rows would be.
@@ -631,9 +642,9 @@ export function UpdatesPage() {
       ...(showCantUpdate
         ? otherRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: false }))
         : []),
-    ],
-    [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show],
-  );
+      ...(pending ? recent : []),
+    ];
+  }, [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount, show]);
 
   // Once Clear has taken 「最近更新」 away, its button with it, the focus
   // goes to the list's first row, or, with no list, the page's title --
@@ -1152,8 +1163,9 @@ export function UpdatesPage() {
             </div>
           ) : item.type === "justUpdated" ? (
             // Drawn anew each time the list is (`reusable`): it reads the clock.
-            // 20 in, as the rows are.
-            <div className="px-5 pb-4 pt-3">
+            // 20 in, as the rows are; a little more room over it under the
+            // rows than at the top.
+            <div className={`px-5 pb-4 ${items.some(keyboardRow) ? "pt-5" : "pt-3"}`}>
               <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
             </div>
           ) : item.type === "section" ? (

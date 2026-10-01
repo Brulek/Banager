@@ -67,8 +67,8 @@ report them all.
   what it found; uninstalling waits until that check is done.
 - On the Updates page, an update to a new major version is marked **Major update**, unless its row
   already says the tool updates itself or that Terminal runs another copy (**Not used in Terminal**).
-  **Recently Updated**, at the top, lists the updates that succeeded in the last 30 days, kept across
-  restarts in `history.json`, until you press Clear.
+  **Recently Updated**, under the updates still to install (at the top when there are none), lists the
+  updates that succeeded in the last 30 days, kept across restarts in `history.json`, until you press Clear.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
   deletes them.
@@ -426,8 +426,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   按来源排序时，来源标题后写着它算出大小的工具一共占多少。
 - 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
-  （“终端用另一份”）。页面最上面的“最近更新”列出 30 天内成功的更新，重启后仍在（存在 `history.json` 里），
-  直到你按“清除”。
+  （“终端用另一份”）。待更新的工具下面的“最近更新”（没有待更新时在最上面）列出 30 天内成功的更新，重启后仍在（存在
+  `history.json` 里），直到你按“清除”。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里

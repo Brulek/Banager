@@ -3118,9 +3118,48 @@ describe("UpdatesPage", () => {
       const time = within(line).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(finishedAt)}`);
       expect(time.tagName).toBe("TIME");
       expect(time).toHaveAttribute("dateTime", new Date(finishedAt).toISOString());
-      // Above the list, and no row of it.
-      expect(section.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // Under the updates still to install, as the App Store's Recently
+      // Updated is under Pending, and no row of the list.
+      expect(section.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
       expect(section.closest("[data-tool-row]")).toBeNull();
+    });
+
+    it("stays at the top when nothing is left to install, and moves under the rows when something is", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 14, 40));
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: new Date(2026, 8, 28, 14, 32).getTime() } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderPage();
+      await findRow("glib");
+      // Every update done: 「最近更新」 is the list, first in it.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [],
+        });
+      });
+      const section = await screen.findByRole("region", { name: "Recently Updated" });
+      await waitFor(() => expect(rowNames()).toEqual([]));
+      // Over the page's empty sentence, which says there is nothing to install.
+      expect(section.closest("[data-index]")).toBeNull();
+      // A new update to install: the rows come first, the section after.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 2,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+      await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
+      const moved = screen.getByRole("region", { name: "Recently Updated" });
+      expect(moved.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     });
 
     it("lists the newest first, one line a tool, and says the date of one that finished on another day", async () => {

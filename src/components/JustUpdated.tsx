@@ -111,8 +111,8 @@ export function finishedText(
 
 /**
  * How many lines 「最近更新」 shows before the rest fold away under an
- * "N More" line: 30 days of updates can be dozens, and the updates still
- * to install are below this list.
+ * "N More" line: 30 days of updates can be dozens, and the list ends
+ * with them.
  */
 export const JUST_UPDATED_SHOWN = 6;
 
@@ -123,8 +123,10 @@ export interface JustUpdatedProps {
 
 /**
  * 「最近更新」: the tools updated this session, and those the history
- * kept from the last 30 days (src/lib/history.ts), at the top of the
- * Updates page, so that an update that worked does not simply vanish from
+ * kept from the last 30 days (src/lib/history.ts), under the updates still
+ * to install on the Updates page (at its top when there are none), as the
+ * App Store's Recently Updated is under Pending, so that an update that
+ * worked does not simply vanish from
  * the list -- nor after a restart. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, the ✓ and
