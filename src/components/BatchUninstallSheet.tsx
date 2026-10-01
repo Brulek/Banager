@@ -10,12 +10,14 @@ import {
   PLAN_FRESH_FOR_MS,
   sizeCaveats,
   terminalCommands,
+  toolsGoFirst,
   type BatchCandidate,
   type Classification,
   type Exclusion,
 } from "../lib/batchUninstall";
 import {
   adapterLabel,
+  canWrite,
   fewNames,
   instanceLabels,
   namesInSentence,
@@ -580,10 +582,20 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         // The single confirmation's list and its sentence, in one reason:
         // 「还有软件要用到它：npm及其4个工具。要卸载它，请先卸载npm装的4个工具。」
         return plainRefusal(
-          neededByReason(t, reason.sources, reason.dependents, (instanceId) => {
-            const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
-            return instance === undefined ? instanceId : sourceLabelOf(instance);
-          }),
+          neededByReason(
+            t,
+            reason.sources,
+            reason.dependents,
+            (instanceId) => {
+              const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
+              return instance === undefined ? instanceId : sourceLabelOf(instance);
+            },
+            (instanceId) => {
+              const instance = snapshot?.instances.find((candidate) => candidate.id === instanceId);
+              return instance === undefined || canWrite(instance);
+            },
+            toolsGoFirst(reason, classification?.included ?? []),
+          ),
         );
       case "noCancel":
         return plainRefusal(t("batchUninstall.reason.noCancel"));

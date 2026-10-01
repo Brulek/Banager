@@ -12,6 +12,7 @@ import {
   sizeCaveats,
   terminalCommands,
   tickable,
+  toolsGoFirst,
   uninstalledWhileBusy,
   uninstallHeld,
   type BatchCandidate,
@@ -291,6 +292,16 @@ describe("which ticked tools a batch uninstalls", () => {
       expect(ids(result.included)).toEqual(["@openai/codex"]);
       // Not X5's reason, though X5 would leave it out too: the preview's own.
       expect(result.excluded.map((item) => item.reason.kind)).toEqual(["neededBy"]);
+      // Its reason can say that, once this batch has run, it can go.
+      const reason = result.excluded[0].reason;
+      if (reason.kind !== "neededBy") throw new Error("expected neededBy");
+      expect(toolsGoFirst(reason, result.included)).toBe(true);
+      // Not with fewer of its tools in the batch, nor with a Homebrew
+      // dependent named, nor for some of a pipx's tools, which are not known.
+      expect(toolsGoFirst({ ...reason, sources: [{ ...reason.sources[0], tools: 2 }] }, result.included)).toBe(false);
+      expect(toolsGoFirst({ ...reason, dependents: ["yarn"] }, result.included)).toBe(false);
+      expect(toolsGoFirst({ ...reason, sources: [{ ...reason.sources[0], program: false }] }, result.included)).toBe(false);
+      expect(toolsGoFirst(reason, [])).toBe(false);
     });
 
     it("keeps what it depends on, as any package left out does (X6)", () => {

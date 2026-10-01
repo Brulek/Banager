@@ -13,7 +13,7 @@
  */
 import { canWrite, isAvailable, uninstallHoldKey } from "./sources";
 import { deletesForGood } from "./warnings";
-import { neededBy, type NeededBy } from "./neededBy";
+import { countsAsTool, neededBy, type NeededBy } from "./neededBy";
 import { saysSize, sizeNoteOf, sizeViewOf } from "./sizes";
 import { artifactKeyId } from "../store/ui";
 import type {
@@ -556,6 +556,31 @@ export function classify(candidates: readonly BatchCandidate[], artifacts: reado
       return reason === undefined ? [] : [{ candidate, reason }];
     }),
   };
+}
+
+/**
+ * Whether a package left out because sources run on it (X1b) could go in
+ * the next batch, once this one has run: Homebrew named no dependent, and
+ * each source is one whose every tool goes with the package (`program`),
+ * every one of which is included here. Such a package is still left out of
+ * this batch -- its preview named them, and `Session::submit` refuses it --
+ * but its reason says so rather than asking for what this batch does.
+ * Which of a pipx's or uv's tools run on a Python is not known here, so
+ * those never count as gone.
+ */
+export function toolsGoFirst(
+  reason: { sources: readonly NeededBy[]; dependents: readonly string[] },
+  included: readonly IncludedItem[],
+): boolean {
+  if (reason.dependents.length > 0) return false;
+  return reason.sources.every(
+    (entry) =>
+      entry.program &&
+      included.filter(
+        ({ candidate }) =>
+          candidate.instance.id === entry.instance_id && countsAsTool(candidate.instance.adapter_id, candidate.artifact),
+      ).length >= entry.tools,
+  );
 }
 
 /**
