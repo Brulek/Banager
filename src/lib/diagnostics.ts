@@ -86,6 +86,16 @@ function statusOf(t: Translate, instance: ManagerInstance): string {
   return words.join(t("common.listSeparator"));
 }
 
+/**
+ * A tool's version as the list shows it: an Ollama model's is the digest
+ * of its manifest, 64 hex digits, cut to the 12 `ollama list` shows.
+ */
+function shownVersion(artifact: InstalledArtifact): string {
+  return artifact.key.kind === "Model" && /^[0-9a-f]{64}$/.test(artifact.version)
+    ? artifact.version.slice(0, 12)
+    : artifact.version;
+}
+
 /** Whether any of `artifact`'s commands is one Terminal cannot find. */
 function notFoundInTerminal(artifact: InstalledArtifact): boolean {
   return artifact.facts.commands.some(
@@ -147,7 +157,7 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     }
     lines.push(INDENT + t("diagnostics.text.tools", { number: tools.length }));
     if (input.includeTools) {
-      for (const tool of tools) lines.push(`${INDENT}${INDENT}${tool.key.name} ${tool.version}`);
+      for (const tool of tools) lines.push(`${INDENT}${INDENT}${tool.key.name} ${shownVersion(tool)}`);
     }
   }
 
@@ -203,8 +213,15 @@ export function useSystemFacts(): UseQueryResult<SystemFacts | null> {
   });
 }
 
-/** What the last copy did, wherever it was asked for: Settings shows it under its button. */
-export const useDiagnosticsStatus = create<{ status: CopyStatus }>(() => ({ status: null }));
+/**
+ * What the last copy did, wherever it was asked for: Settings shows it
+ * beside its button. `reveal`: Help's item asked, and Settings is to bring
+ * that button into view once it is on screen (`DiagnosticsRows`).
+ */
+export const useDiagnosticsStatus = create<{ status: CopyStatus; reveal: boolean }>(() => ({
+  status: null,
+  reveal: false,
+}));
 
 let statusTimer: number | undefined;
 

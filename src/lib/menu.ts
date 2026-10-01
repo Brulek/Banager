@@ -8,7 +8,7 @@
  */
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
-import { useCopyDiagnostics } from "./diagnostics";
+import { useCopyDiagnostics, useDiagnosticsStatus } from "./diagnostics";
 import { useCheckAgain } from "./queries";
 import { useUiStore } from "../store/ui";
 
@@ -50,6 +50,7 @@ export function useMenuCommands(): void {
       copyDiagnostics: () => {
         copyDiagnostics(false);
         openPage("settings");
+        useDiagnosticsStatus.setState({ reveal: true });
       },
     };
     let stop: (() => void) | undefined;

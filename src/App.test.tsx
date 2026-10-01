@@ -854,6 +854,10 @@ describe("the menu bar's items that act in the page", () => {
     await findByText("Everything is up to date");
     const writeText = vi.fn(async (_text: string) => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
     try {
       menu.choose("copyDiagnostics");
 
@@ -864,8 +868,12 @@ describe("the menu bar's items that act in the page", () => {
       await waitFor(() =>
         expect(container.querySelector("[data-diagnostics-status]")).toHaveTextContent("Copied"),
       );
+      // At the foot of Settings: its row brought into view, once.
+      const row = container.querySelector("[data-copy-diagnostics]")?.closest("div.flex.min-h-9");
+      expect(scrolled.filter((element) => element === row)).toHaveLength(1);
     } finally {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
 

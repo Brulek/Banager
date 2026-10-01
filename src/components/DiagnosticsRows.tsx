@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCopyDiagnostics, useDiagnosticsStatus } from "../lib/diagnostics";
 import { BUTTON } from "./ui/controls";
@@ -8,7 +8,8 @@ import { GROUP_ROW } from "./ui/group";
  * Settings' 「拷贝诊断信息」, in its About group (`SettingsPage`): a row
  * named 「诊断信息」 with the button on the right -- 「已拷贝」 or
  * 「无法拷贝」 beside it for a moment after, whether the copy was asked for
- * here or from Help's item of the same name (`useDiagnosticsStatus`) --
+ * here or from Help's item of the same name (`useDiagnosticsStatus`),
+ * which also brings the row into view --
  * and under it the checkbox that adds each source's tools to the text,
  * off whenever Settings opens: a private tap's or scope's name can say
  * where someone works, so the list goes only where it is asked for.
@@ -19,12 +20,21 @@ export function DiagnosticsRows() {
   const { t } = useTranslation();
   const copy = useCopyDiagnostics();
   const status = useDiagnosticsStatus((s) => s.status);
+  const reveal = useDiagnosticsStatus((s) => s.reveal);
+  const row = useRef<HTMLDivElement>(null);
+  // Opened by Help's item: the button and what it says in view, at the
+  // foot of a page that opens at its top.
+  useEffect(() => {
+    if (!reveal) return;
+    row.current?.scrollIntoView?.({ block: "nearest" });
+    useDiagnosticsStatus.setState({ reveal: false });
+  }, [reveal]);
   const [includeTools, setIncludeTools] = useState(false);
   const checkboxId = useId();
   const words = status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;
   return (
     <>
-      <div className={GROUP_ROW}>
+      <div ref={row} className={GROUP_ROW}>
         <span className="block min-w-0 text-body text-foreground">{t("diagnostics.label")}</span>
         <div className="flex shrink-0 items-center gap-2">
           {/* Read out as it changes, as a status is; not `role="status"`,

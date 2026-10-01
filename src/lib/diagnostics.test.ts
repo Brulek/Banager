@@ -249,6 +249,17 @@ describe("diagnosticsText", () => {
     expect(withTools.split("\n").filter((line) => !line.startsWith("    "))).toEqual(without.split("\n"));
   });
 
+  it("cuts an Ollama model's digest to the twelve digits ollama list shows", () => {
+    const digest = "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66";
+    const model = artifact({ instance_id: BREW, kind: "Model", name: "llama3.2:3b" }, digest);
+    const text = diagnosticsText(
+      en,
+      input({ includeTools: true, snapshot: { ...SNAPSHOT, artifacts: [...SNAPSHOT.artifacts, model] } }),
+    );
+    expect(text).toContain("\n    llama3.2:3b 8e4cdead7463\n");
+    expect(text).not.toContain(digest);
+  });
+
   it("never names a home folder, in either language, with or without the tools", () => {
     for (const t of [en, zh]) {
       for (const includeTools of [false, true]) {
