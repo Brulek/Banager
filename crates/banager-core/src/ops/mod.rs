@@ -206,6 +206,15 @@ pub struct OpSummary {
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
     pub argv_preview: Vec<String>, // program followed by args; empty for a plan that runs no command
+    /// The variables the plan's command is given on top of Banager's own
+    /// environment (`PlanAction::Command`'s `env`), in the plan's order;
+    /// empty for a plan that runs no command. With `argv_preview` it is the
+    /// whole command as the confirmation showed it (`CommandPreview.tsx`),
+    /// so the one a failed operation hands over for Terminal -- where sudo
+    /// can ask for the password Banager has no way to
+    /// (`PasswordCommand.tsx`) -- keeps `HOMEBREW_NO_AUTOREMOVE=1` and the
+    /// rest, and does no more there than it would have done here.
+    pub env_preview: Vec<(String, String)>,
     /// The plan's `cancel_policy`. The front end reads it with `status` to
     /// offer no Cancel button for a Running `NoCancel` op
     /// (`OperationBar.tsx`), the one op `cancel` below refuses by policy.
@@ -284,17 +293,17 @@ impl OperationManager {
         let mut summaries: Vec<OpSummary> = records
             .values()
             .map(|r| {
-                let argv_preview = match &r.plan.action {
-                    PlanAction::Command { program, args, .. } => {
+                let (argv_preview, env_preview) = match &r.plan.action {
+                    PlanAction::Command { program, args, env } => {
                         let mut argv = vec![program.to_string_lossy().to_string()];
                         argv.extend(args.iter().cloned());
-                        argv
+                        (argv, env.clone())
                     }
                     // No command runs, so there is no argv to preview: an
-                    // empty list, never an invented one. (`src/` renders
-                    // no argv_preview today; the dialog shows the paths
-                    // through the plan's `WillTrash` warnings.)
-                    PlanAction::TrashPaths { .. } => Vec::new(),
+                    // empty list, never an invented one. (The uninstall
+                    // dialog shows the paths through the plan's
+                    // `WillTrash` warnings.)
+                    PlanAction::TrashPaths { .. } => (Vec::new(), Vec::new()),
                 };
                 OpSummary {
                     id: r.id,
@@ -305,6 +314,7 @@ impl OperationManager {
                     status: r.status,
                     outcome: r.outcome.clone(),
                     argv_preview,
+                    env_preview,
                     cancel_policy: r.plan.cancel_policy,
                 }
             })

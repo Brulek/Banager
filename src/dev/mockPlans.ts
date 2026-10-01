@@ -576,5 +576,27 @@ export function playOutcome(
         lines: [],
         outcome: { BanagerFailed: { SpawnFailed: { detail: "Operation not permitted (os error 1)" } } },
       };
+    case "password": {
+      // A plan that runs no command never meets sudo: it ends as `failed`.
+      if (trashPaths !== null) return playOutcome(plan, subject, "failed");
+      const said = sudoNeedsPassword(plan.request.name);
+      return {
+        lines: [...firstHalf, ...said.map(err)],
+        outcome: { Failed: { exit_code: 1, summary: said.join("\n") } },
+      };
+    }
   }
+}
+
+/**
+ * What Homebrew prints when a cask's own step runs `sudo` and sudo, with
+ * no terminal and no askpass helper, cannot ask for the password: the
+ * failed command, then sudo's two lines (sudo 1.9).
+ */
+function sudoNeedsPassword(name: string): string[] {
+  return [
+    `Error: Failure while executing; \`/usr/bin/sudo -u root -E LOGNAME=me USER=me USERNAME=me -- /bin/launchctl bootout system/com.${name}.helper\` exited with 1. Here's the output:`,
+    "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+    "sudo: a password is required",
+  ];
 }

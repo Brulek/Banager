@@ -548,6 +548,7 @@ describe("types", () => {
       status: "Running",
       outcome: null,
       argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
+      env_preview: [["HOMEBREW_NO_AUTOREMOVE", "1"]],
       cancel_policy: "KillThenReconcile",
     };
     const settings: Settings = {
@@ -564,6 +565,8 @@ describe("types", () => {
     expect(roundTrip(plan).locks).toEqual(["brew:/opt/homebrew"]);
     expect(roundTrip(opSummary).status).toBe("Running");
     expect(roundTrip(opSummary).outcome).toBeNull();
+    // A pair each, as Rust's `(String, String)` serializes.
+    expect(roundTrip(opSummary).env_preview).toEqual([["HOMEBREW_NO_AUTOREMOVE", "1"]]);
     expect(roundTrip(settings).language).toBe("ZhCn");
   });
 

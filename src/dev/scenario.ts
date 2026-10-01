@@ -48,7 +48,12 @@ export const SCENARIO_STATES = [
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 
-/** `?outcome=`: how every operation submitted in the preview ends. */
+/**
+ * `?outcome=`: how every operation submitted in the preview ends.
+ * `password`: the command stops where `sudo` wanted the Mac's password
+ * and had no terminal to ask in -- what a cask's installer or uninstaller
+ * does under Banager (`needsPassword` in src/lib/failureCause.ts).
+ */
 export const SCENARIO_OUTCOMES = [
   "succeeded",
   "failed",
@@ -56,6 +61,7 @@ export const SCENARIO_OUTCOMES = [
   "unconfirmed",
   "attention",
   "banager",
+  "password",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

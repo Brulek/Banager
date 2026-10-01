@@ -336,8 +336,8 @@ async fn test_multiple_waiters_all_wake_once_the_op_finishes() {
 async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview() {
     // A path-list uninstall (`PlanAction::TrashPaths`) spawns nothing, so
     // there is no argv to preview: an empty list, never an invented one.
-    // (`src/` renders no `argv_preview` today; the uninstall dialog shows
-    // the paths through the plan's `WillTrash` warnings instead.)
+    // (The uninstall dialog shows the paths through the plan's
+    // `WillTrash` warnings instead.) No environment either.
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     let adapter = Arc::new(FakeAdapter::new());
     manager.register_adapter(adapter.clone());
@@ -370,4 +370,41 @@ async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview(
     assert_eq!(summary.id, op_id);
     assert_eq!(summary.kind, OpKind::Uninstall);
     assert!(summary.argv_preview.is_empty());
+    assert!(summary.env_preview.is_empty());
+}
+
+#[tokio::test]
+async fn test_summaries_carry_the_plans_environment_in_its_order_and_on_the_wire() {
+    // A failed operation hands its command over for Terminal
+    // (`src/components/PasswordCommand.tsx`): with the variables the plan
+    // set, so `HOMEBREW_NO_AUTOREMOVE=1` and the rest go with it.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let req = make_request("example", "fake:1");
+    let mut plan = adapter.plan(&inst, &req).await.expect("plan");
+    let env = vec![
+        ("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string()),
+        ("NO_COLOR".to_string(), "1".to_string()),
+    ];
+    if let PlanAction::Command { env: plan_env, .. } = &mut plan.action {
+        *plan_env = env.clone();
+    }
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(summary.env_preview, env);
+
+    let wire = serde_json::to_value(&summary).expect("serialize");
+    assert_eq!(
+        wire["env_preview"],
+        serde_json::json!([["HOMEBREW_NO_AUTOREMOVE", "1"], ["NO_COLOR", "1"]])
+    );
+    let back: banager_core::ops::OpSummary = serde_json::from_value(wire).expect("deserialize");
+    assert_eq!(back, summary);
 }

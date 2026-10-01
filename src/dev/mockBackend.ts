@@ -450,6 +450,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         outcome: null,
         argv_preview:
           "Command" in plan.action ? [plan.action.Command.program, ...plan.action.Command.args] : [],
+        env_preview: "Command" in plan.action ? plan.action.Command.env : [],
         cancel_policy: plan.cancel_policy,
       },
       plan,

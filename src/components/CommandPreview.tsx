@@ -27,7 +27,7 @@ export interface CommandPreviewProps {
  * `HOMEBREW_NO_AUTOREMOVE=1`, is on screen -- then the argv, each value and
  * token per `displayToken`.
  */
-function commandText(action: Extract<PlanAction, { Command: unknown }>): string {
+export function commandText(action: Extract<PlanAction, { Command: unknown }>): string {
   const { program, args, env } = action.Command;
   return [
     ...env.map(([name, value]) => `${name}=${displayToken(value)}`),

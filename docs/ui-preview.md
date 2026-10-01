@@ -216,7 +216,7 @@ value falls back to the default and logs a warning in the console.
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
-| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager` | How every operation ends. Only `succeeded` changes anything. |
+| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager`, `password` | How every operation ends. Only `succeeded` changes anything. `password`: the command stops where `sudo` wanted the Mac's password, as a cask's own step does under Banager; its log shows the command to run in Terminal. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
 

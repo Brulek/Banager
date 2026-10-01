@@ -427,6 +427,14 @@ export interface OpSummary {
   status: OpStatus;
   outcome: Outcome | null;
   argv_preview: string[];
+  /**
+   * The variables the plan's command is given (Rust `OpSummary::env_preview`,
+   * crates/banager-core/src/ops/mod.rs), in its order; empty for a plan that
+   * runs no command. Always sent; optional here only so the many operation
+   * fixtures that predate it need not spell out an empty list -- a reader
+   * takes a missing one as empty (`PasswordCommand.tsx`).
+   */
+  env_preview?: [string, string][];
   cancel_policy: CancelPolicy;
 }
 export interface SourceError {

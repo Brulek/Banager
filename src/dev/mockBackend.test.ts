@@ -16,6 +16,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { outcomeCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
@@ -326,6 +327,23 @@ describe("the browser preview's mock backend", () => {
     expect(after.generation).toBe(2);
     expect(after.updates.some((u) => u.key.name === "git")).toBe(false);
     expect(after.artifacts.find((a) => a.key.name === "git")?.version).toBe("2.55.1");
+  });
+
+  it("under ?outcome=password, stops a cask upgrade where sudo wanted the Mac's password, the command and its variables kept", async () => {
+    const { backend, events } = backendFor({ outcome: "password" });
+    await answer(backend.invoke("refresh"));
+    const [opId] = await submitUpgrades(backend, "android-platform-tools");
+    await vi.runAllTimersAsync();
+    const own = operationEvents(events, opId);
+    const finished = own[own.length - 1];
+    expect(finished).toMatchObject({ Finished: { op_id: opId, outcome: { Failed: { exit_code: 1 } } } });
+    const [done] = (await backend.invoke("list_operations")) as OpSummary[];
+    expect(outcomeCause(done.outcome)).toBe("needsPassword");
+    expect(done.argv_preview).toEqual(["/opt/homebrew/bin/brew", "upgrade", "--cask", "android-platform-tools"]);
+    expect(done.env_preview).toContainEqual(["HOMEBREW_NO_AUTOREMOVE", "1"]);
+    // Nothing changed: the update is still there.
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(after.updates.some((u) => u.key.name === "android-platform-tools")).toBe(true);
   });
 
   it("runs operations that share a source one after the other", async () => {

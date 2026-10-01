@@ -1191,7 +1191,7 @@ pub struct ResourceLock(pub String); // "brew:/opt/homebrew"
 ///
 /// Readers, each matching both arms: `run_plan` (`adapters/mod.rs`;
 /// `Command` only, it refuses the other), `OperationManager::summaries`'s
-/// `argv_preview` (`ops/mod.rs`; empty for `TrashPaths`),
+/// `argv_preview` and `env_preview` (`ops/mod.rs`; empty for `TrashPaths`),
 /// `CommandPreview.tsx` (one sentence for `TrashPaths`) and the
 /// hand-written mirror in `src/lib/types.ts`. Externally tagged on the
 /// wire like every other enum here: `{"Command":{"program":…,"args":[…],

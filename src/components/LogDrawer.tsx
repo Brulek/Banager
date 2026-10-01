@@ -20,6 +20,7 @@ import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { OutcomeIcon } from "./OutcomeIcon";
+import { PasswordCommand } from "./PasswordCommand";
 import { SpinnerIcon } from "./icons";
 
 const NEAR_BOTTOM_PX = 32;
@@ -209,6 +210,8 @@ export function LogDrawer() {
           {parts.next}
         </p>
       ) : null}
+      {/* Where sudo wanted a password: the command to run in Terminal. */}
+      {operation !== undefined ? <PasswordCommand op={operation} /> : null}
       <ScrollArea
         className="min-h-0 flex-1 overflow-hidden rounded-group bg-group"
         ref={viewportRef}
