@@ -530,7 +530,7 @@ function trashRefusal(path: string): string {
 export function playOutcome(
   plan: Plan,
   subject: Subject,
-  outcome: ScenarioOutcome,
+  outcome: Exclude<ScenarioOutcome, "mixed">,
 ): { lines: LogLine[]; outcome: Outcome } {
   const lines = successLog(plan, subject);
   const firstHalf = lines.slice(0, Math.ceil(lines.length / 2));
@@ -586,6 +586,36 @@ export function playOutcome(
       };
     }
   }
+}
+
+/**
+ * What Homebrew prints, on stderr, when it refuses to uninstall a formula
+ * that something still installed needs -- which it does whatever else
+ * happens, Banager never passing `--ignore-dependencies` -- or null when
+ * nothing installed needs it: the dependents `brew uses --installed`
+ * names (`BREW_DEPENDENTS`), as the pretend Mac has them when the
+ * uninstall runs. A batch that uninstalls a dependent first, as it does,
+ * meets this only when that one did not go. Homebrew 7.0.7-9's own words
+ * (`DependentsMessage#output`, Library/Homebrew/dependents_message.rb:25-45,
+ * through `ofail`'s `Error:` label; `Utils::Text.to_sentence`,
+ * utils/text.rb:14-25, joins the names; a keg is named by its path).
+ */
+export function homebrewRefusal(world: World, inst: ManagerInstance, plan: Plan): string[] | null {
+  const { kind, name, artifact_kind: artifactKind } = plan.request;
+  if (inst.adapter_id !== "brew" || kind !== "Uninstall" || artifactKind !== "Formula") return null;
+  const installed = (formula: string) => world.artifacts.find((a) => a.key.instance_id === inst.id && a.key.name === formula);
+  const dependents = (BREW_DEPENDENTS[name] ?? []).filter((formula) => installed(formula) !== undefined);
+  if (dependents.length === 0) return null;
+  const sentence =
+    dependents.length === 1
+      ? dependents[0]
+      : `${dependents.slice(0, -1).join(", ")} and ${dependents[dependents.length - 1]}`;
+  return [
+    `Error: Refusing to uninstall ${inst.prefix}/Cellar/${name}/${installed(name)?.version ?? ""}`,
+    `because it is required by ${sentence}, which ${dependents.length === 1 ? "is" : "are"} currently installed.`,
+    "You can override this and force removal with:",
+    `  brew uninstall --ignore-dependencies ${name}`,
+  ];
 }
 
 /**

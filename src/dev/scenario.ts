@@ -53,6 +53,8 @@ export type ScenarioState = (typeof SCENARIO_STATES)[number];
  * `password`: the command stops where `sudo` wanted the Mac's password
  * and had no terminal to ask in -- what a cask's installer or uninstaller
  * does under Banager (`needsPassword` in src/lib/failureCause.ts).
+ * `mixed`: the 2nd, 4th, … operation of the session fails, every other one
+ * succeeds -- a batch with some of it left to look at.
  */
 export const SCENARIO_OUTCOMES = [
   "succeeded",
@@ -62,6 +64,7 @@ export const SCENARIO_OUTCOMES = [
   "attention",
   "banager",
   "password",
+  "mixed",
 ] as const;
 export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 

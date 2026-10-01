@@ -388,6 +388,107 @@ describe("the browser preview's mock backend", () => {
     expect(finished).toEqual([git, wget]);
   });
 
+  /** Plans and submits the uninstall of each Homebrew formula named, in order, as a batch does. */
+  async function submitUninstalls(backend: MockBackend, ...names: string[]): Promise<number[]> {
+    const snapshot = await answer<Snapshot>(backend.invoke("get_snapshot"));
+    const calls = names.map((name) => {
+      const artifact = snapshot.artifacts.find((a) => a.key.instance_id === "brew:/opt/homebrew" && a.key.name === name);
+      if (artifact === undefined) throw new Error(`no formula ${name}`);
+      return backend.invoke("plan_operation", {
+        request: { kind: "Uninstall", instance_id: artifact.key.instance_id, artifact_kind: artifact.key.kind, name },
+      });
+    });
+    await vi.runOnlyPendingTimersAsync();
+    const ids: number[] = [];
+    for (const issued of (await Promise.all(calls)) as IssuedPlan[]) {
+      ids.push((await backend.invoke("submit_operation", { planId: issued.id })) as number);
+    }
+    return ids;
+  }
+
+  it("uninstalls a dependent and then what it needed, in the order submitted, and Homebrew refuses the other order", async () => {
+    // Every operation would succeed, but Homebrew refuses python@3.13 while
+    // pipx, which needs it, is installed.
+    const refusedFirst = backendFor();
+    await answer(refusedFirst.backend.invoke("refresh"));
+    const [python, pipx] = await submitUninstalls(refusedFirst.backend, "python@3.13", "pipx");
+    await vi.runAllTimersAsync();
+    const ops = (await refusedFirst.backend.invoke("list_operations")) as OpSummary[];
+    const outcomeOf = (id: number) => ops.find((o) => o.id === id)?.outcome;
+    const refusal = [
+      "Error: Refusing to uninstall /opt/homebrew/Cellar/python@3.13/3.13.8",
+      "because it is required by pipx, which is currently installed.",
+      "You can override this and force removal with:",
+      "  brew uninstall --ignore-dependencies python@3.13",
+    ];
+    expect(outcomeOf(python)).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
+    expect(outcomeOf(pipx)).toBe("Succeeded");
+    const logged = operationEvents(refusedFirst.events, python).flatMap((e) => ("Log" in e ? [e.Log.line] : []));
+    expect(logged).toEqual(refusal);
+
+    // The order a batch submits them in: pipx first, then python@3.13.
+    const failing = backendFor({ outcome: "failed" });
+    await answer(failing.backend.invoke("refresh"));
+    // Under ?outcome=failed too, while pipx is installed.
+    const [first] = await submitUninstalls(failing.backend, "python@3.13");
+    await vi.runAllTimersAsync();
+    const failed = ((await failing.backend.invoke("list_operations")) as OpSummary[]).find((o) => o.id === first);
+    expect(failed?.outcome).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
+
+    const batch = backendFor();
+    await answer(batch.backend.invoke("refresh"));
+    const [pipxOp, pythonOp] = await submitUninstalls(batch.backend, "pipx", "python@3.13");
+    await vi.runAllTimersAsync();
+    const done = (await batch.backend.invoke("list_operations")) as OpSummary[];
+    expect(done.find((o) => o.id === pipxOp)?.outcome).toBe("Succeeded");
+    expect(done.find((o) => o.id === pythonOp)?.outcome).toBe("Succeeded");
+    const finished = batch.events.flatMap((e) =>
+      "Operation" in e && "Finished" in e.Operation ? [e.Operation.Finished.op_id] : [],
+    );
+    expect(finished).toEqual([pipxOp, pythonOp]);
+  });
+
+  it("keeps listing what a source had while an operation holds it, as the real refresh carries its rows forward", async () => {
+    const { backend } = backendFor();
+    await answer(backend.invoke("refresh"));
+    const [jq, ripgrep] = await submitUninstalls(backend, "jq", "ripgrep");
+    // jq done, ripgrep running on the same Homebrew: jq is still listed.
+    await vi.advanceTimersByTimeAsync(TIMING.start + TIMING.run + TIMING.verify + 400);
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    expect(ops.find((o) => o.id === jq)?.outcome).toBe("Succeeded");
+    expect(ops.find((o) => o.id === ripgrep)?.status).not.toBe("Done");
+    const during = await answer<Snapshot>(backend.invoke("refresh"));
+    const listed = (snapshot: Snapshot) =>
+      snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/opt/homebrew").map((a) => a.key.name);
+    expect(listed(during)).toContain("jq");
+    expect(listed(during)).toContain("ripgrep");
+    // Its last operation done: read again, and both are gone.
+    await vi.runAllTimersAsync();
+    const after = await answer<Snapshot>(backend.invoke("refresh"));
+    expect(listed(after)).not.toContain("jq");
+    expect(listed(after)).not.toContain("ripgrep");
+  });
+
+  it("under ?outcome=mixed, fails every second operation of the session and runs the rest", async () => {
+    const { backend } = backendFor({ outcome: "mixed" });
+    await answer(backend.invoke("refresh"));
+    const ids = await submitUninstalls(backend, "jq", "ripgrep", "gh", "git");
+    await vi.runAllTimersAsync();
+    const ops = (await backend.invoke("list_operations")) as OpSummary[];
+    const tones = ids.map((id) => {
+      const outcome = ops.find((o) => o.id === id)?.outcome;
+      return outcome === "Succeeded" ? "ok" : typeof outcome === "object" && outcome !== null && "Failed" in outcome ? "failed" : String(outcome);
+    });
+    expect(ids).toEqual([1, 2, 3, 4]);
+    expect(tones).toEqual(["ok", "failed", "ok", "failed"]);
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const names = snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/opt/homebrew").map((a) => a.key.name);
+    expect(names).not.toContain("jq");
+    expect(names).toContain("ripgrep");
+    expect(names).not.toContain("gh");
+    expect(names).toContain("git");
+  });
+
   it("cancels a running operation and leaves the machine as it was", async () => {
     const { backend, events } = backendFor();
     await answer(backend.invoke("refresh"));
@@ -573,6 +674,7 @@ describe("the preview's stand-ins for Tauri", () => {
 
 describe("the preview's URL switches", () => {
   it("reads every switch", () => {
+    expect(parseScenario("?outcome=mixed").scenario.outcome).toBe("mixed");
     const { scenario, problems } = parseScenario(
       "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&welcome=1",
     );

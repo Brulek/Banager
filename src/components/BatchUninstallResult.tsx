@@ -49,7 +49,7 @@ export function BatchUninstallResult() {
     setDrawerOpen(true);
   };
   return (
-    <section aria-label={t("batchUninstall.result", { count: notUninstalled.length })} data-batch-result="" className="px-5 pb-2">
+    <section aria-label={t("batchUninstall.result", { count: notUninstalled.length })} data-batch-result="" className="px-5 pb-2 pt-2">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p role="alert" className="text-body text-danger-text">

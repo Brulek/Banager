@@ -28,7 +28,7 @@ import { checkEvery } from "../lib/checkFrequency";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
-import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
+import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import { withMockKeptData } from "./mockKeptData";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
@@ -233,7 +233,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
    * (`announce` in src-tauri/src/ipc.rs).
    */
   function commit(): Snapshot {
-    const content = snapshotContent(world, settings);
+    const content = withHeldCarried(snapshotContent(world, settings));
     const serialized = JSON.stringify(content);
     if (serialized !== lastContent) {
       generation += 1;
@@ -259,6 +259,32 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     }
     measureSizes(committed);
     return clone(committed);
+  }
+
+  /**
+   * `content` with the rows and updates of every source an operation holds
+   * as the last snapshot had them, as `refresh_round` carries them forward
+   * rather than read a source that is being changed
+   * (crates/banager-core/src/session/refresh.rs): a tool a batch has
+   * already uninstalled stays listed until its source's last operation
+   * ends, and the Installed page says 「已卸载」 on it meanwhile.
+   */
+  function withHeldCarried(content: ReturnType<typeof snapshotContent>): ReturnType<typeof snapshotContent> {
+    const previous = committed;
+    if (previous === null) return content;
+    const busy = new Set(content.instances.filter((inst) => held.has(inst.id)).map((inst) => inst.id));
+    if (busy.size === 0) return content;
+    return {
+      ...content,
+      artifacts: [
+        ...content.artifacts.filter((a) => !busy.has(a.key.instance_id)),
+        ...previous.artifacts.filter((a) => busy.has(a.key.instance_id)),
+      ],
+      updates: [
+        ...content.updates.filter((u) => !busy.has(u.key.instance_id)),
+        ...previous.updates.filter((u) => busy.has(u.key.instance_id)),
+      ],
+    };
   }
 
   /**
@@ -442,7 +468,19 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       artifact: world.artifacts.find((a) => sameKey(a.key, target)),
       candidate: currentUpdates().find((u) => sameKey(u.key, target)),
     };
-    const { lines, outcome } = playOutcome(op.plan, subject, scenario.outcome);
+    // `?outcome=mixed`: the session's 2nd, 4th, … operation fails.
+    const scripted =
+      scenario.outcome !== "mixed" ? scenario.outcome : op.summary.id % 2 === 0 ? "failed" : "succeeded";
+    // Homebrew refuses to uninstall what something installed still needs,
+    // whatever else would have happened -- once it runs at all.
+    const refused = scripted === "banager" ? null : homebrewRefusal(world, inst, op.plan);
+    const { lines, outcome } =
+      refused === null
+        ? playOutcome(op.plan, subject, scripted)
+        : {
+            lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
+            outcome: { Failed: { exit_code: 1, summary: refused.join("\n") } } satisfies Outcome,
+          };
     let at = TIMING.start;
     schedule(op, at, () => setStatus(op, "Running"));
     // A `brew update` a refresh left running: Homebrew operations wait
@@ -462,12 +500,23 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     schedule(op, at + TIMING.verify, () => finish(op, outcome));
   }
 
-  /** Starts every waiting operation whose locks are free, oldest first. */
+  /**
+   * Starts every waiting operation whose locks are free, oldest first --
+   * and none before an older one still waiting for one of its locks, as
+   * `OperationManager`'s queue keeps each one's turn
+   * (crates/banager-core/src/ops/mod.rs).
+   */
   function startWaiting(): void {
+    const claimed = new Set<string>();
     for (const id of [...waiting]) {
       if (running >= MAX_RUNNING) return;
       const op = operations.get(id);
-      if (op === undefined || op.plan.locks.some((lock) => held.has(lock))) continue;
+      if (op === undefined) continue;
+      const blocked = op.plan.locks.some((lock) => held.has(lock) || claimed.has(lock));
+      if (blocked) {
+        for (const lock of op.plan.locks) claimed.add(lock);
+        continue;
+      }
       const index = waiting.indexOf(id);
       if (index === -1) continue;
       waiting.splice(index, 1);

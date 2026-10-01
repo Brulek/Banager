@@ -319,10 +319,34 @@ value falls back to the default and logs a warning in the console.
 | `tech` | `1` | Show technical details on at startup. |
 | `welcome` | `1` | The welcome sheet of a first launch, over the first page. Closing it saves that it was seen, until the page is loaded again. Without it the preview never shows the sheet. |
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
-| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager`, `password` | How every operation ends. Only `succeeded` changes anything. `password`: the command stops where `sudo` wanted the Mac's password, as a cask's own step does under Banager; its log shows the command to run in Terminal. |
+| `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager`, `password`, `mixed` | How every operation ends. Only `succeeded` changes anything. `password`: the command stops where `sudo` wanted the Mac's password, as a cask's own step does under Banager; its log shows the command to run in Terminal. `mixed`: the 2nd, 4th, … operation of the session fails and the others succeed -- a batch uninstall with some of it to look at (the Installed page's result block, 「N个未能卸载」 on the operation bar). Whatever this says, Homebrew refuses to uninstall a formula something installed still needs, in its own words (`homebrewRefusal` in `src/dev/mockPlans.ts`), unless nothing ran (`banager`). |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
 | `path` | `read` (default), `unread`, `default` | What the last refresh made of the login shell's folders, which Check Tool Setup says: every one read; one in `~/Documents` that couldn't be; or the login shell's settings never read -- the system's four folders, and no command judged. |
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
+
+## Uninstalling several tools at once
+
+On the Installed page, tick rows (Space ticks the row that has the focus)
+and press 「卸载所选（N）…」 in the toolbar. Everything the batch sheet can
+say is on the `full` Mac:
+
+- `pipx` with `python@3.13`: both go, `pipx` first, and 「在“pipx”卸载之后再卸载。」
+  under `python@3.13`;
+- `node@22` with `openssl@3` (under 「另有…个随其他软件安装的组件」): `openssl@3`
+  stays, still used by `postgresql@17`, `python@3.13` and `wget`;
+- `htop`: Homebrew could not check what needs it, so it goes last;
+- Claude Code: what moves to the Trash, and `~/.claude` kept, Copy Path only;
+- an Ollama model with Homebrew's `ollama`, or a pipx tool with Homebrew's
+  `pipx`: the program stays (the tools need it), and with `pipx` so does
+  `python@3.13`;
+- rustup: it cannot be cancelled once it starts, so it is left to its row;
+- Microsoft Visual Studio Code: a cask with steps of its own, and the
+  password note.
+
+`?outcome=mixed` leaves half of a batch not uninstalled, for the result
+block over the list; `?state=preview` shows no checkboxes (every Uninstall
+waits for the first check); `?state=many` has more rows than one batch takes
+(20), which 「全选」 then only clears.
 
 ## Large list
 
