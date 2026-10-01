@@ -177,7 +177,7 @@ describe("Settings' About group", () => {
     renderWithProviders(<SettingsPage />);
     const about = await screen.findByRole("region", { name: "About" });
     const group = about.querySelector("h2 + div") as HTMLElement;
-    const copyRow = [...group.children].at(-1) as HTMLElement;
+    const copyRow = group.lastElementChild as HTMLElement;
     expect(copyRow).toHaveTextContent("Diagnostic info");
     const controls = [...copyRow.querySelectorAll("input, button")];
     expect(controls.map((control) => control.getAttribute("type"))).toEqual(["checkbox", "button"]);
