@@ -482,6 +482,22 @@ pub enum UninstallBlocked {
     /// in session/plans.rs), and the Installed page hides the button and
     /// says why (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
     UvToolDirSet,
+    /// The package is the program its own source runs: npm's `npm`, as
+    /// `npm ls -g` lists it. `npm uninstall -g npm` removes the npm that
+    /// every npm package Banager lists is updated and uninstalled with --
+    /// the `npm` Banager runs for each of them. Produced by npm's inventory
+    /// (`parse_ls_global`) and refused by `NpmAdapter::plan` as well; the
+    /// gate refuses it (`blocked_uninstall` in session/plans.rs), and the
+    /// Installed page says why where the button would be
+    /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts). Its update is
+    /// offered as any package's.
+    SourceProgram,
+    /// Another source runs on this Homebrew formula or cask: its preview
+    /// said so (`Warning::NeededBySource`), and the confirmation offered no
+    /// Uninstall. Produced only by `Session::submit`, for a plan whose
+    /// preview carries one -- no inventory row carries it -- so only a page
+    /// that asks for what it was not offered reaches it.
+    NeededBySource,
 }
 
 /// Why a path-list uninstall's preview refused one of the paths its
@@ -660,11 +676,34 @@ pub struct OthersData {
 /// are not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Warning {
-    /// brew's `uses --installed` check itself failed or timed out. Not the
-    /// same thing as "confirmed no dependents", and must not read like it.
+    /// brew's `uses --installed` check itself failed or timed out -- or the
+    /// look for the other sources that run on the package
+    /// (`NeededBySource`) did not finish. Not the same thing as "confirmed
+    /// no dependents", and must not read like it. At most one per plan.
     DependentsUnknown,
     /// Uninstalling would break these already-installed dependents.
     WouldBreak { names: Vec<String> },
+    /// Another source runs on the Homebrew formula or cask this `Uninstall`
+    /// removes, which `brew uses --installed` cannot know (it names only
+    /// formulae and casks): its program, or the interpreter it is run with,
+    /// leads into the package's own folder (`program`), or so does the
+    /// Python of some of its tools' own environments (`program` false). So
+    /// uninstalling it would leave `tools` of that source's tools unable to
+    /// run, or with nothing in Banager able to update or uninstall them.
+    /// One per such source, in the snapshot's order of sources, and only
+    /// for a source with any tool that counts (`needed_by`, which says what
+    /// does). Added by `Session::issue_plan` (`session/needed_by.rs`) after
+    /// the adapter's own warnings; read by the uninstall confirmation, which
+    /// lists it with Homebrew's dependents under 「依赖此工具的软件」 and keeps
+    /// Uninstall disabled, and by a batch, which leaves the package out.
+    /// `Session::submit` refuses a plan that carries one
+    /// (`UninstallBlocked::NeededBySource`). `instance_id` is the source's,
+    /// for the window to name it as its sidebar does.
+    NeededBySource {
+        instance_id: InstanceId,
+        program: bool,
+        tools: usize,
+    },
     /// No `cargo-binstall` on PATH: install/upgrade compiles from source,
     /// which can take a while.
     CompilesLocally,
@@ -1886,6 +1925,34 @@ mod tests {
             serde_json::to_string(&UninstallBlocked::UvToolDirSet).unwrap(),
             r#""UvToolDirSet""#
         );
+
+        // Round 5: npm's own `npm`, on its row, and the refusal of a plan
+        // whose preview named sources that run on the package. Pinned in
+        // src/lib/types.test.ts, which reads the same strings.
+        for (reason, wire) in [
+            (UninstallBlocked::SourceProgram, r#""SourceProgram""#),
+            (UninstallBlocked::NeededBySource, r#""NeededBySource""#),
+        ] {
+            assert_eq!(serde_json::to_string(&reason).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<UninstallBlocked>(wire).unwrap(),
+                reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_needed_by_source_is_the_json_the_typescript_mirror_reads() {
+        // Pinned in src/lib/types.test.ts, which reads the same string.
+        let warning = Warning::NeededBySource {
+            instance_id: "npm:/opt/homebrew".to_string(),
+            program: true,
+            tools: 4,
+        };
+        let wire =
+            r#"{"NeededBySource":{"instance_id":"npm:/opt/homebrew","program":true,"tools":4}}"#;
+        assert_eq!(serde_json::to_string(&warning).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), warning);
     }
 
     #[test]

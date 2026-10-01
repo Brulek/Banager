@@ -79,6 +79,11 @@ pub mod icon;
 /// models -- named in its preview, measured read-only, never deleted.
 pub mod kept_data;
 pub mod model;
+/// Which other sources run on a Homebrew package an uninstall would
+/// remove -- npm on `node`, pip and pipx's environments on `python@3.x`,
+/// Ollama on `ollama` -- found in its preview by following links,
+/// read-only, behind a budget.
+pub mod needed_by;
 /// The notification when a run of operations finishes, Settings'
 /// 「操作完成时通知」: whether the page's report of a finished run posts
 /// one, and which runs were reported. Pure: the shell reads the window's
