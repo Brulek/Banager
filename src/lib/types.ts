@@ -213,6 +213,7 @@ export type UninstallScope =
   | "HomebrewCaskPlainThirdParty"
   | "HomebrewCaskRuby"
   | "HomebrewCaskStepsOnlyRuby"
+  | "HomebrewCaskPlainRuby"
   | "HomebrewCaskStepsIfTrusted"
   | "HomebrewCaskStepsOnlyIfTrusted"
   | "Npm"

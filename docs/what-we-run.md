@@ -700,7 +700,13 @@ instead (`:1046-1055`, `CaskLoader.recover_from_installed_caskfile`,
 files it placed, when it placed any, and runs the cask's uninstall steps,
 that what some of them delete can't be seen in advance, and that where
 Homebrew can't read the steps it recorded it uses the cask's current
-definition (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`). And while
+definition (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`). A plain Ruby
+record (what Homebrew placed and no step, as a version of Homebrew before
+7 could save even for one of its own casks) names no step, so its
+sentence says only that Homebrew deletes the files it placed, and that
+where it can't read what it recorded it uses the cask's current
+definition, whose effect can't be seen in advance
+(`HomebrewCaskPlainRuby`). And while
 Homebrew requires taps to be trusted — unless `HOMEBREW_NO_REQUIRE_TAP_TRUST`
 is set (`env_config.rb:632-638`, `:686-695`) — a Ruby caskfile from a tap
 that is not Homebrew's own and that Homebrew does not trust is not loaded

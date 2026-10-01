@@ -87,6 +87,7 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
   HomebrewCaskPlainThirdParty: "uninstall.scopeMore.HomebrewCaskPlainThirdParty",
   HomebrewCaskRuby: "uninstall.scopeMore.HomebrewCaskRuby",
   HomebrewCaskStepsOnlyRuby: "uninstall.scopeMore.HomebrewCaskStepsOnlyRuby",
+  HomebrewCaskPlainRuby: "uninstall.scopeMore.HomebrewCaskPlainRuby",
   HomebrewCaskStepsIfTrusted: "uninstall.scopeMore.HomebrewCaskStepsIfTrusted",
   HomebrewCaskStepsOnlyIfTrusted: "uninstall.scopeMore.HomebrewCaskStepsOnlyIfTrusted",
   Npm: "warnings.uninstallScope.Npm",
@@ -602,7 +603,8 @@ export function deletesForGood(warning: Warning): boolean {
  * (`HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`), a record
  * Banager could not read may hold a `trash:` step (`HomebrewCask`), and so
  * may the definition Homebrew runs in place of a Ruby record it cannot
- * load (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`) -- and a Ruby
+ * load (`HomebrewCaskRuby`, `HomebrewCaskStepsOnlyRuby`,
+ * `HomebrewCaskPlainRuby`) -- and a Ruby
  * record from a tap Banager cannot see Homebrew trusts runs its steps,
  * whatever they are, only if Homebrew does (`HomebrewCaskStepsIfTrusted`,
  * `HomebrewCaskStepsOnlyIfTrusted`). A tap's plain cask deletes in place
@@ -625,6 +627,7 @@ const SCOPE_SKIPS_TRASH: Record<UninstallScope, boolean> = {
   HomebrewCaskPlainThirdParty: true,
   HomebrewCaskRuby: false,
   HomebrewCaskStepsOnlyRuby: false,
+  HomebrewCaskPlainRuby: false,
   HomebrewCaskStepsIfTrusted: false,
   HomebrewCaskStepsOnlyIfTrusted: false,
   Npm: true,

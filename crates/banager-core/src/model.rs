@@ -1099,6 +1099,13 @@ pub enum UninstallScope {
     /// `HomebrewCaskRuby` for a record that lists nothing Homebrew placed:
     /// the same, without the files Homebrew placed.
     HomebrewCaskStepsOnlyRuby,
+    /// `HomebrewCaskRuby` for a plain record (what Homebrew placed, no
+    /// step), as a Homebrew before 7 could save even for one of its own
+    /// casks. The record lists no step, so the sentence says only that
+    /// Homebrew deletes the files it placed, and that where it cannot read
+    /// what it recorded it uses the cask's current definition, whose
+    /// effect cannot be seen in advance -- never that anything stays.
+    HomebrewCaskPlainRuby,
     /// A cask whose saved caskfile is Ruby, from a tap that is not
     /// Homebrew's own and that Banager cannot see Homebrew trusts -- its
     /// trust list names neither the cask nor its tap, or Banager could not
@@ -2391,6 +2398,7 @@ mod tests {
             UninstallScope::HomebrewCaskPlainThirdParty,
             UninstallScope::HomebrewCaskRuby,
             UninstallScope::HomebrewCaskStepsOnlyRuby,
+            UninstallScope::HomebrewCaskPlainRuby,
             UninstallScope::HomebrewCaskStepsIfTrusted,
             UninstallScope::HomebrewCaskStepsOnlyIfTrusted,
             UninstallScope::Npm,

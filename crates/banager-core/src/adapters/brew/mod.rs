@@ -505,9 +505,9 @@ impl BrewAdapter {
         let (what, steps) = match classified {
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
             // Loaded as Ruby, which Homebrew may not manage, and then runs
-            // the cask's current definition.
+            // the cask's current definition; the record itself has no step.
             Classified::Plain if ruby && !maybe_untrusted => {
-                (UninstallScope::HomebrewCaskRuby, Vec::new())
+                (UninstallScope::HomebrewCaskPlainRuby, Vec::new())
             }
             Classified::Plain if third_party => {
                 (UninstallScope::HomebrewCaskPlainThirdParty, Vec::new())
@@ -4078,6 +4078,14 @@ mod plan_execute_tests {
                 "someone/tap",
             ))
         }
+        fn plain_ruby_from_homebrew(_: &Path, _: &str) -> Option<Recorded> {
+            Some(record(
+                serde_json::json!([{ "app": ["Thing.app"] }]),
+                false,
+                true,
+                "homebrew/cask",
+            ))
+        }
         fn ruby_steps(tap: &str) -> Option<Recorded> {
             Some(record(
                 serde_json::json!([{ "app": ["Thing.app"] }, { "uninstall": [{ "delete": "/Library/Thing" }] }]),
@@ -4122,7 +4130,7 @@ mod plan_execute_tests {
         let empty: Lister = |_| Some(TrustList::default());
         let unread: Lister = |_| None;
         let none: Files = |_| None;
-        let cases: [(Recorder, Lister, Files, UninstallScope); 12] = [
+        let cases: [(Recorder, Lister, Files, UninstallScope); 13] = [
             // JSON records: what Homebrew records runs. A tap's plain cask
             // may have an installer beside what Homebrew placed.
             (
@@ -4190,7 +4198,10 @@ mod plan_execute_tests {
                 UninstallScope::HomebrewCaskStepsOnlyRuby,
             ),
             // A plain Ruby record: untrusted, only what Homebrew placed goes,
-            // as a tap's plain cask says; trusted, Ruby again.
+            // as a tap's plain cask says; trusted, or Homebrew's own (as a
+            // Homebrew before 7 could save it), the files it placed, and the
+            // current definition where Homebrew cannot read the record --
+            // no steps, since the record lists none.
             (
                 plain_ruby_from_a_tap,
                 empty,
@@ -4201,7 +4212,13 @@ mod plan_execute_tests {
                 plain_ruby_from_a_tap,
                 trusts_the_tap,
                 none,
-                UninstallScope::HomebrewCaskRuby,
+                UninstallScope::HomebrewCaskPlainRuby,
+            ),
+            (
+                plain_ruby_from_homebrew,
+                empty,
+                none,
+                UninstallScope::HomebrewCaskPlainRuby,
             ),
         ];
         let runner = Arc::new(MockRunner::new());

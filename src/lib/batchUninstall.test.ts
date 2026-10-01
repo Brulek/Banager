@@ -254,6 +254,9 @@ describe("which ticked tools a batch uninstalls", () => {
         candidate(artifact(brew, "Cask", "untrusted"), {
           warnings: [{ UninstallScope: { what: "HomebrewCaskStepsIfTrusted" } }],
         }),
+        candidate(artifact(brew, "Cask", "plain-ruby"), {
+          warnings: [{ UninstallScope: { what: "HomebrewCaskPlainRuby" } }],
+        }),
         // A tap's plain cask is plain.
         candidate(artifact(brew, "Cask", "claudebar"), {
           warnings: [{ UninstallScope: { what: "HomebrewCaskPlainThirdParty" } }],
@@ -271,6 +274,7 @@ describe("which ticked tools a batch uninstalls", () => {
       ["pkg", "unseen"],
       ["ruby", "unseen"],
       ["untrusted", "unseen"],
+      ["plain-ruby", "unseen"],
     ]);
   });
 

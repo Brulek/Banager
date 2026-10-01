@@ -812,6 +812,7 @@
       "HomebrewCaskPlainThirdParty": "Deletes the files Homebrew placed for {{name}}; its settings and data stay, and so does anything its installer put on this Mac separately.",
       "HomebrewCaskRuby": "Deletes the files Homebrew placed for {{name}} and runs its uninstall steps; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",
       "HomebrewCaskStepsOnlyRuby": "Runs the uninstall steps for {{name}}; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",
+      "HomebrewCaskPlainRuby": "Deletes the files Homebrew placed for {{name}}. If Homebrew can't read what it recorded at install, it uses the cask's current definition, and what that deletes can't be seen in advance.",
       "HomebrewCaskStepsIfTrusted": "Deletes the files Homebrew placed for {{name}}; its uninstall steps run only if Homebrew trusts where it comes from.",
       "HomebrewCaskStepsOnlyIfTrusted": "The uninstall steps for {{name}} run only if Homebrew trusts where it comes from."
     }

@@ -159,6 +159,12 @@ describe("warningKey", () => {
     expect(say("zh-CN", "HomebrewCaskStepsOnlyRuby")).toBe(
       "执行“Thing”的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的步骤时，会按它现在的定义执行。",
     );
+    expect(say("zh-CN", "HomebrewCaskPlainRuby")).toBe(
+      "删除Homebrew为“Thing”放置的文件。Homebrew读不出安装时记下的内容时，会按它现在的定义执行，那样还会删除什么，无法事先得知。",
+    );
+    expect(say("en", "HomebrewCaskPlainRuby")).toBe(
+      "Deletes the files Homebrew placed for Thing. If Homebrew can't read what it recorded at install, it uses the cask's current definition, and what that deletes can't be seen in advance.",
+    );
     expect(say("zh-CN", "HomebrewCaskStepsIfTrusted")).toBe(
       "删除Homebrew为“Thing”放置的文件；它的卸载步骤，只在Homebrew信任它的来源时才执行。",
     );
@@ -484,6 +490,7 @@ const EVERY_SCOPE: UninstallScope[] = [
   "HomebrewCaskPlainThirdParty",
   "HomebrewCaskRuby",
   "HomebrewCaskStepsOnlyRuby",
+  "HomebrewCaskPlainRuby",
   "HomebrewCaskStepsIfTrusted",
   "HomebrewCaskStepsOnlyIfTrusted",
   "Npm",

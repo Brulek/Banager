@@ -278,6 +278,7 @@ const UNSEEN_SCOPES: ReadonlySet<UninstallScope> = new Set<UninstallScope>([
   // or, from a tap it does not trust, none of its steps.
   "HomebrewCaskRuby",
   "HomebrewCaskStepsOnlyRuby",
+  "HomebrewCaskPlainRuby",
   "HomebrewCaskStepsIfTrusted",
   "HomebrewCaskStepsOnlyIfTrusted",
 ]);

@@ -505,7 +505,8 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
   不是记录里的。~~ —— **已于 2026-10-02 做了**（`HomebrewCaskRuby` / `HomebrewCaskStepsOnlyRuby`）：7.0.7 读不出时
   先按收据重建，收据或现在的定义有 Ruby 块时才改用现在的定义（`installer.rb:1046-1055`、`cask_loader.rb:879-920`）；
   记录是 `.rb` 的 cask 改说「并执行它的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的
-  步骤时，会按它现在的定义执行。」，不再说什么保留不动；批量卸载把它留给单个卸载。
+  步骤时，会按它现在的定义执行。」，不再说什么保留不动；批量卸载把它留给单个卸载。记录里没有步骤的 `.rb`
+  （`HomebrewCaskPlainRuby`）只说删除放置的文件、读不出时按现在的定义执行，不说执行卸载步骤。
 - ~~`HomebrewCaskPlain` 仍写"删除 Homebrew 为 X 装的文件"：目前 7,763 个官方 cask 里没有带 pkg/installer 又被判为
   plain 的，第三方 tap 可能有。~~ —— **已于 2026-10-02 做了**（`HomebrewCaskPlainThirdParty`）：来自非 Homebrew 自己
   tap 的 plain cask 改说「删除Homebrew为“X”放置的文件；它的设置和数据保留不动，它的安装器如果另外装了文件，也不删除。」
