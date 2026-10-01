@@ -663,8 +663,8 @@ describe("types", () => {
     // these exact spellings from the Rust side: `EntryKind` bare strings,
     // `ScanStop` externally tagged with the limit the scan enforced, and
     // an explicit `null` for a complete scan.
-    const kinds: EntryKind[] = ["File", "Symlink", "BrokenSymlink"];
-    expect(JSON.stringify(kinds)).toBe('["File","Symlink","BrokenSymlink"]');
+    const kinds: EntryKind[] = ["File", "Symlink", "BrokenSymlink", "ProtectedSymlink"];
+    expect(JSON.stringify(kinds)).toBe('["File","Symlink","BrokenSymlink","ProtectedSymlink"]');
     const fileLimit: ScanStop = { FileLimit: { max_entries: 2000 } };
     const timeLimit: ScanStop = { TimeLimit: { max_secs: 10 } };
     expect(JSON.stringify(fileLimit)).toBe('{"FileLimit":{"max_entries":2000}}');
@@ -693,6 +693,32 @@ describe("types", () => {
     expect(roundTrip(scan)).toEqual(scan);
     const stopped: UnknownScan = { ...scan, stopped: timeLimit };
     expect(roundTrip(stopped).stopped).toEqual({ TimeLimit: { max_secs: 10 } });
+
+    // The folders left unread, in the place Rust puts them (after
+    // `scanned`), and a link into a protected place with nothing of where
+    // it leads.
+    const guarded: UnknownScan = {
+      scanned: [],
+      protected_dirs: ["~/Documents/scripts"],
+      entries: [
+        {
+          path: "~/.local/bin/notes-cli",
+          kind: "ProtectedSymlink",
+          resolved: null,
+          link_target: "/Users/someone/Documents/notes-cli/bin/notes-cli",
+          size_bytes: null,
+          modified_at: null,
+          owned_by_me: true,
+          app_bundle: null,
+        },
+      ],
+      attributed: 0,
+      stopped: null,
+    };
+    expect(JSON.stringify(guarded)).toBe(
+      '{"scanned":[],"protected_dirs":["~/Documents/scripts"],"entries":[{"path":"~/.local/bin/notes-cli","kind":"ProtectedSymlink","resolved":null,"link_target":"/Users/someone/Documents/notes-cli/bin/notes-cli","size_bytes":null,"modified_at":null,"owned_by_me":true,"app_bundle":null}],"attributed":0,"stopped":null}',
+    );
+    expect(roundTrip(guarded)).toEqual(guarded);
   });
 
   it("keeps the InventoryPreview event's wire shape intact", () => {

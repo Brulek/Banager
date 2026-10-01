@@ -1006,3 +1006,102 @@ describe("the app a link points into", () => {
     }
   });
 });
+
+describe("protected places", () => {
+  const protectedLink: UnknownEntry = {
+    path: "~/.local/bin/notes-cli",
+    kind: "ProtectedSymlink",
+    resolved: null,
+    link_target: "/Users/someone/Documents/notes-cli/bin/notes-cli",
+    size_bytes: null,
+    modified_at: null,
+    owned_by_me: true,
+    app_bundle: null,
+  };
+
+  it("says a link into a protected place points there, plainly, and never where it leads", async () => {
+    settings = { ...settings, show_technical_details: true };
+    scan = { ...baseScan, entries: [...baseScan.entries, protectedLink] };
+    const { findByText, queryByText } = renderWithProviders(<UnknownPage />);
+
+    const row = rowOf(await findByText("notes-cli"));
+    // Its word where a size and a date would be, with no ⚠︎: nothing is
+    // wrong with it, Banager just did not look.
+    const word = within(row).getByRole("button", { name: "Points into a protected place" });
+    expect(statusOf(row)?.closest("[data-version]")).not.toBeNull();
+    expect(word.querySelector(".text-warning")).toBeNull();
+    fireEvent.click(word);
+    expect(
+      within(row).getByText(
+        "Banager doesn't look in Documents, Desktop, Downloads, iCloud Drive, other disks or other protected places, so where this link leads wasn't checked.",
+      ),
+    ).toBeInTheDocument();
+    // No path it leads to anywhere, technical details or not.
+    expect(queryByText(/notes-cli\/bin\/notes-cli/)).toBeNull();
+    expect(queryByText(/^Links to/)).toBeNull();
+    // Show in Finder is off, and says why.
+    const menu = openMenu(row);
+    const item = within(menu).getByRole("menuitem", { name: "Show in Finder" });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAccessibleDescription("This link points into a protected place, which Banager doesn't read.");
+    fireEvent.click(item);
+    expect(mockReveal).not.toHaveBeenCalled();
+  });
+
+  it("says how many folders it left unread in one quiet line, naming them behind an ⓘ only with technical details on", async () => {
+    scan = { ...baseScan, protected_dirs: ["~/Documents/scripts", "~/Desktop/tools"] };
+    const plain = renderWithProviders(<UnknownPage />);
+    const line = await plain.findByText("2 folders are in protected places and weren't read.");
+    expect(line.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
+    expect(plain.queryByRole("button", { name: /^Details: 2 folders/ })).toBeNull();
+    expect(plain.queryByText("~/Documents/scripts")).toBeNull();
+    plain.unmount();
+
+    settings = { ...settings, show_technical_details: true };
+    const technical = renderWithProviders(<UnknownPage />);
+    const info = await technical.findByRole("button", {
+      name: "Details: 2 folders are in protected places and weren't read.",
+    });
+    fireEvent.click(info);
+    expect(technical.getByText("~/Documents/scripts")).toBeInTheDocument();
+    expect(technical.getByText("~/Desktop/tools")).toBeInTheDocument();
+  });
+
+  it("says nothing of protected folders when there were none, or Rust sent none", async () => {
+    scan = { ...baseScan, protected_dirs: [] };
+    const none = renderWithProviders(<UnknownPage />);
+    await none.findByText("standalone-tool");
+    expect(none.container.querySelector("[data-protected-dirs]")).toBeNull();
+    none.unmount();
+
+    scan = baseScan;
+    const absent = renderWithProviders(<UnknownPage />);
+    await absent.findByText("standalone-tool");
+    expect(absent.container.querySelector("[data-protected-dirs]")).toBeNull();
+  });
+
+  it("puts no check mark over a list with nothing in it when folders were left unread", async () => {
+    scan = { ...baseScan, entries: [], protected_dirs: ["~/Documents/scripts"] };
+    const { findByText, queryByText } = renderWithProviders(<UnknownPage />);
+
+    expect(await findByText("No other programs in the places checked")).toBeInTheDocument();
+    expect(queryByText("No other programs")).toBeNull();
+    expect(queryByText("1 folder is in a protected place and wasn't read.")).toBeInTheDocument();
+  });
+
+  it("says it in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      scan = {
+        ...baseScan,
+        entries: [...baseScan.entries, protectedLink],
+        protected_dirs: ["~/Documents/scripts", "~/Desktop/tools"],
+      };
+      const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+      expect(await findByText("指向受保护的位置")).toBeInTheDocument();
+      expect(getByText("有2个文件夹在受保护的位置，没有读取。")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+});

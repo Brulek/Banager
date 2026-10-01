@@ -1032,7 +1032,22 @@ const UNKNOWN_ENTRIES: UnknownEntry[] = [
     owned_by_me: true,
     app_bundle: null,
   },
+  // A link into a project in Documents: listed by its own name, never
+  // followed, so no size, no date and no path it leads to.
+  {
+    path: "~/.local/bin/notes-cli",
+    kind: "ProtectedSymlink",
+    resolved: null,
+    link_target: inHome("Documents/notes-cli/bin/notes-cli"),
+    size_bytes: null,
+    modified_at: null,
+    owned_by_me: true,
+    app_bundle: null,
+  },
 ];
+
+/** The folders to scan that are in protected places (`protected_dirs`): two `PATH` entries, in Documents and on the Desktop. */
+const PROTECTED_DIRS = ["~/Documents/scripts", "~/Desktop/tools"];
 
 /** The Unknown page's scan (`?scan=`); `error` is the backend's to reject. */
 export function unknownScan(scan: Exclude<ScenarioScan, "error">): UnknownScan {
@@ -1059,6 +1074,7 @@ export function unknownScan(scan: Exclude<ScenarioScan, "error">): UnknownScan {
       { path: "~/.cargo/bin", entries: 16 },
       { path: "~/go/bin", entries: 1 },
     ],
+    protected_dirs: [...PROTECTED_DIRS],
     entries: UNKNOWN_ENTRIES.map((entry) => ({ ...entry })),
     attributed,
     stopped: scan === "stopped" ? { TimeLimit: { max_secs: 10 } } : null,

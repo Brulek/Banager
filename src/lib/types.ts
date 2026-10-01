@@ -510,9 +510,12 @@ export interface Snapshot {
  * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry
  * of a scanned bin directory is. Bare-string unit variants. Read through
  * `KIND_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
- * a variant added here without a badge fails `tsc`.
+ * a variant added here without a badge fails `tsc`. `ProtectedSymlink`: a link
+ * that leads into a protected place (`~/Documents`, iCloud Drive, `/Volumes`,
+ * …), listed by its own name and never followed -- no `resolved`, size or
+ * date; the page says 「指向受保护的位置」 in place of a path.
  */
-export type EntryKind = "File" | "Symlink" | "BrokenSymlink";
+export type EntryKind = "File" | "Symlink" | "BrokenSymlink" | "ProtectedSymlink";
 /**
  * Rust `ScanStop`: why a scan stopped before it had looked at everything.
  * Both variants carry data -- the limit the scan really enforced, so the
@@ -536,7 +539,7 @@ export interface UnknownEntry {
   /** `~`-abbreviated like `ScannedDir.path`; the row's name is its last component. */
   path: string;
   kind: EntryKind;
-  /** Canonical and absolute, every link hop followed; `null` for a broken link. The technical detail. */
+  /** Absolute, every link hop followed; `null` for a broken link and for a link into a protected place. The technical detail. */
   resolved: string | null;
   /** `readlink`'s text as the installer wrote it, links only. */
   link_target: string | null;
@@ -555,6 +558,14 @@ export interface UnknownEntry {
  */
 export interface UnknownScan {
   scanned: ScannedDir[];
+  /**
+   * The folders to scan that are, or lead into, a protected place, and so
+   * were not read: `~`-abbreviated like `ScannedDir.path`, each place once.
+   * Rust always sends it (`#[serde(default)]` on its side); optional here
+   * only so a test's or the mock's scan may leave it out, which reads as
+   * none. The page's 「有N个文件夹在受保护的位置，没有读取。」.
+   */
+  protected_dirs?: string[];
   entries: UnknownEntry[];
   /** Examined programs a known source accounted for, and so not listed. */
   attributed: number;

@@ -5,6 +5,7 @@ import { ListWidthProvider, StatusColumnProvider, useElementWidth } from "../com
 import { StatusChip } from "../components/StatusChip";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { EmptyState } from "../components/EmptyState";
+import { TextWithInfo } from "../components/InfoDetail";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
 import { SpinnerIcon, TerminalIcon } from "../components/icons";
@@ -15,18 +16,29 @@ import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
  * The status word each kind of entry has, or null: a broken link's
- * 「找不到原文件」, with an orange ⚠︎ -- something is wrong with it -- and
- * nothing for a program or a link that works, which are the normal
- * states a row does not put in words (spec §3.3, §3.4). The word stands
- * where the size and the date would, which a broken link has none of
- * (`SizeAndDate`). A `Record` over `EntryKind`, so a variant added to the
- * mirror without an answer here fails `tsc` -- this project's signature
- * defect is a variant that is defined, mirrored and never rendered.
+ * 「找不到原文件」, with an orange ⚠︎ -- something is wrong with it -- a
+ * link into a protected place's 「指向受保护的位置」, plain -- nothing is
+ * wrong, Banager just did not look -- and nothing for a program or a link
+ * that works, which are the normal states a row does not put in words
+ * (spec §3.3, §3.4). The word stands where the size and the date would,
+ * which neither link has (`SizeAndDate`). A `Record` over `EntryKind`, so
+ * a variant added to the mirror without an answer here fails `tsc` -- this
+ * project's signature defect is a variant that is defined, mirrored and
+ * never rendered.
  */
 const STATUS_KEYS: Record<EntryKind, string | null> = {
   File: null,
   Symlink: null,
   BrokenSymlink: "unknown.kind.BrokenSymlink",
+  ProtectedSymlink: "unknown.protectedLink",
+};
+
+/** The status word's tone, by kind (`StatusChip`): only a broken link has something wrong with it. */
+const STATUS_TONES: Record<EntryKind, "neutral" | "warning"> = {
+  File: "neutral",
+  Symlink: "neutral",
+  BrokenSymlink: "warning",
+  ProtectedSymlink: "neutral",
 };
 
 /** Whatever `useTranslation()`'s `t` needs to look a key up; same convention as `Translate` in src/lib/sources.ts. */
@@ -125,7 +137,8 @@ function ColumnHeads() {
 
 /**
  * What there is to say about a program, a line each: what a broken link
- * pointed at, the app it runs inside, that another account owns it, and
+ * pointed at, why a link into a protected place was not followed (never
+ * where it leads), the app it runs inside, that another account owns it, and
  * -- with technical details on -- where a link leads. A plain file
  * resolves to itself, so that last one is for links only. Behind a broken
  * link's word's ⓘ; for any other row, which has no word to hang an ⓘ on
@@ -137,6 +150,8 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
   if (entry.kind === "BrokenSymlink") {
     facts.push(t("unknown.brokenLink", { target: entry.link_target ?? "" }));
   }
+  // Where it leads was never looked at: no path, only why.
+  if (entry.kind === "ProtectedSymlink") facts.push(t("unknown.protectedLinkWhy"));
   if (entry.app_bundle !== null) facts.push(t("unknown.partOfApp", { app: entry.app_bundle }));
   if (!entry.owned_by_me) facts.push(t("unknown.adminOwned"));
   if (technical && entry.kind === "Symlink" && entry.resolved !== null) {
@@ -174,6 +189,7 @@ const SHOW_IN_FINDER_HINTS: Record<EntryKind, string | null> = {
   File: null,
   Symlink: "unknown.showsLinkTarget",
   BrokenSymlink: "unknown.targetGone",
+  ProtectedSymlink: "unknown.protectedLinkHint",
 };
 
 /**
@@ -307,6 +323,10 @@ export function UnknownPage() {
     (roomForNote || fit === "narrow") &&
     (result?.entries.some((entry) => entry.size_bytes !== null || entry.modified_at !== null) ?? false);
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
+  // The folders it did not read, being in protected places: a quiet line
+  // under the list, naming them behind an ⓘ only with technical details on.
+  const unread = result?.protected_dirs ?? [];
+  const unreadText = unread.length === 0 ? null : t("unknown.protectedFolders", { count: unread.length });
 
   // A row's Copy path and Show in Finder, and a word about how the last
   // one went: "Copied" or "Couldn't copy" as the other pages say it
@@ -405,8 +425,9 @@ export function UnknownPage() {
           {result.entries.length === 0 ? (
             // Nothing unexplained, as a Mac list says it has nothing to
             // show: a ✓ in a circle, no button. A scan that stopped early
-            // vouches only for what it checked: no check mark over the rest.
-            stopped === null ? (
+            // vouches only for what it checked: no check mark over the rest,
+            // nor one over folders it left unread.
+            stopped === null && unread.length === 0 ? (
               <EmptyState symbol="check" title={t("unknown.empty")} />
             ) : (
               <EmptyState symbol="info" title={t("unknown.emptyChecked")} />
@@ -431,7 +452,7 @@ export function UnknownPage() {
                       statusKey === null ? undefined : (
                         <StatusChip
                           label={t(statusKey)}
-                          tone="warning"
+                          tone={STATUS_TONES[entry.kind]}
                           detail={
                             facts.length === 0
                               ? undefined
@@ -482,6 +503,21 @@ export function UnknownPage() {
               })}
             </p>
             {result.attributed > 0 ? <p>{t("unknown.attributed", { count: result.attributed })}</p> : null}
+            {unreadText === null ? null : (
+              <p data-protected-dirs="">
+                {technical ? (
+                  <TextWithInfo text={unreadText} label={t("common.detailsLabel", { title: unreadText })}>
+                    {unread.map((dir) => (
+                      <span key={dir} className="block select-text break-words">
+                        {dir}
+                      </span>
+                    ))}
+                  </TextWithInfo>
+                ) : (
+                  unreadText
+                )}
+              </p>
+            )}
           </div>
         </>
       )}

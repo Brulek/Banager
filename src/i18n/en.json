@@ -978,7 +978,12 @@
     "scanFailed": "Couldn't scan: {{message}}",
     "scanFailedPlain": "Couldn't scan. Try scanning again later.",
     "empty": "No other programs",
-    "emptyChecked": "No other programs in the places checked"
+    "emptyChecked": "No other programs in the places checked",
+    "protectedLink": "Points into a protected place",
+    "protectedLinkWhy": "Banager doesn't look in Documents, Desktop, Downloads, iCloud Drive, other disks or other protected places, so where this link leads wasn't checked.",
+    "protectedLinkHint": "This link points into a protected place, which Banager doesn't read.",
+    "protectedFolders_one": "{{count}} folder is in a protected place and wasn't read.",
+    "protectedFolders_other": "{{count}} folders are in protected places and weren't read."
   },
   "emptyStates": {
     "loadFailed": {
