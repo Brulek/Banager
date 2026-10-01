@@ -74,8 +74,8 @@ report them all.
   deletes them.
 - When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
   command to copy and run in Terminal, where you can type it.
-- With **Check for updates every day** on, Settings says about when the next check is due, while
-  Banager is running. Its **Copy
+- With **Check for updates** set to Daily or Weekly, Settings says about when the next check is due,
+  while Banager is running. Its **Copy
   Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
   this Mac and its sources to paste to whoever is helping you; it lists your tools only when you tick
   the box, and writes your home folder as `~`.
@@ -432,7 +432,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里
   输入密码。
-- 打开“每天自动检查”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
+- 把“检查更新”设为“每天”或“每周”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
   带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
   工具清单，个人文件夹的路径写成 `~`。
 - 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的

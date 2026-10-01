@@ -525,11 +525,12 @@ export function SettingsPage() {
         />
       </SettingsGroup>
 
-      {/* The two ways the Updates page hides an update, each a group of
+      {/* The three ways the Updates page hides an update, each a group of
           its own, because they end differently: a skip stops hiding
-          anything by itself once its source offers another version, while
-          a package never to be reminded about stays hidden until it is
-          removed here.
+          anything by itself once its source offers another version, a
+          package put off for 30 days is listed again when they are over,
+          while a package never to be reminded about stays hidden until it
+          is removed here.
 
           Every stored skip is listed, including one whose version its
           source has since moved past: such an entry hides nothing any more

@@ -182,7 +182,10 @@ Paths are under a generic home folder, `/Users/you`.
   the daily check is a task of the app's Rust side, which the preview
   does not have. Notify me when there are updates turns on without
   asking anything, as where permission is granted, and nothing is ever
-  notified: the page's report after each check reaches no Rust.
+  notified: the page's report after each check reaches no Rust. Notify me
+  when operations finish turns on the same way; when a run of updates or
+  uninstalls ends, the page's report is only checked for its shape
+  (`report_finished_run` in `mockBackend.ts`) and posts nothing.
 - After each refresh the tools' sizes are measured, as the app measures
   them (`src/dev/mockSizes.ts`): about a second and a half of 「正在计算…」
   in the Installed page's details, then 「占用空间：约312.6 MB」 for node@22,
