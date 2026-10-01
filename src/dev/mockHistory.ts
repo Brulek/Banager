@@ -4,8 +4,10 @@
  * uninstalls, as earlier launches of Banager kept them in `history.json`
  * (crates/banager-core/src/history/mod.rs) -- two today, so that the
  * Updates page's 「最近更新」 shows both of its date forms, one older than
- * the 30 days the page lists, and a failure and an uninstall it never
- * lists. Times count back from when the preview opened.
+ * the 30 days the page lists, an uninstall it never lists, and an update
+ * that failed (「未能更新：网络连接失败」) and one that changed nothing
+ * (「结果不符」), which it lists among the rest. Times count back from when
+ * the preview opened.
  */
 import { failureCause } from "../lib/failureCause";
 import type { ArtifactKey, HistoryRecord, HistoryResult, HistoryView, OpRequest, Outcome } from "../lib/types";
@@ -55,6 +57,11 @@ const SEEDED = [
   kept(4, 16 * DAY, key(IDS.brew, "Formula", "gh"), "brew", "2.100.2", "2.101.0", { verified: false }),
   kept(3, 20 * DAY, key(IDS.pipx, "Tool", "yt-dlp"), "pipx", "2026.8.20", null, { kind: "Uninstall" }),
   kept(1, 40 * DAY, key(IDS.brew, "Formula", "ffmpeg"), "brew", "9.0.0", "9.0.1_1"),
+  // npm said it updated, and the version read back had not changed.
+  kept(11, 5 * DAY, key(IDS.npm, "Package", "typescript"), "npm", "6.0.2", "6.0.2", {
+    result: { NeedsAttention: "UnchangedAfterUpgrade" },
+    verified: false,
+  }),
 ];
 
 /** The history the preview opens with, newest first, as `get_history` answers it. */

@@ -738,6 +738,10 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
     expect(start.records.filter((r) => new Date(r.finished_at).toDateString() === today).length).toBeGreaterThanOrEqual(1);
     expect(start.records.some((r) => r.result !== "Succeeded")).toBe(true);
     expect(start.records.some((r) => r.kind === "Uninstall")).toBe(true);
+    // An update that failed and one to check, for 「最近更新」 to list among the rest.
+    expect(start.records.filter((r) => r.kind === "Update").map((r) => r.result)).toEqual(
+      expect.arrayContaining([{ Failed: { cause: "network" } }, { NeedsAttention: "UnchangedAfterUpgrade" }]),
+    );
     // Newest first, and none of this launch's.
     expect(start.records.map((r) => r.finished_at)).toEqual([...start.records.map((r) => r.finished_at)].sort((a, b) => b - a));
     expect(start.records.every((r) => r.run !== start.run)).toBe(true);
