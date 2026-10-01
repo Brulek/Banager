@@ -260,7 +260,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
   **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
 
-- **cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。
+- ~~**cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。~~ —— **已于 2026-10-02 做了**（`903016e7`，分支 `r5/g2-standalone-scan`）：没改线格式，扫描规则 2 另认 cask 的 `binary` 链接本身（内存里的 `facts.command_inputs.provided`），去向须落在该条目指名的文件、`Caskroom/<token>` 或 cask 的 app 里（与「输入命令跑的是哪一份」同一条规则，`commands::cask_places`）；第二个 `.app` 里的命令、`app` 没有绝对 `target` 的 cask 的命令不再列出，`pkg` 装的命令照旧列出（`tests/unknown_scan_test.rs` 的 `test_rule_2_claims_a_cask_binary_link_into_a_second_app_or_an_app_with_no_target`）。
 
 - **「放回原处」的记录只在一次卸载之内隔开**（2026-09-25，步骤 C；2026-09-26 改成跨卸载也隔开，见本条「已做」；
   末段两件没核实的事仍开着）。无「完全磁盘访问」时，`trashItemAtURL:`
@@ -317,14 +317,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   `test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere`）；祖先规则仍然挡住把 `~/Documents/downloads`
   当成 Claude Code 的缓存移走。每个配方的启动器（`route.launcher`，清单的最后一项）从不是 optional
   （`recipes::tests` 钉着），所以上面 `~/.local/bin` 那一半照旧。
-- **升级后的读取仍把「看不清」当成「不在了」**（2026-09-25，步骤 C 顺带发现）。B 的 `StandaloneAdapter::reconcile`
+- ~~**升级后的读取仍把「看不清」当成「不在了」**（2026-09-25，步骤 C 顺带发现）。B 的 `StandaloneAdapter::reconcile`
   （升级前后的读取）经 `look` 用 `route::probe`（`4156e23` 起它不再经 `inventory`，两者共用 `look`），权限错误、
   循环链接这类「看不清」一律成了 `Absent`：`claude update` 退出 0 之后如果恰好读不了 `~/.local/bin`，`run_operation`
   会报 `NeedsAttention(GoneAfterUpgrade)`——说升级后不见了，而事实是看不清。步骤 C 只把卸载之后的读取换成了
   `route::probe_strict`（裁定 27）。**修法的形状**：`look`（`inventory` 与 `reconcile` 都经它读）改用 `probe_strict`，
   把 `Err` 映成 `AdapterError`，升级前后的读取随之得到 `Err` → `Unconfirmed`（刷新时的 `inventory` 自 `4156e23` 起已经把
   看不见的启动器当作与 detect 所列不符而拒绝：这个来源计入「部分数据可能不是最新的」横幅，这一行不消失）；要连同 B 的
-  「探测失败是『没装』，不是『没响应』」这条规则一起评审。
+  「探测失败是『没装』，不是『没响应』」这条规则一起评审。~~ —— **已于 2026-10-02 做了**（`fafd457d`，分支 `r5/g2-standalone-scan`）：`look` 改经 `route::probe_strict`，权限错误、循环链接成了错误而不是 `Absent`——`reconcile` 返回 `Parse`（升级退出 0 后报「结果未确认」，不再报 `GoneAfterUpgrade`），`inventory` 以「cannot look at」拒绝（这一轮该来源计入「部分数据可能不是最新的」）；`detect` 仍用 `probe`，看不清照旧是「没装」不是「没响应」（测试 `test_inventory_and_reconcile_call_a_launcher_they_cannot_look_at_unknown_not_gone`、`test_a_claude_update_exiting_zero_with_a_launcher_banager_cannot_look_at_is_unconfirmed_not_gone`）。
 - **grok 回退链接的链接文本未核实**（2026-09-26，步骤 D）。`~/.local/bin/grok`、`~/.local/bin/agent` 只在 `~/.grok/bin`
   不在 PATH 上时由安装器创建（grok.md §2：它依次试 `~/.local/bin` 与 `/usr/local/bin`，用第一个可写的），本机没有，
   链接文本指向 `~/.grok/bin/grok` 还是直接指向 `downloads/` 里的文件不知道。配方把这两条列为 optional 且**排在最前**
