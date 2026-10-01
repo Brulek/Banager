@@ -1056,7 +1056,7 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         "the home folder written as `~`",
         "The folders on `PATH` are the one environment variable's value the text holds",
         "never holds any other environment variable's value",
-        "the Help menu's item never does",
+        "the Help menu's Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button, focused, so the copy is always the button's click",
     ] {
         assert!(
             folded.contains(words),
