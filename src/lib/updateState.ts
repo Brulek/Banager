@@ -20,6 +20,7 @@ import type {
 } from "./types";
 import { canWrite, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
+import { updatesUnchecked } from "./uncheckedStandalone";
 
 /**
  * Why a listed update is or is not offered. The order of the checks in
@@ -223,13 +224,16 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
 
 /**
  * Whether `instance` answered the last check and was checked for updates
- * in full: it answered (`isAvailable`), and no note says its updates went
- * unchecked (`NOTE_LEAVES_UPDATES_UNCHECKED`). A read-only source is one
- * Banager *can* check.
+ * in full: it answered (`isAvailable`), no note says its updates went
+ * unchecked (`NOTE_LEAVES_UPDATES_UNCHECKED`), and it is not a source
+ * whose updates Banager never checks (`updatesUnchecked`: Codex's own
+ * install, whose check lists nothing, so no update there is no news). A
+ * read-only source is one Banager *can* check.
  */
 function checkedInFull(instance: ManagerInstance): boolean {
   return (
     isAvailable(instance) &&
+    !updatesUnchecked(instance) &&
     !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note])
   );
 }

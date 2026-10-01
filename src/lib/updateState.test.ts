@@ -316,6 +316,26 @@ describe("everySourceChecked", () => {
     }
   });
 
+  it("fails with Codex's own install, whose updates Banager never checks", () => {
+    // Its check lists nothing (`Latest::Unchecked`), so no update listed
+    // there is no news: not "Everything is up to date".
+    const codex: ManagerInstance = {
+      ...brew,
+      id: "standalone-codex",
+      adapter_id: "standalone-codex",
+      exe_path: "/Users/you/.local/bin/codex",
+      prefix: "/Users/you/.codex/packages/standalone",
+    };
+    expect(everySourceChecked([brew, codex], [])).toBe(false);
+    expect(updatesSummary({ instances: [brew, codex], updates: [], errors: [] }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+      everyChecked: false,
+      cantUpdateHere: 0,
+      hidden: 0,
+    });
+    expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({ kind: "upToDate" });
+  });
+
   it("fails when a check failed this round, though every source still reads as answering", () => {
     // `refresh` keeps a source whose inventory or update check failed as
     // it was -- answering, no note -- and carries its last rows and

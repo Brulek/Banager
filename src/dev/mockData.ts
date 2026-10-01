@@ -897,6 +897,11 @@ function scenarioWorld(state: ScenarioState): World {
     case "uptodate":
       allAnswering(world);
       world.updates = [];
+      // Without Codex's own install, whose updates Banager never checks:
+      // with it, no update listed is no news, and the pages say so
+      // (`everySourceChecked`) instead of "Everything is up to date".
+      world.instances = world.instances.filter((i) => i.id !== IDS.codex);
+      world.artifacts = world.artifacts.filter((a) => a.key.instance_id !== IDS.codex);
       return world;
     case "hidden":
       allAnswering(world);

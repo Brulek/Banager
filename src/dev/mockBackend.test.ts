@@ -18,7 +18,7 @@ import type {
 import { NO_FACTS } from "../lib/types";
 import { outcomeCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
-import { hidingRule, updateStateOf } from "../lib/updateState";
+import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
 import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
@@ -639,6 +639,10 @@ describe("the preview's commands, and which copy runs", () => {
       { name: "agent", state: "Runs" },
       { name: "grok", state: "Runs" },
     ]);
+    // Without Codex's own install, which Banager never checks, so the
+    // pages can say "Everything is up to date".
+    expect(upToDate.instances.some((i) => i.adapter_id === "standalone-codex")).toBe(false);
+    expect(everySourceChecked(upToDate.instances, upToDate.errors)).toBe(true);
   });
 
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
