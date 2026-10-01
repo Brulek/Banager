@@ -1927,7 +1927,11 @@ counts the blocks the disk holds for it (`st_blocks`), and a file with
 several hard links counts once. A folder that cannot be read is skipped and
 the size is shown as partial (「部分无法读取」). One round looks at
 300,000 entries and spends 30 seconds at most (`SizeBudget::default`); a
-size it stopped short of is shown as "at least" (「至少约…」). Every number
+size it stopped short of is shown as "at least" (「至少约…」), and a tool
+it did not reach before the budget ran out shows no size that round. The
+next round measures first what no round has measured yet, and only then
+again what an earlier round stopped short of or could not read in full,
+showing the earlier number, marked as it was, meanwhile. Every number
 is shown as "about" (「约」): an APFS clone (uv builds its tools'
 environments that way from its cache) counts in full though it shares its
 blocks.

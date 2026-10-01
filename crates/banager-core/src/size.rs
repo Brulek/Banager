@@ -105,7 +105,9 @@ impl Default for SizeBudget {
     /// Enough for a Mac with several hundred tools and a few large apps:
     /// a Homebrew keg holds tens to a few thousand entries, an app bundle
     /// up to tens of thousands. Apps are walked last, so what the budget
-    /// cuts short first is an app, marked `at_least`.
+    /// cuts short first is an app, marked `at_least`; what it did not
+    /// reach gets no size that round, and the next round measures it
+    /// before it measures again anything cut short.
     fn default() -> SizeBudget {
         SizeBudget {
             max_entries: 300_000,
@@ -171,7 +173,8 @@ pub struct Sizes {
     pub artifacts: Vec<ArtifactSize>,
     pub models: Vec<ModelsSize>,
     /// Everything in `artifacts` (old versions included) and `models`
-    /// together, a file with several hard links counted once; `None` until
+    /// together, a file with several hard links counted once, `at_least`
+    /// when the budget ran out before something was reached; `None` until
     /// `done`, and when nothing was measured.
     pub total: Option<Measured>,
 }
@@ -410,8 +413,11 @@ impl Tally {
 enum WalkEnd {
     Walked(Walked),
     /// Nothing there could be measured: every root was gone, or could not
-    /// be listed, or the budget had run out before the first.
+    /// be listed.
     Nothing,
+    /// The round's budget ran out before anything there was reached: not
+    /// measured this round.
+    OutOfBudget,
     /// A newer round started: this one stops where it is.
     Superseded,
 }
@@ -455,7 +461,11 @@ fn walk(
         }
     }
     if !tally.reached {
-        return WalkEnd::Nothing;
+        return if tally.at_least {
+            WalkEnd::OutOfBudget
+        } else {
+            WalkEnd::Nothing
+        };
     }
     WalkEnd::Walked(tally.finish())
 }
@@ -568,11 +578,19 @@ struct Job {
     /// A root of it was refused: what it measures is not all of it.
     partial: bool,
     result: Option<JobResult>,
+    /// What an earlier round measured of the same folder at the same
+    /// version and could not finish (`partial` or `at_least`): shown,
+    /// marked as it was, until this round has measured it again.
+    previous: Option<Walked>,
 }
 
 enum JobResult {
     Walked(Walked),
     Nothing,
+    /// The round's budget ran out before it was reached, and no earlier
+    /// round measured it: no size this round; the next round measures it
+    /// before anything an earlier round already measured in part.
+    NotReached,
 }
 
 impl Job {
@@ -582,14 +600,23 @@ impl Job {
             roots,
             partial,
             result: None,
+            previous: None,
         }
     }
 
+    /// What is shown for it: what this round measured, or while it has
+    /// not yet, what an earlier round measured in part.
     fn walked(&self) -> Option<&Walked> {
         match &self.result {
             Some(JobResult::Walked(walked)) => Some(walked),
-            _ => None,
+            Some(_) => None,
+            None => self.previous.as_ref(),
         }
+    }
+
+    /// Measured by this round, or shown from an earlier one meanwhile.
+    fn has_something_to_show(&self) -> bool {
+        self.result.is_some() || self.previous.is_some()
     }
 
     /// `walked`'s measurement, with what planning knew added.
@@ -624,6 +651,23 @@ struct Unit {
 impl Unit {
     fn finished(&self) -> bool {
         self.main.result.is_some() && self.old.as_ref().is_none_or(|old| old.result.is_some())
+    }
+
+    /// Every job of it has a result, or one an earlier round left to show
+    /// until this round has its own.
+    fn showable(&self) -> bool {
+        self.main.has_something_to_show()
+            && self
+                .old
+                .as_ref()
+                .is_none_or(|old| old.has_something_to_show())
+    }
+
+    /// The budget ran out before some job of it was reached.
+    fn not_reached(&self) -> bool {
+        std::iter::once(&self.main)
+            .chain(self.old.as_ref())
+            .any(|job| matches!(job.result, Some(JobResult::NotReached)))
     }
 }
 
@@ -911,10 +955,10 @@ pub struct SizeMeter {
     /// The round whose results may still be shown: the newest started.
     current: AtomicU64,
     published: Mutex<Sizes>,
-    /// Complete measurements -- not `partial`, not `at_least` -- of the
-    /// last round's folders, by `CacheKey`, so that an unchanged folder is
-    /// not walked again at every refresh. Only what the newest round
-    /// planned is kept.
+    /// The last measurement of each folder, by `CacheKey`: a complete one
+    /// -- not `partial`, not `at_least` -- so that an unchanged folder is
+    /// not walked again at every refresh, and one cut short to show until
+    /// it is measured again. Only what the newest round planned is kept.
     cache: Mutex<HashMap<CacheKey, Walked>>,
 }
 
@@ -1022,7 +1066,11 @@ impl SizeMeter {
             for unit in &mut units {
                 for job in std::iter::once(&mut unit.main).chain(unit.old.as_mut()) {
                     if let Some(walked) = cache.get(&job.key) {
-                        job.result = Some(JobResult::Walked(walked.clone()));
+                        if walked.complete() {
+                            job.result = Some(JobResult::Walked(walked.clone()));
+                        } else {
+                            job.previous = Some(walked.clone());
+                        }
                     }
                 }
             }
@@ -1032,31 +1080,41 @@ impl SizeMeter {
         }
         let mut budget = Budget::new(self.budget);
         let mut shown = Instant::now();
-        for index in 0..units.len() {
-            let unit = &mut units[index];
-            for job in std::iter::once(&mut unit.main).chain(unit.old.as_mut()) {
-                if job.result.is_some() {
-                    continue;
-                }
-                let mut wanted = || self.wanted(round);
-                job.result = Some(
-                    match walk(&job.roots, &mut budget, &protected, &mut wanted) {
-                        WalkEnd::Superseded => return,
-                        WalkEnd::Nothing => JobResult::Nothing,
-                        WalkEnd::Walked(walked) => {
-                            if walked.complete() {
-                                lock(&self.cache).insert(job.key.clone(), walked.clone());
+        // First what no round has measured yet, then again what an earlier
+        // round could only measure in part: a folder bigger than the whole
+        // budget never keeps the ones after it from being measured.
+        for again in [false, true] {
+            for index in 0..units.len() {
+                let unit = &mut units[index];
+                for job in std::iter::once(&mut unit.main).chain(unit.old.as_mut()) {
+                    if job.result.is_some() || job.previous.is_some() != again {
+                        continue;
+                    }
+                    let mut wanted = || self.wanted(round);
+                    job.result = Some(
+                        match walk(&job.roots, &mut budget, &protected, &mut wanted) {
+                            WalkEnd::Superseded => return,
+                            WalkEnd::Nothing => {
+                                lock(&self.cache).remove(&job.key);
+                                JobResult::Nothing
                             }
-                            JobResult::Walked(walked)
-                        }
-                    },
-                );
-            }
-            if shown.elapsed() >= PUBLISH_EVERY {
-                if !self.publish(round, sizes_of(round, artifacts, &units, false)) {
-                    return;
+                            WalkEnd::OutOfBudget => match job.previous.take() {
+                                Some(previous) => JobResult::Walked(previous),
+                                None => JobResult::NotReached,
+                            },
+                            WalkEnd::Walked(walked) => {
+                                lock(&self.cache).insert(job.key.clone(), walked.clone());
+                                JobResult::Walked(walked)
+                            }
+                        },
+                    );
                 }
-                shown = Instant::now();
+                if shown.elapsed() >= PUBLISH_EVERY {
+                    if !self.publish(round, sizes_of(round, artifacts, &units, false)) {
+                        return;
+                    }
+                    shown = Instant::now();
+                }
             }
         }
         self.publish(round, sizes_of(round, artifacts, &units, true));
@@ -1064,23 +1122,30 @@ impl SizeMeter {
 }
 
 /// The window's view of a round's `units` so far: every unit still being
-/// measured as `measured: None`, every finished one with its numbers, and
-/// none that turned out to have nothing to measure.
+/// measured as `measured: None` (or, while it is measured again, with what
+/// an earlier round measured in part), every finished one with its
+/// numbers, and none that turned out to have nothing to measure or that
+/// the budget did not reach -- the total then says `at_least`.
 fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: bool) -> Sizes {
     let mut listed: Vec<(usize, ArtifactSize)> = Vec::new();
     let mut models = Vec::new();
     let mut counted: Vec<&Walked> = Vec::new();
+    let mut not_reached = false;
     for unit in units {
         let finished = unit.finished();
+        not_reached |= unit.not_reached();
         if finished && unit.main.walked().is_none() {
             continue;
         }
+        let showable = unit.showable();
         match &unit.target {
             Target::Artifact { index } => {
                 let artifact = &artifacts[*index];
-                let (measured, old_versions) = if finished {
+                if finished {
                     counted.extend(unit.main.walked());
                     counted.extend(unit.old.as_ref().and_then(Job::walked));
+                }
+                let (measured, old_versions) = if showable {
                     (
                         unit.main.measured(),
                         unit.old.as_ref().and_then(Job::measured),
@@ -1099,7 +1164,7 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
                 ));
             }
             Target::Models { instance_id, floor } => {
-                let measured = if finished { unit.main.measured() } else { None };
+                let measured = if showable { unit.main.measured() } else { None };
                 if measured.is_some_and(|m| m.bytes.saturating_mul(10) < floor.saturating_mul(9)) {
                     continue;
                 }
@@ -1119,7 +1184,23 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
         done,
         artifacts: listed.into_iter().map(|(_, size)| size).collect(),
         models,
-        total: if done { total(counted) } else { None },
+        total: if done {
+            // What the budget did not reach takes something too, by an
+            // amount not known.
+            match total(counted) {
+                Some(sum) => Some(Measured {
+                    at_least: sum.at_least || not_reached,
+                    ..sum
+                }),
+                None if not_reached => Some(Measured {
+                    at_least: true,
+                    ..Measured::default()
+                }),
+                None => None,
+            }
+        } else {
+            None
+        },
     }
 }
 
@@ -1445,14 +1526,15 @@ mod tests {
         ));
         assert!(walked.measured.at_least);
         assert!(walked.measured.bytes < du(&tool));
-        // And no time left is no budget left.
+        // And no time left is no budget left: not reached, which is not
+        // "nothing there".
         let mut budget = Budget::new(SizeBudget {
             max_entries: 1_000,
             max_duration: Duration::ZERO,
         });
         assert_eq!(
             walk(&[tool], &mut budget, &Protected::default(), &mut || true),
-            WalkEnd::Nothing
+            WalkEnd::OutOfBudget
         );
     }
 
@@ -1963,6 +2045,70 @@ mod tests {
             third.artifacts[0].measured.unwrap().bytes > before,
             "a new version is walked again"
         );
+    }
+
+    #[test]
+    fn test_what_the_budget_did_not_reach_is_measured_first_next_round() {
+        let scratch = Scratch::new("unreached");
+        let home = scratch.dir("home");
+        scratch.file("home/tools/aa/bin/aa", 8_000);
+        for index in 0..30 {
+            scratch.file(&format!("home/tools/big/lib/{index}.so"), 4_000);
+        }
+        scratch.file("home/tools/cc/bin/cc", 8_000);
+        let instances = [instance("uv", "uv", &home)];
+        let artifacts: Vec<InstalledArtifact> = ["aa", "big", "cc"]
+            .into_iter()
+            .map(|name| {
+                artifact(
+                    "uv",
+                    ArtifactKind::Tool,
+                    name,
+                    "1.0.0",
+                    Some(home.join("tools").join(name)),
+                )
+            })
+            .collect();
+        // Enough for "aa" whole and part of "big".
+        let (meter, seen) = recording_meter(SizeBudget {
+            max_entries: 20,
+            max_duration: Duration::from_secs(30),
+        });
+        let first = run(&meter, 1, &instances, &artifacts, &home);
+        assert!(first.done);
+        let aa = size_of(&first, "aa").unwrap().measured.unwrap();
+        assert!(!aa.at_least && !aa.partial);
+        assert!(size_of(&first, "big").unwrap().measured.unwrap().at_least);
+        assert!(
+            size_of(&first, "cc").is_none(),
+            "not reached: no size this round, rather than \"about 0 KB\""
+        );
+        assert!(
+            first.total.unwrap().at_least,
+            "the total says what it did not reach"
+        );
+        // The next round: "aa" is remembered, "cc" is measured before "big"
+        // is walked again, and "big" keeps its "at least" meanwhile.
+        let second = run(&meter, 2, &instances, &artifacts, &home);
+        let cc = size_of(&second, "cc").unwrap().measured.unwrap();
+        assert!(!cc.at_least && !cc.partial);
+        assert!(size_of(&second, "big").unwrap().measured.unwrap().at_least);
+        assert!(!second.total.unwrap().partial);
+        let shown_first = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|sizes| sizes.round == 2)
+            .cloned()
+            .unwrap();
+        assert!(
+            size_of(&shown_first, "big")
+                .unwrap()
+                .measured
+                .is_some_and(|m| m.at_least),
+            "shown from the round before, never \"Calculating\" again"
+        );
+        assert_eq!(size_of(&shown_first, "cc").unwrap().measured, None);
     }
 
     #[test]
