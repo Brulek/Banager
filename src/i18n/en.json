@@ -885,6 +885,63 @@
       "noFacts": "System info: couldn't read"
     }
   },
+  "setupCheck": {
+    "menu": "Check Tool Setup…",
+    "label": "Tool setup",
+    "open": "Check…",
+    "openAriaLabel": "Check tool setup",
+    "title": "Tool Setup",
+    "pending": "The check hasn't finished. Here's what's known so far.",
+    "neverChecked": "Not checked yet",
+    "sections": {
+      "terminal": "Terminal settings",
+      "sources": "Sources",
+      "commands": "Commands",
+      "homebrew": "Homebrew",
+      "disk": "Disk"
+    },
+    "terminal": {
+      "loginRead": "Terminal's login settings were read",
+      "loginNotRead": "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't judged this time",
+      "loginNotReadDetail": "An app opened from Finder gets only the system's default places to look for commands. Judged by those, nearly every tool would look missing from Terminal.",
+      "noFacts": "Couldn't read Terminal's settings",
+      "foldersAllRead_one": "The {{count}} folder Terminal looks in for commands was read",
+      "foldersAllRead_other": "All {{count}} folders Terminal looks in for commands were read",
+      "foldersSomeUnread": "Folders Terminal looks in for commands: {{read}} read, {{unread}} couldn't be read",
+      "foldersUnreadDetail": "A folder that couldn't be read is in a protected place, or doesn't allow its contents to be listed. What commands it holds isn't known, so nothing it could change is judged.",
+      "foldersCount": "Folders Terminal looks in for commands: {{number}}",
+      "unreadFolders": "Couldn't read: {{folders}}"
+    },
+    "sources": {
+      "allFine": "Every source answered normally",
+      "othersFine": "The other sources answered normally",
+      "state": "{{source}}: {{state}}",
+      "checkUnfinished": "Check didn't finish",
+      "none": "No sources to manage were found",
+      "otherPrograms": "Command-line programs from none of these sources are in Other Programs"
+    },
+    "commands": {
+      "allFine": "Terminal finds every installed tool, and none is installed more than once",
+      "notOnPathFine": "Terminal finds every installed tool",
+      "twins_one": "{{count}} tool is installed more than once",
+      "twins_other": "{{count}} tools are installed more than once",
+      "twinsDetail": "Different sources each installed a copy of the same tool. Typing its command in Terminal runs only one of them.",
+      "twinsFine": "No tool is installed more than once"
+    },
+    "homebrew": {
+      "fine": "Homebrew hasn't disabled or deprecated any tool, and keeps no other versions",
+      "retiredFine": "Homebrew hasn't disabled or deprecated any tool",
+      "otherVersions_one": "{{count}} tool keeps other versions",
+      "otherVersions_other": "{{count}} tools keep other versions",
+      "otherVersionsSize_one": "{{count}} tool keeps other versions, {{size}} in all",
+      "otherVersionsSize_other": "{{count}} tools keep other versions, {{size}} in all",
+      "otherVersionsFine": "No other versions are kept"
+    },
+    "disk": {
+      "total": "Installed tools take {{size}} in all",
+      "measuring": "Measuring the space used…"
+    }
+  },
   "clarity": {
     "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",

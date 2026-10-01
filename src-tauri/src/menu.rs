@@ -12,10 +12,11 @@
 //! Mail's; Check Again; Search -- bring the window back if it was closed
 //! or minimized and tell it, one event each (`PageCommand`, through
 //! `window::show_and_tell`), and the page runs the code its own controls
-//! run (src/lib/menu.ts). Help has one item of Banager's, Copy Diagnostic
-//! Info…, which the page answers by opening Settings on its button of that
-//! name, focused: the copy is the button's click, which a webview always
-//! lets write the clipboard.
+//! run (src/lib/menu.ts). Help has two items of Banager's: Check Tool
+//! Setup…, which opens the sheet Settings' About opens too, and Copy
+//! Diagnostic Info…, which the page answers by opening Settings on its
+//! button of that name, focused: the copy is the button's click, which a
+//! webview always lets write the clipboard.
 //!
 //! The page says which language: `set_menu_language`, at startup and at
 //! every change of language. Until it has, the menu bar is built in the
@@ -61,6 +62,11 @@ pub enum PageCommand {
     CheckAgain,
     /// Search (⌘F): the Installed page, with its search box focused.
     Search,
+    /// Help's Check Tool Setup…: the sheet that says how this Mac's
+    /// command-line tools are set up (src/components/ToolSetupSheet.tsx),
+    /// over whatever page is open, as Settings' About opens it. No
+    /// shortcut.
+    CheckToolSetup,
     /// Help's Copy Diagnostic Info…: Settings, on its button of that name
     /// (src/components/DiagnosticsRows.tsx), focused, which copies the text
     /// at its click -- the ellipsis says that one more step follows. No
@@ -71,7 +77,7 @@ pub enum PageCommand {
 impl PageCommand {
     /// In the menu bar's order: Settings… in the app's menu, then View's,
     /// then Help's.
-    pub const ALL: [PageCommand; 8] = [
+    pub const ALL: [PageCommand; 9] = [
         PageCommand::Settings,
         PageCommand::Overview,
         PageCommand::Updates,
@@ -79,6 +85,7 @@ impl PageCommand {
         PageCommand::Unknown,
         PageCommand::CheckAgain,
         PageCommand::Search,
+        PageCommand::CheckToolSetup,
         PageCommand::CopyDiagnostics,
     ];
 
@@ -92,12 +99,13 @@ impl PageCommand {
             PageCommand::Unknown => "unknown",
             PageCommand::CheckAgain => "check-again",
             PageCommand::Search => "search",
+            PageCommand::CheckToolSetup => "check-tool-setup",
             PageCommand::CopyDiagnostics => "copy-diagnostics",
         }
     }
 
     /// The event the window hears; src/lib/api.ts's `MENU_EVENTS` spells
-    /// the same eight.
+    /// the same nine.
     pub fn event(self) -> &'static str {
         match self {
             PageCommand::Settings => "menu://settings",
@@ -107,12 +115,13 @@ impl PageCommand {
             PageCommand::Unknown => "menu://unknown",
             PageCommand::CheckAgain => "menu://check-again",
             PageCommand::Search => "menu://search",
+            PageCommand::CheckToolSetup => "menu://check-tool-setup",
             PageCommand::CopyDiagnostics => "menu://copy-diagnostics",
         }
     }
 
     /// Its shortcut, as tauri writes one: ⌘, ⌘1 ⌘2 ⌘3 ⌘4 ⌘R ⌘F on a Mac;
-    /// none for Copy Diagnostic Info.
+    /// none for Help's two.
     pub fn shortcut(self) -> Option<&'static str> {
         match self {
             PageCommand::Settings => Some("CmdOrCtrl+Comma"),
@@ -122,7 +131,7 @@ impl PageCommand {
             PageCommand::Unknown => Some("CmdOrCtrl+4"),
             PageCommand::CheckAgain => Some("CmdOrCtrl+R"),
             PageCommand::Search => Some("CmdOrCtrl+F"),
-            PageCommand::CopyDiagnostics => None,
+            PageCommand::CheckToolSetup | PageCommand::CopyDiagnostics => None,
         }
     }
 
@@ -217,7 +226,10 @@ struct Words {
     zoom: &'static str,
     bring_all_to_front: &'static str,
     help: &'static str,
-    /// Help's one item of Banager's; Settings' button says the same
+    /// Help's first item of Banager's, named as the page names it
+    /// (`setupCheck.menu` in src/i18n), which a test checks.
+    check_tool_setup: &'static str,
+    /// Help's second; Settings' button says the same
     /// (`diagnostics.copy` in src/i18n), which a test checks.
     copy_diagnostics: &'static str,
 }
@@ -251,6 +263,7 @@ const ENGLISH: Words = Words {
     zoom: "Zoom",
     bring_all_to_front: "Bring All to Front",
     help: "Help",
+    check_tool_setup: "Check Tool Setup…",
     copy_diagnostics: "Copy Diagnostic Info…",
 };
 
@@ -283,6 +296,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     zoom: "缩放",
     bring_all_to_front: "前置全部窗口",
     help: "帮助",
+    check_tool_setup: "检查工具环境…",
     copy_diagnostics: "拷贝诊断信息…",
 };
 
@@ -291,8 +305,9 @@ const SIMPLIFIED_CHINESE: Words = Words {
 /// File, with Close Window; the Edit menu a text field needs; View with the
 /// sidebar's Overview, Updates and Installed and the last row under its
 /// 「来源」, Other Programs, ⌘1 to ⌘4 as Finder's and Mail's are, then the
-/// page's Check Again and Search; the Window menu; and Help, with Copy
-/// Diagnostic Info under the search field macOS puts there.
+/// page's Check Again and Search; the Window menu; and Help, with Check
+/// Tool Setup and Copy Diagnostic Info under the search field macOS puts
+/// there.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
@@ -363,7 +378,10 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
         TopMenu {
             id: HELP_SUBMENU_ID,
             label: words.help.to_string(),
-            items: vec![page(PageCommand::CopyDiagnostics, words.copy_diagnostics)],
+            items: vec![
+                page(PageCommand::CheckToolSetup, words.check_tool_setup),
+                page(PageCommand::CopyDiagnostics, words.copy_diagnostics),
+            ],
         },
     ]
 }
@@ -625,7 +643,7 @@ mod tests {
                     ],
                 ),
                 ("Window", &["Minimize", "Zoom", "—", "Bring All to Front"]),
-                ("Help", &["Copy Diagnostic Info…"]),
+                ("Help", &["Check Tool Setup…", "Copy Diagnostic Info…"]),
             ])
         );
     }
@@ -670,7 +688,7 @@ mod tests {
                     ],
                 ),
                 ("窗口", &["最小化", "缩放", "—", "前置全部窗口"]),
-                ("帮助", &["拷贝诊断信息…"]),
+                ("帮助", &["检查工具环境…", "拷贝诊断信息…"]),
             ])
         );
     }
@@ -696,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn test_every_item_but_the_pages_eight_is_macos_own() {
+    fn test_every_item_but_the_pages_nine_is_macos_own() {
         let bar = menu_bar(MenuLanguage::En, "Banager");
         let items: Vec<&Item> = bar.iter().flat_map(|menu| &menu.items).collect();
         let pages: Vec<PageCommand> = items
@@ -767,6 +785,7 @@ mod tests {
                 ("unknown", "menu://unknown", Some("CmdOrCtrl+4")),
                 ("check-again", "menu://check-again", Some("CmdOrCtrl+R")),
                 ("search", "menu://search", Some("CmdOrCtrl+F")),
+                ("check-tool-setup", "menu://check-tool-setup", None),
                 ("copy-diagnostics", "menu://copy-diagnostics", None),
             ]
         );
@@ -792,6 +811,7 @@ mod tests {
             Some(Code::Digit4),
             Some(Code::KeyR),
             Some(Code::KeyF),
+            None,
             None,
         ];
         for (command, key) in PageCommand::ALL.into_iter().zip(keys) {
@@ -852,6 +872,11 @@ mod tests {
             assert_eq!(
                 words.copy_diagnostics,
                 format!("{}…", locale["diagnostics"]["copy"].as_str().unwrap())
+            );
+            // And Check Tool Setup… as the page names it.
+            assert_eq!(
+                words.check_tool_setup,
+                locale["setupCheck"]["menu"].as_str().unwrap()
             );
         }
     }

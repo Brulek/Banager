@@ -830,6 +830,59 @@
       "noFacts": "系统信息：无法读取"
     }
   },
+  "setupCheck": {
+    "menu": "检查工具环境…",
+    "label": "工具环境",
+    "open": "检查…",
+    "openAriaLabel": "检查工具环境",
+    "title": "工具环境",
+    "pending": "检查还没有完成，下面是目前知道的情况。",
+    "neverChecked": "还没有检查过",
+    "sections": {
+      "terminal": "终端设置",
+      "sources": "来源",
+      "commands": "命令",
+      "homebrew": "Homebrew",
+      "disk": "磁盘"
+    },
+    "terminal": {
+      "loginRead": "已读取终端登录时的设置",
+      "loginNotRead": "无法读取终端登录时的设置，所以这次没有判断终端里运行的是哪一份",
+      "loginNotReadDetail": "从访达打开的App只带有系统默认的命令查找位置。用它来判断，几乎每个工具都会显示为终端里找不到。",
+      "noFacts": "无法读取终端的设置",
+      "foldersAllRead_other": "终端查找命令的{{count}}个文件夹都已读取",
+      "foldersSomeUnread": "终端查找命令的文件夹中，{{read}}个已读取，{{unread}}个无法读取",
+      "foldersUnreadDetail": "无法读取的文件夹在受保护的位置，或者不允许列出内容。里面有哪些命令无法得知，受它们影响的判断不会给出。",
+      "foldersCount": "终端查找命令的文件夹：{{number}}个",
+      "unreadFolders": "无法读取：{{folders}}"
+    },
+    "sources": {
+      "allFine": "所有来源都正常回应",
+      "othersFine": "其他来源都正常回应",
+      "state": "{{source}}：{{state}}",
+      "checkUnfinished": "这次没有检查完",
+      "none": "没有找到可以管理的来源",
+      "otherPrograms": "不属于这些来源的命令行程序在“其他程序”里"
+    },
+    "commands": {
+      "allFine": "终端都能找到已安装的工具，也没有装了不止一份的",
+      "notOnPathFine": "终端都能找到已安装的工具",
+      "twins_other": "{{count}}个工具装了不止一份",
+      "twinsDetail": "同一个工具由不同的来源各装了一份。在终端里输入它的命令，只会运行其中一份。",
+      "twinsFine": "没有装了不止一份的工具"
+    },
+    "homebrew": {
+      "fine": "没有Homebrew已停用或弃用的工具，也没有保留的其他版本",
+      "retiredFine": "没有Homebrew已停用或弃用的工具",
+      "otherVersions_other": "{{count}}个工具保留了其他版本",
+      "otherVersionsSize_other": "{{count}}个工具保留了其他版本，共{{size}}",
+      "otherVersionsFine": "没有保留的其他版本"
+    },
+    "disk": {
+      "total": "已安装的工具共占用{{size}}",
+      "measuring": "占用的空间正在计算…"
+    }
+  },
   "clarity": {
     "diagnosticsDetail": "其中有macOS版本、各来源的位置和状态，以及查找命令的文件夹。个人文件夹写成“~”，除这些文件夹外不含其他环境变量的值。",
     "keptLeftOut": "不含{{path}}，那里是另一份单独安装的程序。",
