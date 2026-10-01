@@ -57,9 +57,9 @@ report them all.
   another copy or program, or nothing, when the command sits in a folder Terminal doesn't search —
   judged from the Terminal settings read when Banager opened. A tool another source installed too says
   **Installed twice**, and where Banager can tell, its details say which copy Terminal runs.
-- A package Homebrew has disabled or deprecated says so, with what that means and the name Homebrew
-  suggests instead. The details also list a formula's other installed versions and Homebrew's own
-  notes, in English, folded.
+- A package Homebrew has disabled or deprecated says so, with what that means and, where Homebrew
+  gives one, the name it suggests instead. The details also list a formula's other installed versions
+  and Homebrew's own notes, in English, folded.
 - After each check Banager measures, read-only, how much disk the tools take: a tool's details show its
   size once measured, the Installed page can be sorted **By Size**, and sorted by source a heading says
   what that source's measured tools take in all.
@@ -74,7 +74,8 @@ report them all.
   deletes them.
 - When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
   command to copy and run in Terminal, where you can type it.
-- With **Check for updates every day** on, Settings says when the next check is due. Its **Copy
+- With **Check for updates every day** on, Settings says about when the next check is due, while
+  Banager is running. Its **Copy
   Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
   this Mac and its sources to paste to whoever is helping you; it lists your tools only when you tick
   the box, and writes your home folder as `~`.
@@ -412,7 +413,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
   运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。别的来源也装了
   一份的工具会标“装了两份”，能判断时，详情里说终端运行的是哪一份。
-- Homebrew 停用或弃用了的软件会标出来，并说明这意味着什么、Homebrew 建议改用哪个。详情里还列出 formula
+- Homebrew 停用或弃用了的软件会标出来，并说明这意味着什么；Homebrew 给了建议时，也写出建议改用哪个。详情里还列出 formula
   装着的其他版本，以及 Homebrew 自己的英文说明（默认收起）。
 - 每次检查后，Banager 以只读方式计算各工具占用的磁盘空间：算好后详情里能看到，“已安装”页可以“按大小”排序，
   按来源排序时，来源标题后写着它算出大小的工具一共占多少。
@@ -424,7 +425,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里
   输入密码。
-- 打开“每天自动检查”后，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
+- 打开“每天自动检查”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
   带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
   工具清单，个人文件夹的路径写成 `~`。
 - 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的
