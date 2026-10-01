@@ -23,7 +23,7 @@ use banager_core::notify_operations::{self, FinishedRun, ReportedRuns, RunKind, 
 use banager_core::notify_updates::Focus;
 use banager_core::settings::Settings;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, Runtime, State};
 
 /// The runs reported in this run of Banager (`ReportedRuns`), managed on
 /// the builder in `run()`. In memory only.
@@ -58,6 +58,52 @@ pub async fn report_finished_run(
         }
     }
     Ok(())
+}
+
+/// Banager has left the front (`window::observe_activation`): a run
+/// withheld while it was in front with its window closed or in the Dock
+/// is posted now, as `report_finished_run` posts one, while
+/// 「操作完成时通知」 is still on. On the main thread, where AppKit tells
+/// of it; the post itself is handed to a thread of its own (`notify::post`).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn on_left_front<R: Runtime>(app: &AppHandle<R>) {
+    let runs = app.state::<OperationRuns>();
+    if runs.0.lock().unwrap().withheld().is_none() {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let language = notify::language(app, &state);
+    let title = app.package_info().name.clone();
+    let posted = post_withheld(&runs, &state.get_settings(), |run| {
+        notify::post(app, &title, &body(language, run), Answer::ShowWindow)
+    });
+    match posted {
+        Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("[banager] could not post the notification that operations finished: {e}")
+        }
+    }
+}
+
+/// The window has taken the focus (`window::on_window_event`): a run
+/// withheld while it was away is on the operation bar for the user to
+/// see, and is never posted.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn on_window_focused<R: Runtime>(app: &AppHandle<R>) {
+    app.state::<OperationRuns>().0.lock().unwrap().seen();
+}
+
+/// What Banager leaving the front does: `notify_operations::post_withheld`
+/// over the runs reported so far, whether 「操作完成时通知」 is on as
+/// `settings` are saved, with `post` to post the notification.
+pub(crate) fn post_withheld(
+    runs: &OperationRuns,
+    settings: &Settings,
+    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+) -> Result<RunNotice, String> {
+    let mut reported = runs.0.lock().unwrap();
+    notify_operations::post_withheld(&mut reported, settings.notify_operations, post)
 }
 
 /// A report's whole effect: `notify_operations::report` over the runs
@@ -205,6 +251,44 @@ mod tests {
                 panic!("posted a run the user watched")
             }),
             Ok(RunNotice::Watched)
+        );
+    }
+
+    #[test]
+    fn test_a_run_finished_with_the_window_closed_and_banager_in_front_posts_when_banager_leaves_the_front(
+    ) {
+        let runs = OperationRuns::default();
+        let finished = run(RunKind::Upgrade, 3, 0, 0);
+        assert_eq!(
+            report(&runs, &on(), Focus::App, &finished, |_| panic!(
+                "posted while Banager was in front"
+            )),
+            Ok(RunNotice::Withheld)
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            post_withheld(&runs, &on(), |run| {
+                posted.borrow_mut().push(body(MenuLanguage::ZhCn, run));
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), ["已更新3个工具"]);
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| panic!("posted twice")),
+            Ok(RunNotice::Nothing)
+        );
+    }
+
+    #[test]
+    fn test_a_withheld_run_is_not_posted_once_the_window_has_had_the_focus() {
+        let runs = OperationRuns::default();
+        let finished = run(RunKind::Uninstall, 2, 0, 0);
+        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        runs.0.lock().unwrap().seen();
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| panic!("posted a run the user saw")),
+            Ok(RunNotice::Nothing)
         );
     }
 

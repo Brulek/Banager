@@ -58,13 +58,34 @@ impl FinishedRun {
             .saturating_add(self.failed)
             .saturating_add(self.attention)
     }
+
+    /// This run and `later` told of in one notification: the newer of the
+    /// two newest operations, each way they ended added up, and `Other`
+    /// unless both did the same.
+    pub fn and(&self, later: &FinishedRun) -> FinishedRun {
+        FinishedRun {
+            last_op: self.last_op.max(later.last_op),
+            kind: if self.kind == later.kind {
+                self.kind
+            } else {
+                RunKind::Other
+            },
+            succeeded: self.succeeded.saturating_add(later.succeeded),
+            failed: self.failed.saturating_add(later.failed),
+            attention: self.attention.saturating_add(later.attention),
+        }
+    }
 }
 
-/// The newest operation of the runs reported in this run of Banager. In
-/// memory only.
+/// The newest operation of the runs reported in this run of Banager, and
+/// the run withheld while Banager was in front with its window not
+/// focused, which waits for Banager to leave the front
+/// ([`post_withheld`]) or for the window to take the focus
+/// ([`ReportedRuns::seen`]). In memory only.
 #[derive(Debug, Default)]
 pub struct ReportedRuns {
     through: Option<u64>,
+    withheld: Option<FinishedRun>,
 }
 
 impl ReportedRuns {
@@ -76,6 +97,22 @@ impl ReportedRuns {
 
     fn mark(&mut self, run: &FinishedRun) {
         self.through = Some(self.through.map_or(run.last_op, |t| t.max(run.last_op)));
+    }
+
+    /// The run waiting to be posted when Banager leaves the front, if
+    /// any: every run withheld since the last post, told of together.
+    pub fn withheld(&self) -> Option<&FinishedRun> {
+        self.withheld.as_ref()
+    }
+
+    /// The window has taken the focus: the operation bar tells the user
+    /// how the withheld run went, and it is never posted.
+    pub fn seen(&mut self) {
+        self.withheld = None;
+    }
+
+    fn withhold(&mut self, run: &FinishedRun) {
+        self.withheld = Some(self.withheld.map_or(*run, |w| w.and(run)));
     }
 }
 
@@ -89,8 +126,10 @@ pub enum RunNotice {
     /// operation bar. Nothing is posted, whatever the setting.
     Watched,
     /// Banager is the app in front without its window focused
-    /// ([`Focus::App`]), where macOS would show no banner: nothing is
-    /// posted, as the update notification posts nothing then.
+    /// ([`Focus::App`]) -- its window closed or in the Dock -- where macOS
+    /// would show no banner: nothing is posted now. The run waits
+    /// ([`ReportedRuns::withheld`]), and is posted once Banager leaves the
+    /// front ([`post_withheld`]), unless the window takes the focus first.
     Withheld,
     /// One notification, telling of the run.
     Post,
@@ -122,9 +161,12 @@ pub fn decide(on: bool, focus: Focus, run: &FinishedRun, reported: &ReportedRuns
 }
 
 /// A report's whole effect: what `decide` answers, carried out. `Post`
-/// calls `post`, and its error is handed back for the caller to log. The
-/// run is marked as reported whatever the answer, a failed post included:
-/// the page reports a run once, and a run is news only as it ends.
+/// calls `post` -- with a run withheld before told of in the same
+/// notification -- and its error is handed back for the caller to log.
+/// `Withheld` keeps the run waiting for Banager to leave the front
+/// ([`post_withheld`]); `Watched` drops a run waiting, which the user now
+/// sees on the operation bar. The run is marked as reported whatever the
+/// answer, a failed post included: the page reports a run once.
 pub fn report(
     reported: &mut ReportedRuns,
     on: bool,
@@ -137,10 +179,36 @@ pub fn report(
         return Ok(notice);
     }
     reported.mark(run);
-    if notice == RunNotice::Post {
-        post(run)?;
+    match notice {
+        RunNotice::Nothing => {}
+        RunNotice::Watched => reported.seen(),
+        RunNotice::Withheld => reported.withhold(run),
+        RunNotice::Post => {
+            let whole = reported.withheld.take().map_or(*run, |w| w.and(run));
+            post(&whole)?;
+        }
     }
     Ok(notice)
+}
+
+/// Banager has left the front -- another app is now in front
+/// ([`Focus::Away`]) -- and a run withheld while it was there
+/// ([`RunNotice::Withheld`]) is posted now, while the setting is still on
+/// (`on`). `Post` when it was, else `Nothing`; the run no longer waits
+/// either way, a failed post included, whose error is handed back.
+pub fn post_withheld(
+    reported: &mut ReportedRuns,
+    on: bool,
+    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+) -> Result<RunNotice, String> {
+    let Some(run) = reported.withheld.take() else {
+        return Ok(RunNotice::Nothing);
+    };
+    if !on {
+        return Ok(RunNotice::Nothing);
+    }
+    post(&run)?;
+    Ok(RunNotice::Post)
 }
 
 #[cfg(test)]
@@ -212,12 +280,116 @@ mod tests {
     }
 
     #[test]
-    fn test_with_banager_in_front_and_its_window_closed_nothing_is_posted() {
+    fn test_with_banager_in_front_and_its_window_closed_nothing_is_posted_yet() {
         let reported = ReportedRuns::default();
         assert_eq!(
             decide(true, Focus::App, &three_updated(), &reported),
             RunNotice::Withheld
         );
+    }
+
+    #[test]
+    fn test_a_run_withheld_with_the_window_closed_is_posted_once_banager_leaves_the_front() {
+        // The window closed, Banager still in front: the user walked away.
+        let mut reported = ReportedRuns::default();
+        let never = |_: &FinishedRun| -> Result<(), String> { panic!("posted while in front") };
+        assert_eq!(
+            report(&mut reported, true, Focus::App, &three_updated(), never),
+            Ok(RunNotice::Withheld)
+        );
+        assert_eq!(reported.withheld(), Some(&three_updated()));
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            post_withheld(&mut reported, true, |run| {
+                posted.borrow_mut().push(*run);
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), [three_updated()]);
+        let never = |_: &FinishedRun| -> Result<(), String> { panic!("posted twice") };
+        assert_eq!(
+            post_withheld(&mut reported, true, never),
+            Ok(RunNotice::Nothing),
+            "leaving the front again posts nothing more"
+        );
+        assert_eq!(
+            report(&mut reported, true, Focus::Away, &three_updated(), never),
+            Ok(RunNotice::Nothing),
+            "nor does the same run reported again"
+        );
+    }
+
+    #[test]
+    fn test_a_withheld_run_is_dropped_when_the_window_takes_the_focus_or_the_setting_goes_off() {
+        let never = |_: &FinishedRun| -> Result<(), String> { panic!("posted") };
+        let mut reported = ReportedRuns::default();
+        report(&mut reported, true, Focus::App, &three_updated(), never).unwrap();
+        reported.seen();
+        assert_eq!(reported.withheld(), None);
+        assert_eq!(
+            post_withheld(&mut reported, true, never),
+            Ok(RunNotice::Nothing),
+            "the user saw it on the operation bar"
+        );
+
+        let mut reported = ReportedRuns::default();
+        report(&mut reported, true, Focus::App, &three_updated(), never).unwrap();
+        report(
+            &mut reported,
+            true,
+            Focus::Window,
+            &run(4, RunKind::Uninstall, 1, 0, 0),
+            never,
+        )
+        .unwrap();
+        assert_eq!(reported.withheld(), None, "a run watched in the window");
+
+        let mut reported = ReportedRuns::default();
+        report(&mut reported, true, Focus::App, &three_updated(), never).unwrap();
+        assert_eq!(
+            post_withheld(&mut reported, false, never),
+            Ok(RunNotice::Nothing),
+            "turned off since"
+        );
+        assert_eq!(reported.withheld(), None);
+    }
+
+    #[test]
+    fn test_runs_withheld_one_after_another_are_told_of_in_one_notification() {
+        let never = |_: &FinishedRun| -> Result<(), String> { panic!("posted while in front") };
+        let mut reported = ReportedRuns::default();
+        report(&mut reported, true, Focus::App, &three_updated(), never).unwrap();
+        report(
+            &mut reported,
+            true,
+            Focus::App,
+            &run(5, RunKind::Upgrade, 1, 1, 0),
+            never,
+        )
+        .unwrap();
+        assert_eq!(
+            reported.withheld(),
+            Some(&run(5, RunKind::Upgrade, 4, 1, 0))
+        );
+        // Another run ending with another app in front takes the withheld
+        // one with it.
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(
+                &mut reported,
+                true,
+                Focus::Away,
+                &run(6, RunKind::Uninstall, 1, 0, 0),
+                |run| {
+                    posted.borrow_mut().push(*run);
+                    Ok(())
+                }
+            ),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), [run(6, RunKind::Other, 5, 1, 0)]);
+        assert_eq!(reported.withheld(), None);
     }
 
     #[test]
@@ -287,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn test_a_watched_or_unposted_run_is_still_reported_and_never_posted_later() {
+    fn test_a_watched_run_is_still_reported_and_never_posted_later() {
         let mut reported = ReportedRuns::default();
         let never = |_: &FinishedRun| -> Result<(), String> { panic!("posted a watched run") };
         assert_eq!(

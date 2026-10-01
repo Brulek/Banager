@@ -170,6 +170,7 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     }
     if let WindowEvent::Focused(true) = event {
         window.state::<NotificationPending>().clear();
+        crate::notify_ops::on_window_focused(window.app_handle());
         return;
     }
     let WindowEvent::CloseRequested { api, .. } = event else {
@@ -227,14 +228,22 @@ pub fn on_run_event<R: Runtime>(_app: &AppHandle<R>, _event: RunEvent) {}
 /// front: AppKit's `NSApplicationDidBecomeActiveNotification`, which it
 /// posts on the main thread whatever brought Banager there -- a click on
 /// its notification, ⌘-Tab, its Dock icon -- and which `on_activated`
-/// handles. Called once, from `run()`'s setup.
+/// handles. And for Banager leaving the front,
+/// `NSApplicationDidResignActiveNotification`, when a run of operations
+/// that finished while Banager was in front with its window closed is
+/// posted (`notify_ops::on_left_front`). Called once, from `run()`'s
+/// setup.
 #[cfg(target_os = "macos")]
 pub fn observe_activation<R: Runtime>(app: &AppHandle<R>) {
-    let app = app.clone();
+    let activated = app.clone();
     // SAFETY: an extern static of AppKit's, a constant string that lives
     // as long as the process.
     let name = unsafe { objc2_app_kit::NSApplicationDidBecomeActiveNotification };
-    observe(name, move || on_activated(&app));
+    observe(name, move || on_activated(&activated));
+    let left = app.clone();
+    // SAFETY: as above.
+    let name = unsafe { objc2_app_kit::NSApplicationDidResignActiveNotification };
+    observe(name, move || crate::notify_ops::on_left_front(&left));
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -441,11 +441,16 @@ they were, and the number of its newest operation (`report_finished_run`
 in `src-tauri/src/notify_ops.rs`). Rust posts one notification only when
 the switch is on and another app is in front, not Banager — never for a
 run that finished while the window had the focus, which the user watched
-on the operation bar, and nothing while Banager is in front with its
-window closed, as for the update notification — and only once for a run
+on the operation bar — and only once for a run
 (`notify_operations::decide` in
 `crates/banager-core/src/notify_operations.rs`). A run whose every
-operation was cancelled posts nothing.
+operation was cancelled posts nothing. A run that finishes while Banager
+is still the app in front with its window closed or in the Dock, where
+macOS would show no banner, waits: it is posted when another app comes to
+the front (`NSApplicationDidResignActiveNotification`,
+`notify_ops::on_left_front`), together with any other run that finished
+meanwhile, and dropped if the window takes the focus first, since the
+operation bar then shows how it went.
 
 It is titled Banager and says how the run went in the window's language:
 "Updated N tools" (「已更新N个工具」) when every one worked, and otherwise
