@@ -1469,3 +1469,44 @@ fn test_a_path_folder_spelled_in_another_case_is_the_same_folder() {
         vec![home.at(".CARGO/bin").as_path()]
     );
 }
+
+#[test]
+fn test_a_name_in_another_case_earlier_on_path_is_the_copy_that_runs() {
+    // On a Mac's disk, typing `claude` runs `~/bin/CLAUDE`: a name is
+    // found whatever case the folder spells it in, so the copy further
+    // down `PATH` does not run.
+    let home = Home::new("name-case");
+    fs::create_dir_all(home.at(".case-probe")).unwrap();
+    if !home.at(".CASE-PROBE").exists() {
+        return; // a case-sensitive disk: `CLAUDE` is not `claude` there
+    }
+    let real = home.exe(".local/share/claude/versions/2.1.281");
+    let launcher = home.link(".local/bin/claude", &real);
+    home.exe("bin/CLAUDE");
+    let instances = vec![instance(
+        "standalone-claude",
+        "standalone-claude",
+        &home.at(".local/share/claude"),
+        &launcher,
+    )];
+    let artifacts = vec![artifact(
+        "standalone-claude",
+        ArtifactKind::Binary,
+        "claude",
+    )];
+    let found = verdicts(
+        &home,
+        &[home.at("bin"), home.at(".local/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![vec![shadowed("claude", None)]]);
+    // And one in another case after it changes nothing.
+    let found = verdicts(
+        &home,
+        &[home.at(".local/bin"), home.at("bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![vec![runs("claude")]]);
+}

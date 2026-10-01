@@ -2000,7 +2000,7 @@ It reads:
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit |
-| in each `PATH` folder, the entry of each name some tool provides | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
+| in each `PATH` folder, the entry of each name some tool provides, whatever ASCII case the folder spells it in (on a Mac's disk, typing `node` runs `NODE`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
 "Where it leads" is found one step at a time, as `realpath` would, but
 with only `lstat` of each folder and link on the way and `readlink` of

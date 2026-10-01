@@ -63,9 +63,10 @@ use crate::model::{
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use crate::scan::display_path;
-use std::collections::{BTreeSet, HashMap};
-use std::ffi::{OsStr, OsString};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::ffi::OsString;
 use std::fs::Metadata;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -106,7 +107,21 @@ struct Folder {
     given: PathBuf,
     canonical: PathBuf,
     names: BTreeSet<OsString>,
+    /// `names`, each as `protected::folded` spells it: what `holds` looks
+    /// a command's name up in.
+    folded: HashSet<Vec<u8>>,
     read: bool,
+}
+
+impl Folder {
+    /// Whether the folder has an entry a shell would find for `name`:
+    /// on a Mac's disk, whose names do not tell ASCII case apart, typing
+    /// `node` runs `NODE` (the same rule as `protected::same_path`). Where
+    /// it leads is then looked up by `name` itself, so a disk that does
+    /// tell case apart answers that nothing is there.
+    fn holds(&self, name: &str) -> bool {
+        self.folded.contains(&name.as_bytes().to_ascii_lowercase())
+    }
 }
 
 /// The folders one round read (`read_folders`).
@@ -249,6 +264,7 @@ fn read_one(
         given: dir.to_path_buf(),
         canonical,
         names: BTreeSet::new(),
+        folded: HashSet::new(),
         read: false,
     };
     let canonical = match protected::resolve(dir, protected, true) {
@@ -287,10 +303,15 @@ fn read_one(
             names.insert(entry.file_name());
         }
     }
+    let folded = names
+        .iter()
+        .map(|name| name.as_bytes().to_ascii_lowercase())
+        .collect();
     Ok(Some(Folder {
         given: dir.to_path_buf(),
         canonical,
         names,
+        folded,
         read: true,
     }))
 }
@@ -432,7 +453,7 @@ pub fn judge(
                         if !folder.read {
                             return Some(Seen::Unread);
                         }
-                        if !folder.names.contains(OsStr::new(&claim.name)) {
+                        if !folder.holds(&claim.name) {
                             return None;
                         }
                         match look.resolve(&folder.canonical.join(&claim.name)) {
