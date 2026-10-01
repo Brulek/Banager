@@ -14,7 +14,7 @@ import {
   type SetupView,
 } from "../lib/toolSetupCheck";
 import { useUiStore } from "../store/ui";
-import { CheckCircleIcon, InfoIcon, SpinnerIcon } from "./icons";
+import { CheckCircleIcon, SpinnerIcon } from "./icons";
 import { TextWithInfo } from "./InfoDetail";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "./PageHeader";
 import { FilledWarningIcon } from "./StatusSymbol";
@@ -28,7 +28,9 @@ function LineSymbol({ kind }: { kind: SetupSymbol }) {
     case "warning":
       return <FilledWarningIcon size={16} className="text-warning" />;
     case "note":
-      return <InfoIcon size={16} className="shrink-0 text-muted" />;
+      // No glyph: an ⓘ in this app is a button that explains, and a line's
+      // own ⓘ is one -- two on a line read as two things to press.
+      return <span aria-hidden="true" className="w-4 shrink-0" />;
     case "busy":
       return <SpinnerIcon size={16} className="shrink-0 text-muted" />;
     case "fine":
@@ -185,6 +187,12 @@ export function ToolSetupSheet() {
       {check?.pending ? (
         <p role="status" className="mt-1 text-body text-foreground">
           {t("setupCheck.pending")}
+        </p>
+      ) : null}
+      {check !== null && !check.pending && check.attention > 0 ? (
+        <p data-setup-summary="" className="mt-1 flex items-center gap-2 text-body text-foreground">
+          <FilledWarningIcon size={16} className="text-warning" />
+          {t("reviewFixes.setupAttention", { count: check.attention })}
         </p>
       ) : null}
       {check?.sections.map((section) => (

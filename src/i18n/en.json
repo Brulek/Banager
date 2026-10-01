@@ -884,7 +884,9 @@
     "hostedThrough_one": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
     "hostedThrough_other": "{{names}}, installed with {{program}}, may use it too, and may stop working after this.",
     "selectAgain_one": "Select It Again",
-    "selectAgain_other": "Select Them Again"
+    "selectAgain_other": "Select Them Again",
+    "setupAttention_one": "{{count}} item needs attention",
+    "setupAttention_other": "{{count}} items need attention"
   },
   "keepsData": {
     "title": "Stays after uninstalling",
@@ -1020,13 +1022,13 @@
   "setupCheck": {
     "menu": "Check Tool Setup…",
     "label": "Tool setup",
-    "open": "Check…",
+    "open": "View…",
     "title": "Tool Setup",
     "pending": "The check hasn't finished. Here's what's known so far.",
     "neverChecked": "Not checked yet",
     "viewLabel": "Show: {{line}}",
     "sections": {
-      "terminal": "Terminal settings",
+      "terminal": "Finding Commands in Terminal",
       "sources": "Sources",
       "commands": "Commands",
       "homebrew": "Homebrew",

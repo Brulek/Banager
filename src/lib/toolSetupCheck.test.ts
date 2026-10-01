@@ -146,7 +146,7 @@ function lineOf(check: ToolSetupCheck, section: string, id: string): SetupLine {
 describe("toolSetupCheck, on a Mac with nothing wrong", () => {
   it("says each section is fine in one line, in English", () => {
     expect(shape(toolSetupCheck(en, input()))).toEqual({
-      "Terminal settings": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
+      "Finding Commands in Terminal": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: [
         "fine Every source answered normally · Homebrew, npm",
         "note Command-line programs from other sources are in Other Programs → unknown",
@@ -159,7 +159,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
 
   it("and in Chinese", () => {
     expect(shape(toolSetupCheck(zh, input()))).toEqual({
-      终端设置: ["fine 终端设置读取正常，查找命令的3个文件夹也都能读取"],
+      在终端里查找命令: ["fine 终端设置读取正常，查找命令的3个文件夹也都能读取"],
       来源: [
         "fine 所有来源都正常回应 · Homebrew、npm",
         "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
@@ -208,7 +208,7 @@ describe("toolSetupCheck's terminal lines", () => {
   it("counts the folders read and not read, and names the unread ones only with technical details on", () => {
     const facts: SystemFacts = { ...FACTS, path_folders: { read: 9, unread: ["~/Documents/bin", "/Volumes/x/bin"] } };
     const quiet = toolSetupCheck(zh, input({ facts }));
-    expect(shape(quiet)["终端设置"]).toEqual([
+    expect(shape(quiet)["在终端里查找命令"]).toEqual([
       "fine 已读取终端登录时的设置",
       "note 终端查找命令的文件夹中，9个已读取，2个无法读取",
     ]);
@@ -222,14 +222,14 @@ describe("toolSetupCheck's terminal lines", () => {
 
   it("says how many folders there are, and nothing of which were read, before a round has read them", () => {
     const check = toolSetupCheck(en, input({ facts: { ...FACTS, path_folders: null } }));
-    expect(shape(check)["Terminal settings"]).toEqual([
+    expect(shape(check)["Finding Commands in Terminal"]).toEqual([
       "fine Terminal's login settings were read",
       "note Folders Terminal looks in for commands: 3",
     ]);
     // A fixture from before the field: read as null.
     const { path_folders: _, ...older } = FACTS;
-    expect(shape(toolSetupCheck(en, input({ facts: older })))["Terminal settings"]).toEqual(
-      shape(check)["Terminal settings"],
+    expect(shape(toolSetupCheck(en, input({ facts: older })))["Finding Commands in Terminal"]).toEqual(
+      shape(check)["Finding Commands in Terminal"],
     );
   });
 
@@ -241,8 +241,8 @@ describe("toolSetupCheck's terminal lines", () => {
   });
 
   it("waits for the facts, and says when they could not be had", () => {
-    expect(shape(toolSetupCheck(en, input({ facts: undefined })))["Terminal settings"]).toEqual(["busy Loading…"]);
-    expect(shape(toolSetupCheck(zh, input({ facts: null })))["终端设置"]).toEqual(["warning 无法读取终端的设置"]);
+    expect(shape(toolSetupCheck(en, input({ facts: undefined })))["Finding Commands in Terminal"]).toEqual(["busy Loading…"]);
+    expect(shape(toolSetupCheck(zh, input({ facts: null })))["在终端里查找命令"]).toEqual(["warning 无法读取终端的设置"]);
   });
 });
 
@@ -471,7 +471,7 @@ describe("toolSetupCheck while the first check runs", () => {
     const check = toolSetupCheck(zh, input({ snapshot, pending: true, facts: { ...FACTS, path_folders: null } }));
     expect(check.pending).toBe(true);
     expect(shape(check)).toEqual({
-      终端设置: ["fine 已读取终端登录时的设置", "note 终端查找命令的文件夹：3个"],
+      在终端里查找命令: ["fine 已读取终端登录时的设置", "note 终端查找命令的文件夹：3个"],
       来源: [
         `warning npm：没有响应 → source:${NPM}`,
         // No source has answered a check yet: nothing found, not "answered normally".
@@ -493,9 +493,17 @@ describe("toolSetupCheck while the first check runs", () => {
   it("says it is checking while nothing is listed yet", () => {
     const check = toolSetupCheck(en, input({ snapshot: null, pending: true }));
     expect(shape(check)).toEqual({
-      "Terminal settings": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
+      "Finding Commands in Terminal": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: ["busy Checking…"],
       Commands: ["busy These appear here when the check finishes"],
     });
+  });
+});
+
+describe("toolSetupCheck's order", () => {
+  it("puts the sections with a ⚠︎ line first, and counts the ⚠︎ lines", () => {
+    const fine = toolSetupCheck(en, input());
+    expect(fine.attention).toBe(0);
+    expect(fine.sections.map((section) => section.id)).toEqual(["terminal", "sources", "commands", "homebrew", "disk"]);
   });
 });

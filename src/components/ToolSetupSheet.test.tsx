@@ -133,13 +133,19 @@ describe("ToolSetupSheet", () => {
     const { dialog, getByRole } = await openedFromHelp();
     // Under it, out of reach while it is open.
     expect(getByRole("heading", { level: 1, name: "Overview", hidden: true })).toBeInTheDocument();
+    // What needs attention first: the sections with a ⚠︎ line, then the rest
+    // in their own order, under a line that counts the ⚠︎s.
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      "Terminal settings",
       "Sources",
       "Commands",
+      "Finding Commands in Terminal",
       "Homebrew",
       "Disk",
     ]);
+    const summary = dialog.querySelector("[data-setup-summary]");
+    const warnings = dialog.querySelectorAll('[data-symbol="warning"]').length;
+    expect(warnings).toBeGreaterThan(0);
+    expect(summary).toHaveTextContent(warnings === 1 ? "1 item needs attention" : `${warnings} items need attention`);
     // A source that does not answer, named with its state, and the others said once.
     expect(within(dialog).getByText("uv: Not responding")).toBeInTheDocument();
     expect(within(dialog).getByText("The other sources answered normally")).toBeInTheDocument();
@@ -182,7 +188,7 @@ describe("ToolSetupSheet", () => {
     useUiStore.setState({ page: "settings" });
     const { findByRole, queryByRole } = renderWithProviders(<App />);
     const open = await findByRole("button", { name: "Check Tool Setup…" });
-    expect(open).toHaveTextContent(/^Check…$/);
+    expect(open).toHaveTextContent(/^View…$/);
     open.focus();
     fireEvent.click(open);
     const dialog = await findByRole("dialog", { name: "Tool Setup" });

@@ -801,7 +801,8 @@
     "cannotUninstallOne": "无法在这里卸载“{{name}}”",
     "passwordNamed_other": "{{names}}可能会要求输入Mac的密码。",
     "hostedThrough_other": "用“{{program}}”装的{{names}}可能也在用它，卸载后可能无法运行。",
-    "selectAgain_other": "重新选择这些工具"
+    "selectAgain_other": "重新选择这些工具",
+    "setupAttention_other": "{{count}}项需要查看"
   },
   "keepsData": {
     "title": "卸载后会保留",
@@ -937,13 +938,13 @@
   "setupCheck": {
     "menu": "检查工具环境…",
     "label": "工具环境",
-    "open": "检查…",
+    "open": "查看…",
     "title": "工具环境",
     "pending": "检查还没有完成，下面是目前知道的情况。",
     "neverChecked": "还没有检查过",
     "viewLabel": "查看：{{line}}",
     "sections": {
-      "terminal": "终端设置",
+      "terminal": "在终端里查找命令",
       "sources": "来源",
       "commands": "命令",
       "homebrew": "Homebrew",

@@ -818,7 +818,7 @@ describe("OverviewPage", () => {
   it("offers Check Tool Setup under the automatic check, as Settings' 关于 does", async () => {
     const { findByRole } = renderOverview();
     const open = await findByRole("button", { name: "Check Tool Setup…" });
-    expect(open).toHaveTextContent(/^Check…$/);
+    expect(open).toHaveTextContent(/^View…$/);
     const row = open.closest("[data-overview-tool-setup]") as HTMLElement;
     expect(row).toHaveTextContent("Tool setup");
     expect(row).toHaveTextContent("Whether Terminal finds your tools, and how each source is doing.");

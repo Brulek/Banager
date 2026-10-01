@@ -94,7 +94,14 @@ export interface ToolSetupInput {
 export interface ToolSetupCheck {
   /** The first check has not finished: the sheet says so over the sections. */
   pending: boolean;
+  /**
+   * The sections, those with a ⚠︎ line first and, within each, its ⚠︎ lines
+   * first, each kept in its own order otherwise: what needs attention is
+   * what the sheet opens on.
+   */
   sections: SetupSection[];
+  /** How many lines have the ⚠︎: the sheet's one-line summary over them. */
+  attention: number;
 }
 
 function line(
@@ -379,7 +386,17 @@ export function toolSetupCheck(t: Translate, input: ToolSetupInput): ToolSetupCh
   add("commands", commandLines(t, input));
   add("homebrew", homebrewLines(t, input));
   add("disk", diskLines(t, input));
-  return { pending: input.pending, sections };
+  const warns = (line: SetupLine) => line.symbol === "warning";
+  const first = <T,>(items: T[], comesFirst: (item: T) => boolean): T[] => [
+    ...items.filter(comesFirst),
+    ...items.filter((item) => !comesFirst(item)),
+  ];
+  const ordered = first(
+    sections.map((section) => ({ ...section, lines: first(section.lines, warns) })),
+    (section) => section.lines.some(warns),
+  );
+  const attention = sections.reduce((sum, section) => sum + section.lines.filter(warns).length, 0);
+  return { pending: input.pending, sections: ordered, attention };
 }
 
 /** Whether the sheet is open: Help's item and Settings' button open it, wherever the window is. */

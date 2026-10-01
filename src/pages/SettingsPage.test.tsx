@@ -1371,7 +1371,7 @@ describe("SettingsPage's icon credits", () => {
       "View…",
       // Then Tool setup, whose Check… opens the sheet (ToolSetupSheet.test.tsx).
       "Tool setup",
-      "Check…",
+      "View…",
       // Then Diagnostic info, its checkbox and Copy Diagnostic Info, and
       // what the text holds (DiagnosticsRows.test.tsx).
       "Diagnostic info",
