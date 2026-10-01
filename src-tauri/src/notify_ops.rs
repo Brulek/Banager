@@ -36,7 +36,8 @@ pub struct OperationRuns(Mutex<ReportedRuns>);
 /// in the window's language. A notification handed off waits on the window
 /// (`NotificationPending::set_window`), which a click on it, bringing
 /// Banager to the front, brings back as it was left. One that could not be
-/// handed off is logged; the page is told nothing.
+/// handed off is logged; the page is told nothing. A run withheld is
+/// looked at again on the main thread (`look_again_on_main_thread`).
 #[tauri::command]
 pub async fn report_finished_run(
     app: AppHandle,
@@ -52,6 +53,7 @@ pub async fn report_finished_run(
     });
     match reported {
         Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
+        Ok(RunNotice::Withheld) => look_again_on_main_thread(&app),
         Ok(_) => {}
         Err(e) => {
             eprintln!("[banager] could not post the notification that operations finished: {e}")
@@ -60,6 +62,35 @@ pub async fn report_finished_run(
     Ok(())
 }
 
+/// A run `report_finished_run` has just withheld, looked at again on the
+/// main thread (`settle_withheld`). The focus it went by was asked off the
+/// main thread, and Banager may have left the front between that question
+/// and the run being withheld: `on_left_front`, finding nothing withheld
+/// yet, posted nothing, and nothing else would ever post the run. On the
+/// main thread, where AppKit tells of Banager leaving the front, the
+/// question is in order with that: asked before, it finds Banager in front,
+/// and `on_left_front` posts the run when Banager leaves; asked after, it
+/// finds Banager gone and posts the run itself. Whichever posts takes the
+/// run (`post_withheld`), so it is never posted twice.
+#[cfg(target_os = "macos")]
+fn look_again_on_main_thread<R: Runtime>(app: &AppHandle<R>) {
+    let again = app.clone();
+    let asked = app.run_on_main_thread(move || {
+        let Some(mtm) = objc2::MainThreadMarker::new() else {
+            return;
+        };
+        settle_withheld(&again, notify::focus_on_main_thread(&again, mtm));
+    });
+    if let Err(e) = asked {
+        eprintln!("[banager] could not look again at a run of operations withheld: {e}");
+    }
+}
+
+/// Off a Mac, Banager is never in front without its window focused
+/// (`notify::focus`), so no run is withheld.
+#[cfg(not(target_os = "macos"))]
+fn look_again_on_main_thread<R: Runtime>(_app: &AppHandle<R>) {}
+
 /// Banager has left the front (`window::observe_activation`): a run
 /// withheld while it was in front with its window closed or in the Dock
 /// is posted now, as `report_finished_run` posts one, while
@@ -67,6 +98,14 @@ pub async fn report_finished_run(
 /// of it; the post itself is handed to a thread of its own (`notify::post`).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn on_left_front<R: Runtime>(app: &AppHandle<R>) {
+    settle_withheld(app, Focus::Away);
+}
+
+/// What `recheck` does with the run withheld, if one is, and `focus`:
+/// posted, with the notification in the window's language, and then
+/// waiting on the window; or seen, or left waiting.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn settle_withheld<R: Runtime>(app: &AppHandle<R>, focus: Focus) {
     let runs = app.state::<OperationRuns>();
     if runs.0.lock().unwrap().withheld().is_none() {
         return;
@@ -74,10 +113,10 @@ pub(crate) fn on_left_front<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<AppState>();
     let language = notify::language(app, &state);
     let title = app.package_info().name.clone();
-    let posted = post_withheld(&runs, &state.get_settings(), |run| {
+    let settled = recheck(&runs, &state.get_settings(), focus, |run| {
         notify::post(app, &title, &body(language, run), Answer::ShowWindow)
     });
-    match posted {
+    match settled {
         Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
         Ok(_) => {}
         Err(e) => {
@@ -92,6 +131,32 @@ pub(crate) fn on_left_front<R: Runtime>(app: &AppHandle<R>) {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn on_window_focused<R: Runtime>(app: &AppHandle<R>) {
     app.state::<OperationRuns>().0.lock().unwrap().seen();
+}
+
+/// What the run withheld, if one is, comes to with the focus as it is now
+/// (`focus`): with another app in front, what Banager leaving the front
+/// does (`post_withheld`); with the window focused, it is on the operation
+/// bar for the user to see, and is never posted (`Watched`); with Banager
+/// still in front and its window not focused, it goes on waiting
+/// (`Withheld`, or `Nothing` when nothing waits).
+pub(crate) fn recheck(
+    runs: &OperationRuns,
+    settings: &Settings,
+    focus: Focus,
+    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+) -> Result<RunNotice, String> {
+    match focus {
+        Focus::Away => post_withheld(runs, settings, post),
+        Focus::Window => {
+            runs.0.lock().unwrap().seen();
+            Ok(RunNotice::Watched)
+        }
+        Focus::App => Ok(if runs.0.lock().unwrap().withheld().is_some() {
+            RunNotice::Withheld
+        } else {
+            RunNotice::Nothing
+        }),
+    }
 }
 
 /// What Banager leaving the front does: `notify_operations::post_withheld`
@@ -286,6 +351,95 @@ mod tests {
         let finished = run(RunKind::Uninstall, 2, 0, 0);
         report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
         runs.0.lock().unwrap().seen();
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| panic!("posted a run the user saw")),
+            Ok(RunNotice::Nothing)
+        );
+    }
+
+    /// The race `look_again_on_main_thread` closes: the focus was asked
+    /// with Banager in front, Banager left the front -- its observer
+    /// finding nothing withheld yet -- and then the run was withheld.
+    /// Looked at again with another app in front, it is posted, once.
+    #[test]
+    fn test_a_run_withheld_just_after_banager_left_the_front_is_posted_when_looked_at_again() {
+        let runs = OperationRuns::default();
+        let finished = run(RunKind::Upgrade, 3, 0, 0);
+        // Banager leaves the front: nothing is withheld yet.
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| panic!("nothing was withheld")),
+            Ok(RunNotice::Nothing)
+        );
+        // The report, with the focus asked before Banager left.
+        assert_eq!(
+            report(&runs, &on(), Focus::App, &finished, |_| panic!(
+                "posted while Banager was in front"
+            )),
+            Ok(RunNotice::Withheld)
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            recheck(&runs, &on(), Focus::Away, |run| {
+                posted.borrow_mut().push(body(MenuLanguage::ZhCn, run));
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), ["已更新3个工具"]);
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| panic!("posted twice")),
+            Ok(RunNotice::Nothing),
+            "the next time Banager leaves the front"
+        );
+    }
+
+    /// Looked at again before Banager leaves the front, the run goes on
+    /// waiting, and Banager leaving the front posts it; looked at again
+    /// after the observer has posted it, nothing is posted twice.
+    #[test]
+    fn test_a_run_looked_at_again_with_banager_still_in_front_is_posted_once_when_it_leaves() {
+        let runs = OperationRuns::default();
+        let finished = run(RunKind::Uninstall, 2, 0, 0);
+        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        assert_eq!(
+            recheck(&runs, &on(), Focus::App, |_| panic!(
+                "posted while Banager was in front"
+            )),
+            Ok(RunNotice::Withheld)
+        );
+        let posted = RefCell::new(0);
+        assert_eq!(
+            post_withheld(&runs, &on(), |_| {
+                *posted.borrow_mut() += 1;
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(
+            recheck(&runs, &on(), Focus::Away, |_| panic!("posted twice")),
+            Ok(RunNotice::Nothing)
+        );
+        assert_eq!(
+            recheck(&runs, &on(), Focus::App, |_| panic!("posted twice")),
+            Ok(RunNotice::Nothing)
+        );
+        assert_eq!(*posted.borrow(), 1);
+    }
+
+    /// Looked at again with the window focused -- it took the focus between
+    /// the question and the run being withheld -- the run is seen, as the
+    /// window taking the focus would have it, and never posted.
+    #[test]
+    fn test_a_run_looked_at_again_with_the_window_focused_is_seen_and_never_posted() {
+        let runs = OperationRuns::default();
+        let finished = run(RunKind::Upgrade, 1, 0, 0);
+        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        assert_eq!(
+            recheck(&runs, &on(), Focus::Window, |_| panic!(
+                "posted a run the user saw"
+            )),
+            Ok(RunNotice::Watched)
+        );
         assert_eq!(
             post_withheld(&runs, &on(), |_| panic!("posted a run the user saw")),
             Ok(RunNotice::Nothing)

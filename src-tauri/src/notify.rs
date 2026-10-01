@@ -97,6 +97,21 @@ pub(crate) fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
     focus_of(window_focused(app), app_active())
 }
 
+/// `focus`, asked on the main thread, as `notify_ops` looks again at a run
+/// it has withheld: AppKit's own `isActive` for Banager, which AppKit
+/// changes on the main thread, before it posts
+/// `NSApplicationDidResignActiveNotification` there -- so the answer is in
+/// order with `window::observe_activation`'s observers, which
+/// `NSRunningApplication`'s, asked off the main thread, is not.
+#[cfg(target_os = "macos")]
+pub(crate) fn focus_on_main_thread<R: Runtime>(
+    app: &AppHandle<R>,
+    mtm: objc2::MainThreadMarker,
+) -> Focus {
+    let active = objc2_app_kit::NSApplication::sharedApplication(mtm).isActive();
+    focus_of(window_focused(app), active)
+}
+
 /// On the window when it has the focus; else on Banager when it is the
 /// active app -- the app in front, whose notifications macOS shows no
 /// banner for -- with its window closed or in the Dock; else away.

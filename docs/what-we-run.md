@@ -460,7 +460,11 @@ macOS would show no banner, waits: it is posted when another app comes to
 the front (`NSApplicationDidResignActiveNotification`,
 `notify_ops::on_left_front`), together with any other run that finished
 meanwhile, and dropped if the window takes the focus first, since the
-operation bar then shows how it went.
+operation bar then shows how it went. Where the focus is is asked off the
+main thread, so a run just withheld is looked at once more on the main
+thread, in order with AppKit telling of Banager leaving the front
+(`notify_ops::look_again_on_main_thread`): one that finished just as
+Banager left the front is still posted, and never twice.
 
 It is titled Banager and says how the run went in the window's language:
 "Updated N tools" (「已更新N个工具」) when every one worked, and otherwise
