@@ -9,6 +9,7 @@ import { InfoDetail, TextWithInfo } from "./InfoDetail";
 import { GROUP, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "./ui/group";
 import { installedBy } from "./TwinAdvice";
 import { detailLines } from "./updateDetails";
+import { hasCommandNotOnPath } from "../lib/families";
 
 /**
  * What typing a tool's commands in Terminal runs, for the Installed page
@@ -291,28 +292,29 @@ export interface NotOnPathChip {
  * least one of whose commands has a `NotOnPath` verdict
  * (`hasCommandNotOnPath`), null for any other. Behind its ⓘ, the details'
  * own words: where the command is, as 「在终端里输入」 says it, and the same
- * advice as its ⓘ -- or, for commands in more than one such folder, the
- * notice's sentence for one tool (`notOnPathMore.detailOne`), which names
- * no folder. A status word like the others (`StatusChip`), shown on the
+ * advice as its ⓘ, when every command is in one such folder -- or, when
+ * only some are, or they are in more than one folder, the notice's
+ * sentence for one tool (`notOnPathMore.detailOne`), which says "at least
+ * one command" and names no folder. A status word like the others (`StatusChip`), shown on the
  * row after 「装了两份」 and what the source and the tool allow (`chipsOf`).
  */
 export function notOnPathChip(t: Translate, artifact: InstalledArtifact): NotOnPathChip | null {
-  const dirs = [
-    ...new Set(
-      artifact.facts.commands.flatMap(({ state }) =>
-        typeof state === "object" && state !== null && "NotOnPath" in state ? [state.NotOnPath.dir] : [],
-      ),
-    ),
-  ];
-  if (dirs.length === 0) return null;
+  // The Show menu's own test, so the row's word and the list it filters agree.
+  if (!hasCommandNotOnPath(artifact)) return null;
+  const { commands } = artifact.facts;
+  const notOnPath = (state: CommandState | null): state is { NotOnPath: { dir: string } } =>
+    typeof state === "object" && state !== null && "NotOnPath" in state;
+  const dirs = [...new Set(commands.flatMap(({ state }) => (notOnPath(state) ? [state.NotOnPath.dir] : [])))];
+  // 「终端找不到它：它在…」 only when "it" is the whole tool: every command in
+  // one folder. Otherwise the at-least-one-command sentence.
+  const wholeToolInOneFolder = dirs.length === 1 && commands.every(({ state }) => notOnPath(state));
   const label = t("families.showNotOnPath");
   return {
     id: "not-on-path",
     label,
-    detail:
-      dirs.length === 1
-        ? detailLines([t("commands.notFound", { dir: dirs[0] }), t("notOnPathMore.notFoundDetail")])
-        : detailLines([t("notOnPathMore.detailOne")]),
+    detail: wholeToolInOneFolder
+      ? detailLines([t("commands.notFound", { dir: dirs[0] }), t("notOnPathMore.notFoundDetail")])
+      : detailLines([t("notOnPathMore.detailOne")]),
     ariaLabel: t("commands.twinLabel", { word: label, name: artifact.display_name }),
     tone: "neutral",
   };

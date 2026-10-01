@@ -59,6 +59,7 @@ const wget: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "wget" };
 const libuv: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "libuv" };
 const httpie: ArtifactKey = { instance_id: PIPX, kind: "Tool", name: "httpie" };
 const grok: ArtifactKey = { instance_id: GROK, kind: "Binary", name: "grok" };
+const black: ArtifactKey = { instance_id: PIPX, kind: "Tool", name: "black" };
 
 const settings: Settings = {
   language: "System",
@@ -92,6 +93,11 @@ beforeEach(() => {
       { name: "http", state: "Runs" },
       { name: "https", state: notFound("~/.local/bin") },
       { name: "httpie", state: notFound("~/bin") },
+    ]),
+    // One command found, the other in one folder: "it" is not the whole tool.
+    artifact(black, [
+      { name: "black", state: "Runs" },
+      { name: "blackd", state: notFound("~/.local/bin") },
     ]),
   ];
   mockInvoke.mockReset();
@@ -168,6 +174,15 @@ describe("the Installed row's word for a tool Terminal can't find", () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     fireEvent.click(within(rowOf("httpie")).getByRole("button", { name: "Not Found in Terminal: httpie" }));
+    expect(await screen.findByText(/^Its command is in a folder Terminal doesn't search/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Terminal can't find it/)).not.toBeInTheDocument();
+  });
+
+  it("does not say the whole tool is in a folder when only one of its commands is", async () => {
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(wordOf("black")).toBe("Not Found in Terminal");
+    fireEvent.click(within(rowOf("black")).getByRole("button", { name: "Not Found in Terminal: black" }));
     expect(await screen.findByText(/^Its command is in a folder Terminal doesn't search/)).toBeInTheDocument();
     expect(screen.queryByText(/^Terminal can't find it/)).not.toBeInTheDocument();
   });
