@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DISCOVER_SHOWS,
   discoverCounts,
+  discoverCovered,
   discoverNotices,
   hasCommandNotOnPath,
   isAiTool,
@@ -9,7 +10,7 @@ import {
   isDiscoverShow,
   shownBy,
 } from "./families";
-import { NO_FACTS, type ArtifactFacts, type InstalledArtifact } from "./types";
+import { NO_FACTS, type ArtifactFacts, type InstalledArtifact, type ManagerInstance } from "./types";
 
 describe("families", () => {
   it("reads facts.family off the wire as Rust writes it, null and a family alike", () => {
@@ -130,5 +131,32 @@ describe("discoverNotices", () => {
     for (const show of ["ai", "twins", "notOnPath", "brewRetired"] as const) {
       expect(discoverNotices(show, { notOnPath: 2, brewRetired: 1 })).toEqual([]);
     }
+  });
+
+  it("leaves out a line whose every tool a source's notice names, and keeps the whole count otherwise", () => {
+    const counts = { notOnPath: 2, brewRetired: 1 };
+    expect(discoverNotices("all", counts, { notOnPath: 2, brewRetired: 0 }).map((n) => n.id)).toEqual([
+      "discover:brewRetired",
+    ]);
+    expect(discoverNotices("all", counts, { notOnPath: 1, brewRetired: 0 })[0]?.values).toEqual({ count: 2 });
+  });
+});
+
+describe("discoverCovered", () => {
+  const offPath = (instanceId: string, name: string) => ({
+    key: { instance_id: instanceId, kind: "Binary" as const, name },
+    facts: { ...NO_FACTS, commands: [{ name, state: { NotOnPath: { dir: "~/bin" } } }] },
+  });
+  const source = (id: string, notes: ManagerInstance["status"]["notes"]) => ({
+    id,
+    status: { unavailable: null, notes },
+  });
+
+  it("counts the tools Terminal can't find whose source says so itself", () => {
+    const artifacts = [offPath("standalone-grok", "grok"), offPath("pipx:/opt/homebrew/bin", "http")];
+    expect(
+      discoverCovered(artifacts, [source("standalone-grok", ["NotOnPath"]), source("pipx:/opt/homebrew/bin", [])]),
+    ).toEqual({ notOnPath: 1, brewRetired: 0 });
+    expect(discoverCovered(artifacts, [source("standalone-grok", [])])).toEqual({ notOnPath: 0, brewRetired: 0 });
   });
 });

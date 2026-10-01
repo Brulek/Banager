@@ -45,7 +45,7 @@ import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "
 import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { ToolShowButton } from "../components/ToolShowButton";
-import { discoverCounts, discoverNotices, isDiscoverShow, shownBy, type InstalledShow } from "../lib/families";
+import { discoverCounts, discoverCovered, discoverNotices, isDiscoverShow, shownBy, type InstalledShow } from "../lib/families";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
@@ -681,15 +681,14 @@ export function InstalledPage() {
   );
   // How many of the sources in view's tools 「终端里找不到」 and
   // 「Homebrew已停用或弃用」 show, search aside (`discoverCounts`).
-  const discover = useMemo(
-    () =>
-      discoverCounts(
-        (snapshot?.artifacts ?? []).filter(
-          (artifact) => activeFilter === null || artifact.key.instance_id === activeFilter,
-        ),
-      ),
-    [snapshot, activeFilter],
-  );
+  // And how many of those a source's own notice already names, whose
+  // line over the list would only say it again (`discoverCovered`).
+  const { discover, discoverNamed } = useMemo(() => {
+    const inView = (snapshot?.artifacts ?? []).filter(
+      (artifact) => activeFilter === null || artifact.key.instance_id === activeFilter,
+    );
+    return { discover: discoverCounts(inView), discoverNamed: discoverCovered(inView, instancesInView) };
+  }, [snapshot, activeFilter, instancesInView]);
 
   const rowItems = useMemo<ListItem[]>(() => {
     const result: ListItem[] = [];
@@ -796,9 +795,9 @@ export function InstalledPage() {
       // Last, while every tool is shown: how many Terminal can't find, and
       // how many Homebrew disabled or deprecated, each with a 查看 that
       // shows them (`discoverNotices`).
-      ...discoverNotices(show, discover),
+      ...discoverNotices(show, discover, discoverNamed),
     ],
-    [unfinished, instancesInView, labelOf, countByInstance, show, discover],
+    [unfinished, instancesInView, labelOf, countByInstance, show, discover, discoverNamed],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the

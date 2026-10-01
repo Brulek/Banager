@@ -1,4 +1,4 @@
-import type { InstalledArtifact } from "./types";
+import type { InstalledArtifact, ManagerInstance } from "./types";
 import type { SourceNoticeSpec } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
@@ -99,6 +99,26 @@ export function shownBy(
   return artifact !== undefined && twins !== undefined && twins.has(artifactKeyId(artifact.key));
 }
 
+/**
+ * How many of each choice's tools a source's own notice already names:
+ * a tool Terminal can't find whose source carries the `NotOnPath` note,
+ * which `sourceNoticesFor` says as 「Grok Build已安装，但在终端输入“grok”
+ * 打不开它」. Homebrew says nothing of the sort, so `brewRetired` is 0.
+ */
+export function discoverCovered(
+  artifacts: readonly Pick<InstalledArtifact, "facts" | "key">[],
+  instances: readonly Pick<ManagerInstance, "id" | "status">[],
+): DiscoverCounts {
+  const noted = new Set(
+    instances.filter((instance) => instance.status.notes.includes("NotOnPath")).map((instance) => instance.id),
+  );
+  return {
+    notOnPath: artifacts.filter((artifact) => hasCommandNotOnPath(artifact) && noted.has(artifact.key.instance_id))
+      .length,
+    brewRetired: 0,
+  };
+}
+
 /** Each discovery choice's line over the list: its words and their ⓘ. */
 const DISCOVER_NOTICE_KEYS: Record<DiscoverShow, { title: string; description: string }> = {
   notOnPath: { title: "families.notOnPathNotice", description: "families.notOnPathNoticeDetail" },
@@ -112,11 +132,18 @@ const DISCOVER_NOTICE_KEYS: Record<DiscoverShow, { title: string; description: s
  * 「显示」 popup. An info line, as a source's 「终端找不到它」 is: the tools
  * work, the user just would not see it without opening each one. With
  * another choice picked, none -- the list already is one of them, or
- * says what it shows.
+ * says what it shows. Nor one whose every tool a source's own notice
+ * already names (`covered`, `discoverCovered`): two lines in a row would
+ * say the same thing. When only some are, the line keeps the whole count,
+ * so the number it says is still the rows 查看 shows.
  */
-export function discoverNotices(show: InstalledShow, counts: DiscoverCounts): SourceNoticeSpec[] {
+export function discoverNotices(
+  show: InstalledShow,
+  counts: DiscoverCounts,
+  covered: DiscoverCounts = { notOnPath: 0, brewRetired: 0 },
+): SourceNoticeSpec[] {
   if (show !== "all") return [];
-  return DISCOVER_SHOWS.filter((choice) => counts[choice] > 0).map((choice) => ({
+  return DISCOVER_SHOWS.filter((choice) => counts[choice] > covered[choice]).map((choice) => ({
     id: `discover:${choice}`,
     variant: "info",
     titleKey: DISCOVER_NOTICE_KEYS[choice].title,

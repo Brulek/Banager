@@ -23,6 +23,8 @@ const BREW = "brew:/opt/homebrew";
 const PIPX = "pipx:/opt/homebrew/bin";
 const GROK = "standalone-grok";
 
+let grokNotes: Snapshot["instances"][number]["status"]["notes"];
+
 function instance(adapterId: string, id: string): Snapshot["instances"][number] {
   return {
     id,
@@ -31,7 +33,7 @@ function instance(adapterId: string, id: string): Snapshot["instances"][number] 
     prefix: "/opt/homebrew",
     scope: "User",
     version: "1.0.0",
-    status: { unavailable: null, notes: [] },
+    status: { unavailable: null, notes: id === GROK ? grokNotes : [] },
     unverified_version: null,
     read_only_reason: null,
   };
@@ -111,6 +113,7 @@ function fullWorld(): InstalledArtifact[] {
 
 beforeEach(() => {
   artifacts = fullWorld();
+  grokNotes = [];
   mockInvoke.mockReset();
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.getAttribute("data-index") === null ? 600 : 56;
@@ -312,6 +315,26 @@ describe("the lines over 所有工具 that point at them", () => {
     expect(noticeLines()).toEqual([expect.stringContaining("2 tools were disabled or deprecated by Homebrew")]);
     fireEvent.click(screen.getByRole("button", { name: "Show" }));
     await waitFor(() => expect(rowNames()).toEqual(["QuickJot", "youtube-dl"]));
+  });
+
+  it("doesn't say again what a source's own notice says, but still offers the choice", async () => {
+    grokNotes = ["NotOnPath"];
+    artifacts = fullWorld().filter((a) => a.key.instance_id !== PIPX && a.key.instance_id !== BREW);
+    artifacts.push(artifact(wget, [{ name: "wget", state: "Runs" }]));
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(noticeLines()).toEqual([expect.stringContaining("Grok Build is installed")]);
+    expect(options()[3]).toEqual(["notOnPath", "Not Found in Terminal (1)"]);
+  });
+
+  it("keeps the line, with the whole count, when a source's notice names only some", async () => {
+    grokNotes = ["NotOnPath"];
+    artifacts = fullWorld().filter((a) => a.key.instance_id !== BREW);
+    artifacts.push(artifact(wget, [{ name: "wget", state: "Runs" }]));
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    await unfold();
+    expect(screen.getByText("2 tools can't be found in Terminal")).toBeInTheDocument();
   });
 
   it("counts only the source in view, and says one in the singular", async () => {

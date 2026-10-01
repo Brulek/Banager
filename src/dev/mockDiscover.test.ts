@@ -19,7 +19,8 @@ describe("the preview's discovery choices", () => {
     await vi.runOnlyPendingTimersAsync();
     const snapshot = (await call) as Snapshot;
     // Grok Build, while ~/.grok/bin is off the search path (its source's
-    // `NotOnPath` note), so 「终端里找不到（1）」 and its line over the list.
+    // `NotOnPath` note), so 「终端里找不到（1）」 -- but no line of its own
+    // over the list: Grok Build's notice already says it (`discoverCovered`).
     expect(snapshot.artifacts.filter((a) => hasCommandNotOnPath(a)).map((a) => a.key.name)).toEqual(["grok"]);
     // youtube-dl, deprecated, and QuickJot, disabled.
     expect(snapshot.artifacts.filter((a) => isBrewRetired(a)).map((a) => a.key.name)).toEqual([
