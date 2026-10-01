@@ -1,3 +1,4 @@
+import type { FailureCause } from "./failureCause";
 export type ArtifactKind = "Formula" | "Cask" | "Package" | "Tool" | "Model" | "Binary";
 export type InstallReason = "Requested" | "Dependency" | "Unknown";
 export type OpKind = "Install" | "Uninstall" | "Upgrade";
@@ -666,6 +667,52 @@ export interface Sizes {
 }
 /** `Sizes::default()`: before any round, and nothing to show. */
 export const NO_SIZES: Sizes = { round: 0, done: false, artifacts: [], models: [], total: null, sources: [] };
+/** Rust `HistoryKind` (crates/banager-core/src/history/mod.rs). */
+export type HistoryKind = "Update" | "Uninstall";
+/**
+ * Rust `HistoryResult`: how a kept operation ended, as a category --
+ * `Outcome` without the programs' words or Banager's paths. A failure's
+ * cause is the word `failureCause` would have read off the tool's lines
+ * (src/lib/failureCause.ts), or null.
+ */
+export type HistoryResult =
+  | "Succeeded"
+  | "Unconfirmed"
+  | "Cancelled"
+  | { NeedsAttention: Attention }
+  | { Failed: { cause: FailureCause | null } };
+/**
+ * Rust `HistoryRecord`: one finished update or uninstall, kept in
+ * `history.json` across launches. `finished_at` is in milliseconds.
+ * `verified`: Banager read the installed version before the update and
+ * after it, and the two differ (for an uninstall: the reading after found
+ * it gone).
+ */
+export interface HistoryRecord {
+  run: string;
+  op_id: number;
+  finished_at: number;
+  key: ArtifactKey;
+  display_name: string;
+  adapter_id: string;
+  kind: HistoryKind;
+  from_version: string | null;
+  to_version: string | null;
+  result: HistoryResult;
+  verified: boolean;
+}
+/**
+ * Rust `HistoryView`, from `get_history` and `clear_history`: this launch's
+ * id, when the Updates page's Clear was last pressed (milliseconds), and
+ * every record, newest first.
+ */
+export interface HistoryView {
+  run: string;
+  cleared_before: number | null;
+  records: HistoryRecord[];
+}
+/** No history: before `get_history` answers, or a command that answered nothing. */
+export const NO_HISTORY: HistoryView = { run: "", cleared_before: null, records: [] };
 export type UiEvent =
   | { Operation: OperationEvent }
   | { SnapshotChanged: { generation: number } }

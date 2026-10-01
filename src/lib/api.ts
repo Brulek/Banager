@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   ArtifactKey,
+  HistoryView,
   IssuedPlan,
   OpRequest,
   PlanId,
@@ -153,6 +154,24 @@ export function getSizes(): Promise<Sizes> {
  */
 export function getSystemFacts(): Promise<SystemFacts> {
   return call<SystemFacts>("get_system_facts");
+}
+
+/**
+ * The finished updates and uninstalls Banager kept across launches
+ * (`get_history` in src-tauri/src/history.rs): this launch's id, when the
+ * Updates page's Clear was last pressed, and every record, newest first.
+ * Takes nothing. `useHistory` is the caller.
+ */
+export function getHistory(): Promise<HistoryView> {
+  return call<HistoryView>("get_history");
+}
+
+/**
+ * The Updates page's Clear, kept across launches (`clear_history`): the
+ * page lists nothing that finished before now. Removes no record.
+ */
+export function clearHistory(): Promise<HistoryView> {
+  return call<HistoryView>("clear_history");
 }
 
 /**

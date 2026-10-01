@@ -19,6 +19,8 @@ import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
+import { recentUpdates, useClearHistory, useHistory, verifiedHere } from "../lib/history";
+import { NO_HISTORY } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip, type StatusChipProps } from "../components/StatusChip";
 import { majorVersionWord } from "../components/majorVersionWord";
@@ -296,6 +298,9 @@ export function UpdatesPage() {
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
   const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
+  // What the history kept, for 「最近更新」 after a restart (src/lib/history.ts).
+  const { data: history = NO_HISTORY } = useHistory();
+  const clearHistory = useClearHistory();
   const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
   // The empty page's Check Again, the toolbar's own check, and when the
   // last one was, to the minute.
@@ -467,6 +472,11 @@ export function UpdatesPage() {
   // The version is the one the snapshot now lists for the tool -- what is
   // installed, read back after the update -- or, where it lists none, the
   // one the update was for. A model's is a digest, and is not shown.
+  //
+  // Then what the history kept from before this window, of the last 30
+  // days (`recentUpdates`): never a tool this window has an operation of.
+  // The two together newest first; this window's own that it did not see
+  // finish last, as before.
   const justUpdated = useMemo((): JustUpdatedEntry[] => {
     const shownInRows = new Set<number>();
     for (const candidate of visibleUpdates) {
@@ -478,11 +488,12 @@ export function UpdatesPage() {
       cleared: clearedJustUpdated,
       finishedAt: opFinishedAt,
     });
-    return ops.map((op) => {
+    const here = ops.map((op): JustUpdatedEntry => {
       const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
       const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
       const installed = artifactsById.get(artifactKeyId(key))?.version;
       return {
+        id: `op:${op.id}`,
         opId: op.id,
         key,
         adapterId,
@@ -490,9 +501,30 @@ export function UpdatesPage() {
         name: opName(op),
         version: op.artifact_kind === "Model" ? null : installed || updateTargets[op.id] || null,
         finishedAt: opFinishedAt[op.id] ?? null,
+        verified: verifiedHere(history, op.id),
       };
     });
+    const kept = recentUpdates(history, operations ?? [], Date.now()).map(
+      (record): JustUpdatedEntry => ({
+        id: `history:${record.run}:${record.op_id}`,
+        opId: null,
+        key: record.key,
+        adapterId: record.adapter_id,
+        sourceLabel: labels.get(record.key.instance_id) ?? adapterLabel(t, record.adapter_id),
+        name: record.display_name,
+        version: record.key.kind === "Model" ? null : record.to_version,
+        finishedAt: record.finished_at,
+        verified: record.verified,
+      }),
+    );
+    const at = (entry: JustUpdatedEntry) => entry.finishedAt ?? Number.NEGATIVE_INFINITY;
+    // Stable: this window's own keep their order among themselves.
+    return [...here, ...kept].sort((a, b) => {
+      const byTime = at(b) - at(a);
+      return Number.isNaN(byTime) ? 0 : byTime;
+    });
   }, [
+    history,
     visibleUpdates,
     operationFor,
     operations,
@@ -505,7 +537,12 @@ export function UpdatesPage() {
     labels,
     t,
   ]);
-  const clearJustUpdatedList = () => clearJustUpdated(justUpdated.map((entry) => entry.opId));
+  // Clear takes this window's off its list, and has the history note the
+  // time, so that none of what was shown comes back after a restart.
+  const clearJustUpdatedList = () => {
+    clearJustUpdated(justUpdated.flatMap((entry) => (entry.opId === null ? [] : [entry.opId])));
+    clearHistory.mutate();
+  };
 
   // What each source has to say about this check, one compact line each
   // at the top of the page: not running, not answering, a list it could

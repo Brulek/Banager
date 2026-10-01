@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ArtifactKey,
+  HistoryView,
   InventoryPreview,
   IssuedPlan,
   OperationEvent,
@@ -718,6 +719,30 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
       await vi.runOnlyPendingTimersAsync();
       expect(previewsIn(events), state).toEqual([]);
     }
+  });
+
+  it("serves a few weeks of history, two of them today, and keeps each operation of its own as Rust does", async () => {
+    const { backend } = backendFor();
+    const start = await answer<HistoryView>(backend.invoke("get_history"));
+    const today = new Date().toDateString();
+    expect(start.records.filter((r) => new Date(r.finished_at).toDateString() === today).length).toBeGreaterThanOrEqual(1);
+    expect(start.records.some((r) => r.result !== "Succeeded")).toBe(true);
+    expect(start.records.some((r) => r.kind === "Uninstall")).toBe(true);
+    // Newest first, and none of this launch's.
+    expect(start.records.map((r) => r.finished_at)).toEqual([...start.records.map((r) => r.finished_at)].sort((a, b) => b - a));
+    expect(start.records.every((r) => r.run !== start.run)).toBe(true);
+
+    await answer(backend.invoke("refresh"));
+    const [opId] = await submitUpgrades(backend, "git");
+    await vi.runAllTimersAsync();
+    const after = await answer<HistoryView>(backend.invoke("get_history"));
+    const mine = after.records[0];
+    expect(mine).toMatchObject({ run: after.run, op_id: opId, kind: "Update", from_version: "2.55.0", to_version: "2.55.1", verified: true });
+    expect(after.records).toHaveLength(start.records.length + 1);
+
+    const cleared = await answer<HistoryView>(backend.invoke("clear_history"));
+    expect(cleared.cleared_before).not.toBeNull();
+    expect(cleared.records).toHaveLength(after.records.length);
   });
 });
 

@@ -9,6 +9,7 @@
  */
 import type {
   ArtifactKey,
+  HistoryView,
   InstalledArtifact,
   IssuedPlan,
   OpRequest,
@@ -30,6 +31,7 @@ import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./m
 import { withMockKeptData } from "./mockKeptData";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
+import { mockHistory, mockRecord } from "./mockHistory";
 import type { Scenario } from "./scenario";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
@@ -48,6 +50,8 @@ export const MOCK_COMMANDS = [
   "artifact_icon",
   "get_sizes",
   "get_system_facts",
+  "get_history",
+  "clear_history",
   "set_menu_language",
   "report_update_set",
   "request_notification_permission",
@@ -179,6 +183,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   let sizesTimer: ReturnType<typeof setTimeout> | null = null;
   /** `key|version` of every size measured so far, as the real meter's cache. */
   const measuredBefore = new Set<string>();
+  /** What `get_history` answers: earlier launches' records, then this one's. */
+  let history: HistoryView = mockHistory(Date.now());
 
   /** The part of a snapshot that decides its generation. */
   function snapshotContent(from: World, current: Settings) {
@@ -372,7 +378,25 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     stopTimers(op);
     op.summary.status = "Done";
     op.summary.outcome = outcome;
+    const target = requestKey(op.plan.request);
+    // Read before `apply`, which changes the row in place.
+    const row = world.artifacts.find((a) => sameKey(a.key, target));
+    const before = row === undefined ? null : { name: row.display_name, version: row.version };
     if (outcome === "Succeeded") apply(op.plan);
+    // Kept before `Finished` is sent, as `OnFinish` keeps it.
+    const record = mockRecord({
+      run: history.run,
+      opId: op.summary.id,
+      request: op.plan.request,
+      outcome,
+      started: op.started,
+      displayName: before?.name ?? target.name,
+      adapterId: world.instances.find((i) => i.id === target.instance_id)?.adapter_id ?? target.instance_id.split(":")[0],
+      before: before?.version ?? null,
+      after: world.artifacts.find((a) => sameKey(a.key, target))?.version ?? null,
+      now: Date.now(),
+    });
+    if (record !== null) history = { ...history, records: [record, ...history.records] };
     if (op.started) {
       for (const lock of op.plan.locks) held.delete(lock);
       running -= 1;
@@ -594,6 +618,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // `diagnostics::current`: the committed snapshot's sources, none
       // before the first refresh.
       return mockSystemFacts(committed?.instances ?? []);
+    },
+    async get_history() {
+      // `Session::history`: every record, newest first.
+      return clone(history);
+    },
+    async clear_history() {
+      // `HistoryStore::clear`: the time, and every record kept.
+      history = { ...history, cleared_before: Date.now() };
+      return clone(history);
     },
     async report_update_set(args) {
       // No notification to post: the preview has no daily check, and so no

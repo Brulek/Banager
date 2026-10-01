@@ -13,6 +13,8 @@ import i18n from "../i18n";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import type {
+  HistoryRecord,
+  HistoryView,
   ArtifactKey,
   InstanceNote,
   OpRequest,
@@ -3079,7 +3081,7 @@ describe("UpdatesPage", () => {
       expect(within(line).getByText("2.90.0")).toBeInTheDocument();
       expect(within(line).getByText("Updated")).toBeInTheDocument();
       expect(line.querySelector("svg")).not.toBeNull();
-      const time = within(line).getByText(new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(finishedAt));
+      const time = within(line).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(finishedAt)}`);
       expect(time.tagName).toBe("TIME");
       expect(time).toHaveAttribute("dateTime", new Date(finishedAt).toISOString());
       // Above the list, and no row of it.
@@ -3109,10 +3111,10 @@ describe("UpdatesPage", () => {
       const section = await screen.findByRole("region", { name: "Recently Updated" });
       const lines = within(section).getAllByRole("listitem");
       expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "OnyX"]);
-      expect(within(lines[0]).getByText(new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(thisMorning))).toBeInTheDocument();
       expect(
-        within(lines[1]).getByText(new Intl.DateTimeFormat("en", { month: "numeric", day: "numeric" }).format(yesterday)),
+        within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(thisMorning)}`),
       ).toBeInTheDocument();
+      expect(within(lines[1]).getByText("Sep 27")).toBeInTheDocument();
       // Nothing is left to update: the section stands over the sentence that says so.
       expect(await screen.findByText("Everything is up to date")).toBeInTheDocument();
     });
@@ -3216,6 +3218,127 @@ describe("UpdatesPage", () => {
       const section = await screen.findByRole("region", { name: "Recently Updated" });
       expect(within(section).getByText("qwen3:8b")).toBeInTheDocument();
       expect(container.textContent).not.toMatch(/sha256|5642e974/);
+    });
+
+    describe("after a restart: what the history kept", () => {
+      // A launch before this one kept these (`get_history`); this window
+      // has run nothing yet.
+      function kept(name: string, finishedAt: number, fields: Partial<HistoryRecord> = {}): HistoryRecord {
+        return {
+          run: "earlier",
+          op_id: 3,
+          finished_at: finishedAt,
+          key: { ...glibKey, name },
+          display_name: name,
+          adapter_id: "brew",
+          kind: "Update",
+          from_version: "1.0",
+          to_version: "2.0",
+          result: "Succeeded",
+          verified: true,
+          ...fields,
+        };
+      }
+
+      function answerHistory(view: HistoryView): void {
+        const answer = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+          if (cmd === "get_history") return Promise.resolve(view);
+          if (cmd === "clear_history") {
+            view = { ...view, cleared_before: Date.now() };
+            return Promise.resolve(view);
+          }
+          return answer(cmd, args);
+        });
+      }
+
+      it("lists the last 30 days' updates that worked, newest first, with the version, the date and Verified", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime(), { to_version: "4.0.0" }),
+            kept("wget", new Date(2026, 8, 20, 9, 0).getTime(), { to_version: "1.25.0", verified: false }),
+            kept("old", new Date(2026, 7, 20, 9, 0).getTime()),
+            kept("broken", new Date(2026, 8, 27, 9, 0).getTime(), { result: { Failed: { cause: "network" } } }),
+          ],
+        });
+        const { container } = renderPage();
+
+        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget"]);
+        expect(within(lines[0]).getByText("4.0.0")).toBeInTheDocument();
+        expect(within(lines[0]).getByText("Verified")).toBeInTheDocument();
+        expect(within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
+        expect(within(lines[1]).getByText("1.25.0")).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Updated")).toBeInTheDocument();
+        expect(within(lines[1]).getByText("Sep 20")).toBeInTheDocument();
+        // No instance id, and so no home folder, is ever shown.
+        expect(section.textContent).not.toMatch(/opt\/homebrew/);
+        expect(container.textContent).not.toMatch(/brew:\//);
+      });
+
+      it("says 今天 and 9月20日 in Chinese, the time right after 今天 (text-autospace draws the gap)", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(2026, 8, 28, 15, 0));
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            kept("cmake", new Date(2026, 8, 28, 14, 2).getTime()),
+            kept("wget", new Date(2026, 8, 20, 9, 0).getTime(), { verified: false }),
+          ],
+        });
+        await i18n.changeLanguage("zh-CN");
+        try {
+          renderPage();
+          const section = await screen.findByRole("region", { name: "最近更新" });
+          const lines = within(section).getAllByRole("listitem");
+          expect(within(lines[0]).getByText(`今天${new Intl.DateTimeFormat("zh-CN", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
+          expect(within(lines[0]).getByText("已核实")).toBeInTheDocument();
+          expect(within(lines[1]).getByText("9月20日")).toBeInTheDocument();
+          expect(within(lines[1]).getByText("已更新")).toBeInTheDocument();
+        } finally {
+          await i18n.changeLanguage("en");
+        }
+      });
+
+      it("keeps Clear: the history notes the time, and what was shown stays hidden", async () => {
+        answerHistory({ run: "this-launch", cleared_before: null, records: [kept("cmake", Date.now() - 60_000)] });
+        updates = [snapshot.updates[1]];
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        fireEvent.click(within(section).getByRole("button", { name: "Clear the Just updated list" }));
+        await waitFor(() => expect(justUpdated()).toBeNull());
+        expect(mockInvoke).toHaveBeenCalledWith("clear_history");
+      });
+
+      it("lists an update this window saw finish once, with Verified from its record", async () => {
+        operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+        started(7, "2.90.0");
+        updates = [snapshot.updates[1]];
+        artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+        answerHistory({
+          run: "this-launch",
+          cleared_before: null,
+          records: [
+            // This launch's record of op 7, and an older one of glib's.
+            kept("glib", Date.now() - 1_000, { run: "this-launch", op_id: 7, to_version: "2.90.0" }),
+            kept("glib", Date.now() - 9 * 86_400_000, { op_id: 2, to_version: "2.88.3" }),
+          ],
+        });
+        renderPage();
+
+        const section = await screen.findByRole("region", { name: "Recently Updated" });
+        await waitFor(() => expect(within(section).getByText("Verified")).toBeInTheDocument());
+        const lines = within(section).getAllByRole("listitem");
+        expect(lines).toHaveLength(1);
+        expect(within(lines[0]).getByText("2.90.0")).toBeInTheDocument();
+      });
     });
 
     it("calls itself 刚更新的 in Chinese, with 清除 and 已更新", () => {

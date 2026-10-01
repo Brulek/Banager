@@ -315,6 +315,11 @@
     "allHiddenDescription": "The rest are hidden.",
     "showHidden": "Show Hidden Updates"
   },
+  "history": {
+    "today": "Today {{time}}",
+    "verified": "Verified",
+    "verifiedTitle": "The installed version was read before and after the update, and it had changed."
+  },
   "commandPreview": {
     "show_one": "Show Command",
     "show_other": "Show Commands",

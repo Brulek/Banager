@@ -57,19 +57,20 @@ describe("finishedText", () => {
     expect(finishedText(morning, now, "zh-CN")).toEqual({
       text: new Intl.DateTimeFormat("zh-CN", { timeStyle: "short" }).format(morning),
       title: new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(morning),
+      today: true,
     });
   });
 
-  it("says the date for another day", () => {
+  it("says the date for another day: 9月28日, Sep 28", () => {
     const nextDay = new Date(2026, 8, 29, 0, 1).getTime();
-    expect(finishedText(morning, nextDay, "en").text).toBe(
-      new Intl.DateTimeFormat("en", { month: "numeric", day: "numeric" }).format(morning),
-    );
+    expect(finishedText(morning, nextDay, "en")).toMatchObject({ text: "Sep 28", today: false });
+    expect(finishedText(morning, nextDay, "zh-CN").text).toBe("9月28日");
   });
 });
 
 describe("JustUpdated", () => {
   const entry = {
+    id: "op:4",
     opId: 4,
     key: { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "git" },
     adapterId: "brew",
@@ -77,6 +78,7 @@ describe("JustUpdated", () => {
     name: "git",
     version: "2.55.1",
     finishedAt: Date.now(),
+    verified: false,
   };
 
   it("is a grouped container under its 13 bold title, with a small grey Clear beside the title", () => {
@@ -111,5 +113,22 @@ describe("JustUpdated", () => {
     expect(done).toHaveClass("text-small", "text-foreground");
     expect(done.querySelector("svg")).toHaveAttribute("width", "12");
     expect(line.querySelector("time")?.parentElement).toHaveClass("text-small", "text-muted");
+  });
+
+  it("says Today and the time for one that finished today, and Verified where Banager read the change", () => {
+    renderWithProviders(<JustUpdated entries={[{ ...entry, verified: true }]} onClear={() => {}} />);
+
+    const line = screen.getByRole("listitem");
+    const time = line.querySelector("time");
+    expect(time?.textContent).toBe(
+      `Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(entry.finishedAt)}`,
+    );
+    const done = within(line).getByText("Verified");
+    expect(done).toHaveAttribute(
+      "title",
+      "The installed version was read before and after the update, and it had changed.",
+    );
+    expect(done.querySelector("svg")).toHaveAttribute("width", "12");
+    expect(within(line).queryByText("Updated")).toBeNull();
   });
 });

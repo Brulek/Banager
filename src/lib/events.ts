@@ -291,6 +291,9 @@ export function useOperationEvents(): void {
             // When it finished, which the operation itself does not carry:
             // the Updates page's "Just updated" says it.
             useUiStore.getState().rememberOpFinished(opEvent.Finished.op_id, Date.now());
+            // Kept before the event was sent (`OnFinish`): its record --
+            // whether Banager read the version change -- is there now.
+            queryClient.invalidateQueries({ queryKey: queryKeys.history });
             refreshIntoCache(queryClient, "post-operation").catch(() => {});
           }
         }

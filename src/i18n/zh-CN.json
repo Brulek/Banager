@@ -294,6 +294,11 @@
     "allHiddenDescription": "其余更新已隐藏。",
     "showHidden": "查看已隐藏的更新"
   },
+  "history": {
+    "today": "今天{{time}}",
+    "verified": "已核实",
+    "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。"
+  },
   "commandPreview": {
     "show_other": "查看命令",
     "trashLabel": "移到废纸篓",

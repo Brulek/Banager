@@ -13,6 +13,8 @@ export const queryKeys = {
   inventoryPreview: ["inventoryPreview"] as const,
   /** How much disk each installed thing takes (`useSizes`). */
   sizes: ["sizes"] as const,
+  /** The operations kept across launches (`useHistory`). */
+  history: ["history"] as const,
   /** One cask's app icon (`useArtifactIcon`), by the whole key. */
   artifactIcon: (key: ArtifactKey) =>
     ["artifactIcon", key.instance_id, key.kind, key.name] as const,

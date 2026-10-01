@@ -2,15 +2,20 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
 import type { ArtifactKey, OpSummary } from "../lib/types";
-import { CheckIcon } from "./icons";
+import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { GROUP } from "./ui/group";
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
 export interface JustUpdatedEntry {
-  /** The update's operation. */
-  opId: number;
+  /** Its React key: unique across this window's operations and the history's. */
+  id: string;
+  /**
+   * The update's operation in this window, which Clear takes off, or null
+   * for one the history kept from before (src/lib/history.ts).
+   */
+  opId: number | null;
   key: ArtifactKey;
   /** The source's adapter id and name, for the avatar. */
   adapterId: string;
@@ -21,6 +26,12 @@ export interface JustUpdatedEntry {
   version: string | null;
   /** When it finished, in milliseconds, or null for one this window did not see finish. */
   finishedAt: number | null;
+  /**
+   * Whether Banager read the installed version before the update and after
+   * it and the two differ (`HistoryRecord.verified`): 「已核实」 then, and
+   * otherwise the row's 「已更新」.
+   */
+  verified: boolean;
 }
 
 export interface JustUpdatedFilter {
@@ -74,11 +85,16 @@ export function justUpdatedOps(operations: readonly OpSummary[], filter: JustUpd
 
 /**
  * When an update finished, in the fewest words that stay true: the time
- * -- 「06:38」, "6:38 AM" -- on the day it is read, and the date on any
- * other, since a window left open overnight still lists yesterday's.
- * Both in full in the `title`.
+ * -- 「06:38」, "6:38 AM" -- on the day it is read, which the line says
+ * as 「今天06:38」 (`today`, text-autospace drawing the gap), and the date -- 「9月28日」, "Sep 28" -- on
+ * any other, since a window left open overnight still lists yesterday's,
+ * and the history lists the last 30 days. Both in full in the `title`.
  */
-export function finishedText(finishedAt: number, now: number, language: string): { text: string; title: string } {
+export function finishedText(
+  finishedAt: number,
+  now: number,
+  language: string,
+): { text: string; title: string; today: boolean } {
   const then = new Date(finishedAt);
   const today = new Date(now);
   const sameDay =
@@ -87,9 +103,9 @@ export function finishedText(finishedAt: number, now: number, language: string):
     then.getDate() === today.getDate();
   const text = sameDay
     ? new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(then)
-    : new Intl.DateTimeFormat(language, { month: "numeric", day: "numeric" }).format(then);
+    : new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(then);
   const title = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(then);
-  return { text, title };
+  return { text, title, today: sameDay };
 }
 
 export interface JustUpdatedProps {
@@ -98,14 +114,17 @@ export interface JustUpdatedProps {
 }
 
 /**
- * 「刚更新的」: the tools updated this session, at the top of the Updates
- * page, so that an update that worked does not simply vanish from the
- * list. A grouped container (spec §3.10) under its title -- 13 bold, with
+ * 「最近更新」: the tools updated this session, and those the history
+ * kept from the last 30 days (src/lib/history.ts), at the top of the
+ * Updates page, so that an update that worked does not simply vanish from
+ * the list -- nor after a restart. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, the ✓ and
- * 「已更新」 the row showed, in 11, and when it finished, 11 muted. Nothing
- * to select or press but Clear, which hides the section until the next
- * update succeeds; it is no part of the page's count or of Select all.
+ * 「已更新」 the row showed -- 「已核实」 where Banager read the version
+ * change for itself -- in 11, and when it finished, 11 muted. Nothing to
+ * select or press but Clear, which hides what it lists, after a restart
+ * too, until the next update succeeds; it is no part of the page's count
+ * or of Select all.
  */
 export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
   const { t, i18n } = useTranslation();
@@ -131,7 +150,7 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           const finished =
             entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, i18n.language);
           return (
-            <li key={entry.opId} className="flex h-7 items-center gap-2 px-2.5">
+            <li key={entry.id} className="flex h-7 items-center gap-2 px-2.5">
               <ToolAvatar
                 size="compact"
                 adapterId={entry.adapterId}
@@ -146,14 +165,17 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span className="min-w-20 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.version}
               </span>
-              <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground">
-                <CheckIcon size={12} className="shrink-0 text-success" />
-                {t("updates.progress.succeeded")}
+              <span
+                title={entry.verified ? t("history.verifiedTitle") : undefined}
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
+              >
+                <OutcomeIcon tone="success" size={12} />
+                {entry.verified ? t("history.verified") : t("updates.progress.succeeded")}
               </span>
-              <span className="w-16 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
+              <span className="w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.finishedAt !== null && finished !== null ? (
                   <time dateTime={new Date(entry.finishedAt).toISOString()} title={finished.title}>
-                    {finished.text}
+                    {finished.today ? t("history.today", { time: finished.text }) : finished.text}
                   </time>
                 ) : null}
               </span>
