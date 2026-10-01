@@ -176,6 +176,15 @@ Paths are under a generic home folder, `/Users/you`.
   does not have. Notify me when there are updates turns on without
   asking anything, as where permission is granted, and nothing is ever
   notified: the page's report after each check reaches no Rust.
+- After each refresh the tools' sizes are measured, as the app measures
+  them (`src/dev/mockSizes.ts`): about a second and a half of 「正在计算…」
+  in the Installed page's details, then 「占用空间：约312.6 MB」 for node@22,
+  with 「旧版本约298.4 MB」 under it -- node@22, python@3.13, gettext and
+  libuv keep older kegs -- 「至少约612.4 MB」 for Visual Studio Code (the
+  round's budget ran out) and 「约22.7 MB，部分无法读取」 for pre-commit. A
+  tool measured before at the same version shows at once. pip's packages,
+  the font and a model get no measured size (a model keeps its own), and
+  the Ollama source's page says 「Ollama模型共约6.6 GB」 under its title.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
@@ -207,6 +216,7 @@ value falls back to the default and logs a warning in the console.
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager` | How every operation ends. Only `succeeded` changes anything. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
+| `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
 
 ## Large list
 

@@ -63,6 +63,14 @@ export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 export const SCENARIO_SCANS = ["found", "stopped", "empty", "error"] as const;
 export type ScenarioScan = (typeof SCENARIO_SCANS)[number];
 
+/**
+ * `?sizes=`: how measuring disk use goes after each refresh. `measured`
+ * (the default): 「正在计算…」 for a moment, then every size; `pending`:
+ * it never finishes, for a look at the details while it runs.
+ */
+export const SCENARIO_SIZES = ["measured", "pending"] as const;
+export type ScenarioSizes = (typeof SCENARIO_SIZES)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -82,6 +90,7 @@ export interface Scenario {
   page: Page | null;
   outcome: ScenarioOutcome;
   scan: ScenarioScan;
+  sizes: ScenarioSizes;
 }
 
 export const DEFAULT_SCENARIO: Scenario = {
@@ -91,6 +100,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   page: null,
   outcome: "succeeded",
   scan: "found",
+  sizes: "measured",
 };
 
 function pick<T extends string>(
@@ -137,6 +147,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       page: page === "" ? null : page,
       outcome: pick(params, "outcome", SCENARIO_OUTCOMES, DEFAULT_SCENARIO.outcome, problems),
       scan: pick(params, "scan", SCENARIO_SCANS, DEFAULT_SCENARIO.scan, problems),
+      sizes: pick(params, "sizes", SCENARIO_SIZES, DEFAULT_SCENARIO.sizes, problems),
     },
     problems,
   };

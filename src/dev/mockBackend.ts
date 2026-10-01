@@ -9,6 +9,7 @@
  */
 import type {
   ArtifactKey,
+  InstalledArtifact,
   IssuedPlan,
   OpRequest,
   OpStatus,
@@ -17,13 +18,16 @@ import type {
   Plan,
   PlanId,
   Settings,
+  Sizes,
   Snapshot,
   UiEvent,
 } from "../lib/types";
+import { NO_SIZES } from "../lib/types";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
 import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
+import { mockSizes } from "./mockSizes";
 import type { Scenario } from "./scenario";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
@@ -40,6 +44,7 @@ export const MOCK_COMMANDS = [
   "open_ollama_app",
   "scan_unknown",
   "artifact_icon",
+  "get_sizes",
   "set_menu_language",
   "report_update_set",
   "request_notification_permission",
@@ -86,6 +91,13 @@ export const TIMING = {
   cancel: 500,
   /** Drawing a cask's app icon (the real one remembers each after the first). */
   icon: 60,
+  /**
+   * Measuring how much each tool takes, after a refresh commits: long
+   * enough to see 「正在计算…」 in the details first. A folder measured
+   * before at the same version is shown at once, as the real one
+   * remembers it.
+   */
+  sizes: 1500,
 } as const;
 
 /** How many operations may run at once (`OperationManager`'s semaphore). */
@@ -155,6 +167,11 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const held = new Set<string>();
   let running = 0;
   let nextOpId = 1;
+  /** What `get_sizes` answers: the newest round's sizes so far. */
+  let sizes: Sizes = NO_SIZES;
+  let sizesTimer: ReturnType<typeof setTimeout> | null = null;
+  /** `key|version` of every size measured so far, as the real meter's cache. */
+  const measuredBefore = new Set<string>();
 
   /** The part of a snapshot that decides its generation. */
   function snapshotContent(from: World, current: Settings) {
@@ -204,7 +221,37 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       lastAnnounced = generation;
       emit({ SnapshotChanged: { generation } });
     }
+    measureSizes(committed);
     return clone(committed);
+  }
+
+  /**
+   * A round of measuring for `snapshot`, as `SizeMeter` runs one after
+   * each commit: what it will measure at once -- remembered ones filled
+   * in, the rest "measuring" -- then, `TIMING.sizes` later, everything;
+   * `SizesChanged` each time. A newer commit stops the older round. With
+   * `?sizes=pending` the round never finishes.
+   */
+  function measureSizes(snapshot: Snapshot): void {
+    if (sizesTimer !== null) clearTimeout(sizesTimer);
+    sizesTimer = null;
+    const remembered = (a: InstalledArtifact) => measuredBefore.has(`${artifactId(a)}|${a.version}`);
+    const round = snapshot.round;
+    sizes = mockSizes(round, snapshot.instances, snapshot.artifacts, remembered);
+    emit({ SizesChanged: { round } });
+    if (sizes.done || scenario.sizes === "pending") return;
+    sizesTimer = setTimeout(() => {
+      sizesTimer = null;
+      sizes = mockSizes(round, snapshot.instances, snapshot.artifacts, () => true);
+      for (const size of sizes.artifacts) {
+        measuredBefore.add(`${size.key.instance_id}|${size.key.kind}|${size.key.name}|${size.version}`);
+      }
+      emit({ SizesChanged: { round } });
+    }, TIMING.sizes);
+  }
+
+  function artifactId(artifact: InstalledArtifact): string {
+    return `${artifact.key.instance_id}|${artifact.key.kind}|${artifact.key.name}`;
   }
 
   /** The actionability gate `Session::issue_plan` and `Session::submit` apply. */
@@ -524,6 +571,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const key = args.key as ArtifactKey;
       const row = committed?.artifacts.find((a) => sameKey(a.key, key));
       return row === undefined ? null : appIcon(row);
+    },
+    async get_sizes() {
+      // `Session::sizes`: what the newest round has said so far.
+      return clone(sizes);
     },
     async report_update_set(args) {
       // No notification to post: the preview has no daily check, and so no

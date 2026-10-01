@@ -43,7 +43,7 @@ if (scenario.page !== null) {
 
 console.info(
   `[${MOCK_MARKER}] Browser preview with a mock backend (docs/ui-preview.md): ` +
-    `state=${scenario.state} outcome=${scenario.outcome} scan=${scenario.scan}`,
+    `state=${scenario.state} outcome=${scenario.outcome} scan=${scenario.scan} sizes=${scenario.sizes}`,
 );
 for (const problem of problems) {
   console.warn(`[${MOCK_MARKER}] ${problem}`);

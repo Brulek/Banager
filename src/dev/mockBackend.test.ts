@@ -10,6 +10,7 @@ import type {
   OpRequest,
   OpSummary,
   Settings,
+  Sizes,
   Snapshot,
   UiEvent,
   UpdateCandidate,
@@ -157,6 +158,69 @@ describe("the browser preview's mock backend", () => {
     expect(again.generation).toBe(1);
     expect(again.round).toBe(2);
     expect(await answer<Snapshot>(backend.invoke("get_snapshot"))).toEqual(again);
+  });
+
+  it("measures sizes after each refresh: measuring first, every size a moment later, remembered after that", async () => {
+    const { backend, events } = backendFor();
+    expect(await answer<Sizes>(backend.invoke("get_sizes"))).toEqual({
+      round: 0,
+      done: false,
+      artifacts: [],
+      models: [],
+      total: null,
+    });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const measuring = (await backend.invoke("get_sizes")) as Sizes;
+    expect(measuring.round).toBe(snapshot.round);
+    expect(measuring.done).toBe(false);
+    expect(measuring.artifacts.length).toBeGreaterThan(0);
+    expect(measuring.artifacts.every((size) => size.measured === null)).toBe(true);
+    expect(measuring.total).toBeNull();
+    await vi.advanceTimersByTimeAsync(2_000);
+    const measured = (await backend.invoke("get_sizes")) as Sizes;
+    expect(measured.done).toBe(true);
+    expect(measured.artifacts.every((size) => size.measured !== null)).toBe(true);
+    expect(events.filter((e) => "SizesChanged" in e)).toEqual([
+      { SizesChanged: { round: 1 } },
+      { SizesChanged: { round: 1 } },
+    ]);
+    // What size.rs never measures is never listed: pip's packages, a cask
+    // with no app, Ollama's models (they keep their own size).
+    const listed = new Set(measured.artifacts.map((size) => artifactKeyId(size.key)));
+    for (const artifact of snapshot.artifacts) {
+      const id = artifactKeyId(artifact.key);
+      if (artifact.key.instance_id.startsWith("pip:") || artifact.key.kind === "Model") {
+        expect(listed.has(id), id).toBe(false);
+      }
+    }
+    expect(listed.has("brew:/opt/homebrew|Cask|font-jetbrains-mono")).toBe(false);
+    expect(listed.has("brew:/opt/homebrew|Cask|iterm2")).toBe(true);
+    // A formula with older kegs, one partial, one cut short, the models.
+    const node = measured.artifacts.find((size) => size.key.name === "node@22");
+    expect(node?.old_versions?.bytes).toBeGreaterThan(0);
+    expect(measured.artifacts.some((size) => size.measured?.partial)).toBe(true);
+    expect(measured.artifacts.some((size) => size.measured?.at_least)).toBe(true);
+    expect(measured.models).toEqual([
+      { instance_id: "ollama:http://127.0.0.1:11434", measured: expect.objectContaining({ partial: false }) },
+    ]);
+    const modelsOwn = snapshot.artifacts
+      .filter((a) => a.key.kind === "Model")
+      .reduce((sum, a) => sum + (a.size_bytes ?? 0), 0);
+    expect(measured.models[0].measured!.bytes).toBeLessThanOrEqual(modelsOwn);
+    // The next round shows what it measured before at once.
+    const again = await answer<Snapshot>(backend.invoke("refresh"));
+    const remembered = (await backend.invoke("get_sizes")) as Sizes;
+    expect(remembered.round).toBe(again.round);
+    expect(remembered.done).toBe(true);
+  });
+
+  it("never finishes measuring with ?sizes=pending", async () => {
+    const { backend } = backendFor({ sizes: "pending" });
+    await answer<Snapshot>(backend.invoke("refresh"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const sizes = (await backend.invoke("get_sizes")) as Sizes;
+    expect(sizes.done).toBe(false);
+    expect(sizes.artifacts.every((size) => size.measured === null)).toBe(true);
   });
 
   it("covers every Updates row state and both ways of hiding one", async () => {
@@ -460,7 +524,7 @@ describe("the preview's stand-ins for Tauri", () => {
 describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -470,6 +534,7 @@ describe("the preview's URL switches", () => {
       page: "updates",
       outcome: "failed",
       scan: "stopped",
+      sizes: "pending",
     });
   });
 
