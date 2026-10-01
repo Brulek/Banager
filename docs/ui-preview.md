@@ -203,6 +203,12 @@ Paths are under a generic home folder, `/Users/you`.
   first, then Visual Studio Code and node@22, a tool with no size last;
   while it is on, each row shows its size where the version was
   (「约4.7 GB」, 「正在计算…」, or 「—」).
+  It also has 「按安装日期」 ("By Date Installed"):
+  Codex, opencode-ai and @openai/codex first, then the Homebrew formulae
+  and casks newest first, each row showing the day where the version was
+  (「8月30日」, last year's with the year, 「2025年4月19日」); the tools
+  whose source reports no date -- Claude Code, pip's packages, the models
+  -- come last, by name, with 「—」.
   Sorted 「按来源」, each source's heading says what it takes after its
   count, 「Homebrew · 33个 · 2.6 GB以上」 (the font has no size, so "or more"),
   「Ollama · 2个模型 · 约6.6 GB」 as its models' line says; pip has no number. The
