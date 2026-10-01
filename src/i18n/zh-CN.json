@@ -668,7 +668,6 @@
     "reissued": "刚才未能开始，已重新检查。",
     "reissuedConfirmAgain": "刚才未能开始，已重新检查。请再确认一次。",
     "warningsTitle": "说明",
-    "keepListTitle": "保留",
     "affectedTitle": "依赖此工具的软件",
     "confirm": "卸载",
     "confirmPermanent": "永久卸载",
@@ -824,7 +823,25 @@
     "modelsNote": "几个模型共用的文件只算一次，所以合计可能比逐个相加小。",
     "shownOfAll_other": "{{total}}个工具中的{{count}}个",
     "updatesOfAll_other": "{{count}}个可更新，共{{total}}个",
-    "totalNoteAtLeast": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。有些工具没有大小，或部分文件无法读取，所以实际占用的更多。"
+    "totalNoteAtLeast": "实测大小的合计，含其他版本，不含缓存。几个工具共用的文件只算一次。有些工具没有大小，或部分文件无法读取，所以实际占用的更多。",
+    "willKeepWhat": {
+      "Settings": "设置",
+      "SettingsAndHistory": "设置、登录和历史记录",
+      "ToolState": "对话和历史记录",
+      "ShellConfigLines": "终端配置文件",
+      "OutsideHome": "会失效的链接",
+      "NotOurs": "无法确认归属",
+      "InstallerCache": "安装器暂存文件夹"
+    },
+    "scopeWithKept": {
+      "HomebrewFormulaOnly": "只删除Homebrew安装的这一版“{{name}}”和指向它的链接。",
+      "HomebrewFormula": "删除Homebrew安装的这一版“{{name}}”和指向它的链接。",
+      "HomebrewCaskPlain": "删除Homebrew为“{{name}}”安装的文件。",
+      "Npm": "删除npm全局目录中的“{{name}}”文件夹和命令，不运行它的代码。",
+      "Pipx": "删除pipx为“{{name}}”单独建立的Python环境和指向该环境的命令。",
+      "Uv": "删除uv为“{{name}}”单独建立的Python环境和uv记下的命令。"
+    },
+    "freesModel": "会腾出约{{size}}，与其他模型共用的部分除外。"
   },
   "unknown": {
     "columns": {

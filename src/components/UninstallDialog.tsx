@@ -17,6 +17,7 @@ import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../l
 import { CommandPreview } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { twinUninstallLine } from "./TwinAdvice";
+import { formatBytes } from "../lib/format";
 import { twinsByArtifact } from "../lib/commands";
 import { artifactKeyId } from "../store/ui";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
@@ -58,7 +59,8 @@ export interface UninstallDialogProps {
  * stopped once it starts, a password. Then the copy table's two named
  * groups (C4): 「移到废纸篓」, what a path-list uninstall moves -- with
  * what it found already gone -- and the one sentence it has in place of a
- * command; and 「保留」, what it leaves where it is. A line's longer why is
+ * command; and 「卸载后会保留」, what it leaves where it is, for every kind
+ * of uninstall alike (`KeptDataGroup`). A line's longer why is
  * behind its ⓘ. The command itself is one click away (`CommandPreview`),
  * open from the start with technical details on.
  *
@@ -167,7 +169,14 @@ export function UninstallDialog({
     const labelFor = (instanceId: string) => labels.get(instanceId) ?? adapterLabel(t, adapterIdOf(instanceId));
     return twinUninstallLine(t, artifact, twinsByArtifact(snapshot.artifacts).get(artifactKeyId(artifact.key)), labelFor);
   }, [t, artifact, snapshot]);
+  // A model's own size, as Ollama reports it: about what removing it frees,
+  // less the layers another model shares, which stay.
+  const frees =
+    artifact !== undefined && artifact.key.kind === "Model" && artifact.size_bytes !== null
+      ? t("clarity.freesModel", { size: formatBytes(artifact.size_bytes) })
+      : null;
   const notes: WarningLine[] = [
+    ...(frees === null ? [] : [{ text: frees, detail: null, caution: false }]),
     ...(twinLine === null ? [] : [{ text: twinLine, detail: null, caution: false }]),
     ...lines.note,
     ...(plan?.cancel_policy === "NoCancel"
@@ -389,14 +398,9 @@ export function UninstallDialog({
             </SheetSection>
           ) : null}
 
-          {lines.keep.length > 0 ? (
-            <SheetSection title={t("uninstall.keepListTitle")}>
-              <SheetLines lines={lines.keep} />
-            </SheetSection>
-          ) : null}
-
-          {/* A tool's settings and data, Ollama's models: no uninstall
-              removes them, and nothing here offers to (`KeptDataGroup`). */}
+          {/* What stays: a tool's own installer's list, a tool's settings
+              and data, Ollama's models -- one group for every uninstall,
+              and nothing here offers to remove any of it (`KeptDataGroup`). */}
           <KeptDataGroup warnings={plan.warnings} />
 
           {trashPlan ? null : <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />}

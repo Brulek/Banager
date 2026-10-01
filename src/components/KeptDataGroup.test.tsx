@@ -7,7 +7,8 @@ import { UninstallDialog } from "./UninstallDialog";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { keptDataOf } from "../lib/keptData";
 import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs, warningLines } from "../lib/warnings";
-import type { IssuedPlan, OpRequest, Warning } from "../lib/types";
+import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Snapshot, Warning } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 // The same strings `test_keeps_data_is_the_json_the_typescript_mirror_reads`
 // pins in crates/banager-core/src/model.rs.
@@ -185,9 +186,102 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     expect(within(group).getByRole("button", { name: "拷贝路径：~/.ollama/models" })).toHaveTextContent("拷贝路径");
   });
 
+  it("drops the scope sentence's general \"settings and data elsewhere\" where the group names what stays", async () => {
+    open([{ UninstallScope: { what: "Npm" } }, ...claudeKept]);
+    await screen.findByRole("region", { name: "Stays after uninstalling" });
+    expect(
+      screen.getByText("Deletes Claude Code's folder in npm's global folder and its commands; npm runs none of its code."),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/settings and data outside that folder are not deleted/);
+  });
+
+  it("keeps the general sentence where nothing is named", async () => {
+    open([{ UninstallScope: { what: "Npm" } }]);
+    expect(await screen.findByText(/its settings and data outside that folder are not deleted/)).toBeInTheDocument();
+  });
+
   it("has no group when nothing stays", async () => {
     open([{ UninstallScope: { what: "Npm" } }]);
     await screen.findByRole("button", { name: "Show Command" });
     expect(screen.queryByRole("region", { name: "Stays after uninstalling" })).toBeNull();
+  });
+});
+
+describe("the uninstall dialog's notes on what else stays", () => {
+  const base = (key: InstalledArtifact["key"], over: Partial<InstalledArtifact>): InstalledArtifact => ({
+    key,
+    display_name: key.name,
+    version: "1.0",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: NO_FACTS,
+    ...over,
+  });
+  const instance = (id: string, adapter: string): ManagerInstance => ({
+    id,
+    adapter_id: adapter,
+    exe_path: "/x",
+    prefix: "/x",
+    scope: "User",
+    version: "1",
+    unverified_version: null,
+    read_only_reason: null,
+    status: { unavailable: null, notes: [] },
+  });
+
+  function openWith(snapshot: Snapshot, request: OpRequest, name: string) {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") return issued([], request);
+      if (cmd === "get_snapshot") return snapshot;
+      return null;
+    });
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />);
+  }
+
+  const snapshotOf = (instances: ManagerInstance[], artifacts: InstalledArtifact[]): Snapshot => ({
+    generation: 1,
+    round: 1,
+    detect: "Found",
+    instances,
+    artifacts,
+    updates: [],
+    refreshed_at: 1,
+    stale: false,
+    errors: [],
+  });
+
+  it("says that Codex's own copy stays and codex still works, for the npm copy Terminal does not run", async () => {
+    const own = base(
+      { instance_id: "standalone-codex", kind: "Binary", name: "codex" },
+      { facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: "Runs" }] } },
+    );
+    const npmKey = { instance_id: "npm:/opt/homebrew", kind: "Package" as const, name: "@openai/codex" };
+    const npmCodex = base(npmKey, {
+      facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: { ShadowedBy: { by: own.key } } }] },
+    });
+    openWith(
+      snapshotOf([instance("standalone-codex", "standalone-codex"), instance("npm:/opt/homebrew", "npm")], [own, npmCodex]),
+      { kind: "Uninstall", instance_id: npmKey.instance_id, artifact_kind: "Package", name: npmKey.name },
+      "@openai/codex",
+    );
+    expect(
+      await screen.findByText("The copy from Codex's own installer stays, and codex still works in Terminal."),
+    ).toBeInTheDocument();
+  });
+
+  it("says about how much removing a model frees, less what another model shares", async () => {
+    const key = { instance_id: "ollama:/opt/homebrew", kind: "Model" as const, name: "llama3.2:3b" };
+    openWith(
+      snapshotOf([instance("ollama:/opt/homebrew", "ollama")], [base(key, { size_bytes: 2_019_393_189 })]),
+      { kind: "Uninstall", instance_id: key.instance_id, artifact_kind: "Model", name: key.name },
+      "llama3.2:3b",
+    );
+    expect(await screen.findByText("Frees about 2 GB, less any part other models share.")).toBeInTheDocument();
   });
 });

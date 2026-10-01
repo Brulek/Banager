@@ -722,7 +722,6 @@
     "reissued": "That didn't start, so it was checked again.",
     "reissuedConfirmAgain": "That didn't start, so it was checked again. Confirm once more.",
     "warningsTitle": "Notes",
-    "keepListTitle": "Kept",
     "affectedTitle": "Software that uses it",
     "confirm": "Uninstall",
     "confirmPermanent": "Uninstall Permanently",
@@ -885,7 +884,25 @@
     "shownOfAll_other": "{{count}} of {{total}} tools",
     "updatesOfAll_one": "{{count}} of {{total}} updates",
     "updatesOfAll_other": "{{count}} of {{total}} updates",
-    "totalNoteAtLeast": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once. Some tools have no size, or some of their files couldn't be read, so they take more than this."
+    "totalNoteAtLeast": "Measured sizes added up, including other versions but not caches. A file shared by several tools counts once. Some tools have no size, or some of their files couldn't be read, so they take more than this.",
+    "willKeepWhat": {
+      "Settings": "Settings",
+      "SettingsAndHistory": "Settings, login and history",
+      "ToolState": "Conversations and history",
+      "ShellConfigLines": "Terminal settings file",
+      "OutsideHome": "Link that will stop working",
+      "NotOurs": "Not confirmed as this tool's",
+      "InstallerCache": "Installer's staging folder"
+    },
+    "scopeWithKept": {
+      "HomebrewFormulaOnly": "Removes only the Homebrew version of {{name}} and the links to it.",
+      "HomebrewFormula": "Removes the Homebrew version of {{name}} and the links to it.",
+      "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}.",
+      "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code.",
+      "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it.",
+      "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded."
+    },
+    "freesModel": "Frees about {{size}}, less any part other models share."
   },
   "unknown": {
     "columns": {

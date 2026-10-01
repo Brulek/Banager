@@ -108,6 +108,14 @@ function noteLine(text: string) {
     element?.tagName === "SPAN" && element.parentElement?.tagName === "LI" && element.textContent?.trim() === text;
 }
 
+/** The 「卸载后会保留」 group's lines, as "what: path". */
+function keptLines(): string[] {
+  return [...document.querySelectorAll("[data-kept-data]")].map(
+    (line) =>
+      `${line.querySelector("[data-kept-what]")?.textContent?.trim()}: ${line.querySelector("[data-kept-path]")?.textContent}`,
+  );
+}
+
 describe("UninstallDialog", () => {
   it("shows a checking message and a disabled confirm button while the plan is loading", async () => {
     vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
@@ -413,10 +421,13 @@ describe("UninstallDialog", () => {
         "These 3 items go to the Trash, where you can drag them back out.",
       ),
     ).toBeInTheDocument();
-    expect(linesOf("Kept")).toEqual([
-      "Settings, login and history: ~/.claude",
-      "Settings: ~/.claude.json",
-    ]);
+    // What stays, in the one group every uninstall has, with Copy Path.
+    expect(keptLines()).toEqual(["Settings, login and history: ~/.claude", "Settings: ~/.claude.json"]);
+    expect(
+      within(screen.getByRole("region", { name: "Stays after uninstalling" })).getAllByRole("button", {
+        name: /^Copy path: /,
+      }),
+    ).toHaveLength(2);
     expect(screen.queryByRole("region", { name: "Notes" })).toBeNull();
     // Nothing to show behind "Show Command": no command runs.
     expect(screen.queryByRole("button", { name: /^Show Command/ })).toBeNull();
@@ -484,7 +495,7 @@ describe("UninstallDialog", () => {
       "~/.zprofile has a line that mentions Cargo, which rustup won't remove.",
       "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
     ]);
-    expect(linesOf("Kept")).toEqual(["Conversations and history: ~/.gemini/antigravity-cli"]);
+    expect(keptLines()).toEqual(["Conversations and history: ~/.gemini/antigravity-cli"]);
 
     const whys: Array<[string, string]> = [
       [
@@ -503,10 +514,8 @@ describe("UninstallDialog", () => {
         "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
         "Wait until the bottom of the window shows the result before you quit or shut down.",
       ],
-      [
-        "Conversations and history: ~/.gemini/antigravity-cli",
-        "Keeps the whole folder, including the program files in it.",
-      ],
+      // Its kept line's ⓘ is named by its path (`KeptDataGroup`).
+      ["~/.gemini/antigravity-cli", "Keeps the whole folder, including the program files in it."],
     ];
     for (const [line, why] of whys) {
       expect(screen.queryByText(why)).toBeNull();

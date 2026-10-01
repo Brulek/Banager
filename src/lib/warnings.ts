@@ -45,7 +45,7 @@ export const KEPT_DATA_KEYS: Record<KeptData, string> = {
  * because they are yours. A `Record` over `KeptWhat`, so a kind added
  * without an answer here fails `tsc`.
  */
-const KEPT_WHAT_DETAIL_KEYS: Record<KeptWhat, string | null> = {
+export const KEPT_WHAT_DETAIL_KEYS: Record<KeptWhat, string | null> = {
   Settings: null,
   SettingsAndHistory: null,
   ToolState: "warnings.willKeep.ToolStateDetail",
@@ -700,10 +700,34 @@ export function warningLines(
   subject?: string,
 ): WarningLines {
   const lines: WarningLines = { scope: [], trash: [], keep: [], data: [], note: [] };
+  // Where the plan names what stays (`KeepsData`, the 「卸载后会保留」
+  // group), the scope sentence leaves out its own general "settings and
+  // data elsewhere are kept": the group says which, and where.
+  const keptNamed = warnings.some((warning) => typeof warning !== "string" && "KeepsData" in warning);
   for (const warning of warnings) {
     if (affected.length > 0 && typeof warning !== "string" && "WouldBreak" in warning) continue;
+    const short =
+      keptNamed && subject !== undefined && typeof warning !== "string" && "UninstallScope" in warning
+        ? SCOPE_WITH_KEPT_KEYS[warning.UninstallScope.what]
+        : undefined;
     const line = warningLine(t, warning, subject);
-    if (line !== null) lines[warningGroup(warning)].push(line);
+    if (line === null) continue;
+    lines[warningGroup(warning)].push(short === undefined ? line : { ...line, text: t(short, { name: subject ?? "" }) });
   }
   return lines;
 }
+
+/**
+ * The scope sentences that end on a general "its settings and data
+ * elsewhere are kept", without it: for an uninstall whose plan names what
+ * stays (`warningLines`). The others say something more specific, or
+ * nothing of the kind.
+ */
+const SCOPE_WITH_KEPT_KEYS: Partial<Record<UninstallScope, string>> = {
+  HomebrewFormulaOnly: "clarity.scopeWithKept.HomebrewFormulaOnly",
+  HomebrewFormula: "clarity.scopeWithKept.HomebrewFormula",
+  HomebrewCaskPlain: "clarity.scopeWithKept.HomebrewCaskPlain",
+  Npm: "clarity.scopeWithKept.Npm",
+  Pipx: "clarity.scopeWithKept.Pipx",
+  Uv: "clarity.scopeWithKept.Uv",
+};
