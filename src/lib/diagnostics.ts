@@ -102,12 +102,23 @@ function notCheckedNames(t: Translate, instances: ManagerInstance[], errors: Sna
   return adapters.map((adapterId) => adapterLabel(t, adapterId));
 }
 
-/** What one source's status line says: each thing that holds, or 「正常」. */
-function statusOf(t: Translate, instance: ManagerInstance): string {
+/**
+ * Each thing that holds of one source's state, in a word -- 「没有响应」,
+ * 「仅供查看」, 「未经测试的版本」 -- none for one that is 「正常」. The
+ * status line here and Check Tool Setup's source lines
+ * (src/lib/toolSetupCheck.ts) both say a source's state in these words.
+ */
+export function sourceStateWords(t: Translate, instance: ManagerInstance): string[] {
   const words: string[] = [];
   if (instance.status.unavailable !== null) words.push(t(UNAVAILABLE_WORDS[instance.status.unavailable]));
   if (instance.read_only_reason !== null) words.push(t("diagnostics.text.statusWord.readOnly"));
   if (instance.unverified_version !== null) words.push(t("diagnostics.text.statusWord.unverified"));
+  return words;
+}
+
+/** What one source's status line says: each thing that holds, or 「正常」. */
+function statusOf(t: Translate, instance: ManagerInstance): string {
+  const words = sourceStateWords(t, instance);
   if (words.length === 0) return t("diagnostics.text.statusWord.ok");
   return words.join(t("common.listSeparator"));
 }
@@ -134,7 +145,7 @@ function notFoundInTerminal(artifact: InstalledArtifact): boolean {
  * Claude Code from npm and from its own installer) counts once however many
  * of its copies there are, not once a copy as `twinsByArtifact` keys them.
  */
-function toolsInstalledTwice(artifacts: readonly InstalledArtifact[]): number {
+export function toolsInstalledTwice(artifacts: readonly InstalledArtifact[]): number {
   const families = new Set<string>();
   for (const twins of twinsByArtifact(artifacts).values()) {
     // Every twin is of the artifact's own family (`twinsByArtifact` pairs within one).
