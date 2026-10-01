@@ -153,7 +153,7 @@ describe("a search that hides the selected tool", () => {
     await openDetails("wget");
     type("wgx");
     expect(rowNames()).toEqual([]);
-    await pause(SEARCH_SETTLE_MS / 2);
+    await pause(SEARCH_SETTLE_MS / 4);
     type("wg");
     expect(rowNames()).toEqual(["wget"]);
     await pause();
