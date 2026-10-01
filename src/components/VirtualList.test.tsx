@@ -356,7 +356,7 @@ describe("VirtualList's arrow keys", () => {
     });
     // How far the box can scroll, which the virtualizer keeps a scroll within.
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+    scrollLikeABrowser();
     const { row, queryByLabelText } = renderKeyList();
     // Ten rows fill the box: tool-11 is not drawn yet.
     expect(queryByLabelText("tool-11", { selector: "[data-row-focus]" })).toBeNull();
@@ -364,6 +364,66 @@ describe("VirtualList's arrow keys", () => {
     fireEvent.keyDown(row("tool-9"), { key: "ArrowDown" });
     // tool-10 is a heading; tool-11 is next, drawn one below the box.
     await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-11", { selector: "[data-row-focus]" })));
+  });
+
+  /** jsdom scrolls nothing: a scroll to a row moves the box as a browser would, within the list's height. */
+  function scrollLikeABrowser() {
+    const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+  }
+
+  it("goes to the first row with Home and to the last with End, passing over what is not a row", async () => {
+    scrollLikeABrowser();
+    const { row, queryByLabelText } = renderKeyList();
+    row("tool-3").focus();
+    // tool-99 is the last row; it is not drawn until End scrolls to it.
+    expect(fireEvent.keyDown(row("tool-3"), { key: "End" })).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-99", { selector: "[data-row-focus]" })));
+    // tool-0 is a heading: Home goes to tool-1.
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(row("tool-1")));
+    expect(row("tool-1")).toHaveAttribute("tabindex", "0");
+  });
+
+  it("moves a box's height with Page Down and Page Up, to the last row and the first past either end", async () => {
+    scrollLikeABrowser();
+    const { row, queryByLabelText } = renderKeyList();
+    const drawn = (item: string) => queryByLabelText(item, { selector: "[data-row-focus]" });
+    row("tool-1").focus();
+    // Ten rows of 60 fill the box of 600: from tool-1 to tool-11.
+    expect(fireEvent.keyDown(row("tool-1"), { key: "PageDown" })).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-11")));
+    // And back by as much, over the heading tool-5.
+    fireEvent.keyDown(drawn("tool-11") as HTMLElement, { key: "PageUp" });
+    await waitFor(() => expect(document.activeElement).toBe(row("tool-1")));
+    // Page Up at the top stays on the first row.
+    fireEvent.keyDown(row("tool-1"), { key: "PageUp" });
+    expect(document.activeElement).toBe(row("tool-1"));
+  });
+
+  it("goes to the last row with Page Down within a box's height of the end, passing over a heading", async () => {
+    scrollLikeABrowser();
+    const { queryByLabelText } = renderKeyList();
+    const drawn = (item: string) => queryByLabelText(item, { selector: "[data-row-focus]" });
+    fireEvent.keyDown(drawn("tool-1") as HTMLElement, { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-99")));
+    fireEvent.keyDown(drawn("tool-99") as HTMLElement, { key: "PageUp" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-89")));
+    fireEvent.keyDown(drawn("tool-89") as HTMLElement, { key: "ArrowUp" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-88")));
+    fireEvent.keyDown(drawn("tool-88") as HTMLElement, { key: "PageDown" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-98")));
+    fireEvent.keyDown(drawn("tool-98") as HTMLElement, { key: "PageDown" });
+    await waitFor(() => expect(document.activeElement).toBe(drawn("tool-99")));
   });
 
   it("leaves ↑ and ↓ to what handles them first, such as an open menu", () => {

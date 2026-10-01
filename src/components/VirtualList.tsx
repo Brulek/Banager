@@ -151,7 +151,8 @@ export interface VirtualListProps<T> {
    */
   reusable?: (item: T) => boolean;
   /**
-   * The slots ↑ and ↓ move the focus between (spec R11), as in a Mac
+   * The slots ↑ and ↓ (and Page Up / Page Down, Home / End: `LIST_KEYS`)
+   * move the focus between (spec R11), as in a Mac
    * list: a tool's row, and a line that discloses more of them. Each takes
    * part through `useRovingRow` (./rovingRows.ts). Left out, the arrow
    * keys do nothing here.
@@ -211,6 +212,13 @@ export interface VirtualListHandle {
   focusFirst(): void;
 }
 
+/**
+ * The keys that move the focus between rows, as in a Mac list: ↑ and ↓
+ * a row at a time, Page Up and Page Down a box's height at a time, Home
+ * and End to the first and the last row.
+ */
+const LIST_KEYS: ReadonlySet<string> = new Set(["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"]);
+
 /** What each slot showed, by its key. */
 type Drawn = Map<string, ReactNode>;
 
@@ -225,6 +233,30 @@ function nextKeyboardRow<T>(
     if (keyboardRows(items[index])) return index;
   }
   return null;
+}
+
+/**
+ * Where Page Down (step 1) or Page Up (-1) goes: the farthest slot that
+ * takes part in the arrow keys within a box's height of `from`, by the
+ * slots' estimated heights -- at least the next one, and the last one
+ * past the end -- or null when there is none that way.
+ */
+function pageKeyboardRow<T>(
+  items: readonly T[],
+  from: number,
+  step: 1 | -1,
+  keyboardRows: (item: T) => boolean,
+  sizeOf: (item: T) => number,
+  height: number,
+): number | null {
+  let found: number | null = null;
+  let travelled = 0;
+  for (let index = from + step; index >= 0 && index < items.length; index += step) {
+    travelled += sizeOf(items[index]);
+    if (travelled > height && found !== null) break;
+    if (keyboardRows(items[index])) found = index;
+  }
+  return found;
 }
 
 /**
@@ -332,12 +364,21 @@ export function VirtualList<T>({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (keyboardRows === undefined || event.defaultPrevented) return;
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (!LIST_KEYS.has(event.key)) return;
     const target = event.target as HTMLElement;
     if (target.closest('[role="menu"], input:not([type="checkbox"]), textarea') !== null) return;
     const slot = target.closest<HTMLElement>("[data-list-slot]");
     if (slot === null) return;
-    const next = nextKeyboardRow(items, Number(slot.dataset.index), event.key === "ArrowDown" ? 1 : -1, keyboardRows);
+    const from = Number(slot.dataset.index);
+    const height = listRef.current?.clientHeight ?? 0;
+    const next =
+      event.key === "Home"
+        ? nextKeyboardRow(items, -1, 1, keyboardRows)
+        : event.key === "End"
+          ? nextKeyboardRow(items, items.length, -1, keyboardRows)
+          : event.key === "PageDown" || event.key === "PageUp"
+            ? pageKeyboardRow(items, from, event.key === "PageDown" ? 1 : -1, keyboardRows, estimateSize, height)
+            : nextKeyboardRow(items, from, event.key === "ArrowDown" ? 1 : -1, keyboardRows);
     event.preventDefault();
     if (next === null) return;
     const key = itemKey(items[next]);
