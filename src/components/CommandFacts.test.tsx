@@ -165,7 +165,7 @@ describe("CommandsGroup", () => {
             { name: "claude-helper", state: "Runs" },
           ]),
         );
-        expect(getByRole("heading", { name: /在终端里输入/ })).toBeInTheDocument();
+        expect(getByRole("heading", { name: /^在终端里输入时/ })).toBeInTheDocument();
         expect(lines(container)).toEqual([
           ["claude", "终端找不到它：它在~/.local/bin，终端不在这个文件夹里查找命令"],
           ["claude-helper", "运行的是这一份"],

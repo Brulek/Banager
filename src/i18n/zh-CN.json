@@ -458,7 +458,7 @@
     }
   },
   "commands": {
-    "title": "在终端里输入",
+    "title": "在终端里输入时",
     "titleDetail": "按打开此App时读到的终端设置判断。别名、新开的终端窗口或编辑器里的终端可能不同。",
     "names_other": "{{names}}等{{count}}个",
     "runs": "运行的是这一份",
