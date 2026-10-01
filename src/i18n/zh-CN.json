@@ -648,7 +648,8 @@
     "cannotUndo": "此操作无法撤销。",
     "endsCannotUndo": "{{sentence}}此操作无法撤销。",
     "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
-  },  "keepsData": {
+  },
+  "keepsData": {
     "title": "卸载后会保留",
     "what": {
       "ToolData": "这个工具的设置和数据",
@@ -661,7 +662,6 @@
     "copyPath": "拷贝路径",
     "copyPathLabel": "拷贝路径：{{path}}"
   },
-
   "settings": {
     "groups": {
       "general": "通用",
