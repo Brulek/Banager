@@ -2196,7 +2196,9 @@ short of is shown as "or more" (「…以上」), and a path it did not reach,
 or could not read, or that measured 0, is named with no size. A path that leads into one of
 the places disk use never looks into (Disk use, above: the one list in
 `crates/banager-core/src/protected.rs`, whatever case spells them) is
-named with no size, and nothing there is read. A path that is not there,
+named with no size, and nothing there is read -- also when the link is a
+folder on the way (`~/.ollama`, for `~/.ollama/models`): the path is then
+named without Banager knowing whether it is there inside. A path that is not there,
 or a link that leads nowhere, gets no line. Inside `~/.codex`, the folder
 `packages/standalone` is Codex's own install (Codex's own install, above),
 which uninstalling npm's `@openai/codex` leaves where it is: the size

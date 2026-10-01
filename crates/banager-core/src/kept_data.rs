@@ -365,6 +365,38 @@ mod tests {
     }
 
     #[test]
+    fn test_a_link_among_the_folders_of_a_path_is_never_followed_into_a_protected_place() {
+        use std::os::unix::fs::PermissionsExt;
+        // `~/.ollama/models` is the one path two levels below home: with
+        // `~/.ollama` a link into a locked folder in ~/Documents, an
+        // `lstat` of the whole path would follow that link and fail on
+        // the lock (or, unlocked, raise the macOS prompt). Nothing past
+        // the link is looked at: the path is named, with no size.
+        let home = Home::new("ollama-protected");
+        home.file("Documents/ollama/models/blobs/sha256-1", 70_000);
+        let locked = home.0.join("Documents/ollama");
+        symlink(&locked, home.0.join(".ollama")).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let warnings = kept_data(&home.0, "ollama", &[], BUDGET);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(paths_of(&warnings), vec!["~/.ollama/models".to_string()]);
+        assert_eq!(size_of(&warnings[0]), None);
+    }
+
+    #[test]
+    fn test_a_link_among_the_folders_of_a_path_onto_another_disk_is_never_followed() {
+        let home = Home::new("ollama-volumes");
+        symlink(
+            "/Volumes/Banager-test-no-such-disk/ollama",
+            home.0.join(".ollama"),
+        )
+        .unwrap();
+        let warnings = kept_data(&home.0, "ollama", &[], BUDGET);
+        assert_eq!(paths_of(&warnings), vec!["~/.ollama/models".to_string()]);
+        assert_eq!(size_of(&warnings[0]), None);
+    }
+
+    #[test]
     fn test_a_path_leading_into_any_place_on_the_shared_list_whatever_its_case_is_never_measured() {
         // `size::Protected` is built from `crate::protected`, the one list
         // the command check keeps out of too: the two Containers folders

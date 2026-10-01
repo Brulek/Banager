@@ -515,8 +515,10 @@ impl LookBudget {
 /// `protected` before it is looked at -- and how much it takes, measured
 /// as a tool's folder is (`walk`: `lstat`, `readdir`, `readlink`, nothing
 /// opened), spending `budget`. A path that is itself in a protected place
-/// is not looked at; one that leads into one is there, with no size: its
-/// own `lstat` is all that is read of it. The folders inside `path` that
+/// is not looked at; one that leads into one is there, with no size:
+/// nothing past the link that leads there is read, so a path below such a
+/// link (`~/.ollama/models`, `~/.ollama` a link into `~/Documents`) is
+/// named as there without anything inside that place being looked at. The folders inside `path` that
 /// `leave_out` names, relative to it (`packages/standalone` in `~/.codex`)
 /// -- under where `path` leads, when it is a link -- are neither counted
 /// nor entered; with what was found, the indexes in `leave_out` of those
@@ -532,7 +534,16 @@ pub(crate) fn look_at(
     }
     match resolve(path, protected, true) {
         Resolution::Missing => (Looked::Missing, Vec::new()),
-        Resolution::Refused | Resolution::Protected(_) => match std::fs::symlink_metadata(path) {
+        // Every step up to the protected place was `lstat`ed and is
+        // there; nothing past it is looked at -- not even with one more
+        // `lstat` of `path`, which would follow a link among its folders
+        // (`~/.ollama` in `~/.ollama/models`) into that place.
+        Resolution::Protected(_) => (Looked::There(None), Vec::new()),
+        // `resolve` stopped at a step it could not read, before any
+        // protected place: the kernel's `lstat` takes the same steps (and
+        // fails at the same one), unless the step was through the last
+        // link, which `lstat` does not follow.
+        Resolution::Refused => match std::fs::symlink_metadata(path) {
             Ok(_) => (Looked::There(None), Vec::new()),
             Err(_) => (Looked::Missing, Vec::new()),
         },
