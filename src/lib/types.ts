@@ -135,11 +135,15 @@ export type CommandState = "Runs" | { ShadowedBy: { by: ArtifactKey | null } } |
  * its path list; the second batch's Ollama.app); `UvToolDirSet` by uv's
  * inventory for every tool while `UV_TOOL_DIR` is set in Banager's
  * environment, since removing the last one would also delete the folder
- * above that one. Read through `UNINSTALL_BLOCKED_KEYS` in
+ * above that one; `SourceProgram` by npm's inventory for its own `npm`,
+ * the program every npm package is updated and uninstalled with;
+ * `NeededBySource` only by `Session::submit`, for a plan whose preview
+ * named another source that runs on the package (`Warning.NeededBySource`),
+ * so no row carries it. Read through `UNINSTALL_BLOCKED_KEYS` in
  * src/lib/sources.ts, a `Record` over this union, so a variant added here
  * without copy fails `tsc`.
  */
-export type UninstallBlocked = "Pinned" | "NoSafeMethod" | "UvToolDirSet";
+export type UninstallBlocked = "Pinned" | "NoSafeMethod" | "UvToolDirSet" | "SourceProgram" | "NeededBySource";
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
  * `RemovedWhat` in crates/banager-core/src/model.rs: bare-string unit
@@ -279,6 +283,15 @@ export type RemoveCheck =
 export type Warning =
   | "DependentsUnknown"
   | { WouldBreak: { names: string[] } }
+  /**
+   * Another source runs on the Homebrew package an uninstall removes:
+   * its program (`program`), or the Python of `tools` of its tools'
+   * environments. `instance_id` is that source's. The uninstall
+   * confirmation lists it with Homebrew's dependents and offers no
+   * Uninstall (`neededBy` in src/lib/neededBy.ts); a batch leaves the
+   * package out.
+   */
+  | { NeededBySource: { instance_id: string; program: boolean; tools: number } }
   | "CompilesLocally"
   | "NonRegistrySource"
   | { ThirdPartyRegistry: { host: string } }

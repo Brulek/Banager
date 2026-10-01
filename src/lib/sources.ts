@@ -746,6 +746,26 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     command: () => "",
     refused: "installed.blocked.UvToolDirSet.refused",
   },
+  SourceProgram: {
+    // npm's own `npm` (`parse_ls_global`): the same word as a row uv will
+    // not let go of, since nothing the user can run changes it. The
+    // sentence says what it is to the rest of the list, with the source's
+    // name, and no command.
+    badge: "installed.blocked.UvToolDirSet.badge",
+    description: "runtimeGuard.sourceProgram",
+    command: () => "",
+    refused: "runtimeGuard.sourceProgramRefused",
+  },
+  NeededBySource: {
+    // On no row: only `Session::submit` sends it, for a preview that named
+    // the sources running on the package (`Warning.NeededBySource`), which
+    // the uninstall confirmation lists itself. The word and sentence hold
+    // all the same, should a row ever carry it.
+    badge: "installed.blocked.UvToolDirSet.badge",
+    description: "runtimeGuard.neededBy",
+    command: () => "",
+    refused: "runtimeGuard.neededByRefused",
+  },
 };
 
 /**

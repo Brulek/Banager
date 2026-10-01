@@ -200,8 +200,11 @@ function caskStepKey(step: CaskStep, items: string[], onlyIf: RemoveCheck | unde
 /**
  * The `warnings.*` key for a `Warning`'s copy, or `null` for the `Message`
  * catch-all, whose text is read straight off the wire (see
- * `warningMessage` below), and for `KeepsData`, which only the uninstall
- * confirmation's own group renders (`KeptDataGroup`).
+ * `warningMessage` below), for `KeepsData`, which only the uninstall
+ * confirmation's own group renders (`KeptDataGroup`), and for
+ * `NeededBySource`, which it lists with what Homebrew names as still
+ * needing the package (`neededByItem` in src/lib/neededBy.ts): it needs
+ * the source's name, which only the page has.
  *
  * Exhaustive, the way `faultKey` in `src/lib/format.ts` is: every variant
  * of `Warning` is named here, and the `never` defaults make `tsc` fail on
@@ -265,8 +268,9 @@ export function warningKey(warning: Warning): string | null {
     const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
     return caskStepKey(step, items, onlyIf);
   }
-  // Its own group renders it (`KeptDataGroup`), never a line.
-  if ("KeepsData" in warning || "Message" in warning) return null;
+  // Its own group renders it (`KeptDataGroup`, the list of what still needs
+  // the package), never a line.
+  if ("KeepsData" in warning || "NeededBySource" in warning || "Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
 }
@@ -312,7 +316,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
       ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
     };
   }
-  if ("KeepsData" in warning || "Message" in warning) return {};
+  if ("KeepsData" in warning || "NeededBySource" in warning || "Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;
 }
@@ -412,6 +416,7 @@ export function warningDetailKey(warning: Warning): string | null {
   }
   if (
     "WouldBreak" in warning ||
+    "NeededBySource" in warning ||
     "ThirdPartyRegistry" in warning ||
     "WillTrash" in warning ||
     "AlreadyGone" in warning ||
@@ -452,6 +457,9 @@ export function warningGroup(warning: Warning): WarningGroup {
   if ("KeepsData" in warning) return "data";
   if (
     "WouldBreak" in warning ||
+    // No line (`warningKey`): the confirmation lists it with Homebrew's
+    // dependents instead.
+    "NeededBySource" in warning ||
     "ThirdPartyRegistry" in warning ||
     "RemovesToolchains" in warning ||
     "DeletesCargoHome" in warning ||
@@ -516,6 +524,7 @@ export function deletesForGood(warning: Warning): boolean {
   }
   if (
     "WouldBreak" in warning ||
+    "NeededBySource" in warning ||
     "ThirdPartyRegistry" in warning ||
     "WillTrash" in warning ||
     "WillKeep" in warning ||
@@ -642,6 +651,7 @@ export function isCaution(warning: Warning): boolean {
   }
   if (
     "WouldBreak" in warning ||
+    "NeededBySource" in warning ||
     "ThirdPartyRegistry" in warning ||
     "RemovesToolchains" in warning ||
     "DeletesCargoHome" in warning ||

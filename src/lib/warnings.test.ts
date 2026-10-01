@@ -942,4 +942,26 @@ describe("warningLines", () => {
   it("is empty for an empty list", () => {
     expect(warningLines(fakeT, [])).toEqual({ scope: [], trash: [], keep: [], data: [], note: [] });
   });
+
+  it("leaves the sources that run on the package to the confirmation's own list, with or without Homebrew's", () => {
+    // `Warning::NeededBySource` (crates/banager-core/src/needed_by.rs) has
+    // no line: the uninstall confirmation lists it with what Homebrew
+    // names, by the source's name, which only the page has (`neededByItem`).
+    const needed: Warning = { NeededBySource: { instance_id: "npm:/opt/homebrew", program: true, tools: 4 } };
+    expect(warningKey(needed)).toBeNull();
+    expect(warningArgs(needed)).toEqual({});
+    expect(warningDetailKey(needed)).toBeNull();
+    expect(warningText(fakeT, needed)).toBeNull();
+    expect(warningGroup(needed)).toBe("note");
+    expect(isCaution(needed)).toBe(true);
+    expect(deletesForGood(needed)).toBe(false);
+    const warnings: Warning[] = [{ UninstallScope: { what: "HomebrewFormulaOnly" } }, needed];
+    for (const affected of [[], ["pipx"]]) {
+      const lines = warningLines(fakeT, warnings, affected, "node@22");
+      expect(lines.note).toEqual([]);
+      expect(lines.scope.map((line) => line.text)).toEqual([
+        'warnings.uninstallScope.HomebrewFormulaOnly({"name":"node@22"})',
+      ]);
+    }
+  });
 });

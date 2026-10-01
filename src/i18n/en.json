@@ -786,6 +786,25 @@
     "endsCannotUndo": "{{sentence}} You can't undo this action.",
     "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
   },
+  "runtimeGuard": {
+    "program_one": "{{source}} and its {{count}} tool",
+    "program_other": "{{source}} and its {{count}} tools",
+    "programModels_one": "{{source}} and its {{count}} model",
+    "programModels_other": "{{source}} and its {{count}} models",
+    "environments_one": "{{count}} tool installed with {{source}}",
+    "environments_other": "{{count}} tools installed with {{source}}",
+    "remove_one": "the tool installed with {{source}}",
+    "remove_other": "the {{count}} tools installed with {{source}}",
+    "removeModels_one": "{{source}}'s model",
+    "removeModels_other": "{{source}}'s {{count}} models",
+    "blocks": "Uninstall {{tools}} first to remove {{name}}.",
+    "dependentsAbove": "the Homebrew software above",
+    "reason": "Still used by {{names}}. To uninstall it, first uninstall {{tools}}.",
+    "sourceProgram": "This is {{source}} itself. Every tool installed with {{source}} is updated and uninstalled with it, so it can't be uninstalled here.",
+    "sourceProgramRefused": "Couldn't uninstall it because it's {{source}} itself.",
+    "neededBy": "Another source runs on it, so it can't be uninstalled here.",
+    "neededByRefused": "Couldn't uninstall it because another source runs on it."
+  },
   "batchUninstall": {
     "selectRow": "Select {{name}} to uninstall",
     "selectAll": "Select All",

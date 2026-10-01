@@ -201,10 +201,20 @@ describe("types", () => {
     // in crates/banager-core/src/model.rs, whose
     // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
-    const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod", "UvToolDirSet"];
-    expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod","UvToolDirSet"]');
+    const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod", "UvToolDirSet", "SourceProgram", "NeededBySource"];
+    expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod","UvToolDirSet","SourceProgram","NeededBySource"]');
+    expect(roundTrip(reasons)).toEqual(reasons);
     const removable: UninstallBlocked | null = null;
     expect(roundTrip(removable)).toBeNull();
+  });
+
+  it("spells Warning.NeededBySource as model.rs's wire test does", () => {
+    // `test_needed_by_source_is_the_json_the_typescript_mirror_reads` in
+    // crates/banager-core/src/model.rs writes exactly this string.
+    const wire = '{"NeededBySource":{"instance_id":"npm:/opt/homebrew","program":true,"tools":4}}';
+    const warning: Warning = { NeededBySource: { instance_id: "npm:/opt/homebrew", program: true, tools: 4 } };
+    expect(JSON.stringify(warning)).toBe(wire);
+    expect(JSON.parse(wire) as Warning).toEqual(warning);
   });
 
   it("spells ArtifactFacts' commands as model.rs's wire test does", () => {

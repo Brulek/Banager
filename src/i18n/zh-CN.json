@@ -732,6 +732,20 @@
     "endsCannotUndo": "{{sentence}}此操作无法撤销。",
     "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
   },
+  "runtimeGuard": {
+    "program_other": "{{source}}和它的{{count}}个工具",
+    "programModels_other": "{{source}}和它的{{count}}个模型",
+    "environments_other": "{{source}}装的{{count}}个工具",
+    "remove_other": "{{source}}装的{{count}}个工具",
+    "removeModels_other": "{{source}}的{{count}}个模型",
+    "blocks": "要卸载“{{name}}”，请先卸载{{tools}}。",
+    "dependentsAbove": "上面的Homebrew软件",
+    "reason": "还有软件要用到它：{{names}}。要卸载它，请先卸载{{tools}}。",
+    "sourceProgram": "这是{{source}}自己。{{source}}装的工具都要靠它更新和卸载，所以不能在这里卸载。",
+    "sourceProgramRefused": "无法卸载，因为它是{{source}}自己。",
+    "neededBy": "还有别的来源要靠它运行，所以不能在这里卸载。",
+    "neededByRefused": "无法卸载，因为还有别的来源要靠它运行。"
+  },
   "batchUninstall": {
     "selectRow": "选择要卸载的“{{name}}”",
     "selectAll": "全选",
