@@ -6,8 +6,8 @@
 //! hold every registered constant to the invariants the code relies on.
 
 use super::recipe::{
-    no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route,
-    RouteKind, Uninstall, UpgradeCmd, VersionCmd, VersionParse,
+    no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, ReleaseLink, RemoveSpec,
+    Route, RouteKind, Uninstall, UpgradeCmd, VersionCmd, VersionParse, VersionSource,
 };
 use super::rustup;
 use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;
@@ -72,11 +72,11 @@ pub static CLAUDE: Recipe = Recipe {
         launcher: "~/.local/bin/claude",
         root: "~/.local/share/claude",
     },
-    version: VersionCmd {
+    version: VersionSource::Command(VersionCmd {
         args: &["--version"],
         env: &[("DISABLE_AUTOUPDATER", "1")],
         parse: VersionParse::FirstToken,
-    },
+    }),
     latest: Latest::ClaudeChannel {
         base: "https://downloads.claude.ai/claude-code-releases",
     },
@@ -188,11 +188,11 @@ pub static AGY: Recipe = Recipe {
         launcher: "~/.local/bin/agy",
         root: "~/.gemini/antigravity-cli",
     },
-    version: VersionCmd {
+    version: VersionSource::Command(VersionCmd {
         args: &["--version"],
         env: &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")],
         parse: VersionParse::FirstToken,
-    },
+    }),
     latest: Latest::HttpJsonField {
         url: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json",
         field: "version",
@@ -325,11 +325,11 @@ pub static GROK: Recipe = Recipe {
         launcher: "~/.grok/bin/grok",
         root: "~/.grok",
     },
-    version: VersionCmd {
+    version: VersionSource::Command(VersionCmd {
         args: &["--version"],
         env: &[],
         parse: VersionParse::SecondToken,
-    },
+    }),
     latest: Latest::Command {
         args: &["update", "--check", "--json"],
         timeout_secs: 60,
@@ -521,11 +521,11 @@ pub static RUSTUP: Recipe = Recipe {
         launcher: "$CARGO_HOME/bin/rustup",
         root: "$CARGO_HOME",
     },
-    version: VersionCmd {
+    version: VersionSource::Command(VersionCmd {
         args: &["--version"],
         env: &[RUSTUP_AUTO_INSTALL_OFF],
         parse: VersionParse::SecondToken,
-    },
+    }),
     latest: Latest::HttpTomlVersion {
         url: "https://static.rust-lang.org/rustup/release-stable.toml",
     },
@@ -548,10 +548,87 @@ pub static RUSTUP: Recipe = Recipe {
     other_commands: &rustup::RUSTUP_PROXIES,
 };
 
+/// Codex (`codex`), OpenAI's terminal agent, installed by its own script
+/// (`curl -fsSL https://chatgpt.com/codex/install.sh | sh`, which redirects
+/// to `releases.openai.com/codex/install.sh`; run by the user, never by
+/// Banager). Listed only: Banager reads what is on the disk and runs
+/// nothing for it -- no version command, no update check, no update, no
+/// uninstall.
+///
+/// Every value here is from that script, fetched as text on 2026-10-01 and
+/// read, never executed (research S §3f; `adapters/fixtures/
+/// standalone-codex/install-script-2026-10-01/README.md` names the lines):
+/// - `BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"`: the launcher is
+///   `~/.local/bin/codex`, a symbolic link whose text is absolute,
+///   `$CODEX_HOME/packages/standalone/current/bin/codex` (or `current/codex`
+///   for an older release's layout; `update_visible_command`). On macOS
+///   the script also links `~/.local/bin/codex-code-mode-host` to
+///   `current/bin/codex-code-mode-host`, a helper, not a command people
+///   type: it is not one of `other_commands`, and the Unknown page leaves
+///   it alone because it resolves into the root (`scan::owned_roots`);
+/// - `STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"` with
+///   `CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"`: the root is
+///   `~/.codex/packages/standalone`, never `~/.codex` itself, which holds
+///   the user's settings, login and sessions. Releases are unpacked into
+///   `releases/<version>-<target>` (`release_name="$resolved_version-
+///   $vendor_target"`, the target `aarch64-apple-darwin` or
+///   `x86_64-apple-darwin` on a Mac), and `current` is re-pointed at the
+///   one in use (`update_current_link`, absolute text);
+/// - detection: Banager looks only at `~/.local/bin/codex` and the root
+///   under `~/.codex`. `CODEX_HOME` is not read: a Finder-launched app
+///   inherits no variable from the user's shell except the `PATH` Banager
+///   asks the login shell for (`fix_path_env`), so a `CODEX_HOME` exported
+///   in `~/.zshrc` is invisible to it. A Codex installed under another
+///   `CODEX_HOME` (or another `CODEX_INSTALL_DIR`) has a launcher that does
+///   not lead into this root and is not listed here -- the Unknown page
+///   lists that launcher instead. npm's `@openai/codex` (a link into
+///   `node_modules`) and the Homebrew cask `codex` (a link into
+///   `Caskroom`, in Homebrew's `bin`) are other paths and other sources'
+///   rows; the families table puts all three in one family;
+/// - the version is the release folder's name less its target, read from
+///   the `current` link (`VersionSource::ReleaseLink`): `codex --version`
+///   is never run;
+/// - `AUTO_UPDATE_VERSION="$STANDALONE_ROOT/auto-update-version"`: the
+///   script writes the release folder's name there when it installs the
+///   latest release and deletes it for a pinned one (`CODEX_RELEASE`), and
+///   a scheduled update re-runs the script only while that file names the
+///   release `current` points at. So the row says it updates itself when
+///   the file names the current release (`self_updates` plus
+///   `ReleaseLink::follows_latest`), and nothing about updates otherwise;
+/// - the newest version comes from `releases.openai.com` or GitHub, hosts
+///   not on Banager's list, so nothing is asked (`Latest::Unchecked`) and
+///   there is no `upgrade`: Banager must not re-run the script's `curl |
+///   sh`;
+/// - no uninstall (`NoSafeMethod`): a move-to-Trash list (the two links and
+///   `~/.codex/packages/standalone`, keeping the rest of `~/.codex`) is a
+///   new path list, the author's decision D5 (synthesis §三).
+pub static CODEX: Recipe = Recipe {
+    id: "codex",
+    meta_toml: include_str!("../../../../../adapters/meta/standalone-codex.toml"),
+    route: Route {
+        kind: RouteKind::SymlinkIntoRoot,
+        launcher: "~/.local/bin/codex",
+        root: "~/.codex/packages/standalone",
+    },
+    version: VersionSource::ReleaseLink(ReleaseLink {
+        link: "current",
+        releases: "releases",
+        suffixes: &["-aarch64-apple-darwin", "-x86_64-apple-darwin"],
+        follows_latest: "auto-update-version",
+    }),
+    latest: Latest::Unchecked,
+    self_updates: true,
+    upgrade: None,
+    uninstall: None,
+    extra_locks: no_extra_locks,
+    backup_globs: &[],
+    other_commands: &[],
+};
+
 /// Every tool this adapter type registers, in registration order. The
 /// refresh fans out alphabetically by adapter id regardless
 /// (`refresh_round`), so this order is only the reading order.
-pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP];
+pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP, &CODEX];
 
 /// Every registered tool's backup-file patterns, keyed by its adapter id
 /// (`standalone-<id>`), for the Unknown page's rule 4
@@ -713,11 +790,22 @@ mod tests {
             assert_eq!(meta.kind, "standalone");
             assert!(!meta.name.is_empty());
             assert!(meta.homepage.starts_with("https://"));
-            assert!(
-                !meta.verified_versions.is_empty(),
-                "{}: a recorded fixture backs verified_versions",
-                recipe.id
-            );
+            if recipe.version.runs_the_launcher() {
+                assert!(
+                    !meta.verified_versions.is_empty(),
+                    "{}: a recorded fixture backs verified_versions",
+                    recipe.id
+                );
+            } else {
+                // A tool Banager never runs (Codex) has no recorded version
+                // output to vouch for one, and an empty list marks no
+                // version as unverified (`AdapterMeta::unverified_version`).
+                assert!(
+                    meta.verified_versions.is_empty(),
+                    "{}: nothing was recorded from a tool Banager never runs",
+                    recipe.id
+                );
+            }
         }
     }
 
@@ -727,12 +815,15 @@ mod tests {
         assert_eq!(CLAUDE.route.kind, RouteKind::SymlinkIntoRoot);
         assert_eq!(CLAUDE.route.launcher, "~/.local/bin/claude");
         assert_eq!(CLAUDE.route.root, "~/.local/share/claude");
-        assert_eq!(CLAUDE.version.args, &["--version"]);
+        assert_eq!(CLAUDE.version.command().args, &["--version"]);
         // Spec §3.4: the version read must not start a background update
         // check; the upgrade plan (`StandaloneAdapter::plan`) must not
         // carry this.
-        assert_eq!(CLAUDE.version.env, &[("DISABLE_AUTOUPDATER", "1")]);
-        assert_eq!(CLAUDE.version.parse, VersionParse::FirstToken);
+        assert_eq!(
+            CLAUDE.version.command().env,
+            &[("DISABLE_AUTOUPDATER", "1")]
+        );
+        assert_eq!(CLAUDE.version.command().parse, VersionParse::FirstToken);
         assert!(CLAUDE.self_updates);
     }
 
@@ -755,11 +846,12 @@ mod tests {
 
     #[test]
     fn test_recipes_lists_each_registered_tool_once_in_reading_order() {
-        assert_eq!(RECIPES.len(), 4);
+        assert_eq!(RECIPES.len(), 5);
         assert!(std::ptr::eq(RECIPES[0], &CLAUDE));
         assert!(std::ptr::eq(RECIPES[1], &AGY));
         assert!(std::ptr::eq(RECIPES[2], &GROK));
         assert!(std::ptr::eq(RECIPES[3], &RUSTUP));
+        assert!(std::ptr::eq(RECIPES[4], &CODEX));
         let mut ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
         ids.dedup();
         assert_eq!(ids.len(), RECIPES.len(), "one recipe per tool");
@@ -790,6 +882,8 @@ mod tests {
                 // own configuration (docs/what-we-run.md, the network
                 // section's last paragraph): no host of Banager's.
                 Latest::Command { .. } => Vec::new(),
+                // Nothing is asked at all.
+                Latest::Unchecked => Vec::new(),
             };
             for url in urls {
                 host_allowed(&url).unwrap_or_else(|e| panic!("{}: {url}: {e}", recipe.id));
@@ -1018,17 +1112,20 @@ mod tests {
         assert_eq!(RUSTUP.route.kind, RouteKind::FlatFile);
         assert_eq!(RUSTUP.route.launcher, "$CARGO_HOME/bin/rustup");
         assert_eq!(RUSTUP.route.root, "$CARGO_HOME");
-        assert_eq!(RUSTUP.version.args, &["--version"]);
+        assert_eq!(RUSTUP.version.command().args, &["--version"]);
         // Ruling 20: `rustup --version` resolves the active toolchain and,
         // with none active and auto-install on (the default), installs
         // one -- a download during a refresh. The switch that stops it
         // is the same constant cargo's detect uses for the proxy.
-        assert_eq!(RUSTUP.version.env, &[("RUSTUP_AUTO_INSTALL", "0")]);
         assert_eq!(
-            RUSTUP.version.env,
+            RUSTUP.version.command().env,
+            &[("RUSTUP_AUTO_INSTALL", "0")]
+        );
+        assert_eq!(
+            RUSTUP.version.command().env,
             &[crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF]
         );
-        assert_eq!(RUSTUP.version.parse, VersionParse::SecondToken);
+        assert_eq!(RUSTUP.version.command().parse, VersionParse::SecondToken);
         assert!(!RUSTUP.self_updates);
         assert_eq!(
             RUSTUP.latest,
@@ -1104,7 +1201,7 @@ mod tests {
             .upgrade
             .as_ref()
             .expect("rustup has an update command");
-        for argv in [upgrade.args, RUSTUP.version.args, cmd.args] {
+        for argv in [upgrade.args, RUSTUP.version.command().args, cmd.args] {
             assert_ne!(argv.first(), Some(&"update"), "rustup: {argv:?}");
         }
     }
@@ -1168,9 +1265,12 @@ mod tests {
         assert_eq!(AGY.route.kind, RouteKind::FlatFile);
         assert_eq!(AGY.route.launcher, "~/.local/bin/agy");
         assert_eq!(AGY.route.root, "~/.gemini/antigravity-cli");
-        assert_eq!(AGY.version.args, &["--version"]);
-        assert_eq!(AGY.version.env, &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")]);
-        assert_eq!(AGY.version.parse, VersionParse::FirstToken);
+        assert_eq!(AGY.version.command().args, &["--version"]);
+        assert_eq!(
+            AGY.version.command().env,
+            &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")]
+        );
+        assert_eq!(AGY.version.command().parse, VersionParse::FirstToken);
         assert!(AGY.self_updates);
         assert_eq!(
             AGY.latest,
@@ -1248,9 +1348,9 @@ mod tests {
         assert_eq!(GROK.route.kind, RouteKind::SymlinkIntoRoot);
         assert_eq!(GROK.route.launcher, "~/.grok/bin/grok");
         assert_eq!(GROK.route.root, "~/.grok");
-        assert_eq!(GROK.version.args, &["--version"]);
-        assert!(GROK.version.env.is_empty());
-        assert_eq!(GROK.version.parse, VersionParse::SecondToken);
+        assert_eq!(GROK.version.command().args, &["--version"]);
+        assert!(GROK.version.command().env.is_empty());
+        assert_eq!(GROK.version.command().parse, VersionParse::SecondToken);
         assert!(!GROK.self_updates);
         assert_eq!(
             GROK.latest,
@@ -1379,5 +1479,43 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_codex_is_listed_only_read_from_its_current_link() {
+        // The install script, read as text (research S §3f): the launcher
+        // `~/.local/bin/codex` links into `$CODEX_HOME/packages/standalone`,
+        // whose `current` names `releases/<version>-<target>`.
+        assert_eq!(CODEX.id, "codex");
+        assert_eq!(CODEX.route.kind, RouteKind::SymlinkIntoRoot);
+        assert_eq!(CODEX.route.launcher, "~/.local/bin/codex");
+        // The package folder, never `~/.codex`, which holds the user's
+        // settings, login and sessions.
+        assert_eq!(CODEX.route.root, "~/.codex/packages/standalone");
+        let VersionSource::ReleaseLink(link) = &CODEX.version else {
+            panic!("Codex's version is read from a link, never by running codex");
+        };
+        assert!(!CODEX.version.runs_the_launcher());
+        assert_eq!(link.link, "current");
+        assert_eq!(link.releases, "releases");
+        assert_eq!(
+            link.suffixes,
+            &["-aarch64-apple-darwin", "-x86_64-apple-darwin"]
+        );
+        assert_eq!(link.follows_latest, "auto-update-version");
+        // Listed only: nothing asked, nothing run, nothing moved (D5).
+        assert_eq!(CODEX.latest, Latest::Unchecked);
+        assert!(CODEX.self_updates);
+        assert!(CODEX.upgrade.is_none());
+        assert!(CODEX.uninstall.is_none());
+        assert!(CODEX.backup_globs.is_empty());
+        assert!(CODEX.other_commands.is_empty());
+        assert!(
+            (CODEX.extra_locks)(&crate::adapters::standalone::testing::detected(
+                Path::new("/Users/someone"),
+                Path::new("/Users/someone/.cargo"),
+            ))
+            .is_empty()
+        );
     }
 }

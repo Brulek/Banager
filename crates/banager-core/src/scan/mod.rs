@@ -301,7 +301,8 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 ///
 /// The standalone adapters own their tool roots -- `standalone-claude` →
 /// `~/.local/share/claude`, `standalone-agy` →
-/// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`, each the
+/// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`,
+/// `standalone-codex` → `~/.codex/packages/standalone`, each the
 /// instance's `prefix`; `standalone-rustup` nothing (its root is the
 /// Cargo home, whose `bin/` is scanned; rule 1 has the launcher and its
 /// proxies, rule 2 the `cargo install`ed programs). A row here with no
@@ -338,7 +339,12 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
         // `standalone-rustup` never joins: its root is the Cargo home, whose
         // `bin/` is scanned; rule 1 has its launcher and proxies, rule 2 the
         // `cargo install`ed programs.
-        "standalone-claude" | "standalone-agy" | "standalone-grok" => vec![inst.prefix.clone()],
+        // Codex's `~/.codex/packages/standalone`, never `~/.codex`, where
+        // its settings and sessions live: its `releases/` hold the program
+        // both of its links in `~/.local/bin` resolve to.
+        "standalone-claude" | "standalone-agy" | "standalone-grok" | "standalone-codex" => {
+            vec![inst.prefix.clone()]
+        }
         // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
         // scanned; rule 1 places the proxies and rule 2 places
         // `cargo install`ed binaries. uv and (from Task 3b) pipx: rule 2,
@@ -1082,6 +1088,11 @@ mod tests {
         for (adapter, prefix) in [
             ("standalone-agy", "/Users/someone/.gemini/antigravity-cli"),
             ("standalone-grok", "/Users/someone/.grok"),
+            // Codex, listed only: its package folder, not `~/.codex`.
+            (
+                "standalone-codex",
+                "/Users/someone/.codex/packages/standalone",
+            ),
         ] {
             let inst = ManagerInstance {
                 prefix: PathBuf::from(prefix),

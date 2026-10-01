@@ -9,7 +9,9 @@
 //! `extra_locks` and `Uninstall::Command`; step D added `backup_globs` and
 //! adds `Expect::File`, `Expect::SymlinkToProgram` (grok's links besides its
 //! launcher), the two `Latest` sources a manifest and a tool's own check
-//! need, and an optional `upgrade` (agy updates itself only). A
+//! need, and an optional `upgrade` (agy updates itself only). The
+//! advantages round adds, for Codex, listed only, `VersionSource::ReleaseLink`
+//! (a version read with no command) and `Latest::Unchecked`. A
 //! variant or field defined before anything produces it is this project's
 //! most common defect (spec §十三 #41).
 
@@ -38,9 +40,12 @@ pub struct Recipe {
     /// `route::expand_route`) and, through the instance's
     /// `exe_path`/`prefix`, by `inventory`.
     pub route: Route,
-    /// How the installed version is read. Read by `detect` and
-    /// `inventory` (and so by `reconcile`).
-    pub version: VersionCmd,
+    /// How the installed version is read: by running the launcher's
+    /// version command, or, for a tool Banager never runs (Codex), from
+    /// the name of the release folder its installer's `current` link
+    /// points at. Read by `detect` and `inventory` (and so by
+    /// `reconcile`).
+    pub version: VersionSource,
     /// Where the newest published version comes from. Read by
     /// `check_updates`.
     pub latest: Latest,
@@ -142,6 +147,64 @@ pub enum RouteKind {
     FlatFile,
 }
 
+/// Where the installed version comes from. Read by
+/// `StandaloneAdapter::read_version`.
+#[derive(Debug)]
+pub enum VersionSource {
+    /// A read-only command run against the launcher (every tool before
+    /// Codex).
+    Command(VersionCmd),
+    /// No command at all: the version is the name of the release folder a
+    /// link inside the tool's root points at (Codex: `current` →
+    /// `…/releases/0.159.3-aarch64-apple-darwin`). Its producer is
+    /// `recipes::CODEX`; read by `release_link::read`.
+    ReleaseLink(ReleaseLink),
+}
+
+impl VersionSource {
+    /// Whether reading the version runs the launcher -- so a version that
+    /// did not come back means the tool did not answer
+    /// (`Unavailable::NotResponding`). A link read runs nothing, and an
+    /// unreadable link is a version Banager does not know, not a tool
+    /// that stopped answering.
+    pub fn runs_the_launcher(&self) -> bool {
+        matches!(self, VersionSource::Command(_))
+    }
+
+    /// The command, for the tests that pin a command recipe's argv,
+    /// environment and parse. Panics on a link source: a test asking a
+    /// link source for its command is a test of the wrong recipe.
+    #[cfg(test)]
+    pub fn command(&self) -> &VersionCmd {
+        match self {
+            VersionSource::Command(cmd) => cmd,
+            VersionSource::ReleaseLink(_) => panic!("this recipe reads its version from a link"),
+        }
+    }
+}
+
+/// `VersionSource::ReleaseLink`'s data: every path is relative to the
+/// tool's root (the instance's `prefix`), so it follows the root wherever
+/// detect expanded it. Read by `release_link::read`.
+#[derive(Debug)]
+pub struct ReleaseLink {
+    /// The link the installer re-points at each update (`current`).
+    pub link: &'static str,
+    /// The folder every release folder sits in (`releases`); a link that
+    /// points anywhere else gives no version.
+    pub releases: &'static str,
+    /// The endings the installer adds after the version in a release
+    /// folder's name (`-aarch64-apple-darwin`, `-x86_64-apple-darwin`); a
+    /// name with none of them gives no version.
+    pub suffixes: &'static [&'static str],
+    /// The file the installer writes when the install follows the latest
+    /// release, holding that release folder's name (`auto-update-version`),
+    /// and deletes for an install pinned to one version. Only when it names
+    /// the folder `link` points at is the row said to update itself
+    /// (`InstalledArtifact.auto_updates`).
+    pub follows_latest: &'static str,
+}
+
 /// The read-only version command, run against the launcher.
 #[derive(Debug)]
 pub struct VersionCmd {
@@ -230,6 +293,16 @@ pub enum Latest {
         available_field: &'static str,
         error_field: Option<&'static str>,
     },
+    /// Banager does not look for a newer version at all: no request, no
+    /// command. For a tool listed only (Codex, whose installer's own
+    /// version source is a host Banager has not been cleared to reach and
+    /// whose updater installs new releases itself). `check_updates` lists
+    /// nothing for it -- neither a candidate nor a "could not check" row --
+    /// and the front end, knowing the source by its id
+    /// (`UNCHECKED_STANDALONE` in src/lib/uncheckedStandalone.ts), puts no
+    /// 「已是最新」 on the row, which would be a claim nobody checked. Its
+    /// producer is the `CODEX` recipe.
+    Unchecked,
 }
 
 /// The tool's own update command, run against the launcher through

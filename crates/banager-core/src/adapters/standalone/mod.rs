@@ -19,11 +19,12 @@
 pub mod latest;
 pub mod recipe;
 pub mod recipes;
+pub mod release_link;
 pub mod removal;
 pub mod route;
 pub mod rustup;
 
-use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall};
+use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall, VersionSource};
 use self::route::Probe;
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
@@ -120,6 +121,20 @@ struct Look {
     /// `None` when the launcher is not this route's (there is no program
     /// to ask) or did not answer.
     version: Option<String>,
+    /// What the version read said about the tool updating itself:
+    /// `VersionRead::follows_latest`.
+    follows_latest: Option<bool>,
+}
+
+/// One version read (`StandaloneAdapter::read_version`).
+struct VersionRead {
+    version: Option<String>,
+    /// For a `VersionSource::ReleaseLink` tool (Codex), whether the
+    /// install follows the latest release, which is when its updater
+    /// installs new ones (`release_link::LinkReading::follows_latest`);
+    /// `None` for a command read, where the recipe's `self_updates` says
+    /// it alone.
+    follows_latest: Option<bool>,
 }
 
 /// One tool installed by its own installer, as the `Adapter` contract
@@ -245,10 +260,14 @@ impl StandaloneAdapter {
                 // instance (spec Q17).
                 Probe::LauncherOnly => (None, None, vec![InstanceNote::LauncherOnly]),
                 Probe::Present { real } => {
-                    let version = self.read_version(&launcher).await;
+                    let version = self.read_version(&launcher, &root).await.version;
                     // The state axis, exactly as uv's rule: the launcher is
-                    // there and is ours, it just did not answer.
-                    let unavailable = version.is_none().then_some(Unavailable::NotResponding);
+                    // there and is ours, it just did not answer. A version
+                    // read from a link asks nothing, so nothing failed to
+                    // answer: the row is listed with its version unknown.
+                    let unavailable = (version.is_none()
+                        && self.recipe.version.runs_the_launcher())
+                    .then_some(Unavailable::NotResponding);
                     let notes = route::shadow_note(self.recipe.id, env, &real)
                         .into_iter()
                         .collect();
@@ -292,8 +311,20 @@ impl StandaloneAdapter {
     /// `<launcher> --version` with the recipe's environment (the updater
     /// switched off, spec §3.4), parsed per the recipe; `None` when it did
     /// not exit 0, timed out, could not be spawned, or printed no version.
-    async fn read_version(&self, launcher: &Path) -> Option<String> {
-        let cmd = &self.recipe.version;
+    /// For a `VersionSource::ReleaseLink` recipe (Codex) nothing runs: the
+    /// version is the release folder `root`'s link points at
+    /// (`release_link::read`), `None` when that gives none.
+    async fn read_version(&self, launcher: &Path, root: &Path) -> VersionRead {
+        let cmd = match &self.recipe.version {
+            VersionSource::Command(cmd) => cmd,
+            VersionSource::ReleaseLink(spec) => {
+                let reading = release_link::read(root, spec);
+                return VersionRead {
+                    version: reading.version,
+                    follows_latest: Some(reading.follows_latest),
+                };
+            }
+        };
         let output = self
             .runner
             .run(
@@ -313,11 +344,15 @@ impl StandaloneAdapter {
                 CancellationToken::new(),
             )
             .await;
-        match output {
+        let version = match output {
             Ok(o) if o.exit_code == Some(0) && !o.timed_out && !o.cancelled => {
                 latest::parse_version(&o.stdout, cmd.parse)
             }
             _ => None,
+        };
+        VersionRead {
+            version,
+            follows_latest: None,
         }
     }
 
@@ -420,11 +455,18 @@ impl StandaloneAdapter {
     /// route's.
     async fn look(&self, inst: &ManagerInstance) -> Look {
         let probe = route::probe(self.recipe.route.kind, &inst.exe_path, &inst.prefix);
-        let version = match probe {
-            Probe::Present { .. } => self.read_version(&inst.exe_path).await,
-            Probe::Absent | Probe::LauncherOnly => None,
+        let read = match probe {
+            Probe::Present { .. } => self.read_version(&inst.exe_path, &inst.prefix).await,
+            Probe::Absent | Probe::LauncherOnly => VersionRead {
+                version: None,
+                follows_latest: None,
+            },
         };
-        Look { probe, version }
+        Look {
+            probe,
+            version: read.version,
+            follows_latest: read.follows_latest,
+        }
     }
 
     /// The tool itself, read from the disk again (`look`), not detect's
@@ -481,6 +523,13 @@ impl StandaloneAdapter {
     /// with the version it answered (empty when it did not) and the real
     /// binary. Read by `inventory` and `reconcile`.
     fn rows(&self, inst: &ManagerInstance, look: Look) -> Vec<InstalledArtifact> {
+        // A link-read tool updates itself only when its install follows
+        // the latest release; a launcher alone follows nothing.
+        let auto_updates = self.recipe.self_updates
+            && match &self.recipe.version {
+                VersionSource::Command(_) => true,
+                VersionSource::ReleaseLink(_) => look.follows_latest == Some(true),
+            };
         let (version, path) = match look.probe {
             Probe::Absent => return Vec::new(),
             Probe::LauncherOnly => (String::new(), None),
@@ -506,8 +555,9 @@ impl StandaloneAdapter {
             // The real binary: the Unknown page's rule 2.
             path,
             // For the Updates page's `selfUpdatingHint` sentence, which
-            // arrives with Task 10 of the phase 4 step B plan.
-            auto_updates: self.recipe.self_updates,
+            // arrives with Task 10 of the phase 4 step B plan, and Codex's
+            // 「它自己更新」 on the Installed page.
+            auto_updates,
             // No uninstall method at all (spec §6.1 "Neither"; none in
             // the first batch, the second batch's Ollama.app):
             // `NoSafeMethod` -- the gate refuses, the page hides the button
@@ -592,6 +642,12 @@ impl StandaloneAdapter {
             Some(Reading::LauncherOnly) => return Ok(CheckOutcome::default()),
             Some(Reading::Present { version }) => version,
         };
+        // A tool Banager does not check (Codex): no request, no command,
+        // no row -- not even "could not check", which every refresh would
+        // repeat about a check that was never going to be made.
+        if matches!(self.recipe.latest, Latest::Unchecked) {
+            return Ok(CheckOutcome::default());
+        }
         let key = self.artifact_key(inst);
         let Some(current) = version else {
             return Ok(vec![uncheckable_candidate(
@@ -768,6 +824,12 @@ impl StandaloneAdapter {
                 )
                 .map(Published::ToolSays)
             }
+            // `check_updates` returns before asking (above); a published
+            // version is not something this source has.
+            Latest::Unchecked => Err(format!(
+                "Banager does not check {} for updates",
+                self.meta.name
+            )),
         }
     }
 
@@ -2767,11 +2829,11 @@ mod tests {
             launcher: "~/.local/bin/claude",
             root: "~/.local/share/claude",
         },
-        version: VersionCmd {
+        version: VersionSource::Command(VersionCmd {
             args: &["--version"],
             env: &[("DISABLE_AUTOUPDATER", "1")],
             parse: VersionParse::FirstToken,
-        },
+        }),
         latest: Latest::ClaudeChannel {
             base: "https://downloads.claude.ai/claude-code-releases",
         },
@@ -3090,7 +3152,8 @@ mod tests {
                 "standalone-claude".to_string(),
                 "standalone-agy".to_string(),
                 "standalone-grok".to_string(),
-                "standalone-rustup".to_string()
+                "standalone-rustup".to_string(),
+                "standalone-codex".to_string()
             ]
         );
         assert_eq!(adapters.len(), super::recipes::RECIPES.len());
@@ -3140,7 +3203,7 @@ mod tests {
     fn test_the_recorded_version_line_parses_to_the_verified_version() {
         let verified = adapter(Arc::new(MockRunner::new())).meta.verified_versions[0].clone();
         assert_eq!(
-            latest::parse_version(&fixture("version.txt"), CLAUDE.version.parse),
+            latest::parse_version(&fixture("version.txt"), CLAUDE.version.command().parse),
             Some(verified)
         );
     }
@@ -4161,11 +4224,11 @@ mod tests {
             launcher: "$CARGO_HOME/bin/rustup",
             root: "$CARGO_HOME",
         },
-        version: VersionCmd {
+        version: VersionSource::Command(VersionCmd {
             args: &["--version"],
             env: &[crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF],
             parse: VersionParse::SecondToken,
-        },
+        }),
         latest: Latest::HttpTomlVersion { url: RELEASE_URL },
         self_updates: false,
         upgrade: Some(UpgradeCmd {
@@ -4648,7 +4711,10 @@ mod tests {
             .verified_versions[0]
             .clone();
         assert_eq!(
-            latest::parse_version(&rustup_fixture("version.txt"), RUSTUP.version.parse),
+            latest::parse_version(
+                &rustup_fixture("version.txt"),
+                RUSTUP.version.command().parse
+            ),
             Some(verified.clone())
         );
         // The two `info:` lines. `parse_version` keeps whatever token it
@@ -4658,7 +4724,7 @@ mod tests {
         // stdout only.
         let stderr = rustup_fixture("version-stderr.txt");
         assert!(stderr.starts_with("info:"), "{stderr:?}");
-        let misread = latest::parse_version(&stderr, RUSTUP.version.parse);
+        let misread = latest::parse_version(&stderr, RUSTUP.version.command().parse);
         assert_ne!(misread, Some(verified));
         assert!(
             misread
@@ -4764,8 +4830,8 @@ mod tests {
             .verified_versions[0]
             .clone();
         let version_line = rustup_fixture("version.txt");
-        let installed =
-            latest::parse_version(&version_line, RUSTUP.version.parse).expect("version line");
+        let installed = latest::parse_version(&version_line, RUSTUP.version.command().parse)
+            .expect("version line");
         assert_eq!(installed, verified, "the meta names the recorded version");
         let body = rustup_fixture("release-stable.toml");
         let published = latest::parse_release_stable_toml(&body).expect("release file");
@@ -6051,7 +6117,7 @@ mod tests {
     fn test_agys_recorded_version_line_is_one_bare_version_matching_the_meta() {
         let meta = AdapterMeta::from_toml(AGY.meta_toml).expect("meta");
         let line = recorded(&AGY, "version.txt");
-        let version = latest::parse_version(&line, AGY.version.parse).expect("a version");
+        let version = latest::parse_version(&line, AGY.version.command().parse).expect("a version");
         assert_eq!(Some(&version), meta.verified_versions.first());
         assert!(latest::is_dotted_version(&version), "{version:?}");
         assert_eq!(
@@ -6073,7 +6139,8 @@ mod tests {
         };
         let remote = latest::parse_json_field(&manifest, field).expect("a version");
         let local =
-            latest::parse_version(&recorded(&AGY, "version.txt"), AGY.version.parse).unwrap();
+            latest::parse_version(&recorded(&AGY, "version.txt"), AGY.version.command().parse)
+                .unwrap();
         assert!(
             latest::compare_dotted(&local, &remote).is_some(),
             "{local} vs {remote}"
@@ -6085,7 +6152,8 @@ mod tests {
         let meta = AdapterMeta::from_toml(GROK.meta_toml).expect("meta");
         let line = recorded(&GROK, "version.txt");
         assert!(line.starts_with("grok "), "{line:?}");
-        let version = latest::parse_version(&line, GROK.version.parse).expect("a version");
+        let version =
+            latest::parse_version(&line, GROK.version.command().parse).expect("a version");
         assert_eq!(Some(&version), meta.verified_versions.first());
         assert!(latest::is_dotted_version(&version), "{version:?}");
     }
@@ -6110,8 +6178,11 @@ mod tests {
         // is not held to a dotted shape here. When grok said nothing was
         // available, its latest is the installed version it also printed.
         if !check.available {
-            let local =
-                latest::parse_version(&recorded(&GROK, "version.txt"), GROK.version.parse).unwrap();
+            let local = latest::parse_version(
+                &recorded(&GROK, "version.txt"),
+                GROK.version.command().parse,
+            )
+            .unwrap();
             assert_eq!(check.latest, local);
         }
     }
@@ -6181,7 +6252,8 @@ mod tests {
         // installed one -- both derived from the recording, so a
         // re-recording on a later day stays honest.
         let line = recorded(&AGY, "version.txt");
-        let installed = latest::parse_version(&line, AGY.version.parse).expect("version line");
+        let installed =
+            latest::parse_version(&line, AGY.version.command().parse).expect("version line");
         let body = recorded(&AGY, "manifest-darwin_arm64.json");
         let published = latest::parse_json_field(&body, "version").expect("manifest");
         let home = TempHome::new("agy-check-recorded");
@@ -6227,7 +6299,8 @@ mod tests {
         // is available, targeting the version grok named -- believed,
         // never compared (spec §4.3).
         let line = recorded(&GROK, "version.txt");
-        let installed = latest::parse_version(&line, GROK.version.parse).expect("version line");
+        let installed =
+            latest::parse_version(&line, GROK.version.command().parse).expect("version line");
         let body = recorded(&GROK, "update-check.json");
         let Latest::Command {
             latest_field,
