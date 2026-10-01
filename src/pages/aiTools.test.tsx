@@ -345,7 +345,9 @@ describe("the Updates page with AI Tools shown", () => {
     showAiTools();
     expect(await screen.findByText("No AI coding tool updates here")).toBeInTheDocument();
     expect(rowNames()).toEqual([]);
-    expect(screen.getByRole("button", { name: "Update These 0" })).toBeDisabled();
+    // Never "Update These 0".
+    expect(screen.getByRole("button", { name: "Update All" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Update These/ })).toBeNull();
   });
 
   it("says no common AI coding tools were found on this Mac when none is installed", async () => {

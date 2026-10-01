@@ -732,6 +732,10 @@
     },
     "copyLog": "Copy Log"
   },
+  "operationsMore": {
+    "runningSeveral": "Working on {{running}} at once",
+    "runningSeveralQueued": "Working on {{running}} at once, {{queued}} waiting"
+  },
   "quit": {
     "title_one": "{{count}} operation hasn't finished",
     "title_other": "{{count}} operations haven't finished",

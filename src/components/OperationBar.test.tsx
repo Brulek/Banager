@@ -345,6 +345,35 @@ describe("OperationBar", () => {
     expect(queryByText(/Working on/)).toBeNull();
   });
 
+  it("says how many run at once and how many wait, where several run together", async () => {
+    const { findByText, queryByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [
+      op(15, "wget", "Queued"),
+      op(14, "jq", "Queued"),
+      op(13, "ruff", "Running"),
+      op(12, "prettier", "Running"),
+      op(11, "git", "Running"),
+    ]);
+    await findByText("Working on 3 at once, 2 waiting");
+    expect(queryByText(/Working on 1 of/)).toBeNull();
+    await listNow(queryClient, [
+      op(15, "wget", "Running"),
+      op(14, "jq", "Running"),
+      op(13, "ruff", "Done", "Succeeded"),
+      op(12, "prettier", "Done", "Succeeded"),
+      op(11, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Working on 2 at once");
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("正在同时处理2个");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
   it("counts a run of several as it goes, and says what it came to", async () => {
     // Update all: three operations started together, one after another on
     // Homebrew's lock.

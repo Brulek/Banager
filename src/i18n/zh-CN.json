@@ -685,6 +685,10 @@
     },
     "copyLog": "拷贝日志"
   },
+  "operationsMore": {
+    "runningSeveral": "正在同时处理{{running}}个",
+    "runningSeveralQueued": "正在同时处理{{running}}个，还有{{queued}}个在排队"
+  },
   "quit": {
     "title_other": "还有{{count}}个操作未完成",
     "body": {

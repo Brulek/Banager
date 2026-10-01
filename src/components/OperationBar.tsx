@@ -16,6 +16,7 @@ import {
   type OutcomeTone,
 } from "../lib/operations";
 import { useUiStore } from "../store/ui";
+import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { CloseIcon } from "./icons";
@@ -157,7 +158,7 @@ export function OperationBar() {
     said = (
       <>
         {batch ? (
-          <span className="shrink-0">{t("operations.batch.running", { current: Math.min(done + 1, total), total })}</span>
+          <span className="shrink-0">{runWords(t, active, done, total)}</span>
         ) : null}
         <span title={line} className="min-w-0 truncate">
           {line}
@@ -285,4 +286,21 @@ export function OperationBar() {
       {after}
     </footer>
   );
+}
+
+/**
+ * Where a run of several stands: 「正在处理第2个，共5个」 while they go one
+ * at a time, and, where several run at once -- updates on different
+ * sources do -- how many, and how many wait: 「正在同时处理3个，还有2个在
+ * 排队」, never 「第1个」 of a run three of which are under way.
+ */
+function runWords(t: TFunction, active: readonly OpSummary[], done: number, total: number): string {
+  const running = active.filter((op) => op.status === "Running").length;
+  const queued = active.filter((op) => op.status === "Queued").length;
+  if (running > 1) {
+    return queued > 0
+      ? t("operationsMore.runningSeveralQueued", { running, queued })
+      : t("operationsMore.runningSeveral", { running });
+  }
+  return t("operations.batch.running", { current: Math.min(done + 1, total), total });
 }

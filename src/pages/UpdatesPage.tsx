@@ -1161,7 +1161,11 @@ export function UpdatesPage() {
             }}
             className={BUTTON.regular.default}
           >
-            {show === "all" ? t("updates.updateAll") : t("families.updateTheseCount", { number: startableCount })}
+            {/* Never 「更新这0个」: with none to start -- none listed, or all of
+                them already updating -- the plain word, greyed. */}
+            {show === "all" || startableCount === 0
+              ? t("updates.updateAll")
+              : t("families.updateTheseCount", { number: startableCount })}
           </button>
         )}
       </ToolbarItems>
