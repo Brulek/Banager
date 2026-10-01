@@ -635,12 +635,13 @@ export function InstalledPage() {
   const needle = query.trim().toLowerCase();
 
   // The rows the search matches, by source -- of the AI coding tools
-  // alone while the 「显示」 popup says so (`shownBy`).
+  // alone, or of those installed more than once, while the 「显示」 popup
+  // says so (`shownBy`).
   const matchingByInstance = useMemo(() => {
     const byInstance = new Map<string, InstalledArtifact[]>();
     for (const artifact of snapshot?.artifacts ?? []) {
       const matches =
-        shownBy(show, artifact) &&
+        shownBy(show, artifact, twins) &&
         (needle === "" ||
           artifact.display_name.toLowerCase().includes(needle) ||
           artifact.key.name.toLowerCase().includes(needle));
@@ -650,7 +651,7 @@ export function InstalledPage() {
       byInstance.set(artifact.key.instance_id, list);
     }
     return byInstance;
-  }, [snapshot, needle, show]);
+  }, [snapshot, needle, show, twins]);
 
   // The sources in view: the filter's, or every one.
   const instancesInView = useMemo(
@@ -1475,7 +1476,7 @@ export function InstalledPage() {
         <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
           {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
         </p>
-        <ToolShowButton value={show} onChange={setShow} />
+        <ToolShowButton twins value={show} onChange={setShow} />
         <ToolbarPopupButton
           label={t("installed.sortLabel")}
           value={sort}
@@ -1575,7 +1576,11 @@ export function InstalledPage() {
                       ? activeFilter === null
                         ? t("families.none")
                         : t("families.noneInSource", { source: sourceLabelFor(activeFilter) })
-                      : t("emptyStates.nothingInstalled.title")}
+                      : show === "twins"
+                        ? activeFilter === null
+                          ? t("families.noTwins")
+                          : t("families.noTwinsInSource", { source: sourceLabelFor(activeFilter) })
+                        : t("emptyStates.nothingInstalled.title")}
                 </p>
               </div>
             )

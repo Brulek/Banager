@@ -163,6 +163,8 @@ describe("the Show popup", () => {
     expect([...popup.querySelectorAll("option")].map((option) => [option.value, option.textContent])).toEqual([
       ["all", "All Tools"],
       ["ai", "AI Tools"],
+      // The Installed page's own third choice (twinsFilter.test.tsx).
+      ["twins", "Installed More Than Once"],
     ]);
     expect(popup).toHaveValue("all");
     expect(useUiStore.getState().installedShow).toBe("all");

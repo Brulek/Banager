@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ToolShow } from "../lib/families";
+import type { InstalledShow, ToolShow } from "../lib/families";
 import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
 export type Page = "overview" | "updates" | "installed" | "unknown" | "settings";
@@ -31,14 +31,15 @@ export interface UiState {
   installedSort: InstalledSort;
   setInstalledSort(sort: InstalledSort): void;
   // What the Installed and the Updates page's 「显示」 popups show: every
-  // tool, or only the AI coding tools (`ToolShow`, src/lib/families.ts).
+  // tool, or only the AI coding tools (`ToolShow`, src/lib/families.ts);
+  // on Installed, also the tools installed more than once (`InstalledShow`).
   // One for each page, kept while the page stays open. Every way onto a
   // page from outside it -- the sidebar's row, the menu bar's View menu,
   // ⌘F from another page, a notice's Show, the Overview's Review Updates,
   // the update notification -- sets it back to every tool, as each of
   // those promises a list (or a count) of everything.
-  installedShow: ToolShow;
-  setInstalledShow(show: ToolShow): void;
+  installedShow: InstalledShow;
+  setInstalledShow(show: InstalledShow): void;
   updatesShow: ToolShow;
   setUpdatesShow(show: ToolShow): void;
   // Opens the Installed page showing one source's tools or, with null,

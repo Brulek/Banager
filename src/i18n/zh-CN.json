@@ -80,7 +80,10 @@
     "none": "这台Mac上没有找到常见的AI编程工具",
     "noneInSource": "{{source}}中没有找到常见的AI编程工具",
     "noUpdates": "这里没有AI编程工具的更新",
-    "updateTheseCount": "更新这{{number}}个"
+    "updateTheseCount": "更新这{{number}}个",
+    "showTwins": "装了不止一份",
+    "noTwins": "没有发现装了不止一份的工具",
+    "noTwinsInSource": "{{source}}中没有发现装了不止一份的工具"
   },
   "overview": {
     "updatesAvailable_other": "{{count}}个工具可以更新",

@@ -25,8 +25,9 @@ describe("families", () => {
   });
 
   it("shows everything under All Tools, and only the AI tools under AI Tools", () => {
-    const tagged = { facts: { ...NO_FACTS, family: "ollama" } };
-    const plain = { facts: NO_FACTS };
+    const key = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "ollama" };
+    const tagged = { key, facts: { ...NO_FACTS, family: "ollama" } };
+    const plain = { key: { ...key, name: "jq" }, facts: NO_FACTS };
     expect([shownBy("all", tagged), shownBy("all", plain), shownBy("all", undefined)]).toEqual([true, true, true]);
     expect([shownBy("ai", tagged), shownBy("ai", plain), shownBy("ai", undefined)]).toEqual([true, false, false]);
   });
