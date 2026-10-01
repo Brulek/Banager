@@ -32,6 +32,7 @@ import { useCopyCommand } from "../lib/clipboard";
 import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
+import { searchMatch } from "../lib/searchMatch";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -699,7 +700,8 @@ export function InstalledPage() {
 
   // What the search box asks for, by the name a row shows or the
   // package's own name ("visual-studio-code" finds "Microsoft Visual
-  // Studio Code").
+  // Studio Code"), or by a command it puts on the Mac ("rg" finds
+  // ripgrep; `searchMatch`).
   const needle = query.trim().toLowerCase();
   // A heading's 「约4.1 GB」, only while it counts the whole source: no search, every tool shown.
   const sourceTotalOf = (instanceId: string): string | null => {
@@ -715,9 +717,7 @@ export function InstalledPage() {
     for (const artifact of snapshot?.artifacts ?? []) {
       const matches =
         shownBy(show, artifact, twins) &&
-        (needle === "" ||
-          artifact.display_name.toLowerCase().includes(needle) ||
-          artifact.key.name.toLowerCase().includes(needle));
+        searchMatch(artifact, needle) !== null;
       if (!matches) continue;
       const list = byInstance.get(artifact.key.instance_id) ?? [];
       list.push(artifact);
@@ -1372,6 +1372,8 @@ export function InstalledPage() {
   const toolRow = (artifact: InstalledArtifact, instance: ManagerInstance, label: string) => {
     const name = artifact.display_name;
     const chip = rowChipOf(chipsOf(artifact, instance, label));
+    // Found by a command alone, which the row names: 「命令：rg」.
+    const found = needle === "" ? null : searchMatch(artifact, needle);
     // Where an update is listed, the version it moves to, as the Updates
     // page's row says it ("7.1 → 7.2"), in place of an "Update available"
     // word; a hidden one leaves the version installed.
@@ -1399,6 +1401,7 @@ export function InstalledPage() {
         namePath={modelPath(artifact.key, name)}
         showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label)}
+        descriptionNote={found?.by === "command" ? t("installed.commandMatch", { command: found.command }) : undefined}
         status={
           chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} ariaLabel={chip.ariaLabel} />
         }
@@ -1785,6 +1788,8 @@ export function InstalledPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("installed.filterPlaceholder")}
             aria-label={t("installed.filterLabel")}
+            // What it searches by, as a tooltip: a command finds its tool.
+            title={t("installed.searchHint")}
             // A tool's name is no word: no red underline under "ffmpeg",
             // as a web page's text field would draw, and nothing
             // corrected as it is typed.

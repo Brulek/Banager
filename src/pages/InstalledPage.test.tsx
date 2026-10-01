@@ -497,6 +497,46 @@ describe("InstalledPage", () => {
     expect(status).toBeEmptyDOMElement();
   });
 
+  it("finds a tool by a command it puts on the Mac, by the command's start, and names the command on the row", async () => {
+    const runs = (names: string[]) => names.map((name) => ({ name, state: "Runs" as const }));
+    served = {
+      ...snapshot,
+      artifacts: [
+        ...snapshot.artifacts,
+        formula("ripgrep", { facts: { ...NO_FACTS, commands: runs(["rg"]) } }),
+        formula("python@3.13", {
+          facts: { ...NO_FACTS, commands: runs(["idle3.13", "pip3.13", "pydoc3.13", "python3.13"]) },
+        }),
+        formula("gh", { facts: { ...NO_FACTS, commands: runs(["gh"]) } }),
+      ],
+    };
+    const { findByText, getByRole } = renderInstalled();
+
+    await findByText("jq");
+    const search = getByRole("searchbox", { name: "Search installed tools" });
+    // What it searches by, in its tooltip; the placeholder stays 「Search」.
+    expect(search).toHaveAttribute("title", "Search by name or command");
+    expect(search).toHaveAttribute("placeholder", "Search");
+    const noteOf = (name: string) => within(rowOf(name)).queryByText(/^Command: /)?.textContent ?? null;
+
+    fireEvent.change(search, { target: { value: "RG" } });
+    await waitFor(() => expect(rowNames()).toEqual(["ripgrep"]));
+    expect(noteOf("ripgrep")).toBe("Command: rg");
+
+    fireEvent.change(search, { target: { value: "pip3.13" } });
+    await waitFor(() => expect(rowNames()).toEqual(["python@3.13"]));
+    expect(noteOf("python@3.13")).toBe("Command: pip3.13");
+
+    // Found by its name: no word about a command, though one is called so too.
+    fireEvent.change(search, { target: { value: "gh" } });
+    await waitFor(() => expect(rowNames()).toEqual(["gh"]));
+    expect(noteOf("gh")).toBeNull();
+
+    // Letters in a command's middle find nothing.
+    fireEvent.change(search, { target: { value: "ip3" } });
+    await waitFor(() => expect(rowNames()).toEqual([]));
+  });
+
   it("puts its sort and its search field in the toolbar: a grey popup button, then a quiet field 200 wide", async () => {
     const { findByRole, getByRole, container } = renderInstalled();
 

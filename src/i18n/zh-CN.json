@@ -259,7 +259,9 @@
     },
     "installedOn": "安装日期",
     "sortByDate": "按安装日期",
-    "dateRowName": "安装于{{date}}"
+    "dateRowName": "安装于{{date}}",
+    "commandMatch": "命令：{{command}}",
+    "searchHint": "按名称或命令搜索"
   },
   "updates": {
     "upToDate": "所有工具都是最新的",
