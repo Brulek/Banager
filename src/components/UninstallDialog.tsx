@@ -344,15 +344,16 @@ export function UninstallDialog({
         <div className="mt-3">{refusal(submitMutation.error.message, "uninstall.submitError")}</div>
       ) : null}
 
-      {reissued && plan ? (
-        // `status`, not `alert`: nothing is wrong with the fresh preview,
-        // the user only needs to know the last confirm did not start it.
-        <p role="status" className="mt-3 text-body text-muted">
-          {/* No "confirm once more" when the fresh preview lists affected
-              packages: that disables Uninstall below, and the body says why. */}
-          {hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")}
-        </p>
-      ) : null}
+      {/* `status`, not `alert`: nothing is wrong with the fresh preview,
+          the user only needs to know the last confirm did not start it.
+          There, empty and out of sight, from the time the sheet opens: a
+          status put in the page with its words is one a screen reader
+          may never read. */}
+      <p role="status" className={reissued && plan ? "mt-3 text-body text-muted" : "sr-only"}>
+        {/* No "confirm once more" when the fresh preview lists affected
+            packages: that disables Uninstall below, and the body says why. */}
+        {reissued && plan ? (hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")) : null}
+      </p>
 
       {plan && issued ? (
         <>

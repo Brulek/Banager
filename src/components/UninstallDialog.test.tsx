@@ -116,6 +116,11 @@ function keptLines(): string[] {
   );
 }
 
+/** The sheet's statuses that say something: one is there empty, for the re-check's note. */
+function saying(): HTMLElement[] {
+  return screen.queryAllByRole("status").filter((status) => status.textContent !== "");
+}
+
 describe("UninstallDialog", () => {
   it("shows a checking message and a disabled confirm button while the plan is loading", async () => {
     vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
@@ -129,8 +134,12 @@ describe("UninstallDialog", () => {
     // so right after render the component is still idle: wait for it.
     expect(await screen.findByText("Checking what this affects…")).toBeInTheDocument();
     // A status, said as the dialog opens on it.
-    expect(screen.getByRole("status")).toHaveTextContent("Checking what this affects…");
+    expect(saying()).toHaveLength(1);
+    expect(saying()[0]).toHaveTextContent("Checking what this affects…");
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    // The re-check's note has its status there already, empty and out of
+    // sight, so that its words are heard when they come.
+    expect(screen.getAllByRole("status").filter((status) => status.textContent === "")).toHaveLength(1);
   });
 
   it("asks the question as its title, under the tool's 48 icon, with its source and the version it has under it", async () => {
@@ -1523,8 +1532,9 @@ describe("UninstallDialog", () => {
     );
     expect(screen.getByText("Checking what this affects…")).toBeInTheDocument();
     // The one status is that it is checking again: nothing yet about a
-    // fresh preview (`getByRole` finds exactly one).
-    expect(screen.getByRole("status")).toHaveTextContent(/^Checking what this affects…$/);
+    // fresh preview (exactly one says anything).
+    expect(saying()).toHaveLength(1);
+    expect(saying()[0]).toHaveTextContent(/^Checking what this affects…$/);
     await waitFor(() => expect(planCalls).toBe(2));
 
     releaseReplan();
@@ -1533,9 +1543,8 @@ describe("UninstallDialog", () => {
     await showCommand();
     expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "That didn't start, so it was checked again. Confirm once more.",
-    );
+    expect(saying()).toHaveLength(1);
+    expect(saying()[0]).toHaveTextContent("That didn't start, so it was checked again. Confirm once more.");
 
     // Acting on the fresh preview retires the note; the (again expired)
     // submit's own error takes its place while the next re-check runs.
@@ -1543,7 +1552,7 @@ describe("UninstallDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't start the uninstall:");
     expect(screen.queryByText(/Confirm once more/)).not.toBeInTheDocument();
     // What status there is is the re-check under way.
-    for (const status of screen.queryAllByRole("status")) expect(status).toHaveTextContent(/^Checking what this affects…$/);
+    for (const status of saying()) expect(status).toHaveTextContent(/^Checking what this affects…$/);
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
   });
 
@@ -1573,7 +1582,8 @@ describe("UninstallDialog", () => {
 
     expect(await screen.findByText("jq-cli-wrapper")).toBeInTheDocument();
     expect(confirmButton).toBeDisabled();
-    const note = await screen.findByRole("status");
+    await screen.findByText(/That didn't start, so it was checked again\./);
+    const [note] = saying();
     expect(note).toHaveTextContent("That didn't start, so it was checked again.");
     expect(note).not.toHaveTextContent("Confirm once more");
   });
@@ -1610,7 +1620,7 @@ describe("UninstallDialog", () => {
     await screen.findByText(/Couldn't check what this affects: Homebrew didn't respond/);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.queryByText(/Couldn't start the uninstall/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(saying()).toHaveLength(0);
     expect(confirmButton).toBeDisabled();
   });
 
