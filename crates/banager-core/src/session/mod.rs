@@ -500,8 +500,8 @@ impl Session {
     }
 
     /// Waits, at most `timeout`, for the history file to have every record
-    /// so far (`HistoryStore::flush`); true when none is attached. Called
-    /// once, as Banager exits.
+    /// so far (`HistoryStore::flush`, which tries a failed write once more);
+    /// true when none is attached. Called once, as Banager exits.
     pub fn flush_history(&self, timeout: std::time::Duration) -> bool {
         match self.history.get() {
             Some(store) => store.flush(timeout),

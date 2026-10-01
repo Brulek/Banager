@@ -365,6 +365,23 @@ struct State {
     /// Bumped on every change; `written` is the change the file has.
     changes: u64,
     written: u64,
+    /// Writes the writer thread has begun.
+    tries: u64,
+    /// The last write, when it failed: what `flush` stops waiting at.
+    failed: Option<FailedWrite>,
+}
+
+/// A write that failed: which of the writer's tries it was, and the change
+/// it was writing.
+#[derive(Clone, Copy)]
+struct FailedWrite {
+    try_no: u64,
+    change: u64,
+}
+
+/// Whether the file still lacks a change it will be written with.
+fn owed(state: &State) -> bool {
+    state.writable && state.written < state.changes
 }
 
 /// The history of one launch: the records in memory, and the thread that
@@ -410,6 +427,8 @@ impl HistoryStore {
                 // straight away, without them.
                 changes: u64::from(pruned),
                 written: 0,
+                tries: 0,
+                failed: None,
             }),
             flushed: Condvar::new(),
             wake: Mutex::new(tx),
@@ -501,17 +520,36 @@ impl HistoryStore {
 
     /// Waits, at most `timeout`, until the file has every change made so
     /// far; true if it has (or if this launch never writes the file).
-    /// False after a write that failed: the change is still owed, and the
-    /// next record or Clear tries again. For tests and for Banager's exit
+    /// A change still owed may be one whose write failed, which nothing
+    /// else tries again before the next record or Clear: the writer thread
+    /// is woken to try it now, and the wait ends with the first try begun
+    /// after that, written or not. False when that try failed too, or the
+    /// timeout came first: the change is still owed, and the next record,
+    /// Clear or flush tries again. For tests and for Banager's exit
     /// (`src-tauri/src/history.rs`, `flush_on_exit`), never on an
     /// operation's way to its end.
     pub fn flush(&self, timeout: Duration) -> bool {
+        let since = {
+            let state = self.state.lock().unwrap();
+            if !owed(&state) {
+                return true;
+            }
+            state.tries
+        };
+        self.wake();
         let state = self.state.lock().unwrap();
         let (state, _) = self
             .flushed
-            .wait_timeout_while(state, timeout, |s| s.writable && s.written < s.changes)
+            .wait_timeout_while(state, timeout, |s| {
+                // A try begun before this flush that fails is not the end:
+                // the one it woke the writer for is still to come.
+                let failed_again = s
+                    .failed
+                    .is_some_and(|f| f.try_no > since && f.change == s.changes);
+                owed(s) && !failed_again
+            })
             .unwrap();
-        !state.writable || state.written >= state.changes
+        !owed(&state)
     }
 
     fn wake(&self) {
@@ -522,28 +560,36 @@ impl HistoryStore {
 
     /// Writes what is in memory now. The writer thread's.
     fn write_now(&self) {
-        let (bytes, change) = {
-            let state = self.state.lock().unwrap();
-            if !state.writable || state.written >= state.changes {
+        let (bytes, change, try_no) = {
+            let mut state = self.state.lock().unwrap();
+            if !owed(&state) {
                 return;
             }
+            state.tries += 1;
             let file = HistoryFile {
                 format: HISTORY_FORMAT,
                 cleared_before: state.cleared_before,
                 records: state.records.clone(),
             };
-            (serde_json::to_vec_pretty(&file), state.changes)
+            (serde_json::to_vec_pretty(&file), state.changes, state.tries)
         };
         let result = bytes
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             .and_then(|bytes| write_atomically(&self.path, &bytes));
         let mut state = self.state.lock().unwrap();
         match result {
-            Ok(()) => state.written = state.written.max(change),
+            Ok(()) => {
+                state.written = state.written.max(change);
+                state.failed = None;
+            }
             // The records stay in memory for this launch, and the change is
-            // still owed: the next record or Clear wakes this thread, which
-            // tries the file again, and `flush` does not report it written.
-            Err(e) => eprintln!("[banager] could not write the history file: {e}"),
+            // still owed: the next record, Clear or flush wakes this
+            // thread, which tries the file again, and `flush` does not
+            // report it written.
+            Err(e) => {
+                eprintln!("[banager] could not write the history file: {e}");
+                state.failed = Some(FailedWrite { try_no, change });
+            }
         }
         self.flushed.notify_all();
     }
@@ -1137,5 +1183,50 @@ mod tests {
             serde_json::from_slice(&std::fs::read(folder.join("history.json")).unwrap()).unwrap();
         assert_eq!(file.records.len(), 1);
         assert_eq!(file.cleared_before, Some(NOW));
+    }
+
+    /// Banager's exit after a write that failed, with nothing recorded
+    /// since: the flush itself has the owed write tried again, and waits
+    /// for that try, not for the next record or Clear.
+    #[test]
+    fn test_a_flush_after_a_failed_write_tries_it_again_with_no_new_change() {
+        let dir = TempDir::new("retry");
+        let folder = dir.0.join("data");
+        std::fs::write(&folder, b"a file, not a folder").unwrap();
+        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        assert!(!store.flush(Duration::from_secs(5)));
+        // The folder can be made now, and nothing new is recorded.
+        std::fs::remove_file(&folder).unwrap();
+        assert!(
+            store.flush(Duration::from_secs(5)),
+            "the flush tried the owed write again"
+        );
+        let file: HistoryFile =
+            serde_json::from_slice(&std::fs::read(folder.join("history.json")).unwrap()).unwrap();
+        assert_eq!(file.records.len(), 1);
+    }
+
+    /// A flush whose try fails again ends with that try, well inside its
+    /// timeout, instead of waiting it out: Banager's exit does not wait
+    /// the whole half second at every quit after one failed write.
+    #[test]
+    fn test_a_flush_ends_as_soon_as_its_try_has_failed_again_not_at_its_timeout() {
+        let dir = TempDir::new("fails-fast");
+        let folder = dir.0.join("data");
+        std::fs::write(&folder, b"a file, not a folder").unwrap();
+        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        for attempt in ["the first flush", "a flush with nothing new since"] {
+            let began = std::time::Instant::now();
+            assert!(!store.flush(Duration::from_secs(30)), "{attempt}");
+            assert!(
+                began.elapsed() < Duration::from_secs(10),
+                "{attempt} waited {:?}, as if for its whole timeout",
+                began.elapsed()
+            );
+        }
     }
 }

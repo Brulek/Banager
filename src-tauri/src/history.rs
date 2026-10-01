@@ -29,7 +29,8 @@ pub const EXIT_FLUSH: Duration = Duration::from_millis(500);
 
 /// Called as Banager exits (`RunEvent::Exit`, `run()` in lib.rs): waits, at
 /// most `EXIT_FLUSH`, for the history's own thread to write what it has
-/// not written yet.
+/// not written yet -- trying once more a write that failed, and no longer
+/// than that try when it fails again (`HistoryStore::flush`).
 pub fn flush_on_exit(state: &AppState) {
     if !state.session.flush_history(EXIT_FLUSH) {
         eprintln!("[banager] the history file may be missing the last records");
