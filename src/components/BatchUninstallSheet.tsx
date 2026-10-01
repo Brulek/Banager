@@ -681,11 +681,12 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         </SheetText>
       ))}
 
-      {batch?.reissued && phase === "ready" ? (
-        <p role="status" className="mt-1 mb-2 text-body text-muted">
-          {t("uninstall.reissuedConfirmAgain")}
-        </p>
-      ) : null}
+      {/* There, empty and out of sight, from the time the sheet opens, as
+          the single uninstall's note is (`UninstallDialog`): a status put
+          in the page with its words is one a screen reader may never read. */}
+      <p role="status" className={batch?.reissued && phase === "ready" ? "mt-1 mb-2 text-body text-muted" : "sr-only"}>
+        {batch?.reissued && phase === "ready" ? t("uninstall.reissuedConfirmAgain") : null}
+      </p>
 
       {planning ? (
         <>

@@ -355,6 +355,11 @@ const listOf = (dialog: HTMLElement, label: string): string[] =>
   [...within(dialog).getByRole("list", { name: label }).querySelectorAll("[data-sheet-name]")].map(
     (element) => element.textContent ?? "",
   );
+/** The sheet's statuses that say something: one is there empty, for the re-check's note. */
+const saying = (dialog: HTMLElement): HTMLElement[] =>
+  within(dialog)
+    .queryAllByRole("status")
+    .filter((status) => status.textContent !== "");
 
 describe("the batch uninstall's sheet", () => {
   it("opens at once with every name, checks at most three at a time, and keeps Uninstall off until all are back", async () => {
@@ -362,7 +367,11 @@ describe("the batch uninstall's sheet", () => {
     const dialog = await openSheet([wget, git, jq, htop, node]);
     expect(within(dialog).getByRole("heading", { name: "Uninstall these 5 tools?" })).toBeInTheDocument();
     expect(listOf(dialog, "Will be uninstalled")).toEqual(["wget", "git", "jq", "htop", "node@22"]);
-    expect(within(dialog).getByRole("status")).toHaveTextContent("Checking what this affects: 0 of 5 checked…");
+    expect(saying(dialog)).toHaveLength(1);
+    expect(saying(dialog)[0]).toHaveTextContent("Checking what this affects: 0 of 5 checked…");
+    // The re-check's note has its status there already, empty and out of
+    // sight, so that its words are heard when they come.
+    expect(within(dialog).getAllByRole("status").filter((status) => status.textContent === "")).toHaveLength(1);
     expect(within(dialog).getByRole("button", { name: "Uninstall 5 Tools" })).toBeDisabled();
     // Cancel has the focus: nothing here is one keypress from removing.
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
@@ -370,7 +379,8 @@ describe("the batch uninstall's sheet", () => {
 
     await act(async () => held.shift()!());
     await waitFor(() => expect(planned).toEqual(["wget", "git", "jq", "htop"]));
-    expect(within(dialog).getByRole("status")).toHaveTextContent("Checking what this affects: 1 of 5 checked…");
+    expect(saying(dialog)).toHaveLength(1);
+    expect(saying(dialog)[0]).toHaveTextContent("Checking what this affects: 1 of 5 checked…");
     while (held.length > 0 || planned.length < 5) {
       await act(async () => held.shift()?.());
     }
@@ -589,9 +599,18 @@ describe("the batch uninstall's sheet", () => {
     vi.spyOn(performance, "now").mockImplementation(() => now);
     const dialog = await openSheet([wget, git]);
     expect(planned).toEqual(["wget", "git"]);
+    // The note's status, there empty before there is anything to say.
+    const emptyStatuses = within(dialog)
+      .getAllByRole("status")
+      .filter((status) => status.textContent === "");
+    expect(emptyStatuses).toHaveLength(1);
+    const noteStatus = emptyStatuses[0];
     now += 9.6 * 60 * 1000;
     fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall 2 Tools" }));
     expect(await within(dialog).findByText("That didn't start, so it was checked again. Confirm once more.")).toBeInTheDocument();
+    // The same node as before, its words changed rather than a new status
+    // put in with them: what a screen reader reads out.
+    expect(saying(dialog)).toEqual([noteStatus]);
     expect(planned).toEqual(["wget", "git", "wget", "git"]);
     expect(submitted).toEqual([]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall 2 Tools" }));
