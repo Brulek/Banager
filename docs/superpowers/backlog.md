@@ -261,6 +261,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
 
 - ~~**cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。~~ —— **已于 2026-10-02 做了**（`903016e7`，分支 `r5/g2-standalone-scan`）：没改线格式，扫描规则 2 另认 cask 的 `binary` 链接本身（内存里的 `facts.command_inputs.provided`），去向须落在该条目指名的文件、`Caskroom/<token>` 或 cask 的 app 里（与「输入命令跑的是哪一份」同一条规则，`commands::cask_places`）；第二个 `.app` 里的命令、`app` 没有绝对 `target` 的 cask 的命令不再列出，`pkg` 装的命令照旧列出（`tests/unknown_scan_test.rs` 的 `test_rule_2_claims_a_cask_binary_link_into_a_second_app_or_an_app_with_no_target`）。
+  仍开着：`pkg` 装到 `.app` 与 `Caskroom` 之外的命令照旧列在「其他程序」页，单独成任务。
 
 - **「放回原处」的记录只在一次卸载之内隔开**（2026-09-25，步骤 C；2026-09-26 改成跨卸载也隔开，见本条「已做」；
   末段两件没核实的事仍开着）。无「完全磁盘访问」时，`trashItemAtURL:`

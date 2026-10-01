@@ -101,9 +101,9 @@ pub struct Detected {
 enum Reading {
     /// Not the install detect listed any more, or a launcher Banager
     /// could not look at (`inventory` says which): `inventory` refused
-    /// with this reason, and `check_updates`
-    /// refuses with the same, so `refresh` keeps the previous round's rows
-    /// on both pages and marks them stale.
+    /// with this reason, and `check_updates` refuses with the same, so
+    /// `refresh` keeps the previous round's rows on both pages and marks
+    /// them stale.
     Changed(String),
     /// The dangling launcher detect listed, still: no version to compare.
     LauncherOnly,
