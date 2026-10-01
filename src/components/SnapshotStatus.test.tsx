@@ -8,6 +8,7 @@ import { refreshIntoCache } from "../lib/events";
 import { useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
 import type { Snapshot } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 /**
  * Rendered as a sibling of the component under test, sharing its
@@ -143,6 +144,7 @@ describe("SnapshotStatus", () => {
             path: null,
             auto_updates: false,
             uninstall_blocked: null,
+            facts: NO_FACTS,
           },
         ],
       }),
@@ -568,6 +570,7 @@ describe("SnapshotStatus", () => {
             path: null,
             auto_updates: false,
             uninstall_blocked: null,
+            facts: NO_FACTS,
           },
         ],
       }),

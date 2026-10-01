@@ -15,6 +15,7 @@ import type {
   Snapshot,
   UpdateCandidate,
 } from "./types";
+import { NO_FACTS } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -60,6 +61,7 @@ function installed(name: string): InstalledArtifact {
     path: null,
     auto_updates: false,
     uninstall_blocked: null,
+    facts: NO_FACTS,
   };
 }
 

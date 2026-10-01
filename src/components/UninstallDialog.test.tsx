@@ -7,6 +7,7 @@ import zhCN from "../i18n/zh-CN.json";
 import { UninstallDialog } from "./UninstallDialog";
 import { BUTTON } from "./ui/controls";
 import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 const request: OpRequest = {
   kind: "Uninstall",
@@ -137,6 +138,7 @@ describe("UninstallDialog", () => {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     };
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") return snapshotWith([brewInstance()], [jq]);
@@ -184,6 +186,7 @@ describe("UninstallDialog", () => {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     };
     const intel = brewInstance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {

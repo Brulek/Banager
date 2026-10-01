@@ -116,6 +116,7 @@ fn artifact(instance_id: &str, name: &str, path: &Path) -> InstalledArtifact {
         path: Some(path.to_path_buf()),
         auto_updates: false,
         uninstall_blocked: None,
+        facts: Default::default(),
     }
 }
 

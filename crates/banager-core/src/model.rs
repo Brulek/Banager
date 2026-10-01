@@ -275,6 +275,26 @@ pub struct InstalledArtifact {
     /// one (`blocked_uninstall` in session/plans.rs), and the Installed
     /// page hides that row's Uninstall button.
     pub uninstall_blocked: Option<UninstallBlocked>,
+    /// What Banager knows about this artifact beyond the basics above. Its
+    /// own struct so that a new fact is one field here and one default,
+    /// not a new line in every inventory that builds an artifact.
+    pub facts: ArtifactFacts,
+}
+
+/// Facts about an installed artifact that only some sources report or that
+/// Banager works out itself after the inventory. Every field has an empty
+/// default, which is what an inventory that knows nothing more leaves, and
+/// `#[serde(default)]` keeps a payload without a newer field readable.
+/// Mirrored by `ArtifactFacts` in src/lib/types.ts, whose `NO_FACTS` is
+/// this type's `Default`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ArtifactFacts {
+    /// The id of the AI coding tool this artifact is a copy of, from the
+    /// bundled table in `families.rs` (for example `"claude-code"` for the
+    /// npm package `@anthropic-ai/claude-code`, the cask `claude-code` and
+    /// the standalone install alike). `None` for everything else.
+    pub family: Option<String>,
 }
 
 /// Why the tool itself will refuse to uninstall this one package, although
@@ -1466,6 +1486,26 @@ mod tests {
     }
 
     #[test]
+    fn test_facts_is_an_object_with_explicit_nulls_on_the_wire_and_optional_when_read() {
+        // `src/lib/types.ts` spells it `facts: ArtifactFacts` with
+        // `family: string | null`, and `NO_FACTS` is this default.
+        let facts = ArtifactFacts::default();
+        assert_eq!(serde_json::to_string(&facts).unwrap(), r#"{"family":null}"#);
+        // A payload written before a fact existed still reads.
+        assert_eq!(
+            serde_json::from_str::<ArtifactFacts>("{}").unwrap(),
+            ArtifactFacts::default()
+        );
+        let claude = ArtifactFacts {
+            family: Some("claude-code".to_string()),
+        };
+        assert_eq!(
+            serde_json::to_string(&claude).unwrap(),
+            r#"{"family":"claude-code"}"#
+        );
+    }
+
+    #[test]
     fn test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent() {
         // `src/lib/types.ts` spells this field `uninstall_blocked:
         // UninstallBlocked | null` and the variant as the bare string
@@ -1486,6 +1526,7 @@ mod tests {
             path: None,
             auto_updates: false,
             uninstall_blocked: None,
+            facts: Default::default(),
         };
         let json = serde_json::to_string(&artifact).expect("serialize");
         assert!(
@@ -1499,6 +1540,7 @@ mod tests {
 
         let pinned = InstalledArtifact {
             uninstall_blocked: Some(UninstallBlocked::Pinned),
+            facts: Default::default(),
             ..artifact
         };
         let json = serde_json::to_string(&pinned).expect("serialize");
@@ -1517,6 +1559,7 @@ mod tests {
         // src/lib/sources.ts.
         let no_safe_method = InstalledArtifact {
             uninstall_blocked: Some(UninstallBlocked::NoSafeMethod),
+            facts: Default::default(),
             ..pinned.clone()
         };
         let json = serde_json::to_string(&no_safe_method).expect("serialize");

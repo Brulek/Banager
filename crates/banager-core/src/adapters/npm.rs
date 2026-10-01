@@ -539,6 +539,7 @@ fn parse_ls_global(
             path: None,
             auto_updates: false,
             uninstall_blocked: None,
+            facts: Default::default(),
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));

@@ -346,6 +346,7 @@ impl PipAdapter {
                     path: None,
                     auto_updates: false,
                     uninstall_blocked: None,
+                    facts: Default::default(),
                 }
             })
             .collect())

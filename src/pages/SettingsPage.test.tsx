@@ -9,6 +9,7 @@ import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 import { BUTTON } from "../components/ui/controls";
 import { GROUP_ROW } from "../components/ui/group";
 import { creditSource } from "../components/IconCreditsDrawer";
@@ -39,6 +40,7 @@ function artifact(key: ArtifactKey, displayName: string): InstalledArtifact {
     path: null,
     auto_updates: false,
     uninstall_blocked: null,
+    facts: NO_FACTS,
   };
 }
 

@@ -854,6 +854,7 @@ mod tests {
             path: None,
             auto_updates: false,
             uninstall_blocked,
+            facts: Default::default(),
         }
     }
 

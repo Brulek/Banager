@@ -22,6 +22,7 @@ import type {
   UnknownScan,
   UpdatePair,
 } from "./types";
+import { NO_FACTS } from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
 // only strips types, so a JSON-string fixture would pass no matter what
@@ -66,6 +67,7 @@ describe("types", () => {
           path: null,
           auto_updates: false,
           uninstall_blocked: null,
+          facts: NO_FACTS,
         },
         {
           key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
@@ -79,6 +81,7 @@ describe("types", () => {
           path: null,
           auto_updates: false,
           uninstall_blocked: null,
+          facts: NO_FACTS,
         },
       ],
       updates: [

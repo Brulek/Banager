@@ -120,6 +120,7 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
                 // pipx pins, but `pipx uninstall` removes a pinned tool: pipx
                 // 1.17.3's `commands/uninstall.py` never reads `pinned`.
                 uninstall_blocked: None,
+                facts: Default::default(),
             }
         })
         .collect();

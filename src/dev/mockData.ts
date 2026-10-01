@@ -23,6 +23,7 @@ import type {
   UpdateCandidate,
   Warning,
 } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 import {
   MANY_CARGO,
   MANY_CASKS,
@@ -135,6 +136,7 @@ function artifact(
     path: null,
     auto_updates: false,
     uninstall_blocked: null,
+    facts: NO_FACTS,
     ...fields,
   };
 }
@@ -243,6 +245,7 @@ function formulae(): InstalledArtifact[] {
       homepage,
       installed_at: daysAgo(days),
       uninstall_blocked: name === PINNED_FORMULA ? "Pinned" : null,
+      facts: NO_FACTS,
     }),
   );
 }

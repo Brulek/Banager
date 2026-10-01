@@ -1011,6 +1011,7 @@ mod tests {
             path: None,
             auto_updates: false,
             uninstall_blocked: None,
+            facts: Default::default(),
         }
     }
 

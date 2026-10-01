@@ -59,7 +59,19 @@ export interface InstalledArtifact {
   path: string | null;
   auto_updates: boolean;
   uninstall_blocked: UninstallBlocked | null;
+  facts: ArtifactFacts;
 }
+/**
+ * What Banager knows about an artifact beyond the basics. Mirrors
+ * `ArtifactFacts` in crates/banager-core/src/model.rs; every field has an
+ * empty value, and `NO_FACTS` (the Rust `Default`) is what an artifact
+ * with nothing more to say carries.
+ */
+export interface ArtifactFacts {
+  /** The AI coding tool this is a copy of (`families.rs`), or null. */
+  family: string | null;
+}
+export const NO_FACTS: ArtifactFacts = { family: null };
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
  * `UninstallBlocked` in crates/banager-core/src/model.rs: bare-string unit

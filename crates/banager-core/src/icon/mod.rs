@@ -255,6 +255,7 @@ mod tests {
             path: path.map(Path::to_path_buf),
             auto_updates: false,
             uninstall_blocked: None,
+            facts: Default::default(),
         }
     }
 

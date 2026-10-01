@@ -11,6 +11,7 @@ import i18n from "../i18n";
 import { QuitQuestion } from "./QuitQuestion";
 import { BUTTON } from "./ui/controls";
 import type { OpStatus, OpSummary, Snapshot } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -416,6 +417,7 @@ describe("the question before a quit", () => {
           path: null,
           auto_updates: false,
           uninstall_blocked: null,
+          facts: NO_FACTS,
         },
       ],
       updates: [],

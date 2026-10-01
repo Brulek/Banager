@@ -21,6 +21,7 @@ import type {
   Snapshot,
   UpdateCandidate,
 } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -70,6 +71,7 @@ const snapshot: Snapshot = {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     },
     {
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" },
@@ -83,6 +85,7 @@ const snapshot: Snapshot = {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     },
   ],
   updates: [
@@ -146,6 +149,7 @@ const pipSnapshot: Snapshot = {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     },
   ],
   updates: [],
@@ -178,6 +182,7 @@ const claudeArtifact: InstalledArtifact = {
   path: "/Users/someone/.local/share/claude/versions/2.1.281",
   auto_updates: true,
   uninstall_blocked: null,
+  facts: NO_FACTS,
 };
 
 const OLLAMA = "ollama:http://127.0.0.1:11434";
@@ -795,6 +800,7 @@ describe("InstalledPage", () => {
           display_name: "OnyX",
           description: "Verify system files structure",
           uninstall_blocked: "Pinned",
+          facts: NO_FACTS,
         }),
         formula("wget", { description: "Internet file retriever" }),
       ],
@@ -907,6 +913,7 @@ describe("InstalledPage", () => {
         formula("ruff", {
           key: { instance_id: "uv", kind: "Tool", name: "ruff" },
           uninstall_blocked: "UvToolDirSet",
+          facts: NO_FACTS,
         }),
       ],
       updates: [],

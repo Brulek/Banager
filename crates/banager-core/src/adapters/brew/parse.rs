@@ -199,6 +199,7 @@ pub fn parse_info_installed(
             path: None,
             auto_updates: false,
             uninstall_blocked: f.pinned.then_some(UninstallBlocked::Pinned),
+            facts: Default::default(),
         });
     }
 
@@ -231,6 +232,7 @@ pub fn parse_info_installed(
             path,
             auto_updates: c.auto_updates.unwrap_or(false),
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
+            facts: Default::default(),
         });
     }
 

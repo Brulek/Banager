@@ -9,6 +9,7 @@ import { useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import type { OpStatus, OpSummary, Outcome, Snapshot } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -559,6 +560,7 @@ describe("OperationBar", () => {
           path: null,
           auto_updates: true,
           uninstall_blocked: null,
+          facts: NO_FACTS,
         },
       ],
       updates: [],

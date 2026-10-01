@@ -159,6 +159,7 @@ mod tests {
             path: Some(path.to_path_buf()),
             auto_updates: false,
             uninstall_blocked: None,
+            facts: Default::default(),
         }
     }
 

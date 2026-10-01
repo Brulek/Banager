@@ -133,6 +133,7 @@ fn parse_crates2(
                 path,
                 auto_updates: false,
                 uninstall_blocked: None,
+                facts: Default::default(),
             }
         })
         .collect())

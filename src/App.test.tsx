@@ -11,6 +11,7 @@ import { queryKeys } from "./lib/queryKeys";
 import { useUiStore } from "./store/ui";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type { OpRequest, OpSummary, Settings, Snapshot, UnknownEntry, UnknownScan } from "./lib/types";
+import { NO_FACTS } from "./lib/types";
 
 // The real hook, watched: `App` calls it once each time it draws, and
 // nothing else calls it, so its calls count App's draws.
@@ -54,6 +55,7 @@ const snapshot: Snapshot = {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     },
   ],
   updates: [],

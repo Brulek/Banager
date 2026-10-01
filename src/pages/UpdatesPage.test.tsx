@@ -21,6 +21,7 @@ import type {
   Snapshot,
   Warning,
 } from "../lib/types";
+import { NO_FACTS } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -538,6 +539,7 @@ describe("UpdatesPage", () => {
         path: null,
         auto_updates: false,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       },
       {
         key: claudeKey,
@@ -551,6 +553,7 @@ describe("UpdatesPage", () => {
         path: null,
         auto_updates: false,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       },
     ];
     updates = [
@@ -930,6 +933,7 @@ describe("UpdatesPage", () => {
         path: null,
         auto_updates: true,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       },
     ];
     const { queryByText } = renderPage();
@@ -1211,6 +1215,7 @@ describe("UpdatesPage", () => {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     }));
     const { findByText, queryAllByText, getAllByRole } = renderPage();
 
@@ -2980,6 +2985,7 @@ describe("UpdatesPage", () => {
         path: null,
         auto_updates: false,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       };
     }
 
@@ -4219,6 +4225,7 @@ describe("UpdatesPage", () => {
     path: "/Users/someone/.local/share/claude/versions/2.1.281",
     auto_updates: true,
     uninstall_blocked: "NoSafeMethod",
+    facts: NO_FACTS,
   };
   const claudeUpdate: Snapshot["updates"][number] = {
     key: claudeKey,
@@ -4359,6 +4366,7 @@ describe("UpdatesPage", () => {
         path: null,
         auto_updates: true,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       },
     ];
     renderPage();
@@ -4413,6 +4421,7 @@ describe("UpdatesPage", () => {
         path: "/Users/someone/.grok/downloads/grok-1.0.41-macos-aarch64",
         auto_updates: false,
         uninstall_blocked: null,
+        facts: NO_FACTS,
       },
     ];
     const { queryByText, getAllByRole } = renderPage();
@@ -4443,6 +4452,7 @@ describe("UpdatesPage", () => {
       path,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     });
     artifacts = [
       bare(onyxKey, "OnyX", "/Applications/OnyX.app"),
@@ -4497,6 +4507,7 @@ describe("UpdatesPage", () => {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     });
     artifacts = [
       described(glibKey, "glib", "Core application library for C"),
@@ -4546,6 +4557,7 @@ describe("UpdatesPage", () => {
       path: null,
       auto_updates: false,
       uninstall_blocked: null,
+      facts: NO_FACTS,
     });
     artifacts = [crate(tokeiKey), crate(myForkKey)];
     updates = [

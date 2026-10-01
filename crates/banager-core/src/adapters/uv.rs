@@ -67,6 +67,7 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
                 path: Some(PathBuf::from(path)),
                 auto_updates: false,
                 uninstall_blocked: None,
+                facts: Default::default(),
             })
         })
         .collect()
@@ -248,6 +249,7 @@ impl UvAdapter {
             .into_iter()
             .map(|artifact| InstalledArtifact {
                 uninstall_blocked,
+                facts: Default::default(),
                 ..artifact
             })
             .collect())

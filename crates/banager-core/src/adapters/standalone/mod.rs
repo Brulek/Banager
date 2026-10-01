@@ -525,6 +525,7 @@ impl StandaloneAdapter {
                         (cmd.blocked)(&seat).map(|refusal| refusal.reason)
                     }),
             },
+            facts: Default::default(),
         }]
     }
 

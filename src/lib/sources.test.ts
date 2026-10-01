@@ -39,6 +39,7 @@ import {
 } from "./sources";
 import type { DescribedTool } from "./sources";
 import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError } from "./types";
+import { NO_FACTS } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import i18n from "../i18n";
@@ -1287,6 +1288,7 @@ describe("nothingFound", () => {
     path: null,
     auto_updates: false,
     uninstall_blocked: null,
+    facts: NO_FACTS,
   };
   const found = (over: Partial<Parameters<typeof nothingFound>[1]> = {}) =>
     nothingFound(enT, { detect: "Found", instances: [instance()], artifacts: [], errors: [], ...over });
