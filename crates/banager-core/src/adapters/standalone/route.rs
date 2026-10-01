@@ -7,6 +7,7 @@
 
 use super::recipe::RouteKind;
 use crate::model::InstanceNote;
+use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
@@ -337,38 +338,53 @@ pub fn lexical_join(dir: &Path, target: &Path) -> PathBuf {
 /// with that name, never another copy. Payload-free on purpose
 /// (`InstanceNote`'s rule, from the instance-level channel spec's §2.3,
 /// restated in spec §七); the sentence names the command, which the user
-/// knows, not the winner's path, which they would not.
+/// knows, not the winner's path, which they would not. A `PATH` folder in
+/// a protected place (`protected`), or a `command` that leads into one, is
+/// never looked into: when it comes first, or could be this copy behind
+/// another program, there is no note.
 pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<InstanceNote> {
     // Standalone-only lookup: changing the shared package-manager
     // discovery helper would broaden this step beyond its PATH notices.
-    // Every executable `command` on PATH, in PATH's order, as its
-    // canonical path; `None` for one that does not canonicalise.
-    let mut found = env
-        .path_dirs
-        .iter()
-        .map(|dir| dir.join(command))
-        .filter(|path| {
-            std::fs::metadata(path)
-                .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        })
-        .map(|path| std::fs::canonicalize(path).ok());
-    let Some(first) = found.next() else {
-        return Some(InstanceNote::NotOnPath);
+    // Every executable `command` on PATH, in PATH's order, by where it
+    // leads -- followed one step at a time, never into a protected place
+    // (`protected::resolve`): a PATH folder in `~/Documents` or on
+    // `/Volumes`, or a `command` that leads into one, is not looked at
+    // and may be anything (`Unknown`).
+    let protected = Protected::new(&env.home);
+    let mut found = env.path_dirs.iter().filter_map(|dir| {
+        match protected::resolve(&dir.join(command), &protected, true) {
+            Resolution::Found(path, meta) => (meta.is_file()
+                && meta.permissions().mode() & 0o111 != 0)
+                .then_some(OnPath::Executable(path)),
+            Resolution::Protected(_) => Some(OnPath::Unknown),
+            Resolution::Missing | Resolution::Refused => None,
+        }
+    });
+    let first = match found.next() {
+        None => return Some(InstanceNote::NotOnPath),
+        // Whatever comes first was not looked at: no note either way.
+        Some(OnPath::Unknown) => return None,
+        Some(OnPath::Executable(first)) => first,
     };
-    if first.as_deref() == Some(real) {
+    if first == real {
         return None;
     }
-    // The first one is not this file, or does not resolve. It shadows
-    // this copy only if this copy is on PATH behind it: with no later
-    // entry resolving to this file, no PATH entry is known to reach this
-    // copy, so the note is that it is not on PATH.
-    if !found.any(|later| later.as_deref() == Some(real)) {
-        return Some(InstanceNote::NotOnPath);
+    // The first one is not this file. It shadows this copy only if this
+    // copy is on PATH behind it: with no later entry resolving to this
+    // file, no PATH entry is known to reach this copy, so the note is that
+    // it is not on PATH -- unless a later one was not looked at, which
+    // could be this copy: then no note.
+    let mut unknown = false;
+    let behind = found.any(|later| match later {
+        OnPath::Executable(later) => later == real,
+        OnPath::Unknown => {
+            unknown = true;
+            false
+        }
+    });
+    if !behind {
+        return (!unknown).then_some(InstanceNote::NotOnPath);
     }
-    let Some(first) = first else {
-        return Some(InstanceNote::ShadowedByOther);
-    };
     Some(if has_component(&first, &["Cellar", "Caskroom"]) {
         InstanceNote::ShadowedByHomebrew
     } else if has_component(&first, &["node_modules"]) {
@@ -376,6 +392,14 @@ pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<Instance
     } else {
         InstanceNote::ShadowedByOther
     })
+}
+
+/// What one `PATH` folder holds of a command, for `shadow_note`: an
+/// executable file, by where it leads, or something nobody looked at
+/// because it is, or leads into, a protected place.
+enum OnPath {
+    Executable(PathBuf),
+    Unknown,
 }
 
 #[cfg(test)]
@@ -1163,6 +1187,60 @@ mod tests {
             home.path().join(".local/bin"),
         ]);
         assert_eq!(shadow_note("claude", &env, &layout.real), None);
+    }
+
+    #[test]
+    fn test_shadow_note_never_looks_into_a_protected_place_and_gives_no_note_it_could_change() {
+        // `~/Documents/scripts` on PATH (locked: a look inside would fail),
+        // a `~/bin` that is a link into iCloud Drive, and a `~/vol` that
+        // leads onto `/Volumes`: none is looked into, and since any of them
+        // may hold the `claude` that runs, or a link to this copy, no note
+        // is given where one comes first or where it could be this copy.
+        use std::os::unix::fs::PermissionsExt;
+        let home = TempHome::new("shadow-protected");
+        let layout = claude_layout(&home, "2.1.281");
+        let documents = home.dir("Documents/scripts");
+        home.executable("Documents/scripts/claude");
+        let cloud = home.dir("Library/Mobile Documents/com~apple~CloudDocs/bin");
+        let icloud_bin = home.link("bin", &cloud);
+        let vol = home.link("vol", Path::new("/Volumes/Banager-test-no-such-disk/bin"));
+        let namesake = home.executable("opt/homebrew/Cellar/x/1/bin/claude");
+        let brew_bin = home.dir("opt/homebrew/bin");
+        home.link("opt/homebrew/bin/claude", &namesake);
+        let local_bin = home.path().join(".local/bin");
+        for locked in [&documents, &cloud] {
+            std::fs::set_permissions(locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let note = |path: Vec<PathBuf>| shadow_note("claude", &home.env(path), &layout.real);
+        let notes = [
+            // Before this copy: it may hold the `claude` that runs.
+            note(vec![documents.clone(), local_bin.clone()]),
+            note(vec![icloud_bin.clone(), local_bin.clone()]),
+            note(vec![vol.clone(), local_bin.clone()]),
+            // After another program, this copy not on PATH: it may hold a
+            // link to this copy, so "not on PATH" is not said.
+            note(vec![brew_bin.clone(), documents.clone()]),
+            note(vec![brew_bin.clone(), vol.clone()]),
+            // After this copy: this copy runs, as before.
+            note(vec![local_bin.clone(), documents.clone()]),
+            // Another program, then this copy: shadowed, as before.
+            note(vec![brew_bin.clone(), documents.clone(), local_bin.clone()]),
+        ];
+        for locked in [&documents, &cloud] {
+            std::fs::set_permissions(locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert_eq!(
+            notes,
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(InstanceNote::ShadowedByHomebrew)
+            ]
+        );
     }
 
     #[test]

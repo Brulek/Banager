@@ -1181,8 +1181,12 @@ typing `claude` then finds nothing or another program with that name.
 Where a `claude` resolves does not say what program it is, so the first
 of those notices says it may be another copy of Claude Code or a
 different program with the same name, and neither calls it another
-copy. Both looks are reads (`stat`, `realpath`; listed under Files
-Banager reads); that is a notice, not a command.
+copy. Both looks are reads (`lstat` and `readlink`, one step at a time;
+listed under Files Banager reads); that is a notice, not a command. A
+`PATH` folder in one of the places Banager never reads (Which copy a
+command runs, below) -- `~/Documents`, iCloud Drive, `/Volumes` and the
+rest -- or a `claude` that leads into one, is not looked into: when it
+comes before this copy, or could be this copy, there is no notice.
 
 **Environment Banager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):
@@ -2006,8 +2010,10 @@ no longer waited for, and no new one starts while it is still running.
 The answer is judged against the `PATH` Banager has: the login shell's,
 restored at launch (How Banager runs anything, above). When restoring it
 failed, the shell says so (`Session::note_login_path` in `run()`,
-`src-tauri/src/lib.rs`): the `PATH` folders are not read, and nothing is
-said about which copy runs. An alias, a shell function, or a `PATH` that
+`src-tauri/src/lib.rs`): this check reads none of the `PATH` folders, and
+nothing is said about which copy runs (the notice under a tool with its
+own installer still looks its one command up on the `PATH` Banager has,
+as that tool's section says). An alias, a shell function, or a `PATH` that
 only a new terminal window or an editor's terminal sets is not seen; the
 details say that an alias, a new window or an editor's terminal may
 differ. Nothing is said about a Homebrew formula installed as a
@@ -2253,10 +2259,11 @@ All read-only, none saved anywhere else, none uploaded:
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each
-  `PATH` directory's `claude` in `PATH`'s order (`stat`; `realpath` for
-  each that is a regular file with executable bits) until the first such
-  file, and, when that one does not resolve to this copy, on down `PATH`
-  the same way until one does or `PATH` ends;
+  `PATH` directory's `claude` in `PATH`'s order (`lstat` and `readlink`,
+  one step at a time, never into a protected place: where it leads, and
+  whether that is a regular file with executable bits) until the first
+  such file, and, when that one does not resolve to this copy, on down
+  `PATH` the same way until one does or `PATH` ends;
   `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
   and discarded; a missing file or key means `latest`).
   For an uninstall preview, when it is confirmed, and again right before
