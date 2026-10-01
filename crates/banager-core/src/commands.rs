@@ -839,4 +839,197 @@ mod tests {
             ]
         );
     }
+
+    /// A home with Claude Code's native install in it, removed on drop.
+    struct Claude {
+        home: PathBuf,
+        instance: ManagerInstance,
+    }
+
+    impl Claude {
+        fn new(tag: &str) -> Claude {
+            let raw = std::env::temp_dir().join(format!(
+                "banager-commands-unit-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(raw.join(".local/share/claude/versions")).unwrap();
+            std::fs::create_dir_all(raw.join(".local/bin")).unwrap();
+            let home = std::fs::canonicalize(&raw).unwrap();
+            let real = home.join(".local/share/claude/versions/2.1.281");
+            std::fs::write(&real, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let launcher = home.join(".local/bin/claude");
+            std::os::unix::fs::symlink(&real, &launcher).unwrap();
+            let instance = ManagerInstance {
+                exe_path: launcher,
+                prefix: home.join(".local/share/claude"),
+                ..crate::testing::manager_instance("standalone-claude", "standalone-claude")
+            };
+            Claude { home, instance }
+        }
+
+        fn env(&self) -> HostEnv {
+            HostEnv {
+                path_dirs: vec![self.home.join(".local/bin")],
+                home: self.home.clone(),
+                euid: 501,
+                cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
+                ollama_host: None,
+            }
+        }
+
+        fn row(&self, commands: Vec<CommandFact>) -> InstalledArtifact {
+            InstalledArtifact {
+                key: crate::model::ArtifactKey {
+                    instance_id: "standalone-claude".to_string(),
+                    kind: ArtifactKind::Binary,
+                    name: "claude".to_string(),
+                },
+                display_name: "Claude Code".to_string(),
+                version: "2.1.281".to_string(),
+                reason: InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: None,
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: crate::model::ArtifactFacts {
+                    commands,
+                    ..Default::default()
+                },
+            }
+        }
+    }
+
+    impl Drop for Claude {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.home);
+        }
+    }
+
+    fn runs(name: &str) -> CommandFact {
+        CommandFact {
+            name: name.to_string(),
+            state: Some(CommandState::Runs),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_folders_read_in_time_are_used_however_long_the_rounds_fan_out_took() {
+        // The read starts as the fan-out does; a Homebrew whose `brew
+        // update` took minutes comes back long after the read's deadline.
+        // A read that had finished by then still counts: the deadline is
+        // for a read that has not.
+        let claude = Claude::new("late-round");
+        let in_flight = Arc::new(AtomicBool::new(false));
+        let budget = CommandBudget::default();
+        let mut reading = start_reading(
+            &claude.env(),
+            std::slice::from_ref(&claude.instance),
+            true,
+            &in_flight,
+            budget,
+        );
+        while in_flight.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        reading.started = Instant::now()
+            .checked_sub(Duration::from_secs(600))
+            .unwrap_or(reading.started);
+        let mut rows = vec![claude.row(Vec::new())];
+        finish(
+            reading,
+            std::slice::from_ref(&claude.instance),
+            &mut rows,
+            &claude.home,
+            true,
+            &in_flight,
+            budget,
+        )
+        .await;
+        assert_eq!(rows[0].facts.commands, vec![runs("claude")]);
+        assert!(!in_flight.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_a_read_still_running_from_an_earlier_round_is_not_joined_and_carried_rows_keep_theirs(
+    ) {
+        // An earlier round's read stuck on a folder that stopped answering:
+        // this round starts none, says nothing about the rows its
+        // inventories listed, and leaves a row carried from before as it
+        // was.
+        let claude = Claude::new("stuck");
+        let in_flight = Arc::new(AtomicBool::new(true));
+        let budget = CommandBudget::default();
+        let reading = start_reading(
+            &claude.env(),
+            std::slice::from_ref(&claude.instance),
+            true,
+            &in_flight,
+            budget,
+        );
+        assert!(reading.handle.is_none());
+        let carried = claude.row(vec![CommandFact {
+            name: "claude".to_string(),
+            state: Some(CommandState::NotOnPath {
+                dir: "~/.local/bin".to_string(),
+            }),
+        }]);
+        let mut rows = vec![claude.row(Vec::new()), carried.clone()];
+        finish(
+            reading,
+            std::slice::from_ref(&claude.instance),
+            &mut rows,
+            &claude.home,
+            true,
+            &in_flight,
+            budget,
+        )
+        .await;
+        assert_eq!(rows[0].facts.commands, Vec::new());
+        assert_eq!(rows[1], carried);
+        // Still the stuck read's to clear.
+        assert!(in_flight.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_a_round_writes_only_the_rows_its_inventories_listed() {
+        // A fresh row is judged; a carried one keeps the verdict it had,
+        // even where this round would say otherwise.
+        let claude = Claude::new("fresh-and-carried");
+        let in_flight = Arc::new(AtomicBool::new(false));
+        let budget = CommandBudget::default();
+        let reading = start_reading(
+            &claude.env(),
+            std::slice::from_ref(&claude.instance),
+            true,
+            &in_flight,
+            budget,
+        );
+        let carried = claude.row(vec![CommandFact {
+            name: "claude".to_string(),
+            state: Some(CommandState::ShadowedBy { by: None }),
+        }]);
+        let mut rows = vec![claude.row(Vec::new()), carried.clone()];
+        finish(
+            reading,
+            std::slice::from_ref(&claude.instance),
+            &mut rows,
+            &claude.home,
+            true,
+            &in_flight,
+            budget,
+        )
+        .await;
+        assert_eq!(rows[0].facts.commands, vec![runs("claude")]);
+        assert_eq!(rows[1], carried);
+    }
 }
