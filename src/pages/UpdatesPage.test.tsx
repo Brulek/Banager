@@ -276,7 +276,7 @@ function slotOf(element: HTMLElement): number | null {
 // nodes, which no longer hold the whole sentence.
 function wholeSentence(text: string) {
   return (_content: string, element: Element | null) =>
-    element?.tagName === "P" && element.textContent === text;
+    (element?.tagName === "P" || element?.hasAttribute("data-detail-line") === true) && element.textContent === text;
 }
 
 // A sheet's note by its whole sentence: its last word is held on one line
@@ -1293,7 +1293,7 @@ describe("UpdatesPage", () => {
     const urllib3 = await findRow("urllib3");
     expect(within(urllib3).queryByRole("button", { name: "View only" })).not.toBeInTheDocument();
     const reason = chipDetail(urllib3, "Can't check");
-    expect([...reason.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
+    expect([...reason.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     ]);
@@ -1324,7 +1324,7 @@ describe("UpdatesPage", () => {
     const detail = chipDetail(await findRow("certifi"), "Can't check");
     // What a person who does not write code is told instead: that it could
     // not be checked, in one short sentence -- then pip's way out.
-    expect([...detail.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
+    expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     ]);
@@ -1437,7 +1437,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "Can't check");
-    const lines = [...detail.querySelectorAll("p")].map((line) => line.textContent);
+    const lines = [...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent);
     expect(lines).toEqual([
       "Couldn't find its latest version.",
       "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
@@ -1467,7 +1467,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const detail = chipDetail(await findRow("my-fork"), "Can't check");
-    expect([...detail.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
+    expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
       "It wasn't installed from crates.io.",
     ]);

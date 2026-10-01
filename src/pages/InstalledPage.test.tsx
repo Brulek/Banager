@@ -357,7 +357,7 @@ function chipDetail(row: HTMLElement, label: string): HTMLElement {
 // is `text`.
 function wholeSentence(text: string) {
   return (_content: string, element: Element | null) =>
-    element?.tagName === "P" && element.textContent === text;
+    (element?.tagName === "P" || element?.hasAttribute("data-detail-line") === true) && element.textContent === text;
 }
 
 // Opens a confirmation's "Show Command": it is one press away.

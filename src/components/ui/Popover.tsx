@@ -27,6 +27,11 @@ export interface PopoverProps {
  * button's middle. The panel stands 24 to the side of that middle, so the
  * arrow clears its rounded corner however small the button -- an ⓘ is 20.
  *
+ * Phrasing content throughout -- a `span` panel, laid out as a block --
+ * because an ⓘ sits inside a line of text, often a `<p>`, where a `<div>`
+ * is not allowed (`detailLines` writes its sentences as block `span`s for
+ * the same reason). Children given to it should be phrasing content too.
+ *
  * `data-popup-open` marks it while open: a row of a virtualized list sits
  * in a slot of its own, and index.css lifts the slot that holds an open
  * panel above the slots after it, which would otherwise be painted over it.
@@ -36,7 +41,7 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
   const panelId = useId();
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, wrapperRef, triggerRef);
   const placement = usePlacement(open, triggerRef, panelRef, align);
@@ -61,18 +66,18 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
         {trigger}
       </button>
       {open ? (
-        <div
+        <span
           ref={panelRef}
           id={panelId}
           data-side={placement.side}
           data-align={placement.align}
-          className={`absolute z-30 w-65 whitespace-normal rounded-group bg-popover p-3 text-left text-body-long font-normal text-foreground shadow-menu ${
+          className={`absolute z-30 block w-65 whitespace-normal rounded-group bg-popover p-3 text-left text-body-long font-normal text-foreground shadow-menu ${
             fromEnd ? "right-[calc(50%-24px)]" : "left-[calc(50%-24px)]"
           } ${above ? "bottom-full mb-[9px]" : "top-full mt-[9px]"}`}
         >
           <PopoverArrow above={above} fromEnd={fromEnd} />
           {children}
-        </div>
+        </span>
       ) : null}
     </span>
   );

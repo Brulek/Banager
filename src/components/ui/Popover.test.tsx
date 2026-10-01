@@ -193,3 +193,47 @@ describe("StatusChip", () => {
     expect(getByText("It's pinned in Homebrew.")).toBeInTheDocument();
   });
 });
+
+describe("Popover inside a line of text", () => {
+  // An ⓘ sits in a sentence, often a <p>: its panel must be phrasing
+  // content, or React warns "<div> cannot be a descendant of <p>" (and the
+  // HTML parser would close the paragraph early).
+  it("logs no DOM nesting warning for a TextWithInfo or a chip's detail lines inside a <p>", async () => {
+    const { TextWithInfo } = await import("../InfoDetail");
+    const { detailLines } = await import("../updateDetails");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getAllByRole } = render(
+      <>
+        <p>
+          <TextWithInfo text="Checking for updates" label="Details: Checking for updates">
+            The list shows what each source has installed.
+          </TextWithInfo>
+        </p>
+        <p>
+          <TextWithInfo text="Installed twice" label="Details: Installed twice">
+            {detailLines(["npm has a copy too.", "Typing claude in Terminal runs the copy from npm."])}
+          </TextWithInfo>
+        </p>
+      </>,
+    );
+    for (const button of getAllByRole("button")) fireEvent.click(button);
+    const nesting = errors.mock.calls.filter((call) =>
+      /cannot be a descendant of|cannot contain a nested|validateDOMNesting|hydration error/i.test(
+        call.map(String).join(" "),
+      ),
+    );
+    errors.mockRestore();
+    expect(nesting).toEqual([]);
+    // Still laid out as a block, and its lines as lines.
+    const panels = document.querySelectorAll("[data-side]");
+    expect(panels).toHaveLength(2);
+    for (const panel of panels) {
+      expect(panel.tagName).toBe("SPAN");
+      expect(panel.className).toContain("block");
+    }
+    expect([...document.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "npm has a copy too.",
+      "Typing claude in Terminal runs the copy from npm.",
+    ]);
+  });
+});

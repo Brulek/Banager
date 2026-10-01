@@ -182,7 +182,7 @@ describe("twinChip", () => {
   /** The chip's detail as text, a line each. */
   function detailText(detail: React.ReactNode): string[] {
     const { container } = render(<>{detail}</>);
-    return [...container.querySelectorAll("p")].map((p) => p.textContent ?? "");
+    return [...container.querySelectorAll("[data-detail-line]")].map((p) => p.textContent ?? "");
   }
 
   it("marks a tool another source installed too, and says which copy typing it runs", () => {

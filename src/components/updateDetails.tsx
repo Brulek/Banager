@@ -12,12 +12,16 @@ import type { ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/typ
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 
-/** A chip's detail, a sentence to a line; the lines after the first are the quieter kind. */
+/**
+ * A chip's detail, a sentence to a line; the lines after the first are the
+ * quieter kind. Block `span`s, not `<p>`s: a popover's panel can sit in a
+ * line of text (`Popover`), where a paragraph may not.
+ */
 export function detailLines(lines: ReactNode[]): ReactNode {
   return lines.map((line, index) => (
-    <p key={index} className={index === 0 ? "break-words" : "mt-1.5 break-words text-muted"}>
+    <span key={index} data-detail-line="" className={index === 0 ? "block break-words" : "mt-1.5 block break-words text-muted"}>
       {line}
-    </p>
+    </span>
   ));
 }
 

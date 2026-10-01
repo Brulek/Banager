@@ -70,7 +70,7 @@ describe("which copy of a tool installed twice Terminal runs", () => {
     const word = notUsedWord(en, npm, twinsOf(npm), labelFor, "@openai/codex");
     expect(word?.label).toBe("Not used in Terminal");
     expect(word?.ariaLabel).toBe("Not used in Terminal: @openai/codex");
-    const lines = [...render(<>{word?.detail}</>).container.querySelectorAll("p")].map((p) => p.textContent);
+    const lines = [...render(<>{word?.detail}</>).container.querySelectorAll("[data-detail-line]")].map((p) => p.textContent);
     expect(lines).toEqual([
       "Typing codex in Terminal runs the copy from Codex's own installer, version 0.159.3, so Terminal doesn't use this one.",
       "Updating this copy doesn't change the one Terminal runs.",
