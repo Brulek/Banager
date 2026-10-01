@@ -38,6 +38,13 @@ pub struct OperationRuns(Mutex<ReportedRuns>);
 /// Banager to the front, brings back as it was left. One that could not be
 /// handed off is logged; the page is told nothing. A run withheld is
 /// looked at again on the main thread (`look_again_on_main_thread`).
+///
+/// A run that cannot be one of the operations this Banager has started
+/// (`plausible`) is dropped first, with nothing posted: its newest
+/// operation is one Banager has not started, or it tells of more
+/// operations than Banager has started. Each notification then stands for
+/// an operation that ran, and a page that went wrong cannot post one for
+/// every number it counts up to.
 #[tauri::command]
 pub async fn report_finished_run(
     app: AppHandle,
@@ -45,6 +52,11 @@ pub async fn report_finished_run(
     runs: State<'_, OperationRuns>,
     run: FinishedRun,
 ) -> Result<(), String> {
+    let newest = state.session.operations().iter().map(|op| op.id).max();
+    if !plausible(&run, newest) {
+        eprintln!("[banager] dropped a report of operations Banager has not started");
+        return Ok(());
+    }
     let focus = notify::focus(&app);
     let language = notify::language(&app, &state);
     let title = app.package_info().name.clone();
@@ -60,6 +72,16 @@ pub async fn report_finished_run(
         }
     }
     Ok(())
+}
+
+/// Whether `run` can be a run of the operations this Banager has started,
+/// the newest of which is `newest` (`None` before the first): its newest
+/// operation is one of them, and it tells of no more operations than there
+/// are up to that one (ids count from 1, `OperationManager::submit_with`).
+pub(crate) fn plausible(run: &FinishedRun, newest: Option<u64>) -> bool {
+    newest.is_some_and(|newest| {
+        (1..=newest).contains(&run.last_op) && u64::from(run.told()) <= run.last_op
+    })
 }
 
 /// A run `report_finished_run` has just withheld, looked at again on the
@@ -293,6 +315,24 @@ mod tests {
             Ok(RunNotice::Nothing)
         );
         assert_eq!(*posted.borrow(), ["已更新3个工具"]);
+    }
+
+    #[test]
+    fn test_a_run_is_reported_only_as_one_of_the_operations_banager_started() {
+        // Three operations started: a run of them is reported.
+        assert!(plausible(&run(RunKind::Upgrade, 3, 0, 0), Some(3)));
+        assert!(plausible(&run(RunKind::Uninstall, 1, 0, 0), Some(5)));
+        // Before any operation, none.
+        assert!(!plausible(&run(RunKind::Upgrade, 1, 0, 0), None));
+        // An operation not started yet, or none at all.
+        let mut later = run(RunKind::Upgrade, 1, 0, 0);
+        later.last_op = 4;
+        assert!(!plausible(&later, Some(3)));
+        later.last_op = 0;
+        assert!(!plausible(&later, Some(3)));
+        // More operations than have been started up to its newest.
+        assert!(!plausible(&run(RunKind::Upgrade, 3, 1, 0), Some(3)));
+        assert!(!plausible(&run(RunKind::Upgrade, u32::MAX, 0, 0), Some(3)));
     }
 
     #[test]
