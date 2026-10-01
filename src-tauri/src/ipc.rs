@@ -739,6 +739,20 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
         .map_err(|e| e.to_string())
 }
 
+/// How much disk each installed thing takes, as the newest round of
+/// measuring says so far (`Session::sizes`): measured after each refresh
+/// commits, outside the snapshot, and announced as it moves by
+/// `UiEvent::SizesChanged`. Takes nothing from the window; reading it
+/// costs a copy under a lock, so it runs inline.
+pub(crate) fn get_sizes_impl(state: &AppState) -> Result<banager_core::size::Sizes, String> {
+    Ok(state.session.sizes())
+}
+
+#[tauri::command]
+pub async fn get_sizes(state: State<'_, AppState>) -> Result<banager_core::size::Sizes, String> {
+    get_sizes_impl(&state)
+}
+
 /// The icon Finder shows for the app a Homebrew cask installed, for that
 /// cask's row: a `data:image/png;base64,...` URL, or `None` for any other
 /// row and whenever there is no icon to show (`Session::artifact_icon`).
@@ -1425,7 +1439,9 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
+                UiEvent::Operation(_)
+                | UiEvent::InventoryPreview(_)
+                | UiEvent::SizesChanged { .. } => None,
             })
             .collect();
         assert_eq!(
@@ -1495,7 +1511,9 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
+                UiEvent::Operation(_)
+                | UiEvent::InventoryPreview(_)
+                | UiEvent::SizesChanged { .. } => None,
             })
             .collect();
         assert_eq!(
@@ -1577,7 +1595,9 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
+                UiEvent::Operation(_)
+                | UiEvent::InventoryPreview(_)
+                | UiEvent::SizesChanged { .. } => None,
             })
             .collect();
         assert_eq!(
@@ -2448,6 +2468,97 @@ mod tests {
             .channel_sink
             .broadcast(UiEvent::SnapshotChanged { generation: 42 });
         assert_eq!(received.lock().unwrap().len(), 1);
+    }
+
+    /// `state_with_fake_adapter`, with a session that measures sizes after
+    /// each round, as `Session::new` does in the app.
+    fn state_measuring_sizes() -> AppState {
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta: AdapterMeta {
+                id: "fake".to_string(),
+                name: "fake".to_string(),
+                kind: "fake".to_string(),
+                platforms: vec!["macos".to_string()],
+                homepage: "https://example.invalid".to_string(),
+                schema_version: 1,
+                verified_versions: vec![],
+            },
+            instance: banager_core::testing::manager_instance("fake", "fake:1"),
+            execute_calls: Arc::new(AtomicUsize::new(0)),
+            plan_calls: Arc::new(AtomicUsize::new(0)),
+            check_options_calls: Arc::new(Mutex::new(Vec::new())),
+            detect_delay: std::time::Duration::ZERO,
+            execute_delay: std::time::Duration::ZERO,
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            listed: Vec::new(),
+        });
+        let sink = ChannelSink::new();
+        let session = banager_core::session::Session::with_adapters_and_sizes(
+            sink.clone(),
+            vec![adapter],
+            None,
+        );
+        AppState {
+            session,
+            settings_path: temp_settings_path("sizes"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_sizes_impl_answers_each_refreshs_round_and_the_window_hears_it_move() {
+        // The measuring itself is banager-core's (size.rs, session/sizes.rs);
+        // what the shell owes is the wiring: a refresh the window asks for
+        // starts a round, `get_sizes` answers it, and every subscriber is
+        // told with `SizesChanged` as it moves -- while the snapshot's
+        // generation goes on moving for content alone.
+        let state = state_measuring_sizes();
+        assert_eq!(
+            get_sizes_impl(&state).expect("get_sizes_impl"),
+            banager_core::size::Sizes::default(),
+            "before any refresh, nothing"
+        );
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let snapshot = refresh_impl(&state).await.expect("refresh_impl");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let sizes = loop {
+            let sizes = get_sizes_impl(&state).expect("get_sizes_impl");
+            if sizes.round == snapshot.round && sizes.done {
+                break sizes;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the round's sizes never came: {sizes:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        };
+        assert!(
+            sizes.artifacts.is_empty(),
+            "the fake source has nothing to measure"
+        );
+        assert!(received.lock().unwrap().iter().any(|event| matches!(
+            event,
+            UiEvent::SizesChanged { round } if *round == snapshot.round
+        )));
+
+        let again = refresh_impl(&state).await.expect("second refresh_impl");
+        assert_eq!(
+            again.generation, snapshot.generation,
+            "sizes are not in the snapshot: a round with nothing new keeps the generation"
+        );
     }
 
     #[test]

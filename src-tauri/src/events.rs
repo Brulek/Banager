@@ -17,6 +17,13 @@ pub enum UiEvent {
     /// committed, so `get_snapshot` still answers with the placeholder.
     /// Sent by `ipc::refresh_for` alone.
     InventoryPreview(banager_core::session::InventoryPreview),
+    /// What `get_sizes` answers has moved, for the snapshot of `round`
+    /// (`EventSink::sizes_changed`): the window asks again. A struct
+    /// variant, so it is an object on the wire as the others are --
+    /// `src/lib/events.ts` tells them apart with `in`.
+    SizesChanged {
+        round: u64,
+    },
 }
 
 /// Fans every core event out to all registered Channels; a Channel whose
@@ -45,6 +52,10 @@ impl ChannelSink {
 impl EventSink for ChannelSink {
     fn emit(&self, event: banager_core::events::OperationEvent) {
         self.broadcast(UiEvent::Operation(event));
+    }
+
+    fn sizes_changed(&self, round: u64) {
+        self.broadcast(UiEvent::SizesChanged { round });
     }
 }
 
@@ -217,5 +228,30 @@ mod tests {
             }
             other => panic!("expected Operation(Status), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_sizes_changed_reaches_the_window_as_an_object_with_its_round() {
+        // `src/lib/types.ts` spells it `{ SizesChanged: { round: number } }`
+        // and `src/lib/events.ts` tells it from the other two by `in`,
+        // which a bare string would make throw.
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: serde_json::Value = body.deserialize().expect("deserialize");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        sink.register(channel);
+        EventSink::sizes_changed(sink.as_ref(), 12);
+        assert_eq!(
+            received.lock().unwrap().clone(),
+            vec![serde_json::json!({ "SizesChanged": { "round": 12 } })]
+        );
+        assert_eq!(
+            serde_json::to_string(&UiEvent::SizesChanged { round: 12 }).unwrap(),
+            r#"{"SizesChanged":{"round":12}}"#
+        );
     }
 }

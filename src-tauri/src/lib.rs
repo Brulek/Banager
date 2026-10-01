@@ -134,6 +134,7 @@ pub fn run() {
             ipc::open_ollama_app,
             ipc::scan_unknown,
             ipc::artifact_icon,
+            ipc::get_sizes,
             menu::set_menu_language,
             notify::report_update_set,
             notify::request_notification_permission,
