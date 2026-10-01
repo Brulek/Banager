@@ -1138,19 +1138,18 @@ impl SizeMeter {
 fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: bool) -> Sizes {
     let mut listed: Vec<(usize, ArtifactSize)> = Vec::new();
     let mut models = Vec::new();
-    let mut counted: Vec<&Walked> = Vec::new();
-    let mut not_reached = false;
-    // By source: what it counted, and whether the budget missed some of it.
-    let mut by_source: BTreeMap<&str, (Vec<&Walked>, bool)> = BTreeMap::new();
+    let mut counted = Counted::default();
+    // By source: what it counted, and what it is short of.
+    let mut by_source: BTreeMap<&str, Counted> = BTreeMap::new();
     for unit in units {
         let finished = unit.finished();
-        not_reached |= unit.not_reached();
+        counted.not_reached |= unit.not_reached();
         let instance_id = match &unit.target {
             Target::Artifact { index } => artifacts[*index].key.instance_id.as_str(),
             Target::Models { instance_id, .. } => instance_id.as_str(),
         };
         if unit.not_reached() {
-            by_source.entry(instance_id).or_default().1 = true;
+            by_source.entry(instance_id).or_default().not_reached = true;
         }
         if finished && unit.main.walked().is_none() {
             continue;
@@ -1160,15 +1159,10 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
             Target::Artifact { index } => {
                 let artifact = &artifacts[*index];
                 if finished {
-                    let walks = unit
-                        .main
-                        .walked()
-                        .into_iter()
-                        .chain(unit.old.as_ref().and_then(Job::walked));
-                    let source = &mut by_source.entry(instance_id).or_default().0;
-                    for walked in walks {
-                        counted.push(walked);
-                        source.push(walked);
+                    let source = by_source.entry(instance_id).or_default();
+                    for job in std::iter::once(&unit.main).chain(unit.old.as_ref()) {
+                        counted.add(job);
+                        source.add(job);
                     }
                 }
                 let (measured, old_versions) = if showable {
@@ -1195,12 +1189,8 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
                     continue;
                 }
                 if finished {
-                    counted.extend(unit.main.walked());
-                    by_source
-                        .entry(instance_id)
-                        .or_default()
-                        .0
-                        .extend(unit.main.walked());
+                    counted.add(&unit.main);
+                    by_source.entry(instance_id).or_default().add(&unit.main);
                 }
                 models.push(ModelsSize {
                     instance_id: instance_id.clone(),
@@ -1215,16 +1205,12 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
         done,
         artifacts: listed.into_iter().map(|(_, size)| size).collect(),
         models,
-        total: if done {
-            reached_total(counted, not_reached)
-        } else {
-            None
-        },
+        total: if done { counted.total() } else { None },
         sources: if done {
             by_source
                 .into_iter()
-                .filter_map(|(instance_id, (walks, not_reached))| {
-                    reached_total(walks, not_reached).map(|measured| SourceSize {
+                .filter_map(|(instance_id, counted)| {
+                    counted.total().map(|measured| SourceSize {
                         instance_id: instance_id.to_string(),
                         measured,
                     })
@@ -1236,20 +1222,43 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
     }
 }
 
-/// `total` of `walks`, `at_least` when the budget did not reach something
-/// that belongs with them: that takes something too, by an amount not
-/// known. `None` when there is nothing to say.
-fn reached_total(walks: Vec<&Walked>, not_reached: bool) -> Option<Measured> {
-    match total(walks) {
-        Some(sum) => Some(Measured {
-            at_least: sum.at_least || not_reached,
-            ..sum
-        }),
-        None if not_reached => Some(Measured {
-            at_least: true,
-            ..Measured::default()
-        }),
-        None => None,
+/// What one total adds up: the jobs' walks, and what it is short of.
+#[derive(Default)]
+struct Counted<'a> {
+    walks: Vec<&'a Walked>,
+    /// The budget did not reach something that belongs with them.
+    not_reached: bool,
+    /// A root of a counted job was refused while planning (`Job.partial`):
+    /// what its walk measured is not all of it, nor then the total.
+    partial: bool,
+}
+
+impl<'a> Counted<'a> {
+    /// `job`'s walk, if it has one to show, with what planning knew.
+    fn add(&mut self, job: &'a Job) {
+        if let Some(walked) = job.walked() {
+            self.walks.push(walked);
+            self.partial |= job.partial;
+        }
+    }
+
+    /// `total` of the walks, `partial` when one of them was refused a root
+    /// while planning, `at_least` when the budget did not reach something
+    /// that belongs with them: that takes something too, by an amount not
+    /// known. `None` when there is nothing to say.
+    fn total(self) -> Option<Measured> {
+        match total(self.walks) {
+            Some(sum) => Some(Measured {
+                partial: sum.partial || self.partial,
+                at_least: sum.at_least || self.not_reached,
+                ..sum
+            }),
+            None if self.not_reached => Some(Measured {
+                at_least: true,
+                ..Measured::default()
+            }),
+            None => None,
+        }
     }
 }
 
@@ -1932,6 +1941,45 @@ mod tests {
         assert!(size_of(&sizes, "claudebar").is_none());
         assert_eq!(sizes.total, None);
         assert!(sizes.sources.is_empty());
+    }
+
+    #[test]
+    fn test_a_root_refused_while_planning_makes_the_totals_partial_too() {
+        // The app is measured, but Homebrew's folder for the cask leads
+        // onto another disk: the cask's size is partial, and so must be
+        // every total it is in.
+        let scratch = Scratch::new("cask-root-refused");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("homebrew");
+        let app = scratch.dir("Applications/Claudebar.app");
+        scratch.file("Applications/Claudebar.app/Contents/MacOS/claudebar", 9_000);
+        symlink(
+            "/Volumes/Banager-test-no-such-disk/Caskroom",
+            prefix.join("Caskroom"),
+        )
+        .unwrap();
+        let id = "brew:homebrew";
+        let artifacts = [artifact(
+            id,
+            ArtifactKind::Cask,
+            "claudebar",
+            "0.1.1",
+            Some(app),
+        )];
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let sizes = run(
+            &meter,
+            1,
+            &[instance("brew", id, &prefix)],
+            &artifacts,
+            &home,
+        );
+        assert!(sizes.done);
+        let measured = size_of(&sizes, "claudebar").unwrap().measured.unwrap();
+        assert!(measured.partial, "{measured:?}");
+        assert!(sizes.total.unwrap().partial, "{:?}", sizes.total);
+        assert_eq!(sizes.sources.len(), 1);
+        assert!(sizes.sources[0].measured.partial, "{:?}", sizes.sources);
     }
 
     #[test]
