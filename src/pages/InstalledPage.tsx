@@ -968,15 +968,17 @@ export function InstalledPage() {
     heldBy(artifact, instance, holdsOf(artifact));
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
-  const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined => {
-    const id = artifactKeyId(artifact.key);
-    return (operations ?? []).find(
-      (op) =>
-        op.kind === "Uninstall" &&
-        op.status !== "Done" &&
-        artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === id,
-    );
-  };
+  // Indexed once a draw: every row of the list asks, not only those in
+  // sight (whether it can be ticked), and the operations run to hundreds.
+  // The first in the backend's order, newest first, as a search of it finds.
+  const activeUninstalls = new Map<string, OpSummary>();
+  for (const op of operations ?? []) {
+    if (op.kind !== "Uninstall" || op.status === "Done") continue;
+    const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
+    if (!activeUninstalls.has(id)) activeUninstalls.set(id, op);
+  }
+  const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined =>
+    activeUninstalls.get(artifactKeyId(artifact.key));
   // A batch's tool already uninstalled while another operation on its
   // source runs: its row is the last check's, carried forward until the
   // source is read again (`uninstalledWhileBusy`), and says so.
