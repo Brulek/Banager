@@ -1987,7 +1987,7 @@ refresh's locks released — a thread of its own (`SizeMeter` in
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |
 | a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this) |
-| Claude Code, Antigravity CLI, Grok Build, rustup | the program file its launcher leads to |
+| Claude Code, Antigravity CLI, Grok Build, rustup, Codex | the program file its launcher leads to |
 | Ollama's models | `~/.ollama/models/blobs`, once for all of them, when the Ollama Banager asks is on this Mac |
 
 Nothing else is measured: not pip's packages, not a cask with no app (a
