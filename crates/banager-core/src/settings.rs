@@ -28,6 +28,20 @@ pub struct SkippedVersion {
     pub version: String,
 }
 
+/// One update the user put off with the Updates page's 「30天内不提醒」
+/// ("Remind Me in 30 Days"): every update of `key` is hidden until
+/// `until`, Unix seconds on the wall clock -- 30 days after they chose it --
+/// and listed again from then on, whatever version it offers. Like
+/// `SkippedVersion` it decides only what the page lists (`hidingRule` in
+/// src/lib/updateState.ts, which compares `until` with the clock, so one
+/// that runs out while Banager runs comes back at the page's next look);
+/// `load` drops every entry that has run out.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnoozedUpdate {
+    pub key: ArtifactKey,
+    pub until: i64,
+}
+
 /// How often the automatic check runs while it is on, Settings → Updates'
 /// 「检查更新」 popup: 「每天」 or 「每周」 (`Settings::auto_check_every`).
 /// Its third choice, 「不自动检查」, is `Settings::auto_check` off, so a
@@ -114,6 +128,11 @@ pub struct Settings {
     /// `auto_check`.
     #[serde(default)]
     pub notify_operations: bool,
+    /// The updates put off for 30 days (`SnoozedUpdate`), one entry a
+    /// package. `#[serde(default)]` for the same reason as
+    /// `skipped_versions`; those that have run out are dropped on `load`.
+    #[serde(default)]
+    pub snoozed_updates: Vec<SnoozedUpdate>,
 }
 
 impl Settings {
@@ -136,6 +155,7 @@ impl Default for Settings {
             notify_updates: false,
             auto_check_every: CheckEvery::Day,
             notify_operations: false,
+            snoozed_updates: Vec::new(),
         }
     }
 }
@@ -143,11 +163,28 @@ impl Default for Settings {
 /// Missing file, unreadable file or malformed JSON all yield
 /// `Settings::default()` — settings are a convenience, never a reason to
 /// fail startup.
+///
+/// Snoozed updates whose `until` has come are dropped (`load_at`, at the
+/// wall clock's now): they hide nothing any more.
 pub fn load(path: &Path) -> Settings {
-    match std::fs::read(path) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    load_at(path, now)
+}
+
+/// `load`, with the snoozed updates whose `until` is at or before `now`
+/// (Unix seconds) dropped.
+pub fn load_at(path: &Path, now: i64) -> Settings {
+    let mut settings: Settings = match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
         Err(_) => Settings::default(),
-    }
+    };
+    settings
+        .snoozed_updates
+        .retain(|snoozed| snoozed.until > now);
+    settings
 }
 
 /// Per-process counter for `save()`'s staging file name. A fixed `<path>.tmp`
@@ -237,6 +274,7 @@ mod tests {
         assert!(json.contains("\"notify_updates\":false"));
         assert!(json.contains("\"auto_check_every\":\"Day\""));
         assert!(json.contains("\"notify_operations\":false"));
+        assert!(json.contains("\"snoozed_updates\":[]"));
     }
 
     #[test]
@@ -246,7 +284,7 @@ mod tests {
         // this order, the daily check's two last.
         assert_eq!(
             serde_json::to_string(&Settings::default()).expect("serialize"),
-            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false}"#
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[]}"#
         );
     }
 
@@ -351,6 +389,7 @@ mod tests {
                 notify_updates: false,
                 auto_check_every: CheckEvery::Day,
                 notify_operations: false,
+                snoozed_updates: Vec::new(),
             }
         );
         let _ = std::fs::remove_file(&path);
@@ -435,6 +474,71 @@ mod tests {
     }
 
     #[test]
+    fn test_snoozed_updates_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `SnoozedUpdate` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string.
+        let snoozed = vec![SnoozedUpdate {
+            key: key("wget"),
+            until: 1_793_178_000,
+        }];
+        assert_eq!(
+            serde_json::to_string(&snoozed).expect("serialize"),
+            r#"[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"wget"},"until":1793178000}]"#
+        );
+    }
+
+    #[test]
+    fn test_load_drops_the_snoozed_updates_whose_time_has_come_and_keeps_the_rest() {
+        let path = temp_settings_path("snoozed");
+        let now = 1_790_586_000;
+        let settings = Settings {
+            language: Language::ZhCn,
+            snoozed_updates: vec![
+                SnoozedUpdate {
+                    key: key("wget"),
+                    until: now - 1,
+                },
+                SnoozedUpdate {
+                    key: key("git"),
+                    until: now,
+                },
+                SnoozedUpdate {
+                    key: key("gh"),
+                    until: now + 1,
+                },
+            ],
+            ..Settings::default()
+        };
+        save(&path, &settings).expect("save");
+        let loaded = load_at(&path, now);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert_eq!(
+            loaded.snoozed_updates,
+            vec![SnoozedUpdate {
+                key: key("gh"),
+                until: now + 1,
+            }],
+            "ran out a second ago, and now: dropped; a second to go: kept"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_written_before_snoozing_keeps_the_rest() {
+        let path = temp_settings_path("no-snoozed");
+        std::fs::write(
+            &path,
+            br#"{"language":"En","show_technical_details":true,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":false,"auto_check_every":"Week","notify_operations":true}"#,
+        )
+        .expect("write settings.json without snoozed_updates");
+        let loaded = load(&path);
+        assert!(loaded.show_technical_details && loaded.notify_operations);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert!(loaded.snoozed_updates.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn test_save_then_load_round_trips_a_non_default_settings() {
         let path = temp_settings_path("roundtrip");
         let settings = Settings {
@@ -450,6 +554,10 @@ mod tests {
             notify_updates: true,
             auto_check_every: CheckEvery::Week,
             notify_operations: true,
+            snoozed_updates: vec![SnoozedUpdate {
+                key: key("wget"),
+                until: 4_102_444_800,
+            }],
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

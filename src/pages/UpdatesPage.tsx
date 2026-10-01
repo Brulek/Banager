@@ -68,6 +68,7 @@ import type {
 } from "../lib/types";
 import {
   actionableUpdatesOf,
+  withSnoozed,
   canSkipVersion,
   everySourceChecked,
   notHidden,
@@ -765,6 +766,14 @@ export function UpdatesPage() {
       skipped_versions: withSkippedVersion(current.skipped_versions, candidate),
     }));
 
+  // "Remind Me in 30 Days": hides every update of this package for 30
+  // days, then lists it again by itself (`withSnoozed`, `hidingRule`).
+  const snooze = (candidate: UpdateCandidate) =>
+    hide(candidate, (current) => ({
+      ...current,
+      snoozed_updates: withSnoozed(current.snoozed_updates, candidate),
+    }));
+
   // "Never remind me": hides every update of this package, now and later.
   const neverRemind = (candidate: UpdateCandidate) =>
     hide(candidate, (current) => ({
@@ -773,11 +782,12 @@ export function UpdatesPage() {
     }));
 
   /**
-   * The row's ⋯ menu: the two ways to stop seeing this update, the lighter
-   * one first, and -- with technical details on -- the command its chip
-   * talks about. "Skip this version" hides it until the source offers
-   * another version; "Never remind me" hides every update of this package
-   * until the user undoes it in Settings. Each item's hint -- a tooltip,
+   * The row's ⋯ menu: the three ways to stop seeing this update, the
+   * lightest first, and -- with technical details on -- the command its
+   * chip talks about. "Skip this version" hides it until the source offers
+   * another version; "Remind Me in 30 Days" hides every update of this
+   * package for 30 days; "Never remind me" hides every update of this
+   * package until the user undoes it in Settings. Each item's hint -- a tooltip,
    * and its accessible description -- says what it does. A row whose
    * `target` does not name one release gets only "Never remind me"
    * (`canSkipVersion`): one Banager could not check, whose `target` is its
@@ -802,6 +812,15 @@ export function UpdatesPage() {
         onSelect: () => skipVersion(candidate),
       });
     }
+    // Lasts 30 days, whatever version the source offers meanwhile: on
+    // every row, as Never remind me is.
+    items.push({
+      id: "snooze",
+      label: t("updates.snooze"),
+      hint: t("updates.snoozeHint"),
+      disabled: saveSettings.isPending,
+      onSelect: () => snooze(candidate),
+    });
     items.push({
       id: "never",
       label: t("updates.neverRemind"),

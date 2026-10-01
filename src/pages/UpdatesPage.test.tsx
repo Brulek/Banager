@@ -2333,6 +2333,40 @@ describe("UpdatesPage", () => {
     expect(queryByText("onyx")).toBeInTheDocument();
   });
 
+  it("hides the row for 30 days when Remind Me in 30 Days is chosen, between the other two, and saves the date", async () => {
+    const { queryByText } = renderPage();
+    const before = Math.floor(Date.now() / 1000);
+
+    const menu = openMenu(await findRow("glib"));
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(
+      expect.arrayContaining(["Skip This Version", "Remind Me in 30 Days", "Don't Remind Me About This Tool"]),
+    );
+    const names = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent);
+    expect(names.indexOf("Remind Me in 30 Days")).toBe(names.indexOf("Skip This Version") + 1);
+    expect(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" })).toHaveAccessibleDescription(
+      "You'll be reminded about this tool's updates again in 30 days. Undo it in Settings.",
+    );
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remind Me in 30 Days" }));
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    const [snooze] = savedSettings().snoozed_updates ?? [];
+    expect(snooze.key).toEqual(glibKey);
+    const thirtyDays = 30 * 24 * 60 * 60;
+    expect(snooze.until).toBeGreaterThanOrEqual(before + thirtyDays);
+    expect(snooze.until).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + thirtyDays);
+    expect(savedSettings().skipped_versions).toEqual([]);
+    expect(savedSettings().ignored_updates).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
+  });
+
+  it("lists a snoozed package again once its date has passed", async () => {
+    settings.snoozed_updates = [{ key: glibKey, until: Math.floor(Date.now() / 1000) - 60 }];
+    renderPage();
+    expect(await findRow("glib")).toBeInTheDocument();
+  });
+
   it("replaces a package's earlier skip when its next version is skipped", async () => {
     // glib 2.89.0 was skipped; the source now offers 2.90.0, so the row is
     // back. Skipping it again records 2.90.0 in place of 2.89.0, which

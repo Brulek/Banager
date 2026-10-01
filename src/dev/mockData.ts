@@ -370,6 +370,7 @@ function brewUpdates(): UpdateCandidate[] {
     update(formula("gh"), "2.101.0", "2.102.0", "Native"),
     update(formula("git"), "2.55.0", "2.55.1", "Native"),
     update(formula(PINNED_FORMULA), "17.9", "17.10", "Native", { blocked: "Pinned" }),
+    // Hidden by Settings for 12 more days (snoozed_updates).
     update(formula("wget"), "1.25.0", "1.26.0", "Native"),
     update(key(IDS.brew, "Cask", "android-platform-tools"), "36.0.0", "36.0.2", "Native"),
   ];
@@ -906,7 +907,8 @@ function scenarioWorld(state: ScenarioState): World {
     case "hidden":
       allAnswering(world);
       world.updates = world.updates.filter(
-        (u) => u.key.instance_id === IDS.brew && (u.key.name === "ffmpeg" || u.key.name === "gh"),
+        (u) =>
+          u.key.instance_id === IDS.brew && (u.key.name === "ffmpeg" || u.key.name === "gh" || u.key.name === "wget"),
       );
       return world;
     case "stale":
@@ -933,9 +935,10 @@ function scenarioWorld(state: ScenarioState): World {
 
 /**
  * Settings at startup: the scenario's language and technical-details
- * switch, one package the user asked never to be reminded about and one
- * version they skipped (both Homebrew rows above, so both are hidden from
- * the Updates page and marked with a chip on the Installed page).
+ * switch, one package the user asked never to be reminded about, one
+ * version they skipped and one package they put off for 30 days (all
+ * Homebrew rows above, so all are hidden from the Updates page and marked
+ * with a chip on the Installed page).
  */
 export function initialSettings(scenario: Scenario): Settings {
   return {
@@ -948,6 +951,11 @@ export function initialSettings(scenario: Scenario): Settings {
     notify_updates: false,
     auto_check_every: "Day",
     notify_operations: false,
+    // Put off with 「30天内不提醒」 18 days ago: hidden for 12 more days
+    // (another Homebrew row above), listed in Settings with its date.
+    snoozed_updates: [
+      { key: key(IDS.brew, "Formula", "wget"), until: Math.floor(Date.now() / 1000) + 12 * 24 * 60 * 60 },
+    ],
   };
 }
 

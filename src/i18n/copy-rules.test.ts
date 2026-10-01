@@ -177,6 +177,7 @@ describe("the polish-3 copy rules, in English", () => {
       "updates.update",
       "updates.retry",
       "updates.skipVersion",
+      "updates.snooze",
       "updates.neverRemind",
       "updates.justUpdated.clear",
       "updates.showReasons",
@@ -213,7 +214,8 @@ describe("the polish-3 copy rules, in English", () => {
         .split(" ")
         .filter((word) => !/^[({]/.test(word));
       return words.every(
-        (word, index) => /^[A-Z]/.test(word) || (index > 0 && index < words.length - 1 && minor.has(word)),
+        // A number has no case: Remind Me in 30 Days.
+        (word, index) => /^[A-Z0-9]/.test(word) || (index > 0 && index < words.length - 1 && minor.has(word)),
       );
     };
     const strings = new Map(entries(en));

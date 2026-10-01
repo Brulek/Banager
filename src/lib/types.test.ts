@@ -25,6 +25,7 @@ import type {
   UnknownScan,
   UpdatePair,
   FinishedRun,
+  SnoozedUpdate,
   Sizes,
 } from "./types";
 import { NO_FACTS, NO_SIZES } from "./types";
@@ -608,9 +609,21 @@ describe("types", () => {
       notify_updates: false,
       auto_check_every: "Day",
       notify_operations: false,
+      snoozed_updates: [],
     };
     expect(JSON.stringify(defaults)).toBe(
-      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false}',
+      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[]}',
+    );
+  });
+
+  it("spells SnoozedUpdate as settings.rs's shape test does", () => {
+    // `test_snoozed_updates_wire_shape_matches_the_hand_written_ts_mirror`
+    // in crates/banager-core/src/settings.rs asserts this exact string.
+    const snoozed: SnoozedUpdate[] = [
+      { key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "wget" }, until: 1793178000 },
+    ];
+    expect(JSON.stringify(snoozed)).toBe(
+      '[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"wget"},"until":1793178000}]',
     );
   });
 

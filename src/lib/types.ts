@@ -575,6 +575,18 @@ export interface SkippedVersion {
   version: string;
 }
 /**
+ * One update put off with "Remind Me in 30 Days" (「30天内不提醒」): every
+ * update of `key` hidden until `until`, Unix seconds. Mirrors
+ * `SnoozedUpdate` in crates/banager-core/src/settings.rs, whose shape test
+ * `types.test.ts` repeats. `hidingRule` (src/lib/updateState.ts) hides
+ * only while `until` is ahead of the clock; Rust drops one that has run out
+ * as it loads the settings.
+ */
+export interface SnoozedUpdate {
+  key: ArtifactKey;
+  until: number;
+}
+/**
  * Rust `CheckEvery` (crates/banager-core/src/settings.rs): how often the
  * automatic check runs while `auto_check` is on -- Settings' 「每天」 or
  * 「每周」. Its 「不自动检查」 is `auto_check` off.
@@ -613,6 +625,11 @@ export interface Settings {
    * `auto_check_every` is: missing reads as off, in Rust as here.
    */
   notify_operations?: boolean;
+  /**
+   * The updates put off for 30 days, one entry a package. Optional for the
+   * reason `auto_check_every` is: missing reads as none, in Rust as here.
+   */
+  snoozed_updates?: SnoozedUpdate[];
 }
 /**
  * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row

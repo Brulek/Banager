@@ -1290,6 +1290,28 @@ describe("InstalledPage", () => {
       expect(chipsOf(rowOf("ignored"))).toEqual([]);
     });
 
+    it("says a snoozed update is hidden until its date, and takes the snooze back in place", async () => {
+      const until = Math.floor(Date.now() / 1000) + 20 * 24 * 60 * 60;
+      const offeredKey = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "offered" };
+      servedSettings = { ...mixedSettings, snoozed_updates: [{ key: offeredKey, until }] };
+      const date = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(until * 1000));
+      renderInstalled();
+      await findRow("offered");
+      expect(chipsOf(rowOf("offered"))).toEqual([`Hidden until ${date}`]);
+      expect(versionShown(rowOf("offered"))).toBe("1.8.2");
+
+      const drawer = await openDetails("offered");
+      const status = drawer.querySelector("[data-status-list]") as HTMLElement;
+      const undo = within(status).getByRole("button", { name: "Remind me again about offered" });
+      fireEvent.click(undo);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("set_settings", expect.anything()));
+      const saved = mockInvoke.mock.calls.filter(([cmd]) => cmd === "set_settings");
+      expect((saved[0][1] as { settings: Settings }).settings).toEqual({ ...mixedSettings, snoozed_updates: [] });
+      await waitFor(() =>
+        expect([...status.children].map((item) => item.firstElementChild?.textContent)).toEqual(["Update available"]),
+      );
+    });
+
     it("offers no way back where nothing was hidden, and says in Chinese what Settings says", async () => {
       await i18n.changeLanguage("zh-CN");
       // `openDetails`, in Chinese: the row's button is 「详情：…」.

@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
-import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
+import { activeSnoozes, shownSkippedVersion, skippedVersionId } from "../lib/updateState";
+import { snoozeDate } from "../lib/snooze";
 import { AUTO_CHECK_CHOICES, AUTO_CHECK_CHOICE_KEYS, autoCheckChoice, withAutoCheckChoice } from "../lib/checkFrequency";
-import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
+import type { ArtifactKey, Settings, Language, SkippedVersion, SnoozedUpdate } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
@@ -139,9 +140,10 @@ function NoEntries({ text }: { text: string }) {
  * groups: 「通用」 -- the language, and whether to show technical details
  * -- 「更新」 -- how often to check (「检查更新」: 不自动检查, 每天 or
  * 每周), 「有更新时通知我」 under it, and
- * whether Homebrew's self-updating apps are listed -- then the two kinds
- * of hidden update, 「已跳过的版本」 and 「不再提醒的工具」, each entry
- * with the button that takes it back, where the Overview's count of
+ * whether Homebrew's self-updating apps are listed -- then the three kinds
+ * of hidden update, 「已跳过的版本」, 「暂不提醒的工具」 (with the day each
+ * comes back) and 「不再提醒的工具」, each entry with the button that
+ * takes it back, where the Overview's count of
  * hidden updates opens the page -- and 「关于」: the app's 「版本」, then
  * the 「图标来源」 row that opens the credits for the logos built into
  * the app (`IconCreditsDrawer`), and 「拷贝诊断信息」 with the checkbox
@@ -149,7 +151,7 @@ function NoEntries({ text }: { text: string }) {
  * be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const settingsQuery = useSettings();
   const saveMutation = useSaveSettings();
   const { data: snapshot } = useSnapshot();
@@ -295,11 +297,24 @@ export function SettingsPage() {
     return source ?? skipped ?? null;
   };
 
+  // The snoozes still running, as the Updates page hides by them.
+  const snoozes = activeSnoozes(current);
+
   const unignore = (key: Settings["ignored_updates"][number]) => {
     persist({
       ...current,
       ignored_updates: current.ignored_updates.filter(
         (k) => artifactKeyId(k) !== artifactKeyId(key),
+      ),
+    });
+  };
+
+  // A snooze taken back: its package listed again on the Updates page.
+  const unsnooze = (snoozed: SnoozedUpdate) => {
+    persist({
+      ...current,
+      snoozed_updates: (current.snoozed_updates ?? []).filter(
+        (s) => artifactKeyId(s.key) !== artifactKeyId(snoozed.key),
       ),
     });
   };
@@ -554,6 +569,36 @@ export function SettingsPage() {
                       className={ROW_BUTTON}
                     >
                       {t("settings.skippedVersions.unskip")}
+                    </button>
+                  }
+                />
+              );
+            })
+          )}
+        </SettingsGroup>
+
+        {/* The updates put off for 30 days, each with the day it comes
+            back; only those still running (`activeSnoozes`): one that has
+            run out hides nothing, and Rust drops it at the next launch. */}
+        <SettingsGroup title={t("settings.snoozedUpdates.title")} list={snoozes.length > 0}>
+          {snoozes.length === 0 ? (
+            <NoEntries text={t("settings.hiddenNone")} />
+          ) : (
+            snoozes.map((snoozed) => {
+              const { name, source } = entryOf(snoozed.key);
+              return (
+                <HiddenEntry
+                  key={artifactKeyId(snoozed.key)}
+                  name={name}
+                  meta={metaOf(source, t("settings.snoozedUpdates.until", { date: snoozeDate(snoozed.until, i18n.language) }))}
+                  button={
+                    <button
+                      type="button"
+                      aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", { name })}
+                      onClick={() => unsnooze(snoozed)}
+                      className={ROW_BUTTON}
+                    >
+                      {t("settings.ignoredUpdates.unignore")}
                     </button>
                   }
                 />

@@ -1004,7 +1004,7 @@ describe("SettingsPage", () => {
     expect(unskip.className).toBe(remind.className);
   });
 
-  it("groups the settings in five groups: General, Updates, the two kinds of hidden update, and About", async () => {
+  it("groups the settings in six groups: General, Updates, the three kinds of hidden update, and About", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {
         return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
@@ -1022,6 +1022,7 @@ describe("SettingsPage", () => {
       "General",
       "Updates",
       "Skipped versions",
+      "Tools with reminders put off",
       "Tools with reminders off",
       "About",
     ]);
@@ -1036,6 +1037,37 @@ describe("SettingsPage", () => {
     // The old single group of hidden updates, with two small titles in it, is gone.
     expect(screen.queryByRole("region", { name: "Hidden updates" })).toBeNull();
     expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+  });
+
+  it("lists the updates put off for 30 days with the day each comes back, and takes one back", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const wgetKey = { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "wget" };
+    const until = now + 12 * 24 * 60 * 60;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          snoozed_updates: [
+            { key: wgetKey, until },
+            // Run out an hour ago: hides nothing, and is not listed.
+            { key: jqKey, until: now - 60 * 60 },
+          ],
+        });
+      }
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const snoozed = await screen.findByRole("region", { name: "Tools with reminders put off" });
+    const date = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(until * 1000));
+    expect(within(snoozed).getByText("wget")).toBeInTheDocument();
+    expect(within(snoozed).getByText(`Homebrew · Until ${date}`)).toBeInTheDocument();
+    expect(within(snoozed).queryByText("jq")).toBeNull();
+
+    fireEvent.click(within(snoozed).getByRole("button", { name: "Remind me again about wget" }));
+    await waitFor(() => expect(lastSaved()?.snoozed_updates).toEqual([{ key: jqKey, until: now - 60 * 60 }]));
+    expect(within(snoozed).getByText("None")).toBeInTheDocument();
   });
 
   it("draws each group as System Settings does: a 13 bold title over the rows' text, a grey container with no edge", async () => {

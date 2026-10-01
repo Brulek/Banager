@@ -13,6 +13,7 @@ import type {
   ManagerInstance,
   Settings,
   SkippedVersion,
+  SnoozedUpdate,
   Snapshot,
   SourceError,
   UpdateBlocked,
@@ -76,14 +77,47 @@ export function isUpdateActionable(
 /**
  * Why the Updates page leaves out an update the snapshot has: the user
  * pressed "Never remind me" on its package (`ignored`:
- * `Settings.ignored_updates`, every version), or "Skip this version" on
- * the version it offers (`skipped`: `Settings.skipped_versions`, that
- * version only).
+ * `Settings.ignored_updates`, every version), "Remind Me in 30 Days" on it
+ * (`snoozed`: `Settings.snoozed_updates`, every version until its date),
+ * or "Skip this version" on the version it offers (`skipped`:
+ * `Settings.skipped_versions`, that version only).
  */
-export type HiddenBy = "ignored" | "skipped";
+export type HiddenBy = "ignored" | "snoozed" | "skipped";
 
-/** The two lists in `Settings` that hide an update. */
-export type HidingSettings = Pick<Settings, "ignored_updates" | "skipped_versions">;
+/** The lists in `Settings` that hide an update. */
+export type HidingSettings = Pick<Settings, "ignored_updates" | "skipped_versions" | "snoozed_updates">;
+
+/** How long "Remind Me in 30 Days" hides an update. */
+export const SNOOZE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The snoozes in `settings` still running at `nowMs` -- `until` ahead of
+ * the clock -- in the order they were made. One that has run out hides
+ * nothing; Rust drops it as it loads the settings, and the page leaves it
+ * out until then.
+ */
+export function activeSnoozes(settings: Pick<Settings, "snoozed_updates">, nowMs: number = Date.now()): SnoozedUpdate[] {
+  return (settings.snoozed_updates ?? []).filter((snoozed) => snoozed.until * 1000 > nowMs);
+}
+
+/**
+ * `snoozed` once "Remind Me in 30 Days" is pressed on `candidate`'s row
+ * at `nowMs`: its package hidden until 30 days on (`SNOOZE_DAYS`), in
+ * place of any earlier snooze of it, and with every snooze that has run
+ * out dropped.
+ */
+export function withSnoozed(
+  snoozed: SnoozedUpdate[] | undefined,
+  candidate: UpdateCandidate,
+  nowMs: number = Date.now(),
+): SnoozedUpdate[] {
+  const id = artifactKeyId(candidate.key);
+  return [
+    ...activeSnoozes({ snoozed_updates: snoozed }, nowMs).filter((s) => artifactKeyId(s.key) !== id),
+    { key: candidate.key, until: Math.floor((nowMs + SNOOZE_DAYS * DAY_MS) / 1000) },
+  ];
+}
 
 /** One string per skipped version of one package: the Settings page's list
  *  keys and removes entries by it, and `hidingRule` looks skips up by it. */
@@ -141,7 +175,10 @@ export function canSkipVersion(candidate: UpdateCandidate): boolean {
  * for each row.
  *
  * "Never remind me" comes first: it holds for every version, so a package
- * that is both reads as ignored.
+ * that is both reads as ignored. A snooze comes next, while its date is
+ * ahead of `nowMs` (`activeSnoozes`): it too holds for every version. A
+ * snooze that runs out while the page is open lists its row again at the
+ * page's next look -- the next snapshot, or the next change of settings.
  *
  * A skip hides a candidate only while its `target` is the version that
  * was skipped; once the source offers another, the row is listed again.
@@ -154,11 +191,14 @@ export function canSkipVersion(candidate: UpdateCandidate): boolean {
  */
 export function hidingRule(
   settings: HidingSettings,
+  nowMs: number = Date.now(),
 ): (candidate: UpdateCandidate) => HiddenBy | null {
   const ignoredIds = new Set(settings.ignored_updates.map(artifactKeyId));
+  const snoozedIds = new Set(activeSnoozes(settings, nowMs).map((snoozed) => artifactKeyId(snoozed.key)));
   const skippedIds = new Set(settings.skipped_versions.map(skippedVersionId));
   return (candidate) => {
     if (ignoredIds.has(artifactKeyId(candidate.key))) return "ignored";
+    if (snoozedIds.has(artifactKeyId(candidate.key))) return "snoozed";
     if (
       canSkipVersion(candidate) &&
       skippedIds.has(skippedVersionId({ key: candidate.key, version: candidate.target }))
@@ -173,8 +213,9 @@ export function hidingRule(
 export function notHidden(
   updates: UpdateCandidate[],
   settings: HidingSettings,
+  nowMs: number = Date.now(),
 ): UpdateCandidate[] {
-  const hiddenBy = hidingRule(settings);
+  const hiddenBy = hidingRule(settings, nowMs);
   return updates.filter((u) => hiddenBy(u) === null);
 }
 
@@ -192,9 +233,10 @@ export function notHidden(
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,
   settings: HidingSettings,
+  nowMs: number = Date.now(),
 ): UpdateCandidate[] {
   const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]));
-  return notHidden(snapshot.updates, settings).filter((candidate) =>
+  return notHidden(snapshot.updates, settings, nowMs).filter((candidate) =>
     isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id)),
   );
 }
@@ -382,6 +424,29 @@ export function withSkippedVersion(
     ...skipped.filter((s) => artifactKeyId(s.key) !== id),
     { key: candidate.key, version: candidate.target },
   ];
+}
+
+/**
+ * `settings` with what hides `candidate` (`by`, as `hidingRule` answered)
+ * taken back: its never-remind, its snooze, or the skip of the version it
+ * offers -- the Settings page's 「恢复提醒」 and 「取消跳过」, which the
+ * Installed page's inspector offers too.
+ */
+export function withoutHiding(settings: Settings, by: HiddenBy, candidate: UpdateCandidate): Settings {
+  const id = artifactKeyId(candidate.key);
+  switch (by) {
+    case "ignored":
+      return { ...settings, ignored_updates: settings.ignored_updates.filter((key) => artifactKeyId(key) !== id) };
+    case "snoozed":
+      return {
+        ...settings,
+        snoozed_updates: (settings.snoozed_updates ?? []).filter((snoozed) => artifactKeyId(snoozed.key) !== id),
+      };
+    case "skipped": {
+      const skip = skippedVersionId({ key: candidate.key, version: candidate.target });
+      return { ...settings, skipped_versions: settings.skipped_versions.filter((s) => skippedVersionId(s) !== skip) };
+    }
+  }
 }
 
 /**

@@ -21,14 +21,15 @@ import {
 } from "../lib/sources";
 import {
   hidingRule,
+  withoutHiding,
   leftOutOfUpdateCheck,
   shownSkippedVersion,
-  skippedVersionId,
   updateStateOf,
   upToDateIsKnown,
 } from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
+import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
@@ -1029,12 +1030,9 @@ export function InstalledPage() {
   const undoHiding = ({ by, candidate }: HiddenUpdate) => {
     if (!settings || saveSettings.isPending) return;
     const id = artifactKeyId(candidate.key);
-    const skip = skippedVersionId({ key: candidate.key, version: candidate.target });
     setUndoFailed(null);
     saveSettings.mutate(
-      by === "ignored"
-        ? { ...settings, ignored_updates: settings.ignored_updates.filter((key) => artifactKeyId(key) !== id) }
-        : { ...settings, skipped_versions: settings.skipped_versions.filter((s) => skippedVersionId(s) !== skip) },
+      withoutHiding(settings, by, candidate),
       {
         onSuccess: () => {
           refocusAfterUndo.current = true;
@@ -1067,6 +1065,23 @@ export function InstalledPage() {
             onUndo: () => undoHiding(hidden),
           },
         };
+      case "snoozed": {
+        // Its date, from the settings that hide it; a snooze no longer
+        // there (saved away meanwhile) says only that it is put off.
+        const until = settings === undefined ? undefined : snoozeOf(settings, candidate.key)?.until;
+        return {
+          id: "hidden",
+          label:
+            until === undefined ? t("updates.snooze") : snoozedUntilText(t, until, i18n.language),
+          detail: detailLines([t("updates.snoozeHint")]),
+          tone: "neutral",
+          undo: {
+            label: t("settings.ignoredUpdates.unignore"),
+            ariaLabel: t("settings.ignoredUpdates.unignoreAriaLabel", { name }),
+            onUndo: () => undoHiding(hidden),
+          },
+        };
+      }
       case "skipped": {
         const version = shownSkippedVersion({ key: candidate.key, version: candidate.target });
         return {

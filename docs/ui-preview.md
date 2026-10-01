@@ -132,9 +132,10 @@ Paths are under a generic home folder, `/Users/you`.
 
 - **Homebrew** (`/opt/homebrew`): 26 formulae, 14 of them folded away as
   dependencies, and 4 casks, one of which (Visual Studio Code) updates
-  itself. Updates: two formulae and one cask to update, a pinned formula,
-  one update the user asked never to be reminded about (ffmpeg) and one
-  version they skipped (gh 2.102.0). Two of the casks are apps (iTerm2
+  itself. Updates: one formula and one cask to update, a pinned formula,
+  one update the user asked never to be reminded about (ffmpeg), one
+  version they skipped (gh 2.102.0) and one tool put off for 30 days,
+  12 of them left (wget; Settings lists it with its date). Two of the casks are apps (iTerm2
   and Visual Studio Code): asked for their icon (`artifact_icon`), the
   preview answers with a generated one -- a coloured square with the
   app's initial -- where the app answers with the icon macOS draws; the
@@ -276,7 +277,7 @@ value falls back to the default and logs a warning in the console.
 | | `empty` | No source is set up on this Mac. |
 | | `nothing` | Homebrew is set up, with nothing installed. |
 | | `uptodate` | Every source answered and nothing needs updating. |
-| | `hidden` | The only updates are the skipped and never-remind-me ones. |
+| | `hidden` | The only updates are the skipped, put-off and never-remind-me ones. |
 | | `stale` | The last refresh could not finish for two sources. |
 | | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program, and a second Homebrew, the Intel one in `/usr/local`, that does not answer (so the sidebar names the two "Apple silicon" and "Intel"). The Updates and Installed pages fold them into one line, the first warning, with "N more issues" at its end to show them all. |
 | | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |

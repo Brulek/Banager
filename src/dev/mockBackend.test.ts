@@ -250,7 +250,7 @@ describe("the browser preview's mock backend", () => {
     expect(sizes.artifacts.every((size) => size.measured === null)).toBe(true);
   });
 
-  it("covers every Updates row state and both ways of hiding one", async () => {
+  it("covers every Updates row state and every way of hiding one", async () => {
     const { backend } = backendFor();
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
     const settings = await answer<Settings>(backend.invoke("get_settings"));
@@ -270,7 +270,7 @@ describe("the browser preview's mock backend", () => {
       "readOnly",
       "sourceUnavailable",
     ]);
-    expect(new Set(snapshot.updates.map(hiddenBy))).toEqual(new Set([null, "ignored", "skipped"]));
+    expect(new Set(snapshot.updates.map(hiddenBy))).toEqual(new Set([null, "ignored", "snoozed", "skipped"]));
     expect(snapshot.updates.some((u) => u.channel === "Digest")).toBe(true);
   });
 

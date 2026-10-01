@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   actionableUpdatesOf,
+  activeSnoozes,
+  SNOOZE_DAYS,
+  withSnoozed,
+  withoutHiding,
   canSkipVersion,
   everySourceChecked,
   hidingRule,
@@ -507,5 +511,70 @@ describe("shownSkippedVersion", () => {
     expect(
       shownSkippedVersion({ key: qwenKey, version: "sha256:9f1c0b6d2e4a" }),
     ).toBeNull();
+  });
+});
+
+describe("snoozes: Remind Me in 30 Days", () => {
+  const NOW = Date.UTC(2026, 9, 1, 9, 0, 0);
+  const DAY = 24 * 60 * 60;
+  const glib = candidate();
+  const wget = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "wget" } });
+
+  it("hides every version of a snoozed package until its date, then lists it again by itself", () => {
+    const settings = hiding({ snoozed_updates: [{ key: glib.key, until: NOW / 1000 + DAY }] });
+    expect(hidingRule(settings, NOW)(glib)).toBe("snoozed");
+    expect(hidingRule(settings, NOW)(candidate({ target: "3.0.0" }))).toBe("snoozed");
+    expect(hidingRule(settings, NOW)(wget)).toBeNull();
+    expect(hidingRule(settings, NOW + DAY * 1000 - 1)(glib)).toBe("snoozed");
+    expect(hidingRule(settings, NOW + DAY * 1000)(glib)).toBeNull();
+  });
+
+  it("reads as never reminded where both hold, and as snoozed over a skip", () => {
+    const snooze = [{ key: glib.key, until: NOW / 1000 + DAY }];
+    expect(hidingRule(hiding({ ignored_updates: [glib.key], snoozed_updates: snooze }), NOW)(glib)).toBe("ignored");
+    expect(
+      hidingRule(
+        hiding({ skipped_versions: [{ key: glib.key, version: glib.target }], snoozed_updates: snooze }),
+        NOW,
+      )(glib),
+    ).toBe("snoozed");
+  });
+
+  it("leaves a snoozed update out of the count, the badge and the notification's report while it runs", () => {
+    const settings = hiding({ snoozed_updates: [{ key: glib.key, until: NOW / 1000 + DAY }] });
+    const snapshot = { instances: [brew], updates: [glib, wget] };
+    expect(actionableUpdatesOf(snapshot, settings, NOW)).toEqual([wget]);
+    expect(actionableUpdatesOf(snapshot, settings, NOW + 2 * DAY * 1000)).toEqual([glib, wget]);
+  });
+
+  it("snoozes for 30 days from now, in place of an earlier snooze of the package, dropping those run out", () => {
+    const old = [
+      { key: glib.key, until: NOW / 1000 + 3 * DAY },
+      { key: wget.key, until: NOW / 1000 - DAY },
+    ];
+    expect(SNOOZE_DAYS).toBe(30);
+    expect(withSnoozed(old, glib, NOW)).toEqual([{ key: glib.key, until: NOW / 1000 + 30 * DAY }]);
+    expect(withSnoozed(undefined, wget, NOW)).toEqual([{ key: wget.key, until: NOW / 1000 + 30 * DAY }]);
+    expect(activeSnoozes({ snoozed_updates: old }, NOW)).toEqual([old[0]]);
+    expect(activeSnoozes({}, NOW)).toEqual([]);
+  });
+
+  it("takes back exactly what hides an update", () => {
+    const settings = {
+      ...hiding({
+        ignored_updates: [wget.key],
+        skipped_versions: [{ key: glib.key, version: glib.target }],
+        snoozed_updates: [{ key: glib.key, until: NOW / 1000 + DAY }],
+      }),
+      language: "System" as const,
+      show_technical_details: false,
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
+    };
+    expect(withoutHiding(settings, "snoozed", glib).snoozed_updates).toEqual([]);
+    expect(withoutHiding(settings, "snoozed", glib).skipped_versions).toEqual(settings.skipped_versions);
+    expect(withoutHiding(settings, "skipped", glib).skipped_versions).toEqual([]);
+    expect(withoutHiding(settings, "ignored", wget).ignored_updates).toEqual([]);
   });
 });
