@@ -19,7 +19,7 @@ export function ToolShowButton(
   const options: { value: InstalledShow; label: string }[] = [
     { value: "all", label: t("families.showAll") },
     { value: "ai", label: t("families.showAi") },
-    ...(props.twins ? [{ value: "twins" as const, label: t("families.showTwins") }] : []),
+    ...(props.twins ? [{ value: "twins" as const, label: t("twinsFilter.show") }] : []),
   ];
   return (
     <ToolbarPopupButton<InstalledShow>

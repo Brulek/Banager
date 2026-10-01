@@ -132,6 +132,8 @@ export function CheckAgain() {
 export interface PageSubtitle {
   text: string;
   failed: boolean;
+  /** What the words leave out, as the subtitle's tooltip: what a size total counts. */
+  note?: string;
 }
 
 export interface PageHeaderProps {
@@ -201,6 +203,7 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
         <p
           role="status"
           data-subtitle=""
+          title={shown === null ? undefined : subtitle?.note}
           className={shown === null ? "sr-only" : "truncate text-small text-muted"}
         >
           {shown}

@@ -636,6 +636,11 @@ export function InstalledPage() {
   // package's own name ("visual-studio-code" finds "Microsoft Visual
   // Studio Code").
   const needle = query.trim().toLowerCase();
+  // A heading's ` · 约4.1 GB`, only while it counts the whole source: no search, every tool shown.
+  const sourceTotalOf = (instanceId: string): string | null => {
+    const total = needle === "" && show === "all" ? sizeTotals.bySource.get(instanceId) : undefined;
+    return total === undefined ? null : ` · ${sourceTotalText(t, total)}`;
+  };
 
   // The rows the search matches, by source -- of the AI coding tools
   // alone, or of those installed more than once, while the 「显示」 popup
@@ -1537,16 +1542,18 @@ export function InstalledPage() {
             ) : item.type === "heading" ? (
               // A group's heading, as a Mac's grouped list sets one: 13
               // bold, how many in the secondary colour after it, and the
-              // source's mark at 16 -- no pill.
-              <h2 className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground">
+              // source's mark at 16 -- no pill. With the whole source's
+              // size, a tooltip says what it holds: old versions, which
+              // the rows' own sizes leave out.
+              <h2
+                className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground"
+                title={sourceTotalOf(item.instance.id) === null ? undefined : t("sizeTotals.note")}
+              >
                 <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
                 <span className="min-w-0 truncate">{item.label}</span>{" "}
                 <span className="shrink-0 text-body font-normal tabular-nums text-muted">
                   {item.count}
-                  {/* The whole source's size, only while the heading counts the whole source. */}
-                  {needle === "" && show === "all" && sizeTotals.bySource.has(item.instance.id)
-                    ? ` · ${sourceTotalText(t, sizeTotals.bySource.get(item.instance.id)!)}`
-                    : null}
+                  {sourceTotalOf(item.instance.id)}
                 </span>
               </h2>
             ) : item.type === "fold" ? (
@@ -1587,8 +1594,8 @@ export function InstalledPage() {
                         : t("families.noneInSource", { source: sourceLabelFor(activeFilter) })
                       : show === "twins"
                         ? activeFilter === null
-                          ? t("families.noTwins")
-                          : t("families.noTwinsInSource", { source: sourceLabelFor(activeFilter) })
+                          ? t("twinsFilter.none")
+                          : t("twinsFilter.noneInSource", { source: sourceLabelFor(activeFilter) })
                         : t("emptyStates.nothingInstalled.title")}
                 </p>
               </div>

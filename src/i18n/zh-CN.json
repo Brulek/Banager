@@ -80,10 +80,12 @@
     "none": "这台Mac上没有找到常见的AI编程工具",
     "noneInSource": "{{source}}中没有找到常见的AI编程工具",
     "noUpdates": "这里没有AI编程工具的更新",
-    "updateTheseCount": "更新这{{number}}个",
-    "showTwins": "装了不止一份",
-    "noTwins": "没有发现装了不止一份的工具",
-    "noTwinsInSource": "{{source}}中没有发现装了不止一份的工具"
+    "updateTheseCount": "更新这{{number}}个"
+  },
+  "twinsFilter": {
+    "show": "装了不止一份",
+    "none": "没有发现装了不止一份的工具",
+    "noneInSource": "{{source}}中没有发现装了不止一份的工具"
   },
   "overview": {
     "updatesAvailable_other": "{{count}}个工具可以更新",
@@ -437,11 +439,14 @@
     "programOnly": "只算程序文件本身，不含它下载的内容和缓存。",
     "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占的可能更少。",
     "otherVersionsTotal": "共约{{size}}",
-    "otherVersionsTotalAtLeast": "共至少约{{size}}",
-    "sourceTotal": "约{{size}}",
-    "sourceTotalAtLeast": "至少约{{size}}",
-    "viewTotal": "共约{{size}}",
-    "viewTotalAtLeast": "共至少约{{size}}"
+    "otherVersionsTotalAtLeast": "共至少约{{size}}"
+  },
+  "sizeTotals": {
+    "source": "约{{size}}",
+    "sourceAtLeast": "至少约{{size}}",
+    "view": "共约{{size}}",
+    "viewAtLeast": "共至少约{{size}}",
+    "note": "实测大小的合计，含旧版本，不含缓存。几个工具共用的文件只算一次。"
   },
   "sourceNotice": {
     "pipReadOnly": {

@@ -168,7 +168,7 @@ describe("the polish-3 copy rules, in English", () => {
       "families.updateTheseCount",
       "families.showAll",
       "families.showAi",
-      "families.showTwins",
+      "twinsFilter.show",
       "updates.update",
       "updates.retry",
       "updates.skipVersion",

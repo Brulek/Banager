@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useLanguageSync } from "./i18n/useLanguageSync";
 import { PAGE_LABEL_KEYS, Sidebar } from "./components/Sidebar";
@@ -85,8 +85,8 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
     count === undefined || count === 0 ? null : t(key, { count });
   // What the tools counted take together, once measured: 「共约9.8 GB」, or
   // 「共至少约…」 when some of them have no size (`sizeTotalsOf`).
+  const totals = useMemo(() => sizeTotalsOf(sizes, snapshot), [sizes, snapshot]);
   const viewTotal = (source: string | null): string | null => {
-    const totals = sizeTotalsOf(sizes, snapshot);
     const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
     return total === null ? null : viewTotalText(t, total);
   };
@@ -106,19 +106,24 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       // On one source alone, that source's: its name is the title. On
       // Ollama's, what its models take together after it, once measured;
       // on any other, or all, what the tools counted take together.
-      return said(
-        [
+      {
+        const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource);
+        const total = models === null ? viewTotal(shownSource) : null;
+        const text = [
           counted(
             "toolbar.toolCount",
             shownSource === null
               ? snapshot?.artifacts.length
               : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
           ),
-          (shownSource === null ? null : modelsTotalText(t, sizes, shownSource)) ?? viewTotal(shownSource),
+          models ?? total,
         ]
           .filter((part): part is string => part !== null)
-          .join(" · ") || null,
-      );
+          .join(" · ");
+        if (text === "") return null;
+        // A total counts old versions, which the rows' sizes leave out: the tooltip says what it holds.
+        return total === null ? said(text) : { text, failed: false, note: t("sizeTotals.note") };
+      }
     case "unknown":
       if (scan.isFetching) return said(t("unknown.scanning"));
       return said(counted("toolbar.programCount", scan.data?.entries.length));

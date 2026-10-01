@@ -187,6 +187,18 @@ describe("the Installed page's subtitle, on disk use", () => {
     await waitFor(() => expect(subtitle()).toBe("2 tools · at least about 6.6 GB in all"));
   });
 
+  it("says in a tooltip what a total holds, and none over Ollama's models line", async () => {
+    served = measured;
+    const subtitle = await subtitleOn("Homebrew");
+    await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB in all"));
+    const line = () => screen.getByRole("heading", { level: 1 }).nextElementSibling;
+    expect(line()).toHaveAttribute("title", expect.stringMatching(/including old versions but not caches/));
+    const sources = await screen.findByRole("list", { name: "Sources" });
+    fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
+    await waitFor(() => expect(subtitle()).toBe("1 tool · Ollama models: about 6.6 GB in all"));
+    expect(line()).not.toHaveAttribute("title");
+  });
+
   it("says only the count while the sizes are measured", async () => {
     served = { ...measured, done: false, total: null, sources: [] };
     const subtitle = await subtitleOnAll();

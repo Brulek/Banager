@@ -194,7 +194,10 @@ Paths are under a generic home folder, `/Users/you`.
   「Ollama 2 · 约6.6 GB」 as its models' line says; pip has no number. The
   toolbar says the whole list's, 「57个工具 · 共至少约10.5 GB」, or one
   source's on its page. No number while the round measures, or while a
-  search or the 「显示」 popup narrows a heading's count.
+  search or the 「显示」 popup narrows a heading's count. A total counts a
+  formula's old versions, which its row's size leaves out, so a heading
+  can be more than its rows add up to; hovering a heading or the subtitle
+  with a total shows a tooltip that says so (old versions in, caches out).
 - The Installed page's 「显示」 popup also offers 「装了不止一份」: with
   `?state=notices`, Claude Code and @anthropic-ai/claude-code; on the default
   pretend Mac, 「没有发现装了不止一份的工具」.

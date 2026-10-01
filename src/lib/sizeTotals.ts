@@ -71,11 +71,11 @@ export function sizeTotalsOf(
 /** A source's heading's: 「约4.1 GB」, 「至少约4.1 GB」. */
 export function sourceTotalText(t: Translate, total: SizeTotal): string {
   const size = formatBytes(total.bytes);
-  return total.atLeast ? t("sizes.sourceTotalAtLeast", { size }) : t("sizes.sourceTotal", { size });
+  return total.atLeast ? t("sizeTotals.sourceAtLeast", { size }) : t("sizeTotals.source", { size });
 }
 
 /** The toolbar's, after the count: 「共约9.8 GB」, 「共至少约9.8 GB」. */
 export function viewTotalText(t: Translate, total: SizeTotal): string {
   const size = formatBytes(total.bytes);
-  return total.atLeast ? t("sizes.viewTotalAtLeast", { size }) : t("sizes.viewTotal", { size });
+  return total.atLeast ? t("sizeTotals.viewAtLeast", { size }) : t("sizeTotals.view", { size });
 }

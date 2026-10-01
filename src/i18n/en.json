@@ -89,10 +89,12 @@
     "none": "No common AI coding tools were found on this Mac",
     "noneInSource": "No common AI coding tools were found in {{source}}",
     "noUpdates": "No AI coding tool updates here",
-    "updateTheseCount": "Update These {{number}}",
-    "showTwins": "Installed More Than Once",
-    "noTwins": "No tools installed more than once were found",
-    "noTwinsInSource": "No tools installed more than once were found in {{source}}"
+    "updateTheseCount": "Update These {{number}}"
+  },
+  "twinsFilter": {
+    "show": "Installed More Than Once",
+    "none": "No tools installed more than once were found",
+    "noneInSource": "No tools installed more than once were found in {{source}}"
   },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
@@ -475,11 +477,14 @@
     "programOnly": "Counts only its program files, not what it downloads or caches.",
     "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less.",
     "otherVersionsTotal": "About\u00a0{{size}} in all",
-    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all",
-    "sourceTotal": "about\u00a0{{size}}",
-    "sourceTotalAtLeast": "at least about\u00a0{{size}}",
-    "viewTotal": "about\u00a0{{size}} in all",
-    "viewTotalAtLeast": "at least about\u00a0{{size}} in all"
+    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all"
+  },
+  "sizeTotals": {
+    "source": "about\u00a0{{size}}",
+    "sourceAtLeast": "at least about\u00a0{{size}}",
+    "view": "about\u00a0{{size}} in all",
+    "viewAtLeast": "at least about\u00a0{{size}} in all",
+    "note": "Measured sizes added up, including old versions but not caches. A file shared by several tools counts once."
   },
   "sourceNotice": {
     "pipReadOnly": {
