@@ -2182,6 +2182,7 @@ family on any source (`crates/banager-core/src/kept_data.rs`):
 | Codex | `~/.codex` |
 | Gemini CLI | `~/.gemini`, measured without `~/.gemini/antigravity-cli` |
 | Qwen Code | `~/.qwen` |
+| opencode | `~/.local/share/opencode`, `~/.config/opencode` |
 | Antigravity CLI | `~/.gemini/antigravity-cli` |
 | Ollama (Homebrew's formula `ollama`, cask `ollama-app`) | `~/.ollama/models` |
 
@@ -2191,6 +2192,18 @@ preview already names is not named twice: Claude Code's own installer's
 uninstall lists `~/.claude` and `~/.claude.json` among what it keeps
 (Claude Code, above), and Antigravity CLI's lists
 `~/.gemini/antigravity-cli` (Antigravity CLI, above).
+
+opencode's two are the folders its own docs name for macOS
+(opencode.ai/docs/troubleshooting, "Storage": sessions, `auth.json`
+and logs in `~/.local/share/opencode`; opencode.ai/docs/config: global
+settings in `~/.config/opencode`), and the two its own `opencode
+uninstall` keeps on `--keep-data` / `--keep-config`; it always removes
+its cache and state folders, which are not named here. They are named
+in the preview of an uninstall of npm's `opencode-ai` or Homebrew's
+formula `opencode`. opencode's own install (`~/.opencode`, opencode,
+above) has no uninstall in Banager, and neither folder is inside it.
+Banager does not read the `XDG_DATA_HOME` or `XDG_CONFIG_HOME` a shell
+may set, so folders moved there are not named.
 
 `~/.gemini` is shared: it is the folder Gemini CLI's docs name, and
 Antigravity CLI keeps everything of its own in `~/.gemini/antigravity-cli`
@@ -2374,7 +2387,8 @@ All read-only, none saved anywhere else, none uploaded:
   and never anything in the places its section names (Disk use, above).
 - What an uninstall leaves behind, during an uninstall preview of an AI
   coding tool: `~/.claude`, `~/.claude.json`, `~/.codex`, `~/.gemini`,
-  `~/.qwen` or `~/.ollama/models`, as its family has them, with `lstat`,
+  `~/.gemini/antigravity-cli`, `~/.qwen`, `~/.local/share/opencode`,
+  `~/.config/opencode` or `~/.ollama/models`, as its family has them, with `lstat`,
   `readdir` and `readlink` — never a file's contents, and never anything
   in the places disk use never looks into (Data an uninstall leaves
   behind, above).

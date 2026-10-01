@@ -70,6 +70,11 @@ describe("the preview's uninstall previews name what stays", () => {
     expect(keptPaths(warnings)).toEqual(["~/.ollama/models"]);
   });
 
+  it("for opencode from npm: its data folder, then its settings folder", async () => {
+    const warnings = await uninstallPlanOf("Package", "opencode-ai");
+    expect(keptPaths(warnings)).toEqual(["~/.local/share/opencode", "~/.config/opencode"]);
+  });
+
   it("not again for the standalone Claude Code, whose own list keeps them", async () => {
     const warnings = await uninstallPlanOf("Binary", "claude");
     expect(keptPaths(warnings)).toEqual([]);

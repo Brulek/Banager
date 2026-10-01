@@ -31,16 +31,30 @@
 //!   repository); command names from that repository's `pyproject.toml`
 //!   `[project.scripts]`.
 //! - Standalone: the recipe ids in `adapters/standalone/recipes.rs`.
-//! - Data folders: the four the vendors document (Claude Code, Codex,
-//!   Gemini CLI, Qwen Code), and Antigravity CLI's
+//! - Data folders: the ones the vendors document (Claude Code, Codex,
+//!   Gemini CLI, Qwen Code, and opencode, below), and Antigravity CLI's
 //!   `~/.gemini/antigravity-cli` -- named by the Homebrew cask's `zap`
 //!   (the only vendor-side source; it trashes only that folder), and seen
 //!   in this Mac's directory listing and the 1.2.11 recording's README;
 //!   the install script does not name it. Banager's own recipe keeps it on
 //!   uninstall (`recipes::AGY`), a keep list agy.md calls a synthesis, not
 //!   a vendor list. It sits inside Gemini CLI's `~/.gemini`, so Gemini
-//!   CLI's line leaves it out (`kept_data::others_inside`). Every other
-//!   family has none until verified.
+//!   CLI's line leaves it out (`kept_data::others_inside`). And opencode's
+//!   two (added 2026-10-01): `~/.local/share/opencode` (sessions, the
+//!   `auth.json` of its logins, logs) and `~/.config/opencode` (its global
+//!   settings), from its own docs, read as text (opencode.ai/docs/
+//!   troubleshooting, "Storage"; opencode.ai/docs/config, "Global"),
+//!   matching its source (`packages/core/src/global.ts`: `xdgData` and
+//!   `xdgConfig` joined with `opencode`) and its own `opencode uninstall`,
+//!   which keeps exactly these two on `--keep-data` / `--keep-config`
+//!   and always removes its cache and state folders (not listed: not the
+//!   user's data). Those are the defaults: Banager does not read the
+//!   `XDG_DATA_HOME` or `XDG_CONFIG_HOME` a shell may set (a Finder
+//!   launch has only the shell's `PATH`), so data moved elsewhere is not
+//!   named. Nothing of them is inside the
+//!   folder its own install uses (`~/.opencode`, `recipes::OPENCODE`),
+//!   whose row Banager never uninstalls. Every other family has none
+//!   until verified.
 //!
 //! Versions are deliberately not in the table: they change weekly.
 //!
@@ -393,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn test_data_paths_are_only_the_five_verified_and_under_home() {
+    fn test_data_paths_are_only_the_six_verified_and_under_home() {
         let with_data: Vec<_> = families()
             .iter()
             .filter(|f| !f.data_paths.is_empty())
@@ -406,8 +420,13 @@ mod tests {
                 "codex",
                 "gemini-cli",
                 "qwen-code",
+                "opencode",
                 "antigravity-cli"
             ]
+        );
+        assert_eq!(
+            family("opencode").unwrap().data_paths,
+            ["~/.local/share/opencode", "~/.config/opencode"]
         );
         assert_eq!(
             family("antigravity-cli").unwrap().data_paths,

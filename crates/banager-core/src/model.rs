@@ -708,6 +708,7 @@ pub enum Warning {
     /// commands touches -- the data folders of the tool's family in the
     /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
     /// `~/.claude.json`, `~/.codex`, `~/.gemini`, `~/.qwen`,
+    /// `~/.local/share/opencode`, `~/.config/opencode`,
     /// `~/.gemini/antigravity-cli`) and, for the
     /// Ollama family (formula `ollama`, cask `ollama-app`), the models
     /// folder `~/.ollama/models`. One per path that is there, in the

@@ -265,6 +265,14 @@ mod tests {
             data_paths("antigravity-cli"),
             vec![("~/.gemini/antigravity-cli", KeptData::ToolData)]
         );
+        // opencode's, from its docs: data first, then settings.
+        assert_eq!(
+            data_paths("opencode"),
+            vec![
+                ("~/.local/share/opencode", KeptData::ToolData),
+                ("~/.config/opencode", KeptData::ToolData)
+            ]
+        );
         // A family with no verified folder, and no family at all.
         assert!(data_paths("aider").is_empty());
         assert!(data_paths("no-such-family").is_empty());
@@ -492,6 +500,56 @@ mod tests {
         assert!(
             matched.contains(&"~/.gemini/antigravity-cli"),
             "{matched:?}"
+        );
+    }
+
+    #[test]
+    fn test_opencodes_own_install_neither_names_nor_holds_its_familys_data() {
+        // The other half of the spelling check above, for the one recipe
+        // with data paths and no path list: opencode's own install is
+        // listed only (no uninstall, so no preview names a path twice),
+        // and its root `~/.opencode` holds none of the family's data, so
+        // the row's size and a kept line never count the same bytes.
+        use crate::adapters::standalone::recipes::OPENCODE;
+        use crate::model::{ArtifactKey, ArtifactKind};
+        assert!(OPENCODE.uninstall.is_none());
+        let key = ArtifactKey {
+            instance_id: "x".to_string(),
+            kind: ArtifactKind::Binary,
+            name: OPENCODE.id.to_string(),
+        };
+        let family = families::family_for("standalone-opencode", &key).expect("in the table");
+        assert_eq!(family.id, "opencode");
+        let root = format!("{}/", OPENCODE.route.root.trim_end_matches('/'));
+        let paths = data_paths(&family.id);
+        assert_eq!(paths.len(), 2);
+        for (path, _) in paths {
+            let path = format!("{}/", path.trim_end_matches('/'));
+            assert!(!path.starts_with(&root) && !root.starts_with(&path), "{path}");
+        }
+    }
+
+    #[test]
+    fn test_opencode_uninstalled_from_npm_names_both_folders_that_are_there() {
+        let home = Home::new("opencode");
+        home.file(".local/share/opencode/auth.json", 2_000);
+        home.file(".local/share/opencode/project/a/session.json", 30_000);
+        home.file(".config/opencode/opencode.json", 1_000);
+        let warnings = kept_data(&home.0, "opencode", &[], BUDGET);
+        assert_eq!(
+            paths_of(&warnings),
+            vec![
+                "~/.local/share/opencode".to_string(),
+                "~/.config/opencode".to_string()
+            ]
+        );
+        // Only the one that is there, when settings were never written.
+        let home = Home::new("opencode-data-only");
+        home.file(".local/share/opencode/log/x.log", 500);
+        let warnings = kept_data(&home.0, "opencode", &[], BUDGET);
+        assert_eq!(
+            paths_of(&warnings),
+            vec!["~/.local/share/opencode".to_string()]
         );
     }
 

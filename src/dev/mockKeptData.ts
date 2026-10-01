@@ -29,6 +29,11 @@ const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Me
   "gemini-cli": [{ path: "~/.gemini", what: "ToolData", size: null }],
   // The models folder: the layers Ollama's own sizes count (./mockSizes.ts) and their manifests.
   ollama: [{ path: "~/.ollama/models", what: "Models", size: about(6.62 * GB + 0.2 * MB) }],
+  // Its sessions, logins and logs, then its settings (opencode's own docs).
+  opencode: [
+    { path: "~/.local/share/opencode", what: "ToolData", size: about(21.7 * MB) },
+    { path: "~/.config/opencode", what: "ToolData", size: about(0.01 * MB) },
+  ],
 };
 
 /** `plan`, with a `KeepsData` for each path the tool `request` uninstalls leaves behind. */
