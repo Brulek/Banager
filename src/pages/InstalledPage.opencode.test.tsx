@@ -144,9 +144,10 @@ describe("InstalledPage, opencode's own install", () => {
     page();
     const pane = await openDetails("opencode");
     const status = within(pane).getByText("Status").nextElementSibling as HTMLElement;
-    expect(within(status).getByText("Updates itself")).toBeInTheDocument();
+    // Its default, not a setting Banager read: the word says so.
+    expect(within(status).getByText("Updates itself by default")).toBeInTheDocument();
     expect(within(pane).queryByText("Up to date")).toBeNull();
-    fireEvent.click(within(status).getByRole("button", { name: "Details: Updates itself" }));
+    fireEvent.click(within(status).getByRole("button", { name: "Details: Updates itself by default" }));
     expect(
       await screen.findByText(
         "By default, opencode downloads new versions itself when it starts. Its updates aren't checked or installed here.",

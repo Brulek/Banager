@@ -472,6 +472,10 @@
     "notCheckedDetail": "这里不检查也不安装{{source}}的更新。",
     "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
   },
+  "opencodeUpdates": {
+    "word": "默认会自行更新",
+    "aria": "默认会自行更新：{{name}}"
+  },
   "sizes": {
     "term": "占用空间",
     "measuring": "正在计算…",

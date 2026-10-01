@@ -513,6 +513,10 @@
     "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
     "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
   },
+  "opencodeUpdates": {
+    "word": "Updates itself by default",
+    "aria": "Updates itself by default: {{name}}"
+  },
   "sizes": {
     "term": "Space used",
     "measuring": "Calculating…",

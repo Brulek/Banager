@@ -7,7 +7,8 @@ import { detailLines } from "./updateDetails";
 /**
  * The Installed page's word, in place of 「已是最新」, for a tool whose
  * updates Banager does not check (`UNCHECKED_STANDALONE`: Codex's and
- * opencode's own installs) -- 「会自行更新」 when its install follows the latest release,
+ * opencode's own installs) -- 「会自行更新」 when its install follows the latest release
+ * (opencode's: 「默认会自行更新」, its default, as its setting is not read),
  * else 「不检查更新」 -- with the why behind its ⓘ, shaped as the page's
  * `RowChip`. `null` for every other row. Quiet like the page's other
  * neutral words: a source's own limits, not a problem.
@@ -31,11 +32,13 @@ export function uncheckedUpdatesChip(
         t("standalone.opencode.versionNotRead", { source: label }),
       ]
     : [t("codexStandalone.updatesItselfDetail", { source: label })];
+  // Codex's word rests on the marker Banager read; opencode's on its
+  // default alone (its `autoupdate` setting is not read), so it says so.
   return state === "updatesItself"
     ? {
         id: "updates-itself",
-        label: t("codexStandalone.updatesItself"),
-        ariaLabel: t("codexStandalone.updatesItselfAria", { name }),
+        label: t(opencode ? "opencodeUpdates.word" : "codexStandalone.updatesItself"),
+        ariaLabel: t(opencode ? "opencodeUpdates.aria" : "codexStandalone.updatesItselfAria", { name }),
         detail: detailLines(itselfDetail),
         tone: "neutral",
       }
