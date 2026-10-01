@@ -205,8 +205,11 @@ export function OperationBar() {
       (found, op) => (found === undefined || op.id > found.id ? op : found),
       undefined,
     );
-    // Every one of it an update: said as updates, 「已更新3个工具」.
+    // Every one of it an update: said as updates, 「已更新3个工具」; every
+    // one an uninstall -- a batch from the Installed page -- as uninstalls,
+    // 「已卸载3个工具」.
     const updates = inRun.every((op) => op.kind === "Upgrade");
+    const uninstalls = inRun.every((op) => op.kind === "Uninstall");
     let tone: OutcomeTone;
     let words: string;
     let logOf: OpSummary | undefined;
@@ -219,17 +222,21 @@ export function OperationBar() {
       logOf = tone === "success" ? undefined : op;
     } else if (newestToLook !== undefined) {
       tone = tones.includes("failure") ? "failure" : "attention";
-      // Only failures, of updates: how many did not update.
-      const onlyFailed = updates && toLook.every((op) => outcomeTone(op.outcome) === "failure");
-      words = onlyFailed
-        ? t("operations.batch.notUpdated", { count: toLook.length })
-        : t("operations.batch.needsAttention", { count: toLook.length, total });
+      // Only failures, of updates or of uninstalls: how many did not update, or uninstall.
+      const onlyFailed = (updates || uninstalls) && toLook.every((op) => outcomeTone(op.outcome) === "failure");
+      words = !onlyFailed
+        ? t("operations.batch.needsAttention", { count: toLook.length, total })
+        : uninstalls
+          ? t("batchUninstall.bar.notUninstalled", { count: toLook.length })
+          : t("operations.batch.notUpdated", { count: toLook.length });
       logOf = newestToLook;
     } else if (tones.every((each) => each === "success")) {
       tone = "success";
       words = updates
         ? t("operations.batch.allUpdated", { count: total })
-        : t("operations.batch.allSucceeded", { count: total });
+        : uninstalls
+          ? t("batchUninstall.bar.allUninstalled", { count: total })
+          : t("operations.batch.allSucceeded", { count: total });
     } else {
       tone = "cancelled";
       words = t("operations.batch.finished", {

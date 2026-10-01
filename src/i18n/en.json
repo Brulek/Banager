@@ -826,7 +826,21 @@
     "confirm_one": "Uninstall {{count}} Tool",
     "confirm_other": "Uninstall {{count}} Tools",
     "ok": "OK",
-    "showCommandsAndPaths": "Show Commands and Paths"
+    "showCommandsAndPaths": "Show Commands and Paths",
+    "uninstalledHold": "Uninstalled",
+    "uninstalledLabel": "{{name}} uninstalled",
+    "result_one": "{{count}} wasn't uninstalled",
+    "result_other": "{{count}} weren't uninstalled",
+    "resultStillNeeded_one": "{{names}} wasn't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
+    "resultStillNeeded_other": "{{names}} weren't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
+    "resultDismiss": "Close uninstall results",
+    "viewLogOf": "View the log of {{name}}",
+    "bar": {
+      "allUninstalled_one": "Uninstalled {{count}} tool",
+      "allUninstalled_other": "Uninstalled {{count}} tools",
+      "notUninstalled_one": "{{count}} couldn't be uninstalled",
+      "notUninstalled_other": "{{count}} couldn't be uninstalled"
+    }
   },
   "keepsData": {
     "title": "Stays after uninstalling",

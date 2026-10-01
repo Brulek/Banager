@@ -320,3 +320,39 @@ describe("Uninstall Selected, on the Installed page", () => {
     expect(status()).toBe("21 selected. Up to 20 can be uninstalled at a time");
   });
 });
+
+describe("a row a batch has already uninstalled", () => {
+  const uninstall = (id: number, name: string, status: OpSummary["status"], outcome: OpSummary["outcome"]): OpSummary => ({
+    id,
+    kind: "Uninstall",
+    instance_id: BREW,
+    artifact_kind: "Formula",
+    name,
+    status,
+    outcome,
+    argv_preview: [],
+    cancel_policy: "KillThenReconcile",
+  });
+
+  it("says Uninstalled, with no box, while its source is still busy with the batch, and in its details too", async () => {
+    operations = [uninstall(6, "wget", "Running", null), uninstall(5, "git", "Done", "Succeeded")];
+    renderInstalled();
+    await findRow("git");
+    await waitFor(() => expect(within(rowOf("git")).getByRole("button", { name: "git uninstalled" })).toBeDisabled());
+    expect(within(rowOf("git")).getByRole("button", { name: "git uninstalled" })).toHaveTextContent("Uninstalled");
+    expect(boxOf("git")).toBeNull();
+    expect(within(rowOf("wget")).getByRole("button", { name: "Uninstalling wget…" })).toBeDisabled();
+    expect(boxOf("jq")).not.toBeNull();
+    fireEvent.click(within(rowOf("git")).getByRole("button", { name: "Details: git" }));
+    const inspector = await screen.findByRole("complementary", { name: "git" });
+    expect(within(inspector).getByRole("button", { name: "Uninstalled" })).toBeDisabled();
+  });
+
+  it("is a row like any other once its source is free again, for the next check to read", async () => {
+    operations = [uninstall(6, "wget", "Done", "Succeeded"), uninstall(5, "git", "Done", "Succeeded")];
+    renderInstalled();
+    await findRow("git");
+    await waitFor(() => expect(boxOf("git")).not.toBeNull());
+    expect(within(rowOf("git")).getByRole("button", { name: "Uninstall git…" })).toBeEnabled();
+  });
+});

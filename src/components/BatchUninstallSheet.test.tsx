@@ -560,6 +560,8 @@ describe("the batch uninstall's sheet", () => {
     ]);
     expect(useUiStore.getState().opNames).toEqual({ 41: "pipx", 42: "python@3.13", 43: "wget" });
     await waitFor(() => expect(onStarted).toHaveBeenCalledTimes(1));
+    // The operation bar carries the run: no log opens by itself.
+    expect(useUiStore.getState().drawerOpen).toBe(false);
   });
 
   it("does not start a dependency whose dependent did not start, and stays open saying why", async () => {

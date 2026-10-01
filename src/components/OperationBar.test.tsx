@@ -661,3 +661,63 @@ describe("OperationBar", () => {
     );
   });
 });
+
+describe("OperationBar, after a batch uninstall", () => {
+  const uninstall = (id: number, name: string, status: OpStatus, outcome: Outcome | null = null) =>
+    op(id, name, status, outcome, { kind: "Uninstall", argv_preview: ["/opt/homebrew/bin/brew", "uninstall", name] });
+
+  it("says how many tools it uninstalled, or how many it couldn't, as it says updates", async () => {
+    const { findByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+
+    await listNow(queryClient, [uninstall(3, "wget", "Queued"), uninstall(2, "jq", "Queued"), uninstall(1, "git", "Running")]);
+    await findByText("Working on 1 of 3");
+    expect(getByRole("button", { name: "Cancel All" })).toBeEnabled();
+    await listNow(queryClient, [
+      uninstall(3, "wget", "Done", "Succeeded"),
+      uninstall(2, "jq", "Done", "Succeeded"),
+      uninstall(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Uninstalled 3 tools");
+    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+
+    // A new run: two couldn't be uninstalled.
+    await listNow(queryClient, [
+      uninstall(6, "python@3.13", "Queued"),
+      uninstall(5, "pipx", "Running"),
+      uninstall(4, "htop", "Queued"),
+      uninstall(3, "wget", "Done", "Succeeded"),
+      uninstall(2, "jq", "Done", "Succeeded"),
+      uninstall(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Working on 1 of 3");
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall" } };
+    await listNow(queryClient, [
+      uninstall(6, "python@3.13", "Done", failed),
+      uninstall(5, "pipx", "Done", failed),
+      uninstall(4, "htop", "Done", "Succeeded"),
+      uninstall(3, "wget", "Done", "Succeeded"),
+      uninstall(2, "jq", "Done", "Succeeded"),
+      uninstall(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("2 couldn't be uninstalled");
+    fireEvent.click(getByRole("button", { name: "View Log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(6);
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    await findByText("2个未能卸载");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("says a mixed run in words for any operation", async () => {
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [uninstall(2, "jq", "Running"), op(1, "git", "Running")]);
+    await listNow(queryClient, [uninstall(2, "jq", "Done", "Succeeded"), op(1, "git", "Done", "Succeeded")]);
+    await findByText("All 2 succeeded");
+  });
+});

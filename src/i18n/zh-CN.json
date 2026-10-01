@@ -755,7 +755,17 @@
     "notStartedAfter_other": "没有开始：{{names}}没有开始卸载。",
     "confirm_other": "卸载这{{count}}个",
     "ok": "好",
-    "showCommandsAndPaths": "查看命令和路径"
+    "showCommandsAndPaths": "查看命令和路径",
+    "uninstalledHold": "已卸载",
+    "uninstalledLabel": "已卸载{{name}}",
+    "result_other": "{{count}}个没有卸载",
+    "resultStillNeeded_other": "{{names}}没有卸载，Homebrew不会卸载仍被需要的软件。",
+    "resultDismiss": "关闭卸载结果",
+    "viewLogOf": "查看“{{name}}”的日志",
+    "bar": {
+      "allUninstalled_other": "已卸载{{count}}个工具",
+      "notUninstalled_other": "{{count}}个未能卸载"
+    }
   },
   "keepsData": {
     "title": "卸载后会保留",

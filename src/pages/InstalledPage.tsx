@@ -86,12 +86,14 @@ import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 import {
   countedTicks,
   tickable,
+  uninstalledWhileBusy,
   uninstallHeld as heldBy,
   uninstallOffered,
   type UninstallHolds,
 } from "../lib/batchUninstall";
 import { InstalledSelectionHeader, UninstallSelectedButton } from "../components/InstalledSelectionHeader";
 import { BatchUninstallSheet, useBatchUninstall } from "../components/BatchUninstallSheet";
+import { BatchUninstallResult } from "../components/BatchUninstallResult";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -959,8 +961,8 @@ export function InstalledPage() {
   // done -- or while an uninstall of this one is under way.
   const holdsOf = (artifact: InstalledArtifact): UninstallHolds => ({
     preview,
-    underway: uninstallUnderway(artifact) !== null,
-    uninstalled: false,
+    underway: uninstallOp(artifact) !== undefined,
+    uninstalled: uninstalledIds.has(artifactKeyId(artifact.key)),
   });
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
     heldBy(artifact, instance, holdsOf(artifact));
@@ -975,9 +977,15 @@ export function InstalledPage() {
         artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === id,
     );
   };
+  // A batch's tool already uninstalled while another operation on its
+  // source runs: its row is the last check's, carried forward until the
+  // source is read again (`uninstalledWhileBusy`), and says so.
+  const uninstalledIds = uninstalledWhileBusy(operations ?? []);
   const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
     const op = uninstallOp(artifact);
-    if (op === undefined) return null;
+    if (op === undefined) {
+      return uninstalledIds.has(artifactKeyId(artifact.key)) ? t("batchUninstall.uninstalledHold") : null;
+    }
     return op.status === "Queued" ? t("installed.uninstallQueued") : t("installed.uninstalling");
   };
   // A row's Uninstall's accessible name: what it says, with the tool's
@@ -986,7 +994,11 @@ export function InstalledPage() {
   const uninstallName = (artifact: InstalledArtifact): string => {
     const name = artifact.display_name;
     const op = uninstallOp(artifact);
-    if (op === undefined) return t("installed.uninstallLabel", { name });
+    if (op === undefined) {
+      return uninstalledIds.has(artifactKeyId(artifact.key))
+        ? t("batchUninstall.uninstalledLabel", { name })
+        : t("installed.uninstallLabel", { name });
+    }
     return op.status === "Queued"
       ? t("installed.uninstallQueuedLabel", { name })
       : t("installed.uninstallingLabel", { name });
@@ -1776,6 +1788,8 @@ export function InstalledPage() {
             </TextWithInfo>
           </p>
         ) : null}
+        {/* What the last batch did not uninstall, once it has all run. */}
+        <BatchUninstallResult />
         {sourceEmpty ? null : (
           <InstalledSelectionHeader shown={shownTickable} counted={counted} sizes={sizes} />
         )}
