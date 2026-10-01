@@ -13,7 +13,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 1363 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2052
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2061
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -45,7 +45,12 @@ reads. A program a source installed but reported no path for is listed there too
 for one): the gap is the source's, and the page says what it sees. Cargo reports one program per
 crate — the one named after the crate, else the first its record lists — so the other programs of
 a crate that installs several (`cargo-binstall`'s `detect-targets`) stay on that page until it can
-report them all.
+report them all. The scan never reads the places macOS asks you about before an app reads them —
+Desktop, Documents, Downloads, Pictures, Movies, Music, iCloud Drive and other cloud folders, other
+apps' data — nor other disks under `/Volumes`, even by way of a link. A folder to scan that is in one
+is not read, and a line under the list says how many were left out (with Show technical details on,
+its ⓘ names them); a program that is a link into one is listed by its own name, marked **Points into
+a protected place**, and the link is not followed.
 
 ## What it tells you about each tool
 
@@ -78,6 +83,13 @@ report them all.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
   deletes them.
+- On the Installed page, each row whose **Uninstall…** is available has a checkbox. Tick up to 20 and
+  **Uninstall Selected** opens one preview of them all: what each one removes, in the order they will
+  run; the ones it leaves to their own row, each with why — such as an uninstall that can't be cancelled
+  once it starts, one that deletes files permanently, one whose steps can't be known in advance, one still
+  used by software you didn't select; what stays afterwards, each path once; and the exact commands
+  and paths under **Show Commands and Paths**. Confirming queues each tool's own uninstall, the same
+  one its row runs; on one source they start in the order listed.
 - When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
   command to copy and run in Terminal, where you can type it.
 - With **Check for updates** set to Daily or Weekly, Settings says about when the next check is due,
@@ -88,8 +100,8 @@ report them all.
 - **Check Tool Setup…** in the Help menu, or **Check…** beside it in Settings, says in short lines
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
   isn't answering, how many tools Terminal can't find or has twice, what Homebrew disabled or keeps
-  other versions of, and the disk measured. A line that counts something has a **Show** that opens
-  the list it counted. It has no score; it is built from what the last check found, and runs nothing.
+  other versions of, and the disk measured. Each line that counts tools, and each line about a source
+  with a problem, has a **Show** that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
 
 Banager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
@@ -135,6 +147,14 @@ The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open 
 and Other Programs (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
 page with its search box focused, and Settings… (⌘,) is in the Banager menu. With the window closed
 or minimized, each of these brings it back first.
+
+The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
+command-line tools and AI coding tools from Homebrew, npm, pipx and the rest in one place; an update or
+uninstall shows what it will do and starts only when you confirm; and it doesn't edit your shell's
+startup files, collects no usage data and needs no account. The first check runs behind it. However
+you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
+it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
+again at any time.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Banager running, and an operation under way carries on; its icon in the Dock brings the window back
@@ -372,7 +392,7 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1363 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2052 个前端测试，但还没有可下载的版本，v0.1 正在
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2061 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -444,6 +464,15 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除”。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
+- “已安装”页里，“卸载…”可用的行前面有复选框。最多勾 20 个，点“卸载所选”，一个预览里列出全部：按实际执行的
+  顺序写出每个会删什么；留给它自己那一行单独卸载的，逐个写明原因，例如开始后无法取消的、会永久删除文件的、
+  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的；卸载后会保留的东西，每条路径只列一次；确切的命令和
+  路径收在“查看命令和路径”里。确认后，每个工具运行的就是它那一行单独卸载时的那一次卸载；同一个来源上的按列出的
+  顺序开始。
+- “其他程序”页的扫描不读 macOS 在应用读取前会先问你的那些位置——桌面、文稿、下载、图片、影片、音乐、iCloud
+  云盘和其他云盘、其他应用的数据——也不读 `/Volumes` 下的其他磁盘，经过链接也一样。要扫描的文件夹在这些位置里时
+  不读取，列表下方有一行写出有几个没有读取（打开“显示技术细节”后，它的 ⓘ 里列出是哪些）；指向这些位置的程序
+  链接按它自己的名字列出，标着“指向受保护的位置”，不跟进去。
 - Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里
   输入密码。
 - 把“检查更新”设为“每天”或“每周”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
@@ -451,7 +480,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   工具清单，个人文件夹的路径写成 `~`。
 - 菜单栏“帮助”里的“检查工具环境…”（设置里诊断信息旁边的“检查…”也一样）用几行短句说明这台 Mac 上的工具
   环境：有没有读取终端登录时的设置、哪个来源没有响应、终端里找不到或装了不止一份的工具有几个、Homebrew
-  停用或保留了其他版本的工具、实测占用的空间；数到了东西的那一行有“查看”，会打开它数到的那份列表。不打分，
+  停用或保留了其他版本的工具、实测占用的空间；数到工具的那几行和说某个来源有问题的那几行都有“查看”，会打开
+  对应的列表或那个来源。不打分，
   只用上次检查的结果，不运行任何命令。
 - 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的
   `@openai/codex` 和 Homebrew 的 `codex` cask 仍算在各自来源下。用它自己的安装脚本装的 opencode 也只列出来：
@@ -494,6 +524,11 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 （⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“其他程序”（⌘4）。下面是“重新检查”（⌘R）和
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。
+
+第一次打开 Banager 时，会出现一个欢迎页，用三条短句说明它做什么：用 Homebrew、npm、pipx 等装的命令行工具和
+AI 编程工具都列在一处；更新或卸载前先写明要做什么，确认后才开始；不改终端的配置文件，不收集使用情况，也不需要
+账号。第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
+已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。
