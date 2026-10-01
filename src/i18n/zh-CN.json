@@ -426,17 +426,17 @@
       "standalone-rustup": "安装和更新Rust的工具",
       "standalone-agy": "Google的AI编程助手",
       "standalone-grok": "xAI的AI编程助手"
-    },
-    "codex": {
-      "summary": "OpenAI的AI编程助手",
-      "updatesItself": "它自己更新",
-      "updatesItselfAria": "它自己更新：{{name}}",
-      "updatesItselfDetail": "{{source}}设为跟随最新版本，可以自己安装新版本。这里不检查也不安装它的更新。",
-      "notChecked": "不检查更新",
-      "notCheckedAria": "不检查更新：{{name}}",
-      "notCheckedDetail": "这里不检查也不安装{{source}}的更新。",
-      "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
     }
+  },
+  "codexStandalone": {
+    "summary": "OpenAI的AI编程助手",
+    "updatesItself": "它自己更新",
+    "updatesItselfAria": "它自己更新：{{name}}",
+    "updatesItselfDetail": "{{source}}设为跟随最新版本，可以自己安装新版本。这里不检查也不安装它的更新。",
+    "notChecked": "不检查更新",
+    "notCheckedAria": "不检查更新：{{name}}",
+    "notCheckedDetail": "这里不检查也不安装{{source}}的更新。",
+    "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
   },
   "sizes": {
     "term": "占用空间",

@@ -464,17 +464,17 @@
       "standalone-rustup": "Installs and updates Rust",
       "standalone-agy": "Google's AI coding assistant",
       "standalone-grok": "xAI's AI coding assistant"
-    },
-    "codex": {
-      "summary": "OpenAI's AI coding assistant",
-      "updatesItself": "Updates itself",
-      "updatesItselfAria": "Updates itself: {{name}}",
-      "updatesItselfDetail": "{{source}} is set to follow its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
-      "notChecked": "Not checked",
-      "notCheckedAria": "Not checked for updates: {{name}}",
-      "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
-      "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
     }
+  },
+  "codexStandalone": {
+    "summary": "OpenAI's AI coding assistant",
+    "updatesItself": "Updates itself",
+    "updatesItselfAria": "Updates itself: {{name}}",
+    "updatesItselfDetail": "{{source}} is set to follow its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
+    "notChecked": "Not checked",
+    "notCheckedAria": "Not checked for updates: {{name}}",
+    "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
+    "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
   },
   "sizes": {
     "term": "Space used",

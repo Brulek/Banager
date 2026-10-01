@@ -24,16 +24,16 @@ export function uncheckedUpdatesChip(
   return state === "updatesItself"
     ? {
         id: "updates-itself",
-        label: t("standalone.codex.updatesItself"),
-        ariaLabel: t("standalone.codex.updatesItselfAria", { name }),
-        detail: detailLines([t("standalone.codex.updatesItselfDetail", { source: label })]),
+        label: t("codexStandalone.updatesItself"),
+        ariaLabel: t("codexStandalone.updatesItselfAria", { name }),
+        detail: detailLines([t("codexStandalone.updatesItselfDetail", { source: label })]),
         tone: "neutral",
       }
     : {
         id: "updates-not-checked",
-        label: t("standalone.codex.notChecked"),
-        ariaLabel: t("standalone.codex.notCheckedAria", { name }),
-        detail: detailLines([t("standalone.codex.notCheckedDetail", { source: label })]),
+        label: t("codexStandalone.notChecked"),
+        ariaLabel: t("codexStandalone.notCheckedAria", { name }),
+        detail: detailLines([t("codexStandalone.notCheckedDetail", { source: label })]),
         tone: "neutral",
       };
 }

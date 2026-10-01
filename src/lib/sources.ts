@@ -62,7 +62,7 @@ export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-rustup": "standalone.summary.standalone-rustup",
   "standalone-agy": "standalone.summary.standalone-agy",
   "standalone-grok": "standalone.summary.standalone-grok",
-  "standalone-codex": "standalone.codex.summary",
+  "standalone-codex": "codexStandalone.summary",
 };
 
 /**
@@ -768,7 +768,7 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
   "standalone-codex": {
     NoSafeMethod: {
       badge: "installed.blocked.NoSafeMethod.badge",
-      description: "standalone.codex.uninstallDescription",
+      description: "codexStandalone.uninstallDescription",
       command: () => "",
       refused: "installed.blocked.NoSafeMethod.refused",
     },
