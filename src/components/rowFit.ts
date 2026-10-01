@@ -8,7 +8,10 @@
 /**
  * How much of a row's columns fit in the list's width (spec R9), as the
  * window narrows: `full`, everything; `compact`, the version column says
- * only the version an update brings, after its arrow; `narrow`, that, and
+ * only the version an update brings, after its arrow -- unless the row
+ * has room for the whole change with its name whole, measured row by row
+ * (`ToolRow`), as a list beside the Installed page's inspector often has;
+ * `narrow`, that, and
  * the status word moves to the start of the description's line, a dot
  * between them; `minimal` -- a list the Installed page's inspector has
  * narrowed -- the version column goes as well, and an update's versions

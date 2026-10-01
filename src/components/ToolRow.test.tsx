@@ -521,6 +521,60 @@ describe("ToolRow", () => {
       expect(getByText("Updates itself").closest("[data-status]")?.className).toContain("ml-4");
     });
 
+    it("says the whole change all the same where the row has room for it with its name whole", () => {
+      // The name's block `block` wide and the version column 63 ("→
+      // 2.1.290", 9 characters, 7 each: `textMeasurer`, mocked). The whole
+      // change takes 119 and the name 78 (77 and a pixel), so the block
+      // and the column together need 197.
+      const layout = (block: number) =>
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          const width = this.hasAttribute("data-version")
+            ? (this.querySelector("[aria-hidden]")?.textContent ?? this.textContent ?? "").length * 7
+            : this.className.includes("ml-3 min-w-0 flex-1")
+              ? block
+              : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      for (const width of [ROW_FIT_WIDTHS.compact, 592]) {
+        let box = layout(134);
+        try {
+          const { container, unmount } = renderWithProviders(row(width));
+          const version = container.querySelector("[data-version]") as HTMLElement;
+          // Room for both: "2.1.282 → 2.1.290", nothing hidden from sight.
+          expect(version.textContent).toBe("2.1.282 → 2.1.290");
+          expect(version.querySelector(".sr-only")).toBeNull();
+          unmount();
+        } finally {
+          box.mockRestore();
+        }
+        box = layout(133);
+        try {
+          const { container, unmount } = renderWithProviders(row(width));
+          // A pixel short: the new version alone, after its arrow.
+          expect(container.querySelector("[data-version] [aria-hidden]")?.textContent).toBe("→ 2.1.290");
+          unmount();
+        } finally {
+          box.mockRestore();
+        }
+      }
+    });
+
+    it("measures no change where the fit shows it whole or not at all, nor a version that is no update", () => {
+      const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+      try {
+        const { unmount } = renderWithProviders(row(752));
+        unmount();
+        renderWithProviders(
+          <ListWidthProvider value={ROW_FIT_WIDTHS.compact}>
+            <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" version="1.8.2" />
+          </ListWidthProvider>,
+        );
+        expect(box).not.toHaveBeenCalled();
+      } finally {
+        box.mockRestore();
+      }
+    });
+
     it("then moves the status word to the start of the description's line; the name and the button stay whole", () => {
       const { container, getByText, getByRole } = renderWithProviders(row(592));
       const status = getByText("Updates itself").closest("[data-status]") as HTMLElement;

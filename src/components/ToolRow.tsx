@@ -148,6 +148,8 @@ export interface ToolRowContentProps {
    * its place once the window is too narrow for both, after an arrow ("→
    * 7.2" for "7.1 → 7.2"; spec R9) -- a bare "7.2" would read as the
    * version installed -- the whole of it still said to a screen reader.
+   * Where the row has room for the whole change with its name whole, it
+   * shows the whole change all the same (`version` given as a string).
    */
   newVersion?: string;
   /** The row's own button (`RowAction`), or what stands in for it, such as an update's progress. */
@@ -414,6 +416,12 @@ export function ToolRow({
   // after what goes before it (below).
   const descriptionLine = useRef<HTMLDivElement>(null);
   const [descriptionFits, setDescriptionFits] = useState(true);
+  // The name and description's block, and the version column: whether an
+  // update's whole change has room in the column where the fit says only
+  // its new version (below).
+  const textBlock = useRef<HTMLDivElement>(null);
+  const versionCell = useRef<HTMLDivElement>(null);
+  const [changeFits, setChangeFits] = useState(false);
 
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     event.currentTarget.focus();
@@ -461,8 +469,45 @@ export function ToolRow({
   const versionColumn = version !== undefined && (wide || fit === "narrow");
   const versionInline = fit === "minimal" && hasUpdate;
   const actionColumn = action !== undefined && fit !== "tiny";
+  // Where the fit says only the new version (`compact`, `narrow`), the
+  // whole change all the same when the row has room for it with its name
+  // whole: measured after every layout, as only the text knows how wide
+  // it is. The room is the name's block and the version column together,
+  // less the column at its widest -- the same whichever the column shows,
+  // so the choice does not flip as it is made. Nothing measured (a line
+  // not laid out, or jsdom): the new version alone, as the fit says.
+  const changeMeasured = (fit === "compact" || fit === "narrow") && hasUpdate && typeof version === "string";
+  useLayoutEffect(() => {
+    if (!changeMeasured) return;
+    const block = textBlock.current;
+    const cell = versionCell.current;
+    const nameLine = block?.firstElementChild;
+    const nameText = nameLine?.firstElementChild;
+    const blockWidth = block?.getBoundingClientRect().width ?? 0;
+    const cellWidth = cell?.getBoundingClientRect().width ?? 0;
+    const measureCell = cell == null || blockWidth === 0 ? null : textMeasurer(cell);
+    const measureName = nameText instanceof HTMLElement ? textMeasurer(nameText) : null;
+    let fits = false;
+    if (measureCell !== null && measureName !== null && cell != null && nameLine != null) {
+      const column = Math.max(Math.ceil(measureCell(version)), parseFloat(getComputedStyle(cell).minWidth) || 0);
+      let nameNeeds = Math.ceil(measureName(namePath?.name ?? name)) + 1;
+      // What else stands on the name's line in sight: the source's name (R3).
+      for (const other of Array.from(nameLine.children)) {
+        if (other === nameText || getComputedStyle(other).position === "absolute") continue;
+        nameNeeds += other.getBoundingClientRect().width + parseFloat(getComputedStyle(other).marginLeft || "0");
+      }
+      fits = blockWidth + cellWidth - column >= nameNeeds;
+    }
+    // Set only when it changes: a state set to what it already is can
+    // still draw the row once more.
+    if (fits !== changeFits) setChangeFits(fits);
+  });
   const shownVersion =
-    fit !== "full" && newVersion !== undefined ? <ToNewVersion version={version} newVersion={newVersion} /> : version;
+    fit !== "full" && newVersion !== undefined && !(changeMeasured && changeFits) ? (
+      <ToNewVersion version={version} newVersion={newVersion} />
+    ) : (
+      version
+    );
   // What the description's line says before the description, in order,
   // set apart from it and from each other by a dot: the status word, then
   // an update's versions (beside the inspector).
@@ -607,7 +652,7 @@ export function ToolRow({
             <ToolAvatar adapterId={adapterId ?? ""} sourceLabel={sourceLabel ?? ""} iconKey={iconKey} />
           </span>
         )}
-        <div className="ml-3 min-w-0 flex-1">
+        <div ref={textBlock} className="ml-3 min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline">
             <RowName name={name} shown={namePath?.name} />
             {source !== undefined ? (
@@ -655,6 +700,7 @@ export function ToolRow({
           // At least as wide as a usual change ("2.1.282 → 2.1.290"), so the
           // status column before it stands in one place down the list.
           <div
+            ref={versionCell}
             data-version=""
             className={`ml-4 shrink-0 whitespace-nowrap text-right text-body tabular-nums text-muted ${
               fit === "full" ? "min-w-30" : "min-w-20"
