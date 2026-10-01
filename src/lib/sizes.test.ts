@@ -62,7 +62,7 @@ describe("the size words", () => {
     expect(sizeText(zh, exact)).toBe("约312.6 MB");
     expect(sizeText(en, exact)).toBe("About 312.6 MB");
     expect(sizeText(zh, { ...exact, at_least: true })).toBe("至少约312.6 MB");
-    expect(sizeText(en, { ...exact, at_least: true })).toBe("At least about 312.6 MB");
+    expect(sizeText(en, { ...exact, at_least: true })).toBe("At least about\u00a0312.6 MB");
     expect(sizeText(zh, { ...exact, partial: true })).toBe("约312.6 MB，部分无法读取");
     expect(sizeText(en, { ...exact, partial: true })).toBe("About 312.6 MB; some of it couldn't be read");
     // Both: the budget's word wins -- it is the larger "more than this".
@@ -72,7 +72,7 @@ describe("the size words", () => {
   it("say a formula's old versions together, as at least when not all were measured", () => {
     const old = { bytes: 1_200_000_000, partial: false, at_least: false };
     expect(oldVersionsText(zh, old)).toBe("旧版本约1.2 GB");
-    expect(oldVersionsText(en, old)).toBe("Old versions: about 1.2 GB");
+    expect(oldVersionsText(en, old)).toBe("Old versions: about\u00a01.2 GB");
     expect(oldVersionsText(zh, { ...old, partial: true })).toBe("旧版本至少约1.2 GB");
   });
 

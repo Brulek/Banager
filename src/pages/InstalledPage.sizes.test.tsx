@@ -153,9 +153,9 @@ describe("the Installed page's details, on disk use", () => {
     render();
     const inspector = await openDetails("node@22");
     expect(await within(inspector).findByText("About 312.6 MB")).toBeInTheDocument();
-    expect(factsOf(inspector)["Space used"]).toBe("About 312.6 MB" + "Old versions: about 298.4 MB");
+    expect(factsOf(inspector)["Space used"]).toBe("About 312.6 MB" + "Old versions: about\u00a0298.4 MB");
     const old = inspector.querySelector("[data-size-old-versions]");
-    expect(old).toHaveTextContent("Old versions: about 298.4 MB");
+    expect(old?.textContent).toBe("Old versions: about\u00a0298.4 MB");
     expect(old).toHaveClass("text-muted");
     // The row's value selects, as a version does, to be copied.
     const value = within(inspector).getByText("Space used").nextElementSibling;
@@ -213,6 +213,7 @@ describe("the Installed page's details, on disk use", () => {
     };
     render();
     const inspector = await openDetails("node@22");
+    // The text matcher reads the no-break space before the number as a space.
     expect(await within(inspector).findByText("At least about 612.4 MB")).toBeInTheDocument();
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("About 22.7 MB; some of it couldn't be read")).toBeInTheDocument();
