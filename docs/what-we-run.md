@@ -231,7 +231,9 @@ does not. The Installed page's 「卸载所选」 previews each ticked tool exac
 as that tool's own Uninstall does: one `plan_operation` each, at most three
 at a time (`PLAN_CONCURRENCY` in `src/lib/batchUninstall.ts`) — so on
 Homebrew one `brew uses --installed <name>` per formula or cask (Homebrew's
-section). It lists the tools it will not include and why, and on
+section), and the same read-only look for what runs on it (What runs on a
+Homebrew package, below), which leaves a package another source runs on
+out. It lists the tools it will not include and why, and on
 confirmation submits one uninstall per included tool, each an operation of
 its own through the same queue, a Homebrew formula's ticked dependents
 before the formula (`useBatchUninstall` in
@@ -724,6 +726,11 @@ list anything.
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
 
+`brew uses` names only formulae and casks. The uninstall preview of a
+formula or cask also looks, read-only and running nothing, for the other
+sources that run on it — npm on a `node`, pip and pipx's environments on a
+`python@3.x`, Ollama on `ollama` (What runs on a Homebrew package, below).
+
 **The index update** (a refresh runs it; not read-only):
 
 | Purpose | Argv | Timeout |
@@ -894,6 +901,13 @@ search query passes `validate_search_query`.
 
 A plan is refused at click time if the prefix has stopped being writable
 since the refresh that listed it.
+
+npm's own package, `npm`, is never uninstalled: `<npm> uninstall -g npm`
+would remove the npm every other package is updated and uninstalled with.
+Its row in the list says so where Uninstall would be
+(`UninstallBlocked::SourceProgram`, set by `parse_ls_global`), and both the
+gate and `NpmAdapter::plan` refuse it. Its update is offered as any
+package's.
 
 Under the package, the uninstall confirmation says that its folder in
 npm's global folder and its commands go, that npm runs none of its code,
@@ -2421,6 +2435,67 @@ Nothing is written, and nothing is deleted: the preview has no button or
 command that removes these paths. The one action beside each is Copy
 Path, which puts the path, as it is shown (`~` and all), on the clipboard.
 
+## What runs on a Homebrew package: read-only, no command runs
+
+`brew uses --installed` (Homebrew, above) names the formulae and casks
+that need a package, and nothing else. Other sources can run on a Homebrew
+package as well, and Homebrew does not refuse to uninstall it: npm, whose
+`npm` and every global package run on the `node` a Homebrew `node` or
+`node@22` put on `PATH`; pip, which runs in a Homebrew `python@3.x`; a
+pipx or uv tool whose own environment's Python is a Homebrew `python@3.x`;
+Ollama, which runs Homebrew's `ollama` (or the app of its cask); and pipx,
+uv and Cargo themselves, when a Homebrew `pipx`, `uv` or `rust` is what
+Banager runs for them. So the uninstall preview of a Homebrew formula or
+cask looks for every source of those kinds -- npm, pip, pipx, uv, Cargo
+and Ollama (`HOSTED` in `crates/banager-core/src/needed_by.rs`) -- that
+runs on it (`Session::issue_plan`, `crates/banager-core/src/session/needed_by.rs`).
+
+What it looks at, during the uninstall preview of a formula or cask only:
+
+- the package's own folder: a formula's `<prefix>/Cellar/<name>` (its
+  `opt` link and the aliases Homebrew keeps in `opt` lead there too), or a
+  cask's `<prefix>/Caskroom/<token>` and the app Homebrew put in place for
+  it;
+- each such source's program, the one Banager runs for it (found on
+  `PATH` when the source was detected), every link followed;
+- for npm, the `node` first on the `PATH` of the last refresh, found as
+  Banager finds every program it runs (`resolve_exe`), every link
+  followed: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so that
+  `node` is what npm and its packages run on;
+- for pipx and uv, `bin/python` in the environment each tool has of its
+  own (the folder pipx's `app_paths` and uv's `--show-paths` name), every
+  link followed.
+
+A source runs on the package when its program, or npm's `node`, leads
+into the package's folder: then every tool it lists needs the package,
+but for what comes with its program -- npm's `npm` and `corepack`, and the
+`pip`, `setuptools` and `wheel` Homebrew's Python formulae install
+themselves -- and what pip installed for another package. Some of a pipx's
+or uv's tools need it when their environment's `bin/python` leads into
+it. A source with no such tool is not named: a Node.js with only its own
+npm left can be uninstalled. A `node@22` that is keg-only and not linked
+is nobody's `node`: nothing Banager runs leads into it, and nothing is
+said of it.
+
+Each source with any tool that needs the package is listed under 「依赖此
+工具的软件」 ("Software that uses it"), after what Homebrew names --
+「npm和它的4个工具」, 「pipx装的2个工具」 -- Uninstall stays off, and the
+sentence under the list names the tools to uninstall first. Whatever the
+window sends, `Session::submit` refuses such a preview
+(`UninstallBlocked::NeededBySource`), and a batch leaves the package out
+with the same words.
+
+How: read-only, as the command check is (Which copy a command runs,
+above): each path is followed one step at a time (`protected::resolve`:
+`lstat` and `readlink`, each asked of the folder before it, held open),
+and never into the places macOS asks about first nor onto another disk --
+the same places the command check never reads. No file is opened, nothing
+is written, and no command runs. At most 2,000 paths and 1 second for one
+preview (`needed_by::BUDGET`); a look that did not finish says so
+(「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what else
+needs this. Check yourself before you uninstall.", `Warning::DependentsUnknown`),
+never that nothing runs on it.
+
 ## Diagnostic info: read-only, no command runs
 
 Settings' About has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's
@@ -2594,6 +2669,13 @@ All read-only, none saved anywhere else, none uploaded:
   and `readlink` — never a file's contents, and never anything in the
   places disk use never looks into (Data an uninstall leaves behind,
   above).
+- What runs on a Homebrew package, during the uninstall preview of a
+  formula or cask: where `<prefix>/Cellar` or `<prefix>/Caskroom` and the
+  cask's app lead; where the program Banager runs for npm, pip, pipx, uv,
+  Cargo and Ollama leads; the first `node` on `PATH`, for npm; and each
+  pipx and uv tool's `bin/python` (`lstat` and `readlink`, one step at a
+  time, never into a protected place) — never a file's contents (What
+  runs on a Homebrew package, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads

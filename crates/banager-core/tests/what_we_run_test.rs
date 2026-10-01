@@ -558,6 +558,79 @@ fn test_what_we_run_names_every_path_an_uninstall_preview_says_stays_and_its_lim
 }
 
 #[test]
+fn test_what_we_run_says_what_the_uninstall_preview_follows_for_what_runs_on_a_homebrew_package() {
+    // `needed_by::needed_by`, run by `Session::issue_plan` for a Homebrew
+    // formula's or cask's uninstall: not a registered source, so the
+    // per-source test never asks for it.
+    let doc = read_doc();
+    let body = section_body(&doc, "What runs on a Homebrew package").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## What runs on a Homebrew package` section for needed_by")
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Every kind of source it looks at, by the name its section has.
+    for (adapter, name) in [
+        ("npm", "npm"),
+        ("pip", "pip"),
+        ("pipx", "pipx"),
+        ("uv", "uv"),
+        ("cargo", "Cargo"),
+        ("ollama", "Ollama"),
+    ] {
+        assert!(
+            banager_core::needed_by::HOSTED.contains(&adapter),
+            "{adapter} is no longer one the look covers; say so in the section"
+        );
+        assert!(
+            folded.contains(name),
+            "the `## What runs on a Homebrew package` section does not name {name}"
+        );
+    }
+    assert_eq!(banager_core::needed_by::HOSTED.len(), 6, "a kind of source added to the look needs its line");
+    let budget = banager_core::needed_by::BUDGET;
+    for limit in [
+        format!("{} paths", with_commas(budget.max_looks as u64)),
+        format!("{} second", budget.max_duration.as_secs()),
+    ] {
+        assert!(
+            folded.contains(&limit),
+            "the `## What runs on a Homebrew package` section does not state the limit {limit:?}, which needed_by::BUDGET enforces"
+        );
+    }
+    for words in [
+        "during the uninstall preview of a formula or cask only",
+        "`<prefix>/Cellar/<name>`",
+        "`<prefix>/Caskroom/<token>`",
+        "`bin/python`",
+        "the `node` first on the `PATH` of the last refresh",
+        "`lstat` and `readlink`",
+        "No file is opened, nothing is written, and no command runs.",
+        "never into the places macOS asks about first nor onto another disk",
+        "`UninstallBlocked::NeededBySource`",
+        "never that nothing runs on it",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## What runs on a Homebrew package` section of docs/what-we-run.md does not say {words:?}"
+        );
+    }
+    // And the list of files Banager reads names it, as Homebrew's own
+    // section points to it.
+    let reads =
+        section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
+    let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        reads.contains("What runs on a Homebrew package, during the uninstall preview of a formula or cask"),
+        "`## Files Banager reads` does not list what the uninstall preview follows"
+    );
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let homebrew = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        homebrew.contains("(What runs on a Homebrew package, below)"),
+        "`## Homebrew` does not point at what its uninstall preview looks at besides `brew uses`"
+    );
+}
+
+#[test]
 fn test_what_we_run_has_the_command_check_section_with_its_folders_and_both_of_its_limits() {
     let doc = read_doc();
     // Not a registered source either: `commands` reads folders after each
