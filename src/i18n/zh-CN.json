@@ -530,7 +530,7 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。"
+      "description": "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。"
     },
     "prefixNotWritable": {
       "description": "npm把它们安装在当前账户无法修改的文件夹中，因此只能查看。用Homebrew安装Node后，再用它安装的npm包就能在这里管理。"

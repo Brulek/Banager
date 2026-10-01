@@ -1585,7 +1585,7 @@ describe("InstalledPage", () => {
     expect(queryByRole("button", { name: ANY_UNINSTALL })).not.toBeInTheDocument();
     expect(chipsOf(requests)).toEqual(["View only"]);
     expect(chipDetail(requests, "View only")).toHaveTextContent(
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     );
     // Its row says it; no line of its own at the top: the words are on
     // its chip and nowhere else.

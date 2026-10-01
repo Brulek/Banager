@@ -105,7 +105,7 @@ function renderInstalled() {
   );
 }
 
-const PIP_WHY = "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.";
+const PIP_WHY = "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.";
 const selectAll = () => screen.queryByRole("checkbox", { name: "Select all items that can be uninstalled here" });
 
 describe("the Installed page on a read-only source", () => {
@@ -117,6 +117,15 @@ describe("the Installed page on a read-only source", () => {
     expect(line).toHaveTextContent(PIP_WHY);
     expect(selectAll()).toBeNull();
     expect(document.querySelector("[data-selection-header]")).toBeNull();
+    // Said once, over the list: no row repeats View only.
+    expect(screen.queryByText("View only")).toBeNull();
+  });
+
+  it("still marks a read-only source's rows View only on All Tools", async () => {
+    useUiStore.getState().openInstalled(null);
+    renderInstalled();
+    await screen.findByText("requests", { selector: "[data-tool-row] p" });
+    expect(screen.getAllByText("View only").length).toBeGreaterThan(0);
   });
 
   it("gives npm's own reason where its folder can't be changed", async () => {
@@ -150,7 +159,7 @@ describe("the Installed page on a read-only source", () => {
     renderInstalled();
     await waitFor(() =>
       expect(document.querySelector("[data-read-only-line]")).toHaveTextContent(
-        "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。",
+        "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
       ),
     );
   });

@@ -571,7 +571,7 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here."
+      "description": "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here."
     },
     "prefixNotWritable": {
       "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."

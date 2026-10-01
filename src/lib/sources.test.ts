@@ -1493,10 +1493,10 @@ describe("the Updates page's chip details", () => {
       expect(locale.sourceNotice.prefixNotWritable.description).not.toMatch(/pipx|uv/);
     }
     expect(zhCN.sourceNotice.pipReadOnly.description).toBe(
-      "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。",
+      "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
     );
     expect(en.sourceNotice.pipReadOnly.description).toBe(
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     );
   });
 

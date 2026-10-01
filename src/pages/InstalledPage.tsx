@@ -1213,8 +1213,9 @@ export function InstalledPage() {
       tone: "neutral",
     });
     // View only: the fact that no button ever appears on this row,
-    // whatever the next check finds.
-    if (!canWrite(instance)) {
+    // whatever the next check finds -- said once over the list instead on
+    // the page of that one source (`ReadOnlySourceLine`), not on every row.
+    if (!canWrite(instance) && activeFilter !== instance.id) {
       chips.push({ id: "read-only", label: t("updates.readOnly"), detail: readOnlyDetail(t, instance), tone: "neutral" });
     }
     if (artifact.uninstall_blocked !== null) {

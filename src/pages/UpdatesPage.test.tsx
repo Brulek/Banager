@@ -1186,7 +1186,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "View only");
     expect(detail).toHaveTextContent(
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     );
   });
 
@@ -1295,7 +1295,7 @@ describe("UpdatesPage", () => {
     const reason = chipDetail(urllib3, "Can't check");
     expect([...reason.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     ]);
   });
 
@@ -1326,7 +1326,7 @@ describe("UpdatesPage", () => {
     // not be checked, in one short sentence -- then pip's way out.
     expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     ]);
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
     expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
@@ -1441,7 +1441,7 @@ describe("UpdatesPage", () => {
     expect(lines).toEqual([
       "Couldn't find its latest version.",
       "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
-      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
     ]);
     // The rows already carry the tools' words, so the page's line --
     // which exists to point at this switch -- has nothing to add.
@@ -2305,7 +2305,7 @@ describe("UpdatesPage", () => {
           ),
         ).toBeInTheDocument();
         expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(
-          "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。",
+          "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
         );
       } finally {
         await i18n.changeLanguage("en");
