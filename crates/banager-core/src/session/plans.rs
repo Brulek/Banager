@@ -17,12 +17,17 @@ use std::time::{Duration, Instant};
 /// this cannot.
 pub(crate) const PLAN_LIFETIME: Duration = Duration::from_secs(600);
 
-/// How many plans are held for `submit` at most. A batch uninstall plans
-/// twenty at most (`MAX_BATCH_UNINSTALL` in src/lib/batchUninstall.ts);
-/// past this, issuing one forgets the oldest held, which `submit` then
-/// refuses as `Unknown`, so a page that previews over and over cannot make
-/// the map grow for the ten minutes each plan is kept.
-pub(crate) const MAX_ISSUED_PLANS: usize = 64;
+/// How many plans are held for `submit` at most. Update all plans every
+/// update it was given before it submits the first (`openConfirm` in
+/// src/components/UpdateConfirm.tsx plans them together and caps nothing),
+/// so a Mac with a hundred outdated tools holds a hundred plans at once,
+/// and a bound below that forgets the first before it is submitted. A plan
+/// is small (a command line and its preview), so this leaves room for
+/// every update a snapshot can offer and is still a bound. Past it,
+/// issuing one forgets the oldest held, which `submit` then refuses as
+/// `Unknown`, so a page that previews over and over cannot make the map
+/// grow for the ten minutes each plan is kept.
+pub(crate) const MAX_ISSUED_PLANS: usize = 1024;
 
 /// How many plans are being worked out at once at most
 /// (`Session::planning`); the rest wait their turn. Planning can run a
@@ -1521,6 +1526,28 @@ mod tests {
         session
             .submit(ids.last().unwrap().clone())
             .expect("the newest plan is held");
+    }
+
+    #[tokio::test]
+    async fn test_update_all_of_a_few_hundred_tools_keeps_every_plan_until_it_is_submitted() {
+        // Update all plans every update it was given, then submits them one
+        // after the other (`openConfirm` in src/components/UpdateConfirm.tsx):
+        // the first plan must still be there after the three-hundredth.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let mut ids = Vec::new();
+        for _ in 0..300 {
+            ids.push(session.issue_plan(&req).await.expect("issue_plan").id);
+        }
+        for id in ids {
+            session
+                .submit(id)
+                .expect("a plan of a batch of 300 is still held when its turn comes");
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
