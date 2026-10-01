@@ -420,7 +420,9 @@
     "oldVersionsAtLeast": "旧版本至少约{{size}}",
     "ollamaModels": "Ollama模型共约{{size}}",
     "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}",
-    "sortBySize": "按大小"
+    "sortBySize": "按大小",
+    "programOnly": "只算程序文件本身，不含它下载的内容和缓存。",
+    "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占的可能更少。"
   },
   "sourceNotice": {
     "pipReadOnly": {

@@ -45,6 +45,24 @@ export function sizeText(t: Translate, measured: Measured): string {
   return t("sizes.about", { size });
 }
 
+/**
+ * What a measured size of `artifact` leaves out, or counts that is not
+ * its alone, as the i18n key of the sentence an ⓘ after the number says
+ * it in; null when the number needs no such word:
+ *
+ * - a Cargo crate and a tool with its own installer are their program
+ *   files only (size.rs `roots_of`): not what they download or cache --
+ *   rustup's toolchains, Cargo's registry;
+ * - a uv tool's environment shares files with uv's cache (APFS clones),
+ *   which count in full.
+ */
+export function sizeNoteOf(artifact: InstalledArtifact): "sizes.programOnly" | "sizes.sharedWithCache" | null {
+  const adapterId = artifact.key.instance_id.split(":")[0];
+  if (adapterId === "cargo" || adapterId.startsWith("standalone-")) return "sizes.programOnly";
+  if (adapterId === "uv") return "sizes.sharedWithCache";
+  return null;
+}
+
 /** 「旧版本约1.2 GB」: a Homebrew formula's other kegs, together; "at least" when part of them was not measured. */
 export function oldVersionsText(t: Translate, measured: Measured): string {
   const size = formatBytes(measured.bytes);

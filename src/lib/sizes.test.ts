@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { compareBySize, modelsTotalText, oldVersionsText, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
+import { compareBySize, modelsTotalText, oldVersionsText, sizeNoteOf, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
 
 const ruff: InstalledArtifact = {
@@ -144,5 +144,27 @@ describe("By Size", () => {
     const [a, b, c] = [tool("a"), tool("b"), tool("c")];
     expect([a, c, b].sort((x, y) => compareBySize(order, x, y)).map((t) => t.key.name)).toEqual(["b", "a", "c"]);
     expect(compareBySize(order, c, tool("d"))).toBe(0);
+  });
+});
+
+describe("sizeNoteOf", () => {
+  const of = (instance_id: string) => sizeNoteOf({ ...ruff, key: { ...ruff.key, instance_id } });
+
+  it("says a crate and a tool with its own installer are their program files only, and a uv tool shares with uv's cache", () => {
+    expect(of("cargo:/Users/you/.cargo")).toBe("sizes.programOnly");
+    expect(of("standalone-claude")).toBe("sizes.programOnly");
+    expect(of("standalone-rustup")).toBe("sizes.programOnly");
+    expect(of("uv")).toBe("sizes.sharedWithCache");
+    expect(of("brew:/opt/homebrew")).toBeNull();
+    expect(of("npm:/opt/homebrew")).toBeNull();
+    expect(of("pipx")).toBeNull();
+  });
+
+  it("says it plainly in both languages, and never that anything could be freed", () => {
+    for (const key of ["sizes.programOnly", "sizes.sharedWithCache"]) {
+      expect(zh(key)).not.toMatch(/您|！|!|释放|腾出/);
+      expect(en(key)).not.toMatch(/free|!/i);
+    }
+    expect(zh("sizes.programOnly")).toBe("只算程序文件本身，不含它下载的内容和缓存。");
   });
 });
