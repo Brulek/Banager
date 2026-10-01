@@ -521,6 +521,7 @@ describe("InstalledPage", () => {
       "By Name",
       "By Source",
       "By Size",
+      "By Date Installed",
     ]);
     // Nothing of either over the list any more.
     const list = container.querySelector("[data-list]") as HTMLElement;

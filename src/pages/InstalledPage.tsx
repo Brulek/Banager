@@ -80,6 +80,7 @@ import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
 import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
+import { compareByInstalledAt, installedDateCellOf } from "../lib/installedDates";
 import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 
@@ -757,7 +758,13 @@ export function InstalledPage() {
         a.type === "row" && b.type === "row"
           ? compareBySize(sizeOrder, a.artifact, b.artifact) || compareArtifacts(a.artifact, b.artifact)
           : 0;
-      result.push(...rows.sort(sort === "size" ? bySize : byName), ...folds);
+      // By date installed: the newest first, then by name, a row with no
+      // date last.
+      const byDate = (a: ListItem, b: ListItem) =>
+        a.type === "row" && b.type === "row"
+          ? compareByInstalledAt(a.artifact, b.artifact) || compareArtifacts(a.artifact, b.artifact)
+          : 0;
+      result.push(...rows.sort(sort === "size" ? bySize : sort === "date" ? byDate : byName), ...folds);
     }
     return result;
   }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder, show]);
@@ -1312,7 +1319,13 @@ export function InstalledPage() {
     // By Size: the size the order goes by in the version's place, as
     // Finder's Size column shows it -- muted while it is measured, or
     // 「—」 for none. The version is in the inspector.
-    const sizeCell = sort === "size" ? sizeCellOf(t, sizes, artifact) : null;
+    // By Date Installed, the same: the day it was installed, or 「—」.
+    const sortCell =
+      sort === "size"
+        ? sizeCellOf(t, sizes, artifact)
+        : sort === "date"
+          ? installedDateCellOf(artifact, i18n.language, Date.now())
+          : null;
     return (
       <ToolRow
         adapterId={instance.adapter_id}
@@ -1330,25 +1343,31 @@ export function InstalledPage() {
         }
         statusText={chip?.label}
         version={
-          sizeCell !== null ? (
-            // 「—」 for none is drawn only: a screen reader hears no size, as
-            // for a row with no version.
+          sortCell !== null ? (
+            // 「—」 for none is drawn only: a screen reader hears no size or
+            // date, as for a row with no version.
             <span
-              data-size-cell=""
-              aria-hidden={sizeCell.text === "—" ? true : undefined}
-              className={sizeCell.muted ? "text-muted" : undefined}
+              data-size-cell={sort === "size" ? "" : undefined}
+              data-date-cell={sort === "date" ? "" : undefined}
+              aria-hidden={sortCell.text === "—" ? true : undefined}
+              className={sortCell.muted ? "text-muted" : undefined}
             >
-              {sizeCell.text}
+              {sortCell.text}
             </span>
           ) : (
             (change?.version ?? versionOf(artifact))
           )
         }
-        // By Size, what the column says, with its term, in the row's name.
+        // By Size or Date Installed, what the column says, with its term, in
+        // the row's name.
         versionText={
-          sizeCell !== null && sizeCell.text !== "—" ? t("sizes.rowName", { size: sizeCell.text }) : undefined
+          sortCell === null || sortCell.text === "—"
+            ? undefined
+            : sort === "date"
+              ? t("installed.dateRowName", { date: sortCell.text })
+              : t("sizes.rowName", { size: sortCell.text })
         }
-        newVersion={sizeCell !== null ? undefined : change?.newVersion}
+        newVersion={sortCell !== null ? undefined : change?.newVersion}
         action={
           canUninstall(artifact, instance) ? (
             <RowAction
@@ -1656,6 +1675,7 @@ export function InstalledPage() {
             { value: "name", label: t("installed.sortByName") },
             { value: "source", label: t("installed.sortBySource") },
             { value: "size", label: t("sizes.sortBySize") },
+            { value: "date", label: t("installed.sortByDate") },
           ]}
           onChange={setSort}
         />

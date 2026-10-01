@@ -230,7 +230,9 @@
       "description": "用{{source}}安装的工具会显示在这里。",
       "unreachable": "无法列出它安装的内容。请稍后重新检查。"
     },
-    "installedOn": "安装日期"
+    "installedOn": "安装日期",
+    "sortByDate": "按安装日期",
+    "dateRowName": "安装于{{date}}"
   },
   "updates": {
     "upToDate": "所有工具都是最新的",

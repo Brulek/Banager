@@ -249,7 +249,9 @@
       "description": "Tools you install with {{source}} show up here.",
       "unreachable": "Couldn't list what it has installed. Check again later."
     },
-    "installedOn": "Date installed"
+    "installedOn": "Date installed",
+    "sortByDate": "By Date Installed",
+    "dateRowName": "Date installed: {{date}}"
   },
   "updates": {
     "upToDate": "Everything is up to date",

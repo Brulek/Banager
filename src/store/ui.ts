@@ -6,9 +6,10 @@ export type Page = "overview" | "updates" | "installed" | "unknown" | "settings"
 
 /**
  * How the Installed page orders its list: by the tools' names, by source
- * first, or by how much each takes on disk, the largest first.
+ * first, by how much each takes on disk, the largest first, or by when
+ * each was installed, the newest first.
  */
-export type InstalledSort = "name" | "source" | "size";
+export type InstalledSort = "name" | "source" | "size" | "date";
 
 // One entry in an operation's log: either a line the tool wrote, shown
 // verbatim, or a note of Banager's own, which the drawer localises.
