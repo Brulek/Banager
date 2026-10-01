@@ -18,7 +18,7 @@ import type {
   UpdateCandidate,
   Warning,
 } from "../lib/types";
-import { IDS, inHome, withHomeAsTilde, type World } from "./mockData";
+import { IDS, inHome, mockHomeAsTilde, type World } from "./mockData";
 import type { ScenarioOutcome } from "./scenario";
 
 /**
@@ -361,7 +361,7 @@ function trashNotes(paths: string[]): LogNote[] {
     const base = fileName(path);
     const name = used.has(base) ? `${base} 10.24.31` : base;
     used.add(base);
-    return { MovedToTrash: { path: withHomeAsTilde(path), trashed_to: `~/.Trash/${name}` } };
+    return { MovedToTrash: { path: mockHomeAsTilde(path), trashed_to: `~/.Trash/${name}` } };
   });
 }
 
@@ -538,7 +538,7 @@ export function playOutcome(
         return {
           lines: [
             ...lines.slice(0, Math.min(1, trashPaths.length - 1)),
-            { note: { TrashFailed: { path: withHomeAsTilde(failedAt), error: trashRefusal(failedAt) } } },
+            { note: { TrashFailed: { path: mockHomeAsTilde(failedAt), error: trashRefusal(failedAt) } } },
           ],
           outcome: { Failed: { exit_code: null, summary: trashRefusal(failedAt) } },
         };
@@ -561,7 +561,7 @@ export function playOutcome(
       // A copy of the tool that was still running put its launcher back.
       const launcher = trashPaths[trashPaths.length - 1];
       return {
-        lines: [...lines, { note: { BackAfterUninstall: { path: withHomeAsTilde(launcher) } } }],
+        lines: [...lines, { note: { BackAfterUninstall: { path: mockHomeAsTilde(launcher) } } }],
         outcome: { NeedsAttention: "BackAfterUninstall" },
       };
     }

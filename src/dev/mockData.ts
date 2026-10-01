@@ -46,8 +46,11 @@ export function inHome(relative: string): string {
   return `${HOME}/${relative}`;
 }
 
-/** `path` with the pretend home folder as `~`, as Rust writes one (`shown_path` in diagnostics.rs). */
-export function withHomeAsTilde(path: string): string {
+/**
+ * `path` with the pretend home folder as `~`, as Rust writes one (`shown_path` in diagnostics.rs).
+ * Not the private `withHomeAsTilde` in `src/lib/sources.ts`, which folds any `/Users/<name>`.
+ */
+export function mockHomeAsTilde(path: string): string {
   if (path === HOME) return "~";
   return path.startsWith(`${HOME}/`) ? `~${path.slice(HOME.length)}` : path;
 }

@@ -7,7 +7,7 @@
  * Dev-only, like everything in src/dev.
  */
 import type { ManagerInstance, SystemFacts } from "../lib/types";
-import { HOME, withHomeAsTilde } from "./mockData";
+import { HOME, mockHomeAsTilde } from "./mockData";
 import type { ScenarioPath } from "./scenario";
 
 /** The pretend Mac's `PATH`, as a login shell with Homebrew, pipx, uv and Cargo set up leaves it. */
@@ -48,11 +48,11 @@ export function mockSystemFacts(
     chip: "Apple M2 Pro",
     arch: "aarch64",
     login_path: path !== "default",
-    path_dirs: dirs.map(withHomeAsTilde),
-    sources: instances.map((instance) => ({ instance_id: instance.id, exe_path: withHomeAsTilde(instance.exe_path) })),
+    path_dirs: dirs.map(mockHomeAsTilde),
+    sources: instances.map((instance) => ({ instance_id: instance.id, exe_path: mockHomeAsTilde(instance.exe_path) })),
     path_folders:
       !refreshed || path === "default"
         ? null
-        : { read: PATH_DIRS.length, unread: path === "unread" ? [withHomeAsTilde(PROTECTED_DIR)] : [] },
+        : { read: PATH_DIRS.length, unread: path === "unread" ? [mockHomeAsTilde(PROTECTED_DIR)] : [] },
   };
 }
