@@ -257,7 +257,44 @@ impl Session {
             return Err(SubmitError::Expired);
         }
         self.recheck_actionable(&stored)?;
-        Ok(self.ops.submit(stored.issued.plan))
+        let on_finish = self.history.get().map(|store| {
+            let started = self.history_start(&stored.issued.plan.request);
+            let store = store.clone();
+            Box::new(move |ended: &crate::history::Ended<'_>| store.record(ended, &started))
+                as crate::ops::OnFinish
+        });
+        Ok(self.ops.submit_with(stored.issued.plan, on_finish))
+    }
+
+    /// What the history keeps of an operation from when it starts: the
+    /// name and version its row has now, and its source's adapter.
+    fn history_start(&self, request: &crate::model::OpRequest) -> crate::history::Started {
+        let snapshot = self.snapshot.lock().unwrap();
+        let listed = snapshot.artifacts.iter().find(|a| {
+            a.key.instance_id == request.instance_id
+                && a.key.kind == request.artifact_kind
+                && a.key.name == request.name
+        });
+        let adapter_id = snapshot
+            .instances
+            .iter()
+            .find(|i| i.id == request.instance_id)
+            .map(|i| i.adapter_id.clone())
+            .unwrap_or_else(|| {
+                request
+                    .instance_id
+                    .split(':')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            });
+        crate::history::Started {
+            display_name: listed
+                .map(|a| a.display_name.clone())
+                .unwrap_or_else(|| request.name.clone()),
+            adapter_id,
+            listed_version: listed.map(|a| a.version.clone()),
+        }
     }
 
     /// `issue_plan`'s gate, re-asked of the snapshot that is current now.
@@ -1478,5 +1515,64 @@ mod tests {
             Err(SubmitError::Unknown),
             "a swept entry must read back as Unknown, not Expired"
         );
+    }
+
+    #[tokio::test]
+    async fn test_a_submitted_uninstall_is_kept_in_the_attached_history_with_its_rows_name_and_version(
+    ) {
+        let dir = std::env::temp_dir().join(format!(
+            "banager-plans-history-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let mut jq = installed_on("fake:1", ArtifactKind::Formula, "jq", None);
+        jq.display_name = "JQ".to_string();
+        adapter.set_artifacts(vec![jq]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        assert_eq!(session.history().records, vec![], "nothing attached yet");
+        let store = crate::history::HistoryStore::open(dir.join("history.json"));
+        session.attach_history(store.clone());
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_plan(&uninstall_on("fake:1", ArtifactKind::Formula, "jq"))
+            .await
+            .expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        while session
+            .operations()
+            .iter()
+            .any(|op| op.id == op_id && op.status != crate::model::OpStatus::Done)
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let view = session.history();
+        assert_eq!(view.run, store.run());
+        let [record] = view.records.as_slice() else {
+            panic!("one record: {:?}", view.records);
+        };
+        assert_eq!(record.op_id, op_id);
+        assert_eq!(record.display_name, "JQ");
+        assert_eq!(record.adapter_id, "fake");
+        assert_eq!(record.kind, crate::history::HistoryKind::Uninstall);
+        assert_eq!(record.from_version.as_deref(), Some("1.0"));
+        // The fake's reading after says jq is still there.
+        assert_eq!(
+            record.result,
+            crate::history::HistoryResult::NeedsAttention(
+                crate::model::Attention::StillInstalledAfterUninstall
+            )
+        );
+        assert!(store.flush(Duration::from_secs(5)));
+        assert!(dir.join("history.json").exists());
+        assert!(session.clear_history().cleared_before.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -335,6 +335,11 @@ pub struct Session {
     /// before the first refresh, and always in a session that does not
     /// measure sizes.
     kept_data_home: Mutex<Option<std::path::PathBuf>>,
+    /// Where each finished update and uninstall is kept across launches
+    /// (`attach_history`), or nothing: the shell attaches the one in
+    /// Banager's application data directory as it starts; tests attach
+    /// their own or none.
+    history: std::sync::OnceLock<Arc<crate::history::HistoryStore>>,
 }
 
 impl Session {
@@ -471,7 +476,35 @@ impl Session {
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             sizes,
             kept_data_home: Mutex::new(None),
+            history: std::sync::OnceLock::new(),
         })
+    }
+
+    /// Keeps every operation submitted from now on in `store`
+    /// (`plans.rs`, `submit`). Once: a second store is ignored.
+    pub fn attach_history(&self, store: Arc<crate::history::HistoryStore>) {
+        let _ = self.history.set(store);
+    }
+
+    /// The history the window lists (`get_history`), or an empty one when
+    /// none is attached.
+    pub fn history(&self) -> crate::history::HistoryView {
+        match self.history.get() {
+            Some(store) => store.view(),
+            None => crate::history::HistoryView {
+                run: String::new(),
+                cleared_before: None,
+                records: Vec::new(),
+            },
+        }
+    }
+
+    /// The Updates page's Clear, kept (`HistoryStore::clear`).
+    pub fn clear_history(&self) -> crate::history::HistoryView {
+        match self.history.get() {
+            Some(store) => store.clear(),
+            None => self.history(),
+        }
     }
 
     /// Says whether restoring the login shell's `PATH` worked at launch

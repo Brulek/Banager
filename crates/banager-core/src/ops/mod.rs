@@ -102,6 +102,14 @@ fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionCha
     }
 }
 
+/// Called once, as an operation finishes, with what it ended as: the
+/// history's way in (`Session::submit`, `history::HistoryStore::record`).
+/// Called on the operation's own task, with no lock of the manager's held,
+/// before `OperationEvent::Finished` is sent -- so a window that asks for
+/// the history on that event finds the record there. It must return at
+/// once: the history only puts the record in memory and wakes its writer.
+pub type OnFinish = Box<dyn FnOnce(&crate::history::Ended<'_>) + Send>;
+
 pub struct OpRecord {
     pub id: OpId,
     pub plan: Plan,
@@ -168,6 +176,15 @@ struct OpInternal {
     /// own release through this instead of touching `held` directly, so it
     /// can never race with `LockGuard`'s panic-safety release.
     lock_release: Option<Arc<LockRelease>>,
+    /// `submit_with`'s callback, taken by `finish`.
+    on_finish: Option<OnFinish>,
+    /// Set just before `execute` is called: an operation that ends before
+    /// that started nothing.
+    started: bool,
+    /// An update's two readings of the installed version, before its
+    /// command and after it (`run_operation`), for `on_finish`.
+    before_version: Option<String>,
+    after_version: Option<String>,
 }
 
 pub struct OperationManager {
@@ -386,6 +403,12 @@ impl OperationManager {
     }
 
     pub fn submit(self: &Arc<Self>, plan: Plan) -> OpId {
+        self.submit_with(plan, None)
+    }
+
+    /// `submit`, with a callback for when the operation finishes
+    /// (`OnFinish`).
+    pub fn submit_with(self: &Arc<Self>, plan: Plan, on_finish: Option<OnFinish>) -> OpId {
         let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let cancel = CancellationToken::new();
         let record = OpInternal {
@@ -395,6 +418,10 @@ impl OperationManager {
             outcome: None,
             cancel: cancel.clone(),
             lock_release: None,
+            on_finish,
+            started: false,
+            before_version: None,
+            after_version: None,
         };
         {
             let mut records = self.records.lock().unwrap();
@@ -679,6 +706,13 @@ impl OperationManager {
         // was still Queued reaches here only if it fired between acquiring
         // the permit and `set_status(Running)` above; `RealRunner::run`
         // then checks it before spawning and starts nothing.
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.started = true;
+            r.before_version = before
+                .as_ref()
+                .filter(|b| b.present)
+                .and_then(|b| b.version.clone());
+        }
         let exec_result = adapter
             .execute(&plan, self.sink.clone(), op_id, cancel.clone())
             .await;
@@ -701,6 +735,15 @@ impl OperationManager {
             }
             OpKind::Install | OpKind::Upgrade => adapter.reconcile(&instance, &key).await,
         };
+        if plan.request.kind == OpKind::Upgrade {
+            if let Ok(r) = reconciled.as_ref() {
+                if r.present {
+                    if let Some(rec) = self.records.lock().unwrap().get_mut(&op_id) {
+                        rec.after_version = r.version.clone();
+                    }
+                }
+            }
+        }
 
         let final_outcome = match exec_result {
             // A command that reported success is not proof of success on
@@ -872,7 +915,7 @@ impl OperationManager {
     /// release racing with this one can never double-release — whichever
     /// runs first wins and the other is a no-op.
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
-        {
+        let ended = {
             let mut records = self.records.lock().unwrap();
             if let Some(r) = records.get_mut(&op_id) {
                 r.status = OpStatus::Done;
@@ -882,7 +925,34 @@ impl OperationManager {
                         lr.release_once();
                     }
                 }
+                r.on_finish.take().map(|on_finish| {
+                    (
+                        on_finish,
+                        r.plan.request.clone(),
+                        r.started,
+                        r.before_version.clone(),
+                        r.after_version.clone(),
+                    )
+                })
+            } else {
+                None
             }
+        };
+        if let Some((on_finish, request, started, before, after)) = ended {
+            let key = ArtifactKey {
+                instance_id: request.instance_id,
+                kind: request.artifact_kind,
+                name: request.name,
+            };
+            on_finish(&crate::history::Ended {
+                op_id,
+                key: &key,
+                op_kind: request.kind,
+                outcome: &outcome,
+                started,
+                before: before.as_deref(),
+                after: after.as_deref(),
+            });
         }
         self.done_notify.notify_waiters();
         self.sink.emit(OperationEvent::Finished { op_id, outcome });
