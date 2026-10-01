@@ -117,6 +117,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   refreshed_at: null,
   stale: false,
   errors: [],
+  next_auto_check_at: null,
 };
 
 /** What the backend says when it is broken (`?state=error`, `?state=refresh-error`). */
@@ -134,6 +135,9 @@ function wait(ms: number): Promise<void> {
 function never<T>(): Promise<T> {
   return new Promise<T>(() => {});
 }
+
+/** `auto_check::DUE_AFTER_SECS`: the daily check is due a day after the last check. */
+const DAY_SECONDS = 24 * 60 * 60;
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -210,12 +214,17 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       lastContent = serialized;
     }
     round += 1;
+    const refreshedAt = nowSeconds();
     committed = clone({
       generation,
       round,
       ...content,
-      refreshed_at: nowSeconds(),
+      refreshed_at: refreshedAt,
       stale: content.errors.length > 0,
+      // Every round here is the window's, and counts as a check: the daily
+      // one is due a day after it (`auto_check::next_check_due`), which
+      // Settings shows under its switch once it is on.
+      next_auto_check_at: refreshedAt + DAY_SECONDS,
     });
     if (generation > lastAnnounced) {
       lastAnnounced = generation;

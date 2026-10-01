@@ -688,7 +688,13 @@
     "hiddenNone": "无",
     "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "无法保存：{{message}}。已恢复原来的设置。",
-    "saveErrorPlain": "无法保存。已恢复原来的设置。"
+    "saveErrorPlain": "无法保存。已恢复原来的设置。",
+    "nextAutoCheck": {
+      "today": "下次自动检查：约今天 {{time}}（需要Banager开着）",
+      "tomorrow": "下次自动检查：约明天 {{time}}（需要Banager开着）",
+      "date": "下次自动检查：约{{date}} {{time}}（需要Banager开着）",
+      "soon": "下次自动检查：很快（需要Banager开着）"
+    }
   },
   "settingsSaveFailed": {
     "permissionDenied": "没有权限写入设置文件夹",

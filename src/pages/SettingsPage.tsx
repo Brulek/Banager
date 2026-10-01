@@ -9,6 +9,7 @@ import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/typ
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
+import { NextAutoCheck } from "../components/NextAutoCheck";
 import { BUTTON } from "../components/ui/controls";
 import { PopupButton } from "../components/ui/PopupButton";
 import {
@@ -368,9 +369,15 @@ export function SettingsPage() {
             </label>
           }
           subtitle={
-            <p id="settings-auto-check-desc" className={ROW_SUBTITLE}>
-              {t("settings.autoCheck.description")}
-            </p>
+            <>
+              <p id="settings-auto-check-desc" className={ROW_SUBTITLE}>
+                {t("settings.autoCheck.description")}
+              </p>
+              {/* When the next one is due, while it is on. */}
+              {current.auto_check ? (
+                <NextAutoCheck at={snapshot?.next_auto_check_at} className={`mt-0.5 ${ROW_SUBTITLE}`} />
+              ) : null}
+            </>
           }
           control={
             <Switch

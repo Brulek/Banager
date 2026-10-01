@@ -538,6 +538,45 @@ describe("SettingsPage", () => {
     expect(switches.indexOf(notify)).toBe(switches.indexOf(daily) + 1);
   });
 
+  it("says when the next automatic check is due under the daily check while it is on, and nothing while it is off", async () => {
+    // Two hours from now: today, or -- just before midnight -- tomorrow.
+    const due = Math.floor(Date.now() / 1000) + 2 * 60 * 60;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "get_snapshot") return { ...snapshotOf([]), next_auto_check_at: due };
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const line = await screen.findByText(
+      /^Next automatic check: about .+ (today|tomorrow) \(Banager needs to be open\)$/,
+    );
+    expect(line).toHaveAttribute("data-next-auto-check");
+    // Under the switch's own description, in its row.
+    const daily = screen.getByRole("switch", { name: "Check for updates every day" });
+    expect(daily.parentElement).toContainElement(line);
+
+    fireEvent.click(daily);
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: false })));
+    expect(document.querySelector("[data-next-auto-check]")).toBeNull();
+  });
+
+  it("says nothing about the next automatic check before any check has counted", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "get_snapshot") return { ...snapshotOf([]), next_auto_check_at: null };
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    await screen.findByRole("switch", { name: "Check for updates every day" });
+    await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "get_snapshot")).toBe(true));
+    expect(document.querySelector("[data-next-auto-check]")).toBeNull();
+  });
+
   it("turns the daily check on and saves it, which makes Notify me available, and re-scans nothing", async () => {
     // The daily check runs at its next look, a day after the last check
     // ended; turning it on is no reason to check now.

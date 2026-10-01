@@ -150,6 +150,9 @@ describe("the browser preview's mock backend", () => {
     expect(first.generation).toBe(1);
     expect(first.round).toBe(1);
     expect(first.refreshed_at).not.toBeNull();
+    // The daily check is due a day after this round, the window's.
+    expect(before.next_auto_check_at).toBeNull();
+    expect(first.next_auto_check_at).toBe((first.refreshed_at ?? 0) + 24 * 60 * 60);
     await vi.runOnlyPendingTimersAsync();
     expect(events).toContainEqual({ SnapshotChanged: { generation: 1 } });
     // An unchanged refresh keeps its generation and announces nothing new,
@@ -262,7 +265,11 @@ describe("the browser preview's mock backend", () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
     const again = await answer<Snapshot>(backendFor({ state: "many" }).backend.invoke("refresh"));
-    expect({ ...again, refreshed_at: null }).toEqual({ ...snapshot, refreshed_at: null });
+    expect({ ...again, refreshed_at: null, next_auto_check_at: null }).toEqual({
+      ...snapshot,
+      refreshed_at: null,
+      next_auto_check_at: null,
+    });
 
     const { artifacts, updates, instances } = snapshot;
     // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds.
