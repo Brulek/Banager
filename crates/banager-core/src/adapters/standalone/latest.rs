@@ -31,7 +31,9 @@ pub fn is_dotted_version(s: &str) -> bool {
 /// Only an absent token is `None` (`NotResponding` in detect); only
 /// `compare_dotted` decides comparability. Read the first non-empty line.
 /// The command's output contract chooses the token; extraction does not
-/// silently truncate or reinterpret a version it cannot compare.
+/// silently truncate or reinterpret a version it cannot compare. A token
+/// with a control character in it is no version, as an absent one is
+/// (`sanity::version_token`).
 pub fn parse_version(stdout: &str, parse: VersionParse) -> Option<String> {
     let line = stdout.lines().find(|line| !line.trim().is_empty())?;
     let mut tokens = line.split_whitespace();
@@ -39,7 +41,7 @@ pub fn parse_version(stdout: &str, parse: VersionParse) -> Option<String> {
         VersionParse::FirstToken => tokens.next()?,
         VersionParse::SecondToken => tokens.nth(1)?,
     };
-    Some(token.to_string())
+    crate::adapters::sanity::version_token(Some(token.to_string()))
 }
 
 /// `local` against `remote` as sequences of integers, shorter-is-less
@@ -95,10 +97,11 @@ pub fn claude_channel(home: &Path) -> &'static str {
 /// The version a channel pointer answered with, trimmed; `Err` with a
 /// short reason for a body that is not one version, which becomes an
 /// uncheckable row's description -- so the reason quotes only the first
-/// few characters, never a page of HTML.
+/// few characters, never a page of HTML. A control character -- a NUL,
+/// an escape -- makes it no version either.
 pub fn parse_channel_body(body: &str) -> Result<String, String> {
     let trimmed = body.trim();
-    if !trimmed.is_empty() && !trimmed.chars().any(char::is_whitespace) {
+    if crate::adapters::sanity::is_name(trimmed) && !trimmed.chars().any(char::is_whitespace) {
         return Ok(trimmed.to_string());
     }
     let shown: String = trimmed.chars().take(40).collect();
@@ -226,6 +229,12 @@ pub fn parse_update_check(
     if latest.is_empty() {
         return Err(format!("the update check's `{latest_field}` is empty"));
     }
+    if !crate::adapters::sanity::is_name(&latest) {
+        let shown: String = latest.chars().take(40).collect();
+        return Err(format!(
+            "the update check's `{latest_field}` is not a version (got {shown:?})"
+        ));
+    }
     Ok(UpdateCheck { latest, available })
 }
 
@@ -253,6 +262,30 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_version_readers_refuse_control_characters() {
+        assert_eq!(parse_version("1.2.11\0\n", VersionParse::FirstToken), None);
+        assert_eq!(
+            parse_version(
+                "grok 1.0.4\u{11} (4220f3b224a6)\n",
+                VersionParse::SecondToken
+            ),
+            None
+        );
+        assert_eq!(
+            parse_version("grok 1.0.41 (4220f3b224a6)\n", VersionParse::SecondToken),
+            Some("1.0.41".to_string())
+        );
+        assert!(parse_channel_body("2.1.\u{0}274\n").is_err());
+        assert_eq!(parse_channel_body("2.1.274\n"), Ok("2.1.274".to_string()));
+        let check = r#"{"latestVersion":"1.0.\u001b42","updateAvailable":true,"error":null}"#;
+        assert!(
+            parse_update_check(check, "latestVersion", "updateAvailable", Some("error")).is_err()
+        );
+    }
     use std::cmp::Ordering;
 
     #[test]
