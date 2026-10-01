@@ -37,6 +37,33 @@ fn parse_install_key(key: &str) -> Option<(String, String, String)> {
     Some((name, version, kind))
 }
 
+#[derive(Deserialize)]
+struct CratesIoResponse {
+    #[serde(rename = "crate")]
+    krate: CrateInfo,
+}
+
+#[derive(Deserialize)]
+struct CrateInfo {
+    max_stable_version: String,
+}
+
+/// The newest stable version in crates.io's answer about one crate
+/// (`GET /api/v1/crates/<name>`), or why there is none. A version that is
+/// empty or holds a control character (`sanity::is_name`) is no version:
+/// the crate's row says it could not be checked rather than offer an
+/// update to it.
+pub(crate) fn parse_crates_io_body(body: &str) -> Result<String, String> {
+    let parsed: CratesIoResponse = serde_json::from_str(body)
+        .map_err(|e| format!("could not parse crates.io response: {e}"))?;
+    let version = parsed.krate.max_stable_version;
+    if crate::adapters::sanity::is_name(&version) {
+        Ok(version)
+    } else {
+        Err("crates.io named no usable version".to_string())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Crates2Root {
     #[serde(default)]
@@ -380,15 +407,6 @@ impl CargoAdapter {
     }
 
     async fn latest_stable_version(&self, name: &str) -> Result<String, String> {
-        #[derive(Deserialize)]
-        struct CratesIoResponse {
-            #[serde(rename = "crate")]
-            krate: CrateInfo,
-        }
-        #[derive(Deserialize)]
-        struct CrateInfo {
-            max_stable_version: String,
-        }
         let resp = self
             .http
             .send(HttpRequest {
@@ -408,9 +426,7 @@ impl CargoAdapter {
         if resp.status != 200 {
             return Err(format!("crates.io returned status {}", resp.status));
         }
-        let parsed: CratesIoResponse = serde_json::from_str(&resp.body)
-            .map_err(|e| format!("could not parse crates.io response: {e}"))?;
-        Ok(parsed.krate.max_stable_version)
+        parse_crates_io_body(&resp.body)
     }
 
     /// Registry-sourced crates are checked one at a time against crates.io.
@@ -427,7 +443,15 @@ impl CargoAdapter {
         let json = self.read_crates2(inst)?;
         let entries = parse_crates2_entries(&json)?;
         let mut out = Vec::new();
-        for (name, version, source_kind) in entries {
+        // The same rows `parse_crates2` lists: a crate without a usable
+        // name is not one, and a version that is not text is unknown.
+        for (name, mut version, source_kind) in entries {
+            if !crate::adapters::sanity::is_name(&name) {
+                continue;
+            }
+            if !crate::adapters::sanity::is_version(&version) {
+                version.clear();
+            }
             let key = ArtifactKey {
                 instance_id: inst.id.clone(),
                 kind: ArtifactKind::Binary,
@@ -1115,6 +1139,64 @@ mod tests {
         assert!(candidates[0].checkable);
         assert_eq!(candidates[0].target, "0.18.0");
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn regression_check_updates_offers_no_update_to_an_empty_or_control_character_crates_io_version(
+    ) {
+        let json = std::fs::read_to_string("../../adapters/fixtures/cargo/1.98.1/crates2.json")
+            .expect("read cargo crates2.json fixture");
+        for (i, body) in [
+            r#"{"crate":{"max_stable_version":""}}"#,
+            r#"{"crate":{"max_stable_version":"1.0\n"}}"#,
+            r#"{"crate":{"max_stable_version":"\u001b[31m1.0"}}"#,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let home = temp_cargo_home(&format!("bad-version-{i}"));
+            std::fs::create_dir_all(&home).expect("create cargo home");
+            std::fs::write(home.join(".crates2.json"), &json).expect("write crates2.json");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "https://crates.io/api/v1/crates/hexyl",
+                HttpResponse {
+                    status: 200,
+                    body: body.to_string(),
+                },
+            );
+            let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http);
+            let inst = test_instance(home.clone());
+            let candidates = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .candidates;
+            let _ = std::fs::remove_dir_all(&home);
+            assert_eq!(candidates.len(), 1, "{body}");
+            assert!(!candidates[0].checkable, "{body}");
+            assert_eq!(candidates[0].target, candidates[0].current, "{body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_check_updates_skips_a_crate_whose_name_is_not_one() {
+        // `parse_crates2` lists no row for it, so no update either.
+        let json = r#"{"installs":{"bad\u001bname 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":[]}}}"#;
+        let home = temp_cargo_home("bad-name");
+        std::fs::create_dir_all(&home).expect("create cargo home");
+        std::fs::write(home.join(".crates2.json"), json).expect("write crates2.json");
+        let http = Arc::new(MockHttpClient::new());
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance(home.clone());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(candidates.is_empty());
+        assert!(http.calls().is_empty());
     }
 
     #[tokio::test]

@@ -246,6 +246,22 @@ struct PyPiInfo {
     version: String,
 }
 
+/// The latest version in PyPI's answer about one package (`GET
+/// /pypi/<name>/json`), or why there is none. A version that is empty or
+/// holds a control character (`sanity::is_name`) is no version: the
+/// package's row says it could not be checked rather than offer an
+/// update to it.
+pub(crate) fn parse_pypi_body(body: &str) -> Result<String, String> {
+    let parsed: PyPiResponse =
+        serde_json::from_str(body).map_err(|e| format!("could not parse PyPI response: {e}"))?;
+    let version = parsed.info.version;
+    if crate::adapters::sanity::is_name(&version) {
+        Ok(version)
+    } else {
+        Err("PyPI named no usable version".to_string())
+    }
+}
+
 pub struct PipxAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
@@ -365,9 +381,7 @@ impl PipxAdapter {
         if resp.status != 200 {
             return Err(format!("PyPI returned status {}", resp.status));
         }
-        let parsed: PyPiResponse = serde_json::from_str(&resp.body)
-            .map_err(|e| format!("could not parse PyPI response: {e}"))?;
-        Ok(parsed.info.version)
+        parse_pypi_body(&resp.body)
     }
 
     /// Below pipx 1.16 there is no `pipx list --outdated`, so each installed
@@ -946,6 +960,47 @@ mod tests {
             http.calls(),
             vec!["https://pypi.org/pypi/cowsay/json".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn regression_check_updates_offers_no_update_to_an_empty_or_control_character_pypi_version(
+    ) {
+        for body in [
+            r#"{"info":{"version":""}}"#,
+            r#"{"info":{"version":"6.1\n"}}"#,
+            r#"{"info":{"version":"\u001b[31m6.1"}}"#,
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "https://pypi.org/pypi/cowsay/json",
+                HttpResponse {
+                    status: 200,
+                    body: body.to_string(),
+                },
+            );
+            let adapter = PipxAdapter::new(runner, http);
+            let mut inst = test_instance();
+            inst.version = Some("1.10.0".to_string());
+            let candidates = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .candidates;
+            assert_eq!(candidates.len(), 1, "{body}");
+            assert!(!candidates[0].checkable, "{body}");
+            assert_eq!(candidates[0].target, "5.0", "{body}");
+        }
     }
 
     #[tokio::test]
