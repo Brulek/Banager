@@ -11,7 +11,9 @@
 //! already carries (an instance id names its source's prefix, which can be
 //! in the home folder; the window never shows one).
 //!
-//! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS`.
+//! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS` -- by
+//! the clock, or by the newest record when the clock says later, so a
+//! clock set far ahead drops nothing (`age_anchor`).
 //! A missing, unreadable or malformed file is an empty history, and a file
 //! a newer Banager wrote is left exactly as it is (`HistoryStore::open`).
 //! Written whole, to a staging file beside it renamed into place, as
@@ -225,10 +227,25 @@ pub fn record_for(
     })
 }
 
-/// Drops what is older than `MAX_AGE_MS` before `now`, then all but the
-/// newest `MAX_RECORDS`. Leaves `records` oldest first.
-fn bound(records: &mut Vec<HistoryRecord>, now: i64) {
-    records.retain(|r| r.finished_at >= now.saturating_sub(MAX_AGE_MS));
+/// What the records' age is measured from: `now`, or the newest of
+/// `records` when that is earlier. A clock set far ahead -- a wrong answer
+/// from the network at boot, a date changed by hand -- then drops nothing
+/// the records do not show to be old among themselves: dropped records
+/// are gone from the file for good once it is written, and the clock may
+/// be put right a minute later. Records are still dropped once a newer
+/// one is 180 days past them.
+fn age_anchor(records: &[HistoryRecord], now: i64) -> i64 {
+    records
+        .iter()
+        .map(|r| r.finished_at)
+        .max()
+        .map_or(now, |newest| newest.min(now))
+}
+
+/// Drops what is older than `MAX_AGE_MS` before `anchor` (`age_anchor`),
+/// then all but the newest `MAX_RECORDS`. Leaves `records` oldest first.
+fn bound(records: &mut Vec<HistoryRecord>, anchor: i64) {
+    records.retain(|r| r.finished_at >= anchor.saturating_sub(MAX_AGE_MS));
     records.sort_by_key(|r| r.finished_at);
     if records.len() > MAX_RECORDS {
         let extra = records.len() - MAX_RECORDS;
@@ -289,7 +306,8 @@ fn load(path: &Path, now: i64) -> Loaded {
         })
         .unwrap_or_default();
     let read = records.len();
-    bound(&mut records, now);
+    let anchor = age_anchor(&records, now);
+    bound(&mut records, anchor);
     Loaded::Usable {
         cleared_before,
         pruned: records.len() < read,
@@ -435,8 +453,11 @@ impl HistoryStore {
         };
         {
             let mut state = self.state.lock().unwrap();
+            // Measured from the records before this one: its own time is
+            // `now`, which is what may be wrong.
+            let anchor = age_anchor(&state.records, now);
             state.records.push(record);
-            bound(&mut state.records, now);
+            bound(&mut state.records, anchor);
             state.changes += 1;
         }
         self.wake();
@@ -838,6 +859,59 @@ mod tests {
         let again = HistoryStore::open_with_clock(dir.file(), now);
         assert!(again.flush(Duration::from_secs(5)));
         assert_eq!(std::fs::read(dir.file()).unwrap(), bytes);
+    }
+
+    fn a_year_ahead() -> i64 {
+        NOW + 365 * DAY
+    }
+
+    #[test]
+    fn test_a_clock_set_far_ahead_drops_no_record_at_load_or_at_a_new_one() {
+        // The Mac's clock a year ahead at launch, then an update finishing
+        // under it: the records of the past days stay, and the file is not
+        // written again at load. Put right later, the history is whole.
+        let dir = TempDir::new("clock-ahead");
+        let file = HistoryFile {
+            format: HISTORY_FORMAT,
+            cleared_before: None,
+            records: vec![
+                record_at("older", NOW - 100 * DAY),
+                record_at("recent", NOW - DAY),
+            ],
+        };
+        let bytes = serde_json::to_vec(&file).unwrap();
+        std::fs::write(dir.file(), &bytes).unwrap();
+        let store = HistoryStore::open_with_clock(dir.file(), a_year_ahead);
+        assert!(store.flush(Duration::from_secs(5)));
+        assert_eq!(std::fs::read(dir.file()).unwrap(), bytes, "not rewritten");
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        assert!(store.flush(Duration::from_secs(5)));
+        let mut names: Vec<String> = store
+            .view()
+            .records
+            .iter()
+            .map(|r| r.key.name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["cmake", "older", "recent"]);
+
+        // The age rule itself still holds, from the newest record: one 181
+        // days before it goes, whatever the clock says.
+        let mut records = vec![
+            record_at("gone", NOW - 181 * DAY),
+            record_at("kept", NOW - 179 * DAY),
+            record_at("newest", NOW),
+        ];
+        let anchor = age_anchor(&records, a_year_ahead());
+        bound(&mut records, anchor);
+        assert_eq!(
+            records
+                .iter()
+                .map(|r| r.key.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["kept", "newest"]
+        );
     }
 
     #[test]
