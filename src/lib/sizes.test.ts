@@ -5,6 +5,7 @@ import {
   modelsTotalText,
   otherVersionsSizeText,
   saysSize,
+  sizeCellOf,
   sizeNoteOf,
   sizeOrderOf,
   sizeText,
@@ -131,6 +132,14 @@ describe("saysSize", () => {
       [zero],
     );
     expect([...order.entries()]).toEqual([["uv|Tool|corepack", 0]]);
+  });
+
+  it("shows 「—」 in By Size's column for a measured 0, as for none, never 「约0 B」", () => {
+    const zero = { ...ruff, key: { ...ruff.key, name: "corepack" } };
+    const measured = (bytes: number) =>
+      sizes({ artifacts: [{ key: zero.key, version: zero.version, measured: { bytes, partial: false, at_least: false }, old_versions: null }] });
+    expect(sizeCellOf(zh, measured(0), zero)).toEqual({ text: "—", muted: true });
+    expect(sizeCellOf(zh, measured(4_096), zero)).toEqual({ text: "约4.1 KB", muted: false });
   });
 });
 

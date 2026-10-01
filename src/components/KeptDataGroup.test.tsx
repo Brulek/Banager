@@ -250,7 +250,11 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
   });
 
   it("names a path that measured 0 with no size, never 「约0 B」", async () => {
-    open([{ KeepsData: { path: "~/.claude.json", what: "ToolData", size: { bytes: 0, partial: false, at_least: false } } }]);
+    open([
+      {
+        KeepsData: { path: "~/.claude.json", what: "ToolData", size: { bytes: 0, partial: false, at_least: false }, left_out: [] },
+      },
+    ]);
     const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
     const [row] = within(group).getAllByRole("listitem");
     expect(row.textContent).toBe("~/.claude.jsonThis tool's settings and dataCopy Path");

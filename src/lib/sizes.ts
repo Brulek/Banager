@@ -144,8 +144,9 @@ export function compareBySize(order: Map<string, number>, a: InstalledArtifact, 
  * What a row shows in its version's place while the list is sorted by
  * size (`InstalledPage`'s "By Size"), as Finder's Size column does: the
  * size the order goes by -- 「约4.7 GB」 -- or 「正在计算…」 while it is
- * measured, or 「—」 for a row with none. `measuring` says which, to be
- * drawn muted.
+ * measured, or 「—」 for a row with none, and for a measured 0
+ * (`saysSize`), which still sorts as the smallest measured. `muted` says
+ * which are drawn in the secondary colour.
  */
 export function sizeCellOf(
   t: Translate,
@@ -156,5 +157,6 @@ export function sizeCellOf(
   const view = sizeViewOf(sizes, artifact);
   if (view === null) return { text: "—", muted: true };
   if (view.kind === "measuring") return { text: t("sizes.measuring"), muted: true };
+  if (!saysSize(view.measured)) return { text: "—", muted: true };
   return { text: sizeText(t, view.measured), muted: false };
 }

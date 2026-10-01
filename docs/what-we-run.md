@@ -2049,8 +2049,10 @@ counts the blocks the disk holds for it (`st_blocks`), and a file with
 several hard links counts once. A folder that cannot be read is skipped and
 the size is shown as partial (「部分无法读取」). One round looks at
 300,000 entries and spends 30 seconds at most (`SizeBudget::default`); a
-size it stopped short of is shown as "at least" (「至少约…」), and a tool
-it did not reach before the budget ran out shows no size that round. The
+size it stopped short of is shown as "or more" (「…以上」), and a tool
+it did not reach before the budget ran out shows no size that round. One
+that measured 0 -- only links, as npm's `corepack` under Homebrew's node --
+shows no number either, though By Size still sorts it as measured. The
 next round measures first what no round has measured yet, and only then
 again what an earlier round stopped short of or could not read in full,
 showing the earlier number, marked as it was, meanwhile. Every number
@@ -2123,8 +2125,8 @@ How: during the uninstall preview only, each path is looked at as disk
 use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and
 `readlink`; no file is opened), with a budget of 100,000 entries and 1
 second for all of them together (`kept_data::BUDGET`). A size it stopped
-short of is shown as "at least" (「至少约…」), and a path it did not reach,
-or could not read, is named with no size. A path that leads into one of
+short of is shown as "or more" (「…以上」), and a path it did not reach,
+or could not read, or that measured 0, is named with no size. A path that leads into one of
 the places disk use never looks into (Disk use, above: the one list in
 `crates/banager-core/src/protected.rs`, whatever case spells them) is
 named with no size, and nothing there is read. A path that is not there,
