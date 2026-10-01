@@ -269,8 +269,8 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(await screen.findByText("Some apps ask for your Mac password at this step.")).toBeInTheDocument();
-    expect(linesOf("Notes")).toEqual(["Some apps ask for your Mac password at this step."]);
+    expect(await screen.findByText("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.")).toBeInTheDocument();
+    expect(linesOf("Notes")).toEqual(["Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal."]);
     // A line of its own under the text, with no 「请注意」 heading over it,
     // and no ⚠︎: a password is not a caution.
     expect(within(group("Notes")).queryByRole("heading")).toBeNull();
@@ -804,7 +804,7 @@ describe("UninstallDialog", () => {
       "Also stops and removes a background service.",
       "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
       "Also quits an app if it is running.",
-      "Some apps ask for your Mac password at this step.",
+      "Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.",
     ]);
     // What only a reverse-DNS id names is counted, with the id behind the
     // line's ⓘ.
@@ -848,7 +848,7 @@ describe("UninstallDialog", () => {
     expect(linesOf("Notes")).toEqual([
       "Also deletes every file the installer package org.wireshark.ChmodBPF.pkg put on this Mac, whether or not other apps use them.",
       "Also runs /usr/sbin/installer.",
-      "Some apps ask for your Mac password at this step.",
+      "Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.",
     ]);
     en.unmount();
 
@@ -864,7 +864,7 @@ describe("UninstallDialog", () => {
       expect(linesOf("说明")).toEqual([
         "还会删除下列安装包安装的全部文件，不论其他App是否在用：org.wireshark.ChmodBPF.pkg。",
         "还会运行：/usr/sbin/installer。",
-        "部分App在这一步会要求输入Mac密码。",
+        "部分App在这一步会要求输入Mac密码，这里无法输入；需要时会告诉你在终端里怎么完成。",
       ]);
     } finally {
       await i18n.changeLanguage("en");
@@ -907,7 +907,7 @@ describe("UninstallDialog", () => {
       expect(linesOf("说明")).toEqual([
         "还会停止并删除1个后台服务。",
         "还会退出正在运行的Visual Studio Code。",
-        "部分App在这一步会要求输入Mac密码。",
+        "部分App在这一步会要求输入Mac密码，这里无法输入；需要时会告诉你在终端里怎么完成。",
       ]);
       fireEvent.click(screen.getByRole("button", { name: "详情：还会停止并删除1个后台服务。" }));
       expect(screen.getByText("在macOS中的名称：com.microsoft.VSCode.ShipIt")).toBeInTheDocument();
@@ -952,7 +952,7 @@ describe("UninstallDialog", () => {
     );
     await screen.findByRole("button", { name: "Uninstall" });
     const line = "Also stops and removes background services, including every running one whose name matches a pattern.";
-    expect(linesOf("Notes")).toEqual([line, "Some apps ask for your Mac password at this step."]);
+    expect(linesOf("Notes")).toEqual([line, "Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal."]);
     fireEvent.click(screen.getByRole("button", { name: `Details: ${line}` }));
     expect(screen.getByText(`As macOS names them: ${services.join(", ")}`)).toBeInTheDocument();
     english.unmount();
@@ -964,7 +964,7 @@ describe("UninstallDialog", () => {
       );
       await screen.findByRole("button", { name: "卸载" });
       const chinese = "还会停止并删除后台服务，包括名称符合某个规则、正在运行的全部服务。";
-      expect(linesOf("说明")).toEqual([chinese, "部分App在这一步会要求输入Mac密码。"]);
+      expect(linesOf("说明")).toEqual([chinese, "部分App在这一步会要求输入Mac密码，这里无法输入；需要时会告诉你在终端里怎么完成。"]);
       fireEvent.click(screen.getByRole("button", { name: `详情：${chinese}` }));
       expect(screen.getByText(`在macOS中的名称：${services.join("、")}`)).toBeInTheDocument();
     } finally {

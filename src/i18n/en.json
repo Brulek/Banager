@@ -377,7 +377,7 @@
     "show_one": "Show Command",
     "show_other": "Show Commands",
     "trashLabel": "Moves to the Trash",
-    "needsPassword": "Some apps ask for your Mac password at this step."
+    "needsPassword": "Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal."
   },
   "majorVersion": {
     "tag": "Major update",

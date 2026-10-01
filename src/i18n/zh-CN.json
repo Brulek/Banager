@@ -352,7 +352,7 @@
   "commandPreview": {
     "show_other": "查看命令",
     "trashLabel": "移到废纸篓",
-    "needsPassword": "部分App在这一步会要求输入Mac密码。"
+    "needsPassword": "部分App在这一步会要求输入Mac密码，这里无法输入；需要时会告诉你在终端里怎么完成。"
   },
   "majorVersion": {
     "tag": "大版本更新",

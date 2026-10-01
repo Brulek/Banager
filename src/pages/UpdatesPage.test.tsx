@@ -652,7 +652,7 @@ describe("UpdatesPage", () => {
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
 
-    const notices = within(dialog).getAllByText("Some apps ask for your Mac password at this step.");
+    const notices = within(dialog).getAllByText("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.");
     expect(notices).toHaveLength(1);
     // Under onyx's own row of the list, and no other's.
     expect(notices[0].closest("[data-sheet-tool]")?.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
@@ -4237,7 +4237,7 @@ describe("UpdatesPage", () => {
             },
           ],
         },
-        { tool: "onyx", lines: [{ text: "Some apps ask for your Mac password at this step.", caution: false }] },
+        { tool: "onyx", lines: [{ text: "Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.", caution: false }] },
       ]);
       // Text to read, not a caption: the label colour, at 11.
       for (const line of dialog.querySelectorAll("[data-sheet-tool] li")) {
@@ -4269,7 +4269,7 @@ describe("UpdatesPage", () => {
       await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
       expect(names()).toEqual(["onyx", "glib"]);
       const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
-      expect(within(first).getByText("Some apps ask for your Mac password at this step.")).toBeInTheDocument();
+      expect(within(first).getByText("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.")).toBeInTheDocument();
     });
 
     it("says nothing about notes beside Update when there are none", async () => {
@@ -4492,7 +4492,7 @@ describe("UpdatesPage", () => {
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
       // Preparing, where the notes and the commands will go, and Update off.
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
-      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step.")).toBeNull();
+      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.")).toBeNull();
       expect(within(dialog).queryByRole("button", { name: /^Show Command/ })).toBeNull();
       const update = within(dialog).getByRole("button", { name: "Update" });
       expect(update).toBeDisabled();
@@ -4502,7 +4502,7 @@ describe("UpdatesPage", () => {
       await release("glib");
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       expect(update).toBeDisabled();
-      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step.")).toBeNull();
+      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.")).toBeNull();
 
       // Every plan back: the notes and the commands, and Update on.
       await release("onyx");
@@ -4511,7 +4511,7 @@ describe("UpdatesPage", () => {
       // onyx's note, under onyx, which it brings to the top of the list.
       const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
       expect(first.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
-      expect(first).toHaveTextContent("Some apps ask for your Mac password at this step.");
+      expect(first).toHaveTextContent("Some apps ask for your Mac password at this step. It can't be typed here; if one asks, you'll see how to finish in Terminal.");
       showCommands(dialog);
       expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
       expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
