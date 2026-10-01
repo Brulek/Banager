@@ -2039,13 +2039,13 @@ All read-only, none saved anywhere else, none uploaded:
   nothing else — no version is read.
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
-  a file's contents.
+  a file's contents. A row's Show in Finder: where the path it shows
+  leads (`realpath`), and nothing else (Unknown-source scan, above).
 - Disk use, after each refresh: each tool's own folder or program file, the
   names in each formula's `<prefix>/Cellar/<name>`, Ollama's
   `~/.ollama/models/blobs` and `<CARGO_HOME>/.crates2.json`, with `lstat`,
   `readdir` and `readlink` — never a file's contents but that one file's,
-  and never anything in the places its section names (Disk use, above). A row's Show in Finder: where the path it shows
-  leads (`realpath`), and nothing else (Unknown-source scan, above).
+  and never anything in the places its section names (Disk use, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads
