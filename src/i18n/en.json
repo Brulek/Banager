@@ -449,6 +449,17 @@
       "standalone-grok": "xAI's AI coding assistant"
     }
   },
+  "sizes": {
+    "term": "Space used",
+    "measuring": "Calculating…",
+    "about": "About {{size}}",
+    "atLeast": "At least about {{size}}",
+    "partial": "About {{size}}; some of it couldn't be read",
+    "oldVersions": "Old versions: about {{size}}",
+    "oldVersionsAtLeast": "Old versions: at least about {{size}}",
+    "ollamaModels": "Ollama models: about {{size}} in all",
+    "ollamaModelsAtLeast": "Ollama models: at least about {{size}} in all"
+  },
   "sourceNotice": {
     "pipReadOnly": {
       "description": "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here."

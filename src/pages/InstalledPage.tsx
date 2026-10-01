@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useOperations, useSaveSettings, useSettings, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useOperations, useSaveSettings, useSettings, useSizes, useSnapshot } from "../lib/queries";
 import { useInstalledSnapshot } from "../lib/inventoryPreview";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
@@ -29,7 +29,6 @@ import {
 } from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
-import { formatBytes } from "../lib/format";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
@@ -73,6 +72,7 @@ import {
 } from "../components/HomebrewStatus";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
+import { sizeFact } from "../components/SizeFact";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -408,6 +408,8 @@ export function InstalledPage() {
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
   const { data: operations } = useOperations();
+  // How much each tool takes on disk, measured after each check (`sizeFact`).
+  const { data: sizes } = useSizes();
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
@@ -1260,9 +1262,8 @@ export function InstalledPage() {
         selectable: true,
       });
     }
-    if (artifact.size_bytes !== null) {
-      facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes), selectable: true });
-    }
+    const size = sizeFact(t, artifact, sizes);
+    if (size !== null) facts.push(size);
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
     if (showTechnicalDetails && artifact.path !== null) {

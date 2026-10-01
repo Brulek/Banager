@@ -19,6 +19,7 @@ import {
   scanUnknown,
   revealInFinder,
   artifactIcon,
+  getSizes,
 } from "./api";
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
 import { queryKeys } from "./queryKeys";
@@ -30,9 +31,11 @@ import type {
   OpSummary,
   PlanId,
   Settings,
+  Sizes,
   Snapshot,
   UnknownScan,
 } from "./types";
+import { NO_SIZES } from "./types";
 
 export { queryKeys };
 
@@ -52,6 +55,20 @@ export function useSnapshot(): UseQueryResult<Snapshot> {
       const cached = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
       return isNewerSnapshot(fetched, cached) ? fetched : (cached ?? fetched);
     },
+  });
+}
+
+/**
+ * How much disk each installed thing takes, as the newest round of
+ * measuring says so far: asked for as the page needs it, and again each
+ * time `SizesChanged` invalidates it (src/lib/events.ts). Not the
+ * snapshot: a refresh never writes it. A command that answers nothing
+ * reads as no sizes.
+ */
+export function useSizes(): UseQueryResult<Sizes> {
+  return useQuery({
+    queryKey: queryKeys.sizes,
+    queryFn: async () => (await getSizes()) ?? NO_SIZES,
   });
 }
 

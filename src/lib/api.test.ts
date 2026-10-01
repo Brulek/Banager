@@ -16,6 +16,7 @@ import {
   subscribeEvents,
   scanUnknown,
   artifactIcon,
+  getSizes,
   setMenuLanguage,
   onMenuCommand,
   type MenuCommand,
@@ -31,7 +32,7 @@ import {
   quitQuestionShown,
   quitAnyway,
 } from "./api";
-import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
+import type { ArtifactKey, IssuedPlan, OpRequest, Settings, Sizes, UiEvent, UnknownScan } from "./types";
 import { watchDock } from "../test/dock";
 
 const mockInvoke = vi.mocked(invoke);
@@ -157,6 +158,13 @@ describe("api", () => {
     const result = await scanUnknown();
     expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
     expect(result).toEqual(scan);
+  });
+
+  it("getSizes invokes get_sizes with no args and returns the sizes", async () => {
+    const sizes: Sizes = { round: 2, done: true, artifacts: [], models: [], total: null };
+    mockInvoke.mockResolvedValueOnce(sizes as never);
+    expect(await getSizes()).toEqual(sizes);
+    expect(mockInvoke.mock.calls).toEqual([["get_sizes"]]);
   });
 
   it("artifactIcon invokes artifact_icon with the key and nothing else, and returns its answer", async () => {

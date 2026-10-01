@@ -250,7 +250,8 @@ export function useStartupRefresh(): void {
  * React state: `Operation.Log` and `Operation.Note` events are appended to
  * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
  * invalidate the operations query, `SnapshotChanged` invalidates the snapshot query,
- * and `InventoryPreview` is kept apart from it (`writeInventoryPreview`). A `Finished`
+ * `InventoryPreview` is kept apart from it (`writeInventoryPreview`), and
+ * `SizesChanged` invalidates the sizes query. A `Finished`
  * event is also when the operation finished (`rememberOpFinished`), and
  * triggers a `refresh`: that is the only way the
  * installed/updates lists learn that an uninstall or update changed
@@ -296,6 +297,10 @@ export function useOperationEvents(): void {
       } else if ("InventoryPreview" in event) {
         // No snapshot changed: nothing to fetch.
         writeInventoryPreview(queryClient, event.InventoryPreview);
+      } else if ("SizesChanged" in event) {
+        // Measured after a refresh, outside the snapshot: only the sizes
+        // are asked for again.
+        queryClient.invalidateQueries({ queryKey: queryKeys.sizes });
       } else {
         queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }

@@ -9,6 +9,7 @@ import type {
   PlanId,
   Settings,
   Snapshot,
+  Sizes,
   OpSummary,
   UiEvent,
   UnknownScan,
@@ -130,6 +131,16 @@ export async function revealInFinder(path: string): Promise<void> {
  */
 export function artifactIcon(key: ArtifactKey): Promise<string | null> {
   return call<string | null>("artifact_icon", { key });
+}
+
+/**
+ * How much disk each installed thing takes, as the newest round of
+ * measuring says so far (`get_sizes` in src-tauri/src/ipc.rs): measured on
+ * the Rust side after each refresh, outside the snapshot. Takes nothing;
+ * `SizesChanged` says when to ask again. `useSizes` is the caller.
+ */
+export function getSizes(): Promise<Sizes> {
+  return call<Sizes>("get_sizes");
 }
 
 /**

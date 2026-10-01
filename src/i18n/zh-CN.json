@@ -410,6 +410,17 @@
       "standalone-grok": "xAI的AI编程助手"
     }
   },
+  "sizes": {
+    "term": "占用空间",
+    "measuring": "正在计算…",
+    "about": "约{{size}}",
+    "atLeast": "至少约{{size}}",
+    "partial": "约{{size}}，部分无法读取",
+    "oldVersions": "旧版本约{{size}}",
+    "oldVersionsAtLeast": "旧版本至少约{{size}}",
+    "ollamaModels": "Ollama模型共约{{size}}",
+    "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}"
+  },
   "sourceNotice": {
     "pipReadOnly": {
       "description": "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。"

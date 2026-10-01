@@ -11,6 +11,8 @@ export const queryKeys = {
    * (src/lib/events.ts), never fetched, read by `useInventoryPreview`.
    */
   inventoryPreview: ["inventoryPreview"] as const,
+  /** How much disk each installed thing takes (`useSizes`). */
+  sizes: ["sizes"] as const,
   /** One cask's app icon (`useArtifactIcon`), by the whole key. */
   artifactIcon: (key: ArtifactKey) =>
     ["artifactIcon", key.instance_id, key.kind, key.name] as const,

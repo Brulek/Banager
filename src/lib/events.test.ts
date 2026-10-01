@@ -107,6 +107,26 @@ describe("useOperationEvents", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.snapshot });
   });
 
+  it("invalidates the sizes query, and only it, on SizesChanged", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    capturedChannel!.onmessage({ SizesChanged: { round: 4 } });
+
+    expect(invalidateSpy.mock.calls).toEqual([[{ queryKey: queryKeys.sizes }]]);
+    expect(mockInvoke).not.toHaveBeenCalledWith("refresh");
+  });
+
   it("refreshes the snapshot into the cache after a Finished event", async () => {
     let capturedChannel = null as InstanceType<typeof Channel> | null;
     mockInvoke.mockImplementation((cmd: string, args?: unknown) => {

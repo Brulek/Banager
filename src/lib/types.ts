@@ -586,7 +586,49 @@ export interface InventoryPreview {
   /** What each source that read its list listed; one whose read failed is absent. */
   artifacts: InstalledArtifact[];
 }
+/**
+ * How much one thing takes on disk. Mirrors `Measured` in
+ * crates/banager-core/src/size.rs: `bytes` is what the disk holds for it,
+ * each hard-linked file once; `partial` when part of it could not be read
+ * or went away while it was measured, `at_least` when the round's budget
+ * ran out first -- both mean it takes more.
+ */
+export interface Measured {
+  bytes: number;
+  partial: boolean;
+  at_least: boolean;
+}
+/** Rust `ArtifactSize`: one installed thing's size, by its key. */
+export interface ArtifactSize {
+  key: ArtifactKey;
+  /** The version it was measured at; shown only beside that version. */
+  version: string;
+  /** Null while it is still being measured. */
+  measured: Measured | null;
+  /** A Homebrew formula's other kegs, together; null when it has none. */
+  old_versions: Measured | null;
+}
+/** Rust `ModelsSize`: one Ollama's models, as the folder they are in. */
+export interface ModelsSize {
+  instance_id: string;
+  measured: Measured | null;
+}
+/**
+ * Rust `Sizes` (crates/banager-core/src/size.rs): what the newest round of
+ * measuring says so far, from `get_sizes`. Not part of the `Snapshot`; an
+ * artifact it does not list has no size to show.
+ */
+export interface Sizes {
+  round: number;
+  done: boolean;
+  artifacts: ArtifactSize[];
+  models: ModelsSize[];
+  total: Measured | null;
+}
+/** `Sizes::default()`: before any round, and nothing to show. */
+export const NO_SIZES: Sizes = { round: 0, done: false, artifacts: [], models: [], total: null };
 export type UiEvent =
   | { Operation: OperationEvent }
   | { SnapshotChanged: { generation: number } }
-  | { InventoryPreview: InventoryPreview };
+  | { InventoryPreview: InventoryPreview }
+  | { SizesChanged: { round: number } };

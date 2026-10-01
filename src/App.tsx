@@ -15,7 +15,8 @@ import { SnapshotStatus } from "./components/SnapshotStatus";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
 import { useInventoryPreview } from "./lib/inventoryPreview";
-import { useSnapshot, useUnknownScan } from "./lib/queries";
+import { useSizes, useSnapshot, useUnknownScan } from "./lib/queries";
+import { modelsTotalText } from "./lib/sizes";
 import { instanceLabels } from "./lib/sources";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
@@ -56,8 +57,9 @@ function headerActions(page: Page): ReactNode {
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
  * bring up to date. On one source alone, the Installed page counts that
- * source's tools, 「30个工具」, under its name (`useShownSource`). Other
- * Programs says 「正在扫描…」 while it scans.
+ * source's tools, 「30个工具」, under its name (`useShownSource`) -- and on
+ * Ollama's, what its models take together, 「2个工具 · Ollama模型共约6.2 GB」
+ * (`modelsTotalText`). Other Programs says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
  * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
  * default, so a page added to `Page` without an answer here fails `tsc`.
@@ -68,6 +70,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   const checking = useRefreshInFlight();
   const lastCheckFailed = useUiStore((s) => s.startupRefreshError !== null);
   const { data: snapshot } = useSnapshot();
+  const { data: sizes } = useSizes();
   const updatesHeadline = useUpdatesHeadline();
   const scan = useUnknownScan();
   // The first check's list, while that check is still checking for updates.
@@ -90,14 +93,20 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       if (checking) return said(t("common.checking"));
       if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
       if (page === "updates") return said(updatesHeadline);
-      // On one source alone, that source's: its name is the title.
+      // On one source alone, that source's: its name is the title. On
+      // Ollama's, what its models take together after it, once measured.
       return said(
-        counted(
-          "toolbar.toolCount",
-          shownSource === null
-            ? snapshot?.artifacts.length
-            : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
-        ),
+        [
+          counted(
+            "toolbar.toolCount",
+            shownSource === null
+              ? snapshot?.artifacts.length
+              : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
+          ),
+          shownSource === null ? null : modelsTotalText(t, sizes, shownSource),
+        ]
+          .filter((part): part is string => part !== null)
+          .join(" · ") || null,
       );
     case "unknown":
       if (scan.isFetching) return said(t("unknown.scanning"));

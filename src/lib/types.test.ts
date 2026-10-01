@@ -24,8 +24,9 @@ import type {
   ScanStop,
   UnknownScan,
   UpdatePair,
+  Sizes,
 } from "./types";
-import { NO_FACTS } from "./types";
+import { NO_FACTS, NO_SIZES } from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
 // only strips types, so a JSON-string fixture would pass no matter what
@@ -681,5 +682,34 @@ describe("types", () => {
     const parsed = roundTrip(event);
     expect("InventoryPreview" in parsed && parsed.InventoryPreview).toEqual(preview);
     expect(Object.keys(preview).sort()).toEqual(["artifacts", "instances", "round"]);
+  });
+
+  it("spells Sizes and SizesChanged as size.rs's and events.rs's shape tests do", () => {
+    // `test_sizes_are_the_json_the_typescript_mirror_reads` in
+    // crates/banager-core/src/size.rs asserts this exact string from the
+    // Rust side.
+    const sizes: Sizes = {
+      round: 3,
+      done: true,
+      artifacts: [
+        {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" },
+          version: "22.23.3",
+          measured: { bytes: 312000000, partial: false, at_least: false },
+          old_versions: { bytes: 1200000000, partial: true, at_least: false },
+        },
+      ],
+      models: [{ instance_id: "ollama:http://127.0.0.1:11434", measured: null }],
+      total: null,
+    };
+    expect(JSON.stringify(sizes)).toBe(
+      '{"round":3,"done":true,"artifacts":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3","measured":{"bytes":312000000,"partial":false,"at_least":false},"old_versions":{"bytes":1200000000,"partial":true,"at_least":false}}],"models":[{"instance_id":"ollama:http://127.0.0.1:11434","measured":null}],"total":null}',
+    );
+    expect(roundTrip(sizes)).toEqual(sizes);
+    expect(JSON.stringify(NO_SIZES)).toBe('{"round":0,"done":false,"artifacts":[],"models":[],"total":null}');
+    // `test_sizes_changed_reaches_the_window_as_an_object_with_its_round`
+    // in src-tauri/src/events.rs: an object, so `in` can tell it apart.
+    const changed: UiEvent = { SizesChanged: { round: 12 } };
+    expect(JSON.stringify(changed)).toBe('{"SizesChanged":{"round":12}}');
   });
 });
