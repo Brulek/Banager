@@ -139,6 +139,37 @@ describe("types", () => {
     expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[]}');
   });
 
+  it("reads Snapshot.next_auto_check_at as ipc.rs's wire test sends it: Unix seconds, or null before any check", () => {
+    // test_every_snapshot_the_window_is_handed_says_when_the_daily_check_is_next_due
+    // in src-tauri/src/ipc.rs: a window round at 1790586000, due a day on.
+    const wire = {
+      generation: 1,
+      round: 1,
+      detect: "Found",
+      instances: [],
+      artifacts: [],
+      updates: [],
+      refreshed_at: 1790586000,
+      stale: false,
+      errors: [],
+      next_auto_check_at: 1790672400,
+    } satisfies Snapshot;
+    expect(roundTrip<Snapshot>(wire).next_auto_check_at).toBe(1790672400);
+    expect(roundTrip<Snapshot>({ ...wire, next_auto_check_at: null }).next_auto_check_at).toBeNull();
+    expect(Object.keys(roundTrip<Snapshot>(wire))).toEqual([
+      "generation",
+      "round",
+      "detect",
+      "instances",
+      "artifacts",
+      "updates",
+      "refreshed_at",
+      "stale",
+      "errors",
+      "next_auto_check_at",
+    ]);
+  });
+
   it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
     // `Option<ReadOnlyReason>` on the Rust side: a unit variant serialises
     // to its bare name, `None` to `null`. Every spelling below has to match

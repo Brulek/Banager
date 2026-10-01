@@ -788,6 +788,8 @@ impl Session {
             refreshed_at,
             stale,
             errors,
+            // The shell's to fill in (`Snapshot::next_auto_check_at`).
+            next_auto_check_at: None,
         };
         (round, self.commit(round, previous, candidate, record))
     }

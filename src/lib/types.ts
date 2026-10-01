@@ -451,6 +451,18 @@ export interface Snapshot {
   refreshed_at: number | null;
   stale: boolean;
   errors: SourceError[];
+  /**
+   * When the daily check is next due, Unix seconds on the wall clock (Rust
+   * `Snapshot::next_auto_check_at`, from `auto_check::next_check_due`): a
+   * day after the last check that counted -- the window's own Check again
+   * included -- or sooner after failed daily checks. The shell fills it in
+   * on every snapshot it hands the window and always sends it; `null`
+   * while no check has counted yet (due at the next look). Optional here
+   * only so a test's or the mock's snapshot may leave it out, which reads
+   * as `null`. Settings shows it under the daily check's switch, while the
+   * switch is on (`NextAutoCheck`).
+   */
+  next_auto_check_at?: number | null;
 }
 /**
  * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry

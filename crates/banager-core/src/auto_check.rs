@@ -658,6 +658,7 @@ mod tests {
             refreshed_at: Some(NINE_AM),
             stale: false,
             errors: Vec::new(),
+            next_auto_check_at: None,
         }
     }
 

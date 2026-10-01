@@ -13,7 +13,19 @@ use tauri::ipc::Channel;
 use tauri::State;
 
 pub(crate) fn get_snapshot_impl(state: &AppState) -> Result<Snapshot, String> {
-    Ok(state.session.snapshot())
+    Ok(with_next_auto_check(state, state.session.snapshot()))
+}
+
+/// `snapshot`, with when the daily check is next due
+/// (`Snapshot::next_auto_check_at`, which `Session` leaves `None`): read
+/// from the round log as it is now (`RoundLog::next_check_due`), which a
+/// round is recorded in before its snapshot is committed
+/// (`refresh_for`), so a snapshot handed out here is never older than the
+/// time it carries. Every snapshot the window is handed goes through here:
+/// `get_snapshot`'s and `refresh`'s.
+fn with_next_auto_check(state: &AppState, mut snapshot: Snapshot) -> Snapshot {
+    snapshot.next_auto_check_at = state.rounds.lock().unwrap().next_check_due();
+    snapshot
 }
 
 #[tauri::command]
@@ -106,7 +118,10 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
             },
         )
         .await;
-    Ok(announce(state, snapshot, trigger))
+    Ok(with_next_auto_check(
+        state,
+        announce(state, snapshot, trigger),
+    ))
 }
 
 fn check_options(state: &AppState) -> CheckOptions {
@@ -1456,6 +1471,47 @@ mod tests {
         let state = state_with_fake_adapter();
         let snapshot = get_snapshot_impl(&state).expect("get_snapshot_impl");
         assert_eq!(snapshot.generation, 0);
+    }
+
+    /// 2026-09-28 09:00 UTC: the clock `Session` stamps rounds with in
+    /// the test below.
+    fn nine_am() -> i64 {
+        1_790_586_000
+    }
+
+    #[tokio::test]
+    async fn test_every_snapshot_the_window_is_handed_says_when_the_daily_check_is_next_due() {
+        let (state, _, _) = state_with_fake_adapter_and_now(Some(nine_am));
+        // No round yet: due at the next look, said as null on the wire.
+        let before = serde_json::to_value(get_snapshot_impl(&state).expect("get_snapshot_impl"))
+            .expect("serialize");
+        assert_eq!(before["next_auto_check_at"], serde_json::Value::Null);
+
+        // The window's check (Check again, the check at launch): a day on.
+        let refreshed = refresh_impl(&state).await.expect("refresh_impl");
+        let due = nine_am() + banager_core::auto_check::DUE_AFTER_SECS;
+        assert_eq!(refreshed.next_auto_check_at, Some(due));
+        assert_eq!(
+            state.session.snapshot().next_auto_check_at,
+            None,
+            "Session itself never sets it"
+        );
+        let fetched = get_snapshot_impl(&state).expect("get_snapshot_impl");
+        assert_eq!(fetched.next_auto_check_at, Some(due));
+
+        // On the wire: a number of Unix seconds under its own name, read
+        // back the same; and a snapshot without it reads as `None`.
+        let wire = serde_json::to_value(&fetched).expect("serialize");
+        assert_eq!(wire["next_auto_check_at"], serde_json::json!(due));
+        let back: Snapshot = serde_json::from_value(wire.clone()).expect("deserialize");
+        assert_eq!(back, fetched);
+        let mut without = wire;
+        without
+            .as_object_mut()
+            .expect("an object")
+            .remove("next_auto_check_at");
+        let back: Snapshot = serde_json::from_value(without).expect("deserialize without it");
+        assert_eq!(back.next_auto_check_at, None);
     }
 
     #[tokio::test]

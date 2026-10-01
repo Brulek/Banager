@@ -311,6 +311,7 @@ mod tests {
             refreshed_at: Some(1_790_586_000),
             stale: false,
             errors: Vec::new(),
+            next_auto_check_at: None,
         }
     }
 

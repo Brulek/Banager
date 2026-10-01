@@ -121,6 +121,17 @@ pub struct Snapshot {
     /// on both pages, via `sourceNoticesFor`.
     pub stale: bool,
     pub errors: Vec<SourceError>,
+    /// When the daily check is next due, Unix seconds on the wall clock
+    /// (`auto_check::next_check_due`): what Settings shows under its
+    /// switch, while the switch is on. Never set by `Session`, which knows
+    /// nothing of who asked for a round: `None` in every snapshot it
+    /// commits, and filled in by the shell from its `auto_check::RoundLog`
+    /// as it hands a snapshot to the window (`get_snapshot`, `refresh`).
+    /// `None` there too while no round has counted as a check -- the check
+    /// is then due at the next look. Not data a round fetched, so not part
+    /// of `same_content`.
+    #[serde(default)]
+    pub next_auto_check_at: Option<i64>,
 }
 
 impl Snapshot {
@@ -135,6 +146,7 @@ impl Snapshot {
             refreshed_at: None,
             stale: false,
             errors: Vec::new(),
+            next_auto_check_at: None,
         }
     }
 
