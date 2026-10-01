@@ -17,7 +17,10 @@
 //! (`others_inside`): `~/.gemini` is Gemini CLI's, but Antigravity CLI
 //! keeps everything of its own in `~/.gemini/antigravity-cli`, which on
 //! the author's Mac was 99 % of `~/.gemini`; Gemini CLI's line leaves it
-//! out and says so.
+//! out and says so. The remainder is not shown to be Gemini CLI's alone:
+//! on that Mac it was only `config/`, `tasks/` and `users/` (about 7.4 MB),
+//! with none of Gemini CLI's documented files such as `settings.json`; the
+//! line names only the part that is Antigravity CLI's and claims no more.
 //!
 //! How: read-only, as disk use is measured (`size::look_at`: `lstat`,
 //! `readdir`, `readlink`; nothing opened, nothing written), under a budget

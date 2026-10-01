@@ -2105,9 +2105,13 @@ uninstall lists `~/.claude` and `~/.claude.json` among what it keeps
 (Claude Code, above), and Antigravity CLI's lists
 `~/.gemini/antigravity-cli` (Antigravity CLI, above).
 
-`~/.gemini` is shared: Gemini CLI keeps its settings there, and
+`~/.gemini` is shared: it is the folder Gemini CLI's docs name, and
 Antigravity CLI keeps everything of its own in `~/.gemini/antigravity-cli`
-(on the author's Mac, 99 % of `~/.gemini`). So Gemini CLI's line leaves
+(on the author's Mac, 99 % of `~/.gemini`). What is left is not shown to
+be Gemini CLI's alone: on the author's Mac it was only `config/`, `tasks/`
+and `users/` (about 7.4 MB), none of Gemini CLI's documented files such as
+`settings.json`. Banager only says which part is Antigravity CLI's and
+leaves it out; it does not claim the rest. So Gemini CLI's line leaves
 another tool's path that the table puts inside its folder out of the size
 (`kept_data::others_inside`): the walk skips that entry -- it neither
 counts nor enters it, nor spends the budget on it -- and, when it met it,
