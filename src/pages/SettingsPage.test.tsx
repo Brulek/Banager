@@ -573,7 +573,7 @@ describe("SettingsPage", () => {
       "Weekly",
     ]);
     expect(daily).toHaveAccessibleDescription(
-      "Banager checks for updates on this schedule, even with its window closed, and doesn't install the updates it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
+      "Banager checks on this schedule even with its window closed, and doesn't install what it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
@@ -1199,7 +1199,7 @@ describe("SettingsPage", () => {
     const updates = await screen.findByRole("region", { name: "Updates" });
     const daily = within(updates).getByRole("combobox", { name: "Check for updates" });
     const what = within(updates).getByText(
-      "Banager checks for updates on this schedule, even with its window closed, and doesn't install the updates it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
+      "Banager checks on this schedule even with its window closed, and doesn't install what it finds. Checks stop when you quit Banager or restart your Mac, until you open it again.",
     );
     // In the daily check's own row, under its label.
     expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);
