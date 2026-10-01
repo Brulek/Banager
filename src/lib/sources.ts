@@ -245,18 +245,13 @@ export function uninstallHoldKey(instance: ManagerInstance): string | null {
 }
 
 /**
- * Something the notice offers to do about itself. An id, not a callback:
- * this module stays pure so every page can call it, and `SourceNotices`
- * wires the id to what carries it out -- `checkAgain` to the header's
- * Check again (`useCheckAgain`), `showTool` to the Installed page with
- * the source's tool selected (`useShowSourceTool`), `showList` to the
- * Installed page's 「显示」 popup.
- */
-export type SourceNoticeActionId = "openOllama" | "checkAgain" | "showTool" | "showList";
-
-/**
  * A notice's button, as data: which action, and its words. `showTool`
- * names the source whose tool it shows.
+ * names the source whose tool it shows. An id, not a callback: this
+ * module stays pure so every page can call it, and `SourceNotices` wires
+ * the id to what carries it out -- `checkAgain` to the header's Check
+ * again (`useCheckAgain`), `showTool` to the Installed page with the
+ * source's tool selected (`useShowSourceTool`), `showList` to the
+ * Installed page's 「显示」 popup.
  */
 export type SourceNoticeAction =
   | { id: "openOllama" | "checkAgain"; labelKey: string }
