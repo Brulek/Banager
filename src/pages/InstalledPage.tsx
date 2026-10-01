@@ -127,7 +127,9 @@ interface RowChip {
  * chips that is not a normal state, in `chipsOf`'s order -- what the
  * source allows, then the tool's own refusal to be removed, why its
  * Uninstall waits, then Homebrew's own mark, then whether it is installed
- * twice, then where its update stands, then how the user hid it.
+ * twice, then (on the first check's list only, where every row's
+ * Uninstall waits for that check) that wait, then where its update
+ * stands, then how the user hid it.
  */
 function rowChipOf(chips: RowChip[]): RowChip | undefined {
   return chips.find((chip) => chip.tone === "neutral");
@@ -807,7 +809,8 @@ export function InstalledPage() {
   // goes away -- a Homebrew updating its list (`uninstallHoldKey`). The
   // row's 「暂时不能卸载」 chip says it, the same chip for both; the button
   // comes back with the check that finds the source answering, or clears
-  // the note.
+  // the note. The first check's list holds it too, said by the same chip
+  // after the row's own words (`chipsOf`).
   const uninstallHoldDetail = (
     artifact: InstalledArtifact,
     instance: ManagerInstance,
@@ -817,8 +820,7 @@ export function InstalledPage() {
     if (!isAvailable(instance)) return unavailableDetail(t, instance, label);
     const holdKey = uninstallHoldKey(instance);
     if (holdKey !== null) return detailLines([t(holdKey)]);
-    // The first check's list: held until that check is done.
-    return preview ? detailLines([t("inventoryPreview.uninstallHold")]) : null;
+    return null;
   };
   // Held as above -- on the first check's list too, until that check is
   // done -- or while an uninstall of this one is under way.
@@ -1061,6 +1063,19 @@ export function InstalledPage() {
     // where its update stands, which the Updates page says too.
     const twin = twinChip(t, artifact, twins.get(id), sourceLabelFor);
     if (twin !== null) chips.push(twin);
+    // The first check's list holds every Uninstall until that check is
+    // done (the button stays disabled, `uninstallHeld`). The same for
+    // every row, and the toolbar says why, so a row's own word -- the
+    // list knows Homebrew's mark already -- comes before it.
+    if (holdDetail === null && preview && canUninstall(artifact, instance)) {
+      chips.push({
+        id: "uninstall-held",
+        label: t("installed.uninstallHold.label"),
+        ariaLabel: t("installed.uninstallHold.ariaLabel", { name: artifact.display_name }),
+        detail: detailLines([t("inventoryPreview.uninstallHold")]),
+        tone: "neutral",
+      });
+    }
     if (listed !== undefined) {
       // A `switch` with no default, so a state added to `UpdateState`
       // without a chip here fails `tsc`.

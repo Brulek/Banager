@@ -289,6 +289,47 @@ describe("the window while the first check still checks for updates", () => {
     await waitFor(() => expect(app.queryClient.getQueryData(queryKeys.inventoryPreview)).toBeNull());
   });
 
+  it("says a row's own Homebrew mark before the wait every row shares, and both in its details", async () => {
+    // The list knows Homebrew's mark already: a disabled cask's row says
+    // 「已停用」, as it will once the check is done, not the first check's
+    // 「暂时不能卸载」 that every row has. Its Uninstall is still held.
+    const oldapp: InstalledArtifact = {
+      ...formula("oldapp", "2.3.1"),
+      key: { instance_id: brew.id, kind: "Cask", name: "oldapp" },
+      facts: {
+        ...NO_FACTS,
+        homebrew: {
+          deprecated: null,
+          disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement: null },
+          caveats: null,
+          other_versions: [],
+        },
+      },
+    };
+    const app = launch();
+    const { getByRole, findByRole, queryByRole } = app;
+    try {
+      fireEvent.click(getByRole("button", { name: "Installed" }));
+      await app.preview({ round: 1, instances: [brew], artifacts: [jq, oldapp] });
+      expect(await findByRole("button", { name: "Uninstall oldapp…" })).toBeDisabled();
+      expect(getByRole("button", { name: "Disabled: oldapp" })).toHaveTextContent("Disabled");
+      expect(queryByRole("button", { name: "Can't uninstall oldapp now" })).toBeNull();
+      // A row with no word of its own still says why its Uninstall is off.
+      expect(getByRole("button", { name: "Can't uninstall jq now" })).toBeInTheDocument();
+
+      fireEvent.click(getByRole("button", { name: "Details: oldapp" }));
+      const inspector = await findByRole("complementary", { name: "oldapp" });
+      const status = within(inspector).getByText("Status").nextElementSibling as HTMLElement;
+      expect([...status.querySelectorAll("[data-status-word]")].map((word) => word.textContent)).toEqual([
+        "Disabled",
+        "Can't uninstall now",
+      ]);
+      expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
+    } finally {
+      await app.answer({ ...answered, artifacts: [jq, oldapp] });
+    }
+  });
+
   it("leaves the Updates page, the Dock's badge and the update notification on the check itself", async () => {
     const dock = watchDock();
     const app = launch();
