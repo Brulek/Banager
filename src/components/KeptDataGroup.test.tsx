@@ -102,9 +102,13 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
       // Size unknown: the path alone.
       "~/.claude.jsonThis tool's settings and dataCopy Path",
     ]);
-    fireEvent.click(within(group).getByRole("button", { name: "Copy path: ~/.claude" }));
+    const copy = within(group).getByRole("button", { name: "Copy path: ~/.claude" });
+    fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("~/.claude"));
-    expect(await within(group).findByRole("status")).toHaveTextContent("Copied");
+    // Beside the button that was pressed, as the details' copy buttons say it; the other row says nothing.
+    expect(await within(rows[0]).findByRole("status")).toHaveTextContent(/^Copied$/);
+    expect(within(rows[0]).getByRole("status").parentElement).toBe(copy.parentElement);
+    expect(within(rows[1]).getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("offers nothing that deletes what stays", async () => {

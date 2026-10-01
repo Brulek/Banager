@@ -2065,8 +2065,8 @@ short of is shown as "at least" (「至少约…」), and a path it did not reac
 or could not read, is named with no size. A path that leads into one of
 the places disk use never looks into (Disk use, above: the one list in
 `crates/banager-core/src/protected.rs`, whatever case spells them) is
-named with no size, and nothing there is read. A path that is not there, or a link that
-leads nowhere, gets no line.
+named with no size, and nothing there is read. A path that is not there,
+or a link that leads nowhere, gets no line.
 
 Nothing is written, and nothing is deleted: the preview has no button or
 command that removes these paths. The one action beside each is Copy

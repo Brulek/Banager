@@ -1,11 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { useCopyCommand } from "../lib/clipboard";
 import { keptDataOf } from "../lib/keptData";
 import { sizeText } from "../lib/sizes";
 import type { Warning } from "../lib/types";
 import { KEPT_DATA_KEYS } from "../lib/warnings";
+import { CopyButton } from "./CopyButton";
 import { SheetSection } from "./SheetParts";
-import { BUTTON } from "./ui/controls";
 import { SMALL_WRAPPING } from "./ui/group";
 
 /**
@@ -13,14 +12,14 @@ import { SMALL_WRAPPING } from "./ui/group";
  * item 6): each folder or file a tool keeps its own data in that the
  * uninstall leaves where it is -- `~/.claude`, Ollama's models -- with
  * about how much it takes where that is known, what it holds in a few
- * plain words, and Copy Path, which copies the path as shown, `~` and all.
- * These are hidden folders, so Show in Finder would show nothing; and
+ * plain words, and Copy Path, which copies the path as shown, `~` and all,
+ * and says 「已拷贝」 beside itself (`CopyButton`, as the details' copy
+ * buttons do). These are hidden folders, so Show in Finder would show nothing; and
  * there is no button, menu or command here that deletes one. Nothing when
  * the plan names none.
  */
 export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
   const { t } = useTranslation();
-  const { status, copy } = useCopyCommand();
   const items = keptDataOf(warnings);
   if (items.length === 0) return null;
   return (
@@ -40,20 +39,14 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
               </p>
               <p className={`break-words text-muted ${SMALL_WRAPPING}`}>{t(KEPT_DATA_KEYS[item.what])}</p>
             </div>
-            <button
-              type="button"
-              aria-label={t("keepsData.copyPathLabel", { path: item.path })}
-              onClick={() => copy(item.path)}
-              className={BUTTON.small.grey}
-            >
-              {t("keepsData.copyPath")}
-            </button>
+            <CopyButton
+              text={item.path}
+              label={t("keepsData.copyPath")}
+              ariaLabel={t("keepsData.copyPathLabel", { path: item.path })}
+            />
           </li>
         ))}
       </ul>
-      <p role="status" className="mt-1 text-small text-muted empty:hidden">
-        {status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null}
-      </p>
     </SheetSection>
   );
 }
