@@ -10,7 +10,8 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
     InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
-    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateBlocked, Warning,
+    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateBlocked,
+    Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -2693,7 +2694,11 @@ mod tests {
         assert_eq!(
             blocked,
             vec![
-                ("oldtool", ArtifactKind::Formula, Some(UpdateBlocked::Disabled)),
+                (
+                    "oldtool",
+                    ArtifactKind::Formula,
+                    Some(UpdateBlocked::Disabled)
+                ),
                 ("jq", ArtifactKind::Formula, Some(UpdateBlocked::Disabled)),
                 ("twin", ArtifactKind::Formula, None),
                 ("git", ArtifactKind::Formula, None),

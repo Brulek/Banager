@@ -884,7 +884,10 @@ mod tests {
         session
             .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
-        match session.issue_plan(&request(OpKind::Upgrade, "quickjot")).await {
+        match session
+            .issue_plan(&request(OpKind::Upgrade, "quickjot"))
+            .await
+        {
             Err(AdapterError::UpdateBlocked { reason }) => {
                 assert_eq!(reason, UpdateBlocked::Disabled);
             }
