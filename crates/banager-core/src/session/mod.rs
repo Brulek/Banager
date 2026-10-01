@@ -486,6 +486,12 @@ impl Session {
         self.login_path.store(restored, Ordering::SeqCst);
     }
 
+    /// What `note_login_path` was last told: whether `PATH` is the login
+    /// shell's. Read by `get_system_facts` for the diagnostic text.
+    pub fn login_path_restored(&self) -> bool {
+        self.login_path.load(Ordering::SeqCst)
+    }
+
     /// Resolves when something a refresh reported has since changed by
     /// itself, so the snapshot is out of date and only a refresh will say
     /// so. Today that is one thing: a `brew update` that a refresh stopped

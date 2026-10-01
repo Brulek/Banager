@@ -768,6 +768,27 @@ pub async fn get_sizes(state: State<'_, AppState>) -> Result<banager_core::size:
     get_sizes_impl(&state)
 }
 
+/// What the window's 「拷贝诊断信息」 needs and cannot read itself
+/// (`banager_core::diagnostics`): macOS's version and the chip, from two
+/// `sysctlbyname` reads; whether `PATH` is the login shell's and its
+/// folders; and each source's program in the current snapshot -- every
+/// path with the home folder as `~`. Takes nothing from the window, runs
+/// no command, opens no file and reads no environment variable but `PATH`
+/// and `HOME`; quick, so it runs inline.
+pub(crate) fn get_system_facts_impl(state: &AppState) -> banager_core::diagnostics::SystemFacts {
+    banager_core::diagnostics::current(
+        state.session.login_path_restored(),
+        &state.session.snapshot().instances,
+    )
+}
+
+#[tauri::command]
+pub async fn get_system_facts(
+    state: State<'_, AppState>,
+) -> Result<banager_core::diagnostics::SystemFacts, String> {
+    Ok(get_system_facts_impl(&state))
+}
+
 /// The icon Finder shows for the app a Homebrew cask installed, for that
 /// cask's row: a `data:image/png;base64,...` URL, or `None` for any other
 /// row and whenever there is no icon to show (`Session::artifact_icon`).
@@ -2615,6 +2636,27 @@ mod tests {
             again.generation, snapshot.generation,
             "sizes are not in the snapshot: a round with nothing new keeps the generation"
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_system_facts_impl_names_each_source_and_whether_path_came_back() {
+        // The facts themselves are banager-core's (diagnostics.rs); the
+        // shell owes the snapshot's sources and the session's word on PATH.
+        let state = state_measuring_sizes();
+        assert!(get_system_facts_impl(&state).sources.is_empty());
+        refresh_impl(&state).await.expect("refresh_impl");
+        let facts = get_system_facts_impl(&state);
+        assert_eq!(
+            facts
+                .sources
+                .iter()
+                .map(|source| (source.instance_id.as_str(), source.exe_path.as_str()))
+                .collect::<Vec<_>>(),
+            [("fake:1", "/bin/true")]
+        );
+        assert!(facts.login_path);
+        state.session.note_login_path(false);
+        assert!(!get_system_facts_impl(&state).login_path);
     }
 
     #[test]

@@ -135,6 +135,7 @@ pub fn run() {
             ipc::scan_unknown,
             ipc::artifact_icon,
             ipc::get_sizes,
+            ipc::get_system_facts,
             menu::set_menu_language,
             notify::report_update_set,
             notify::request_notification_permission,

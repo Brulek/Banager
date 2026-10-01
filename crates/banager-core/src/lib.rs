@@ -59,6 +59,10 @@ pub mod auto_check;
 /// Terminal, judged against `PATH` after each refresh's inventory --
 /// read-only, behind a budget, like `scan`.
 pub mod commands;
+/// What the window's 「拷贝诊断信息」 needs and cannot read itself: macOS's
+/// version, the chip, the `PATH` folders and each source's program, with
+/// the home folder as `~` -- read-only, no command runs.
+pub mod diagnostics;
 pub mod events;
 /// Which AI coding tool an installed artifact is a copy of, from a table
 /// bundled into the binary (`data/ai-tools.json`).
