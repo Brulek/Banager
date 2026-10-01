@@ -509,8 +509,8 @@ export interface Snapshot {
 /**
  * Rust `EntryKind` (crates/banager-core/src/scan/mod.rs): what one entry
  * of a scanned bin directory is. Bare-string unit variants. Read through
- * `KIND_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
- * a variant added here without a badge fails `tsc`. `ProtectedSymlink`: a link
+ * `STATUS_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
+ * a variant added here without an entry there fails `tsc`. `ProtectedSymlink`: a link
  * that leads into a protected place (`~/Documents`, iCloud Drive, `/Volumes`,
  * …), listed by its own name and never followed -- no `resolved`, size or
  * date; the page says 「指向受保护的位置」 in place of a path.

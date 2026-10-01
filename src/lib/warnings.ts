@@ -206,7 +206,7 @@ function caskStepKey(step: CaskStep, items: string[], onlyIf: RemoveCheck | unde
  * Exhaustive, the way `faultKey` in `src/lib/format.ts` is: every variant
  * of `Warning` is named here, and the `never` defaults make `tsc` fail on
  * one that is not. It used to `return null` for anything it did not
- * recognise, and `warningTexts` drops a `null` without a word -- so a
+ * recognise, and `warningLines` drops a `null` without a word -- so a
  * variant added to `types.ts` without a case here reached the uninstall
  * dialog as a silently shorter list, which for a warning that names a
  * file about to be removed is the worst possible failure.

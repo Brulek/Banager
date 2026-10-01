@@ -9,7 +9,7 @@
  * something about. Anything else is null: the row keeps 「未能更新」, and
  * the log has the tool's own words.
  *
- * Pure, and free of `t`: `failureCauseKeys` gives the words.
+ * Pure, and free of `t`: `FAILURE_CAUSE_KEYS` gives the words.
  */
 import type { Outcome } from "./types";
 

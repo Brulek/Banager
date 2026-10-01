@@ -1182,7 +1182,8 @@ pub struct UpdateCandidate {
     /// Banager could check it -- `checkable` says nothing about this: a
     /// pinned formula's newer version is known exactly. `Session::issue_plan`
     /// refuses an `Upgrade` of a candidate that carries one, and the Updates
-    /// page's `isActionable` hides the row's button and checkbox for it.
+    /// page's `isUpdateActionable` hides the row's button and checkbox for
+    /// it.
     pub blocked: Option<UpdateBlocked>,
 }
 

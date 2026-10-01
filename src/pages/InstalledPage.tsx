@@ -443,7 +443,7 @@ const NO_SIZE_ORDER: Map<string, number> = new Map();
  * with a word saying why, while the source refuses one for now), and a ⋯
  * menu. Pressing the row, or moving to it with ↑ ↓, selects it, and the
  * inspector on the right shows it: everything a row has no room for, and
- * its Update (`Inspector`). Not a dialog: the list stays in reach beside
+ * its Update. Not a dialog: the list stays in reach beside
  * it, and Escape or pressing the row again closes it.
  */
 export function InstalledPage() {
