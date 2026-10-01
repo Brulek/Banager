@@ -1039,13 +1039,13 @@ describe("protected places", () => {
     const row = rowOf(await findByText("notes-cli"));
     // Its word where a size and a date would be, with no ⚠︎: nothing is
     // wrong with it, Banager just did not look.
-    const word = within(row).getByRole("button", { name: "Points into a protected place" });
+    const word = within(row).getByRole("button", { name: "Points to a protected location" });
     expect(statusOf(row)?.closest("[data-version]")).not.toBeNull();
     expect(word.querySelector(".text-warning")).toBeNull();
     fireEvent.click(word);
     expect(
       within(row).getByText(
-        "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected places aren't read, so where this link leads wasn't checked.",
+        "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected locations aren't read, so where this link leads wasn't checked.",
       ),
     ).toBeInTheDocument();
     // No path it leads to anywhere, technical details or not.
@@ -1055,7 +1055,7 @@ describe("protected places", () => {
     const menu = openMenu(row);
     const item = within(menu).getByRole("menuitem", { name: "Show in Finder" });
     expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveAccessibleDescription("This link points into a protected place, which isn't read.");
+    expect(item).toHaveAccessibleDescription("This link points to a protected location, which isn't read.");
     fireEvent.click(item);
     expect(mockReveal).not.toHaveBeenCalled();
   });
@@ -1063,7 +1063,7 @@ describe("protected places", () => {
   it("says how many folders it left unread in one quiet line, naming them behind an ⓘ only with technical details on", async () => {
     scan = { ...baseScan, protected_dirs: ["~/Documents/scripts", "~/Desktop/tools"] };
     const plain = renderWithProviders(<UnknownPage />);
-    const line = await plain.findByText("2 folders are in protected places and weren't read.");
+    const line = await plain.findByText("2 folders are in protected locations and weren't read.");
     expect(line.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
     expect(plain.queryByRole("button", { name: /^Details: 2 folders/ })).toBeNull();
     expect(plain.queryByText("~/Documents/scripts")).toBeNull();
@@ -1072,7 +1072,7 @@ describe("protected places", () => {
     settings = { ...settings, show_technical_details: true };
     const technical = renderWithProviders(<UnknownPage />);
     const info = await technical.findByRole("button", {
-      name: "Details: 2 folders are in protected places and weren't read.",
+      name: "Details: 2 folders are in protected locations and weren't read.",
     });
     fireEvent.click(info);
     expect(technical.getByText("~/Documents/scripts")).toBeInTheDocument();
@@ -1098,7 +1098,7 @@ describe("protected places", () => {
 
     expect(await findByText("No other programs in the places checked")).toBeInTheDocument();
     expect(queryByText("No other programs")).toBeNull();
-    expect(queryByText("1 folder is in a protected place and wasn't read.")).toBeInTheDocument();
+    expect(queryByText("1 folder is in a protected location and wasn't read.")).toBeInTheDocument();
   });
 
   it("says it in Chinese", async () => {

@@ -149,7 +149,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
       "Terminal settings": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: [
         "fine Every source answered normally · Homebrew, npm",
-        "note Look in Other Programs for command-line programs from none of these sources → unknown",
+        "note Command-line programs from other sources are in Other Programs → unknown",
       ],
       Commands: ["fine Terminal finds every installed tool, and none is installed more than once"],
       Homebrew: ["fine Homebrew hasn't disabled or deprecated any tool, and keeps no other versions"],
@@ -195,7 +195,7 @@ describe("toolSetupCheck's terminal lines", () => {
     const line = lineOf(check, "terminal", "loginNotRead");
     expect(line.symbol).toBe("warning");
     expect(line.text).toBe(
-      "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't judged this time",
+      "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't checked this time",
     );
     expect(line.detail).toMatch(/opened from Finder/);
     // Its one line: the system's few folders are not the user's.
@@ -286,7 +286,7 @@ describe("toolSetupCheck's source lines", () => {
     };
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Sources"]).toEqual([
       `warning Homebrew: Not responding → source:${BREW}`,
-      "note Look in Other Programs for command-line programs from none of these sources → unknown",
+      "note Command-line programs from other sources are in Other Programs → unknown",
     ]);
   });
 
@@ -459,7 +459,7 @@ describe("toolSetupCheck's disk lines", () => {
   it("says it is measuring until the snapshot's round is measured", () => {
     const snapshot = fineSnapshot();
     for (const sizes of [null, { ...sizesFor(snapshot), done: false }, { ...sizesFor(snapshot), round: 1 }]) {
-      expect(shape(toolSetupCheck(zh, input({ snapshot, sizes })))["磁盘"]).toEqual(["busy 占用的空间正在计算…"]);
+      expect(shape(toolSetupCheck(zh, input({ snapshot, sizes })))["磁盘"]).toEqual(["busy 正在计算占用的空间…"]);
     }
   });
 });
@@ -480,7 +480,7 @@ describe("toolSetupCheck while the first check runs", () => {
       ],
       命令: ["busy 检查完成后会显示在这里"],
       Homebrew: ["fine 没有Homebrew已停用或弃用的工具，也没有保留的其他版本"],
-      磁盘: ["busy 占用的空间正在计算…"],
+      磁盘: ["busy 正在计算占用的空间…"],
     });
   });
 

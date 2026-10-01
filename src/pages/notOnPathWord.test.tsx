@@ -174,7 +174,7 @@ describe("the Installed row's word for a tool Terminal can't find", () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     fireEvent.click(within(rowOf("httpie")).getByRole("button", { name: "Not Found in Terminal: httpie" }));
-    expect(await screen.findByText(/^Its command is in a folder Terminal doesn't search/)).toBeInTheDocument();
+    expect(await screen.findByText(/^One of its commands is in a folder Terminal doesn't search/)).toBeInTheDocument();
     expect(screen.queryByText(/^Terminal can't find it/)).not.toBeInTheDocument();
   });
 
@@ -183,7 +183,7 @@ describe("the Installed row's word for a tool Terminal can't find", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     expect(wordOf("black")).toBe("Not Found in Terminal");
     fireEvent.click(within(rowOf("black")).getByRole("button", { name: "Not Found in Terminal: black" }));
-    expect(await screen.findByText(/^Its command is in a folder Terminal doesn't search/)).toBeInTheDocument();
+    expect(await screen.findByText(/^One of its commands is in a folder Terminal doesn't search/)).toBeInTheDocument();
     expect(screen.queryByText(/^Terminal can't find it/)).not.toBeInTheDocument();
   });
 

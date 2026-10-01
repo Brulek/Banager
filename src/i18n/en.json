@@ -7,7 +7,7 @@
   "welcome": {
     "title": "Welcome to {{name}}",
     "listTitle": "See What's Installed",
-    "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs none of them installed are under Other Programs.",
+    "listText": "Command-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs installed some other way are under Other Programs.",
     "confirmTitle": "You Confirm Every Update and Uninstall",
     "confirmText": "Before an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
     "settingsTitle": "No Shell Edits, No Data Collected",
@@ -116,7 +116,7 @@
     "view": "Show"
   },
   "notOnPathMore": {
-    "detailOne": "Its command is in a folder Terminal doesn't search, so typing it in Terminal doesn't run this copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions.",
+    "detailOne": "One of its commands is in a folder Terminal doesn't search, so typing it in Terminal doesn't run this copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions.",
     "detailMany": "Each has at least one command in a folder Terminal doesn't search, so typing that command in Terminal doesn't run that copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If a command still isn't found, follow that tool's installation instructions.",
     "notFoundDetail": "Terminal looks for commands only in certain folders, and this isn't one of them. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions."
   },
@@ -815,7 +815,7 @@
     "takesUnknown_one": "{{count}} of them has no size yet and isn't counted.",
     "takesUnknown_other": "{{count}} of them have no size yet and aren't counted.",
     "takesTrash": "What goes to the Trash frees space only once the Trash is emptied.",
-    "takesKept": "Settings and data that stay aren't counted.",
+    "takesKept": "Settings and data that stay after uninstalling aren't counted.",
     "takesShared": "Some of it is shared with other software and stays.",
     "notIncluded_one": "{{count}} more won't be uninstalled; see why below.",
     "notIncluded_other": "{{count}} more won't be uninstalled; see why below.",
@@ -825,11 +825,11 @@
     "commandsLost_other": "After this, Terminal won't find these commands: {{names}}.",
     "takenOver": "After this, {{command}} in Terminal runs the copy from {{by}}.",
     "takenOverAnother": "After this, {{command}} in Terminal runs another copy.",
-    "keptAi_one": "The settings and data of {{count}} AI tool stay where they are; nothing deletes them.",
-    "keptAi_other": "The settings and data of {{count}} AI tools stay where they are; nothing deletes them.",
+    "keptAi_one": "The settings and data of {{count}} AI tool stay after uninstalling.",
+    "keptAi_other": "The settings and data of {{count}} AI tools stay after uninstalling.",
     "keptBy": "From {{names}}",
     "password": "Some of these apps may ask for your Mac password.",
-    "after": "Uninstalled after {{names}}.",
+    "after": "Will be uninstalled after {{names}}.",
     "afterDetail_one": "If {{names}} isn't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
     "afterDetail_other": "If {{names}} aren't uninstalled, Homebrew won't uninstall this one, because it's still needed.",
     "quoted": "{{name}}",
@@ -841,11 +841,11 @@
       "stillNeeded": "Still used by {{names}}. To uninstall it, select those too, or uninstall them first.",
       "neededByExcluded_one": "{{names}} still uses it and won't be uninstalled, so it won't be either.",
       "neededByExcluded_other": "{{names}} still use it and won't be uninstalled, so it won't be either.",
-      "cycle": "The order to uninstall these in can't be worked out. Uninstall it on its own, from its row.",
+      "cycle": "The order to uninstall these in couldn't be determined. Uninstall it on its own, from its row.",
       "afterOthers": "It can be uninstalled only after {{names}}. Uninstall {{names}} this time, then this one on its own."
     },
-    "notStartedAfter_one": "Didn't start: {{names}} didn't start uninstalling.",
-    "notStartedAfter_other": "Didn't start: {{names}} didn't start uninstalling.",
+    "notStartedAfter_one": "Didn't start, because {{names}} didn't start uninstalling.",
+    "notStartedAfter_other": "Didn't start, because {{names}} didn't start uninstalling.",
     "confirm_one": "Uninstall {{count}} Tool",
     "confirm_other": "Uninstall {{count}} Tools",
     "ok": "OK",
@@ -867,8 +867,8 @@
     "uninstallSelectedShort": "Uninstall ({{number}})…"
   },
   "batchUninstallMore": {
-    "commandsGo_one": "This command goes with its copy too: {{names}}.",
-    "commandsGo_other": "These commands go with their copies too: {{names}}.",
+    "commandsGo_one": "This command is removed along with its copy: {{names}}.",
+    "commandsGo_other": "These commands are removed along with their copies: {{names}}.",
     "mixed_one": "Uninstalled {{done}}; {{count}} wasn't uninstalled",
     "mixed_other": "Uninstalled {{done}}; {{count}} weren't uninstalled"
   },
@@ -1020,13 +1020,13 @@
     },
     "terminal": {
       "loginRead": "Terminal's login settings were read",
-      "loginNotRead": "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't judged this time",
-      "loginNotReadDetail": "An app opened from Finder gets only the system's default places to look for commands. Judged by those, nearly every tool would look missing from Terminal.",
+      "loginNotRead": "Couldn't read Terminal's login settings, so which copy runs in Terminal wasn't checked this time",
+      "loginNotReadDetail": "An app opened from Finder gets only the system's default places to look for commands. Going by those, nearly every tool would seem to be missing from Terminal.",
       "noFacts": "Couldn't read Terminal's settings",
       "allFine_one": "Terminal's settings were read normally, and so was the {{count}} folder it looks in for commands",
       "allFine_other": "Terminal's settings were read normally, and so were all {{count}} folders it looks in for commands",
       "foldersSomeUnread": "Folders Terminal looks in for commands: {{read}} read, {{unread}} couldn't be read",
-      "foldersUnreadDetail": "A folder that couldn't be read is in a protected place, or doesn't allow its contents to be listed. What commands it holds isn't known, so nothing it could change is judged.",
+      "foldersUnreadDetail": "A folder that couldn't be read is in a protected location, or doesn't allow its contents to be listed. What commands it holds isn't known, so for commands it could affect, whether Terminal finds them isn't checked this time.",
       "foldersCount": "Folders Terminal looks in for commands: {{number}}",
       "unreadFolders": "Couldn't read: {{folders}}"
     },
@@ -1037,7 +1037,7 @@
       "state": "{{source}}: {{state}}",
       "checkUnfinished": "Check didn't finish",
       "none": "No sources to manage were found",
-      "otherPrograms": "Look in Other Programs for command-line programs from none of these sources"
+      "otherPrograms": "Command-line programs from other sources are in Other Programs"
     },
     "commands": {
       "allFine": "Terminal finds every installed tool, and none is installed more than once",
@@ -1076,17 +1076,17 @@
       "unknown": "Go to Other Programs",
       "checkAgain": "Check installed tools and updates again",
       "search": "Search Installed",
-      "closeWindow": "Close the window. Anything under way carries on; click the Dock icon to open it again.",
+      "closeWindow": "Close the window. Operations in progress continue; click the Dock icon to open it again.",
       "quit": "Quit. If an operation hasn't finished, you're asked first.",
       "move": "Move to the previous or next item in a list, the sidebar or a menu",
       "page": "Move up or down a page in a list. On a MacBook, press fn with ↑ or ↓.",
       "ends": "Move to the first or last item. On a MacBook, press fn with ← or →.",
-      "tick": "Tick or untick the row. On Installed, a row without a checkbox shows or hides its details instead.",
+      "tick": "Select or deselect the row's checkbox. On Installed, a row without a checkbox shows or hides its details instead.",
       "details": "On Installed, show the row's details and move to them",
       "closeDetails": "On Installed, close the details and go back to the row",
-      "tab": "Move to the next or previous control. In a list, only the current row is a stop.",
+      "tab": "Move to the next or previous control. In a list, Tab stops only at the current row.",
       "press": "Press the focused button. An uninstall confirmation opens with the focus on Cancel.",
-      "escape": "Close a dialog or menu. An open ⓘ closes first."
+      "escape": "Close a dialog or menu. An open ⓘ note closes first."
     },
     "keyNames": {
       "settings": "Command-Comma",
@@ -1207,11 +1207,11 @@
     "scanFailedPlain": "Couldn't scan. Try scanning again later.",
     "empty": "No other programs",
     "emptyChecked": "No other programs in the places checked",
-    "protectedLink": "Points into a protected place",
-    "protectedLinkWhy": "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected places aren't read, so where this link leads wasn't checked.",
-    "protectedLinkHint": "This link points into a protected place, which isn't read.",
-    "protectedFolders_one": "{{count}} folder is in a protected place and wasn't read.",
-    "protectedFolders_other": "{{count}} folders are in protected places and weren't read."
+    "protectedLink": "Points to a protected location",
+    "protectedLinkWhy": "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected locations aren't read, so where this link leads wasn't checked.",
+    "protectedLinkHint": "This link points to a protected location, which isn't read.",
+    "protectedFolders_one": "{{count}} folder is in a protected location and wasn't read.",
+    "protectedFolders_other": "{{count}} folders are in protected locations and weren't read."
   },
   "emptyStates": {
     "loadFailed": {

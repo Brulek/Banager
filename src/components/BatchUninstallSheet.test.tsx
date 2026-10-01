@@ -470,8 +470,8 @@ describe("the batch uninstall's sheet", () => {
     const dialog = await openSheet([python, pipxFormula]);
     expect(listOf(dialog, "Will be uninstalled")).toEqual(["pipx", "python@3.13"]);
     const item = toolItem(dialog, "python@3.13");
-    expect(item).toHaveTextContent("Uninstalled after pipx.");
-    fireEvent.click(within(item).getByRole("button", { name: "Details: Uninstalled after pipx." }));
+    expect(item).toHaveTextContent("Will be uninstalled after pipx.");
+    fireEvent.click(within(item).getByRole("button", { name: "Details: Will be uninstalled after pipx." }));
     expect(
       await screen.findByText("If pipx isn't uninstalled, Homebrew won't uninstall this one, because it's still needed."),
     ).toBeInTheDocument();
@@ -498,7 +498,7 @@ describe("the batch uninstall's sheet", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "About this size" }));
     expect(await screen.findByText("1 of them has no size yet and isn't counted.")).toBeInTheDocument();
     expect(screen.getByText("What goes to the Trash frees space only once the Trash is emptied.")).toBeInTheDocument();
-    expect(screen.getByText("Settings and data that stay aren't counted.")).toBeInTheDocument();
+    expect(screen.getByText("Settings and data that stay after uninstalling aren't counted.")).toBeInTheDocument();
     expect(screen.getByText("Some of it is shared with other software and stays.")).toBeInTheDocument();
     expect(screen.getByText("Counts only its program files, not what it downloads or caches.")).toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(/free up/i);
@@ -519,7 +519,7 @@ describe("the batch uninstall's sheet", () => {
     const unjudgedWget = { ...wget, facts: { ...NO_FACTS, commands: [{ name: "wget", state: null }] } };
     const dialog = await openSheet([git, unjudgedWget]);
     expect(within(dialog).getByText("After this, Terminal won't find these commands: git and scalar.")).toBeInTheDocument();
-    const goes = within(dialog).getByText("This command goes with its copy too: wget.");
+    const goes = within(dialog).getByText("This command is removed along with its copy: wget.");
     expect(goes.closest("[data-caution]")).toBeNull();
   });
 
@@ -531,7 +531,7 @@ describe("the batch uninstall's sheet", () => {
 
   it("lists what stays once per path, whose it is, with Copy Path and no way to delete it", async () => {
     const dialog = await openSheet([claudeCode, npmClaude, codex, vscode]);
-    expect(within(dialog).getByText("The settings and data of 2 AI tools stay where they are; nothing deletes them.")).toBeInTheDocument();
+    expect(within(dialog).getByText("The settings and data of 2 AI tools stay after uninstalling.")).toBeInTheDocument();
     expect(within(dialog).getByText("Some of these apps may ask for your Mac password.")).toBeInTheDocument();
     const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
     expect([...kept.querySelectorAll("[data-kept-path]")].map((path) => path.textContent)).toEqual(["~/.claude", "~/.codex"]);
@@ -592,7 +592,7 @@ describe("the batch uninstall's sheet", () => {
       "Couldn't start the uninstall: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
     expect(within(toolItem(dialog, "python@3.13")).getByRole("alert")).toHaveTextContent(
-      "Didn't start: pipx didn't start uninstalling.",
+      "Didn't start, because pipx didn't start uninstalling.",
     );
     expect(within(toolItem(dialog, "wget")).getByText("Started")).toBeInTheDocument();
     await waitFor(() => expect(close).toHaveFocus());

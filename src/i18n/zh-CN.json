@@ -105,8 +105,8 @@
     "view": "查看"
   },
   "notOnPathMore": {
-    "detailOne": "它至少有一个命令所在的文件夹，终端不会在里面查找命令，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。",
-    "detailMany": "每个工具至少有一个命令所在的文件夹，终端不会在里面查找命令，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照那个工具的安装说明操作。",
+    "detailOne": "它至少有一个命令在终端不会查找的文件夹里，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。",
+    "detailMany": "每个工具至少有一个命令在终端不会查找的文件夹里，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照那个工具的安装说明操作。",
     "notFoundDetail": "终端只在几个固定的文件夹里查找命令，这个文件夹不在其中。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。"
   },
   "otherVersionsShow": {
@@ -742,7 +742,7 @@
     "overLimit_other": "已选择{{count}}个，一次最多卸载{{max}}个",
     "uninstallSelected": "卸载所选（{{number}}）…",
     "title_other": "要卸载这{{count}}个工具吗？",
-    "titleNone": "这些工具不能在这里一起卸载",
+    "titleNone": "这些工具无法在这里一起卸载",
     "checking": "正在检查影响，已检查{{done}}个，共{{total}}个…",
     "willGo_other": "会卸载下面{{count}}个工具。",
     "willGoTakes_other": "会卸载下面{{count}}个工具，它们共占约{{size}}。",
@@ -750,7 +750,7 @@
     "willGoTakesPartial_other": "会卸载下面{{count}}个工具，它们共占约{{size}}，部分无法读取。",
     "takesLabel": "关于这个大小",
     "takesUnknown_other": "其中{{count}}个的大小还不知道，没有算在内。",
-    "takesTrash": "移到废纸篓的，要清倒废纸篓后才会释放空间。",
+    "takesTrash": "移到废纸篓的文件，要清倒废纸篓后才会释放空间。",
     "takesKept": "卸载后会保留的设置和数据不算在内。",
     "takesShared": "其中有与其他软件共用的部分，卸载后会留下。",
     "notIncluded_other": "另有{{count}}个不会卸载，原因见下方。",
@@ -763,26 +763,26 @@
     "keptBy": "来自{{names}}",
     "password": "其中部分App可能会要求输入Mac的密码。",
     "after": "在{{names}}卸载之后再卸载。",
-    "afterDetail_other": "如果{{names}}没有卸载成功，Homebrew不会卸载它，因为它仍被需要。",
+    "afterDetail_other": "如果{{names}}没有卸载成功，Homebrew不会卸载它，因为还有软件要用到它。",
     "quoted": "“{{name}}”",
     "reason": {
-      "noCancel": "这个卸载开始后无法取消，请在它的那一行单独卸载。",
-      "permanent": "这个卸载会永久删除文件，请在它的那一行单独卸载。",
-      "unseen": "卸载时会执行它自己的步骤，会删除什么无法事先得知，请在它的那一行单独卸载。",
+      "noCancel": "它的卸载开始后无法取消，请在它的那一行单独卸载。",
+      "permanent": "它的卸载会永久删除文件，请在它的那一行单独卸载。",
+      "unseen": "卸载时会运行它自己的步骤，无法事先知道会删除什么，请在它的那一行单独卸载。",
       "host": "这次选择的{{source}}工具要用到它。请先卸载那些工具，再单独卸载它。",
       "stillNeeded": "还有软件要用到它：{{names}}。要卸载它，请同时选择这些软件，或者先卸载它们。",
       "neededByExcluded_other": "要用到它的{{names}}不会卸载，所以它也不会卸载。",
       "cycle": "无法确定卸载顺序，请在它的那一行单独卸载。",
       "afterOthers": "要等{{names}}卸载以后才能卸载它。这次先卸载{{names}}，之后再单独卸载它。"
     },
-    "notStartedAfter_other": "没有开始：{{names}}没有开始卸载。",
+    "notStartedAfter_other": "没有开始，因为{{names}}没有开始卸载。",
     "confirm_other": "卸载这{{count}}个",
     "ok": "好",
     "showCommandsAndPaths": "查看命令和路径",
     "uninstalledHold": "已卸载",
     "uninstalledLabel": "已卸载{{name}}",
     "result_other": "{{count}}个没有卸载",
-    "resultStillNeeded_other": "{{names}}没有卸载，Homebrew不会卸载仍被需要的软件。",
+    "resultStillNeeded_other": "{{names}}没有卸载。还有软件要用到它们，Homebrew不会卸载。",
     "resultDismiss": "关闭卸载结果",
     "viewLogOf": "查看“{{name}}”的日志",
     "bar": {
@@ -944,11 +944,11 @@
     "terminal": {
       "loginRead": "已读取终端登录时的设置",
       "loginNotRead": "无法读取终端登录时的设置，所以这次没有判断终端里运行的是哪一份",
-      "loginNotReadDetail": "从访达打开的App只带有系统默认的命令查找位置。用它来判断，几乎每个工具都会显示为终端里找不到。",
+      "loginNotReadDetail": "从访达打开的App只带有系统默认的命令查找位置。用这些位置来判断，几乎每个工具都会显示为终端里找不到。",
       "noFacts": "无法读取终端的设置",
       "allFine_other": "终端设置读取正常，查找命令的{{count}}个文件夹也都能读取",
       "foldersSomeUnread": "终端查找命令的文件夹中，{{read}}个已读取，{{unread}}个无法读取",
-      "foldersUnreadDetail": "无法读取的文件夹在受保护的位置，或者不允许列出内容。里面有哪些命令无法得知，受它们影响的判断不会给出。",
+      "foldersUnreadDetail": "无法读取的文件夹在受保护的位置，或者不允许列出内容。里面有哪些命令无法得知，所以可能受它影响的命令，这次不判断终端能否找到。",
       "foldersCount": "终端查找命令的文件夹：{{number}}个",
       "unreadFolders": "无法读取：{{folders}}"
     },
@@ -977,7 +977,7 @@
     },
     "disk": {
       "total": "已安装的工具共占用{{size}}",
-      "measuring": "占用的空间正在计算…"
+      "measuring": "正在计算占用的空间…"
     }
   },
   "shortcuts": {
@@ -1005,7 +1005,7 @@
       "closeDetails": "在“已安装”中关闭详细信息，回到这一行",
       "tab": "移到下一个或上一个控件；在列表中只停在当前这一行",
       "press": "按下有焦点的按钮；卸载前的确认打开时，焦点在“取消”上",
-      "escape": "关闭对话框或菜单；打开着的ⓘ说明会先关闭"
+      "escape": "关闭对话框或菜单；已打开的ⓘ说明会先关闭"
     },
     "keyNames": {
       "settings": "Command-逗号",

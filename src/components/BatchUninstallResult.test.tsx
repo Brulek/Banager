@@ -166,7 +166,7 @@ describe("what a batch uninstall did not uninstall", () => {
     operations = [op(13, "wget", "Done", "Succeeded"), op(12, "python@3.13", "Done", refused), op(11, "pipx", "Done", refused)];
     renderWithProviders(<BatchUninstallResult />);
     const block = await screen.findByRole("region", { name: "已卸载1个，2个没有卸载" });
-    expect(within(block).getByText("“pipx”没有卸载，Homebrew不会卸载仍被需要的软件。")).toBeInTheDocument();
+    expect(within(block).getByText("“pipx”没有卸载。还有软件要用到它们，Homebrew不会卸载。")).toBeInTheDocument();
     expect(within(block).getByRole("button", { name: "查看“python@3.13”的日志" })).toHaveTextContent("查看日志");
   });
 });

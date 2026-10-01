@@ -45,21 +45,21 @@ describe("ShortcutsSheet", () => {
         "Go to Other Programs | ⌘4",
         "Check installed tools and updates again | ⌘R",
         "Search Installed | ⌘F",
-        "Close the window. Anything under way carries on; click the Dock icon to open it again. | ⌘W",
+        "Close the window. Operations in progress continue; click the Dock icon to open it again. | ⌘W",
         "Quit. If an operation hasn't finished, you're asked first. | ⌘Q",
       ],
       [
         "Move to the previous or next item in a list, the sidebar or a menu | ↑ ↓",
         "Move up or down a page in a list. On a MacBook, press fn with ↑ or ↓. | ⇞ ⇟",
         "Move to the first or last item. On a MacBook, press fn with ← or →. | ↖ ↘",
-        "Tick or untick the row. On Installed, a row without a checkbox shows or hides its details instead. | ␣",
+        "Select or deselect the row's checkbox. On Installed, a row without a checkbox shows or hides its details instead. | ␣",
         "On Installed, show the row's details and move to them | ↩",
         "On Installed, close the details and go back to the row | ⎋",
-        "Move to the next or previous control. In a list, only the current row is a stop. | ⇥ ⇧⇥",
+        "Move to the next or previous control. In a list, Tab stops only at the current row. | ⇥ ⇧⇥",
       ],
       [
         "Press the focused button. An uninstall confirmation opens with the focus on Cancel. | ↩",
-        "Close a dialog or menu. An open ⓘ closes first. | ⎋",
+        "Close a dialog or menu. An open ⓘ note closes first. | ⎋",
       ],
     ]);
     // As many rows as SHORTCUT_GROUPS has, and nothing else in the groups.
@@ -121,7 +121,7 @@ describe("ShortcutsSheet", () => {
       expect(shown[1][3]).toBe("勾选或取消勾选这一行；在“已安装”中，没有复选框的行会显示或隐藏详细信息 | ␣");
       expect(shown[2]).toEqual([
         "按下有焦点的按钮；卸载前的确认打开时，焦点在“取消”上 | ↩",
-        "关闭对话框或菜单；打开着的ⓘ说明会先关闭 | ⎋",
+        "关闭对话框或菜单；已打开的ⓘ说明会先关闭 | ⎋",
       ]);
       expect(dialog.querySelector('[data-shortcut="tick"] kbd .sr-only')?.textContent).toBe("空格键");
       expect(within(dialog).getByRole("button", { name: "完成" })).toHaveFocus();

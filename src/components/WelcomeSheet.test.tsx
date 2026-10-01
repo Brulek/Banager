@@ -93,7 +93,7 @@ describe("WelcomeSheet", () => {
     const sheet = await findSheet();
     const points = within(sheet).getAllByRole("listitem");
     expect(points.map((point) => point.textContent)).toEqual([
-      "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs none of them installed are under Other Programs.",
+      "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs installed some other way are under Other Programs.",
       "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
       "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; only rustup's own uninstall does, and it says so first. Collects no usage data and needs no account.",
     ]);

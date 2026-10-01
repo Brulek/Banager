@@ -172,7 +172,7 @@ describe("ToolSetupSheet", () => {
     const dialog = await first.findByRole("dialog", { name: "Tool Setup" });
     fireEvent.click(
       within(dialog).getByRole("button", {
-        name: "Show: Look in Other Programs for command-line programs from none of these sources",
+        name: "Show: Command-line programs from other sources are in Other Programs",
       }),
     );
     expect(await first.findByRole("heading", { level: 1, name: "Other Programs" })).toBeInTheDocument();
