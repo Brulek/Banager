@@ -112,16 +112,16 @@ export const HOMEBREW_STATUS_CHIP_IDS: ReadonlySet<string> = new Set(["homebrew-
 
 /**
  * `address` with a line allowed to break only where an address reads
- * well broken -- after `//`, and before each `/`, `.`, `?`, `#`, `&` and
- * `=` after it -- not in the middle of a name, as "youtube-dl.o" / "rg/"
- * in a narrow pane. A part too long for a line still breaks
- * (`break-words`).
+ * well broken -- after `//`, and before each `/`, `?`, `#`, `&` and `=`
+ * after it -- not in the middle of a name: never "https://youtube-dl" /
+ * ".org/" in a narrow pane, so not before a `.` either. A host too long
+ * for a line still breaks (`break-words`).
  */
 export function addressWithBreaks(address: string): ReactNode {
   const scheme = address.indexOf("//");
   const head = scheme === -1 ? "" : address.slice(0, scheme + 2);
   const rest = scheme === -1 ? address : address.slice(scheme + 2);
-  const parts = rest.split(/(?=[/.?#&=])/);
+  const parts = rest.split(/(?=[/?#&=])/);
   // Text and <wbr> side by side, so the address is still one text to
   // find and to read aloud.
   return [

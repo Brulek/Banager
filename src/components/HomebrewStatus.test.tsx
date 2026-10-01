@@ -133,9 +133,9 @@ describe("homepageFact", () => {
     renderWithProviders(<>{fact?.value}</>);
     const shown = screen.getByText("https://jqlang.github.io/jq/");
     expect(shown.tagName).toBe("SPAN");
-    // A line may break after // and before each / and ., never inside a
-    // name: "jqlang.github.io/jq/" has its five places.
-    expect(shown.querySelectorAll("wbr")).toHaveLength(5);
+    // A line may break after // and before each /, never inside a name
+    // nor at its dots: "https://" | "jqlang.github.io" | "/jq" | "/".
+    expect(shown.querySelectorAll("wbr")).toHaveLength(3);
     expect(shown).toHaveClass("break-words");
     expect(screen.queryByRole("link")).toBeNull();
     const button = screen.getByRole("button", { name: "Copy Link" });
@@ -152,6 +152,17 @@ describe("homepageFact", () => {
     renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
     fireEvent.click(screen.getByRole("button", { name: "Copy Link" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Couldn't copy$/));
+  });
+
+  it("keeps a host on one line, dots and all", () => {
+    renderWithProviders(<>{homepageFact(enT, "https://youtube-dl.org/?q=a&b=c#top")?.value}</>);
+    const shown = screen.getByText("https://youtube-dl.org/?q=a&b=c#top");
+    // Each text piece between two <wbr> is what may stand at a line's
+    // start: "youtube-dl.org" whole, never ".org".
+    const pieces = Array.from(shown.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent);
+    expect(pieces).toEqual(["https://", "youtube-dl.org", "/", "?q", "=a", "&b", "=c", "#top"]);
   });
 
   it("is nothing where the source gave no address", () => {
