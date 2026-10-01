@@ -24,6 +24,8 @@ import { resolveToolIcon } from "../lib/toolIcons";
 import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
 import { createMockBackend, MOCK_COMMANDS, TIMING, type MockBackend } from "./mockBackend";
+import { buildWorld } from "./mockData";
+import { withMockNeededBy } from "./mockNeededBy";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
 
@@ -433,45 +435,103 @@ describe("the browser preview's mock backend", () => {
   }
 
   it("uninstalls a dependent and then what it needed, in the order submitted, and Homebrew refuses the other order", async () => {
-    // Every operation would succeed, but Homebrew refuses python@3.13 while
-    // pipx, which needs it, is installed.
+    // Every operation would succeed, but Homebrew refuses x264 while
+    // ffmpeg, which needs it, is installed. (Not pipx and python@3.13:
+    // their previews name the sources that run on them, and never run.)
     const refusedFirst = backendFor();
     await answer(refusedFirst.backend.invoke("refresh"));
-    const [python, pipx] = await submitUninstalls(refusedFirst.backend, "python@3.13", "pipx");
+    const [x264, ffmpeg] = await submitUninstalls(refusedFirst.backend, "x264", "ffmpeg");
     await vi.runAllTimersAsync();
     const ops = (await refusedFirst.backend.invoke("list_operations")) as OpSummary[];
     const outcomeOf = (id: number) => ops.find((o) => o.id === id)?.outcome;
     const refusal = [
-      "Error: Refusing to uninstall /opt/homebrew/Cellar/python@3.13/3.13.8",
-      "because it is required by pipx, which is currently installed.",
+      "Error: Refusing to uninstall /opt/homebrew/Cellar/x264/r3222",
+      "because it is required by ffmpeg, which is currently installed.",
       "You can override this and force removal with:",
-      "  brew uninstall --ignore-dependencies python@3.13",
+      "  brew uninstall --ignore-dependencies x264",
     ];
-    expect(outcomeOf(python)).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
-    expect(outcomeOf(pipx)).toBe("Succeeded");
-    const logged = operationEvents(refusedFirst.events, python).flatMap((e) => ("Log" in e ? [e.Log.line] : []));
+    expect(outcomeOf(x264)).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
+    expect(outcomeOf(ffmpeg)).toBe("Succeeded");
+    const logged = operationEvents(refusedFirst.events, x264).flatMap((e) => ("Log" in e ? [e.Log.line] : []));
     expect(logged).toEqual(refusal);
 
-    // The order a batch submits them in: pipx first, then python@3.13.
+    // The order a batch submits them in: ffmpeg first, then x264.
     const failing = backendFor({ outcome: "failed" });
     await answer(failing.backend.invoke("refresh"));
-    // Under ?outcome=failed too, while pipx is installed.
-    const [first] = await submitUninstalls(failing.backend, "python@3.13");
+    // Under ?outcome=failed too, while ffmpeg is installed.
+    const [first] = await submitUninstalls(failing.backend, "x264");
     await vi.runAllTimersAsync();
     const failed = ((await failing.backend.invoke("list_operations")) as OpSummary[]).find((o) => o.id === first);
     expect(failed?.outcome).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
 
     const batch = backendFor();
     await answer(batch.backend.invoke("refresh"));
-    const [pipxOp, pythonOp] = await submitUninstalls(batch.backend, "pipx", "python@3.13");
+    const [ffmpegOp, x264Op] = await submitUninstalls(batch.backend, "ffmpeg", "x264");
     await vi.runAllTimersAsync();
     const done = (await batch.backend.invoke("list_operations")) as OpSummary[];
-    expect(done.find((o) => o.id === pipxOp)?.outcome).toBe("Succeeded");
-    expect(done.find((o) => o.id === pythonOp)?.outcome).toBe("Succeeded");
+    expect(done.find((o) => o.id === ffmpegOp)?.outcome).toBe("Succeeded");
+    expect(done.find((o) => o.id === x264Op)?.outcome).toBe("Succeeded");
     const finished = batch.events.flatMap((e) =>
       "Operation" in e && "Finished" in e.Operation ? [e.Operation.Finished.op_id] : [],
     );
-    expect(finished).toEqual([pipxOp, pythonOp]);
+    expect(finished).toEqual([ffmpegOp, x264Op]);
+  });
+
+  it("names the sources that run on a Homebrew package in its preview, and never runs that preview", async () => {
+    // `Session::issue_plan` and `submit` (crates/banager-core/src/session/
+    // needed_by.rs), as ./mockNeededBy.ts stands in for them.
+    const uninstall = (name: string): OpRequest => ({
+      kind: "Uninstall",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name,
+    });
+    const needed = (issued: IssuedPlan) =>
+      issued.plan.warnings.flatMap((w) => (typeof w !== "string" && "NeededBySource" in w ? [w.NeededBySource] : []));
+    const { backend } = backendFor();
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const rowsOf = (instanceId: string) => snapshot.artifacts.filter((a) => a.key.instance_id === instanceId);
+
+    const node = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: uninstall("node@22") }));
+    // npm's own `npm` and `corepack` are not counted among its tools.
+    const npmTools = rowsOf("npm:/opt/homebrew").filter((a) => !["npm", "corepack"].includes(a.key.name));
+    expect(npmTools.length).toBeGreaterThan(0);
+    expect(needed(node)).toEqual([{ instance_id: "npm:/opt/homebrew", program: true, tools: npmTools.length }]);
+    await expectRefusal(
+      backend.invoke("submit_operation", { planId: node.id }),
+      '{"kind":"uninstall_blocked","reason":"NeededBySource"}',
+    );
+    // pip runs in python@3.13 (only what the user installed counts), and
+    // every pipx venv's Python is its.
+    const python = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: uninstall("python@3.13") }));
+    const pipLeaves = rowsOf("pip:/opt/homebrew/bin/python3").filter(
+      (a) => a.reason !== "Dependency" && !["pip", "setuptools", "wheel"].includes(a.key.name),
+    );
+    expect(needed(python)).toEqual([
+      { instance_id: "pip:/opt/homebrew/bin/python3", program: true, tools: pipLeaves.length },
+      { instance_id: "pipx", program: false, tools: rowsOf("pipx").filter((a) => a.path !== null).length },
+    ]);
+    // Nothing runs on git.
+    const git = await answer<IssuedPlan>(backend.invoke("plan_operation", { request: uninstall("git") }));
+    expect(needed(git)).toEqual([]);
+    // npm's own row offers no Uninstall, and the gate says why.
+    const npmItself = rowsOf("npm:/opt/homebrew").find((a) => a.key.name === "npm");
+    expect(npmItself?.uninstall_blocked).toBe("SourceProgram");
+    await expectRefusal(
+      backend.invoke("plan_operation", {
+        request: { kind: "Uninstall", instance_id: "npm:/opt/homebrew", artifact_kind: "Package", name: "npm" },
+      }),
+      '{"kind":"uninstall_blocked","reason":"SourceProgram"}',
+    );
+
+    // With the npm from nodejs.org (`?state=notices`, whose Homebrew is
+    // updating its list, so nothing of it is planned there), node@22 is
+    // nobody's.
+    const bare = { ...node.plan, warnings: [] };
+    expect(withMockNeededBy(bare, buildWorld("notices"), uninstall("node@22")).warnings).toEqual([]);
+    expect(withMockNeededBy(bare, buildWorld("full"), uninstall("node@22")).warnings).toEqual(node.plan.warnings.filter(
+      (w) => typeof w !== "string" && "NeededBySource" in w,
+    ));
   });
 
   it("keeps listing what a source had while an operation holds it, as the real refresh carries its rows forward", async () => {

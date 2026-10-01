@@ -31,6 +31,7 @@ import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
 import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import { withMockKeptData } from "./mockKeptData";
+import { namesASource, withMockNeededBy } from "./mockNeededBy";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
@@ -535,6 +536,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     plans.delete(planId);
     if (Date.now() - stored.issuedAtMs > PLAN_LIFETIME_MS) throw refusal({ kind: "expired" });
     const { plan } = stored.issued;
+    // A preview that named a source running on its package is never run.
+    if (namesASource(plan)) throw refusal({ kind: "uninstall_blocked", reason: "NeededBySource" });
     gate(plan.request);
     const id = nextOpId;
     nextOpId += 1;
@@ -639,12 +642,17 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const issued: IssuedPlan = {
         // 32 hex characters, like the real random token; counted, not random.
         id: planCount.toString(16).padStart(32, "0"),
-        // What the uninstall leaves behind, named (`mockKeptData.ts`).
-        plan: withMockKeptData(
-          buildPlan(world, inst, request),
-          inst.adapter_id,
+        // What the uninstall leaves behind, named (`mockKeptData.ts`), then
+        // the sources that run on a Homebrew package (`mockNeededBy.ts`).
+        plan: withMockNeededBy(
+          withMockKeptData(
+            buildPlan(world, inst, request),
+            inst.adapter_id,
+            request,
+            world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+          ),
+          world,
           request,
-          world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
         ),
         issued_at: nowSeconds(),
       };

@@ -874,6 +874,7 @@ export function buildWorld(state: ScenarioState): World {
   onlyHomebrewDates(world);
   addCommands(world);
   addCodexCommands(world);
+  markSourcePrograms(world);
   return world;
 }
 
@@ -1235,4 +1236,17 @@ function addCodexCommands(world: World): void {
   if (own === undefined || npm === undefined) return;
   own.facts = { ...own.facts, commands: runs(["codex"]) };
   npm.facts = { ...npm.facts, commands: [{ name: "codex", state: { ShadowedBy: { by: own.key } } }] };
+}
+
+/**
+ * npm's own `npm`, in every npm's list: the package Banager does not offer
+ * to uninstall, as npm's inventory marks it (`parse_ls_global`,
+ * `UninstallBlocked::SourceProgram`) -- its row says why where Uninstall
+ * would be.
+ */
+function markSourcePrograms(world: World): void {
+  const npms = new Set(world.instances.filter((i) => i.adapter_id === "npm").map((i) => i.id));
+  for (const artifact of world.artifacts) {
+    if (npms.has(artifact.key.instance_id) && artifact.key.name === "npm") artifact.uninstall_blocked = "SourceProgram";
+  }
 }

@@ -285,6 +285,17 @@ Paths are under a generic home folder, `/Users/you`.
   `~/.claude.json`. Each has Copy Path and nothing that deletes. The
   native Claude Code's own list keeps those two under 「保留」 already, so
   its dialog does not repeat them.
+- The uninstall of a Homebrew package another source runs on lists that
+  source under 「依赖此工具的软件」, with Homebrew's own dependents, and offers
+  no Uninstall (`src/dev/mockNeededBy.ts`, as the app's preview finds them
+  by following links): `node@22`, 「npm和它的4个工具」 (npm's own `npm` and
+  `corepack` are not counted); `python@3.13`, `pipx` (from Homebrew),
+  「pip和它的1个工具」 and 「pipx装的3个工具」, whose venvs' Python it is;
+  Homebrew's `pipx`, 「pipx和它的3个工具」; Homebrew's `ollama`, 「Ollama和
+  它的2个模型」. The sentence under the list says which tools to uninstall
+  first. With `?state=notices`, npm is the one from nodejs.org, and nothing
+  runs on `node@22`. npm's own `npm` row says 「无法在此卸载」 where its
+  Uninstall would be, and why behind it.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
@@ -349,15 +360,17 @@ On the Installed page, tick rows (Space ticks the row that has the focus)
 and press 「卸载所选（N）…」 in the toolbar. Everything the batch sheet can
 say is on the `full` Mac:
 
-- `pipx` with `python@3.13`: both go, `pipx` first, and 「在“pipx”卸载之后再卸载。」
-  under `python@3.13`;
-- `node@22` with `openssl@3` (under 「另有…个随其他软件安装的组件」): `openssl@3`
-  stays, still used by `postgresql@17`, `python@3.13` and `wget`;
+- `ffmpeg` with `x264` (under 「另有…个随其他软件安装的组件」): both go, `ffmpeg`
+  first, and 「在“ffmpeg”卸载之后再卸载。」 under `x264`;
+- `wget` with `openssl@3`: `openssl@3` stays, still used by `node@22`,
+  `postgresql@17` and `python@3.13`;
 - `htop`: Homebrew could not check what needs it, so it goes last;
 - Claude Code: what moves to the Trash, and `~/.claude` kept, Copy Path only;
-- an Ollama model with Homebrew's `ollama`, or a pipx tool with Homebrew's
-  `pipx`: the program stays (the tools need it), and with `pipx` so does
-  `python@3.13`;
+- Homebrew's `node@22`, `python@3.13`, `pipx` or `ollama`, alone or with
+  anything: it stays, because other sources run on it, said as its own
+  confirmation says it (「还有软件要用到它：npm和它的4个工具。要卸载它，请先卸载
+  npm装的4个工具。」); what only they still need stays with them (`mpdecimal`
+  ticked with `python@3.13`);
 - rustup: it cannot be cancelled once it starts, so it is left to its row;
 - Microsoft Visual Studio Code: a cask with steps of its own, and the
   password note.
