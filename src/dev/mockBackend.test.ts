@@ -199,8 +199,8 @@ describe("the browser preview's mock backend", () => {
     expect({ ...again, refreshed_at: null }).toEqual({ ...snapshot, refreshed_at: null });
 
     const { artifacts, updates, instances } = snapshot;
-    // Two of them the rows `withHomebrewState` adds.
-    expect(artifacts.length).toBe(794);
+    // Two of them the rows `withHomebrewState` adds, four the AI tools `aiTools` adds.
+    expect(artifacts.length).toBe(798);
     const ids = artifacts.map((a) => artifactKeyId(a.key));
     expect(new Set(ids).size).toBe(ids.length);
     const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;

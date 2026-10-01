@@ -22,6 +22,7 @@ import type {
 } from "../lib/types";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
+import { withFamilies } from "./mockFamilies";
 import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import type { Scenario } from "./scenario";
 
@@ -154,7 +155,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     return {
       detect: from.detect,
       instances: from.instances,
-      artifacts: from.artifacts,
+      // Which AI coding tool each is, set here once, as `families::assign`
+      // does where Rust puts a snapshot together.
+      artifacts: withFamilies(from.instances, from.artifacts),
       updates: current.include_self_updating
         ? [...from.updates, ...from.greedyUpdates]
         : from.updates,

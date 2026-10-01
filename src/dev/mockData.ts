@@ -458,6 +458,37 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
   return { artifacts, updates };
 }
 
+/**
+ * AI coding tools from four sources besides the three standalone ones
+ * and Homebrew's `ollama` above, so the 「AI工具」 filter shows a mix: two
+ * npm packages, a Homebrew formula and a pipx tool, three with an update.
+ * Their `facts.family` is not set here: the mock backend sets it from the
+ * real table where it puts a snapshot together (`withFamilies`), as Rust
+ * does. None of these names is in ./mockManyNames.ts, so `?state=many`
+ * lists each once.
+ */
+function aiTools(): { artifacts: InstalledArtifact[]; updates: UpdateCandidate[] } {
+  const codex = artifact(IDS.npm, "Package", "@openai/codex", "0.155.1", { installed_at: daysAgo(6) });
+  const opencode = artifact(IDS.npm, "Package", "opencode-ai", "1.18.34", { installed_at: daysAgo(3) });
+  const gemini = artifact(IDS.brew, "Formula", "gemini-cli", "0.60.0", {
+    description: "Interact with Google Gemini AI models from the command-line",
+    homepage: "https://github.com/google-gemini/gemini-cli",
+    installed_at: daysAgo(18),
+  });
+  const aider = artifact(IDS.pipx, "Tool", "aider-chat", "0.86.1", {
+    path: inHome(".local/pipx/venvs/aider-chat"),
+    installed_at: daysAgo(44),
+  });
+  return {
+    artifacts: [codex, opencode, gemini, aider],
+    updates: [
+      update(codex.key, "0.155.1", "0.159.3", "Native"),
+      update(gemini.key, "0.60.0", "0.62.0", "Native"),
+      update(aider.key, "0.86.1", "0.86.2", "Native"),
+    ],
+  };
+}
+
 function instances(): ManagerInstance[] {
   // Sorted by adapter id, as `refresh_round` fans them out.
   return [
@@ -503,11 +534,12 @@ export interface World {
 
 function fullWorld(): World {
   const rest = everythingElse();
+  const ai = aiTools();
   return {
     detect: "Found",
     instances: instances(),
-    artifacts: withHomebrewState([...formulae(), ...casks(), ...rest.artifacts]),
-    updates: [...brewUpdates(), ...rest.updates],
+    artifacts: withHomebrewState([...formulae(), ...casks(), ...rest.artifacts, ...ai.artifacts]),
+    updates: [...brewUpdates(), ...rest.updates, ...ai.updates],
     greedyUpdates: brewGreedyUpdates(),
     errors: [],
   };
