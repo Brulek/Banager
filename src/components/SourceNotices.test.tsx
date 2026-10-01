@@ -287,7 +287,10 @@ describe("SourceNotices, folded", () => {
 
   it("draws one notice exactly as it would with no fold", () => {
     const folded = renderWithProviders(<Folded notices={[ollamaStopped]} />);
-    const withFold = folded.container.innerHTML;
+    // React's own ids (a line's title, its button's description) count up
+    // from render to render; the rest is to be the same.
+    const sameIds = (html: string) => html.replace(/_r_[0-9a-z]+_/g, "_r_id_");
+    const withFold = sameIds(folded.container.innerHTML);
     expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
       "Details: Ollama isn't running",
       "Open Ollama",
@@ -295,7 +298,7 @@ describe("SourceNotices, folded", () => {
     folded.unmount();
 
     const plain = renderWithProviders(<SourceNotices notices={[ollamaStopped]} layout="line" />);
-    expect(plain.container.innerHTML).toBe(withFold);
+    expect(sameIds(plain.container.innerHTML)).toBe(withFold);
   });
 
   it("says 还有N个问题 and 收起 in Chinese", async () => {

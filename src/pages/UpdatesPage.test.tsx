@@ -3608,7 +3608,8 @@ describe("UpdatesPage", () => {
       fireEvent.click(getByRole("button", { name: "1 more issue" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
       // Said once, in the line: no band over the page.
-      expect(within(container).getAllByText("Some checks didn't finish")).toEqual([notice]);
+      // (Unfolding draws the lines anew: the same words, not the same node.)
+      expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
     });
 
     it("does not say a silent source's check did not finish: its own line says it did not answer", async () => {
