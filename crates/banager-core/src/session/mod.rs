@@ -8,6 +8,7 @@
 
 mod icon;
 mod kept;
+mod needed_by;
 mod plans;
 mod refresh;
 mod scan;
@@ -340,6 +341,11 @@ pub struct Session {
     /// before the first refresh, and always in a session that does not
     /// measure sizes.
     kept_data_home: Mutex<Option<std::path::PathBuf>>,
+    /// The `PATH` and home folder the last refresh read, which a Homebrew
+    /// uninstall's preview looks with for the sources that run on the
+    /// package (`needed_by.rs`); `None` before the first refresh, and always
+    /// in a session that does not measure sizes.
+    needed_by_env: Mutex<Option<crate::runner::HostEnv>>,
     /// Where each finished update and uninstall is kept across launches
     /// (`attach_history`), or nothing: the shell attaches the one in
     /// Banager's application data directory as it starts; tests attach
@@ -483,6 +489,7 @@ impl Session {
             path_folders: Mutex::new(None),
             sizes,
             kept_data_home: Mutex::new(None),
+            needed_by_env: Mutex::new(None),
             history: std::sync::OnceLock::new(),
         })
     }

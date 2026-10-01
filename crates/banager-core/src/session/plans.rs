@@ -189,8 +189,9 @@ impl Session {
         //
         // The package's own verdicts (`blocked`, `uninstall_blocked`) are
         // read under that same lock, so all of them come from the one
-        // snapshot `generation` names.
-        let (generation, instance, blocked, uninstall_blocked, family, listed) = {
+        // snapshot `generation` names -- as are the sources a Homebrew
+        // uninstall's preview looks at for what runs on it (`needed_by`).
+        let (generation, instance, blocked, uninstall_blocked, family, listed, needed_by) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -203,6 +204,7 @@ impl Session {
                 blocked_uninstall(&snapshot.artifacts, req),
                 super::kept::family_of_uninstall(&snapshot.artifacts, req),
                 lists_request(&snapshot.updates, &snapshot.artifacts, req),
+                super::needed_by::subject(&snapshot.instances, &snapshot.artifacts, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -264,6 +266,10 @@ impl Session {
         let plan = adapter.plan(&instance, req).await?;
         // What the uninstall leaves behind, named (`kept.rs`).
         let plan = self.with_kept_data(plan, family).await;
+        // The other sources that run on a Homebrew package, which `brew
+        // uses` does not name (`needed_by.rs`): listed with its dependents,
+        // and such a preview is never run (`submit`).
+        let plan = self.with_needed_by(plan, needed_by).await;
         let id = random_plan_id();
         let issued_at = self.now();
         let issued_monotonic = Instant::now();
@@ -336,6 +342,15 @@ impl Session {
         };
         if has_expired(stored.issued_monotonic.elapsed()) {
             return Err(SubmitError::Expired);
+        }
+        // A preview that named a source running on its Homebrew package
+        // (`Warning::NeededBySource`) offered no Uninstall, and `brew
+        // uninstall` would not refuse it as it refuses a formula another
+        // still needs: this does, whatever the page sent.
+        if super::needed_by::names_a_source(&stored.issued.plan) {
+            return Err(SubmitError::UninstallBlocked {
+                reason: UninstallBlocked::NeededBySource,
+            });
         }
         self.recheck_actionable(&stored)?;
         let on_finish = self.history.get().map(|store| {
