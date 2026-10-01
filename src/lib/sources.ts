@@ -385,6 +385,31 @@ export function sourceNoticesFor(
       descriptionKey: "sourceNotice.refusesAsRoot.description",
       values: { source: sourceLabel },
     });
+  } else if (unavailable === "HttpsHostRefused") {
+    // `OLLAMA_HOST` is an https:// address, which Banager's http client
+    // never connects to, so the daemon was never asked. Said as Banager's
+    // own refusal: no Check again and no Open Ollama, since both would
+    // meet the same refusal; only changing the address helps, and only
+    // the user can.
+    notices.push({
+      id: `${instance.id}:https-host-refused`,
+      variant: "warning",
+      titleKey: "sourceNotice.httpsHostRefused.title",
+      descriptionKey: "sourceNotice.httpsHostRefused.description",
+      values: { source: sourceLabel },
+    });
+  } else if (unavailable === "NoPip") {
+    // Python itself said it has no module named pip. Nothing is broken
+    // and checking again changes nothing, so an info notice with no
+    // button. `{{command}}` is the interpreter's file name (`python3.13`),
+    // the word that tells this Python from the others.
+    notices.push({
+      id: `${instance.id}:no-pip`,
+      variant: "info",
+      titleKey: "sourceNotice.noPip.title",
+      descriptionKey: "sourceNotice.noPip.description",
+      values: { source: sourceLabel, command: commandNameOf(instance) },
+    });
   }
 
   for (const note of instance.status.notes) {
@@ -664,6 +689,10 @@ export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
   NotRunning: "updates.unavailableDetail.NotRunning",
   NotResponding: "updates.unavailableDetail.NotResponding",
   RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
+  // The notices' own sentences: each names the source and says what can
+  // be done, and neither is "check again later".
+  HttpsHostRefused: "sourceNotice.httpsHostRefused.description",
+  NoPip: "sourceNotice.noPip.description",
 };
 
 /**
@@ -1087,7 +1116,8 @@ export function sourceWarningOf(
  * `parseNotActionable`'s result, in the exact copy the source's rows and
  * notice already use for each reason (`READ_ONLY_DETAIL_KEYS`,
  * `sourceNotice.notRunning`, `sourceNotice.unreachable`,
- * `sourceNotice.refusesAsRoot`) -- so this refusal never reads as a raw
+ * `sourceNotice.refusesAsRoot`, `sourceNotice.httpsHostRefused`,
+ * `sourceNotice.noPip`) -- so this refusal never reads as a raw
  * Rust enum. `sourceLabel` is the adapter's
  * name in the user's language, exactly as `sourceNoticesFor` takes it.
  *
@@ -1113,6 +1143,10 @@ export function notActionableMessage(
     parts.push(t("sourceNotice.unreachable.description", { source: sourceLabel }));
   } else if (reason.unavailable === "RefusesAsRoot") {
     parts.push(t("sourceNotice.refusesAsRoot.description", { source: sourceLabel }));
+  } else if (reason.unavailable === "HttpsHostRefused") {
+    parts.push(t("sourceNotice.httpsHostRefused.description", { source: sourceLabel }));
+  } else if (reason.unavailable === "NoPip") {
+    parts.push(t("sourceNotice.noPip.description", { source: sourceLabel }));
   }
   return parts.join(" ");
 }

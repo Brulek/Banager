@@ -2177,6 +2177,30 @@ describe("InstalledPage", () => {
       expect(useUiStore.getState().installedFilter).toBe(npm.id);
     });
 
+    it("says a Python with no pip has none, not that what is installed with it shows up here", async () => {
+      // `NoPip` is news, not a warning, so it is not the sidebar's ⚠︎ --
+      // but the empty page still says why there is nothing, not the
+      // sentence that promises rows once something is installed.
+      const pip: ManagerInstance = {
+        ...brew,
+        id: "pip:/opt/local/bin/python3.13",
+        adapter_id: "pip",
+        exe_path: "/opt/local/bin/python3.13",
+        prefix: "/opt/local/bin",
+        version: null,
+        read_only_reason: "ByDesign",
+        status: { unavailable: "NoPip", notes: [] },
+      };
+      served = { ...snapshot, instances: [brew, pip] };
+      useUiStore.getState().openInstalled(pip.id);
+      const { findByText, getByText, queryByText } = renderInstalled();
+
+      expect(await findByText("python3.13 doesn't include pip")).toBeInTheDocument();
+      expect(getByText("This Python has no pip of its own, so pip has nothing to list for it.")).toBeInTheDocument();
+      expect(queryByText("Nothing installed with pip")).toBeNull();
+      expect(rowNames()).toEqual([]);
+    });
+
     it("says a source whose check did not finish may not be empty, and names it alone in the lines over its rows", async () => {
       // npm lists nothing, and its check timed out: nothing listed is only
       // what the check did not get to, not "Nothing installed with npm".

@@ -147,6 +147,73 @@ describe("sourceNoticesFor", () => {
     expect(notice.action).toBeUndefined();
   });
 
+  it("says an https OLLAMA_HOST is Banager's own refusal, with no button that would meet it again", () => {
+    // `OllamaAdapter::detect` never sends a request the http client would
+    // refuse; it used to pass that refusal off as a daemon that did not
+    // answer -- or, here with Ollama.app installed, as one not running,
+    // over an Open Ollama button that could not help.
+    const [notice, ...rest] = sourceNoticesFor(
+      instance({
+        id: "ollama:https://ollama.home.lan",
+        adapter_id: "ollama",
+        exe_path: "/opt/homebrew/bin/ollama",
+        status: { unavailable: "HttpsHostRefused", notes: [] },
+      }),
+      "Ollama",
+      3,
+    );
+    expect(rest).toEqual([]);
+    expect(notice).toEqual({
+      id: "ollama:https://ollama.home.lan:https-host-refused",
+      variant: "warning",
+      titleKey: "sourceNotice.httpsHostRefused.title",
+      descriptionKey: "sourceNotice.httpsHostRefused.description",
+      values: { source: "Ollama" },
+    });
+    // Says it is Banager, names the variable, and is not "not responding".
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.httpsHostRefused.title).toMatch(/Banager/);
+      expect(locale.sourceNotice.httpsHostRefused.description).toMatch(/OLLAMA_HOST/);
+      expect(locale.sourceNotice.httpsHostRefused.description).toContain("{{source}}");
+      expect(locale.sourceNotice.httpsHostRefused.description).not.toMatch(/respond|响应|later|稍后/);
+    }
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "HttpsHostRefused" }, "Ollama"),
+    ).toBe(fakeT(notice.descriptionKey, notice.values));
+    expect(UNAVAILABLE_DETAIL_KEYS.HttpsHostRefused).toBe(notice.descriptionKey);
+  });
+
+  it("says a Python with no pip has none, by the name it is typed by, as news and not a warning", () => {
+    // Python's own "No module named pip" (`PipAdapter::detect`): nothing
+    // is broken and checking again changes nothing, so no button and no
+    // ⚠︎ in the sidebar.
+    const noPip = instance({
+      id: "pip:/opt/local/bin/python3.13",
+      adapter_id: "pip",
+      exe_path: "/opt/local/bin/python3.13",
+      prefix: "/opt/local/bin",
+      read_only_reason: "ByDesign",
+      status: { unavailable: "NoPip", notes: [] },
+    });
+    const [notice, ...rest] = sourceNoticesFor(noPip, "pip（local）");
+    expect(rest).toEqual([]);
+    expect(notice).toEqual({
+      id: "pip:/opt/local/bin/python3.13:no-pip",
+      variant: "info",
+      titleKey: "sourceNotice.noPip.title",
+      descriptionKey: "sourceNotice.noPip.description",
+      values: { source: "pip（local）", command: "python3.13" },
+    });
+    expect(sourceWarningOf(noPip, "pip（local）", 0)).toBeNull();
+    expect(i18n.getFixedT("en")(notice.titleKey, notice.values)).toBe("python3.13 doesn't include pip");
+    expect(i18n.getFixedT("zh-CN")(notice.titleKey, notice.values)).toBe("“python3.13”没有附带pip");
+    // A refusal names the source; read-only comes first, as for any pip.
+    expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: "NoPip" }, "pip")).toBe(
+      'sourceNotice.pipReadOnly.description sourceNotice.noPip.description({"source":"pip"})',
+    );
+    expect(UNAVAILABLE_DETAIL_KEYS.NoPip).toBe(notice.descriptionKey);
+  });
+
   it("says a source that would not answer is showing last time's data", () => {
     const [notice] = sourceNoticesFor(
       instance({ status: { unavailable: "NotResponding", notes: [] } }),
@@ -1544,6 +1611,8 @@ describe("the Updates page's chip details", () => {
       NotRunning: "updates.unavailableDetail.NotRunning",
       NotResponding: "updates.unavailableDetail.NotResponding",
       RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
+      HttpsHostRefused: "sourceNotice.httpsHostRefused.description",
+      NoPip: "sourceNotice.noPip.description",
     });
     // Each says what to do with the button that does it: Check again.
     expect(en.updates.unavailableDetail.NotResponding).toBe(

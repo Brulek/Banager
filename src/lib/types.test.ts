@@ -280,6 +280,12 @@ describe("types", () => {
       '{"unavailable":"NotResponding","notes":["IndexMayBeStale"]}',
     );
     expect(roundTrip(notResponding)).toEqual(notResponding);
+    // The two added in round 5: spelled as `Unavailable` in model.rs.
+    const httpsHostRefused: InstanceStatus = { unavailable: "HttpsHostRefused", notes: [] };
+    const noPip: InstanceStatus = { unavailable: "NoPip", notes: [] };
+    expect(JSON.stringify(httpsHostRefused)).toBe('{"unavailable":"HttpsHostRefused","notes":[]}');
+    expect(JSON.stringify(noPip)).toBe('{"unavailable":"NoPip","notes":[]}');
+    expect(roundTrip(noPip)).toEqual(noPip);
 
     // The five notes a standalone tool's detect can add (phase 4): which
     // copy runs when its name is typed, or that its launcher is left

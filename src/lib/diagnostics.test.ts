@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { diagnosticsText, diagnosticsTime, withoutHomePaths, type DiagnosticsInput } from "./diagnostics";
+import {
+  diagnosticsText,
+  diagnosticsTime,
+  sourceStateWords,
+  withoutHomePaths,
+  type DiagnosticsInput,
+} from "./diagnostics";
 import type {
   ArtifactKey,
   CommandFact,
@@ -364,6 +370,22 @@ describe("the text's helpers", () => {
     expect(withoutHomePaths("/opt/homebrew/bin")).toBe("/opt/homebrew/bin");
     expect(withoutHomePaths("/System/Volumes/Data/Users/alice/bin")).toBe("~/bin");
     expect(withoutHomePaths("/System/Volumes/Data/Users/Shared/bin")).toBe("/System/Volumes/Data/Users/Shared/bin");
+  });
+});
+
+describe("a source's state words", () => {
+  it("names a refused https Ollama address and a Python with no pip in a word each", () => {
+    const ollama = instance("ollama:https://ollama.home.lan", "/opt/homebrew/bin/ollama", {
+      status: { unavailable: "HttpsHostRefused", notes: [] },
+    });
+    const noPip = instance("pip:/opt/local/bin/python3.13", "/opt/local/bin/python3.13", {
+      read_only_reason: "ByDesign",
+      status: { unavailable: "NoPip", notes: [] },
+    });
+    expect(sourceStateWords(en, ollama)).toEqual(["Not connected over https"]);
+    expect(sourceStateWords(zh, ollama)).toEqual(["不通过https连接"]);
+    expect(sourceStateWords(en, noPip)).toEqual(["No pip", "View only"]);
+    expect(sourceStateWords(zh, noPip)).toEqual(["没有pip", "仅供查看"]);
   });
 });
 

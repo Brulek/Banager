@@ -590,7 +590,17 @@
       "description_other": "{{sources}}这次未检查完，更新可能还没全部列出。"
     },
     "more_other": "还有{{count}}条提示",
-    "showFewer": "收起"
+    "showFewer": "收起",
+    "httpsHostRefused": {
+      "title": "Banager不通过https连接Ollama",
+      "description": "OLLAMA_HOST设置的是https://开头的地址，而Banager只通过http连接Ollama，因此无法检查{{source}}。如果那里的Ollama也能通过http访问，请把OLLAMA_HOST改为它的http://地址，然后退出并重新打开Banager。",
+      "statusWord": "不通过https连接"
+    },
+    "noPip": {
+      "title": "“{{command}}”没有附带pip",
+      "description": "这个Python没有自带pip，因此{{source}}无法为它列出任何内容。",
+      "statusWord": "没有pip"
+    }
   },
   "planRefused": {
     "sourceGone": "无法开始，因为找不到管理它的工具。请点按“重新检查”。",

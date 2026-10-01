@@ -385,12 +385,16 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const { checkAgain, checking } = useCheckAgain();
+  // A source that could not be asked says why even when that is no
+  // warning: 「“python3.13”没有附带pip」 rather than 「pip中没有安装任何内容」,
+  // which would promise that what is installed with it shows up here.
   const warning =
     sourceWarningOf(instance, label, 0) ??
-    unfinishedChecksNotice(t, snapshot?.errors ?? [], snapshot?.instances ?? [], [instance]);
+    unfinishedChecksNotice(t, snapshot?.errors ?? [], snapshot?.instances ?? [], [instance]) ??
+    (isAvailable(instance) ? null : (sourceNoticesFor(instance, label, 0)[0] ?? null));
   return (
     <EmptyState
-      symbol={warning === null ? "info" : "warning"}
+      symbol={warning === null || warning.variant === "info" ? "info" : "warning"}
       title={
         warning === null ? t("installed.sourceEmpty.title", { source: label }) : t(warning.titleKey, warning.values)
       }

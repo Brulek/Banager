@@ -55,6 +55,8 @@ const UNAVAILABLE_WORDS: Record<Unavailable, string> = {
   NotRunning: "diagnostics.text.statusWord.NotRunning",
   NotResponding: "diagnostics.text.statusWord.NotResponding",
   RefusesAsRoot: "diagnostics.text.statusWord.RefusesAsRoot",
+  HttpsHostRefused: "sourceNotice.httpsHostRefused.statusWord",
+  NoPip: "sourceNotice.noPip.statusWord",
 };
 
 /** The app's name: a name, the same in every language (src-tauri/tauri.conf.json's `productName`). */

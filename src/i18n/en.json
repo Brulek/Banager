@@ -633,7 +633,17 @@
     },
     "more_one": "{{count}} more note",
     "more_other": "{{count}} more notes",
-    "showFewer": "Show Fewer"
+    "showFewer": "Show Fewer",
+    "httpsHostRefused": {
+      "title": "Banager doesn't connect to Ollama over https",
+      "description": "OLLAMA_HOST is set to an https:// address, and Banager connects to Ollama only over http, so {{source}} can't be checked. If that Ollama also answers over http, change OLLAMA_HOST to its http:// address, then quit and open Banager again.",
+      "statusWord": "Not connected over https"
+    },
+    "noPip": {
+      "title": "{{command}} doesn't include pip",
+      "description": "This Python has no pip of its own, so {{source}} has nothing to list for it.",
+      "statusWord": "No pip"
+    }
   },
   "planRefused": {
     "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
