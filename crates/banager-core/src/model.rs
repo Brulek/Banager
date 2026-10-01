@@ -295,6 +295,45 @@ pub struct ArtifactFacts {
     /// npm package `@anthropic-ai/claude-code`, the cask `claude-code` and
     /// the standalone install alike). `None` for everything else.
     pub family: Option<String>,
+    /// What Homebrew says about this formula or cask beyond its version:
+    /// read by `parse_info_installed` (`adapters/brew/parse.rs`) from the
+    /// `brew info --installed --json=v2` reply the inventory already
+    /// fetches. `None` for every other source, and for a Homebrew package
+    /// with nothing of the kind to say.
+    pub homebrew: Option<HomebrewFacts>,
+}
+
+/// Homebrew's own state for one installed formula or cask. Every field is
+/// copied from `brew info --installed --json=v2`; Banager adds no judgement
+/// of its own. Mirrored by `HomebrewFacts` in src/lib/types.ts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HomebrewFacts {
+    /// `deprecated: true`: Homebrew still installs and updates it but says
+    /// it will go.
+    pub deprecated: Option<HomebrewLifecycle>,
+    /// `disabled: true`: Homebrew no longer installs or updates it. The
+    /// copy already installed stays where it is.
+    pub disabled: Option<HomebrewLifecycle>,
+    /// `caveats`, Homebrew's own English notes, verbatim (they often hold
+    /// shell lines, so the page shows them as text and offers no copy).
+    pub caveats: Option<String>,
+    /// A formula's other installed versions: its `installed` entries other
+    /// than the one Banager shows, in Homebrew's order. Empty for a cask.
+    pub other_versions: Vec<String>,
+}
+
+/// One of Homebrew's lifecycle marks (`deprecate!` / `disable!`), as its
+/// JSON gives it: the date as Homebrew writes it (`"2026-09-01"`), the
+/// reason (a known symbol such as `"fails_gatekeeper_check"` or the
+/// maintainers' own sentence), and the name of the formula or cask
+/// Homebrew suggests instead.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HomebrewLifecycle {
+    pub date: Option<String>,
+    pub reason: Option<String>,
+    pub replacement: Option<String>,
 }
 
 /// Why the tool itself will refuse to uninstall this one package, although
@@ -1490,7 +1529,10 @@ mod tests {
         // `src/lib/types.ts` spells it `facts: ArtifactFacts` with
         // `family: string | null`, and `NO_FACTS` is this default.
         let facts = ArtifactFacts::default();
-        assert_eq!(serde_json::to_string(&facts).unwrap(), r#"{"family":null}"#);
+        assert_eq!(
+            serde_json::to_string(&facts).unwrap(),
+            r#"{"family":null,"homebrew":null}"#
+        );
         // A payload written before a fact existed still reads.
         assert_eq!(
             serde_json::from_str::<ArtifactFacts>("{}").unwrap(),
@@ -1498,10 +1540,47 @@ mod tests {
         );
         let claude = ArtifactFacts {
             family: Some("claude-code".to_string()),
+            ..Default::default()
         };
         assert_eq!(
             serde_json::to_string(&claude).unwrap(),
-            r#"{"family":"claude-code"}"#
+            r#"{"family":"claude-code","homebrew":null}"#
+        );
+    }
+
+    #[test]
+    fn test_homebrew_facts_spell_every_field_on_the_wire_and_read_back() {
+        // `src/lib/types.ts` mirrors this as `HomebrewFacts` /
+        // `HomebrewLifecycle`, every optional field an explicit `null`, and
+        // `other_versions` an array. The same literal is round-tripped in
+        // src/lib/types.test.ts.
+        let facts = ArtifactFacts {
+            homebrew: Some(HomebrewFacts {
+                deprecated: None,
+                disabled: Some(HomebrewLifecycle {
+                    date: Some("2026-09-01".to_string()),
+                    reason: Some("fails_gatekeeper_check".to_string()),
+                    replacement: Some("onyx".to_string()),
+                }),
+                caveats: Some("Turn on \"Launch at login\".\n".to_string()),
+                other_versions: vec!["3.6.3".to_string()],
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&facts).unwrap();
+        assert_eq!(
+            json,
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]}}"#
+        );
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
+        // Fields a payload leaves out read as empty.
+        assert_eq!(
+            serde_json::from_str::<HomebrewFacts>("{}").unwrap(),
+            HomebrewFacts::default()
+        );
+        assert_eq!(
+            serde_json::from_str::<HomebrewLifecycle>("{}").unwrap(),
+            HomebrewLifecycle::default()
         );
     }
 

@@ -20,7 +20,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -40,7 +41,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -60,7 +62,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -80,7 +83,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -100,7 +104,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -120,7 +125,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -140,7 +146,13 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "ffmpeg-full includes additional tools and libraries that are not included in the regular ffmpeg formula.",
+        "other_versions": []
+      }
     }
   },
   {
@@ -160,7 +172,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -180,7 +193,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -200,7 +214,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -220,7 +235,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -240,7 +256,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -260,7 +277,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -280,7 +298,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -300,7 +319,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -320,7 +340,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "2.5.21"
+        ]
+      }
     }
   },
   {
@@ -340,7 +368,13 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "Guile bindings are now in the `guile-gnutls` formula.",
+        "other_versions": []
+      }
     }
   },
   {
@@ -360,7 +394,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -380,7 +415,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "2.1.0"
+        ]
+      }
     }
   },
   {
@@ -400,7 +443,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -420,7 +464,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -440,7 +485,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -460,7 +506,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -480,7 +527,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -500,7 +548,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -520,7 +569,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -540,7 +590,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -560,7 +611,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -580,7 +632,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "1.12.3"
+        ]
+      }
     }
   },
   {
@@ -600,7 +660,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -620,7 +681,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -640,7 +702,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -660,7 +723,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "1.69.0"
+        ]
+      }
     }
   },
   {
@@ -680,7 +751,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "1.17.0"
+        ]
+      }
     }
   },
   {
@@ -700,7 +779,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "1.24.0"
+        ]
+      }
     }
   },
   {
@@ -720,7 +807,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -740,7 +828,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -760,7 +849,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -780,7 +870,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -800,7 +891,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -820,7 +912,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -840,7 +933,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -860,7 +954,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -880,7 +975,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "1.16.0"
+        ]
+      }
     }
   },
   {
@@ -900,7 +1003,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -920,7 +1024,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -940,7 +1045,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -960,7 +1066,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -980,7 +1087,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1000,7 +1108,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1020,7 +1129,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1040,7 +1150,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1060,7 +1171,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1080,7 +1192,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "0.32.0"
+        ]
+      }
     }
   },
   {
@@ -1100,7 +1220,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "0.6.0_3"
+        ]
+      }
     }
   },
   {
@@ -1120,7 +1248,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1140,7 +1269,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1160,7 +1290,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1180,7 +1311,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1200,7 +1332,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1220,7 +1353,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1240,7 +1374,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "3.128"
+        ]
+      }
     }
   },
   {
@@ -1260,7 +1402,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1280,7 +1423,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1300,7 +1444,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1320,7 +1465,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3/bin/c_rehash\n\nOpenSSL 3.6 is only supported until 2026-11-01 so the `openssl@3`\nformula will be downgraded to OpenSSL 3.5 (LTS) in a future update.",
+        "other_versions": [
+          "3.6.3"
+        ]
+      }
     }
   },
   {
@@ -1340,7 +1493,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1360,7 +1514,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1380,7 +1535,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1400,7 +1556,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1420,7 +1577,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1440,7 +1598,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1460,7 +1619,13 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.11\n\nUnversioned and major-versioned symlinks `python`, `python3`, `python-config`, `python3-config`, `pip`, `pip3`, etc. pointing to\n`python3.11`, `python3.11-config`, `pip3.11` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.11/libexec/bin\n\nYou can install Python packages with\n  pip3.11 install <package>\nThey will install into the site-package directory\n  $HOMEBREW_PREFIX/lib/python3.11/site-packages\n\n`idle3.11` requires tkinter, which is available separately:\n  brew install python-tk@3.11\n\ngdbm (`dbm.gnu`) is no longer included in this formula, but it is available separately:\n  brew install python-gdbm@3.11\n`dbm.ndbm` changed database backends in Homebrew Python 3.11.\nIf you need to read a database from a previous Homebrew Python created via `dbm.ndbm`,\nyou'll need to read your database using the older version of Homebrew Python and convert to another format.\n`dbm` still defaults to `dbm.gnu` when it is installed.\n\nIf you do not need a specific version of Python, and always want Homebrew's `python3` in your PATH:\n  brew install python3\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python",
+        "other_versions": []
+      }
     }
   },
   {
@@ -1480,7 +1645,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3\n\nUnversioned symlinks `python`, `python-config`, `pip` etc. pointing to\n`python3`, `python3-config`, `pip3` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.14/libexec/bin\n\n`idle3.14` requires tkinter, which is available separately:\n  brew install python-tk@3.14\n\n`dbm.gnu` is available separately:\n  brew install python-gdbm@3.14\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python",
+        "other_versions": [
+          "3.14.6"
+        ]
+      }
     }
   },
   {
@@ -1500,7 +1673,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "8.3.3"
+        ]
+      }
     }
   },
   {
@@ -1520,7 +1701,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "2.32.70"
+        ]
+      }
     }
   },
   {
@@ -1540,7 +1729,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "3.4.14"
+        ]
+      }
     }
   },
   {
@@ -1560,7 +1757,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "4.6.4"
+        ]
+      }
     }
   },
   {
@@ -1580,7 +1785,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "9.0.0"
+        ]
+      }
     }
   },
   {
@@ -1600,7 +1813,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1620,7 +1834,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1640,7 +1855,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1660,7 +1876,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1680,7 +1897,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1700,7 +1918,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "4.2"
+        ]
+      }
     }
   },
   {
@@ -1720,7 +1946,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1740,7 +1967,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1760,7 +1988,15 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": null,
+        "other_versions": [
+          "5.8.3"
+        ]
+      }
     }
   },
   {
@@ -1780,7 +2016,8 @@ expression: result
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1795,12 +2032,13 @@ expression: result
     "description": "Menu bar usage monitor for Codex and Claude",
     "homepage": "https://codexbar.app/",
     "size_bytes": null,
-    "installed_at": null,
+    "installed_at": 1787166748,
     "path": "/Applications/CodexBar.app",
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1815,12 +2053,18 @@ expression: result
     "description": "Claude usage limits in the menu bar",
     "homepage": "https://github.com/gautham-v/claudebar",
     "size_bytes": null,
-    "installed_at": null,
+    "installed_at": 1789434602,
     "path": "/Applications/Claudebar.app",
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": {
+        "deprecated": null,
+        "disabled": null,
+        "caveats": "Turn on \"Launch at login\" from the popover if you want it.",
+        "other_versions": []
+      }
     }
   },
   {
@@ -1835,12 +2079,13 @@ expression: result
     "description": "Inventory and manage packages across package managers",
     "homepage": "https://github.com/mxcl/package-manager-manager",
     "size_bytes": null,
-    "installed_at": null,
+    "installed_at": 1789595539,
     "path": "/Applications/Package Manager Manager.app",
     "auto_updates": true,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   },
   {
@@ -1855,12 +2100,13 @@ expression: result
     "description": "Verify system files structure, run miscellaneous maintenance and more",
     "homepage": "https://www.titanium-software.fr/en/onyx.html",
     "size_bytes": null,
-    "installed_at": null,
+    "installed_at": 1786405354,
     "path": "/Applications/OnyX.app",
     "auto_updates": false,
     "uninstall_blocked": null,
     "facts": {
-      "family": null
+      "family": null,
+      "homebrew": null
     }
   }
 ]

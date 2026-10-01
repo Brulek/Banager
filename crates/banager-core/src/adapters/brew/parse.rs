@@ -1,10 +1,11 @@
 use crate::adapters::AdapterError;
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UninstallBlocked,
-    UpdateBlocked, UpdateCandidate, UpdateChannel,
+    ArtifactFacts, ArtifactKey, ArtifactKind, HomebrewFacts, HomebrewLifecycle, InstallReason,
+    InstalledArtifact, SearchHit, UninstallBlocked, UpdateBlocked, UpdateCandidate, UpdateChannel,
 };
 use serde::de::IgnoredAny;
 use serde::Deserialize;
+use serde_json::Value;
 use std::path::PathBuf;
 
 // Both partitions are required, deliberately. `brew info --installed
@@ -45,6 +46,8 @@ struct FormulaInfo {
     /// Homebrew's own refusal.
     #[serde(default)]
     pinned: bool,
+    #[serde(flatten)]
+    status: StatusFields,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,12 +84,108 @@ struct CaskInfo {
     /// `FormulaInfo.pinned`.
     #[serde(default)]
     pinned: bool,
+    /// When brew installed it, in unix seconds (`"installed_time" =>
+    /// install_time&.to_i`, `cask/cask.rb:571` in Homebrew 7.0.7; all four
+    /// casks of the recorded `7.0.3/info-installed.json` carry one). Read
+    /// leniently (`StatusFields` says why): anything but a whole number is
+    /// no date.
+    #[serde(default)]
+    installed_time: Option<Value>,
+    #[serde(flatten)]
+    status: StatusFields,
     /// The cask's stanzas as brew lists them. Defaulted: a brew that omits
     /// the key has said nothing about where the app went, and the cost is
     /// the one this field exists to remove -- the cask's command listed on
     /// the Unknown page.
     #[serde(default)]
     artifacts: Vec<CaskArtifact>,
+}
+
+/// The lifecycle marks and notes that formulae and casks share in `brew
+/// info --json=v2` (`formula.rb:3137-3152`, `cask/cask.rb:579-596` in
+/// Homebrew 7.0.7): `deprecated` / `disabled`, each with its date, reason
+/// and suggested replacement, and `caveats`. They become
+/// `ArtifactFacts.homebrew` (`homebrew_facts`).
+///
+/// Every one is read as a bare JSON value and kept only when it has the
+/// expected shape. They only ever add a sentence to the details pane, so a
+/// Homebrew that one day writes a reason as an object or a date as a
+/// number must cost that sentence, not the whole Homebrew inventory, which
+/// a strict `Option<String>` would fail with a parse error.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct StatusFields {
+    deprecated: Option<Value>,
+    deprecation_date: Option<Value>,
+    deprecation_reason: Option<Value>,
+    deprecation_replacement_formula: Option<Value>,
+    deprecation_replacement_cask: Option<Value>,
+    disabled: Option<Value>,
+    disable_date: Option<Value>,
+    disable_reason: Option<Value>,
+    disable_replacement_formula: Option<Value>,
+    disable_replacement_cask: Option<Value>,
+    caveats: Option<Value>,
+}
+
+/// A non-empty string, trimmed at the end only (a caveat's indented lines
+/// keep their indent); anything else -- `null`, `""`, a number -- is
+/// nothing.
+fn text(value: &Option<Value>) -> Option<String> {
+    match value {
+        Some(Value::String(s)) if !s.trim().is_empty() => Some(s.trim_end().to_string()),
+        _ => None,
+    }
+}
+
+fn flag(value: &Option<Value>) -> bool {
+    matches!(value, Some(Value::Bool(true)))
+}
+
+/// One lifecycle mark, present only when its flag is `true`: Homebrew
+/// fills `deprecation_date` for a `deprecate!` dated in the future too,
+/// while the package is not deprecated yet (`formula.rb:5213-5225`, 7.0.7), so the
+/// date alone says nothing. The replacement is the formula's name, else
+/// the cask's: Homebrew 7 accepts only one of the two
+/// (`formula.rb:5197-5199`), and an old `replacement:` fills both with the
+/// same name.
+fn lifecycle(
+    on: &Option<Value>,
+    date: &Option<Value>,
+    reason: &Option<Value>,
+    formula: &Option<Value>,
+    cask: &Option<Value>,
+) -> Option<HomebrewLifecycle> {
+    flag(on).then(|| HomebrewLifecycle {
+        date: text(date),
+        reason: text(reason),
+        replacement: text(formula).or_else(|| text(cask)),
+    })
+}
+
+/// `ArtifactFacts.homebrew` for one package: `None` when Homebrew has
+/// nothing of the kind to say, so the wire stays as small as before for
+/// the many that have none.
+fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<HomebrewFacts> {
+    let facts = HomebrewFacts {
+        deprecated: lifecycle(
+            &status.deprecated,
+            &status.deprecation_date,
+            &status.deprecation_reason,
+            &status.deprecation_replacement_formula,
+            &status.deprecation_replacement_cask,
+        ),
+        disabled: lifecycle(
+            &status.disabled,
+            &status.disable_date,
+            &status.disable_reason,
+            &status.disable_replacement_formula,
+            &status.disable_replacement_cask,
+        ),
+        caveats: text(&status.caveats),
+        other_versions,
+    };
+    (facts != HomebrewFacts::default()).then_some(facts)
 }
 
 /// One entry of a cask's `artifacts` in `brew info --json=v2`: one stanza,
@@ -166,6 +265,18 @@ pub fn parse_info_installed(
             .find(|entry| Some(&entry.version) == f.linked_keg.as_ref())
             .or_else(|| f.installed.last());
 
+        // Every other installed keg, in brew's order: an older version
+        // Homebrew's cleanup has not removed yet (or a newer one, unlinked).
+        let other_versions: Vec<String> = match picked {
+            Some(entry) => f
+                .installed
+                .iter()
+                .filter(|other| !std::ptr::eq(*other, entry))
+                .map(|other| other.version.clone())
+                .collect(),
+            None => Vec::new(),
+        };
+
         let (version, reason, installed_at) = match picked {
             Some(entry) => {
                 let reason = match entry.installed_on_request {
@@ -199,7 +310,10 @@ pub fn parse_info_installed(
             path: None,
             auto_updates: false,
             uninstall_blocked: f.pinned.then_some(UninstallBlocked::Pinned),
-            facts: Default::default(),
+            facts: ArtifactFacts {
+                homebrew: homebrew_facts(&f.status, other_versions),
+                ..Default::default()
+            },
         });
     }
 
@@ -228,11 +342,14 @@ pub fn parse_info_installed(
             description: c.desc,
             homepage: c.homepage,
             size_bytes: None,
-            installed_at: None,
+            installed_at: c.installed_time.as_ref().and_then(Value::as_i64),
             path,
             auto_updates: c.auto_updates.unwrap_or(false),
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
-            facts: Default::default(),
+            facts: ArtifactFacts {
+                homebrew: homebrew_facts(&c.status, Vec::new()),
+                ..Default::default()
+            },
         });
     }
 
@@ -394,6 +511,143 @@ pub fn parse_version(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Homebrew's lifecycle marks, inline because the recording has none.
+    // The shapes are `brew info --json=v2`'s: a symbol reason is written as
+    // its name, a date as `YYYY-MM-DD` (`formula.rb:3142-3152`,
+    // `cask/cask.rb:586-596` in Homebrew 7.0.7).
+
+    #[test]
+    fn parse_info_installed_reads_a_disabled_cask() {
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {
+                    "token": "oldapp",
+                    "name": ["Old App"],
+                    "installed": "1.2.0",
+                    "installed_time": 1786405354,
+                    "deprecated": false,
+                    "deprecation_date": null,
+                    "deprecation_reason": null,
+                    "deprecation_replacement_formula": null,
+                    "deprecation_replacement_cask": null,
+                    "disabled": true,
+                    "disable_date": "2026-09-01",
+                    "disable_reason": "fails_gatekeeper_check",
+                    "disable_replacement_formula": null,
+                    "disable_replacement_cask": null,
+                    "caveats": null
+                }
+            ]
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        assert_eq!(result[0].installed_at, Some(1786405354));
+        assert_eq!(
+            result[0].facts.homebrew,
+            Some(HomebrewFacts {
+                deprecated: None,
+                disabled: Some(HomebrewLifecycle {
+                    date: Some("2026-09-01".to_string()),
+                    reason: Some("fails_gatekeeper_check".to_string()),
+                    replacement: None,
+                }),
+                caveats: None,
+                other_versions: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_info_installed_reads_a_deprecated_formula_with_its_replacement_and_old_keg() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "oldtool",
+                    "linked_keg": "2.0",
+                    "installed": [
+                        {"version": "1.9", "installed_on_request": true},
+                        {"version": "2.0", "installed_on_request": true}
+                    ],
+                    "deprecated": true,
+                    "deprecation_date": "2026-06-15",
+                    "deprecation_reason": "the package is not compatible with Homebrew's installation parameters",
+                    "deprecation_replacement_formula": "newtool",
+                    "deprecation_replacement_cask": null,
+                    "disabled": false,
+                    "disable_date": null,
+                    "disable_reason": null,
+                    "caveats": "Run oldtool --init once.\n"
+                }
+            ],
+            "casks": []
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        assert_eq!(result[0].version, "2.0");
+        assert_eq!(
+            result[0].facts.homebrew,
+            Some(HomebrewFacts {
+                deprecated: Some(HomebrewLifecycle {
+                    date: Some("2026-06-15".to_string()),
+                    // A sentence, not a symbol: kept word for word.
+                    reason: Some(
+                        "the package is not compatible with Homebrew's installation parameters"
+                            .to_string()
+                    ),
+                    replacement: Some("newtool".to_string()),
+                }),
+                disabled: None,
+                caveats: Some("Run oldtool --init once.".to_string()),
+                other_versions: vec!["1.9".to_string()],
+            })
+        );
+    }
+
+    #[test]
+    fn parse_info_installed_says_nothing_of_a_date_without_its_flag_or_of_odd_shapes() {
+        // `deprecate!` dated in the future fills the date while
+        // `deprecated` is still false; a reason that is not a string, a
+        // blank caveat and a non-numeric install time are nothing -- and
+        // none of them fails the inventory.
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "later",
+                    "installed": [{"version": "1.0", "installed_on_request": true}],
+                    "deprecated": false,
+                    "deprecation_date": "2099-01-01",
+                    "deprecation_reason": "unmaintained",
+                    "disabled": "yes",
+                    "caveats": "   \n"
+                }
+            ],
+            "casks": [
+                {
+                    "token": "odd",
+                    "installed": "1.0",
+                    "installed_time": "yesterday",
+                    "deprecated": true,
+                    "deprecation_reason": {"symbol": "unmaintained"},
+                    "deprecation_replacement_formula": "",
+                    "deprecation_replacement_cask": "newer"
+                }
+            ]
+        }"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        assert_eq!(result[0].facts.homebrew, None);
+        assert_eq!(result[1].installed_at, None);
+        assert_eq!(
+            result[1].facts.homebrew,
+            Some(HomebrewFacts {
+                deprecated: Some(HomebrewLifecycle {
+                    date: None,
+                    reason: None,
+                    replacement: Some("newer".to_string()),
+                }),
+                ..Default::default()
+            })
+        );
+    }
 
     // Real `brew outdated --json=v2` fixtures never carry `full_name`
     // (confirmed against `adapters/fixtures/brew/*/outdated.json`), so the

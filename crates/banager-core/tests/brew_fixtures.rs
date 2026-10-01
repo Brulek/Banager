@@ -65,6 +65,100 @@ fn test_parse_info_installed_gives_each_recorded_cask_the_app_brew_moved_into_ap
     );
 }
 
+/// What the recording says about Homebrew's own state, counted with a
+/// script over `7.0.3/info-installed.json` (not edited): 19 of its 89
+/// formulae keep a second keg (`readline`, with no `linked_keg`, shows its
+/// last entry and keeps the first); five formulae and one cask carry
+/// caveats; every one of the four casks has an `installed_time`; nothing is
+/// deprecated or disabled.
+#[test]
+fn test_parse_info_installed_reads_homebrew_state_from_the_recording() {
+    let json = read_fixture("info-installed.json");
+    let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
+    let homebrew = |a: &banager_core::model::InstalledArtifact| a.facts.homebrew.clone();
+
+    let others: Vec<(&str, Vec<String>)> = result
+        .iter()
+        .filter_map(|a| {
+            let facts = homebrew(a)?;
+            (!facts.other_versions.is_empty())
+                .then_some((a.key.name.as_str(), facts.other_versions))
+        })
+        .collect();
+    assert_eq!(others.len(), 19, "{others:?}");
+    let openssl = others
+        .iter()
+        .find(|(name, _)| *name == "openssl@3")
+        .expect("openssl@3 keeps 3.6.3");
+    assert_eq!(openssl.1, vec!["3.6.3".to_string()]);
+    let readline = others
+        .iter()
+        .find(|(name, _)| *name == "readline")
+        .expect("readline keeps 8.3.3");
+    assert_eq!(readline.1, vec!["8.3.3".to_string()]);
+    assert!(
+        result
+            .iter()
+            .filter(|a| a.key.kind == ArtifactKind::Cask)
+            .all(|a| homebrew(a).is_none_or(|f| f.other_versions.is_empty())),
+        "a cask has no other kegs"
+    );
+
+    let with_caveats: Vec<&str> = result
+        .iter()
+        .filter(|a| homebrew(a).is_some_and(|f| f.caveats.is_some()))
+        .map(|a| a.key.name.as_str())
+        .collect();
+    assert_eq!(
+        with_caveats,
+        vec![
+            "ffmpeg",
+            "gnutls",
+            "openssl@3",
+            "python@3.11",
+            "python@3.14",
+            "gautham-v/tap/claudebar",
+        ]
+    );
+    let claudebar = result
+        .iter()
+        .find(|a| a.key.name == "gautham-v/tap/claudebar")
+        .and_then(homebrew)
+        .expect("claudebar has caveats");
+    assert_eq!(
+        claudebar.caveats.as_deref(),
+        Some("Turn on \"Launch at login\" from the popover if you want it."),
+        "verbatim, with only the trailing newline trimmed"
+    );
+
+    let cask_dates: Vec<(&str, Option<i64>)> = result
+        .iter()
+        .filter(|a| a.key.kind == ArtifactKind::Cask)
+        .map(|a| (a.key.name.as_str(), a.installed_at))
+        .collect();
+    assert_eq!(
+        cask_dates,
+        vec![
+            ("codexbar", Some(1787166748)),
+            ("gautham-v/tap/claudebar", Some(1789434602)),
+            ("mxcl/made/package-manager-manager", Some(1789595539)),
+            ("onyx", Some(1786405354)),
+        ]
+    );
+
+    assert!(
+        result
+            .iter()
+            .filter_map(homebrew)
+            .all(|f| f.deprecated.is_none() && f.disabled.is_none()),
+        "nothing in the recording is deprecated or disabled"
+    );
+    // Only packages with something to say carry the struct: the 19 with
+    // other kegs, plus the caveats on four formulae and one cask that
+    // keep no other keg (openssl@3 and python@3.14 have both).
+    assert_eq!(result.iter().filter_map(homebrew).count(), 19 + 3 + 1);
+}
+
 #[test]
 fn test_parse_outdated_snapshot() {
     let json = read_fixture("outdated.json");
