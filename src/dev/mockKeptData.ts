@@ -18,8 +18,8 @@ function about(bytes: number): Measured {
   return { bytes: Math.round(bytes), partial: false, at_least: false };
 }
 
-/** What the pretend Mac has, by family, in the table's order. */
-const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Measured | null }[]> = {
+/** What the pretend Mac has, by family, in the table's order. Exported for its test. */
+export const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Measured | null }[]> = {
   "claude-code": [
     { path: "~/.claude", what: "ToolData", size: about(412.3 * MB) },
     { path: "~/.claude.json", what: "ToolData", size: about(0.05 * MB) },
@@ -33,6 +33,12 @@ const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Me
   opencode: [
     { path: "~/.local/share/opencode", what: "ToolData", size: about(21.7 * MB) },
     { path: "~/.config/opencode", what: "ToolData", size: about(0.01 * MB) },
+  ],
+  // Its logins, analytics and model caches, then the settings file in the
+  // home folder (Aider's own docs); no model settings files on this Mac.
+  aider: [
+    { path: "~/.aider", what: "ToolData", size: about(3.2 * MB) },
+    { path: "~/.aider.conf.yml", what: "ToolData", size: about(0.004 * MB) },
   ],
 };
 

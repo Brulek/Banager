@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IssuedPlan, OpRequest, Snapshot, Warning } from "../lib/types";
+import table from "../../crates/banager-core/data/ai-tools.json";
 import { createMockBackend } from "./mockBackend";
+import { KEPT } from "./mockKeptData";
 import { DEFAULT_SCENARIO, type Scenario } from "./scenario";
 
 beforeEach(() => {
@@ -73,6 +75,22 @@ describe("the preview's uninstall previews name what stays", () => {
   it("for opencode from npm: its data folder, then its settings folder", async () => {
     const warnings = await uninstallPlanOf("Package", "opencode-ai");
     expect(keptPaths(warnings)).toEqual(["~/.local/share/opencode", "~/.config/opencode"]);
+  });
+
+  it("for Aider from pipx: its folder, then its settings file in the home folder", async () => {
+    const warnings = await uninstallPlanOf("Tool", "aider-chat");
+    expect(keptPaths(warnings)).toEqual(["~/.aider", "~/.aider.conf.yml"]);
+  });
+
+  it("only paths the table names for the family, in its order (Ollama's models folder aside)", () => {
+    for (const [id, items] of Object.entries(KEPT)) {
+      const family = table.families.find((f) => f.id === id);
+      expect(family, id).toBeDefined();
+      const allowed = id === "ollama" ? ["~/.ollama/models"] : (family?.data_paths ?? []);
+      const paths = items.map((item) => item.path);
+      expect(paths.every((path) => allowed.includes(path)), id).toBe(true);
+      expect(paths, id).toEqual(allowed.filter((path) => paths.includes(path)));
+    }
   });
 
   it("not again for the standalone Claude Code, whose own list keeps them", async () => {
