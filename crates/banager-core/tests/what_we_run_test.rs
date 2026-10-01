@@ -526,6 +526,14 @@ fn test_what_we_run_names_every_path_an_uninstall_preview_says_stays_and_its_lim
             "the `## Data an uninstall leaves behind` section of docs/what-we-run.md does not name `{path}`, which kept_data::data_paths looks at"
         );
     }
+    // And every folder inside them that a size leaves out.
+    for (of, inside) in kept_data::LEFT_OUT {
+        let left_out = format!("`{of}/{inside}`");
+        assert!(
+            folded.contains(&left_out),
+            "the `## Data an uninstall leaves behind` section of docs/what-we-run.md does not name {left_out}, which kept_data::LEFT_OUT leaves out of a size"
+        );
+    }
     let budget = kept_data::BUDGET;
     for limit in [
         format!("{} entries", with_commas(budget.max_entries)),

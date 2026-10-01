@@ -1602,6 +1602,12 @@ says nothing about it. There is no vendor uninstall document and no
 `grok uninstall`; the list is grok's own README ("File Locations") plus
 its install script, and the fixture README says so.
 
+`~/.grok` is also the folder the table names for Grok Build
+(Data an uninstall leaves behind, below). This preview names it once, in
+its own list; the preview of uninstalling Homebrew's cask `grok-build`
+names it there instead, measured by names and sizes alone and without
+`~/.grok/downloads`, this install's program.
+
 ## rustup
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
@@ -2271,19 +2277,49 @@ family on any source (`crates/banager-core/src/kept_data.rs`):
 | Tool | Paths looked at |
 |---|---|
 | Claude Code | `~/.claude`, `~/.claude.json` |
-| Codex | `~/.codex` |
+| Codex | `~/.codex`, measured without `~/.codex/packages/standalone` |
 | Gemini CLI | `~/.gemini`, measured without `~/.gemini/antigravity-cli` |
 | Qwen Code | `~/.qwen` |
+| Kimi Code | `~/.kimi-code`, `~/.kimi` |
+| iFlow CLI | `~/.iflow` |
+| CodeBuddy Code | `~/.codebuddy` |
+| Qoder CLI | `~/.qoder`, measured without `~/.qoder/bin/qodercli` |
 | opencode | `~/.local/share/opencode`, `~/.config/opencode` |
-| Antigravity CLI | `~/.gemini/antigravity-cli` |
+| Crush | `~/.local/share/crush`, `~/.config/crush` |
+| Amp | `~/.config/amp` |
+| Kilo | `~/.local/share/kilo`, `~/.config/kilo` |
+| GitHub Copilot CLI | `~/.copilot`, measured without `~/.copilot/pkg` |
+| Auggie | `~/.augment` |
+| Factory Droid | `~/.factory` |
+| Cursor CLI | `~/.cursor/cli-config.json` |
+| Aider | `~/.aider`, `~/.aider.conf.yml`, `~/.aider.model.settings.yml`, `~/.aider.model.metadata.json` |
+| Goose | `~/.local/share/goose`, `~/.config/goose` |
+| Mistral Vibe | `~/.vibe` |
+| OpenClaw | `~/.openclaw`, `~/.clawdbot` |
 | Ollama (Homebrew's formula `ollama`, cask `ollama-app`) | `~/.ollama/models` |
+| Antigravity CLI | `~/.gemini/antigravity-cli` |
+| Grok Build | `~/.grok`, measured without `~/.grok/downloads` |
 
 The paths come from the bundled table of AI coding tools
-(`data/ai-tools.json`, `data_paths`) and, for Ollama, its FAQ. A path the
-preview already names is not named twice: Claude Code's own installer's
-uninstall lists `~/.claude` and `~/.claude.json` among what it keeps
-(Claude Code, above), and Antigravity CLI's lists
-`~/.gemini/antigravity-cli` (Antigravity CLI, above).
+(`data/ai-tools.json`, `data_paths`) and, for Ollama, its FAQ. Each is
+the folder or file that tool's own docs or source name for its settings,
+logins, sessions or history on macOS, read as text and never run; the
+module doc of `crates/banager-core/src/families.rs` gives the source of
+every one. A path the preview already names is not named twice: Claude
+Code's own installer's uninstall lists `~/.claude` and `~/.claude.json`
+among what it keeps (Claude Code, above), Antigravity CLI's lists
+`~/.gemini/antigravity-cli` (Antigravity CLI, above), and Grok Build's
+lists `~/.grok` (Grok Build, above); for Grok Build, the line is in the
+preview of an uninstall of Homebrew's cask `grok-build`.
+
+Each is the default place. A tool may let a shell move its folder with a
+variable (`KIMI_CODE_HOME`, `KIMI_SHARE_DIR`, `IFLOW_HOME`,
+`CODEBUDDY_CONFIG_DIR`, `QODER_CONFIG_DIR`, `CRUSH_GLOBAL_CONFIG`,
+`CRUSH_GLOBAL_DATA`, `COPILOT_HOME`, `GOOSE_PATH_ROOT`, `VIBE_HOME`,
+`OPENCLAW_STATE_DIR`, `GROK_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`);
+Banager reads none of them -- a Mac app started from the Finder inherits
+nothing from your shell but the `PATH` Banager asks your login shell for
+-- so a folder moved that way is not named.
 
 opencode's two are the folders its own docs name for macOS
 (opencode.ai/docs/troubleshooting, "Storage": sessions, `auth.json`
@@ -2294,8 +2330,36 @@ its cache and state folders, which are not named here. They are named
 in the preview of an uninstall of npm's `opencode-ai` or Homebrew's
 formula `opencode`. opencode's own install (`~/.opencode`, opencode,
 above) has no uninstall in Banager, and neither folder is inside it.
-Banager does not read the `XDG_DATA_HOME` or `XDG_CONFIG_HOME` a shell
-may set, so folders moved there are not named.
+Kilo, built from opencode, keeps its data and settings the same way, in
+`~/.local/share/kilo` and `~/.config/kilo`; its cache and state folders
+are not named either.
+
+Notes by tool, with what is not named and why:
+
+- Kimi Code: `~/.kimi` is the older Python Kimi CLI's folder (PyPI's
+  and Homebrew's `kimi-cli`), which Kimi Code's migration reads and never
+  changes; both folders are named for any member of the family.
+- CodeBuddy Code: not `~/.local/share/codebuddy`, where its own installer
+  keeps its program's versions. Homebrew's `codebuddy` cask, Tencent's
+  CodeBuddy editor, lists `~/.codebuddy` among what its `--zap` trashes,
+  so the editor may keep files there too, and the size counts them.
+- Crush: not `~/.cache/crush`, nor the sessions it keeps in each
+  project's own `.crush` folder. Amp: not `~/.local/share/amp`, which its
+  program defines but no Amp doc describes.
+- Cursor CLI: only its own settings file is named, since `~/.cursor` is
+  the Cursor editor's folder too; no Cursor doc names the CLI's other
+  files there.
+- Aider: not the chat and input history it writes in each git
+  repository.
+- Goose: not `~/.local/state/goose`, its logs, which it deletes itself
+  after two weeks.
+- Ollama: not the rest of `~/.ollama` besides its models.
+- OpenClaw: `~/.openclaw` may hold more than settings and data. Its own
+  `install-cli.sh` installs a Node and a copy of OpenClaw under
+  `~/.openclaw/tools` (in a folder named after the Node version) and
+  `~/.openclaw/bin`, and `tools/` also holds what its skills download.
+  The size counts all of it: a fixed folder name cannot pick the install
+  out, so nothing there is left out.
 
 `~/.gemini` is shared: it is the folder Gemini CLI's docs name, and
 Antigravity CLI keeps everything of its own in `~/.gemini/antigravity-cli`
@@ -2323,11 +2387,17 @@ the places disk use never looks into (Disk use, above: the one list in
 named with no size, and nothing there is read -- also when the link is a
 folder on the way (`~/.ollama`, for `~/.ollama/models`): the path is then
 named without Banager knowing whether it is there inside. A path that is not there,
-or a link that leads nowhere, gets no line. Inside `~/.codex`, the folder
-`packages/standalone` is Codex's own install (Codex's own install, above),
-which uninstalling npm's `@openai/codex` leaves where it is: the size
-neither counts nor enters it (`kept_data::LEFT_OUT`,
-`size::look_at`), and the line says so behind an ⓘ.
+or a link that leads nowhere, gets no line. Four folders inside these
+hold another copy of the tool's program rather than its data, which
+uninstalling the copy a source manages leaves where it is: the size
+neither counts nor enters them (`kept_data::LEFT_OUT`, `size::look_at`),
+and the line says so behind an ⓘ. They are `~/.codex/packages/standalone`,
+Codex's own install (Codex's own install, above), beside npm's
+`@openai/codex`; `~/.qoder/bin/qodercli`, where Qoder CLI's install script
+puts its program's versions, beside npm's `@qoder-ai/qodercli`;
+`~/.copilot/pkg`, the copies of the program GitHub Copilot CLI's updater
+downloads; and `~/.grok/downloads`, Grok Build's own install (Grok Build,
+above), beside Homebrew's cask `grok-build`.
 
 Nothing is written, and nothing is deleted: the preview has no button or
 command that removes these paths. The one action beside each is Copy
@@ -2445,7 +2515,9 @@ All read-only, none saved anywhere else, none uploaded:
   link and file on its way there (`lstat`, `readlink`, `realpath`).
   Nothing in `~/.grok/config.toml` or `~/.grok/auth.json` is read. After
   an uninstall: the same look at the launcher that detection makes, and
-  nothing else — no version is read.
+  nothing else — no version is read. The preview of uninstalling
+  Homebrew's cask `grok-build` walks `~/.grok` for its size, names and
+  sizes only (Data an uninstall leaves behind, above).
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
   (`lstat`, `realpath`); whether `~/.cargo` and `~/.rustup` are real folders
   and not links, and whether anything directly inside either is a link
@@ -2495,12 +2567,12 @@ All read-only, none saved anywhere else, none uploaded:
   `readdir` and `readlink` — never a file's contents but that one file's,
   and never anything in the places its section names (Disk use, above).
 - What an uninstall leaves behind, during an uninstall preview of an AI
-  coding tool: `~/.claude`, `~/.claude.json`, `~/.codex`, `~/.gemini`,
-  `~/.gemini/antigravity-cli`, `~/.qwen`, `~/.local/share/opencode`,
-  `~/.config/opencode` or `~/.ollama/models`, as its family has them, with `lstat`,
-  `readdir` and `readlink` — never a file's contents, and never anything
-  in the places disk use never looks into (Data an uninstall leaves
-  behind, above).
+  coding tool: the folders and files the table names for its family
+  (`~/.claude`, `~/.codex`, `~/.grok`, …; Data an uninstall leaves behind,
+  above, lists every one) or `~/.ollama/models`, with `lstat`, `readdir`
+  and `readlink` — never a file's contents, and never anything in the
+  places disk use never looks into (Data an uninstall leaves behind,
+  above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads

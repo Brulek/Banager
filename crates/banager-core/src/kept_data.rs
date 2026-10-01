@@ -5,14 +5,16 @@
 //! `~/.claude` is still there, nor wonders where 40 GB of models went.
 //!
 //! Which paths: the data folders of the tool's family in the bundled table
-//! (`families.rs`, `data_paths`, each from the vendor's own documents), and
+//! (`families.rs`, `data_paths`, each from the vendor's own docs or
+//! source), and
 //! for the Ollama family -- Homebrew's formula `ollama` and cask
 //! `ollama-app` -- the models folder, `~/.ollama/models` (Ollama's FAQ; the
 //! `OLLAMA_MODELS` a shell may set is not in Banager's environment, so a
 //! models folder elsewhere is not named). Only a path that is there gets a
 //! line, and only one the plan does not already name: Claude Code's own
 //! installer's uninstall lists `~/.claude` and `~/.claude.json` among what
-//! it keeps (`Warning::WillKeep`), which is said once, there. A folder two
+//! it keeps (`Warning::WillKeep`), which is said once, there, as Grok
+//! Build's own lists `~/.grok`. A folder two
 //! tools share is measured without the part the table gives the other one
 //! (`others_inside`): `~/.gemini` is Gemini CLI's, but Antigravity CLI
 //! keeps everything of its own in `~/.gemini/antigravity-cli`, which on
@@ -66,7 +68,7 @@ pub const BUDGET: SizeBudget = SizeBudget {
 ///   updater downloads;
 /// - `~/.grok/downloads`: Grok Build's install script's program (Banager's
 ///   `grok` recipe), beside Homebrew's cask `grok-build`.
-const LEFT_OUT: &[(&str, &str)] = &[
+pub const LEFT_OUT: &[(&str, &str)] = &[
     ("~/.codex", "packages/standalone"),
     ("~/.qoder", "bin/qodercli"),
     ("~/.copilot", "pkg"),

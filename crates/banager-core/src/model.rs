@@ -707,9 +707,8 @@ pub enum Warning {
     /// tool keeps its own data in, which none of the sources' uninstall
     /// commands touches -- the data folders of the tool's family in the
     /// bundled table (`families.rs`, `data_paths`: `~/.claude`,
-    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, `~/.qwen`,
-    /// `~/.local/share/opencode`, `~/.config/opencode`,
-    /// `~/.gemini/antigravity-cli`) and, for the
+    /// `~/.claude.json`, `~/.codex`, `~/.gemini`, … -- every family's but
+    /// Ollama's; docs/what-we-run.md lists them all) and, for the
     /// Ollama family (formula `ollama`, cask `ollama-app`), the models
     /// folder `~/.ollama/models`. One per path that is there, in the
     /// table's order, `path` as the table spells it (`~` for the home
@@ -723,8 +722,9 @@ pub enum Warning {
     /// with such a family (`kept_data::kept_data`); read by `warningKey`
     /// and the uninstall dialog's 「卸载后会保留」 group. `left_out`: the
     /// folders inside it that `size` does not count because they are not
-    /// this tool's data -- `~/.codex/packages/standalone`, Codex's own
-    /// install, when npm's copy is the one uninstalled -- spelled as
+    /// this tool's data but another copy of its program
+    /// (`kept_data::LEFT_OUT`) -- `~/.codex/packages/standalone`, Codex's
+    /// own install, when npm's copy is the one uninstalled -- spelled as
     /// `path` is; empty for most.
     ///
     /// `others`: what another tool keeps inside this folder, which `size`
