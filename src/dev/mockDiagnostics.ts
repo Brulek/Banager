@@ -7,7 +7,7 @@
  * Dev-only, like everything in src/dev.
  */
 import type { ManagerInstance, SystemFacts } from "../lib/types";
-import { HOME } from "./mockData";
+import { HOME, withHomeAsTilde } from "./mockData";
 import type { ScenarioPath } from "./scenario";
 
 /** The pretend Mac's `PATH`, as a login shell with Homebrew, pipx, uv and Cargo set up leaves it. */
@@ -23,12 +23,6 @@ const PATH_DIRS = [
   "/usr/sbin",
   "/sbin",
 ];
-
-/** `path` with the pretend home folder as `~` (`shown_path` in diagnostics.rs). */
-function shown(path: string): string {
-  if (path === HOME) return "~";
-  return path.startsWith(`${HOME}/`) ? `~${path.slice(HOME.length)}` : path;
-}
 
 /** The `PATH` an app opened from Finder starts with, when the login shell's could not be read (`?path=default`). */
 const DEFAULT_PATH_DIRS = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
@@ -54,11 +48,11 @@ export function mockSystemFacts(
     chip: "Apple M2 Pro",
     arch: "aarch64",
     login_path: path !== "default",
-    path_dirs: dirs.map(shown),
-    sources: instances.map((instance) => ({ instance_id: instance.id, exe_path: shown(instance.exe_path) })),
+    path_dirs: dirs.map(withHomeAsTilde),
+    sources: instances.map((instance) => ({ instance_id: instance.id, exe_path: withHomeAsTilde(instance.exe_path) })),
     path_folders:
       !refreshed || path === "default"
         ? null
-        : { read: PATH_DIRS.length, unread: path === "unread" ? [shown(PROTECTED_DIR)] : [] },
+        : { read: PATH_DIRS.length, unread: path === "unread" ? [withHomeAsTilde(PROTECTED_DIR)] : [] },
   };
 }

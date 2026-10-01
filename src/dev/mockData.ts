@@ -46,6 +46,12 @@ export function inHome(relative: string): string {
   return `${HOME}/${relative}`;
 }
 
+/** `path` with the pretend home folder as `~`, as Rust writes one (`shown_path` in diagnostics.rs). */
+export function withHomeAsTilde(path: string): string {
+  if (path === HOME) return "~";
+  return path.startsWith(`${HOME}/`) ? `~${path.slice(HOME.length)}` : path;
+}
+
 /** The instance ids the backend would build (`model::instance_id`). */
 export const IDS = {
   brew: "brew:/opt/homebrew",

@@ -18,7 +18,7 @@ import type {
   UpdateCandidate,
   Warning,
 } from "../lib/types";
-import { IDS, inHome, type World } from "./mockData";
+import { IDS, inHome, withHomeAsTilde, type World } from "./mockData";
 import type { ScenarioOutcome } from "./scenario";
 
 /**
@@ -348,12 +348,6 @@ function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** `~/relative` for a path under the home folder, as the notes spell it. */
-function shown(path: string): string {
-  const home = inHome("");
-  return path.startsWith(home) ? `~/${path.slice(home.length)}` : path;
-}
-
 /** "4.7 GB", for Ollama's progress lines. */
 function gigabytes(bytes: number | null): string {
   return bytes === null ? "" : `${(bytes / 1e9).toFixed(1)} GB`;
@@ -367,7 +361,7 @@ function trashNotes(paths: string[]): LogNote[] {
     const base = fileName(path);
     const name = used.has(base) ? `${base} 10.24.31` : base;
     used.add(base);
-    return { MovedToTrash: { path: shown(path), trashed_to: `~/.Trash/${name}` } };
+    return { MovedToTrash: { path: withHomeAsTilde(path), trashed_to: `~/.Trash/${name}` } };
   });
 }
 
@@ -544,7 +538,7 @@ export function playOutcome(
         return {
           lines: [
             ...lines.slice(0, Math.min(1, trashPaths.length - 1)),
-            { note: { TrashFailed: { path: shown(failedAt), error: trashRefusal(failedAt) } } },
+            { note: { TrashFailed: { path: withHomeAsTilde(failedAt), error: trashRefusal(failedAt) } } },
           ],
           outcome: { Failed: { exit_code: null, summary: trashRefusal(failedAt) } },
         };
@@ -567,7 +561,7 @@ export function playOutcome(
       // A copy of the tool that was still running put its launcher back.
       const launcher = trashPaths[trashPaths.length - 1];
       return {
-        lines: [...lines, { note: { BackAfterUninstall: { path: shown(launcher) } } }],
+        lines: [...lines, { note: { BackAfterUninstall: { path: withHomeAsTilde(launcher) } } }],
         outcome: { NeedsAttention: "BackAfterUninstall" },
       };
     }
