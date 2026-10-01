@@ -108,6 +108,11 @@ own installer: Claude Code at `~/.local/bin/claude`, Antigravity CLI at
 `$CARGO_HOME/bin/rustup`, Codex at `~/.local/bin/codex` and opencode at
 `~/.opencode/bin/opencode` (their sections). The path that was found is
 the one previewed and the one run; Codex's and opencode's are never run.
+Those fixed paths are followed with `lstat` and `realpath` as they are
+(`route::probe_strict`), not one step at a time: if a person has made one
+of them, or a folder above it, a link into a place Banager otherwise
+never looks into (`~/Documents`, iCloud Drive, `/Volumes`, ...), that
+link is followed.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
