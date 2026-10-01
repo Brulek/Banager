@@ -5,6 +5,7 @@ import { namesInSentence } from "../lib/sources";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { CloseIcon } from "./icons";
 import { BUTTON, SMALL_ICON_BUTTON } from "./ui/controls";
+import { focusOrFallback } from "./ui/focus";
 import { SMALL_WRAPPING } from "./ui/group";
 
 /**
@@ -90,7 +91,20 @@ export function BatchUninstallResult() {
             })}
           </ul>
         </div>
-        <button type="button" aria-label={t("batchUninstall.resultDismiss")} onClick={dismiss} className={SMALL_ICON_BUTTON}>
+        <button
+          type="button"
+          aria-label={t("batchUninstall.resultDismiss")}
+          onClick={(event) => {
+            // The × goes with the block: the focus it had goes to the
+            // page's title (`focusOrFallback`) rather than the window's
+            // body, as Settings' Stop Skipping does when its row goes. A
+            // click that left the focus elsewhere leaves it there.
+            const had = document.activeElement;
+            dismiss();
+            if (had === event.currentTarget || had === null || had === document.body) focusOrFallback(null);
+          }}
+          className={SMALL_ICON_BUTTON}
+        >
           <CloseIcon size={16} />
         </button>
       </div>

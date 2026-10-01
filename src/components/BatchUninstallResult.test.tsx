@@ -134,6 +134,24 @@ describe("what a batch uninstall did not uninstall", () => {
     await waitFor(() => expect(screen.queryByRole("region")).toBeNull());
   });
 
+  it("hands the focus its × had to the page's title, not the window's body", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    operations = [op(13, "wget", "Done", refused), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
+    renderWithProviders(
+      <>
+        <h1 tabIndex={-1} data-focus-fallback="">
+          Installed
+        </h1>
+        <BatchUninstallResult />
+      </>,
+    );
+    const close = await screen.findByRole("button", { name: "Close uninstall results" });
+    close.focus();
+    fireEvent.click(close);
+    await waitFor(() => expect(screen.queryByRole("region")).toBeNull());
+    expect(screen.getByRole("heading", { name: "Installed" })).toHaveFocus();
+  });
+
   it("says it in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     useUiStore.getState().setUninstallBatch(record);
