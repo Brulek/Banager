@@ -147,7 +147,10 @@ The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open 
 (⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it)
 and Other Programs (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed
 page with its search box focused, and Settings… (⌘,) is in the Banager menu. With the window closed
-or minimized, each of these brings it back first.
+or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
+keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
+and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
+details, Tab) and the dialogs' (Return, Escape).
 
 The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
 command-line tools and AI coding tools from Homebrew, npm, pipx and the rest in one place; an update or
@@ -525,7 +528,9 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 菜单栏的“显示”菜单像访达和邮件的一样，能打开边栏里的各页：“概览”（⌘1）、“更新”（⌘2）、“已安装”
 （⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“其他程序”（⌘4）。下面是“重新检查”（⌘R）和
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
-选这些项会先把窗口叫回来。
+选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
+“关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
+和对话框（回车、Esc）。
 
 第一次打开 Banager 时，会出现一个欢迎页，用三条短句说明它做什么：用 Homebrew、npm、pipx 等装的命令行工具和
 AI 编程工具都列在一处；更新或卸载前先写明要做什么，确认后才开始；Banager 自己不改终端的配置文件，不收集使用情况，也不需要

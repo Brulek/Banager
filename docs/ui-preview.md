@@ -52,7 +52,7 @@ page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
 never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
-Again, Search or Help's Welcome to Banager, Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
+Again, Search or Help's Welcome to Banager, Keyboard Shortcuts, Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
 page that asked it to listen:
 in this window those items do nothing but bring the window back when it
 is closed or minimized. (The page hears one only when
@@ -294,6 +294,9 @@ Paths are under a generic home folder, `/Users/you`.
 - Help's 「欢迎使用Banager」 ("Welcome to Banager"): `window.mockMenu("welcome")` in the
   console shows the welcome sheet again over any page, with or without `?welcome=1`.
   Closing it saves nothing when it was seen already.
+- Help's 「键盘快捷键」 ("Keyboard Shortcuts"): `window.mockMenu("keyboard-shortcuts")` in the
+  console opens the sheet over any page: the window's keys, the lists' and the dialogs', in
+  the window's language. Done, Escape or a click beside it closes it.
 - Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
   in the console, or 「检查…」 beside 「工具环境」 on the Overview or in Settings' 关于, opens the
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应
