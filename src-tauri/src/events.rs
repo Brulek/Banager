@@ -6,7 +6,17 @@ use tauri::ipc::Channel;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
     Operation(banager_core::events::OperationEvent),
-    SnapshotChanged { generation: u64 },
+    SnapshotChanged {
+        generation: u64,
+    },
+    /// What the first refresh round since launch found installed, before
+    /// its update checks are done (`Session::refresh_recording`'s
+    /// `preview`). The page shows the Installed list from it, every Update
+    /// and Uninstall off, while it still has only the startup placeholder,
+    /// and drops it when a snapshot arrives. Not a snapshot: nothing was
+    /// committed, so `get_snapshot` still answers with the placeholder.
+    /// Sent by `ipc::refresh_for` alone.
+    InventoryPreview(banager_core::session::InventoryPreview),
 }
 
 /// Fans every core event out to all registered Channels; a Channel whose
@@ -120,6 +130,62 @@ mod tests {
 
         sink.broadcast(UiEvent::SnapshotChanged { generation: 2 });
         assert_eq!(ok_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_inventory_preview_wire_shape_is_what_the_typescript_mirror_expects() {
+        // Byte for byte what `src/lib/types.test.ts` builds as a typed
+        // `UiEvent`: a newtype variant, so a one-key object carrying the
+        // preview, its fields in declaration order.
+        let empty = UiEvent::InventoryPreview(banager_core::session::InventoryPreview {
+            round: 1,
+            instances: vec![],
+            artifacts: vec![],
+        });
+        assert_eq!(
+            serde_json::to_string(&empty).expect("serialize"),
+            r#"{"InventoryPreview":{"round":1,"instances":[],"artifacts":[]}}"#
+        );
+
+        // And a full one comes back whole through a Channel, as the page
+        // receives it.
+        let preview = banager_core::session::InventoryPreview {
+            round: 3,
+            instances: vec![banager_core::testing::manager_instance("brew", "brew:1")],
+            artifacts: vec![banager_core::model::InstalledArtifact {
+                key: banager_core::model::ArtifactKey {
+                    instance_id: "brew:1".to_string(),
+                    kind: banager_core::model::ArtifactKind::Formula,
+                    name: "jq".to_string(),
+                },
+                display_name: "jq".to_string(),
+                version: "1.8.2".to_string(),
+                reason: banager_core::model::InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: None,
+                auto_updates: false,
+                uninstall_blocked: None,
+                facts: Default::default(),
+            }],
+        };
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<UiEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        sink.register(channel);
+        sink.broadcast(UiEvent::InventoryPreview(preview.clone()));
+        let events = received.lock().unwrap();
+        match events.as_slice() {
+            [UiEvent::InventoryPreview(back)] => assert_eq!(*back, preview),
+            other => panic!("expected one InventoryPreview, got {other:?}"),
+        };
     }
 
     #[test]

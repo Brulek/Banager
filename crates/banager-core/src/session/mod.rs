@@ -149,6 +149,35 @@ impl Snapshot {
     }
 }
 
+/// What the first refresh round since launch has found installed, handed
+/// out (`refresh_recording`'s `preview`, in `refresh.rs`) as soon as every
+/// source it asked has listed its packages -- while the update checks, the
+/// slow half of a round, still run: Homebrew's `brew update` alone can take
+/// two minutes. The window shows the Installed list from it meanwhile,
+/// every Update and Uninstall off.
+///
+/// Deliberately not a `Snapshot`. It is never committed: `snapshot()`,
+/// `issue_plan` and every caller waiting on the refresh gate go on seeing
+/// what was there before -- on the only round that previews, the startup
+/// placeholder -- until the round itself commits. Committing it would mark
+/// the round done and hand callers waiting on that round a snapshot with
+/// no updates in it. And it says nothing about updates, errors or
+/// staleness, so it has no fields for them that a reader could take for
+/// "none".
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InventoryPreview {
+    /// The round it is from, still running: the number that round's
+    /// snapshot will carry as `Snapshot::round` when it commits.
+    pub round: u64,
+    /// Every source this round detected, as detection described it: no
+    /// note an update check adds is on them yet.
+    pub instances: Vec<ManagerInstance>,
+    /// What each source that read its list this round listed, in the order
+    /// the round asked them. A source whose read failed, or declined
+    /// because its catalogue is being rewritten, is not in it.
+    pub artifacts: Vec<InstalledArtifact>,
+}
+
 /// Opaque handle to a plan `Session` has issued and is holding server-side.
 /// The front end never constructs one; it only ever echoes back the `id` it
 /// was given.

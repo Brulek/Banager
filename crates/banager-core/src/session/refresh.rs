@@ -3,10 +3,11 @@
 //! and `stale` without ever aborting the whole refresh. Split out of
 //! `session/mod.rs` (Task 14); no behaviour change from what shipped there.
 
-use super::{DetectOutcome, Session, Snapshot, SourceError};
+use super::{DetectOutcome, InventoryPreview, Session, Snapshot, SourceError};
 use crate::adapters::{AdapterError, CheckOptions};
 use crate::model::{
-    InstanceId, InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable,
+    InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance, ResourceLock,
+    Unavailable,
 };
 use crate::runner::HostEnv;
 use std::collections::HashSet;
@@ -112,7 +113,7 @@ impl Session {
         env: &HostEnv,
         opts: &CheckOptions,
     ) -> (u64, Snapshot) {
-        self.refresh_recording(env, opts, |_, _| {}).await
+        self.refresh_recording(env, opts, |_, _| {}, |_| {}).await
     }
 
     /// `refresh_with_round`, calling `record` with the number of the round
@@ -124,11 +125,24 @@ impl Session {
     /// each round this way (`ipc::refresh_for`), so that a reader of the
     /// snapshot never finds a round not yet recorded. Not called when this
     /// call is dropped before a round answers it.
+    ///
+    /// `preview` is called at most once, and only when this call runs a
+    /// round before any round has committed -- the first since launch, or
+    /// one after it that was dropped before it could commit: with what that
+    /// round's sources listed (`InventoryPreview`), as soon as every source
+    /// it asked has listed its packages or failed to, while their update
+    /// checks still run, and before the round commits. Not when nothing was
+    /// listed at all, and never with anything committed: `snapshot()` and
+    /// every caller waiting on this round see the round's snapshot only
+    /// once it has committed, whole. The shell sends it to the window
+    /// (`UiEvent::InventoryPreview`); a call that shares a round another
+    /// call ran never calls it.
     pub async fn refresh_recording(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
         opts: &CheckOptions,
         record: impl FnOnce(u64, &Snapshot) + Send,
+        preview: impl FnOnce(InventoryPreview) + Send,
     ) -> (u64, Snapshot) {
         let _under_way = UnderWay::enter(&self.refreshes_under_way);
         // Read before queueing on the gate: any round numbered above this
@@ -146,19 +160,21 @@ impl Session {
             record(committed, &snapshot);
             return (committed, snapshot);
         }
-        self.refresh_round(gate, env, opts, record).await
+        self.refresh_round(gate, env, opts, record, preview).await
     }
 
     /// One real refresh round, the body of `refresh`, handing back its own
     /// number with its snapshot. Takes the `refresh_gate` guard by value so
     /// no round can run without holding it, and holds it until the round
-    /// has committed. `record` is `commit`'s to call.
+    /// has committed. `record` is `commit`'s to call; `preview` is called,
+    /// if at all, before it (`refresh_recording`).
     async fn refresh_round(
         self: &std::sync::Arc<Self>,
         _gate: tokio::sync::MutexGuard<'_, ()>,
         env: &HostEnv,
         opts: &CheckOptions,
         record: impl FnOnce(u64, &Snapshot) + Send,
+        preview: impl FnOnce(InventoryPreview) + Send,
     ) -> (u64, Snapshot) {
         // Numbered before anything is read, under the gate: a caller that
         // read `rounds_started` below this number arrived before this round
@@ -389,6 +405,17 @@ impl Session {
         let mut updates = Vec::new();
         let mut errors = detect_errors;
         let mut handles = Vec::with_capacity(instances.len());
+        // The preview's channel (`refresh_recording`'s `preview`): each
+        // instance's task sends what it listed, and drops its end, before
+        // its update check starts, and the collector after the fan-out
+        // reads until every end is dropped. Only on a round before any has
+        // committed: the window then has nothing to show but the startup
+        // placeholder, and what it waits on is the update checks -- every
+        // registry asked over the network, `brew update`. A later round's
+        // list is on screen already, with its updates.
+        let previewing = previous.round == 0;
+        let (preview_tx, mut preview_rx) =
+            tokio::sync::mpsc::unbounded_channel::<(usize, Vec<InstalledArtifact>)>();
         for inst in instances.clone() {
             // Task 11: a source that already told us it is not answering is
             // a reported state, not a failed refresh, so it is never fanned
@@ -443,6 +470,9 @@ impl Session {
             };
             let ops = self.ops.clone();
             let previous = previous.clone();
+            // This task's place in the fan-out, which the preview lists by.
+            let place = handles.len();
+            let preview_tx = previewing.then(|| preview_tx.clone());
             // `opts` is `Copy`, so the `async move` block below captures its
             // own value rather than borrowing this function's.
             handles.push((
@@ -485,6 +515,20 @@ impl Session {
                                     .filter(|a| a.key.instance_id == inst.id)
                                     .cloned(),
                             );
+                        }
+                    }
+                    // What this round's own reading listed, for the
+                    // preview, before the update check -- the slow half --
+                    // starts. A read that failed or declined sends nothing:
+                    // what it carries forward is last round's, and the only
+                    // round that previews has none. Sent or not, this
+                    // task's end of the channel is dropped here, so the
+                    // preview waits on no update check. A send fails only
+                    // once the round itself has been dropped, with nobody
+                    // left to read it.
+                    if let Some(tx) = preview_tx {
+                        if inventory_confirmed {
+                            let _ = tx.send((place, artifacts.clone()));
                         }
                     }
                     // What this source said about *itself* while checking,
@@ -606,6 +650,34 @@ impl Session {
                     (artifacts, updates, errors, stale, notes)
                 })),
             ));
+        }
+
+        // The preview, before the join below: every task has listed its
+        // packages, or failed to, once the last end of the channel is
+        // dropped -- this function's own first. A task that panics or is
+        // aborted drops its end as it goes, so this waits on no task
+        // longer than the join would. In fan-out order, whichever source
+        // answered first, so one Mac previews one list. Handed to
+        // `preview` and nowhere else: it is not committed, and nothing in
+        // this session reads it (`InventoryPreview`).
+        drop(preview_tx);
+        if previewing && !handles.is_empty() {
+            let mut answers = Vec::with_capacity(handles.len());
+            while let Some(answer) = preview_rx.recv().await {
+                answers.push(answer);
+            }
+            answers.sort_by_key(|(place, _)| *place);
+            let listed: Vec<InstalledArtifact> =
+                answers.into_iter().flat_map(|(_, items)| items).collect();
+            // Nothing listed is nothing to show: the startup placeholder
+            // says as much until the round commits.
+            if !listed.is_empty() {
+                preview(InventoryPreview {
+                    round,
+                    instances: instances.clone(),
+                    artifacts: listed,
+                });
+            }
         }
 
         // Exactly "a refresh attempt failed" -- this round's, or, for an
@@ -817,7 +889,7 @@ mod tests {
     };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::test_support::{make_instance, non_root_env, root_env};
-    use crate::session::{DetectOutcome, Session, Snapshot};
+    use crate::session::{DetectOutcome, InventoryPreview, Session, Snapshot};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
@@ -876,6 +948,11 @@ mod tests {
         /// How many blocked `inventory` futures have been *dropped* -- which
         /// only happens if something cancelled the worker running them.
         inventory_dropped: usize,
+        /// When set, every `check_updates` waits for a permit here before
+        /// it answers (and gives it back): the slow half of a round held
+        /// open, so a test can look at what a round hands out before it
+        /// commits. One `add_permits(1)` lets every check through.
+        check_gate: Option<Arc<tokio::sync::Semaphore>>,
     }
 
     /// Counts its own drop into `FakeState::inventory_dropped`: the only
@@ -914,6 +991,7 @@ mod tests {
                 blocking_inventory: Vec::new(),
                 inventory_blocked: 0,
                 inventory_dropped: 0,
+                check_gate: None,
             }));
             let adapter = Arc::new(FakeAdapter {
                 meta: crate::session::test_support::fake_adapter_meta(id),
@@ -998,6 +1076,13 @@ mod tests {
             inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
+            let gate = self.state.lock().unwrap().check_gate.clone();
+            if let Some(gate) = gate {
+                let _permit = gate
+                    .acquire()
+                    .await
+                    .expect("the check gate is never closed");
+            }
             let panicking = {
                 let mut s = self.state.lock().unwrap();
                 match s.panicking_updates.iter().position(|id| id == &inst.id) {
@@ -3092,15 +3177,20 @@ mod tests {
         let session = Session::with_adapters(sink, vec![adapter], None);
         let seen = Arc::new(Mutex::new(Vec::new()));
         let (round, snapshot) = session
-            .refresh_recording(&non_root_env(), &CheckOptions::default(), {
-                let session = session.clone();
-                let seen = seen.clone();
-                move |round, snapshot| {
-                    // What anyone reading the session sees as it is recorded.
-                    let visible = session.snapshot().round;
-                    seen.lock().unwrap().push((round, snapshot.round, visible));
-                }
-            })
+            .refresh_recording(
+                &non_root_env(),
+                &CheckOptions::default(),
+                {
+                    let session = session.clone();
+                    let seen = seen.clone();
+                    move |round, snapshot| {
+                        // What anyone reading the session sees as it is recorded.
+                        let visible = session.snapshot().round;
+                        seen.lock().unwrap().push((round, snapshot.round, visible));
+                    }
+                },
+                |_| {},
+            )
             .await;
         assert_eq!(
             *seen.lock().unwrap(),
@@ -3131,6 +3221,7 @@ mod tests {
                         &non_root_env(),
                         &CheckOptions::default(),
                         move |round, _| recorded.lock().unwrap().push(round),
+                        |_| {},
                     )
                     .await
             })
@@ -3146,6 +3237,7 @@ mod tests {
                             &non_root_env(),
                             &CheckOptions::default(),
                             move |round, _| recorded.lock().unwrap().push(round),
+                            |_| {},
                         )
                         .await
                 })
@@ -3877,5 +3969,299 @@ mod tests {
         let (second, _) = FakeAdapter::new("fake");
         let sink = Arc::new(VecSink::new());
         let _ = Session::with_adapters(sink, vec![first, second], None);
+    }
+
+    // ---- The first round's preview (`refresh_recording`'s `preview`) ----
+
+    /// A source under `adapter_id` with one instance, `<adapter_id>:1`,
+    /// listing `names`, each with an update, and its update check held at
+    /// `gate` until the test opens it.
+    fn gated_source(
+        adapter_id: &str,
+        names: &[&str],
+        gate: &Arc<tokio::sync::Semaphore>,
+    ) -> (Arc<FakeAdapter>, Arc<Mutex<FakeState>>) {
+        let (adapter, state) = FakeAdapter::new(adapter_id);
+        let id = format!("{adapter_id}:1");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance(adapter_id, &id)];
+            s.artifacts.insert(
+                id.clone(),
+                names.iter().map(|name| make_artifact(&id, name)).collect(),
+            );
+            s.updates.insert(
+                id.clone(),
+                names.iter().map(|name| make_update(&id, name)).collect(),
+            );
+            s.check_gate = Some(gate.clone());
+        }
+        (adapter, state)
+    }
+
+    /// A `preview` callback that sends what it is handed down `tx`.
+    fn send_preview(
+        tx: tokio::sync::mpsc::UnboundedSender<InventoryPreview>,
+    ) -> impl FnOnce(InventoryPreview) + Send + 'static {
+        move |preview| {
+            let _ = tx.send(preview);
+        }
+    }
+
+    /// One refresh, run in a task of its own, its previews sent down the
+    /// returned receiver.
+    fn spawn_previewing_refresh(
+        session: &Arc<Session>,
+    ) -> (
+        tokio::task::JoinHandle<(u64, Snapshot)>,
+        tokio::sync::mpsc::UnboundedReceiver<InventoryPreview>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let session = session.clone();
+        let handle = tokio::spawn(async move {
+            session
+                .refresh_recording(
+                    &non_root_env(),
+                    &CheckOptions::default(),
+                    |_, _| {},
+                    send_preview(tx),
+                )
+                .await
+        });
+        (handle, rx)
+    }
+
+    async fn next_preview(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<InventoryPreview>,
+    ) -> InventoryPreview {
+        tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("a preview while the update checks are held")
+            .expect("the round previewed")
+    }
+
+    fn preview_names(preview: &InventoryPreview) -> Vec<&str> {
+        preview
+            .artifacts
+            .iter()
+            .map(|a| a.key.name.as_str())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_the_first_round_previews_every_list_before_its_update_checks_end() {
+        // The slow half of the first round -- every update check -- is
+        // held open; what the sources listed is handed out meanwhile,
+        // without a thing committed.
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (a, a_state) = gated_source("a", &["jq"], &gate);
+        // Asked first, and answers last: listed first all the same.
+        a_state.lock().unwrap().inventory_delay = Duration::from_millis(50);
+        let (b, _) = gated_source("b", &["ripgrep", "fd"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![b, a], None);
+
+        let (refresh, mut previews) = spawn_previewing_refresh(&session);
+        let preview = next_preview(&mut previews).await;
+
+        assert_eq!(preview.round, 1, "the round still running");
+        assert_eq!(
+            preview
+                .instances
+                .iter()
+                .map(|i| i.id.as_str())
+                .collect::<Vec<_>>(),
+            ["a:1", "b:1"]
+        );
+        assert_eq!(preview_names(&preview), ["jq", "ripgrep", "fd"]);
+        assert_eq!(
+            session.snapshot(),
+            Snapshot::empty(),
+            "nothing committed: the session still has the startup placeholder"
+        );
+        assert!(!refresh.is_finished(), "the update checks are still held");
+
+        gate.add_permits(1);
+        let (round, snapshot) = refresh.await.expect("refresh task");
+        assert_eq!(round, preview.round, "the round it previewed committed");
+        assert_eq!(snapshot.artifacts, preview.artifacts);
+        assert_eq!(update_names(&snapshot), ["fd", "jq", "ripgrep"]);
+        assert!(
+            previews.recv().await.is_none(),
+            "one preview a round, and no more"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_preview_is_no_commit_so_a_caller_waiting_on_the_round_gets_it_whole() {
+        // Committing the preview would mark the round done: a caller
+        // queued behind it would be handed a snapshot with no updates in
+        // it. A second call while the first round is still checking --
+        // the menu bar's Check Again during the startup refresh: it gets
+        // the whole of a round, never the preview, and only once a round
+        // has committed.
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (a, _) = gated_source("a", &["jq"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![a], None);
+
+        let (first, mut previews) = spawn_previewing_refresh(&session);
+        next_preview(&mut previews).await;
+        let second = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !second.is_finished(),
+            "nothing has committed for it to take"
+        );
+        assert_eq!(session.snapshot(), Snapshot::empty());
+
+        gate.add_permits(1);
+        let (_, whole) = first.await.expect("first refresh");
+        let second = second.await.expect("second refresh");
+        for snapshot in [&whole, &second] {
+            assert_eq!(update_names(snapshot), ["jq"], "{snapshot:?}");
+            assert!(snapshot.refreshed_at.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_only_a_round_before_any_commit_previews() {
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        let (a, _) = gated_source("a", &["jq"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![a], None);
+        let previews = Arc::new(Mutex::new(Vec::new()));
+        for _ in 0..3 {
+            let previews = previews.clone();
+            session
+                .refresh_recording(
+                    &non_root_env(),
+                    &CheckOptions::default(),
+                    |_, _| {},
+                    move |preview| previews.lock().unwrap().push(preview.round),
+                )
+                .await;
+        }
+        assert_eq!(
+            *previews.lock().unwrap(),
+            [1],
+            "the first round, and not the two after it, which had its list on screen"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_first_round_dropped_before_it_commits_leaves_the_next_one_to_preview() {
+        // "First" means "before any round has committed", not "the first
+        // round numbered": a round dropped mid-flight left the window on
+        // the startup placeholder, and the next one previews again.
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (a, _) = gated_source("a", &["jq"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![a], None);
+
+        let (dropped, mut previews) = spawn_previewing_refresh(&session);
+        assert_eq!(next_preview(&mut previews).await.round, 1);
+        dropped.abort();
+        let _ = dropped.await;
+        assert_eq!(session.snapshot(), Snapshot::empty(), "it never committed");
+
+        let (next, mut previews) = spawn_previewing_refresh(&session);
+        assert_eq!(next_preview(&mut previews).await.round, 2);
+        gate.add_permits(1);
+        let (round, _) = next.await.expect("the next refresh");
+        assert_eq!(round, 2);
+    }
+
+    #[tokio::test]
+    async fn test_a_source_whose_list_failed_is_absent_from_the_preview() {
+        // "a"'s read fails, "b"'s panics: neither is in the preview, and
+        // neither holds it back. Both sources are still among its
+        // instances, as detection found them; what the round commits
+        // says what failed.
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (a, a_state) = gated_source("a", &["jq"], &gate);
+        a_state.lock().unwrap().failing = vec!["a:1".to_string()];
+        let (b, b_state) = gated_source("b", &["fd"], &gate);
+        b_state.lock().unwrap().panicking_inventory = vec!["b:1".to_string()];
+        let (c, _) = gated_source("c", &["ripgrep"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![a, b, c], None);
+
+        let (refresh, mut previews) = spawn_previewing_refresh(&session);
+        let preview = next_preview(&mut previews).await;
+        assert_eq!(preview_names(&preview), ["ripgrep"]);
+        assert_eq!(preview.instances.len(), 3);
+
+        gate.add_permits(1);
+        let (_, snapshot) = refresh.await.expect("refresh task");
+        let failed: Vec<&str> = snapshot
+            .errors
+            .iter()
+            .map(|e| e.instance_id.as_str())
+            .collect();
+        assert_eq!(failed, ["a:1", "b:1"]);
+    }
+
+    #[tokio::test]
+    async fn test_no_preview_when_nothing_was_listed() {
+        // A source that listed nothing, a source that is not answering
+        // (never asked for its list), and no source at all: nothing to
+        // show early, and the startup placeholder says so until the round
+        // commits.
+        let (empty, empty_state) = FakeAdapter::new("empty");
+        empty_state.lock().unwrap().instances = vec![make_instance("empty", "empty:1")];
+        let (stopped, stopped_state) = FakeAdapter::new("stopped");
+        stopped_state.lock().unwrap().instances =
+            vec![crate::session::test_support::make_unavailable_instance(
+                "stopped",
+                "stopped:1",
+                Unavailable::NotRunning,
+            )];
+        let previews = Arc::new(Mutex::new(0));
+        for adapters in [
+            vec![empty as Arc<dyn Adapter>, stopped as Arc<dyn Adapter>],
+            vec![],
+        ] {
+            let session = Session::with_adapters(Arc::new(VecSink::new()), adapters, None);
+            let previews = previews.clone();
+            let (round, _) = session
+                .refresh_recording(
+                    &non_root_env(),
+                    &CheckOptions::default(),
+                    |_, _| {},
+                    move |_| *previews.lock().unwrap() += 1,
+                )
+                .await;
+            assert_eq!(round, 1);
+        }
+        assert_eq!(*previews.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_an_inventory_preview_round_trips_in_the_shape_the_window_reads() {
+        let preview = InventoryPreview {
+            round: 1,
+            instances: vec![make_instance("fake", "fake:1")],
+            artifacts: vec![make_artifact("fake:1", "jq")],
+        };
+        let json = serde_json::to_value(&preview).expect("serialize");
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            ["artifacts", "instances", "round"],
+            "nothing about updates, errors or staleness"
+        );
+        assert_eq!(json["round"], 1);
+        assert_eq!(json["artifacts"][0]["key"]["name"], "jq");
+        let back: InventoryPreview = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(back, preview);
     }
 }

@@ -70,6 +70,12 @@ enum Asker {
 /// `Session::refresh` itself cannot send this — the shell is the only
 /// layer that can, and `announce` below is the only place that does so
 /// outside a test.
+///
+/// Before all of that, on a round run before any round has committed --
+/// the first since launch -- it broadcasts `UiEvent::InventoryPreview`
+/// with what the round's sources listed, as soon as they have, while
+/// their update checks still run (`Session::refresh_recording`'s
+/// `preview`), so the window has the Installed list to show meanwhile.
 async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String> {
     // Who this call asks as, which `announce` reads: for a follow-up, what
     // the record callback reads from the log.
@@ -89,6 +95,14 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
                     Asker::Daily { looked_at } => rounds.record_daily(round, looked_at, snapshot),
                     Asker::FollowUp => trigger = rounds.record_follow_up(round, snapshot),
                 }
+            },
+            // The first round's list, before its update checks are done:
+            // straight to the window, whoever asked. Nothing is recorded
+            // for it and nothing claims a generation -- it is no snapshot.
+            |preview| {
+                state
+                    .channel_sink
+                    .broadcast(UiEvent::InventoryPreview(preview))
             },
         )
         .await;
@@ -809,6 +823,11 @@ mod tests {
         /// and `test_cancel_operation_impl_cancels_a_queued_no_cancel_op_such_as_rustup_self_update`
         /// set `NoCancel`; every other fixture keeps `KillThenReconcile`.
         cancel_policy: CancelPolicy,
+        /// What `inventory()` lists. Only `state_listing` lists anything,
+        /// for the first round's preview (`UiEvent::InventoryPreview`); a
+        /// round that lists nothing previews nothing, and every other
+        /// fixture keeps it empty.
+        listed: Vec<InstalledArtifact>,
     }
 
     #[async_trait]
@@ -828,7 +847,7 @@ mod tests {
             &self,
             _inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-            Ok(Vec::new())
+            Ok(self.listed.clone())
         }
 
         async fn check_updates(
@@ -1010,6 +1029,7 @@ mod tests {
             detect_delay: std::time::Duration::ZERO,
             execute_delay,
             cancel_policy,
+            listed: Vec::new(),
         });
         let sink = ChannelSink::new();
         let session =
@@ -1052,6 +1072,7 @@ mod tests {
             detect_delay,
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
+            listed: Vec::new(),
         });
         let sink = ChannelSink::new();
         let session =
@@ -1103,6 +1124,7 @@ mod tests {
             detect_delay,
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
+            listed: Vec::new(),
         });
         let sink = ChannelSink::new();
         let session = banager_core::testing::session_with_background_change(
@@ -1403,7 +1425,7 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) => None,
+                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
             })
             .collect();
         assert_eq!(
@@ -1473,7 +1495,7 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) => None,
+                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
             })
             .collect();
         assert_eq!(
@@ -1555,7 +1577,7 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 UiEvent::SnapshotChanged { generation } => Some(*generation),
-                UiEvent::Operation(_) => None,
+                UiEvent::Operation(_) | UiEvent::InventoryPreview(_) => None,
             })
             .collect();
         assert_eq!(
@@ -1935,6 +1957,7 @@ mod tests {
             detect_delay: std::time::Duration::ZERO,
             execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
+            listed: Vec::new(),
         });
         let sink = ChannelSink::new();
         let session =
@@ -2634,5 +2657,91 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         assert!(renderer.calls().is_empty(), "{:?}", renderer.calls());
+    }
+
+    /// `state_with_fake_adapter`, but its one source lists `listed`.
+    fn state_listing(listed: Vec<InstalledArtifact>) -> AppState {
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec![],
+        };
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance: banager_core::testing::manager_instance("fake", "fake:1"),
+            execute_calls: Arc::new(AtomicUsize::new(0)),
+            plan_calls: Arc::new(AtomicUsize::new(0)),
+            check_options_calls: Arc::new(Mutex::new(Vec::new())),
+            detect_delay: std::time::Duration::ZERO,
+            execute_delay: std::time::Duration::ZERO,
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            listed,
+        });
+        let sink = ChannelSink::new();
+        let session =
+            banager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+        AppState {
+            session,
+            settings_path: temp_settings_path("ipc-listing"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_the_first_refresh_sends_its_list_to_the_window_before_its_snapshot() {
+        // The window's first refresh: what the sources listed reaches the
+        // page as `InventoryPreview`, ahead of the round's own
+        // `SnapshotChanged`; a later refresh, with its list on screen
+        // already, sends none.
+        let jq = InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: "fake:1".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            },
+            display_name: "jq".to_string(),
+            version: "1.8.2".to_string(),
+            reason: banager_core::model::InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+            facts: Default::default(),
+        };
+        let state = state_listing(vec![jq.clone()]);
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let first = refresh_impl(&state).await.expect("first refresh_impl");
+        refresh_impl(&state).await.expect("second refresh_impl");
+
+        let events = received.lock().unwrap();
+        match events.as_slice() {
+            [UiEvent::InventoryPreview(preview), UiEvent::SnapshotChanged { generation }] => {
+                assert_eq!(preview.round, first.round);
+                assert_eq!(preview.artifacts, vec![jq]);
+                assert_eq!(preview.instances, first.instances);
+                assert_eq!(*generation, first.generation);
+            }
+            other => panic!("expected the preview, then the snapshot, and nothing else: {other:?}"),
+        };
     }
 }
