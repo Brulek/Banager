@@ -14,10 +14,10 @@ import {
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
 import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../lib/warnings";
+import { neededBy, neededByItem, neededBySentence } from "../lib/neededBy";
 import { CommandPreview } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { twinUninstallLine } from "./TwinAdvice";
-import { hostedLines } from "./hostedLines";
 import { formatBytes } from "../lib/format";
 import { twinsByArtifact } from "../lib/commands";
 import { artifactKeyId } from "../store/ui";
@@ -68,6 +68,9 @@ export interface UninstallDialogProps {
  * Uninstall stays disabled while the plan says something still needs the
  * package -- with why, and what to do about it, in the dialog's body next
  * to the list of what needs it, not in a `title` on the disabled button.
+ * What needs it is what Homebrew names (`affected`), and the other sources
+ * that run on it, which Homebrew cannot know (`neededBy`): 「npm和它的4个
+ * 工具」 under a `node@22` npm runs on.
  */
 export function UninstallDialog({
   open,
@@ -143,7 +146,16 @@ export function UninstallDialog({
   const issued = planMutation.data;
   const plan = issued?.plan;
   const affected = plan?.affected ?? [];
-  const hasAffected = affected.length > 0;
+  // The other sources that run on a Homebrew package, which Homebrew does
+  // not name: listed with what it does, and as much a reason to offer no
+  // Uninstall (`Warning.NeededBySource`; `Session::submit` refuses it too).
+  const needed = neededBy(plan?.warnings ?? []);
+  const hasAffected = affected.length > 0 || needed.length > 0;
+  // Each source by the name the sidebar gives it.
+  const sourceOf = useMemo(() => {
+    const labels = instanceLabels(t, snapshot?.instances ?? []);
+    return (instanceId: string) => labels.get(instanceId) ?? adapterLabel(t, adapterIdOf(instanceId));
+  }, [t, snapshot]);
   // `warningLines` is the one rule for turning `plan.warnings` into lines
   // and groups; with the plan's `affected` list shown once below, a
   // `WouldBreak` naming the same packages is not said a second time, and
@@ -166,27 +178,18 @@ export function UninstallDialog({
   // (`twinUninstallLine`).
   const twinLine = useMemo(() => {
     if (artifact === undefined || snapshot === undefined) return null;
-    const labels = instanceLabels(t, snapshot.instances);
-    const labelFor = (instanceId: string) => labels.get(instanceId) ?? adapterLabel(t, adapterIdOf(instanceId));
-    return twinUninstallLine(t, artifact, twinsByArtifact(snapshot.artifacts).get(artifactKeyId(artifact.key)), labelFor);
-  }, [t, artifact, snapshot]);
+    return twinUninstallLine(t, artifact, twinsByArtifact(snapshot.artifacts).get(artifactKeyId(artifact.key)), sourceOf);
+  }, [t, artifact, snapshot, sourceOf]);
   // A model's own size, as Ollama reports it: about what removing it frees,
   // less the layers another model shares, which stay.
   const frees =
     artifact !== undefined && artifact.key.kind === "Model" && artifact.size_bytes !== null
       ? t("clarity.freesModel", { size: formatBytes(artifact.size_bytes) })
       : null;
-  const hosted = useMemo(
-    () => (plan === undefined ? [] : hostedLines(t, artifact, snapshot?.instances ?? [], snapshot?.artifacts ?? [])),
-    [t, plan, artifact, snapshot],
-  );
   const notes: WarningLine[] = [
     ...(frees === null ? [] : [{ text: frees, detail: null, caution: false }]),
     ...(twinLine === null ? [] : [{ text: twinLine, detail: null, caution: false }]),
     ...lines.note,
-    // What other sources installed through it, left with no way to update
-    // or uninstall them, or to run (`hostedLines`).
-    ...hosted,
     ...(plan?.cancel_policy === "NoCancel"
       ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]
       : []),
@@ -379,6 +382,12 @@ export function UninstallDialog({
                         {name}
                       </li>
                     ))}
+                    {/* Then the sources Homebrew does not name: 「npm和它的4个工具」. */}
+                    {needed.map((entry) => (
+                      <li key={entry.instance_id} className={`text-foreground ${SMALL_WRAPPING}`}>
+                        {neededByItem(t, entry, sourceOf(entry.instance_id))}
+                      </li>
+                    ))}
                   </ul>
                   {/* Why Uninstall below is disabled, said in the body rather
                       than only in a `title` on that disabled button: a
@@ -386,9 +395,13 @@ export function UninstallDialog({
                       of the tab order, so neither a mouse hover nor a
                       keyboard/VoiceOver user ever reached that tooltip.
                       This line is plain text in the flow, reachable by
-                      everyone who reached the list above it. */}
+                      everyone who reached the list above it. Where a source
+                      is listed, it names the tools to uninstall first: the
+                      source's own program goes with the package. */}
                   <p className="mt-2 text-body text-danger-text">
-                    {t("uninstall.affectedBlocksConfirm", { name: displayName })}
+                    {needed.length === 0
+                      ? t("uninstall.affectedBlocksConfirm", { name: displayName })
+                      : neededBySentence(t, displayName, needed, sourceOf, affected.length > 0)}
                   </p>
                 </div>
               ) : null}

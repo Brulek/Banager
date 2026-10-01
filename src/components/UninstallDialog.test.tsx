@@ -289,8 +289,7 @@ describe("UninstallDialog", () => {
     expect(screen.queryByText(/password/)).not.toBeInTheDocument();
   });
 
-  it("says, as a caution, which tools another source installed through it stay with nothing to update or uninstall them", async () => {
-    const pipxRequest: OpRequest = { ...request, name: "pipx" };
+  describe("the sources that run on a Homebrew package (Warning.NeededBySource)", () => {
     const base = {
       version: "1.0",
       reason: "Requested" as const,
@@ -302,30 +301,129 @@ describe("UninstallDialog", () => {
       auto_updates: false,
       uninstall_blocked: null,
     };
-    const pipxFormula: InstalledArtifact = {
+    const formula = (name: string): InstalledArtifact => ({
       ...base,
-      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "pipx" },
-      display_name: "pipx",
-      facts: { ...NO_FACTS, commands: [{ name: "pipx", state: "Runs" }] },
-    };
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+      display_name: name,
+      // What the command check says of it: the copy Terminal runs. The old
+      // caution read this; the preview's own look decides now.
+      facts: { ...NO_FACTS, commands: [{ name, state: "Runs" }] },
+    });
+    const npm = brewInstance({ id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" });
     const pipx = brewInstance({ id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx", prefix: "/opt/homebrew/bin" });
-    const tool = (name: string): InstalledArtifact => ({
+    const ollama = brewInstance({
+      id: "ollama:http://127.0.0.1:11434",
+      adapter_id: "ollama",
+      exe_path: "/opt/homebrew/bin/ollama",
+      prefix: "/Users/you/.ollama",
+    });
+    const tool = (instanceId: string, name: string): InstalledArtifact => ({
       ...base,
-      key: { instance_id: "pipx", kind: "Tool", name },
+      key: { instance_id: instanceId, kind: "Tool", name },
       display_name: name,
       facts: NO_FACTS,
     });
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "get_snapshot") return snapshotWith([brewInstance(), pipx], [pipxFormula, tool("aider-chat"), tool("httpie")]);
-      if (cmd === "plan_operation") return issuedPlanFor({ request: pipxRequest });
-      return undefined;
+
+    function open(name: string, plan: Partial<Plan>, artifacts: InstalledArtifact[]) {
+      const own: OpRequest = { ...request, name };
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === "get_snapshot") return snapshotWith([brewInstance(), npm, ollama, pipx], artifacts);
+        if (cmd === "plan_operation") return issuedPlanFor({ request: own, ...plan });
+        return undefined;
+      });
+      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={own} displayName={name} />);
+    }
+
+    it("lists npm and its tools under what uses it, offers no Uninstall, and says to uninstall the tools first", async () => {
+      open(
+        "node@22",
+        { warnings: [{ NeededBySource: { instance_id: "npm:/opt/homebrew", program: true, tools: 4 } }] },
+        [formula("node@22")],
+      );
+
+      expect(await screen.findByText("npm and its 4 tools")).toBeInTheDocument();
+      within(group("Notes")).getByText("Software that uses it");
+      expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+      expect(screen.getByText("Uninstall the 4 tools installed with npm first to remove node@22.")).toBeInTheDocument();
+      expect(screen.queryByText("Uninstall these first to remove node@22.")).toBeNull();
+      // The command is still there to read.
+      await showCommand();
     });
 
-    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={pipxRequest} displayName="pipx" />);
+    it("names Homebrew's dependents first, then the tools whose environment it is", async () => {
+      open(
+        "python@3.13",
+        {
+          affected: ["pipx"],
+          warnings: [
+            { WouldBreak: { names: ["pipx"] } },
+            { NeededBySource: { instance_id: "pipx", program: false, tools: 2 } },
+          ],
+        },
+        [formula("python@3.13"), formula("pipx")],
+      );
 
-    const line = "aider-chat and httpie, installed with pipx, will stay, but can't be updated or uninstalled here after this.";
-    expect(await screen.findByText(line)).toBeInTheDocument();
-    expect(screen.getByText(line).closest("li")).toHaveAttribute("data-caution");
+      expect(await screen.findByText("2 tools installed with pipx")).toBeInTheDocument();
+      const list = within(group("Notes"))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
+      expect(list).toEqual(["pipx", "2 tools installed with pipx"]);
+      expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+      expect(
+        screen.getByText(
+          "Uninstall the Homebrew software above and the 2 tools installed with pipx first to remove python@3.13.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("says nothing of another source's tools where the preview names none, and offers Uninstall", async () => {
+      // Homebrew's `pipx` with two pipx tools, as the old caution read it
+      // from the command check: the preview's own look found nothing runs
+      // on it, so there is nothing to keep it for and nothing to warn of.
+      open("pipx", {}, [formula("pipx"), tool("pipx", "aider-chat"), tool("pipx", "httpie")]);
+
+      await showCommand();
+      expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+      expect(screen.queryByText("Software that uses it")).toBeNull();
+      expect(screen.queryByText(/installed with pipx/)).toBeNull();
+    });
+
+    it("says so in Chinese, with the sidebar's name for the source", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        open(
+          "ollama",
+          { warnings: [{ NeededBySource: { instance_id: ollama.id, program: true, tools: 2 } }] },
+          [formula("ollama")],
+        );
+        expect(await screen.findByText("Ollama和它的2个模型")).toBeInTheDocument();
+        expect(screen.getByText(zhCN.uninstall.affectedTitle)).toBeInTheDocument();
+        expect(screen.getByText("要卸载“ollama”，请先卸载Ollama的2个模型。")).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("words the refusal of a preview that named one, which only a page that asks for it can reach", async () => {
+      // `Session::submit` refuses such a preview whatever the page sends;
+      // the dialog checks again, and says why while it does.
+      let planCalls = 0;
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === "plan_operation") {
+          planCalls += 1;
+          return planCalls === 1 ? issuedPlanFor() : new Promise<IssuedPlan>(() => {});
+        }
+        if (cmd === "submit_operation") throw JSON.stringify({ kind: "uninstall_blocked", reason: "NeededBySource" });
+        return undefined;
+      });
+      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+      const confirm = await screen.findByRole("button", { name: "Uninstall" });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      fireEvent.click(confirm);
+      const alert = await screen.findByRole("alert");
+      await waitFor(() => expect(alert).toHaveTextContent("Couldn't uninstall it because another source runs on it."));
+      expect(alert.textContent).not.toMatch(/uninstall_blocked|NeededBySource/);
+    });
   });
 
   it("disables confirm and explains what would break when something depends on it", async () => {
