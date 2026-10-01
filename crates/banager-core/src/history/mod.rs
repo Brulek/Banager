@@ -465,8 +465,11 @@ impl HistoryStore {
     }
 
     /// Waits, at most `timeout`, until the file has every change made so
-    /// far; true if it has. For tests, and for nothing on an operation's
-    /// way to its end.
+    /// far; true if it has (or if this launch never writes the file).
+    /// False after a write that failed: the change is still owed, and the
+    /// next record or Clear tries again. For tests and for Banager's exit
+    /// (`src-tauri/src/history.rs`, `flush_on_exit`), never on an
+    /// operation's way to its end.
     pub fn flush(&self, timeout: Duration) -> bool {
         let state = self.state.lock().unwrap();
         let (state, _) = self
@@ -499,13 +502,14 @@ impl HistoryStore {
         let result = bytes
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             .and_then(|bytes| write_atomically(&self.path, &bytes));
-        if let Err(e) = result {
-            // The records stay in memory for this launch; the next record
-            // tries the file again.
-            eprintln!("[banager] could not write the history file: {e}");
-        }
         let mut state = self.state.lock().unwrap();
-        state.written = state.written.max(change);
+        match result {
+            Ok(()) => state.written = state.written.max(change),
+            // The records stay in memory for this launch, and the change is
+            // still owed: the next record or Clear wakes this thread, which
+            // tries the file again, and `flush` does not report it written.
+            Err(e) => eprintln!("[banager] could not write the history file: {e}"),
+        }
         self.flushed.notify_all();
     }
 }
@@ -944,5 +948,66 @@ mod tests {
         let next = HistoryStore::open_with_clock(dir.file(), now);
         assert_eq!(next.view().cleared_before, Some(NOW));
         assert_eq!(next.view().records.len(), 1);
+    }
+
+    #[test]
+    fn test_operations_finishing_together_are_all_kept_and_written_once_whole() {
+        // Several operations end at the same moment, each on its own
+        // thread (`OperationManager::finish` runs on the task that ran
+        // it): every record lands in memory and in the file, and no
+        // staging file is left.
+        let dir = TempDir::new("concurrent");
+        let store = HistoryStore::open_with_clock(dir.file(), now);
+        let threads: Vec<_> = (0..16u64)
+            .map(|op_id| {
+                let store = store.clone();
+                std::thread::spawn(move || {
+                    let k = key(&format!("tool{op_id}"));
+                    let mut e = ended(&k, &Outcome::Succeeded);
+                    e.op_id = op_id;
+                    store.record(&e, &started("tool"));
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert!(store.flush(Duration::from_secs(5)));
+        let mut in_memory: Vec<u64> = store.view().records.iter().map(|r| r.op_id).collect();
+        in_memory.sort_unstable();
+        assert_eq!(in_memory, (0..16).collect::<Vec<_>>());
+        let file: HistoryFile =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        let mut on_disk: Vec<u64> = file.records.iter().map(|r| r.op_id).collect();
+        on_disk.sort_unstable();
+        assert_eq!(on_disk, in_memory);
+        let names: Vec<String> = std::fs::read_dir(&dir.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["history.json".to_string()]);
+    }
+
+    #[test]
+    fn test_a_failed_write_stays_owed_and_the_next_change_writes_it() {
+        let dir = TempDir::new("owed");
+        // A file where the folder should be: no write can succeed.
+        let folder = dir.0.join("data");
+        std::fs::write(&folder, b"a file, not a folder").unwrap();
+        let store = HistoryStore::open_with_clock(folder.join("history.json"), now);
+        let k = key("cmake");
+        store.record(&ended(&k, &Outcome::Succeeded), &started("cmake"));
+        assert!(
+            !store.flush(Duration::from_millis(300)),
+            "a write that failed is not reported as written"
+        );
+        // The folder can be made now: the next change writes both.
+        std::fs::remove_file(&folder).unwrap();
+        store.clear();
+        assert!(store.flush(Duration::from_secs(5)));
+        let file: HistoryFile =
+            serde_json::from_slice(&std::fs::read(folder.join("history.json")).unwrap()).unwrap();
+        assert_eq!(file.records.len(), 1);
+        assert_eq!(file.cleared_before, Some(NOW));
     }
 }

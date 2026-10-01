@@ -8,6 +8,7 @@
 use crate::state::AppState;
 use banager_core::history::{HistoryStore, HistoryView};
 use std::path::Path;
+use std::time::Duration;
 use tauri::State;
 
 /// The file's name, in the application data directory.
@@ -19,6 +20,20 @@ pub fn attach(state: &AppState, data_dir: &Path) {
     state
         .session
         .attach_history(HistoryStore::open(data_dir.join(HISTORY_FILE)));
+}
+
+/// How long Banager's exit waits for the history file: a record of an
+/// operation that finished just before Quit is what the file is for, and
+/// one write of it takes a few milliseconds.
+pub const EXIT_FLUSH: Duration = Duration::from_millis(500);
+
+/// Called as Banager exits (`RunEvent::Exit`, `run()` in lib.rs): waits, at
+/// most `EXIT_FLUSH`, for the history's own thread to write what it has
+/// not written yet.
+pub fn flush_on_exit(state: &AppState) {
+    if !state.session.flush_history(EXIT_FLUSH) {
+        eprintln!("[banager] the history file may be missing the last records");
+    }
 }
 
 pub(crate) fn get_history_impl(state: &AppState) -> HistoryView {
@@ -49,7 +64,6 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -122,6 +136,23 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_exit_waits_for_the_last_change_to_reach_the_file() {
+        let dir = temp_dir("exit");
+        let state = AppState::new(dir.join("settings.json"), ChannelSink::new());
+        attach(&state, &dir);
+        let at = clear_history_impl(&state).cleared_before;
+        flush_on_exit(&state);
+        // Written by the time exit's wait returns, with no polling.
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(HISTORY_FILE)).unwrap()).unwrap();
+        assert_eq!(file["cleared_before"].as_i64(), at);
+        // And a session with none attached has nothing to wait for.
+        let none = AppState::new(dir.join("settings.json"), ChannelSink::new());
+        assert!(none.session.flush_history(EXIT_FLUSH));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

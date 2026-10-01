@@ -156,5 +156,11 @@ pub fn run() {
         .expect("error while building tauri application")
         // A click on Banager's icon in the Dock brings a closed window back,
         // on the Updates page while a notification waits on it (window.rs).
-        .run(window::on_run_event);
+        // At exit, the history's last records reach `history.json` first.
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                history::flush_on_exit(&app.state::<AppState>());
+            }
+            window::on_run_event(app, event);
+        });
 }
