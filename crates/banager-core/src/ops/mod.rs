@@ -105,8 +105,10 @@ fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionCha
 /// Called once, as an operation finishes, with what it ended as: the
 /// history's way in (`Session::submit`, `history::HistoryStore::record`).
 /// Called on the operation's own task, with no lock of the manager's held,
-/// before `OperationEvent::Finished` is sent -- so a window that asks for
-/// the history on that event finds the record there. It must return at
+/// after its resource locks are released but before the operation is
+/// `Done` and before `OperationEvent::Finished` is sent -- so a window that
+/// asks for the history on that event finds the record there, and Quit,
+/// which waits for every operation to be `Done`, never exits before it. It must return at
 /// once: the history only puts the record in memory and wakes its writer.
 pub type OnFinish = Box<dyn FnOnce(&crate::history::Ended<'_>) + Send>;
 
@@ -915,11 +917,14 @@ impl OperationManager {
     /// release racing with this one can never double-release — whichever
     /// runs first wins and the other is a no-op.
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
+        // First the locks and the history: the operation is not `Done` --
+        // nor has it an outcome to show -- until its record is kept, so
+        // that Quit, which asks whether any operation is unfinished and
+        // then flushes what the history owes, can never find it finished
+        // with its record still to come.
         let ended = {
             let mut records = self.records.lock().unwrap();
             if let Some(r) = records.get_mut(&op_id) {
-                r.status = OpStatus::Done;
-                r.outcome = Some(outcome.clone());
                 if release_locks {
                     if let Some(lr) = &r.lock_release {
                         lr.release_once();
@@ -944,7 +949,7 @@ impl OperationManager {
                 kind: request.artifact_kind,
                 name: request.name,
             };
-            on_finish(&crate::history::Ended {
+            let ended = crate::history::Ended {
                 op_id,
                 key: &key,
                 op_kind: request.kind,
@@ -952,7 +957,14 @@ impl OperationManager {
                 started,
                 before: before.as_deref(),
                 after: after.as_deref(),
-            });
+            };
+            // A callback that panicked must not leave the operation
+            // unfinished for good: it ends all the same, with no record.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| on_finish(&ended)));
+        }
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.status = OpStatus::Done;
+            r.outcome = Some(outcome.clone());
         }
         self.done_notify.notify_waiters();
         self.sink.emit(OperationEvent::Finished { op_id, outcome });

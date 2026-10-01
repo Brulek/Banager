@@ -10,7 +10,7 @@ use banager_core::events::{EventSink, OpId, VecSink};
 use banager_core::history::{HistoryKind, HistoryResult, HistoryStore, Started};
 use banager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+    OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
 };
 use banager_core::ops::{OnFinish, OperationManager};
 use banager_core::runner::HostEnv;
@@ -268,4 +268,43 @@ async fn test_an_update_its_adapter_gave_up_before_starting_the_command_is_kept_
         record.to_version, None,
         "no new version for a stopped update"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_an_operation_is_not_done_until_its_record_is_kept() {
+    // Quit asks whether any operation is unfinished, then flushes what the
+    // history owes. An operation that already said Done before its record
+    // was in the history could let Banager exit with the record lost.
+    let f = fixture("before-done");
+    let plan = f
+        .adapter
+        .plan(&f.instance, &upgrade(&f.instance))
+        .await
+        .unwrap();
+    let seen: Arc<Mutex<Option<(OpStatus, bool)>>> = Arc::new(Mutex::new(None));
+    let record = on_finish(&f.store);
+    let callback: OnFinish = {
+        let manager = f.manager.clone();
+        let seen = seen.clone();
+        Box::new(move |ended| {
+            let status = manager
+                .summaries()
+                .into_iter()
+                .find(|op| op.id == ended.op_id)
+                .map(|op| (op.status, op.outcome.is_some()));
+            *seen.lock().unwrap() = status;
+            record(ended);
+        })
+    };
+    let op_id = f.manager.submit_with(plan, Some(callback));
+    assert_eq!(f.manager.wait(op_id).await, Some(Outcome::Succeeded));
+    let (status, has_outcome) = seen.lock().unwrap().expect("the callback ran");
+    assert_ne!(
+        status,
+        OpStatus::Done,
+        "the operation said Done before its record was kept"
+    );
+    assert!(!has_outcome, "an outcome is shown only with Done");
+    // And once it is Done, the record is there.
+    assert_eq!(f.store.view().records.len(), 1);
 }
