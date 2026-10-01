@@ -6,7 +6,7 @@ use crate::model::{
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
@@ -198,6 +198,21 @@ pub struct OperationManager {
     instances: Mutex<HashMap<InstanceId, ManagerInstance>>,
     sink: Arc<dyn EventSink>,
     held: Arc<Mutex<HashSet<ResourceLock>>>,
+    /// Every submitted operation that has not taken its resource locks yet,
+    /// by id, with the locks it needs. `run_operation` lets an op take its
+    /// locks only when none of them is held *and* no op with a lower id is
+    /// still here needing one of them, so operations that need the same lock
+    /// start in the order they were submitted -- the order the user
+    /// confirmed them, which a batch uninstall relies on to remove a
+    /// Homebrew formula's dependents before the formula
+    /// (`src/lib/batchUninstall.ts`). Without it, whichever waiting op
+    /// happened to poll first after the lock came free took it. An op
+    /// leaves when it takes its locks, or in `finish` if it never does
+    /// (cancelled while waiting, or ended by the panic watcher).
+    ///
+    /// Taken before `held` wherever both are held. A refresh's
+    /// `acquire_resource_lock` does not queue: it is not an operation.
+    queue: Mutex<BTreeMap<OpId, Vec<ResourceLock>>>,
     records: Arc<Mutex<HashMap<OpId, OpInternal>>>,
     next_id: AtomicU64,
     /// Caps how many operations may be concurrently past the lock-wait stage
@@ -273,6 +288,7 @@ impl OperationManager {
             instances: Mutex::new(HashMap::new()),
             sink,
             held: Arc::new(Mutex::new(HashSet::new())),
+            queue: Mutex::new(BTreeMap::new()),
             records: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicU64::new(1),
             semaphore: Arc::new(Semaphore::new(3)),
@@ -419,7 +435,15 @@ impl OperationManager {
     /// `submit`, with a callback for when the operation finishes
     /// (`OnFinish`).
     pub fn submit_with(self: &Arc<Self>, plan: Plan, on_finish: Option<OnFinish>) -> OpId {
-        let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        // The id is taken and the op joins the queue in one step, so ids
+        // enter it in order: an op can never find the queue missing an
+        // earlier op that has its id but has not joined yet.
+        let op_id = {
+            let mut queue = self.queue.lock().unwrap();
+            let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
+            queue.insert(op_id, plan.locks.clone());
+            op_id
+        };
         let cancel = CancellationToken::new();
         let record = OpInternal {
             id: op_id,
@@ -494,18 +518,26 @@ impl OperationManager {
     }
 
     async fn run_operation(self: Arc<Self>, op_id: OpId, plan: Plan, cancel: CancellationToken) {
-        // Wait for every lock this plan needs, polling every 50 ms. Only
-        // mark `acquired` once every lock in `plan.locks` was free and has
-        // now been inserted into `held` — otherwise a later step could
-        // release a lock this op never actually took.
+        // Wait for every lock this plan needs, polling every 50 ms, and for
+        // this op's turn: no op submitted before it may still be waiting for
+        // one of the same locks (`queue`). Only mark `acquired` once every
+        // lock in `plan.locks` was free and has now been inserted into
+        // `held` — otherwise a later step could release a lock this op never
+        // actually took.
         let mut acquired = false;
         loop {
             {
+                let mut queue = self.queue.lock().unwrap();
                 let mut held = self.held.lock().unwrap();
-                if plan.locks.iter().all(|l| !held.contains(l)) {
+                let free = plan.locks.iter().all(|l| !held.contains(l));
+                let earlier_waits = queue
+                    .range(..op_id)
+                    .any(|(_, locks)| locks.iter().any(|l| plan.locks.contains(l)));
+                if free && !earlier_waits {
                     for l in &plan.locks {
                         held.insert(l.clone());
                     }
+                    queue.remove(&op_id);
                     acquired = true;
                 }
             }
@@ -926,6 +958,10 @@ impl OperationManager {
     /// release racing with this one can never double-release — whichever
     /// runs first wins and the other is a no-op.
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
+        // An op that never took its locks is still in the queue; left there,
+        // every later op needing one of its locks would wait for it for
+        // ever. (One that took them left it then; this is a no-op for it.)
+        self.queue.lock().unwrap().remove(&op_id);
         // First the locks and the history: the operation is not `Done` --
         // nor has it an outcome to show -- until its record is kept, so
         // that Quit, which asks whether any operation is unfinished and

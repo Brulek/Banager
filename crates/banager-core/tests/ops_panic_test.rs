@@ -16,7 +16,7 @@ use banager_core::model::{
 use banager_core::ops::OperationManager;
 use banager_core::runner::HostEnv;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -36,6 +36,8 @@ async fn wait_with_timeout(
 struct FakeAdapter {
     meta: AdapterMeta,
     should_panic: Arc<AtomicBool>,
+    /// The names `execute` was called with, in order.
+    started: Arc<Mutex<Vec<String>>>,
 }
 
 impl FakeAdapter {
@@ -51,6 +53,7 @@ impl FakeAdapter {
                 verified_versions: vec![],
             },
             should_panic,
+            started: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -107,11 +110,17 @@ impl Adapter for FakeAdapter {
 
     async fn execute(
         &self,
-        _plan: &Plan,
+        plan: &Plan,
         _sink: Arc<dyn EventSink>,
         _op_id: OpId,
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        self.started.lock().unwrap().push(plan.request.name.clone());
+        if plan.request.name == "boom" {
+            // Long enough for the ops submitted after it to be waiting.
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            panic!("simulated adapter panic mid-execute");
+        }
         if self.should_panic.load(Ordering::SeqCst) {
             panic!("simulated adapter panic mid-execute");
         }
@@ -180,4 +189,43 @@ async fn test_panic_in_execute_reports_a_banager_fault_and_releases_the_lock() {
     let id2 = manager.submit(plan2);
     let outcome2 = wait_with_timeout(&manager, id2).await;
     assert_eq!(outcome2, Outcome::Succeeded);
+}
+
+/// The ops waiting behind one whose adapter panicked still start, and in
+/// the order they were submitted: the panicked op leaves nothing behind in
+/// `OperationManager`'s queue that would keep them waiting.
+#[tokio::test]
+async fn test_panicked_op_leaves_the_queue() {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let adapter = Arc::new(FakeAdapter::new(Arc::new(AtomicBool::new(false))));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/panic-queue");
+    manager.register_instance(inst.clone());
+
+    let mut ids = Vec::new();
+    for name in ["boom", "a", "b", "c"] {
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        ids.push(manager.submit(plan));
+    }
+
+    assert_eq!(
+        wait_with_timeout(&manager, ids[0]).await,
+        Outcome::BanagerFailed(Fault::Panicked)
+    );
+    for id in &ids[1..] {
+        assert_eq!(wait_with_timeout(&manager, *id).await, Outcome::Succeeded);
+    }
+    assert_eq!(
+        *adapter.started.lock().unwrap(),
+        vec!["boom", "a", "b", "c"],
+        "the ops after the panicked one did not start in the order they were submitted"
+    );
 }
