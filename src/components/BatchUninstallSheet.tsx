@@ -16,6 +16,7 @@ import {
 } from "../lib/batchUninstall";
 import {
   adapterLabel,
+  fewNames,
   instanceLabels,
   namesInSentence,
   parseUninstallBlocked,
@@ -326,13 +327,6 @@ function quotedNames(t: Translate, names: readonly string[]): string {
   );
 }
 
-/** At most three names, then how many in all: 「git、gh、jq等7个」 (`commands.names`). */
-function someNames(t: Translate, names: readonly string[]): string {
-  const separator = t("common.listSeparator");
-  if (names.length <= 3) return namesInSentence(t, [...names]);
-  return t("commands.names", { names: names.slice(0, 3).join(separator), count: names.length, rest: names.length - 3 });
-}
-
 /**
  * A preview's refusal, said as the single uninstall says it
  * (`UninstallDialog`'s `refusal`): a pinned package's with its unpin
@@ -449,7 +443,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
     ...(commands.lost.length > 0
       ? [
           {
-            text: t("batchUninstall.commandsLost", { names: someNames(t, commands.lost), count: commands.lost.length }),
+            text: t("batchUninstall.commandsLost", { names: fewNames(t, commands.lost), count: commands.lost.length }),
             // Every one of them, where the line names only the first three.
             detail: commands.lost.length > 3 ? namesInSentence(t, commands.lost) : null,
             caution: true,
@@ -460,7 +454,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
       ? [
           {
             text: t("batchUninstallMore.commandsGo", {
-              names: someNames(t, commands.unjudged),
+              names: fewNames(t, commands.unjudged),
               count: commands.unjudged.length,
             }),
             detail: commands.unjudged.length > 3 ? namesInSentence(t, commands.unjudged) : null,

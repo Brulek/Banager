@@ -1496,6 +1496,22 @@ export function namesInSentence(t: Translate, names: string[]): string {
 }
 
 /**
+ * At most three names, then how many in all: 「git、gh、jq等7个」
+ * (`commands.names`); three or fewer as `namesInSentence` says them.
+ */
+export function fewNames(
+  t: (key: string, options?: Record<string, string | number>) => string,
+  names: readonly string[],
+): string {
+  if (names.length <= 3) return namesInSentence(t, [...names]);
+  return t("commands.names", {
+    names: names.slice(0, 3).join(t("common.listSeparator")),
+    count: names.length,
+    rest: names.length - 3,
+  });
+}
+
+/**
  * The one notice for this round's checks that did not finish -- a
  * `SourceError` each (`Snapshot.errors`; `Snapshot.stale` is exactly
  * that there are any) -- or null when every one finished: 「部分检查未完成」,

@@ -1,20 +1,10 @@
 import type { useTranslation } from "react-i18next";
 import { hostedTools } from "../lib/batchUninstall";
-import { namesInSentence } from "../lib/sources";
+import { fewNames } from "../lib/sources";
 import type { WarningLine } from "../lib/warnings";
 import type { InstalledArtifact, ManagerInstance } from "../lib/types";
 
 type Translate = ReturnType<typeof useTranslation>["t"];
-
-/** At most three names, then how many in all: 「aider-chat、httpie、black等5个」. */
-function fewNames(t: Translate, names: readonly string[]): string {
-  if (names.length <= 3) return namesInSentence(t, [...names]);
-  return t("commands.names", {
-    names: names.slice(0, 3).join(t("common.listSeparator")),
-    count: names.length,
-    rest: names.length - 3,
-  });
-}
 
 /**
  * What uninstalling `artifact` does to the tools other sources installed
