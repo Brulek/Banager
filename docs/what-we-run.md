@@ -1925,7 +1925,9 @@ folders above is in, or is a link into, `~/Documents`, iCloud Drive,
 folder is read one level deep all the same, and macOS may ask for
 permission; so is a folder replaced by such a link while it is read, and
 the folder an entry's link leads to is resolved (`realpath`) wherever it
-is. This is a known exception, as the fixed-path probes above are.
+is, as is each folder a source owns (`owned_roots`, below; uv's
+`~/.local/share/uv/python` among them). This is a known exception, as the
+fixed-path probes above are.
 
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
