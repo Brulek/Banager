@@ -147,6 +147,46 @@ const CASES: Array<[string, string, FailureCause | null]> = [
     "WARNING: Read timed out. Retrying…\nERROR: Could not install packages due to an OSError: [Errno 13] Permission denied: '/Library/Python/3.9/site-packages/six.py'",
     "permission",
   ],
+  [
+    "brew: a cask's uninstaller ran sudo with no terminal to ask in",
+    [
+      "==> Removing launchctl service com.example.helper",
+      "Error: Failure while executing; `/usr/bin/sudo -u root -E LOGNAME=me USER=me USERNAME=me -- /bin/launchctl remove com.example.helper` exited with 1. Here's the output:",
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+      "sudo: a password is required",
+    ].join("\n"),
+    "needsPassword",
+  ],
+  [
+    "brew: an older sudo's words for the same",
+    "sudo: no tty present and no askpass program specified",
+    "needsPassword",
+  ],
+  [
+    "brew: the password window SUDO_ASKPASS names was closed",
+    "sudo: no password was provided\nsudo: a password is required",
+    "needsPassword",
+  ],
+  [
+    "brew: SUDO_ASKPASS set but empty",
+    "sudo: no askpass program specified, try setting SUDO_ASKPASS",
+    "needsPassword",
+  ],
+  [
+    "brew: the password window answered wrongly three times",
+    "sudo: 3 incorrect password attempts",
+    "needsPassword",
+  ],
+  [
+    "sudo's password line wins over a refused file the rollback hit after it",
+    [
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+      "sudo: a password is required",
+      "==> Purging files for version 2.4.1 of Cask example",
+      "Error: Permission denied @ apply2files - /Applications/Example.app/Contents/Info.plist",
+    ].join("\n"),
+    "needsPassword",
+  ],
   // Not causes: names and words that only look like them.
   ["a formula named timeout", 'Error: No available formula with the name "timeout".', null],
   [
@@ -167,6 +207,16 @@ const CASES: Array<[string, string, FailureCause | null]> = [
   ],
   ["a checksum that did not match", "Error: ffmpeg: SHA256 mismatch\nExpected: 0c1d\n  Actual: 9f8e", null],
   ["nothing at all", "", null],
+  [
+    "a registry that asks for a password is not sudo's",
+    "npm error code E401\nnpm error Unable to authenticate, a password is required",
+    null,
+  ],
+  [
+    "an account that may not use sudo at all",
+    "Error: Failure while executing; `/usr/bin/sudo -E -- /bin/rm -f -- /Library/LaunchDaemons/com.example.plist` exited with 1. Here's the output:\nsudo is disabled by HOMEBREW_NO_SUDO.",
+    null,
+  ],
 ];
 
 describe("failureCause", () => {
@@ -176,7 +226,7 @@ describe("failureCause", () => {
 
   it("covers every cause with real output, and says nothing of what it cannot tell", () => {
     const found = new Set(CASES.map(([, , cause]) => cause));
-    expect(found).toEqual(new Set(["network", "diskFull", "permission", "busy", null]));
+    expect(found).toEqual(new Set(["network", "diskFull", "permission", "busy", "needsPassword", null]));
     expect(CASES.filter(([, , cause]) => cause === null).length).toBeGreaterThanOrEqual(6);
   });
 
@@ -201,6 +251,18 @@ describe("outcomeCause", () => {
     expect(outcomeCause({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe("homebrewUpdating");
     expect(outcomeCause({ BanagerFailed: "Internal" })).toBeNull();
     expect(outcomeCause({ BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } })).toBeNull();
+  });
+
+  it("reads sudo's password lines in a failed operation's summary", () => {
+    expect(
+      outcomeCause({
+        Failed: {
+          exit_code: 1,
+          summary:
+            "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+        },
+      }),
+    ).toBe("needsPassword");
   });
 
   it("gives nothing for an outcome that is not a failure", () => {
@@ -231,6 +293,7 @@ describe("FAILURE_CAUSE_KEYS", () => {
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.permission.word)).toBe("没有权限");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.busy.word)).toBe("另一个操作正在进行");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.homebrewUpdating.line)).toBe("Homebrew正在更新软件清单，请稍后再试。");
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.needsPassword.word)).toBe("需要输入密码");
     for (const keys of Object.values(FAILURE_CAUSE_KEYS)) {
       const next = lookup(zhCN, keys.next) as string;
       expect(next.match(/。/g)?.length, keys.next).toBe(1);

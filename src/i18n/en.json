@@ -817,21 +817,29 @@
       "diskFull": "Disk is full",
       "permission": "No permission",
       "busy": "Another operation is running",
-      "homebrewUpdating": "Homebrew is updating its software list"
+      "homebrewUpdating": "Homebrew is updating its software list",
+      "needsPassword": "Needs your password"
     },
     "next": {
       "network": "Check your internet connection, then try again.",
       "diskFull": "Free up some disk space, then try again.",
       "permission": "Make sure you can change its files, then try again.",
       "busy": "Wait for the other operation to finish, then try again.",
-      "homebrewUpdating": "Try again later."
+      "homebrewUpdating": "Try again later.",
+      "needsPassword": "This step needs your Mac login password, which can't be entered here."
     },
     "line": {
       "network": "The connection failed. Check your internet connection, then try again.",
       "diskFull": "The disk is full. Free up some space, then try again.",
       "permission": "There's no permission to change its files. Check the permissions, then try again.",
       "busy": "Another operation is running. Wait for it to finish, then try again.",
-      "homebrewUpdating": "Homebrew is updating its software list. Try again later."
+      "homebrewUpdating": "Homebrew is updating its software list. Try again later.",
+      "needsPassword": "This needs your Mac login password, which can't be entered here."
     }
+  },
+  "needsPassword": {
+    "intro": "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type — that's normal.",
+    "after": "When it's done, come back here and press ⌘R to check again.",
+    "commandLabel": "Command to run in Terminal"
   }
 }

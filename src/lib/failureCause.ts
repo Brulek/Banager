@@ -22,12 +22,53 @@ import type { Outcome } from "./types";
  * - `homebrewUpdating`: Homebrew was still updating its software list
  *   (`brew update`) when the time to wait for it ran out: a person need
  *   only wait, whatever made it slow.
+ * - `needsPassword`: `sudo` wanted the Mac's password and had no way to
+ *   ask for it. Banager runs every command with no terminal (stdin is
+ *   /dev/null, crates/banager-core/src/runner/real.rs) and has no password
+ *   window of its own; it only passes `SUDO_ASKPASS` on to Homebrew when
+ *   that was already set (docs/what-we-run.md, "Passwords"). So a cask
+ *   whose installer or uninstaller runs `sudo` stops there, and running the
+ *   same command again from Banager stops there again: Homebrew resets
+ *   sudo's remembered password before every command (`--reset-timestamp`
+ *   in its brew.sh). The way on is Terminal, where sudo can ask.
  */
-export type FailureCause = "network" | "diskFull" | "permission" | "busy" | "homebrewUpdating";
+export type FailureCause = "network" | "diskFull" | "permission" | "busy" | "homebrewUpdating" | "needsPassword";
 
 /**
- * Each cause's phrases, first match wins, in this order: a line about
- * `brew update` running over its time is Homebrew's list, not the
+ * sudo's own fixed words for "I needed a password and got none" -- the
+ * messages of sudo 1.9 (macOS 27 ships 1.9.17), as Homebrew passes them
+ * on after "Error: Failure while executing; `/usr/bin/sudo …` exited with
+ * 1. Here's the output:":
+ *
+ * - no terminal and no askpass helper: "a terminal is required to read the
+ *   password; either use the -S option …", and before sudo 1.8.25 "no tty
+ *   present and no askpass program specified";
+ * - then, from the sudoers plugin, "a password is required";
+ * - `-A` with an empty `SUDO_ASKPASS`: "no askpass program specified, try
+ *   setting SUDO_ASKPASS";
+ * - an askpass helper the person closed, or answered with nothing: "no
+ *   password was provided";
+ * - one that was answered wrongly: "3 incorrect password attempts".
+ *
+ * Each only after "sudo: ", so a tool that merely mentions a password --
+ * a registry asking for credentials -- is not taken for it. Not Homebrew's
+ * own "sudo is disabled by HOMEBREW_NO_SUDO.": that is an account that
+ * may not use sudo at all, where typing a password in Terminal would not
+ * help either.
+ */
+const SUDO_NEEDS_PASSWORD: RegExp[] = [
+  /\bsudo: a terminal is required to read the password\b/i,
+  /\bsudo: no tty present and no askpass program specified\b/i,
+  /\bsudo: a password is required\b/i,
+  /\bsudo: no askpass program specified\b/i,
+  /\bsudo: no password was provided\b/i,
+  /\bsudo: \d+ incorrect password attempts?\b/i,
+];
+
+/**
+ * Each cause's phrases, after sudo's password lines (which `failureCause`
+ * looks for first, on every line), first match wins, in this order: a
+ * line about `brew update` running over its time is Homebrew's list, not the
  * network, though it says "timed out"; a full disk or a refused file is
  * named as such even where the tool goes on to say the download failed.
  *
@@ -102,9 +143,15 @@ const PATTERNS: Array<[FailureCause, RegExp[]]> = [
  * where a tool retried and then failed for another reason -- "Read timed
  * out. Retrying…" and then "Permission denied" -- the reason it stopped on
  * is the one given.
+ *
+ * But sudo's password lines first, wherever they are: where sudo got no
+ * password the command stopped there, and whatever the tool said after it
+ * -- a cask's rollback refused a file, "Permission denied" -- follows from
+ * that, and would send a person to fix the wrong thing.
  */
 export function failureCause(text: string): FailureCause | null {
   const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.some((line) => SUDO_NEEDS_PASSWORD.some((pattern) => pattern.test(line)))) return "needsPassword";
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     for (const [cause, patterns] of PATTERNS) {
       if (patterns.some((pattern) => pattern.test(lines[index]))) return cause;
@@ -162,5 +209,10 @@ export const FAILURE_CAUSE_KEYS: Record<FailureCause, { word: string; next: stri
     word: "failure.cause.homebrewUpdating",
     next: "failure.next.homebrewUpdating",
     line: "failure.line.homebrewUpdating",
+  },
+  needsPassword: {
+    word: "failure.cause.needsPassword",
+    next: "failure.next.needsPassword",
+    line: "failure.line.needsPassword",
   },
 };

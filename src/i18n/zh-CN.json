@@ -760,21 +760,29 @@
       "diskFull": "磁盘空间不足",
       "permission": "没有权限",
       "busy": "另一个操作正在进行",
-      "homebrewUpdating": "Homebrew正在更新软件清单"
+      "homebrewUpdating": "Homebrew正在更新软件清单",
+      "needsPassword": "需要输入密码"
     },
     "next": {
       "network": "请检查网络连接后重试。",
       "diskFull": "请清理出一些磁盘空间后重试。",
       "permission": "请确认有权限修改它的文件后重试。",
       "busy": "请等另一个操作完成后重试。",
-      "homebrewUpdating": "请稍后再试。"
+      "homebrewUpdating": "请稍后再试。",
+      "needsPassword": "这一步需要输入Mac的登录密码，无法在这里输入。"
     },
     "line": {
       "network": "网络连接失败，请检查网络连接后重试。",
       "diskFull": "磁盘空间不足，请清理出一些磁盘空间后重试。",
       "permission": "没有权限修改它的文件，请确认权限后重试。",
       "busy": "另一个操作正在进行，请等它完成后重试。",
-      "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。"
+      "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。",
+      "needsPassword": "需要输入Mac的登录密码，无法在这里输入。"
     }
+  },
+  "needsPassword": {
+    "intro": "可以在“终端”里运行下面这条命令，按提示输入密码。输入时屏幕上不显示任何字符，这是正常的。",
+    "after": "完成后回到这里，按⌘R重新检查。",
+    "commandLabel": "要在“终端”里运行的命令"
   }
 }
