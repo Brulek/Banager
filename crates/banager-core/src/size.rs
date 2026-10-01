@@ -571,11 +571,13 @@ pub(crate) fn look_at(
     }
 }
 
-/// What a measurement is remembered by between rounds: the folder (or
-/// file) it starts from and the version it was measured at -- not a
-/// modified time, which an upgrade that rewrites a tool's files in place
-/// (pipx) leaves as it was on the folder itself.
-type CacheKey = (PathBuf, String);
+/// What a measurement is remembered by between rounds: every folder (or
+/// file) it walks, as resolved, and the version it was measured at -- not
+/// a modified time, which an upgrade that rewrites a tool's files in place
+/// (pipx) leaves as it was on the folder itself. All the roots, not the
+/// first alone: a Cargo crate reinstalled at the same version with one
+/// program more keeps its first one, and must be walked again.
+type CacheKey = (Vec<PathBuf>, String);
 
 /// One set of roots, measured together.
 struct Job {
@@ -847,11 +849,12 @@ fn old_versions_job(cellar_name: &Path, current: &str, protected: &Protected) ->
         return None;
     }
     versions.sort();
-    let roots = versions
+    let roots: Vec<PathBuf> = versions
         .iter()
         .map(|version| folder.join(version))
         .collect();
-    let key = (folder, format!("old:{}", versions.join("\n")));
+    // The versions are in the roots' names.
+    let key = (roots.clone(), String::from("old"));
     Some(Job::new(key, roots, false))
 }
 
@@ -880,7 +883,7 @@ fn plan_round(
         let Some((roots, partial)) = resolve_roots(&roots, protected) else {
             continue;
         };
-        let key = (roots[0].clone(), artifact.version.clone());
+        let key = (roots.clone(), artifact.version.clone());
         let old = if inst.adapter_id == "brew" && artifact.key.kind == ArtifactKind::Formula {
             roots[0]
                 .parent()
@@ -926,7 +929,7 @@ fn plan_round(
                 floor,
             },
             order: (0, units.len()),
-            main: Job::new((roots[0].clone(), which.join("\n")), roots, partial),
+            main: Job::new((roots.clone(), which.join("\n")), roots, partial),
             old: None,
         });
     }
@@ -2282,6 +2285,48 @@ mod tests {
         assert!(
             third.artifacts[0].measured.unwrap().bytes > before,
             "a new version is walked again"
+        );
+    }
+
+    #[test]
+    fn test_a_crate_that_gains_a_program_at_the_same_version_is_walked_again() {
+        // `cargo install --force` of the same version with another feature
+        // on: the first program stays, a second appears beside it.
+        let scratch = Scratch::new("cache-roots");
+        let home = scratch.dir("home");
+        let cargo = scratch.dir("home/.cargo");
+        let first_bin = scratch.file("home/.cargo/bin/cargo-binstall", 30_000);
+        let crates2 = |bins: &str| {
+            std::fs::write(
+                cargo.join(".crates2.json"),
+                format!(
+                    r#"{{"installs":{{"cargo-binstall 1.15.0 (registry+https://github.com/rust-lang/crates.io-index)":{{"bins":[{bins}]}}}}}}"#
+                ),
+            )
+            .unwrap();
+        };
+        crates2(r#""cargo-binstall""#);
+        let instances = [instance("cargo", "cargo:c", &cargo)];
+        let artifacts = [artifact(
+            "cargo:c",
+            ArtifactKind::Binary,
+            "cargo-binstall",
+            "1.15.0",
+            Some(first_bin.clone()),
+        )];
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let first = run(&meter, 1, &instances, &artifacts, &home);
+        assert_eq!(
+            first.artifacts[0].measured.unwrap().bytes,
+            blocks_of(&first_bin)
+        );
+        let second_bin = scratch.file("home/.cargo/bin/detect-targets", 200_000);
+        crates2(r#""cargo-binstall","detect-targets""#);
+        let second = run(&meter, 2, &instances, &artifacts, &home);
+        assert_eq!(
+            second.artifacts[0].measured.unwrap().bytes,
+            blocks_of(&first_bin) + blocks_of(&second_bin),
+            "a root more is another measurement, not the remembered one"
         );
     }
 

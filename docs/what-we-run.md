@@ -2167,7 +2167,9 @@ A tool kept in one of them shows no size (`Protected`). It is the same list the 
 of (`crates/banager-core/src/protected.rs`).
 
 Nothing is written: the sizes stay in Banager's memory until it quits, and
-a folder already measured in full at the same version is not walked again. They
+what was already measured in full at the same version, from the very
+same folders and files (a Cargo crate that gained a program is walked
+again), is not walked again. They
 are not part of what a refresh reports, and measuring takes no lock an
 operation or a refresh waits on; a newer refresh stops a round still
 running and starts another. The window asks for the result with
