@@ -465,6 +465,10 @@ export function VirtualList<T>({
                     data-list-slot=""
                     data-run-end={runEnd ? "" : undefined}
                     ref={virtualizer.measureElement}
+                    // A press on a row's control makes it the row in the Tab
+                    // order, as its focus does: WebKit on a Mac does not
+                    // focus a button that is clicked.
+                    onPointerDown={keyboardRows !== undefined && keyboardRows(item) ? rovingOf(key).onFocus : undefined}
                     style={{
                       position: "absolute",
                       top: 0,

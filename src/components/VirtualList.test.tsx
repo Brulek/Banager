@@ -324,6 +324,14 @@ describe("VirtualList's arrow keys", () => {
     expect(row("tool-1")).toHaveAttribute("tabindex", "-1");
   });
 
+  it("makes a row the one in the Tab order when one of its controls is pressed, focused or not", () => {
+    const { row, getByLabelText } = renderKeyList();
+    // WebKit on a Mac leaves a clicked checkbox or button unfocused.
+    fireEvent.pointerDown(getByLabelText("Select tool-4"));
+    expect(row("tool-4")).toHaveAttribute("tabindex", "0");
+    expect(row("tool-1")).toHaveAttribute("tabindex", "-1");
+  });
+
   it("moves on from a control inside a row, and makes that row the one in the Tab order", () => {
     const { row, getByLabelText } = renderKeyList();
     const box = getByLabelText("Select tool-2");
