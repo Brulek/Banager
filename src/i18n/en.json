@@ -100,7 +100,7 @@
     "brewRetiredNoneInSource": "No tools disabled or deprecated by Homebrew were found in {{source}}",
     "notOnPathNotice_one": "{{count}} tool can't be found in Terminal",
     "notOnPathNotice_other": "{{count}} tools can't be found in Terminal",
-    "notOnPathNoticeDetail": "Their commands are in folders Terminal doesn't search, so typing them in Terminal won't find them.",
+    "notOnPathNoticeDetail": "Each has at least one command in a folder Terminal doesn't search, so typing that command in Terminal won't find it.",
     "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
     "brewRetiredNotice_other": "{{count}} tools were disabled or deprecated by Homebrew",
     "brewRetiredNoticeDetail": "Homebrew no longer updates a disabled tool, and may disable a deprecated one later. What's installed isn't removed.",

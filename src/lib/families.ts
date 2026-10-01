@@ -48,7 +48,9 @@ export function isAiTool(artifact: Pick<InstalledArtifact, "facts"> | undefined)
 /**
  * Whether Terminal does not find one of the commands this artifact puts on
  * the Mac: a command whose verdict is `NotOnPath` (`commands::judge`). A
- * command Banager says nothing about (`state: null`) is not one.
+ * command Banager says nothing about (`state: null`) is not one. One is
+ * enough, so a tool whose other commands run is listed too; the line's ⓘ
+ * says "at least one command" (`families.notOnPathNoticeDetail`).
  */
 export function hasCommandNotOnPath(artifact: Pick<InstalledArtifact, "facts"> | undefined): boolean {
   return (
