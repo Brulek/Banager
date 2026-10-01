@@ -149,7 +149,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
       "Terminal settings": ["fine Terminal's login settings were read, and so were all 3 folders it looks in for commands"],
       Sources: [
         "fine Every source answered normally · Homebrew, npm",
-        "note Command-line programs from none of these sources are in Other Programs → unknown",
+        "note Look in Other Programs for command-line programs from none of these sources → unknown",
       ],
       Commands: ["fine Terminal finds every installed tool, and none is installed more than once"],
       Homebrew: ["fine Homebrew hasn't disabled or deprecated any tool, and keeps no other versions"],
@@ -162,7 +162,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
       终端设置: ["fine 已读取终端登录时的设置，它查找命令的3个文件夹也都已读取"],
       来源: [
         "fine 所有来源都正常回应 · Homebrew、npm",
-        "note 不属于这些来源的命令行程序在“其他程序”里 → unknown",
+        "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
       ],
       命令: ["fine 终端都能找到已安装的工具，也没有装了不止一份的"],
       Homebrew: ["fine 没有Homebrew已停用或弃用的工具，也没有保留的其他版本"],
@@ -269,13 +269,13 @@ describe("toolSetupCheck's source lines", () => {
       `note npm：仅供查看、未经测试的版本 → source:${NPM}`,
       "note pip：仅供查看 → source:pip:/usr/bin/python3",
       "fine 其他来源都正常回应 · Homebrew（Apple芯片）",
-      "note 不属于这些来源的命令行程序在“其他程序”里 → unknown",
+      "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
     ]);
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Sources"].slice(0, 4)).toEqual([
       `warning Homebrew (Intel): Not responding → source:${INTEL}`,
       `warning Ollama: Not running → source:${OLLAMA}`,
       `warning Claude Code: Check didn't finish → source:${CLAUDE}`,
-      `note npm: View only, Version not tested → source:${NPM}`,
+      `note npm: View only, version not tested → source:${NPM}`,
     ]);
   });
 
@@ -286,7 +286,7 @@ describe("toolSetupCheck's source lines", () => {
     };
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Sources"]).toEqual([
       `warning Homebrew: Not responding → source:${BREW}`,
-      "note Command-line programs from none of these sources are in Other Programs → unknown",
+      "note Look in Other Programs for command-line programs from none of these sources → unknown",
     ]);
   });
 
@@ -474,13 +474,20 @@ describe("toolSetupCheck while the first check runs", () => {
       终端设置: ["fine 已读取终端登录时的设置", "note 终端查找命令的文件夹：3个"],
       来源: [
         `warning npm：没有响应 → source:${NPM}`,
-        "fine 其他来源都正常回应 · Homebrew",
-        "note 不属于这些来源的命令行程序在“其他程序”里 → unknown",
+        // No source has answered a check yet: nothing found, not "answered normally".
+        "fine 目前没有发现问题 · Homebrew",
+        "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
       ],
       命令: ["busy 检查完成后会显示在这里"],
       Homebrew: ["fine 没有Homebrew已停用或弃用的工具，也没有保留的其他版本"],
       磁盘: ["busy 占用的空间正在计算…"],
     });
+  });
+
+  it("says no problems so far, in English too, rather than that every source answered", () => {
+    const snapshot = { ...fineSnapshot(), generation: 0, round: 0, refreshed_at: null };
+    const check = toolSetupCheck(en, input({ snapshot, pending: true }));
+    expect(shape(check).Sources[0]).toBe("fine No problems found so far · Homebrew, npm");
   });
 
   it("says it is checking while nothing is listed yet", () => {

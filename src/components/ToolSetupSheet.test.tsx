@@ -168,7 +168,7 @@ describe("ToolSetupSheet", () => {
     const dialog = await first.findByRole("dialog", { name: "Tool Setup" });
     fireEvent.click(
       within(dialog).getByRole("button", {
-        name: "Show: Command-line programs from none of these sources are in Other Programs",
+        name: "Show: Look in Other Programs for command-line programs from none of these sources",
       }),
     );
     expect(await first.findByRole("heading", { level: 1, name: "Other Programs" })).toBeInTheDocument();
@@ -197,6 +197,20 @@ describe("ToolSetupSheet", () => {
     await waitFor(() => expect(queryByRole("dialog")).toBeNull());
     expect(getByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
     expect(useToolSetupSheet.getState().open).toBe(false);
+  });
+
+  it("asks for the facts again after a round that found nothing new, whose PATH folders are its own", async () => {
+    const { dialog, queryClient } = await openedFromHelp();
+    // The next round could not read the folders in full, and kept the generation.
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_system_facts") return { ...FACTS, path_folders: null };
+      if (cmd === "get_settings") return SETTINGS;
+      if (cmd === "list_operations") return [];
+      return undefined;
+    });
+    act(() => queryClient.setQueryData(["snapshot"], { ...SNAPSHOT, round: SNAPSHOT.round + 1 }));
+    expect(await within(dialog).findByText("Folders Terminal looks in for commands: 3")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/so were all 3 folders/)).toBeNull();
   });
 
   it("says the first check has not finished while it runs, over what is known", async () => {

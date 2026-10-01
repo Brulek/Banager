@@ -915,10 +915,11 @@
     "sources": {
       "allFine": "Every source answered normally",
       "othersFine": "The other sources answered normally",
+      "pendingFine": "No problems found so far",
       "state": "{{source}}: {{state}}",
       "checkUnfinished": "Check didn't finish",
       "none": "No sources to manage were found",
-      "otherPrograms": "Command-line programs from none of these sources are in Other Programs"
+      "otherPrograms": "Look in Other Programs for command-line programs from none of these sources"
     },
     "commands": {
       "allFine": "Terminal finds every installed tool, and none is installed more than once",

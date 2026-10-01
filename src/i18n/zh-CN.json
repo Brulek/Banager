@@ -859,10 +859,11 @@
     "sources": {
       "allFine": "所有来源都正常回应",
       "othersFine": "其他来源都正常回应",
+      "pendingFine": "目前没有发现问题",
       "state": "{{source}}：{{state}}",
       "checkUnfinished": "这次没有检查完",
       "none": "没有找到可以管理的来源",
-      "otherPrograms": "不属于这些来源的命令行程序在“其他程序”里"
+      "otherPrograms": "不属于这些来源的命令行程序，可以在“其他程序”里找"
     },
     "commands": {
       "allFine": "终端都能找到已安装的工具，也没有装了不止一份的",

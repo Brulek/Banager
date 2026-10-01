@@ -150,13 +150,24 @@ function terminalLines(t: Translate, input: ToolSetupInput): SetupLine[] {
 }
 
 /**
+ * The diagnostics' status words, each written to stand alone ("View only",
+ * "Version not tested"), as they read joined in one sentence: the first
+ * as it is, the rest lower-cased. Every one starts with a common word, and
+ * Chinese has no case to change.
+ */
+function inSentence(words: readonly string[]): string[] {
+  return words.map((word, index) => (index === 0 ? word : word.charAt(0).toLowerCase() + word.slice(1)));
+}
+
+/**
  * 「来源」: each source not answering, read-only or on a version not tested
  * -- in the diagnostic text's words (`sourceStateWords`) -- or whose check
  * did not finish, a line of its own with 查看 to its page, those that do
  * not answer or did not finish first; the rest said
  * once, 「所有来源都正常回应」, with their names, two Homebrews named as the
  * sidebar names them (`instanceLabels`). Then where the programs no source
- * installed are: Other Programs.
+ * installed are: Other Programs. While the first check runs, the sources
+ * have answered nothing yet, so the rest are only 「目前没有发现问题」.
  */
 function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const { snapshot } = input;
@@ -179,7 +190,7 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       line(
         `source:${instance.id}`,
         instance.status.unavailable !== null || unfinished ? "warning" : "note",
-        t("setupCheck.sources.state", { source: label, state: words.join(t("common.listSeparator")) }),
+        t("setupCheck.sources.state", { source: label, state: inSentence(words).join(t("common.listSeparator")) }),
         { view: { kind: "source", instanceId: instance.id } },
       ),
     );
@@ -191,7 +202,14 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       line(
         "fine",
         "fine",
-        t(lines.length === 0 ? "setupCheck.sources.allFine" : "setupCheck.sources.othersFine"),
+        // Before the first check is in, no source has answered anything yet.
+        t(
+          input.pending
+            ? "setupCheck.sources.pendingFine"
+            : lines.length === 0
+              ? "setupCheck.sources.allFine"
+              : "setupCheck.sources.othersFine",
+        ),
         { secondary: fine.join(t("common.listSeparator")) },
       ),
     );
