@@ -1809,6 +1809,16 @@ It reads:
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | `realpath`: whether it leads into that tool's own folder; `stat`: whether it is a file with an execute bit |
 | in each `PATH` folder, the entry of each name some tool provides | `stat` (a file with an execute bit) and `realpath` (where it leads), in `PATH`'s order |
 
+A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Movies`,
+`~/Music` or `~/Pictures`, in iCloud Drive or another cloud folder
+(`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
+app's container (`~/Library/Containers`, `~/Library/Group Containers`)
+or on another disk (`/Volumes`) is not read at all, as named or where it
+leads (`asks_first`): macOS asks you before an app looks there, and a
+network disk that went away does not answer. On `PATH`, such a folder is
+kept in its place, unread, and nothing is said about a name it could
+hold before another copy; a bin folder there is skipped.
+
 Nothing's contents are read, nothing found is run or changed, and no
 lock is taken. Reading the folders stops after 20000 entries or 5
 seconds, and working out the answer after 5 seconds more

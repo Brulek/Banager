@@ -161,7 +161,12 @@ fn verdicts(
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
 ) -> Vec<Vec<CommandFact>> {
-    let folders = read_folders(path, &bin_folders(instances), CommandBudget::default());
+    let folders = read_folders(
+        path,
+        &bin_folders(instances),
+        home.path(),
+        CommandBudget::default(),
+    );
     assert!(folders.complete());
     judge(
         &folders,
@@ -414,6 +419,7 @@ fn test_a_folder_named_twice_on_path_is_read_once() {
     let folders = read_folders(
         &[bin.clone(), bin.clone(), alias],
         std::slice::from_ref(&bin),
+        home.path(),
         CommandBudget::default(),
     );
     assert!(folders.complete());
@@ -436,6 +442,7 @@ fn test_empty_and_relative_path_entries_are_skipped() {
             bin.clone(),
         ],
         &[],
+        home.path(),
         CommandBudget::default(),
     );
     assert_eq!(folders.path_folders(), vec![bin.as_path()]);
@@ -450,6 +457,7 @@ fn test_no_verdicts_at_all_without_the_login_shells_path() {
     let folders = read_folders(
         &[setup.npm_bin.clone(), setup.local_bin.clone()],
         &bin_folders(&setup.instances),
+        home.path(),
         CommandBudget::default(),
     );
     let found = judge(
@@ -751,6 +759,7 @@ fn test_the_budget_stops_the_read_and_then_nothing_is_judged() {
     let folders = read_folders(
         &[setup.npm_bin.clone(), setup.local_bin.clone()],
         &[],
+        home.path(),
         tight,
     );
     assert!(!folders.complete());
@@ -769,7 +778,13 @@ fn test_the_budget_stops_the_read_and_then_nothing_is_judged() {
         max_entries: 20_000,
         max_duration: Duration::ZERO,
     };
-    assert!(!read_folders(std::slice::from_ref(&setup.npm_bin), &[], no_time).complete());
+    assert!(!read_folders(
+        std::slice::from_ref(&setup.npm_bin),
+        &[],
+        home.path(),
+        no_time
+    )
+    .complete());
     // `Folders::default()`, a read that never ran, judges nothing either.
     assert_eq!(
         judge(
@@ -982,5 +997,89 @@ fn test_a_thousand_links_in_a_bin_folder_take_milliseconds_not_seconds() {
     assert!(
         took < Duration::from_secs(2),
         "a thousand links took {took:?}"
+    );
+}
+
+#[test]
+fn test_a_folder_macos_asks_about_is_never_read_and_no_verdict_rests_on_it() {
+    // `~/Documents/bin` on PATH: reading it would put up macOS's "would like
+    // to access files in your Documents folder" at a refresh. It is kept,
+    // unread, and a name it could hold first gets no verdict; a name whose
+    // first copy comes before it still does. `/Volumes` (another disk,
+    // perhaps a network one that no longer answers) is not even resolved.
+    let home = Home::new("asks-first");
+    let setup = two_claudes(&home);
+    let documents_bin = home.dir("Documents/bin");
+    home.exe("Documents/bin/claude");
+    let through_a_link = home.link("docs-bin", &documents_bin);
+    let volume = PathBuf::from("/Volumes/Banager-test-no-such-disk/bin");
+    let path = [
+        setup.npm_bin.clone(),
+        documents_bin.clone(),
+        through_a_link.clone(),
+        volume.clone(),
+        setup.local_bin.clone(),
+    ];
+    let folders = read_folders(
+        &path,
+        &bin_folders(&setup.instances),
+        home.path(),
+        CommandBudget::default(),
+    );
+    assert!(folders.complete());
+    assert_eq!(
+        folders.unread_path_folders(),
+        vec![documents_bin.as_path(), volume.as_path()],
+        "the Documents folder once, however it is named, and the other disk"
+    );
+    assert_eq!(
+        folders.path_folders(),
+        vec![setup.npm_bin.as_path(), setup.local_bin.as_path()]
+    );
+    let found = judge(
+        &folders,
+        &setup.instances,
+        &setup.artifacts,
+        home.path(),
+        true,
+        CommandBudget::default(),
+    )
+    .expect("judged");
+    // npm's copy comes first, before the unread folders: it runs whatever
+    // they hold, and the native copy, found further along, is behind it.
+    let npm_key = setup.artifacts[0].key.clone();
+    assert_eq!(
+        found,
+        vec![
+            vec![runs("claude")],
+            vec![shadowed("claude", Some(&npm_key))]
+        ]
+    );
+
+    // The other way round: the native folder first, so the same is said
+    // the other way, an unread folder between the two notwithstanding.
+    let path = [
+        setup.local_bin.clone(),
+        documents_bin,
+        setup.npm_bin.clone(),
+    ];
+    let found = verdicts(&home, &path, &setup.instances, &setup.artifacts);
+    let native_key = setup.artifacts[1].key.clone();
+    assert_eq!(
+        found,
+        vec![
+            vec![shadowed("claude", Some(&native_key))],
+            vec![runs("claude")]
+        ]
+    );
+
+    // An unread folder first: it may hold a `claude` that runs, so neither
+    // copy gets a verdict -- and "not found" is not said of the native one,
+    // whose folder is off PATH, while that folder could hold a link to it.
+    let path = [home.at("Documents/bin"), setup.npm_bin.clone()];
+    let found = verdicts(&home, &path, &setup.instances, &setup.artifacts);
+    assert_eq!(
+        found,
+        vec![vec![unjudged("claude")], vec![unjudged("claude")]]
     );
 }

@@ -87,13 +87,46 @@ impl Default for CommandBudget {
     }
 }
 
-/// One folder that was read: the path it was named by, where that leads,
-/// and the names in it.
+/// One folder: the path it was named by, where that leads, and the names
+/// in it -- or, for a `PATH` folder macOS would ask the user about before
+/// Banager looked inside (`asks_first`), `read: false` and no names.
 #[derive(Clone, Debug)]
 struct Folder {
     given: PathBuf,
     canonical: PathBuf,
     names: BTreeSet<OsString>,
+    read: bool,
+}
+
+/// Folders macOS asks the user about before an app looks inside them
+/// (System Settings > Privacy & Security, Files and Folders and App
+/// Management's data from other apps), under the home folder. With any
+/// other disk, under `/Volumes` -- removable and network disks are asked
+/// about too, and a network disk that went away does not answer at all --
+/// they are never read here: a refresh must not put up a permission
+/// request, or wait on a disk.
+const ASKS_FIRST: [&str; 10] = [
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Movies",
+    "Music",
+    "Pictures",
+    "Library/CloudStorage",
+    "Library/Containers",
+    "Library/Group Containers",
+    "Library/Mobile Documents",
+];
+
+/// Whether `path` is in a folder `ASKS_FIRST` names under one of `homes`
+/// (the home folder as named, and where it leads), or on another disk.
+fn asks_first(path: &Path, homes: &[PathBuf]) -> bool {
+    path.starts_with("/Volumes")
+        || homes.iter().any(|home| {
+            ASKS_FIRST
+                .iter()
+                .any(|rel| path.starts_with(home.join(rel)))
+        })
 }
 
 /// The folders one round read (`read_folders`).
@@ -101,7 +134,8 @@ struct Folder {
 pub struct Folders {
     /// `PATH`'s folders in `PATH`'s order, each once: an entry that is
     /// empty or relative, that does not exist, or that names a folder an
-    /// earlier entry already did (by where it leads) is not here.
+    /// earlier entry already did (by where it leads) is not here. One
+    /// `asks_first` is here, unread: it may hold any name.
     path: Vec<Folder>,
     /// The Homebrew and npm bin folders that are not on `PATH`.
     other: Vec<Folder>,
@@ -126,6 +160,16 @@ impl Folders {
     pub fn path_folders(&self) -> Vec<&Path> {
         self.path
             .iter()
+            .filter(|folder| folder.read)
+            .map(|folder| folder.given.as_path())
+            .collect()
+    }
+
+    /// The `PATH` folders left unread (`asks_first`), as named.
+    pub fn unread_path_folders(&self) -> Vec<&Path> {
+        self.path
+            .iter()
+            .filter(|folder| !folder.read)
             .map(|folder| folder.given.as_path())
             .collect()
     }
@@ -162,27 +206,36 @@ struct Stopped;
 /// relative `PATH` entry (a shell would look it up from its own current
 /// folder, which is not Banager's: an app opened from Finder has `/`), one
 /// that does not exist or cannot be read, and one naming a folder an
-/// earlier one did. `complete` is false when the budget stopped it.
-pub fn read_folders(path_dirs: &[PathBuf], bin_dirs: &[PathBuf], budget: CommandBudget) -> Folders {
+/// earlier one did. A folder `asks_first` names, as named or where it
+/// leads, is not read: on `PATH` it is kept, unread, and a bin folder
+/// there is skipped. `complete` is false when the budget stopped it.
+pub fn read_folders(
+    path_dirs: &[PathBuf],
+    bin_dirs: &[PathBuf],
+    home: &Path,
+    budget: CommandBudget,
+) -> Folders {
     let started = Instant::now();
     let mut examined = 0usize;
     let mut folders = Folders::default();
     let mut seen: Vec<PathBuf> = Vec::new();
+    let mut homes = vec![home.to_path_buf()];
+    homes.extend(std::fs::canonicalize(home).ok());
     for dir in path_dirs {
         if dir.as_os_str().is_empty() || !dir.is_absolute() {
             continue;
         }
-        match read_one(dir, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &homes, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
             Ok(Some(folder)) => folders.path.push(folder),
             Ok(None) => {}
         }
     }
     for dir in bin_dirs {
-        match read_one(dir, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &homes, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
-            Ok(Some(folder)) => folders.other.push(folder),
-            Ok(None) => {}
+            Ok(Some(folder)) if folder.read => folders.other.push(folder),
+            Ok(_) => {}
         }
     }
     folders.complete = true;
@@ -190,9 +243,11 @@ pub fn read_folders(path_dirs: &[PathBuf], bin_dirs: &[PathBuf], budget: Command
 }
 
 /// One folder's names, or `None` for one that is not there, cannot be
-/// read, or was read already (`seen`, by where it leads).
+/// read, or was read already (`seen`, by where it leads). One `asks_first`
+/// names comes back unread; as named there, it is not even resolved.
 fn read_one(
     dir: &Path,
+    homes: &[PathBuf],
     seen: &mut Vec<PathBuf>,
     budget: CommandBudget,
     started: Instant,
@@ -201,6 +256,19 @@ fn read_one(
     if started.elapsed() >= budget.max_duration {
         return Err(Stopped);
     }
+    let unread = |canonical: PathBuf| Folder {
+        given: dir.to_path_buf(),
+        canonical,
+        names: BTreeSet::new(),
+        read: false,
+    };
+    if asks_first(dir, homes) {
+        if seen.iter().any(|known| known == dir) {
+            return Ok(None);
+        }
+        seen.push(dir.to_path_buf());
+        return Ok(Some(unread(dir.to_path_buf())));
+    }
     let Ok(canonical) = std::fs::canonicalize(dir) else {
         return Ok(None);
     };
@@ -208,6 +276,9 @@ fn read_one(
         return Ok(None);
     }
     seen.push(canonical.clone());
+    if asks_first(&canonical, homes) {
+        return Ok(Some(unread(canonical)));
+    }
     let Ok(read) = std::fs::read_dir(&canonical) else {
         return Ok(None);
     };
@@ -225,6 +296,7 @@ fn read_one(
         given: dir.to_path_buf(),
         canonical,
         names,
+        read: true,
     }))
 }
 
@@ -257,6 +329,15 @@ fn executable(path: &Path) -> bool {
     std::fs::metadata(path)
         .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
+}
+
+/// What one `PATH` folder holds of a name: an executable file, by where it
+/// leads (`None`: it does not resolve), or nobody knows -- a folder left
+/// unread (`asks_first`), which may hold one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Seen {
+    Executable(Option<PathBuf>),
+    Unread,
 }
 
 /// One command an artifact provides: the file it is, every link followed,
@@ -303,9 +384,10 @@ pub fn judge(
     for claim in &claims {
         owner.entry(&claim.target).or_insert(claim.artifact);
     }
-    // Every executable of a name on `PATH`, in `PATH`'s order, by where
-    // it leads (`None`: it does not resolve); looked up once per name.
-    let mut on_path: HashMap<&str, Vec<Option<PathBuf>>> = HashMap::new();
+    // What each `PATH` folder holds of a name, in `PATH`'s order -- every
+    // executable by where it leads, and every unread folder -- looked up
+    // once per name.
+    let mut on_path: HashMap<&str, Vec<Seen>> = HashMap::new();
     let mut out: Vec<Vec<CommandFact>> = vec![Vec::new(); artifacts.len()];
     for claim in &claims {
         if look.over() {
@@ -318,10 +400,16 @@ pub fn judge(
                 folders
                     .path
                     .iter()
-                    .filter(|folder| folder.names.contains(OsStr::new(&claim.name)))
-                    .map(|folder| folder.canonical.join(&claim.name))
-                    .filter(|path| executable(path))
-                    .map(|path| look.canonical(&path))
+                    .filter_map(|folder| {
+                        if !folder.read {
+                            return Some(Seen::Unread);
+                        }
+                        if !folder.names.contains(OsStr::new(&claim.name)) {
+                            return None;
+                        }
+                        let path = folder.canonical.join(&claim.name);
+                        executable(&path).then(|| Seen::Executable(look.canonical(&path)))
+                    })
                     .collect()
             });
             let owner_of = |found: &Option<PathBuf>| {
@@ -330,23 +418,26 @@ pub fn judge(
                     .and_then(|target| owner.get(target))
                     .copied()
             };
+            let this = Seen::Executable(Some(claim.target.clone()));
             match matches.first() {
-                Some(first)
+                // An unread folder first: it may hold the name.
+                Some(Seen::Unread) => None,
+                Some(Seen::Executable(first))
                     if first.as_deref() == Some(claim.target.as_path())
                         || owner_of(first) == Some(claim.artifact) =>
                 {
                     Some(CommandState::Runs)
                 }
-                Some(first)
-                    if matches
-                        .iter()
-                        .skip(1)
-                        .any(|found| found.as_deref() == Some(claim.target.as_path())) =>
+                Some(Seen::Executable(first))
+                    if matches.iter().skip(1).any(|seen| *seen == this) =>
                 {
                     Some(CommandState::ShadowedBy {
                         by: owner_of(first).map(|i| artifacts[i].key.clone()),
                     })
                 }
+                // Nothing on `PATH` that was read leads here, and an
+                // unread folder could hold a link that does: no verdict.
+                _ if matches.contains(&Seen::Unread) => None,
                 // Nothing on `PATH` leads here: "not found" is said only
                 // of a folder Banager knows and `PATH` lacks. A copy whose
                 // folder is on `PATH` and was still not found there (its
@@ -726,10 +817,11 @@ pub(crate) fn start_reading(
         Vec::new()
     };
     let bin_dirs = bin_folders(instances);
+    let home = env.home.clone();
     let guard = InFlight(in_flight.clone());
     let handle = tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        read_folders(&path_dirs, &bin_dirs, budget)
+        read_folders(&path_dirs, &bin_dirs, &home, budget)
     });
     Reading {
         handle: Some(handle),
