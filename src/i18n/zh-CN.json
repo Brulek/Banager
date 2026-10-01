@@ -800,7 +800,9 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "其中有macOS版本、各来源的位置和状态，以及查找命令的文件夹。个人文件夹写成“~”，除这些文件夹外不含其他环境变量的值。"
+    "diagnosticsDetail": "其中有macOS版本、各来源的位置和状态，以及查找命令的文件夹。个人文件夹写成“~”，除这些文件夹外不含其他环境变量的值。",
+    "keptLeftOut": "不含{{path}}，那里是另一份单独安装的程序。",
+    "keptLeftOutLabel": "大小说明：{{path}}"
   },
   "unknown": {
     "columns": {

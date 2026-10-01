@@ -560,7 +560,12 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         // 32 hex characters, like the real random token; counted, not random.
         id: planCount.toString(16).padStart(32, "0"),
         // What the uninstall leaves behind, named (`mockKeptData.ts`).
-        plan: withMockKeptData(buildPlan(world, inst, request), inst.adapter_id, request),
+        plan: withMockKeptData(
+          buildPlan(world, inst, request),
+          inst.adapter_id,
+          request,
+          world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+        ),
         issued_at: nowSeconds(),
       };
       plans.set(issued.id, { issued, issuedAtMs: Date.now() });

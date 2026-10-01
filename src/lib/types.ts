@@ -286,7 +286,11 @@ export type Warning =
   | "HomebrewCleanupAutoremoves"
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
-  | { KeepsData: { path: string; what: KeptData; size: Measured | null } }
+  /**
+   * `left_out`: folders inside `path` its size does not count, not being
+   * this tool's data (`~/.codex/packages/standalone`, Codex's own install).
+   */
+  | { KeepsData: { path: string; what: KeptData; size: Measured | null; left_out: string[] } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

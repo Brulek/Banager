@@ -46,10 +46,22 @@ describe("the preview's uninstall previews name what stays", () => {
   });
 
   it("for Codex from npm, and Gemini CLI from Homebrew with its path alone", async () => {
-    expect(keptPaths(await uninstallPlanOf("Package", "@openai/codex"))).toEqual(["~/.codex"]);
+    const codex = await uninstallPlanOf("Package", "@openai/codex");
+    expect(keptPaths(codex)).toEqual(["~/.codex"]);
+    // The pretend Mac has Codex's own install too: its folder is left out of the size.
+    expect(codex.filter((w) => typeof w !== "string" && "KeepsData" in w)).toEqual([
+      {
+        KeepsData: {
+          path: "~/.codex",
+          what: "ToolData",
+          size: { bytes: 38_400_000, partial: false, at_least: false },
+          left_out: ["~/.codex/packages/standalone"],
+        },
+      },
+    ]);
     const gemini = await uninstallPlanOf("Formula", "gemini-cli");
     expect(gemini.filter((w) => typeof w !== "string" && "KeepsData" in w)).toEqual([
-      { KeepsData: { path: "~/.gemini", what: "ToolData", size: null } },
+      { KeepsData: { path: "~/.gemini", what: "ToolData", size: null, left_out: [] } },
     ]);
   });
 

@@ -709,11 +709,17 @@ pub enum Warning {
     /// (`WillKeep` of a path-list uninstall). Added by
     /// `Session::issue_plan` to every `Uninstall` plan of an artifact
     /// with such a family (`kept_data::kept_data`); read by `warningKey`
-    /// and the uninstall dialog's 「卸载后会保留」 group.
+    /// and the uninstall dialog's 「卸载后会保留」 group. `left_out`: the
+    /// folders inside it that `size` does not count because they are not
+    /// this tool's data -- `~/.codex/packages/standalone`, Codex's own
+    /// install, when npm's copy is the one uninstalled -- spelled as
+    /// `path` is; empty for most.
     KeepsData {
         path: String,
         what: KeptData,
         size: Option<crate::size::Measured>,
+        #[serde(default)]
+        left_out: Vec<String>,
     },
     /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
     /// `~/.rustup`; the standard layout is the only one Banager offers
@@ -1868,18 +1874,37 @@ mod tests {
                 partial: false,
                 at_least: true,
             }),
+            left_out: Vec::new(),
         };
-        let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true}}}"#;
+        let wire = r#"{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&measured).unwrap(), wire);
         assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), measured);
         let unknown = Warning::KeepsData {
             path: "~/.ollama/models".to_string(),
             what: KeptData::Models,
             size: None,
+            left_out: Vec::new(),
         };
-        let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}"#;
+        let wire = r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}"#;
         assert_eq!(serde_json::to_string(&unknown).unwrap(), wire);
         assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), unknown);
+        // What the size leaves out, and an older line with no such field.
+        let codex = Warning::KeepsData {
+            path: "~/.codex".to_string(),
+            what: KeptData::ToolData,
+            size: None,
+            left_out: vec!["~/.codex/packages/standalone".to_string()],
+        };
+        let wire = r#"{"KeepsData":{"path":"~/.codex","what":"ToolData","size":null,"left_out":["~/.codex/packages/standalone"]}}"#;
+        assert_eq!(serde_json::to_string(&codex).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<Warning>(wire).unwrap(), codex);
+        assert_eq!(
+            serde_json::from_str::<Warning>(
+                r#"{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}"#
+            )
+            .unwrap(),
+            unknown
+        );
     }
 
     #[test]

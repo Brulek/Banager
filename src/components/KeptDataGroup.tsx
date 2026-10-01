@@ -4,6 +4,7 @@ import { sizeText } from "../lib/sizes";
 import type { Warning } from "../lib/types";
 import { KEPT_DATA_KEYS } from "../lib/warnings";
 import { CopyButton } from "./CopyButton";
+import { TextWithInfo } from "./InfoDetail";
 import { SheetSection } from "./SheetParts";
 import { SMALL_WRAPPING } from "./ui/group";
 
@@ -33,7 +34,18 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
                 {item.size !== null ? (
                   <span data-kept-size="" className="text-muted">
                     {" · "}
-                    {sizeText(t, item.size)}
+                    {item.leftOut.length === 0 ? (
+                      sizeText(t, item.size)
+                    ) : (
+                      // What the size does not count: another copy's program
+                      // inside the folder (Codex's own install in ~/.codex).
+                      <TextWithInfo
+                        text={sizeText(t, item.size)}
+                        label={t("clarity.keptLeftOutLabel", { path: item.path })}
+                      >
+                        {item.leftOut.map((path) => t("clarity.keptLeftOut", { path })).join(" ")}
+                      </TextWithInfo>
+                    )}
                   </span>
                 ) : null}
               </p>

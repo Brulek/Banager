@@ -43,6 +43,14 @@ pub const BUDGET: SizeBudget = SizeBudget {
     max_duration: Duration::from_secs(1),
 };
 
+/// What a data path holds that is not the tool's data, by the path as the
+/// table spells it, relative to it: another copy of the tool, installed by
+/// its own installer. `~/.codex/packages/standalone` is Codex's own install
+/// (`adapters/standalone/release_link.rs`), which uninstalling npm's
+/// `@openai/codex` leaves where it is, and which the size of what stays as
+/// "this tool's settings and data" must not count.
+const LEFT_OUT: &[(&str, &str)] = &[("~/.codex", "packages/standalone")];
+
 /// The paths an uninstall of a tool of `family` leaves behind, if they are
 /// there, as the table spells them, with what each holds: the family's
 /// `data_paths`, then the models folder for Ollama's.
@@ -106,11 +114,21 @@ pub fn kept_data(
         let Some(absolute) = under_home(home, path) else {
             continue;
         };
-        if let Looked::There(size) = look_at(&absolute, &protected, &mut budget) {
+        let leave_out: Vec<&str> = LEFT_OUT
+            .iter()
+            .filter(|(of, _)| *of == path)
+            .map(|(_, inside)| *inside)
+            .collect();
+        let (looked, met) = look_at(&absolute, &protected, &mut budget, &leave_out);
+        if let Looked::There(size) = looked {
             warnings.push(Warning::KeepsData {
                 path: path.to_string(),
                 what,
                 size,
+                left_out: met
+                    .into_iter()
+                    .map(|index| format!("{path}/{}", leave_out[index]))
+                    .collect(),
             });
         }
     }
@@ -240,7 +258,9 @@ mod tests {
         let warnings = kept_data(&home.0, "ollama", &[], BUDGET);
         assert_eq!(warnings.len(), 1);
         match &warnings[0] {
-            Warning::KeepsData { path, what, size } => {
+            Warning::KeepsData {
+                path, what, size, ..
+            } => {
                 assert_eq!(path, "~/.ollama/models");
                 assert_eq!(*what, KeptData::Models);
                 assert!(size.unwrap().bytes >= 70_000);
@@ -377,6 +397,54 @@ mod tests {
         // Claude Code's two, at least: not a test that compares nothing.
         assert!(matched.contains(&"~/.claude"), "{matched:?}");
         assert!(matched.contains(&"~/.claude.json"), "{matched:?}");
+    }
+
+    #[test]
+    fn test_codexs_own_install_inside_its_folder_is_left_out_of_what_stays_and_named() {
+        // npm's @openai/codex uninstalled while Codex's own install is
+        // there: ~/.codex stays, and its size is the settings and data,
+        // not the other copy's program under packages/standalone.
+        let home = Home::new("codex-twin");
+        home.file(".codex/config.toml", 4_000);
+        home.file(".codex/sessions/a.jsonl", 20_000);
+        home.file(
+            ".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex",
+            900_000,
+        );
+        let warnings = kept_data(&home.0, "codex", &[], BUDGET);
+        assert_eq!(warnings.len(), 1);
+        match &warnings[0] {
+            Warning::KeepsData {
+                path,
+                size,
+                left_out,
+                ..
+            } => {
+                assert_eq!(path, "~/.codex");
+                assert_eq!(left_out, &vec!["~/.codex/packages/standalone".to_string()]);
+                let bytes = size.expect("measured").bytes;
+                assert!((24_000..900_000).contains(&bytes), "{bytes}");
+            }
+            other => panic!("{other:?}"),
+        }
+
+        // Without Codex's own install, nothing is left out.
+        let home = Home::new("codex-alone");
+        home.file(".codex/config.toml", 4_000);
+        match &kept_data(&home.0, "codex", &[], BUDGET)[0] {
+            Warning::KeepsData { left_out, .. } => assert!(left_out.is_empty()),
+            other => panic!("{other:?}"),
+        }
+        // Nor for another family's folder.
+        let home = Home::new("claude-standalone-name");
+        home.file(".claude/packages/standalone/x", 4_000);
+        match &kept_data(&home.0, "claude-code", &[], BUDGET)[0] {
+            Warning::KeepsData { left_out, size, .. } => {
+                assert!(left_out.is_empty());
+                assert!(size.unwrap().bytes >= 4_000);
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

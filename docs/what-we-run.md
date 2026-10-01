@@ -2068,7 +2068,11 @@ or could not read, is named with no size. A path that leads into one of
 the places disk use never looks into (Disk use, above: the one list in
 `crates/banager-core/src/protected.rs`, whatever case spells them) is
 named with no size, and nothing there is read. A path that is not there,
-or a link that leads nowhere, gets no line.
+or a link that leads nowhere, gets no line. Inside `~/.codex`, the folder
+`packages/standalone` is Codex's own install (Codex's own install, above),
+which uninstalling npm's `@openai/codex` leaves where it is: the size
+neither counts nor enters it (`kept_data::LEFT_OUT`,
+`size::look_at`), and the line says so behind an ⓘ.
 
 Nothing is written, and nothing is deleted: the preview has no button or
 command that removes these paths. The one action beside each is Copy

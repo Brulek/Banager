@@ -221,9 +221,9 @@ mod tests {
         plan.warnings
             .iter()
             .filter_map(|w| match w {
-                Warning::KeepsData { path, what, size } => {
-                    Some((path.clone(), *what, size.is_some()))
-                }
+                Warning::KeepsData {
+                    path, what, size, ..
+                } => Some((path.clone(), *what, size.is_some())),
                 _ => None,
             })
             .collect()

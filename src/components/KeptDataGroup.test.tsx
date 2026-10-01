@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { UninstallDialog } from "./UninstallDialog";
+import { KeptDataGroup } from "./KeptDataGroup";
 import { keptDataOf } from "../lib/keptData";
 import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs, warningLines } from "../lib/warnings";
 import type { IssuedPlan, OpRequest, Warning } from "../lib/types";
@@ -11,8 +12,10 @@ import type { IssuedPlan, OpRequest, Warning } from "../lib/types";
 // The same strings `test_keeps_data_is_the_json_the_typescript_mirror_reads`
 // pins in crates/banager-core/src/model.rs.
 const MEASURED_WIRE =
-  '{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true}}}';
-const UNKNOWN_WIRE = '{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}';
+  '{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true},"left_out":[]}}';
+const UNKNOWN_WIRE = '{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null,"left_out":[]}}';
+const LEFT_OUT_WIRE =
+  '{"KeepsData":{"path":"~/.codex","what":"ToolData","size":{"bytes":38400000,"partial":false,"at_least":false},"left_out":["~/.codex/packages/standalone"]}}';
 
 const npmClaude: OpRequest = {
   kind: "Uninstall",
@@ -42,20 +45,51 @@ function issued(warnings: Warning[], request: OpRequest = npmClaude): IssuedPlan
 
 const claudeKept: Warning[] = [
   { UninstallScope: { what: "Npm" } },
-  { KeepsData: { path: "~/.claude", what: "ToolData", size: { bytes: 432_013_312, partial: false, at_least: false } } },
-  { KeepsData: { path: "~/.claude.json", what: "ToolData", size: null } },
+  {
+    KeepsData: {
+      path: "~/.claude",
+      what: "ToolData",
+      size: { bytes: 432_013_312, partial: false, at_least: false },
+      left_out: [],
+    },
+  },
+  { KeepsData: { path: "~/.claude.json", what: "ToolData", size: null, left_out: [] } },
 ];
 
 describe("KeepsData on the wire", () => {
   it("reads what Rust sends and sends it back the same", () => {
-    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE]) {
+    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE, LEFT_OUT_WIRE]) {
       const warning = JSON.parse(wire) as Warning;
       expect(JSON.stringify(warning)).toBe(wire);
     }
-    expect(keptDataOf([JSON.parse(MEASURED_WIRE) as Warning, JSON.parse(UNKNOWN_WIRE) as Warning])).toEqual([
-      { path: "~/.claude", what: "ToolData", size: { bytes: 432013312, partial: false, at_least: true } },
-      { path: "~/.ollama/models", what: "Models", size: null },
+    expect(
+      keptDataOf([
+        JSON.parse(MEASURED_WIRE) as Warning,
+        JSON.parse(UNKNOWN_WIRE) as Warning,
+        JSON.parse(LEFT_OUT_WIRE) as Warning,
+        // An older line, before `left_out`.
+        JSON.parse('{"KeepsData":{"path":"~/.gemini","what":"ToolData","size":null}}') as Warning,
+      ]),
+    ).toEqual([
+      { path: "~/.claude", what: "ToolData", size: { bytes: 432013312, partial: false, at_least: true }, leftOut: [] },
+      { path: "~/.ollama/models", what: "Models", size: null, leftOut: [] },
+      {
+        path: "~/.codex",
+        what: "ToolData",
+        size: { bytes: 38400000, partial: false, at_least: false },
+        leftOut: ["~/.codex/packages/standalone"],
+      },
+      { path: "~/.gemini", what: "ToolData", size: null, leftOut: [] },
     ]);
+  });
+
+  it("says behind an ⓘ by the size what it leaves out: Codex's own install inside ~/.codex", () => {
+    renderWithProviders(<KeptDataGroup warnings={[JSON.parse(LEFT_OUT_WIRE) as Warning]} />);
+    const info = screen.getByRole("button", { name: "About the size: ~/.codex" });
+    fireEvent.click(info);
+    expect(
+      screen.getByText("Not counting ~/.codex/packages/standalone, which holds another copy installed on its own."),
+    ).toBeInTheDocument();
   });
 
   it("is its own group, plain, never a deletion", () => {
@@ -136,6 +170,7 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
             path: "~/.ollama/models",
             what: "Models",
             size: { bytes: 6_600_000_000, partial: false, at_least: true },
+            left_out: [],
           },
         },
       ],

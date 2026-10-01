@@ -409,6 +409,56 @@ fn walk(
     protected: &Protected,
     wanted: &mut dyn FnMut() -> bool,
 ) -> WalkEnd {
+    walk_leaving_out(roots, budget, protected, wanted, &mut LeaveOut::none())
+}
+
+/// Folders inside a walk's roots that it neither counts nor enters, and
+/// which of them it met: what a kept folder holds that is not the tool's
+/// data -- Codex's own install, inside `~/.codex` (`kept_data`).
+pub(crate) struct LeaveOut {
+    paths: Vec<PathBuf>,
+    met: Vec<bool>,
+}
+
+impl LeaveOut {
+    pub(crate) fn none() -> LeaveOut {
+        LeaveOut::new(Vec::new())
+    }
+
+    pub(crate) fn new(paths: Vec<PathBuf>) -> LeaveOut {
+        let met = vec![false; paths.len()];
+        LeaveOut { paths, met }
+    }
+
+    /// Whether `path` is one to leave out, noting that it was met.
+    fn leaves_out(&mut self, path: &Path) -> bool {
+        match self.paths.iter().position(|left| left == path) {
+            Some(index) => {
+                self.met[index] = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Which of the paths a walk met, by their index in the list given.
+    pub(crate) fn met(&self) -> impl Iterator<Item = usize> + '_ {
+        self.met
+            .iter()
+            .enumerate()
+            .filter(|(_, met)| **met)
+            .map(|(index, _)| index)
+    }
+}
+
+/// `walk`, neither counting nor entering what `leave_out` names.
+fn walk_leaving_out(
+    roots: &[PathBuf],
+    budget: &mut Budget,
+    protected: &Protected,
+    wanted: &mut dyn FnMut() -> bool,
+    leave_out: &mut LeaveOut,
+) -> WalkEnd {
     let mut tally = Tally::default();
     for root in roots {
         if !wanted() {
@@ -432,7 +482,15 @@ fn walk(
             tally.reached = true;
             continue;
         }
-        match walk_folder(root, meta.dev(), &mut tally, budget, protected, wanted) {
+        match walk_folder(
+            root,
+            meta.dev(),
+            &mut tally,
+            budget,
+            protected,
+            wanted,
+            leave_out,
+        ) {
             Flow::Finished => {}
             Flow::OutOfBudget => break,
             Flow::Superseded => return WalkEnd::Superseded,
@@ -464,6 +522,7 @@ fn walk_folder(
     budget: &mut Budget,
     protected: &Protected,
     wanted: &mut dyn FnMut() -> bool,
+    leave_out: &mut LeaveOut,
 ) -> Flow {
     let mut folders = vec![root.to_path_buf()];
     while let Some(folder) = folders.pop() {
@@ -502,6 +561,9 @@ fn walk_folder(
             };
             if meta.is_dir() && meta.dev() != device {
                 // Another volume mounted here: not this tool's.
+                continue;
+            }
+            if !leave_out.paths.is_empty() && leave_out.leaves_out(&entry.path()) {
                 continue;
             }
             if !budget.take() {
@@ -571,21 +633,47 @@ impl LookBudget {
 /// as a tool's folder is (`walk`: `lstat`, `readdir`, `readlink`, nothing
 /// opened), spending `budget`. A path that is itself in a protected place
 /// is not looked at; one that leads into one is there, with no size: its
-/// own `lstat` is all that is read of it.
-pub(crate) fn look_at(path: &Path, protected: &Protected, budget: &mut LookBudget) -> Looked {
+/// own `lstat` is all that is read of it. The folders inside `path` that
+/// `leave_out` names, relative to it (`packages/standalone` in `~/.codex`)
+/// -- under where `path` leads, when it is a link -- are neither counted
+/// nor entered; with what was found, the indexes in `leave_out` of those
+/// it met.
+pub(crate) fn look_at(
+    path: &Path,
+    protected: &Protected,
+    budget: &mut LookBudget,
+    leave_out: &[&str],
+) -> (Looked, Vec<usize>) {
     if protected.contains(path) {
-        return Looked::Missing;
+        return (Looked::Missing, Vec::new());
     }
     match resolve(path, protected, true) {
-        Resolution::Missing => Looked::Missing,
+        Resolution::Missing => (Looked::Missing, Vec::new()),
         Resolution::Refused => match std::fs::symlink_metadata(path) {
-            Ok(_) => Looked::There(None),
-            Err(_) => Looked::Missing,
+            Ok(_) => (Looked::There(None), Vec::new()),
+            Err(_) => (Looked::Missing, Vec::new()),
         },
-        Resolution::Found(real, _) => match walk(&[real], &mut budget.0, protected, &mut || true) {
-            WalkEnd::Walked(walked) => Looked::There(Some(walked.measured)),
-            WalkEnd::Nothing | WalkEnd::OutOfBudget | WalkEnd::Superseded => Looked::There(None),
-        },
+        Resolution::Found(real, _) => {
+            let mut left = LeaveOut::new(
+                leave_out
+                    .iter()
+                    .map(|relative| real.join(relative))
+                    .collect(),
+            );
+            let looked = match walk_leaving_out(
+                &[real],
+                &mut budget.0,
+                protected,
+                &mut || true,
+                &mut left,
+            ) {
+                WalkEnd::Walked(walked) => Looked::There(Some(walked.measured)),
+                WalkEnd::Nothing | WalkEnd::OutOfBudget | WalkEnd::Superseded => {
+                    Looked::There(None)
+                }
+            };
+            (looked, left.met().collect())
+        }
     }
 }
 
@@ -1634,6 +1722,7 @@ mod tests {
             &mut budget,
             &Protected::default(),
             &mut || true,
+            &mut LeaveOut::none(),
         );
         assert!(matches!(flow, Flow::Finished));
         assert_eq!(tally.finish().measured.bytes, blocks_of(&top));
@@ -1646,6 +1735,7 @@ mod tests {
             &mut budget,
             &Protected::default(),
             &mut || true,
+            &mut LeaveOut::none(),
         );
         assert_eq!(tally.finish().measured.bytes, du(&tool) - blocks_of(&tool));
     }

@@ -32,7 +32,12 @@ const KEPT: Record<string, { path: string; what: "ToolData" | "Models"; size: Me
 };
 
 /** `plan`, with a `KeepsData` for each path the tool `request` uninstalls leaves behind. */
-export function withMockKeptData(plan: Plan, adapterId: string, request: OpRequest): Plan {
+export function withMockKeptData(
+  plan: Plan,
+  adapterId: string,
+  request: OpRequest,
+  ownCodexInstall = false,
+): Plan {
   if (request.kind !== "Uninstall") return plan;
   const family = mockFamilyOf(adapterId, {
     instance_id: request.instance_id,
@@ -52,6 +57,13 @@ export function withMockKeptData(plan: Plan, adapterId: string, request: OpReque
   );
   const added: Warning[] = kept
     .filter((item) => !named.has(item.path))
-    .map((item) => ({ KeepsData: { ...item } }));
+    // ~/.codex with Codex's own install in it: Rust leaves that folder out
+    // of the size (`kept_data::LEFT_OUT`), and says so.
+    .map((item) => ({
+      KeepsData: {
+        ...item,
+        left_out: item.path === "~/.codex" && ownCodexInstall ? ["~/.codex/packages/standalone"] : [],
+      },
+    }));
   return { ...plan, warnings: [...plan.warnings, ...added] };
 }

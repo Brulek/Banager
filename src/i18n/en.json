@@ -855,7 +855,9 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values."
+    "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
+    "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",
+    "keptLeftOutLabel": "About the size: {{path}}"
   },
   "unknown": {
     "columns": {

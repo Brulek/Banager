@@ -12,6 +12,8 @@ export interface KeptDataItem {
   path: string;
   what: KeptData;
   size: Measured | null;
+  /** Folders inside it that `size` does not count (`Warning.KeepsData`'s `left_out`). */
+  leftOut: string[];
 }
 
 /** The `KeepsData` lines of a plan's warnings, in order. */
@@ -19,8 +21,9 @@ export function keptDataOf(warnings: readonly Warning[]): KeptDataItem[] {
   const items: KeptDataItem[] = [];
   for (const warning of warnings) {
     if (typeof warning !== "string" && "KeepsData" in warning) {
-      const { path, what, size } = warning.KeepsData;
-      items.push({ path, what, size });
+      const { path, what, size, left_out } = warning.KeepsData;
+      // An older line may have none.
+      items.push({ path, what, size, leftOut: left_out ?? [] });
     }
   }
   return items;
