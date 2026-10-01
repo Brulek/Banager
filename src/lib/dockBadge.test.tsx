@@ -6,6 +6,7 @@ import { renderWithProviders } from "../test/setup";
 import { watchDock } from "../test/dock";
 import { Sidebar } from "../components/Sidebar";
 import { useDockBadge } from "./dockBadge";
+import { useSnoozeExpiry } from "./snoozeExpiry";
 import { queryKeys } from "./queries";
 import type {
   ArtifactKey,
@@ -200,6 +201,29 @@ describe("the Dock's badge", () => {
     );
 
     expect(dock.counts()).toEqual([undefined, 2]);
+  });
+
+  it("counts a snoozed tool again once its snooze runs out, with Banager left open", async () => {
+    const dock = watchDock();
+    // wget snoozed until a moment from now; the page left alone after.
+    const until = Math.ceil(Date.now() / 1000) + 1;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings")
+        return Promise.resolve({ ...settings, snoozed_updates: [{ key: formula("wget"), until }] });
+      return Promise.resolve(undefined);
+    });
+    function Watched() {
+      useDockBadge();
+      useSnoozeExpiry();
+      return <Sidebar page="overview" onSelectPage={() => {}} />;
+    }
+    const { getByRole } = renderWithProviders(<Watched />);
+
+    await waitFor(() => expect(dock.badge()).toBe(1));
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
+    await waitFor(() => expect(dock.badge()).toBe(2), { timeout: 3000 });
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
   });
 
   it("leaves the page as it is when the Dock cannot be badged", async () => {

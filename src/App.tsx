@@ -26,6 +26,7 @@ import { useMenuCommands } from "./lib/menu";
 import { useDockBadge } from "./lib/dockBadge";
 import { useUpdateNotification } from "./lib/updateNotification";
 import { useOperationsNotification } from "./lib/operationsNotification";
+import { useSnoozeExpiry } from "./lib/snoozeExpiry";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -219,6 +220,7 @@ function UpdateWatchers() {
   useDockBadge();
   useUpdateNotification();
   useOperationsNotification();
+  useSnoozeExpiry();
   return null;
 }
 
