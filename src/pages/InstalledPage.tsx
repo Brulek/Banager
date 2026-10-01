@@ -1271,12 +1271,22 @@ export function InstalledPage() {
         statusText={chip?.label}
         version={
           sizeCell !== null ? (
-            <span data-size-cell="" className={sizeCell.muted ? "text-muted" : undefined}>
+            // 「—」 for none is drawn only: a screen reader hears no size, as
+            // for a row with no version.
+            <span
+              data-size-cell=""
+              aria-hidden={sizeCell.text === "—" ? true : undefined}
+              className={sizeCell.muted ? "text-muted" : undefined}
+            >
               {sizeCell.text}
             </span>
           ) : (
             (change?.version ?? versionOf(artifact))
           )
+        }
+        // By Size, what the column says, with its term, in the row's name.
+        versionText={
+          sizeCell !== null && sizeCell.text !== "—" ? t("sizes.rowName", { size: sizeCell.text }) : undefined
         }
         newVersion={sizeCell !== null ? undefined : change?.newVersion}
         action={

@@ -477,7 +477,8 @@
     "programOnly": "只算程序文件本身，不含它下载的内容和缓存。",
     "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占用的空间可能更少。",
     "otherVersionsTotal": "共约{{size}}",
-    "otherVersionsTotalAtLeast": "共{{size}}以上"
+    "otherVersionsTotalAtLeast": "共{{size}}以上",
+    "rowName": "占用空间{{size}}"
   },
   "sizeTotals": {
     "source": "约{{size}}",

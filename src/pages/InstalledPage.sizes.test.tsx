@@ -301,6 +301,36 @@ describe("the Installed page's details, on disk use", () => {
     fireEvent.change(sortBy, { target: { value: "name" } });
     await waitFor(() => expect(document.querySelector("[data-size-cell]")).toBeNull());
   });
+
+  it("By Size, say each row's size with its term in the row's name, and no 「—」 for a row with none", async () => {
+    served = {
+      ...NO_SIZES,
+      round: 4,
+      done: false,
+      artifacts: [
+        { key: node.key, version: "22.23.3", measured: about(312_600_000), old_versions: null },
+        { key: jq.key, version: "1.8.2", measured: null, old_versions: null },
+      ],
+    };
+    render();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort Order" }), { target: { value: "size" } });
+    await waitFor(() => expect(document.querySelector("[data-size-cell]")).not.toBeNull());
+    const names = [...document.querySelectorAll("[data-tool-row]")].map((row) => row.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "llama3.2:3b, Space used: About\u00a02 GB",
+      "node@22, Space used: About\u00a0312.6 MB",
+      "jq, Space used: Calculating…",
+      "wget",
+    ]);
+    // 「—」 is drawn, not read.
+    const dash = [...document.querySelectorAll("[data-size-cell]")].find((cell) => cell.textContent === "—");
+    expect(dash).toHaveAttribute("aria-hidden", "true");
+    // By name: the name alone again, as before.
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort Order" }), { target: { value: "name" } });
+    await waitFor(() => expect(document.querySelector("[data-size-cell]")).toBeNull());
+    expect(document.querySelector("[data-tool-row]")).toHaveAttribute("aria-label", "jq");
+  });
 });
 
 describe("the Installed page's source headings, on disk use", () => {

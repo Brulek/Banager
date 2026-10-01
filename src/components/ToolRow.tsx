@@ -137,6 +137,13 @@ export interface ToolRowContentProps {
   /** The version column: "7.1 → 7.2", or a word where a version would mean nothing. */
   version?: ReactNode;
   /**
+   * What the version column says, as words for the row's accessible name,
+   * where it says something other than a version: the Installed page's
+   * size under By Size, 「占用空间约71.3 MB」. A screen reader that hears
+   * the row's name then hears what the list is sorted by, with its term.
+   */
+  versionText?: string;
+  /**
    * The version an update brings, alone: what the version column shows in
    * its place once the window is too narrow for both, after an arrow ("→
    * 7.2" for "7.1 → 7.2"; spec R9) -- a bare "7.2" would read as the
@@ -306,12 +313,19 @@ function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion:
  * tool's name, then its status word and an update's change of version
  * where it has them, a comma between, which a screen reader pauses at in
  * either language. A version said as anything but words (none is, yet)
- * is left out.
+ * is left out; a column that says something else gives its words
+ * (`versionText`), last.
  */
-function rowName(name: string, statusText: string | undefined, change: ReactNode): string {
+function rowName(
+  name: string,
+  statusText: string | undefined,
+  change: ReactNode,
+  versionText: string | undefined,
+): string {
   const parts = [name];
   if (statusText !== undefined && statusText !== "") parts.push(statusText);
   if (typeof change === "string" && change !== "") parts.push(change);
+  if (versionText !== undefined && versionText !== "") parts.push(versionText);
   return parts.join(", ");
 }
 
@@ -378,6 +392,7 @@ export function ToolRow({
   status,
   statusText,
   version,
+  versionText,
   newVersion,
   action,
   menu,
@@ -537,7 +552,7 @@ export function ToolRow({
         // Only a row that takes the focus is named: elsewhere its name and
         // controls are read in turn, as any other text.
         role={roving === null ? undefined : "group"}
-        aria-label={roving === null ? undefined : rowName(name, statusText, hasUpdate ? version : undefined)}
+        aria-label={roving === null ? undefined : rowName(name, statusText, hasUpdate ? version : undefined, versionText)}
         aria-current={selected ? "true" : undefined}
         tabIndex={roving?.tabIndex}
         onFocus={roving?.onFocus}
