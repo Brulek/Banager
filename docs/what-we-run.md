@@ -1972,8 +1972,12 @@ hears that it moved through the event `SizesChanged`.
 
 ## Data an uninstall leaves behind: read-only, no command runs
 
-No source's uninstall removes the folders an AI coding tool keeps its
-settings and data in, nor the models Ollama downloaded, so the uninstall
+No source's uninstall, as Banager runs it, removes the folders an AI
+coding tool keeps its settings and data in, nor the models Ollama
+downloaded. That holds because Banager never runs `brew uninstall --zap`
+(`test_plan_never_passes_zap_force_or_ignore_dependencies` in
+`crates/banager-core/src/adapters/brew/mod.rs`): a cask's `zap` stanza
+may name such a folder, and it runs only with `--zap`. So the uninstall
 preview names them (「卸载后会保留」, "Stays after uninstalling"):
 `Session::issue_plan` (`crates/banager-core/src/session/kept.rs`) adds a
 line for each of these that is there, for an uninstall of a tool of that

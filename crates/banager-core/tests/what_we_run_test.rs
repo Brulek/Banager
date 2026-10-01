@@ -461,6 +461,7 @@ fn test_what_we_run_names_every_path_an_uninstall_preview_says_stays_and_its_lim
         "`lstat`, `readdir` and `readlink`; no file is opened",
         "Nothing is written, and nothing is deleted",
         "no button or command that removes these paths",
+        "Banager never runs `brew uninstall --zap`",
     ] {
         assert!(
             folded.contains(words),
