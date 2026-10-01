@@ -422,7 +422,7 @@ pub fn parse_info_installed(
         });
     }
 
-    Ok(out)
+    Ok(crate::adapters::sanity::artifacts(out))
 }
 
 // Required for the same reason as `InfoInstalledRoot`'s, and the lie this
@@ -490,7 +490,7 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
         });
     }
 
-    Ok(out)
+    Ok(crate::adapters::sanity::candidates(out))
 }
 
 /// Parses `brew search` / `brew search --desc` output.
@@ -557,24 +557,28 @@ pub fn parse_search(text: &str, adapter_id: &str) -> Vec<SearchHit> {
         });
     }
 
-    hits
+    crate::adapters::sanity::hits(hits)
 }
 
 /// Parses `brew uses --installed {name}`: one whitespace-separated formula
 /// name per token (brew prints one per line, but splitting on all whitespace
-/// is robust to either layout).
+/// is robust to either layout). A token that is not a usable name (a
+/// control character in it) is not a formula's.
 pub fn parse_uses(text: &str) -> Vec<String> {
-    text.split_whitespace().map(|s| s.to_string()).collect()
+    text.split_whitespace()
+        .filter(|s| crate::adapters::sanity::is_name(s))
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// Parses `brew --version`'s first line, e.g. "Homebrew 7.0.3", returning
-/// just the version.
+/// just the version (`None` for one with a control character in it).
 pub fn parse_version(text: &str) -> Option<String> {
     let first_line = text.lines().next()?;
     let mut parts = first_line.split_whitespace();
     let _label = parts.next()?; // "Homebrew"
     let version = parts.next()?;
-    Some(version.to_string())
+    crate::adapters::sanity::version_token(Some(version.to_string()))
 }
 
 #[cfg(test)]
@@ -1232,5 +1236,60 @@ mod tests {
             .map(|a| a.facts.command_inputs.keg_only)
             .collect();
         assert_eq!(flags, vec![false, false, false, true]);
+    }
+
+    // Regressions found by `adapters/robustness.rs`: each is the smallest
+    // input that produced the absurd value.
+
+    #[test]
+    fn regression_parse_info_installed_drops_a_formula_with_an_empty_name() {
+        let json = r#"{"formulae":[{"name":"","installed":[{"version":"1"}]},
+            {"name":"jq","installed":[{"version":"1.8.1"}]}],"casks":[]}"#;
+        let names: Vec<String> = parse_info_installed(json, "brew:/opt/homebrew")
+            .unwrap()
+            .into_iter()
+            .map(|a| a.key.name)
+            .collect();
+        assert_eq!(names, vec!["jq".to_string()]);
+    }
+
+    #[test]
+    fn regression_parse_info_installed_reads_a_version_with_a_newline_as_unknown() {
+        let json = r#"{"formulae":[{"name":"jq","installed":[{"version":"1.8\n1"}]}],
+            "casks":[{"token":"onyx","name":["\u001b[1mOnyX"],"installed":"4.9.0"}]}"#;
+        let artifacts = parse_info_installed(json, "brew:/opt/homebrew").unwrap();
+        assert_eq!(artifacts[0].version, "");
+        // A cask's display name with an escape in it falls back to its token.
+        assert_eq!(artifacts[1].display_name, "onyx");
+        assert_eq!(artifacts[1].version, "4.9.0");
+    }
+
+    #[test]
+    fn regression_parse_outdated_drops_an_update_to_nothing_or_with_a_control_character() {
+        let json = r#"{"formulae":[
+            {"name":"a","installed_versions":["1"],"current_version":""},
+            {"name":"b","installed_versions":["1"],"current_version":"2\r"},
+            {"name":"","installed_versions":["1"],"current_version":"2"},
+            {"name":"jq","installed_versions":["1.7"],"current_version":"1.8.1"}],"casks":[]}"#;
+        let names: Vec<String> = parse_outdated(json, "brew:/opt/homebrew")
+            .unwrap()
+            .into_iter()
+            .map(|c| c.key.name)
+            .collect();
+        assert_eq!(names, vec!["jq".to_string()]);
+    }
+
+    #[test]
+    fn regression_parse_search_drops_a_line_with_no_name_or_a_control_character() {
+        let hits = parse_search(": a description\njq\u{2}x\njq\n", "brew");
+        let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, vec!["jq"]);
+    }
+
+    #[test]
+    fn regression_parse_uses_and_parse_version_refuse_control_characters() {
+        assert_eq!(parse_uses("jq\u{1b}[0m\npcre2\n"), vec!["pcre2".to_string()]);
+        assert_eq!(parse_version("Homebrew 7.0\u{0}3\n"), None);
+        assert_eq!(parse_version("Homebrew 7.0.3\n"), Some("7.0.3".to_string()));
     }
 }

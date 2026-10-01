@@ -21,6 +21,9 @@ pub mod pipx;
 pub mod standalone;
 pub mod uv;
 
+pub(crate) mod sanity;
+
+
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
 /// that do not apply to them; a new field must never change behaviour for an
 /// adapter that does not read it.
