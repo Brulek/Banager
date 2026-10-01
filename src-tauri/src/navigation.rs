@@ -19,11 +19,18 @@ use tauri::{Runtime, Url};
 /// Whether the window may load `url`: Banager's own page, which a built app
 /// serves as `tauri://localhost/...`, and nothing else. A development
 /// build (`dev`: `pnpm tauri dev` and `pnpm tauri:mock`) also loads the
-/// page from Vite's server on this Mac, which is `localhost`.
+/// page from Vite's server on this Mac, which is `localhost`. On Windows
+/// (on the roadmap) Tauri serves the built page as `http(s)://tauri.localhost`
+/// instead (`tauri_protocol_url` in the tauri crate), so that address is
+/// Banager's own page there and no other system's.
 pub(crate) fn page_may_load(url: &Url, dev: bool) -> bool {
     match url.scheme() {
         "tauri" => url.host_str() == Some("localhost"),
-        "http" | "https" => dev && matches!(url.host_str(), Some("localhost" | "127.0.0.1")),
+        "http" | "https" => match url.host_str() {
+            Some("localhost" | "127.0.0.1") => dev,
+            Some("tauri.localhost") => cfg!(windows),
+            _ => false,
+        },
         "about" => url.as_str() == "about:blank",
         _ => false,
     }
@@ -78,6 +85,10 @@ mod tests {
         ] {
             assert!(may(local, true), "{local}");
             assert!(!may(local, false), "{local}");
+        }
+        // Windows' address for the built page is no other system's.
+        for dev in [false, true] {
+            assert_eq!(may("http://tauri.localhost/", dev), cfg!(windows));
         }
         // Not even a development build follows a navigation to another host.
         assert!(!may("http://192.168.1.2:1420/", true));
