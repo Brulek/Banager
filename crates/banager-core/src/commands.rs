@@ -33,9 +33,13 @@
 //!
 //! Read-only in the strictest sense, as the unknown-source scan is:
 //! `read_dir` of each folder once -- `PATH`'s, and the bin folders of
-//! Homebrew's and npm's prefixes -- then `stat` and `realpath` of the
-//! entries a command could be, never a file's contents, never a command
-//! run (docs/what-we-run.md, "Which copy a command runs"). Bounded
+//! Homebrew's and npm's prefixes -- then where the entries a command could
+//! be lead, followed one step at a time (`lstat` and `readlink` of each
+//! step, `protected::resolve`), never a file's contents, never a command
+//! run (docs/what-we-run.md, "Which copy a command runs"). No step is ever
+//! taken into a protected place (`protected`): a folder, an entry or a
+//! link that leads there counts as unread, and no verdict it could change
+//! is made. Bounded
 //! (`CommandBudget`) and run on the blocking pool, in two halves around a
 //! refresh round's fan-out (`start_reading`, `finish`), so a folder on a
 //! network disk that stopped answering costs the rounds its verdicts while
@@ -56,11 +60,12 @@ use crate::adapters::standalone::recipes::RECIPES;
 use crate::model::{
     ArtifactKind, CommandFact, CommandState, InstallReason, InstalledArtifact, ManagerInstance,
 };
-use crate::protected;
+use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
 use crate::scan::display_path;
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::{OsStr, OsString};
+use std::fs::Metadata;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -93,7 +98,9 @@ impl Default for CommandBudget {
 
 /// One folder: the path it was named by, where that leads, and the names
 /// in it -- or, for a `PATH` folder macOS would ask the user about before
-/// Banager looked inside (`asks_first`), `read: false` and no names.
+/// Banager looked inside, or one that leads into such a place or onto
+/// another disk (`protected`), `read: false` and no names; so too one that
+/// is there but cannot be listed.
 #[derive(Clone, Debug)]
 struct Folder {
     given: PathBuf,
@@ -102,23 +109,14 @@ struct Folder {
     read: bool,
 }
 
-/// Whether `path` is in one of `places` (`protected::places`): one of
-/// the folders macOS asks the user about before an app looks inside them,
-/// under the home folder as named or where it leads, or on another disk,
-/// under `/Volumes` -- a network disk that went away does not answer at
-/// all. They are never read here: a refresh must not put up a permission
-/// request, or wait on a disk. Case aside, as APFS compares names.
-fn asks_first(path: &Path, places: &[PathBuf]) -> bool {
-    protected::is_within(path, places)
-}
-
 /// The folders one round read (`read_folders`).
 #[derive(Clone, Debug, Default)]
 pub struct Folders {
     /// `PATH`'s folders in `PATH`'s order, each once: an entry that is
     /// empty or relative, that does not exist, or that names a folder an
     /// earlier entry already did (by where it leads) is not here. One
-    /// `asks_first` is here, unread: it may hold any name.
+    /// that is, or leads into, a protected place, or cannot be listed, is
+    /// here, unread: it may hold any name.
     path: Vec<Folder>,
     /// The Homebrew and npm bin folders that are not on `PATH`.
     other: Vec<Folder>,
@@ -148,7 +146,7 @@ impl Folders {
             .collect()
     }
 
-    /// The `PATH` folders left unread (`asks_first`), as named.
+    /// The `PATH` folders left unread, as named.
     pub fn unread_path_folders(&self) -> Vec<&Path> {
         self.path
             .iter()
@@ -188,10 +186,12 @@ struct Stopped;
 /// in every `bin_dirs` folder not already on `PATH`. Skips an empty or a
 /// relative `PATH` entry (a shell would look it up from its own current
 /// folder, which is not Banager's: an app opened from Finder has `/`), one
-/// that does not exist or cannot be read, and one naming a folder an
-/// earlier one did. A folder `asks_first` names, as named or where it
-/// leads, is not read: on `PATH` it is kept, unread, and a bin folder
-/// there is skipped. `complete` is false when the budget stopped it.
+/// that does not exist or that no shell could reach, and one naming a
+/// folder an earlier one did. A folder in a protected place (`protected`),
+/// as named or where it leads, is not read, nor is anything in it looked
+/// at: on `PATH` it is kept, unread, as is one that cannot be listed, and
+/// a bin folder there is skipped. `complete` is false when the budget
+/// stopped it.
 pub fn read_folders(
     path_dirs: &[PathBuf],
     bin_dirs: &[PathBuf],
@@ -202,21 +202,19 @@ pub fn read_folders(
     let mut examined = 0usize;
     let mut folders = Folders::default();
     let mut seen: Vec<PathBuf> = Vec::new();
-    let mut homes = vec![home.to_path_buf()];
-    homes.extend(std::fs::canonicalize(home).ok());
-    let places = protected::places(&homes);
+    let protected = Protected::new(home);
     for dir in path_dirs {
         if dir.as_os_str().is_empty() || !dir.is_absolute() {
             continue;
         }
-        match read_one(dir, &places, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &protected, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
             Ok(Some(folder)) => folders.path.push(folder),
             Ok(None) => {}
         }
     }
     for dir in bin_dirs {
-        match read_one(dir, &places, &mut seen, budget, started, &mut examined) {
+        match read_one(dir, &protected, &mut seen, budget, started, &mut examined) {
             Err(Stopped) => return folders,
             Ok(Some(folder)) if folder.read => folders.other.push(folder),
             Ok(_) => {}
@@ -226,12 +224,17 @@ pub fn read_folders(
     folders
 }
 
-/// One folder's names, or `None` for one that is not there, cannot be
-/// read, or was read already (`seen`, by where it leads). One `asks_first`
-/// names comes back unread; as named there, it is not even resolved.
+/// One folder's names, or `None` for one that is not there (or is not a
+/// folder), that no shell could reach either (a folder on the way it may
+/// not search), that cannot be listed, or that was read already (`seen`,
+/// by where it leads). One that is, or leads into, a protected place comes
+/// back unread. The way to it is
+/// followed one step at a time (`protected::resolve`), each step checked
+/// before it is looked at: nothing inside a protected place is ever
+/// `lstat`ed, nor a link there read.
 fn read_one(
     dir: &Path,
-    places: &[PathBuf],
+    protected: &Protected,
     seen: &mut Vec<PathBuf>,
     budget: CommandBudget,
     started: Instant,
@@ -246,23 +249,21 @@ fn read_one(
         names: BTreeSet::new(),
         read: false,
     };
-    if asks_first(dir, places) {
-        if seen.iter().any(|known| known == dir) {
-            return Ok(None);
+    let canonical = match protected::resolve(dir, protected, true) {
+        Resolution::Found(canonical, meta) if meta.is_dir() => canonical,
+        Resolution::Found(..) | Resolution::Missing | Resolution::Refused => return Ok(None),
+        Resolution::Protected(leads_to) => {
+            if seen.contains(&leads_to) {
+                return Ok(None);
+            }
+            seen.push(leads_to.clone());
+            return Ok(Some(unread(leads_to)));
         }
-        seen.push(dir.to_path_buf());
-        return Ok(Some(unread(dir.to_path_buf())));
-    }
-    let Ok(canonical) = std::fs::canonicalize(dir) else {
-        return Ok(None);
     };
     if seen.contains(&canonical) {
         return Ok(None);
     }
     seen.push(canonical.clone());
-    if asks_first(&canonical, places) {
-        return Ok(Some(unread(canonical)));
-    }
     let Ok(read) = std::fs::read_dir(&canonical) else {
         return Ok(None);
     };
@@ -284,21 +285,50 @@ fn read_one(
     }))
 }
 
-/// `stat` and `realpath`, each path once, and the clock.
+/// Where each path leads, each looked up once (`protected::resolve`: one
+/// step at a time, never into a protected place), and the clock.
 struct Look {
-    canonical: HashMap<PathBuf, Option<PathBuf>>,
+    resolved: HashMap<PathBuf, Resolution>,
+    protected: Protected,
     started: Instant,
     budget: CommandBudget,
 }
 
 impl Look {
-    fn canonical(&mut self, path: &Path) -> Option<PathBuf> {
-        if let Some(known) = self.canonical.get(path) {
+    fn new(home: &Path, budget: CommandBudget) -> Look {
+        Look {
+            resolved: HashMap::new(),
+            protected: Protected::new(home),
+            started: Instant::now(),
+            budget,
+        }
+    }
+
+    /// Where `path` leads, every link followed.
+    fn resolve(&mut self, path: &Path) -> Resolution {
+        if let Some(known) = self.resolved.get(path) {
             return known.clone();
         }
-        let found = std::fs::canonicalize(path).ok();
-        self.canonical.insert(path.to_path_buf(), found.clone());
+        let found = protected::resolve(path, &self.protected, true);
+        self.resolved.insert(path.to_path_buf(), found.clone());
         found
+    }
+
+    /// `realpath`, but `None` for a path that leads into a protected place
+    /// (nobody knows where it ends) as for one that leads nowhere.
+    fn canonical(&mut self, path: &Path) -> Option<PathBuf> {
+        match self.resolve(path) {
+            Resolution::Found(real, _) => Some(real),
+            _ => None,
+        }
+    }
+
+    /// Whether `path` is a file a shell would run (`executable`).
+    fn executable(&mut self, path: &Path) -> bool {
+        match self.resolve(path) {
+            Resolution::Found(_, meta) => executable(&meta),
+            _ => false,
+        }
     }
 
     fn over(&self) -> bool {
@@ -309,15 +339,14 @@ impl Look {
 /// A file a shell would run: a regular file, links followed, with an
 /// execute bit (`route::shadow_note`'s test, not `resolve_exe`'s, which
 /// takes any file).
-fn executable(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+fn executable(meta: &Metadata) -> bool {
+    meta.is_file() && meta.permissions().mode() & 0o111 != 0
 }
 
 /// What one `PATH` folder holds of a name: an executable file, by where it
 /// leads (`None`: it does not resolve), or nobody knows -- a folder left
-/// unread (`asks_first`), which may hold one.
+/// unread, which may hold one, or a name there that leads
+/// into a protected place, which may be one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Seen {
     Executable(Option<PathBuf>),
@@ -364,11 +393,7 @@ pub fn judge(
     if !folders.complete {
         return None;
     }
-    let mut look = Look {
-        canonical: HashMap::new(),
-        started: Instant::now(),
-        budget,
-    };
+    let mut look = Look::new(home, budget);
     let claims = claims(folders, instances, artifacts, home, &mut look)?;
     // The artifact each file is, for `ShadowedBy`: the first claim wins.
     let mut owner: HashMap<&Path, usize> = HashMap::new();
@@ -398,8 +423,15 @@ pub fn judge(
                         if !folder.names.contains(OsStr::new(&claim.name)) {
                             return None;
                         }
-                        let path = folder.canonical.join(&claim.name);
-                        executable(&path).then(|| Seen::Executable(look.canonical(&path)))
+                        match look.resolve(&folder.canonical.join(&claim.name)) {
+                            Resolution::Found(real, meta) => {
+                                executable(&meta).then_some(Seen::Executable(Some(real)))
+                            }
+                            // Where it ends is not looked at: it may be
+                            // the file that runs.
+                            Resolution::Protected(_) => Some(Seen::Unread),
+                            Resolution::Missing | Resolution::Refused => None,
+                        }
                     })
                     .collect()
             });
@@ -526,7 +558,7 @@ fn claims(
             return None;
         }
     }
-    claims.retain(|claim| executable(&claim.target));
+    claims.retain(|claim| look.executable(&claim.target));
     let mut seen: BTreeSet<(usize, String)> = BTreeSet::new();
     claims.retain(|claim| seen.insert((claim.artifact, claim.name.clone())));
     claims.sort_by_key(|claim| claim.artifact);

@@ -123,8 +123,10 @@ pub enum Resolution {
     Found(PathBuf, Metadata),
     Missing,
     /// It is, or leads, into a protected place: nothing there was looked
-    /// at, so nobody knows what is there.
-    Protected,
+    /// at, so nobody knows what is there. The path it leads to as far as
+    /// the links outside were followed, the rest of it taken as written
+    /// (`..` folded by name).
+    Protected(PathBuf),
     /// A folder on the way could not be read; or it is not absolute; or
     /// too many links.
     Refused,
@@ -153,7 +155,15 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
         }
         let candidate = resolved.join(&name);
         if protected.contains(&candidate) {
-            return Resolution::Protected;
+            let mut at = candidate;
+            for name in pending {
+                if name == ".." {
+                    at.pop();
+                } else {
+                    at.push(name);
+                }
+            }
+            return Resolution::Protected(at);
         }
         let meta = match std::fs::symlink_metadata(&candidate) {
             Ok(meta) => meta,
@@ -288,5 +298,80 @@ mod tests {
                 "{place}"
             );
         }
+    }
+
+    /// A fresh folder for one test, canonical (`/var` is a link on a Mac),
+    /// removed when the test ends.
+    struct Temp(PathBuf);
+
+    impl Temp {
+        fn new(tag: &str) -> Temp {
+            let raw = std::env::temp_dir().join(format!(
+                "banager-protected-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&raw).unwrap();
+            Temp(std::fs::canonicalize(&raw).unwrap())
+        }
+    }
+
+    impl Drop for Temp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn test_resolve_stops_at_a_protected_place_without_looking_inside() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let home = Temp::new("resolve");
+        let inside = home.0.join("Documents/proj");
+        std::fs::create_dir_all(inside.join("bin")).unwrap();
+        symlink(&inside, home.0.join("proj")).unwrap();
+        symlink(
+            "Documents/proj/bin/../bin/cli",
+            home.0.join("proj-cli-relative"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(home.0.join("lib")).unwrap();
+        // Locked: a step into it would fail (`Refused`), not be refused
+        // before it is taken (`Protected`).
+        std::fs::set_permissions(&inside, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let protected = Protected::new(&home.0);
+        let through_link = resolve(&home.0.join("proj/bin/cli"), &protected, true);
+        let relative = resolve(&home.0.join("lib/../proj-cli-relative"), &protected, true);
+        let onto_volumes = resolve(
+            Path::new("/Volumes/Banager-test-no-such-disk/x"),
+            &protected,
+            true,
+        );
+        std::fs::set_permissions(&inside, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            matches!(&through_link, Resolution::Protected(at) if *at == inside.join("bin/cli")),
+            "{through_link:?}"
+        );
+        assert!(
+            matches!(&relative, Resolution::Protected(at) if *at == inside.join("bin/cli")),
+            "{relative:?}"
+        );
+        assert!(
+            matches!(&onto_volumes, Resolution::Protected(at) if at == Path::new("/Volumes/Banager-test-no-such-disk/x")),
+            "{onto_volumes:?}"
+        );
+        // Outside the places, where a path leads is found as `realpath`
+        // finds it, a path ending in `..` too.
+        let lib = resolve(&home.0.join("lib/.."), &protected, true);
+        assert!(
+            matches!(&lib, Resolution::Found(at, meta) if *at == home.0 && meta.is_dir()),
+            "{lib:?}"
+        );
+        assert!(matches!(
+            resolve(&home.0.join("gone"), &protected, true),
+            Resolution::Missing
+        ));
     }
 }

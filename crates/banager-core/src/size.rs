@@ -532,7 +532,7 @@ pub(crate) fn look_at(
     }
     match resolve(path, protected, true) {
         Resolution::Missing => (Looked::Missing, Vec::new()),
-        Resolution::Refused | Resolution::Protected => match std::fs::symlink_metadata(path) {
+        Resolution::Refused | Resolution::Protected(_) => match std::fs::symlink_metadata(path) {
             Ok(_) => (Looked::There(None), Vec::new()),
             Err(_) => (Looked::Missing, Vec::new()),
         },
@@ -791,7 +791,7 @@ fn resolve_roots(roots: &[PathBuf], protected: &Protected) -> Option<(Vec<PathBu
                 }
             }
             Resolution::Found(..) | Resolution::Missing => None,
-            Resolution::Refused | Resolution::Protected => {
+            Resolution::Refused | Resolution::Protected(_) => {
                 partial = true;
                 None
             }

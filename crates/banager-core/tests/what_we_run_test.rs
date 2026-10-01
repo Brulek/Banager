@@ -536,7 +536,8 @@ fn test_what_we_run_has_the_command_check_section_with_its_folders_and_both_of_i
         "runs no command",
         "Nothing's contents are read",
         "`Session::note_login_path`",
-        "is not read at all, as named or where it leads (`asks_first`)",
+        "is not read at all, as named or where it leads (`protected::resolve`)",
+        "is followed only as far as the place, never into it",
     ] {
         assert!(
             folded.contains(phrase),

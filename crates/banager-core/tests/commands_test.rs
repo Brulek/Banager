@@ -1,7 +1,7 @@
 //! Which copy of a command runs (`commands`), over directory trees each
 //! test builds in a temp directory: a Homebrew prefix, an npm prefix, a
 //! home with `~/.local/bin`, a Cargo home -- real links and real files,
-//! since the judgement answers from `read_dir`, `stat` and `realpath` and
+//! since the judgement answers from `read_dir`, `lstat` and `readlink` and
 //! nothing else. No recorded fixture is read but uv's (whose `ruff` line
 //! is parsed), and none is written.
 
@@ -1264,4 +1264,143 @@ fn test_a_protected_folder_is_never_read_whatever_case_names_it() {
         ]
     );
     assert_eq!(folders.path_folders(), vec![setup.npm_bin.as_path()]);
+}
+
+/// A folder whose permissions are taken away for one test (mode 000:
+/// anything that looked inside it would fail with EACCES), given back
+/// when the test ends, before its home is removed.
+struct Locked(PathBuf);
+
+impl Locked {
+    fn new(path: PathBuf) -> Locked {
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).expect("lock");
+        Locked(path)
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+/// A Cargo crate whose `myproj` is in `~/.cargo/bin`.
+fn cargo_myproj(home: &Home) -> (ManagerInstance, InstalledArtifact) {
+    let cargo_home = home.dir(".cargo");
+    let theirs = home.exe(".cargo/bin/myproj");
+    let id = format!("cargo:{}", cargo_home.display());
+    (
+        instance("cargo", &id, &cargo_home, &cargo_home.join("bin/cargo")),
+        with_provided(
+            artifact(&id, ArtifactKind::Binary, "myproj"),
+            vec![provided("myproj", &theirs, &[])],
+        ),
+    )
+}
+
+#[test]
+fn test_an_npm_link_into_documents_is_never_followed_and_no_verdict_rests_on_it() {
+    // `npm link` in ~/Documents/myproj: npm's `bin/myproj` leads through
+    // `lib/node_modules/myproj` into the Documents folder. Following it
+    // would look inside Documents at every refresh. The folder there is
+    // locked: had anything under it been looked at, the link would have
+    // read as broken, and Cargo's copy as the one that runs.
+    let home = Home::new("npm-link-documents");
+    let npm = home.dir("npm");
+    home.exe("Documents/myproj/bin/cli.js");
+    home.link("npm/lib/node_modules/myproj", &home.at("Documents/myproj"));
+    home.link(
+        "npm/bin/myproj",
+        Path::new("../lib/node_modules/myproj/bin/cli.js"),
+    );
+    let (cargo, crate_row) = cargo_myproj(&home);
+    let _locked = Locked::new(home.at("Documents/myproj"));
+    let npm_id = format!("npm:{}", npm.display());
+    let instances = vec![instance("npm", &npm_id, &npm, &npm.join("bin/npm")), cargo];
+    let artifacts = vec![
+        artifact(&npm_id, ArtifactKind::Package, "myproj"),
+        crate_row,
+    ];
+
+    // npm's folder first: its `myproj` may be what runs, and nobody looked
+    // where it leads. The package claims nothing; the crate gets no verdict.
+    let found = verdicts(
+        &home,
+        &[npm.join("bin"), home.at(".cargo/bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![Vec::new(), vec![unjudged("myproj")]]);
+
+    // Cargo's folder first: its copy runs, whatever npm's leads to.
+    let found = verdicts(
+        &home,
+        &[home.at(".cargo/bin"), npm.join("bin")],
+        &instances,
+        &artifacts,
+    );
+    assert_eq!(found, vec![Vec::new(), vec![runs("myproj")]]);
+}
+
+#[test]
+fn test_a_path_entry_that_leads_into_icloud_drive_is_kept_unread_without_being_resolved() {
+    // `~/bin` is a link to a folder in iCloud Drive. Its name is not a
+    // protected place; where it leads is. Resolving it would look inside
+    // `Library/Mobile Documents` -- locked here, so a look would fail and
+    // drop the entry from PATH as if it were not there.
+    let home = Home::new("path-into-icloud");
+    let cloud = home.dir("Library/Mobile Documents/com~apple~CloudDocs/bin");
+    home.exe("Library/Mobile Documents/com~apple~CloudDocs/bin/myproj");
+    let bin = home.link("bin", &cloud);
+    let (cargo, crate_row) = cargo_myproj(&home);
+    let _locked = Locked::new(home.at("Library/Mobile Documents/com~apple~CloudDocs"));
+    let path = [bin.clone(), home.at(".cargo/bin")];
+    let folders = read_folders(&path, &[], home.path(), CommandBudget::default());
+    assert!(folders.complete());
+    assert_eq!(folders.unread_path_folders(), vec![bin.as_path()]);
+    assert_eq!(
+        folders.path_folders(),
+        vec![home.at(".cargo/bin").as_path()]
+    );
+    let found = verdicts(
+        &home,
+        &path,
+        std::slice::from_ref(&cargo),
+        std::slice::from_ref(&crate_row),
+    );
+    assert_eq!(found, vec![vec![unjudged("myproj")]]);
+}
+
+#[test]
+fn test_links_onto_another_disk_are_never_followed() {
+    // A PATH entry that is a link onto `/Volumes` (a network disk that may
+    // not answer), and a name in a folder that is read leading there: the
+    // first is kept unread, the second may be the file that runs. Neither
+    // is resolved, so neither can hang a refresh.
+    let home = Home::new("links-onto-volumes");
+    let volume = Path::new("/Volumes/Banager-test-no-such-disk");
+    let vol = home.link("vol", &volume.join("bin"));
+    home.dir(".local/bin");
+    home.link(".local/bin/myproj", &volume.join("myproj"));
+    let (cargo, crate_row) = cargo_myproj(&home);
+
+    let path = [vol.clone(), home.at(".cargo/bin")];
+    let folders = read_folders(&path, &[], home.path(), CommandBudget::default());
+    assert_eq!(folders.unread_path_folders(), vec![vol.as_path()]);
+    let found = verdicts(
+        &home,
+        &path,
+        std::slice::from_ref(&cargo),
+        std::slice::from_ref(&crate_row),
+    );
+    assert_eq!(found, vec![vec![unjudged("myproj")]]);
+
+    let path = [home.at(".local/bin"), home.at(".cargo/bin")];
+    let found = verdicts(
+        &home,
+        &path,
+        std::slice::from_ref(&cargo),
+        std::slice::from_ref(&crate_row),
+    );
+    assert_eq!(found, vec![vec![unjudged("myproj")]]);
 }

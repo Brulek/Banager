@@ -1968,22 +1968,32 @@ It reads:
 
 | It looks at | How |
 |---|---|
-| every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | `realpath` of the folder, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or cannot be read (`read_folders`) |
-| each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | `realpath`: which formula's folder in `Cellar`, or which package's in `lib/node_modules`, it leads into |
-| each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | `realpath`: whether it leads into that tool's own folder; `stat`: whether it is a file with an execute bit |
-| in each `PATH` folder, the entry of each name some tool provides | `stat` (a file with an execute bit) and `realpath` (where it leads), in `PATH`'s order |
+| every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist, that no shell could reach, or that cannot be listed (`read_folders`) |
+| each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
+| each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit |
+| in each `PATH` folder, the entry of each name some tool provides | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
+
+"Where it leads" is found one step at a time, as `realpath` would, but
+with only `lstat` of each folder and link on the way and `readlink` of
+each link, each step checked against the places below before it is taken
+(`protected::resolve`, the same walk the disk-use measurement uses).
 
 A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies` or `~/Music`, in iCloud Drive or another cloud folder
 (`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
 app's data (`~/Library/Containers`, `~/Library/Group Containers`) or on
 another disk (`/Volumes`), whatever case spells them, is not read at all,
-as named or where it leads (`asks_first`): macOS asks you before an app
-looks there, and a network disk that went away does not answer. It is the
-same list the disk-use measurement keeps out of
+as named or where it leads (`protected::resolve`): macOS asks you before
+an app looks there, and a network disk that went away does not answer. It
+is the same list the disk-use measurement keeps out of
 (`crates/banager-core/src/protected.rs`). On `PATH`, such a folder is
 kept in its place, unread, and nothing is said about a name it could
-hold before another copy; a bin folder there is skipped.
+hold before another copy; a bin folder there is skipped. A link that leads
+into one of these places -- a `PATH` folder that is a link to iCloud
+Drive, an `npm link` of a project in `~/Documents` -- is followed only as
+far as the place, never into it: what it leads to is not known, so it is
+not counted as any tool's command, and nothing is said about a name it
+could be before another copy.
 
 Nothing's contents are read, nothing found is run or changed, and no
 lock is taken. Reading the folders stops after 20000 entries or 5
@@ -2336,8 +2346,9 @@ All read-only, none saved anywhere else, none uploaded:
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads
-  and whether it can run (`realpath`, `stat`) — never a file's contents
-  (Which copy a command runs, above).
+  and whether it can run (`lstat` and `readlink`, one step at a time,
+  never into a protected place) — never a file's contents (Which copy a
+  command runs, above).
 - Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 - Banager's own `history.json` beside it, once, as Banager starts
