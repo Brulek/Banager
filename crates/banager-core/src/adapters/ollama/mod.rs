@@ -385,7 +385,7 @@ impl OllamaAdapter {
         tag: &str,
     ) -> Result<Option<String>, String> {
         let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
-        let local_json = std::fs::read_to_string(&local_path).map_err(|e| {
+        let local_json = crate::adapters::read_file::read_text(&local_path).map_err(|e| {
             format!(
                 "could not read local manifest {}: {e}",
                 local_path.display()

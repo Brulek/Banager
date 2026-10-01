@@ -159,21 +159,11 @@ fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// A file's bytes, or `None` unless `path` leads, links followed, to a
-/// regular file Banager can read. Nothing but a regular file is opened --
-/// a named pipe would wait for a writer -- and the open file is checked
-/// again, as `brew_env::read_brew_env_file` does.
+/// regular file Banager can read, of at most `read_file::LIMIT` bytes.
+/// Nothing but a regular file is read -- a named pipe would wait for a
+/// writer -- and it is opened without waiting (`read_file`).
 fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
-    use std::io::Read;
-    if !std::fs::metadata(path).ok()?.is_file() {
-        return None;
-    }
-    let mut file = std::fs::File::open(path).ok()?;
-    if !file.metadata().ok()?.is_file() {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-    Some(bytes)
+    crate::adapters::read_file::read_bytes(path).ok()
 }
 
 /// One line under 「请注意」: a kind of extra step; for `Deletes` and

@@ -21,6 +21,7 @@ pub mod pipx;
 pub mod standalone;
 pub mod uv;
 
+pub(crate) mod read_file;
 pub(crate) mod sanity;
 
 

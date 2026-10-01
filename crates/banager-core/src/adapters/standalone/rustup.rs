@@ -262,7 +262,7 @@ pub fn bin_programs_rustup_removes(cargo_home: &Path) -> Vec<String> {
         })
         .unwrap_or_default();
     let recorded: Vec<(String, Vec<String>)> =
-        std::fs::read_to_string(cargo_home.join(".crates2.json"))
+        crate::adapters::read_file::read_text(&cargo_home.join(".crates2.json"))
             .ok()
             .and_then(|json| parse_crates2_bins(&json).ok())
             .unwrap_or_default();
@@ -714,18 +714,12 @@ type FileIdentity = (u64, u64);
 /// (`fstat`), the file whose bytes were read. Read by
 /// `shell_config_leftovers`.
 fn read_startup_file(path: &Path) -> Option<(FileIdentity, String)> {
-    use std::io::Read;
     use std::os::unix::fs::MetadataExt;
-    if !std::fs::metadata(path).ok()?.is_file() {
-        return None;
-    }
-    let mut file = std::fs::File::open(path).ok()?;
-    let meta = file.metadata().ok()?;
-    if !meta.is_file() {
-        return None;
-    }
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).ok()?;
+    // Opened without waiting and read only when `fstat` says it is a
+    // regular file, at most `read_file::LIMIT` bytes of it.
+    let (meta, bytes) =
+        crate::adapters::read_file::read_regular(path, crate::adapters::read_file::LIMIT).ok()?;
+    let contents = String::from_utf8(bytes).ok()?;
     Some(((meta.dev(), meta.ino()), contents))
 }
 
@@ -863,6 +857,18 @@ mod tests {
     use super::*;
     use crate::model::UninstallBlocked;
     use std::path::PathBuf;
+
+    #[test]
+    fn regression_a_named_pipe_for_a_cargo_record_is_not_waited_on() {
+        use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
+        let cargo_home = temp_dir("rustup-crates2-fifo");
+        std::fs::create_dir_all(cargo_home.join("bin")).unwrap();
+        make_fifo(&cargo_home.join(".crates2.json"));
+        let home = cargo_home.clone();
+        let names = finishes(move || bin_programs_rustup_removes(&home));
+        assert!(names.is_empty(), "{names:?}");
+        let _ = std::fs::remove_dir_all(&cargo_home);
+    }
 
     fn rc_line() -> String {
         ". \"$HOME/.cargo/env\"".to_string()

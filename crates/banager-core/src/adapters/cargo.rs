@@ -357,7 +357,9 @@ impl CargoAdapter {
     /// error.
     fn read_crates2(&self, inst: &ManagerInstance) -> Result<String, AdapterError> {
         let path = inst.prefix.join(".crates2.json");
-        match std::fs::read_to_string(&path) {
+        // Bounded: a named pipe there is refused, not waited on, and so is
+        // a file past `read_file::LIMIT`.
+        match crate::adapters::read_file::read_text(&path) {
             Ok(json) => Ok(json),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 Ok("{\"installs\":{}}".to_string())

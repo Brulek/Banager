@@ -88,7 +88,8 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 /// file Banager reads for Claude Code (`docs/what-we-run.md`, "Files
 /// Banager reads"): read-only, and `latest` when it cannot be read.
 pub fn claude_channel(home: &Path) -> &'static str {
-    match std::fs::read_to_string(home.join(".claude").join("settings.json")) {
+    // Bounded (`read_file`): a named pipe there is not waited on.
+    match crate::adapters::read_file::read_text(&home.join(".claude").join("settings.json")) {
         Ok(json) => claude_channel_from_json(&json),
         Err(_) => CHANNEL_LATEST,
     }
@@ -262,6 +263,17 @@ pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regression_claude_channel_does_not_wait_on_a_named_pipe() {
+        use crate::adapters::read_file::tests::{finishes, make_fifo, temp_dir};
+        let home = temp_dir("claude-channel-fifo");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        make_fifo(&home.join(".claude").join("settings.json"));
+        let read = home.clone();
+        assert_eq!(finishes(move || claude_channel(&read)), CHANNEL_LATEST);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     // Regressions found by `adapters/robustness.rs`.
 

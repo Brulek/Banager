@@ -272,21 +272,11 @@ fn boolean_true(value: Option<&[u8]>) -> bool {
 /// One `brew.env` file's bytes, or `None` unless `path` leads, links
 /// followed, to a regular file Banager can read: `bin/brew` reads one only
 /// when `[[ -r … ]]` holds (`bin/brew:131-132`). Nothing but a regular file
-/// is opened -- a named pipe would wait for a writer -- and the open file is
-/// checked again, as rustup's startup files are (`read_startup_file` in
-/// adapters/standalone/rustup.rs).
+/// is read -- a named pipe would wait for a writer -- and it is opened
+/// without waiting, at most `read_file::LIMIT` bytes of it, as rustup's
+/// startup files are (`read_startup_file` in adapters/standalone/rustup.rs).
 pub(crate) fn read_brew_env_file(path: &Path) -> Option<Vec<u8>> {
-    use std::io::Read;
-    if !std::fs::metadata(path).ok()?.is_file() {
-        return None;
-    }
-    let mut file = std::fs::File::open(path).ok()?;
-    if !file.metadata().ok()?.is_file() {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-    Some(bytes)
+    crate::adapters::read_file::read_bytes(path).ok()
 }
 
 #[cfg(test)]
