@@ -241,11 +241,15 @@ Paths are under a generic home folder, `/Users/you`.
   hides the selected tool closes its details.
 - The Updates page lists 「最近更新」 under its rows, as the App Store
   lists Recently Updated under Pending (scroll to the end of the list):
-  five of the eight records the pretend history holds from earlier
+  seven of the ten records the pretend history holds from earlier
   launches (`src/dev/mockHistory.ts`) -- htop and ripgrep today, then
-  prettier, wget and gh, which says 「已更新」 where the others say
-  「已核实」. A failed update, an uninstall and an update older than 30
-  days are not listed. An update the preview runs keeps its tick in its
+  prettier, httpie with 「未能更新：网络连接失败」, typescript with
+  「结果不符」, wget, and, behind 「还有1个」, gh, which says 「已更新」
+  where the successes before it say 「已核实」. httpie and typescript are also rows above:
+  after a restart a row does not know the last try did not work. jq's
+  failed update is not listed, as no update is offered for jq any more
+  (as if updated in Terminal since); nor are an uninstall (yt-dlp) and
+  an update older than 30 days (ffmpeg). An update the preview runs keeps its tick in its
   own row until the check after it, then is added at the top of
   「最近更新」; with nothing left to install, 「最近更新」 is at the top of
   the page. 清除 empties the list until the page reloads.
