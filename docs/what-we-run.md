@@ -113,7 +113,12 @@ Those fixed paths are followed with `lstat` and `realpath` as they are
 (`route::probe_strict`), not one step at a time: if a person has made one
 of them, or a folder above it, a link into a place Banager otherwise
 never looks into (`~/Documents`, iCloud Drive, `/Volumes`, ...), that
-link is followed.
+link is followed. So are three folders that are not checked against
+that list either: npm's global prefix (what `npm prefix -g` printed),
+whose `lib/node_modules`, `lib` or prefix Banager checks with `stat` and
+`access(2)`; `$CARGO_HOME`, whose `.crates2.json` it reads; and
+`~/.ollama`, whose model manifests it reads (their sections). If one of
+them is, or leads into, such a place, Banager looks there.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
