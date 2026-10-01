@@ -224,6 +224,16 @@ describe("the Installed page's subtitle, on disk use", () => {
     await waitFor(() => expect(subtitle()).toBe("2 tools · about\u00a06.6 GB"));
   });
 
+  it("says how many of how many while a search shows only some", async () => {
+    served = measured;
+    const subtitle = await subtitleOnAll();
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about\u00a06.6 GB"));
+    act(() => useUiStore.setState({ query: "no tool is called this" }));
+    await waitFor(() => expect(subtitle()).toBe("0 of 2 tools"));
+    act(() => useUiStore.setState({ query: "" }));
+    await waitFor(() => expect(subtitle()).toBe("2 tools · about\u00a06.6 GB"));
+  });
+
   it("says only the count while the sizes are measured", async () => {
     served = { ...measured, done: false, total: null, sources: [] };
     const subtitle = await subtitleOnAll();

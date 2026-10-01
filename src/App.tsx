@@ -31,6 +31,7 @@ import { useUpdateNotification } from "./lib/updateNotification";
 import { useOperationsNotification } from "./lib/operationsNotification";
 import { useSnoozeExpiry } from "./lib/snoozeExpiry";
 import { useFocusOnPageChange } from "./lib/pageFocus";
+import { searchMatch } from "./lib/searchMatch";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -98,6 +99,8 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   // What the Installed page's 「显示」 popup shows: of every tool, or only
   // some (`shownBy`), which the count then says of how many.
   const show = useUiStore((s) => s.installedShow);
+  // And the search's text: a search shows only some too.
+  const needle = useUiStore((s) => s.query).trim().toLowerCase();
   const twins = useMemo(() => (show === "all" ? undefined : twinsByArtifact(snapshot?.artifacts ?? [])), [show, snapshot]);
   const viewTotal = (source: string | null): string | null => {
     const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
@@ -123,11 +126,13 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
         const inSource = (snapshot?.artifacts ?? []).filter(
           (artifact) => shownSource === null || artifact.key.instance_id === shownSource,
         );
-        // Of only some (`show`): 「58个工具中的2个」, and no size, which
-        // would be of all of them.
-        if (show !== "all") {
+        // Of only some (`show`, or a search): 「58个工具中的2个」, and no
+        // size, which would be of all of them.
+        if (show !== "all" || needle !== "") {
           if (inSource.length === 0) return null;
-          const shown = inSource.filter((artifact) => shownBy(show, artifact, twins)).length;
+          const shown = inSource.filter(
+            (artifact) => shownBy(show, artifact, twins) && searchMatch(artifact, needle) !== null,
+          ).length;
           return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
         }
         const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource, snapshot?.round);
