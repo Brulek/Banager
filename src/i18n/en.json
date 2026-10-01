@@ -764,6 +764,19 @@
     "endsCannotUndo": "{{sentence}} You can't undo this action.",
     "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
   },
+  "batchUninstall": {
+    "selectRow": "Select {{name}} to uninstall",
+    "selectAll": "Select All",
+    "selectAllLabel": "Select all items that can be uninstalled here",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectedSize_one": "{{count}} selected · {{size}}",
+    "selectedSize_other": "{{count}} selected · {{size}}",
+    "limit": "Up to {{max}} can be uninstalled at a time",
+    "overLimit_one": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
+    "overLimit_other": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
+    "uninstallSelected": "Uninstall Selected ({{number}})…"
+  },
   "keepsData": {
     "title": "Stays after uninstalling",
     "what": {

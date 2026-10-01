@@ -151,22 +151,27 @@ export function tickable(artifact: InstalledArtifact, instance: ManagerInstance,
 type OpFacts = Pick<OpSummary, "id" | "kind" | "instance_id" | "artifact_kind" | "name" | "status" | "outcome">;
 
 /**
- * Whether `artifact`'s newest uninstall ended `Succeeded` while another
- * operation on its source is still active (spec §6.5): a refresh skips a
- * source an operation holds and carries its rows forward, so the row of a
- * tool a batch has already removed stays listed until the source's last
- * operation ends. Its row then says 「已卸载」, with no box and no Uninstall.
+ * The tools (by artifact key id) whose newest uninstall ended `Succeeded`
+ * while another operation on their source is still active (spec §6.5): a
+ * refresh skips a source an operation holds and carries its rows forward,
+ * so the row of a tool a batch has already removed stays listed until the
+ * source's last operation ends. Its row then says 「已卸载」, with no box and
+ * no Uninstall. One pass over the operations, for every row of the list.
  */
-export function uninstalledWhileBusy(artifact: InstalledArtifact, operations: readonly OpFacts[]): boolean {
-  const id = artifactKeyId(artifact.key);
-  let newest: OpFacts | undefined;
+export function uninstalledWhileBusy(operations: readonly OpFacts[]): Set<string> {
+  const busy = new Set(operations.filter((op) => op.status !== "Done").map((op) => op.instance_id));
+  const newest = new Map<string, OpFacts>();
   for (const op of operations) {
-    if (op.kind !== "Uninstall") continue;
-    if (artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) !== id) continue;
-    if (newest === undefined || op.id > newest.id) newest = op;
+    if (op.kind !== "Uninstall" || !busy.has(op.instance_id)) continue;
+    const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
+    const was = newest.get(id);
+    if (was === undefined || op.id > was.id) newest.set(id, op);
   }
-  if (newest === undefined || newest.status !== "Done" || newest.outcome !== "Succeeded") return false;
-  return operations.some((op) => op.instance_id === artifact.key.instance_id && op.status !== "Done");
+  const ids = new Set<string>();
+  for (const [id, op] of newest) {
+    if (op.status === "Done" && op.outcome === "Succeeded") ids.add(id);
+  }
+  return ids;
 }
 
 /**

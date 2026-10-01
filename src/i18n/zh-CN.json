@@ -709,6 +709,16 @@
     "endsCannotUndo": "{{sentence}}此操作无法撤销。",
     "endsSkipsTrash": "{{sentence}}删除的文件不会进入废纸篓。"
   },
+  "batchUninstall": {
+    "selectRow": "选择要卸载的“{{name}}”",
+    "selectAll": "全选",
+    "selectAllLabel": "全选这里可以卸载的项目",
+    "selected_other": "已选择{{count}}个",
+    "selectedSize_other": "已选择{{count}}个 · {{size}}",
+    "limit": "一次最多卸载{{max}}个",
+    "overLimit_other": "已选择{{count}}个，一次最多卸载{{max}}个",
+    "uninstallSelected": "卸载所选（{{number}}）…"
+  },
   "keepsData": {
     "title": "卸载后会保留",
     "what": {

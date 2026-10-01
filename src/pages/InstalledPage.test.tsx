@@ -2516,7 +2516,9 @@ describe("InstalledPage", () => {
     });
 
     it("opens with ↓ from the list, and with Space on a row, as Quick Look opens a Finder selection", async () => {
-      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      // Space ticks a row that can be uninstalled (InstalledPage.batch.test.tsx):
+      // wget is pinned, so it has no box, and Space opens it.
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], { ...formula("wget"), uninstall_blocked: "Pinned" }] };
       renderInstalled();
 
       await findRow("jq");

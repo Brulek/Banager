@@ -201,15 +201,17 @@ describe("a row a batch has already uninstalled while its source is busy", () =>
 
   it("is said uninstalled while another operation on its source still runs", () => {
     const running = op(2, { name: "wget", status: "Running", outcome: null });
-    expect(uninstalledWhileBusy(git, [op(1, {}), running])).toBe(true);
+    const gitId = artifactKeyId(git.key);
+    expect(uninstalledWhileBusy([op(1, {}), running])).toEqual(new Set([gitId]));
     // Its source free again: the next check reads it.
-    expect(uninstalledWhileBusy(git, [op(1, {})])).toBe(false);
+    expect(uninstalledWhileBusy([op(1, {})])).toEqual(new Set());
     // Busy with another source's operation: not this one's.
-    expect(uninstalledWhileBusy(git, [op(1, {}), { ...running, instance_id: npm.id }])).toBe(false);
+    expect(uninstalledWhileBusy([op(1, {}), { ...running, instance_id: npm.id }])).toEqual(new Set());
     // Its newest uninstall did not succeed.
-    expect(uninstalledWhileBusy(git, [op(1, {}), op(3, { outcome: { Failed: { exit_code: 1, summary: "" } } }), running])).toBe(
-      false,
-    );
+    const failed = op(3, { outcome: { Failed: { exit_code: 1, summary: "" } } });
+    expect(uninstalledWhileBusy([op(1, {}), failed, running])).toEqual(new Set());
+    // The one running is no row that has gone.
+    expect(uninstalledWhileBusy([running])).toEqual(new Set());
   });
 });
 

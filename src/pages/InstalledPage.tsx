@@ -83,6 +83,14 @@ import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
 import { compareByInstalledAt, installedDateCellOf } from "../lib/installedDates";
 import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
+import {
+  countedTicks,
+  tickable,
+  uninstallHeld as heldBy,
+  uninstallOffered,
+  type UninstallHolds,
+} from "../lib/batchUninstall";
+import { InstalledSelectionHeader } from "../components/InstalledSelectionHeader";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -450,6 +458,10 @@ export function InstalledPage() {
   const toggleDependencies = useUiStore((s) => s.toggleDependencies);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  // The rows ticked for 「卸载所选」 (`InstalledSelectionHeader`).
+  const selectedUninstalls = useUiStore((s) => s.selectedUninstalls);
+  const toggleUninstall = useUiStore((s) => s.toggleUninstall);
+  const keepUninstalls = useUiStore((s) => s.keepUninstalls);
   const operationFor = useUpdateOperationFor();
   const { data: operations } = useOperations();
   // How much each tool takes on disk, measured after each check (`sizeFact`).
@@ -554,6 +566,11 @@ export function InstalledPage() {
   useEffect(() => {
     if (snapshot && selection !== null && !artifactsById.has(selection.id)) setSelection(null);
   }, [snapshot, selection, artifactsById]);
+  // Its tick too, for good: a tool installed again later never comes back
+  // ticked for removal.
+  useEffect(() => {
+    if (snapshot) keepUninstalls(new Set(artifactsById.keys()));
+  }, [snapshot, artifactsById, keepUninstalls]);
 
   // The source's name in the user's language, as the sidebar lists it --
   // with which one it is after it where this Mac has two of its kind,
@@ -913,7 +930,7 @@ export function InstalledPage() {
   // `Session::issue_plan` refuses both in Rust whatever this page shows
   // (spec §2.5).
   const canUninstall = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
-    canWrite(instance) && artifact.uninstall_blocked === null;
+    uninstallOffered(artifact, instance);
   // Why such an Uninstall stays, disabled, for now, or null when it does
   // not: the source did not answer the last check -- its rows are last
   // time's, carried forward, and `Session::issue_plan` refuses to plan on
@@ -937,9 +954,13 @@ export function InstalledPage() {
   };
   // Held as above -- on the first check's list too, until that check is
   // done -- or while an uninstall of this one is under way.
+  const holdsOf = (artifact: InstalledArtifact): UninstallHolds => ({
+    preview,
+    underway: uninstallUnderway(artifact) !== null,
+    uninstalled: false,
+  });
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
-    canUninstall(artifact, instance) &&
-    (preview || !isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
+    heldBy(artifact, instance, holdsOf(artifact));
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
   const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined => {
@@ -1368,6 +1389,17 @@ export function InstalledPage() {
               : t("sizes.rowName", { size: sortCell.text })
         }
         newVersion={sortCell !== null ? undefined : change?.newVersion}
+        // A box exactly where Uninstall is there and enabled; the column's
+        // room on every other row, so the avatars stay in line.
+        selectable={
+          tickable(artifact, instance, holdsOf(artifact))
+            ? {
+                checked: selectedUninstalls.includes(artifactKeyId(artifact.key)),
+                onToggle: () => toggleUninstall(artifact.key),
+                ariaLabel: t("batchUninstall.selectRow", { name }),
+              }
+            : null
+        }
         action={
           canUninstall(artifact, instance) ? (
             <RowAction
@@ -1657,6 +1689,15 @@ export function InstalledPage() {
   // The page on one source that has nothing to list says why in the
   // list's place (`SourceEmpty`), and its notice is not said over it.
   const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
+  // The rows the list shows that can be ticked, in its order, and those of
+  // them that are: what 「卸载所选」 acts on (`countedTicks`).
+  const shownTickable = rowItems.flatMap((item) =>
+    item.type === "row" && tickable(item.artifact, item.instance, holdsOf(item.artifact)) ? [item.artifact] : [],
+  );
+  const counted = countedTicks(
+    shownTickable.map((artifact) => ({ id: artifactKeyId(artifact.key), artifact })),
+    selectedUninstalls,
+  ).map(({ artifact }) => artifact);
   return (
     <div ref={attachPage} className="relative flex h-full">
       {/* The page's own controls, in the window's toolbar (spec §3.2):
@@ -1714,6 +1755,9 @@ export function InstalledPage() {
             </TextWithInfo>
           </p>
         ) : null}
+        {sourceEmpty ? null : (
+          <InstalledSelectionHeader shown={shownTickable} counted={counted} sizes={sizes} />
+        )}
         {/* Virtualized: a Mac with Homebrew's components unfolded lists
             hundreds of rows. */}
         <VirtualList
