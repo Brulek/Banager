@@ -915,8 +915,8 @@
     "empty": "没有其他程序",
     "emptyChecked": "已检查的位置中没有其他程序",
     "protectedLink": "指向受保护的位置",
-    "protectedLinkWhy": "Banager不读取文稿、桌面、下载、iCloud云盘、其他磁盘等受保护的位置，所以没有查看此链接指向哪里。",
-    "protectedLinkHint": "此链接指向受保护的位置，Banager不读取那里。",
+    "protectedLinkWhy": "不读取文稿、桌面、下载、iCloud云盘、其他磁盘等受保护的位置，所以没有查看此链接指向哪里。",
+    "protectedLinkHint": "此链接指向受保护的位置，没有读取那里。",
     "protectedFolders_other": "有{{count}}个文件夹在受保护的位置，没有读取。"
   },
   "emptyStates": {

@@ -1033,7 +1033,7 @@ describe("protected places", () => {
     fireEvent.click(word);
     expect(
       within(row).getByText(
-        "Banager doesn't look in Documents, Desktop, Downloads, iCloud Drive, other disks or other protected places, so where this link leads wasn't checked.",
+        "Documents, Desktop, Downloads, iCloud Drive, other disks and other protected places aren't read, so where this link leads wasn't checked.",
       ),
     ).toBeInTheDocument();
     // No path it leads to anywhere, technical details or not.
@@ -1043,7 +1043,7 @@ describe("protected places", () => {
     const menu = openMenu(row);
     const item = within(menu).getByRole("menuitem", { name: "Show in Finder" });
     expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveAccessibleDescription("This link points into a protected place, which Banager doesn't read.");
+    expect(item).toHaveAccessibleDescription("This link points into a protected place, which isn't read.");
     fireEvent.click(item);
     expect(mockReveal).not.toHaveBeenCalled();
   });
