@@ -57,26 +57,65 @@ export function runEnded(previous: OperationRun | null, next: OperationRun): boo
 }
 
 /**
- * Mounted once, by `App`'s `UpdateWatchers`: follows the operations as the
- * operation bar does (`trackRun`), and as a run ends (`runEnded`) reports
- * it (`reportFinishedRun`). Rust posts nothing unless the setting is on
- * and another app is in front, and posts a run once, however often it is
- * reported. A report that fails is not sent again.
+ * How long nothing has to be under way after a run ends before it is
+ * reported. Update all submits its operations one after another, each
+ * awaiting the backend (`confirmAndSubmit` in
+ * src/components/UpdateConfirm.tsx): should the first end before the next
+ * is submitted -- failing at once, say -- the run looks ended for a moment.
+ * A run that starts again within this wait is the same run, and is
+ * reported once, whole, when it ends.
  */
-export function useOperationsNotification(): void {
+export const RUN_SETTLES_MS = 1500;
+
+/**
+ * Mounted once, by `App`'s `UpdateWatchers`: follows the operations as the
+ * operation bar does (`trackRun`), and once a run has ended (`runEnded`)
+ * and nothing has started for `settleMs` (`RUN_SETTLES_MS`) reports it
+ * (`reportFinishedRun`) -- with whatever started and ended during that
+ * wait. Rust posts nothing unless the setting is on and another app is in
+ * front, and posts a run once, however often it is reported. A report that
+ * fails is not sent again.
+ */
+export function useOperationsNotification(settleMs: number = RUN_SETTLES_MS): void {
   const { data: operations } = useOperations();
   const run = useRef<OperationRun | null>(null);
+  const latest = useRef<OpSummary[]>([]);
+  // A run that has ended and waits to be reported: the operations above
+  // `floor` are its own, and `timer` reports them unless one more starts.
+  const held = useRef<{ floor: number; timer: ReturnType<typeof setTimeout> | null } | null>(null);
 
   useEffect(() => {
     if (operations === undefined) return;
+    latest.current = operations;
     const previous = run.current;
     const next = trackRun(previous, operations);
     run.current = next;
+    const waiting = held.current;
+    if (next.open) {
+      if (waiting?.timer != null) {
+        clearTimeout(waiting.timer);
+        waiting.timer = null;
+      }
+      return;
+    }
     if (!runEnded(previous, next)) return;
-    const finished = finishedRunOf(operations.filter((op) => op.id > next.floor));
-    if (finished === null) return;
-    reportFinishedRun(finished).catch((e: unknown) => {
-      console.error("report_finished_run failed", e);
-    });
-  }, [operations]);
+    const floor = waiting === null ? next.floor : Math.min(waiting.floor, next.floor);
+    if (waiting?.timer != null) clearTimeout(waiting.timer);
+    const timer = setTimeout(() => {
+      held.current = null;
+      const finished = finishedRunOf(latest.current.filter((op) => op.id > floor));
+      if (finished === null) return;
+      reportFinishedRun(finished).catch((e: unknown) => {
+        console.error("report_finished_run failed", e);
+      });
+    }, settleMs);
+    held.current = { floor, timer };
+  }, [operations, settleMs]);
+
+  useEffect(
+    () => () => {
+      if (held.current?.timer != null) clearTimeout(held.current.timer);
+    },
+    [],
+  );
 }

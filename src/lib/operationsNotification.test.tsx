@@ -28,10 +28,15 @@ function op(id: number, status: OpStatus, outcome: Outcome | null = null, kind: 
 
 const failed: Outcome = { Failed: { exit_code: 1, summary: "no network" } };
 
+/** A short wait for a run to settle, so the tests need no fake clock. */
+const SETTLE_MS = 50;
+
 function Watcher() {
-  useOperationsNotification();
+  useOperationsNotification(SETTLE_MS);
   return null;
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The runs reported, in order. */
 function reported(): FinishedRun[] {
@@ -109,6 +114,25 @@ describe("useOperationsNotification", () => {
     await waitFor(() =>
       expect(reported()[reported().length - 1]).toEqual({ last_op: 4, kind: "Uninstall", succeeded: 1, failed: 0, attention: 0 }),
     );
+  });
+
+  it("reports an Update all once when its first operation fails before the next is submitted", async () => {
+    const { queryClient } = renderWithProviders(<Watcher />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+
+    // The first fails at once: for a moment nothing is under way.
+    await listNow(queryClient, [op(1, "Running")]);
+    await listNow(queryClient, [op(1, "Done", failed)]);
+    // The next two are submitted within the wait.
+    await listNow(queryClient, [op(1, "Done", failed), op(2, "Running"), op(3, "Queued")]);
+    await sleep(SETTLE_MS * 2);
+    expect(reported()).toEqual([]);
+    await listNow(queryClient, [op(1, "Done", failed), op(2, "Done", "Succeeded"), op(3, "Done", "Succeeded")]);
+    await waitFor(() =>
+      expect(reported()).toEqual([{ last_op: 3, kind: "Upgrade", succeeded: 2, failed: 1, attention: 0 }]),
+    );
+    await sleep(SETTLE_MS * 2);
+    expect(reported()).toHaveLength(1);
   });
 
   it("reports nothing that had finished before the page first looked", async () => {
