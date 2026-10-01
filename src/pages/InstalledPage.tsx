@@ -94,6 +94,7 @@ import {
 import { InstalledSelectionHeader, UninstallSelectedButton } from "../components/InstalledSelectionHeader";
 import { BatchUninstallSheet, useBatchUninstall } from "../components/BatchUninstallSheet";
 import { BatchUninstallResult } from "../components/BatchUninstallResult";
+import { ReadOnlySourceLine } from "../components/ReadOnlySourceLine";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -1738,6 +1739,10 @@ export function InstalledPage() {
   // The page on one source that has nothing to list says why in the
   // list's place (`SourceEmpty`), and its notice is not said over it.
   const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
+  // The page on one source Banager can only list (pip): why, over the
+  // list, in place of a 全选 that could tick nothing (`ReadOnlySourceLine`).
+  const viewed = activeFilter === null ? undefined : instancesById.get(activeFilter);
+  const readOnlySource = viewed !== undefined && !canWrite(viewed) ? viewed : null;
   // The rows the list shows that can be ticked, in its order, and those of
   // them that are: what 「卸载所选」 acts on (`countedTicks`).
   const shownTickable = rowItems.flatMap((item) =>
@@ -1827,7 +1832,9 @@ export function InstalledPage() {
         ) : null}
         {/* What the last batch did not uninstall, once it has all run. */}
         <BatchUninstallResult />
-        {sourceEmpty ? null : (
+        {sourceEmpty ? null : readOnlySource !== null && shownTickable.length === 0 ? (
+          <ReadOnlySourceLine instance={readOnlySource} />
+        ) : (
           <InstalledSelectionHeader shown={shownTickable} counted={counted} sizes={sizes} />
         )}
         {/* Virtualized: a Mac with Homebrew's components unfolded lists
