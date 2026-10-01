@@ -228,14 +228,19 @@ export function createMockBackend(scenario: Scenario): MockBackend {
    * while nothing has committed, with every source detected and the rows of
    * every one that answered -- not one that is not running, which is never
    * asked for its list. Nothing listed, nothing sent; a round that has
-   * committed by then sends nothing either.
+   * committed by then sends nothing either. Each AI tool's family is set,
+   * as Rust sets it on the preview; which copy of a command runs is not
+   * judged until the round commits, so `commands` is empty.
    */
   function previewFirstRound(): void {
     const previewRound = round + 1;
     setTimeout(() => {
       if (committed !== null) return;
       const answering = new Set(world.instances.filter((i) => i.status.unavailable === null).map((i) => i.id));
-      const artifacts = world.artifacts.filter((a) => answering.has(a.key.instance_id));
+      const artifacts = withFamilies(
+        world.instances,
+        world.artifacts.filter((a) => answering.has(a.key.instance_id)),
+      ).map((a) => ({ ...a, facts: { ...a.facts, commands: [] } }));
       if (artifacts.length === 0) return;
       emit({ InventoryPreview: { round: previewRound, instances: world.instances, artifacts } });
     }, TIMING.inventory);

@@ -667,8 +667,14 @@ impl Session {
                 answers.push(answer);
             }
             answers.sort_by_key(|(place, _)| *place);
-            let listed: Vec<InstalledArtifact> =
+            let mut listed: Vec<InstalledArtifact> =
                 answers.into_iter().flat_map(|(_, items)| items).collect();
+            // Which AI coding tool each row is, as the commit below will
+            // say (`families::assign`), so the AI Tools filter has
+            // something to show while the update checks run. Which copy
+            // of a command runs is not judged yet: that needs the whole
+            // round (`commands::finish`), so `commands` stays empty here.
+            crate::families::assign(&instances, &mut listed);
             // Nothing listed is nothing to show: the startup placeholder
             // says as much until the round commits.
             if !listed.is_empty() {
@@ -4089,6 +4095,28 @@ mod tests {
             previews.recv().await.is_none(),
             "one preview a round, and no more"
         );
+    }
+
+    /// The preview names each AI coding tool's family as the round's commit
+    /// will (`families::assign`), so the AI Tools filter works on it.
+    #[tokio::test]
+    async fn test_the_first_rounds_preview_tags_each_ai_tool_with_its_family() {
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let (brew, _) = gated_source("brew", &["ollama", "jq"], &gate);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew], None);
+
+        let (refresh, mut previews) = spawn_previewing_refresh(&session);
+        let preview = next_preview(&mut previews).await;
+        let families: Vec<_> = preview
+            .artifacts
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.facts.family.as_deref()))
+            .collect();
+        assert_eq!(families, [("ollama", Some("ollama")), ("jq", None)]);
+
+        gate.add_permits(1);
+        let (_, snapshot) = refresh.await.expect("refresh task");
+        assert_eq!(snapshot.artifacts, preview.artifacts);
     }
 
     #[tokio::test]

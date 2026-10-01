@@ -570,9 +570,16 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
     expect(snapshot.round).toBe(preview.round);
     expect(preview.instances).toEqual(snapshot.instances);
     // What every answering source listed, and nothing of a source that is
-    // not running, which is never asked for its list.
+    // not running, which is never asked for its list. Each AI tool's family
+    // is set already; which copy of a command runs is judged only when the
+    // round commits.
     const answering = new Set(snapshot.instances.filter((i) => i.status.unavailable === null).map((i) => i.id));
-    expect(preview.artifacts).toEqual(snapshot.artifacts.filter((a) => answering.has(a.key.instance_id)));
+    expect(preview.artifacts).toEqual(
+      snapshot.artifacts
+        .filter((a) => answering.has(a.key.instance_id))
+        .map((a) => ({ ...a, facts: { ...a.facts, commands: [] } })),
+    );
+    expect(preview.artifacts.some((a) => a.facts.family !== null)).toBe(true);
     expect(preview.artifacts.length).toBeGreaterThan(0);
 
     await answer(backend.invoke("refresh"));
