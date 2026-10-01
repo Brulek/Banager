@@ -683,13 +683,14 @@ const OFFLINE_REASONS: Record<string, string> = {
   cargo: "crates.io request failed: network error: dns error: failed to lookup address information",
   npm: "npm outdated -g: npm error code ENOTFOUND",
   ollama: "registry request failed: network error: dns error: failed to lookup address information",
-  pip: "pip list --outdated: WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError'",
+  pip: "pip list --outdated: WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x1045c2f90>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known')': /simple/pip/",
   pipx: "pipx list --outdated: error: could not reach https://pypi.org/simple/ (network is unreachable)",
   "standalone-agy":
     "request to https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json failed: network error: dns error: failed to lookup address information",
   "standalone-claude":
     "downloads.claude.ai request failed: network error: dns error: failed to lookup address information",
-  "standalone-grok": "the update check reported: could not reach the update server",
+  "standalone-grok":
+    "the update check reported: could not reach the update server: error sending request: dns error: failed to lookup address information",
   "standalone-rustup":
     "request to https://static.rust-lang.org/rustup/release-stable.toml failed: network error: dns error: failed to lookup address information",
 };
