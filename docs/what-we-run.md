@@ -37,7 +37,9 @@ notification plugin the window has, that Homebrew's section keeps
 `brew update` out of its read-only table and cites the lines of
 Homebrew's own code at which it installs, and that the disk-use section
 states the two limits a round of measuring keeps to, names every place it
-never looks into and says nothing is written.
+never looks into and says nothing is written, and that the section on the
+data an uninstall leaves behind names every path it looks at, states its
+two limits and says nothing is written or deleted.
 `src-tauri/src/notify.rs`'s tests check that the section quotes what a
 notification says in both languages, and `src-tauri/src/ipc.rs`'s that
 the never-list says the window cannot ask for an install.
@@ -1968,6 +1970,43 @@ running and starts another. The window asks for the result with
 `get_sizes` (`src-tauri/src/ipc.rs`), which takes nothing from it, and
 hears that it moved through the event `SizesChanged`.
 
+## Data an uninstall leaves behind: read-only, no command runs
+
+No source's uninstall removes the folders an AI coding tool keeps its
+settings and data in, nor the models Ollama downloaded, so the uninstall
+preview names them (「卸载后会保留」, "Stays after uninstalling"):
+`Session::issue_plan` (`crates/banager-core/src/session/kept.rs`) adds a
+line for each of these that is there, for an uninstall of a tool of that
+family on any source (`crates/banager-core/src/kept_data.rs`):
+
+| Tool | Paths looked at |
+|---|---|
+| Claude Code | `~/.claude`, `~/.claude.json` |
+| Codex | `~/.codex` |
+| Gemini CLI | `~/.gemini` |
+| Qwen Code | `~/.qwen` |
+| Ollama (Homebrew's formula `ollama`, cask `ollama-app`) | `~/.ollama/models` |
+
+The paths come from the bundled table of AI coding tools
+(`data/ai-tools.json`, `data_paths`) and, for Ollama, its FAQ. A path the
+preview already names is not named twice: Claude Code's own installer's
+uninstall lists `~/.claude` and `~/.claude.json` among what it keeps
+(Claude Code, above).
+
+How: during the uninstall preview only, each path is looked at as disk
+use measures a tool's folder (`size::look_at`: `lstat`, `readdir` and
+`readlink`; no file is opened), with a budget of 100,000 entries and 1
+second for all of them together (`kept_data::BUDGET`). A size it stopped
+short of is shown as "at least" (「至少约…」), and a path it did not reach,
+or could not read, is named with no size. A path that leads into one of
+the places disk use never looks into (Disk use, above) is named with no
+size, and nothing there is read. A path that is not there, or a link that
+leads nowhere, gets no line.
+
+Nothing is written, and nothing is deleted: the preview has no button or
+command that removes these paths. The one action beside each is Copy
+Path, which puts the path, as it is shown (`~` and all), on the clipboard.
+
 ## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:
@@ -2067,6 +2106,12 @@ All read-only, none saved anywhere else, none uploaded:
   `~/.ollama/models/blobs` and `<CARGO_HOME>/.crates2.json`, with `lstat`,
   `readdir` and `readlink` — never a file's contents but that one file's,
   and never anything in the places its section names (Disk use, above).
+- What an uninstall leaves behind, during an uninstall preview of an AI
+  coding tool: `~/.claude`, `~/.claude.json`, `~/.codex`, `~/.gemini`,
+  `~/.qwen` or `~/.ollama/models`, as its family has them, with `lstat`,
+  `readdir` and `readlink` — never a file's contents, and never anything
+  in the places disk use never looks into (Data an uninstall leaves
+  behind, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads

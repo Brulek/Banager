@@ -60,6 +60,7 @@ use banager_core::events::VecSink;
 use banager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
 use banager_core::http::HttpError;
 use banager_core::icon::ICON_PIXELS;
+use banager_core::kept_data;
 use banager_core::model::{InstanceNote, KeptWhat};
 use banager_core::protected::{OTHER_VOLUMES, PROTECTED_IN_HOME};
 use banager_core::runner::HostEnv;
@@ -419,6 +420,51 @@ fn test_what_we_run_has_the_disk_use_section_with_its_limits_and_every_place_it_
         assert!(
             folded.contains(words),
             "the `## Disk use` section of docs/what-we-run.md does not say {words:?}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_names_every_path_an_uninstall_preview_says_stays_and_its_limits() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Data an uninstall leaves behind").unwrap_or_else(|| {
+        panic!(
+            "docs/what-we-run.md has no `## Data an uninstall leaves behind` section for kept_data"
+        )
+    });
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Every path any family's uninstall preview may look at.
+    let mut paths: Vec<&str> = banager_core::families::families()
+        .iter()
+        .flat_map(|family| kept_data::data_paths(&family.id))
+        .map(|(path, _)| path)
+        .collect();
+    paths.dedup();
+    assert!(paths.contains(&kept_data::OLLAMA_MODELS));
+    for path in paths {
+        assert!(
+            folded.contains(&format!("`{path}`")),
+            "the `## Data an uninstall leaves behind` section of docs/what-we-run.md does not name `{path}`, which kept_data::data_paths looks at"
+        );
+    }
+    let budget = kept_data::BUDGET;
+    for limit in [
+        format!("{} entries", with_commas(budget.max_entries)),
+        format!("{} second", budget.max_duration.as_secs()),
+    ] {
+        assert!(
+            folded.contains(&limit),
+            "the `## Data an uninstall leaves behind` section of docs/what-we-run.md does not state the limit {limit:?}, which kept_data::BUDGET enforces"
+        );
+    }
+    for words in [
+        "`lstat`, `readdir` and `readlink`; no file is opened",
+        "Nothing is written, and nothing is deleted",
+        "no button or command that removes these paths",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Data an uninstall leaves behind` section of docs/what-we-run.md does not say {words:?}"
         );
     }
 }
