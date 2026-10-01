@@ -9,7 +9,8 @@
     "subtitle_other": "Found {{count}} tools · Checking for updates…",
     "overviewLine_one": "Found {{count}} tool. The first check looks up its newest version online, and sometimes takes a minute or two.",
     "overviewLine_other": "Found {{count}} tools. The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
-    "seeTools": "See Tools"
+    "seeTools": "See Tools",
+    "uninstallHold": "Checking for updates. Uninstall once it's done."
   },
   "nav": {
     "label": "Navigation",

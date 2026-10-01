@@ -257,6 +257,15 @@ describe("the window while the first check still checks for updates", () => {
       expect(getByRole("button", { name: "Uninstall ripgrep…" })).toBeDisabled();
       expect(container.querySelector("[data-first-check]")).toBeNull();
       expect(app.subtitle()).toBe("Found 2 tools · Checking for updates…");
+      // Each row says why its Uninstall is off, with the held chip the
+      // page gives any Uninstall it holds.
+      const heldJq = getByRole("button", { name: "Can't uninstall jq now" });
+      fireEvent.click(heldJq);
+      expect(document.getElementById(heldJq.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "Checking for updates. Uninstall once it's done.",
+      );
+      fireEvent.click(heldJq);
+      expect(getByRole("button", { name: "Can't uninstall ripgrep now" })).toBeInTheDocument();
 
       // Its details: what it is, and nothing to do yet -- no Update, an
       // Uninstall held off, and no word on updates.
@@ -274,6 +283,7 @@ describe("the window while the first check still checks for updates", () => {
     // what can be done on them, and the list held is dropped.
     await waitFor(() => expect(getByRole("button", { name: "Uninstall ripgrep…" })).toBeEnabled());
     expect(app.subtitle()).toBe("2 tools");
+    expect(queryByRole("button", { name: "Can't uninstall jq now" })).toBeNull();
     const inspector = getByRole("complementary", { name: "jq" });
     expect(within(inspector).getByRole("button", { name: "Update" })).toBeEnabled();
     await waitFor(() => expect(app.queryClient.getQueryData(queryKeys.inventoryPreview)).toBeNull());

@@ -798,11 +798,12 @@ export function InstalledPage() {
     if (!canUninstall(artifact, instance)) return null;
     if (!isAvailable(instance)) return unavailableDetail(t, instance, label);
     const holdKey = uninstallHoldKey(instance);
-    return holdKey === null ? null : detailLines([t(holdKey)]);
+    if (holdKey !== null) return detailLines([t(holdKey)]);
+    // The first check's list: held until that check is done.
+    return preview ? detailLines([t("inventoryPreview.uninstallHold")]) : null;
   };
-  // Held as above, or while an uninstall of this one is under way -- or,
-  // on the first check's list, until that check is done (the toolbar says
-  // it is checking).
+  // Held as above -- on the first check's list too, until that check is
+  // done -- or while an uninstall of this one is under way.
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
     canUninstall(artifact, instance) &&
     (preview || !isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
