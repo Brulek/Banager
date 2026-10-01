@@ -58,7 +58,7 @@ a protected place**, and the link is not followed.
   Claude Code, Codex, Gemini CLI, Ollama and the other AI tools in a table built into Banager,
   whichever source installed them. On the Installed page it also offers **Installed More Than Once**, **Not Found
   in Terminal**, **Disabled or Deprecated by Homebrew** and **Keeping Other Versions** (Homebrew formulae with
-  another version kept beside the one in use), the last three with how many tools they show.
+  another version kept beside the one in use), each of these four with how many tools it shows.
 - A tool's details say, under **In Terminal**, what typing each of its commands runs — this copy,
   another copy or program, or nothing, when the command sits in a folder Terminal doesn't search —
   judged from the Terminal settings read when Banager opened. A tool another source installed too says
@@ -449,7 +449,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 
 - “更新”和“已安装”两页工具栏里的“显示”菜单，可以只列出“AI工具”：Claude Code、Codex、Gemini CLI、
   Ollama 等 Banager 内置表格里的 AI 工具，不管是哪个来源装的。在“已安装”页，它还有“装了不止一份”“终端里找不到”
-  “Homebrew已停用或弃用”和“保留了其他版本”（在当前使用的版本之外还留着其他版本的 Homebrew formula），后三项会写出各有几个。
+  “Homebrew已停用或弃用”和“保留了其他版本”（在当前使用的版本之外还留着其他版本的 Homebrew formula），这四项都会写出各有几个。
 - 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
   运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。别的来源也装了
   一份的工具会标“装了两份”，能判断时，详情里说终端运行的是哪一份。

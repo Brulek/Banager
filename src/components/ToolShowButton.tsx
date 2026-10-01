@@ -19,7 +19,14 @@ import { ToolbarPopupButton } from "./ui/PopupButton";
 export function ToolShowButton(
   props:
     | { twins?: false; value: ToolShow; onChange: (value: ToolShow) => void }
-    | { twins: true; value: InstalledShow; onChange: (value: InstalledShow) => void; counts?: DiscoverCounts },
+    | {
+        twins: true;
+        value: InstalledShow;
+        onChange: (value: InstalledShow) => void;
+        counts?: DiscoverCounts;
+        /** How many rows 「装了不止一份」 shows, for its number as the others have theirs. */
+        twinsCount?: number;
+      },
 ) {
   const { t } = useTranslation();
   const counted = (labelKey: string, countedKey: string, count: number | undefined) =>
@@ -30,7 +37,7 @@ export function ToolShowButton(
     { value: "ai", label: t("families.showAi") },
     ...(props.twins
       ? [
-          { value: "twins" as const, label: t("twinsFilter.show") },
+          { value: "twins" as const, label: counted("twinsFilter.show", "twinsFilterMore.showCount", props.twinsCount) },
           {
             value: "notOnPath" as const,
             label: counted("families.showNotOnPath", "families.showNotOnPathCount", counts?.notOnPath),

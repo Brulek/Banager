@@ -738,6 +738,16 @@ export function InstalledPage() {
     return { discover: discoverCounts(inView), discoverNamed: discoverCovered(inView, instancesInView) };
   }, [snapshot, activeFilter, instancesInView]);
 
+  // How many of them 「装了不止一份」 shows, for the popup's number.
+  const twinsInView = useMemo(
+    () =>
+      (snapshot?.artifacts ?? []).filter(
+        (artifact) =>
+          (activeFilter === null || artifact.key.instance_id === activeFilter) && twins.has(artifactKeyId(artifact.key)),
+      ).length,
+    [snapshot, activeFilter, twins],
+  );
+
   const rowItems = useMemo<ListItem[]>(() => {
     const result: ListItem[] = [];
     const rows: ListItem[] = [];
@@ -1733,7 +1743,7 @@ export function InstalledPage() {
         <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
           {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
         </p>
-        <ToolShowButton twins value={show} onChange={setShow} counts={discover} />
+        <ToolShowButton twins value={show} onChange={setShow} counts={discover} twinsCount={twinsInView} />
         <ToolbarPopupButton
           label={t("installed.sortLabel")}
           value={sort}

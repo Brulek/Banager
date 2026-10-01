@@ -120,6 +120,9 @@
     "none": "没有发现装了不止一份的工具",
     "noneInSource": "{{source}}中没有发现装了不止一份的工具"
   },
+  "twinsFilterMore": {
+    "showCount": "装了不止一份（{{number}}）"
+  },
   "commandsKnown": {
     "previewing": "检查完成后会显示在这里",
     "unjudged": "这次检查没有判断终端里的命令",

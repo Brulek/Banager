@@ -184,7 +184,8 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     ).toEqual([
       ["all", "All Tools"],
       ["ai", "AI Tools"],
-      ["twins", "Installed More Than Once"],
+      // With how many rows it shows, as the choices after it have theirs.
+      ["twins", "Installed More Than Once (2)"],
     ]);
   });
 
@@ -212,6 +213,9 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     artifacts = fullWorld().filter((a) => a.key.instance_id !== CLAUDE);
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    // No number while there are none.
+    const popup = screen.getByRole("combobox", { name: "Show" });
+    expect(popup.querySelector('option[value="twins"]')?.textContent).toBe("Installed More Than Once");
     show("twins");
     expect(await screen.findByText("No tools installed more than once were found")).toBeInTheDocument();
     expect(screen.queryByText("Nothing installed")).not.toBeInTheDocument();

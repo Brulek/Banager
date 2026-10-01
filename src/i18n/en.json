@@ -131,6 +131,9 @@
     "none": "No tools installed more than once were found",
     "noneInSource": "No tools installed more than once were found in {{source}}"
   },
+  "twinsFilterMore": {
+    "showCount": "Installed More Than Once ({{number}})"
+  },
   "commandsKnown": {
     "previewing": "These appear here when the check finishes",
     "unjudged": "This check didn't look at the commands in Terminal",
