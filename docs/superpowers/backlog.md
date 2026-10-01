@@ -29,8 +29,8 @@
   测试单独一套 `tsconfig.test.json`，门禁改为 `pnpm typecheck`（`a6fe7e7`）；核对阶段「取消」按钮
   点了没反应（`201f760`）；重新签发的卸载预览在确认被禁用时仍叫用户「再确认一次」（`67ee5fc`）。
 
-**核对后仍开着的**（形状见下文各自条目）：npm `prefix -g` 失败时的合成实例 ID；pip 分不清「没带 pip」
-与「pip 坏了」；`SUDO_ASKPASS` 透传（作者拍板）；GitHub Actions 的 Node 20 运行时（`@v4`，等额度恢复能跑
+**核对后仍开着的**（形状见下文各自条目）：~~npm `prefix -g` 失败时的合成实例 ID；pip 分不清「没带 pip」
+与「pip 坏了」~~（两条都已于 2026-10-02 做了，见下文）；`SUDO_ASKPASS` 透传（作者拍板）；GitHub Actions 的 Node 20 运行时（`@v4`，等额度恢复能跑
 CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要看着界面改）；`releaseDraft`、
 空机器首启（作者拍板或属于阶段 5）。刷新按钮已于 2026-09-28 加上（见下文「整个应用没有刷新按钮」）。另有规格写了、各阶段计划都没排进去的四块：本地快照缓存（spec §3/§5，
 启动时先渲染上次的结果）、历史页与操作日志落盘（§5/§6/§7）、「报告问题」（§6）、菜单栏与后台检查（§8，
@@ -161,9 +161,15 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
   `Ok(Outcome::Unconfirmed)` 分支的注释里；`tests/ops_upgrade_version_test.rs` 里四个被停下的端到端用例、
   `tests/ops_cancel_test.rs` 里三个用例守着它。执行前那次读取仍保留，读到的版本只用于退出 0 的升级（见下面
   「假「成功」」一条）；在它读的时候按了取消，命令还没开始，报「你已取消」是真的，这一条也保留。
-- **npm 在 `npm prefix -g` 失败时用可执行文件路径合成一个不可用实例的 ID。** 更理想的是沿用上一轮
-  快照里的实例，但那要把上一轮快照穿进 `Adapter::detect` 的签名，七个适配器都得改。
-- **pip 的「不可用」分不清「这个 Python 根本没带 pip」和「pip 装了但坏了」**——两者退出码相同。
+- ~~**npm 在 `npm prefix -g` 失败时用可执行文件路径合成一个不可用实例的 ID。** 更理想的是沿用上一轮
+  快照里的实例，但那要把上一轮快照穿进 `Adapter::detect` 的签名，七个适配器都得改。~~ —— **已于 2026-10-02 做了**
+  （`b5bf9ded`）：不改 `detect` 的签名，在 `refresh` 层做——`resume_unanswered_npm`（`session/refresh.rs`）认出
+  `npm::unanswered_instance_id` 这个替身 ID，上一轮同一个可执行文件恰有一个 npm 时沿用它的 ID、前缀与版本，
+  标「没有响应」，于是它的行和隐藏的更新照常结转。
+- ~~**pip 的「不可用」分不清「这个 Python 根本没带 pip」和「pip 装了但坏了」**——两者退出码相同。~~ —— **已于
+  2026-10-02 做了**（`81bf514c`、`4c50c361`）：`-m pip --version` 的 stderr 有一行是 Python 自己的
+  「No module named pip」时报新的 `Unavailable::NoPip`，界面写「“python3.13”没有附带pip」（提示，不是警告，
+  无按钮）；`pip.__main__` 之类的坏 pip 照旧「没有响应」。只读已有命令的输出，没有新命令。
 - ~~**`Session` 的 `testing` 模块里有一个会改动实时状态的 `expire_issued_plans`**，而该模块刻意不是
   `#[cfg(test)]`，所以会进发布版的库。~~ —— **已于 2026-09-23 在 `11e5ac8` 修复**：`expire_issued_plans`
   收进 `test-support` this-crate-only 的 Cargo feature（`crates/banager-core/Cargo.toml`），默认不开，
@@ -258,7 +264,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 - **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/banager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Banager 自己拒绝的。用户于是去查自己的反向代理而不是 Banager。
   **现状已写明**（2026-09-25）：`docs/what-we-run.md` 的 Ollama 与 Network 两节各有一段说 `https://` 的 `OLLAMA_HOST` 会被拒绝；`crates/banager-core/tests/what_we_run_test.rs` 的 `test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is` 把这两句话钉在 `host_allowed` 的实际行为上——修掉缝隙时测试与两句话要一起改。
   **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
-  **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
+  ~~**若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。~~ —— **已于 2026-10-02 做了说实话那半**（`81bf514c`、`4c50c361`、`1e76391a`）：新的 `Unavailable::HttpsHostRefused`，`OllamaAdapter::detect` 用 `host_allowed` 同一条规则判定、根本不发这次请求；通知写「Banager不通过https连接Ollama」并说明可改用 http:// 地址后重新打开，不给「重新检查」也不给「打开Ollama」。放行 https 那半仍等作者。
 
 - ~~**cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。~~ —— **已于 2026-10-02 做了**（`903016e7`，分支 `r5/g2-standalone-scan`）：没改线格式，扫描规则 2 另认 cask 的 `binary` 链接本身（内存里的 `facts.command_inputs.provided`），去向须落在该条目指名的文件、`Caskroom/<token>` 或 cask 的 app 里（与「输入命令跑的是哪一份」同一条规则，`commands::cask_places`）；第二个 `.app` 里的命令、`app` 没有绝对 `target` 的 cask 的命令不再列出，`pkg` 装的命令照旧列出（`tests/unknown_scan_test.rs` 的 `test_rule_2_claims_a_cask_binary_link_into_a_second_app_or_an_app_with_no_target`）。
   仍开着：`pkg` 装到 `.app` 与 `Caskroom` 之外的命令照旧列在「其他程序」页，单独成任务。
