@@ -183,6 +183,30 @@ describe("a search that hides the selected tool", () => {
     expect(screen.getByRole("complementary", { name: "httpie" })).toBeInTheDocument();
   });
 
+  it("closes the details of a selected component a search hides, as a tool's", async () => {
+    // A component (Homebrew's libidn2, reason Dependency) sits in the
+    // source's "N more components" fold; unfolded and selected, a search
+    // that hides it closes its details like any tool's.
+    const libidn2: InstalledArtifact = {
+      ...artifact({ instance_id: BREW, kind: "Formula", name: "libidn2" }),
+      reason: "Dependency",
+    };
+    const served = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation(async (cmd: string, ...rest: unknown[]) => {
+      const answer = await (served as (cmd: string, ...rest: unknown[]) => Promise<unknown>)(cmd, ...rest);
+      if (cmd !== "get_snapshot") return answer;
+      const snapshot = answer as Snapshot;
+      return { ...snapshot, artifacts: [...snapshot.artifacts, libidn2] };
+    });
+    renderInstalled();
+    fireEvent.click(await screen.findByRole("button", { name: /^1 more component/ }));
+    await openDetails("libidn2");
+    type("jq");
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull(), {
+      timeout: SEARCH_SETTLE_MS + 1000,
+    });
+  });
+
   it("puts the focus on the list's first row when it was in the details the search closed", async () => {
     renderInstalled();
     const details = await openDetails("wget");
