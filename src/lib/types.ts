@@ -70,8 +70,33 @@ export interface InstalledArtifact {
 export interface ArtifactFacts {
   /** The AI coding tool this is a copy of (`families.rs`), or null. */
   family: string | null;
+  /** What Homebrew says about this formula or cask; null for other sources and for a package with nothing to say. */
+  homebrew: HomebrewFacts | null;
 }
-export const NO_FACTS: ArtifactFacts = { family: null };
+export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null };
+/**
+ * Homebrew's own state for one formula or cask, copied from `brew info
+ * --installed --json=v2`. Mirrors `HomebrewFacts` in
+ * crates/banager-core/src/model.rs.
+ */
+export interface HomebrewFacts {
+  deprecated: HomebrewLifecycle | null;
+  disabled: HomebrewLifecycle | null;
+  /** Homebrew's own English notes, verbatim. */
+  caveats: string | null;
+  /** A formula's other installed versions, in Homebrew's order. */
+  other_versions: string[];
+}
+/**
+ * One `deprecate!` / `disable!` mark: the date as Homebrew writes it
+ * (`"2026-09-01"`), the reason (a symbol such as `fails_gatekeeper_check`,
+ * or the maintainers' own words), and the name Homebrew suggests instead.
+ */
+export interface HomebrewLifecycle {
+  date: string | null;
+  reason: string | null;
+  replacement: string | null;
+}
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
  * `UninstallBlocked` in crates/banager-core/src/model.rs: bare-string unit

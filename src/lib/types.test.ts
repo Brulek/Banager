@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ArtifactFacts,
   Snapshot,
   Outcome,
   OperationEvent,
@@ -113,6 +114,25 @@ describe("types", () => {
     expect(parsed.updates[0].channel).toBe("Native");
     expect(parsed.stale).toBe(false);
     expect(parsed.errors).toEqual([]);
+  });
+
+  it("spells HomebrewFacts as the Rust side writes it, every empty field an explicit null", () => {
+    // The literal `test_homebrew_facts_spell_every_field_on_the_wire_and_read_back`
+    // in crates/banager-core/src/model.rs asserts, byte for byte.
+    const wire =
+      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]}}';
+    const facts = {
+      family: null,
+      homebrew: {
+        deprecated: null,
+        disabled: { date: "2026-09-01", reason: "fails_gatekeeper_check", replacement: "onyx" },
+        caveats: 'Turn on "Launch at login".\n',
+        other_versions: ["3.6.3"],
+      },
+    } satisfies ArtifactFacts;
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip<ArtifactFacts>(JSON.parse(wire) as ArtifactFacts)).toEqual(facts);
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null}');
   });
 
   it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
