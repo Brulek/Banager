@@ -4104,7 +4104,23 @@ mod tests {
         let session = Session::with_adapters(Arc::new(VecSink::new()), vec![a], None);
 
         let (first, mut previews) = spawn_previewing_refresh(&session);
-        next_preview(&mut previews).await;
+        let preview = next_preview(&mut previews).await;
+        // Nothing on the list can be acted on yet: there is no committed
+        // source to plan against, so the window's Uninstall, held off over
+        // the list, would be refused here too.
+        let jq = &preview.artifacts[0].key;
+        let refused = session
+            .issue_plan(&OpRequest {
+                kind: OpKind::Uninstall,
+                instance_id: jq.instance_id.clone(),
+                artifact_kind: jq.kind,
+                name: jq.name.clone(),
+            })
+            .await;
+        assert!(
+            matches!(refused, Err(AdapterError::SourceGone { .. })),
+            "{refused:?}"
+        );
         let second = {
             let session = session.clone();
             tokio::spawn(async move {
