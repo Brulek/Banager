@@ -129,8 +129,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). Antigravity
   CLI and Grok Build publish no removal instructions at all, so their lists are Banager's own
   reading of how each was installed, and their paths go to the Trash the same way. Moving files to
-  the Trash is the only change Banager makes to a file itself besides saving its own settings and
-  its window's size and position;
+  the Trash is the only change Banager makes to a file itself besides saving its own settings, its
+  history of the updates and uninstalls it ran (`history.json`), and its window's size and position;
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never

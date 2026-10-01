@@ -2220,6 +2220,10 @@ All read-only, none saved anywhere else, none uploaded:
   (Which copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
+- Banager's own `history.json` beside it, once, as Banager starts
+  (`HistoryStore::open` in `crates/banager-core/src/history/mod.rs`; a
+  missing, unreadable or malformed file means an empty history, and a file
+  a newer Banager wrote is read as empty and never written over).
 - Banager's own `.window-state.json` beside it, once, as the window opens:
   the size and position the window had when Banager last quit, the
   position used only if a display is still there (the Tauri window-state
@@ -2228,10 +2232,39 @@ All read-only, none saved anywhere else, none uploaded:
 
 ## Files Banager writes
 
-Two, both in Banager's application data directory. `settings.json`
+Three, all in Banager's application data directory
+(`~/Library/Application Support/com.brulek.banager`). `settings.json`
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
-directory is created if it is missing). And `.window-state.json`: the
+directory is created if it is missing).
+
+`history.json`, Banager's record of the updates and uninstalls it ran, which
+the Updates page's 「最近更新」 lists after a restart
+(`crates/banager-core/src/history/mod.rs`, attached in
+`src-tauri/src/history.rs`). One record per finished update or uninstall:
+when it finished, the package's key (its source's instance id — which can
+name a folder in the home folder, as `cargo:/Users/you/.cargo` does — its
+kind and its name), the name its row had, the source's kind, the version
+before and the version read back after, how it ended (succeeded, needs
+attention with its reason, failed with the cause in one word when one is
+known, could not be confirmed, or cancelled after its command started), and
+whether Banager saw the change itself (the version it read before and after
+differ). Also the time the page's Clear was last pressed. Never a line of
+a log, a command line, an error message or any other path: a failure's
+cause is read from the tool's last lines as the operation finishes, and the
+lines are dropped. An operation cancelled before its command started is not
+recorded. Each record also carries a random id of the launch of Banager
+that ran it and the operation's number in that launch, so that the page
+lists an update it watched finish only once. The file keeps the newest 1,000 records and nothing older than
+180 days. It is written whole to a `history.json.tmp.<n>` beside it and
+renamed into place, on a thread of its own, after each operation finishes
+and after Clear. A missing, unreadable or malformed file is an empty
+history and is replaced at the next record; a file a newer Banager wrote is
+left exactly as it is. To remove the history, quit Banager and delete
+`history.json`; it starts empty at the next launch. Clear does not delete
+it.
+
+And `.window-state.json`: the
 window's size and position, and whether it was zoomed or in full screen,
 written as Banager quits so that the window opens the same way next time
 (the Tauri window-state plugin, registered in `run()` in
@@ -2254,7 +2287,8 @@ command shown there.
 ## Moving files to the Trash
 
 `RealTrasher` (`crates/banager-core/src/trash/real.rs`) is the only code
-in Banager that changes a file on the Mac other than its own settings.
+in Banager that changes a file on the Mac other than its own settings and
+history.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by
@@ -2482,7 +2516,7 @@ Banager neither chooses nor sees them.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
 - Never deletes a file and never empties the Trash. Never writes a file
-  on the Mac itself other than its own `settings.json` and
+  on the Mac itself other than its own `settings.json`, `history.json` and
   `.window-state.json` (the programs it
   runs write their own files — Grok Build's update check writes inside
   `~/.grok` on every refresh, and the `brew update` a refresh runs

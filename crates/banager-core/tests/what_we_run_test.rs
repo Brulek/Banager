@@ -1064,3 +1064,65 @@ fn test_what_we_run_has_the_diagnostic_info_section_saying_what_it_reads_and_nev
         );
     }
 }
+
+#[test]
+fn test_what_we_run_names_the_history_file_what_it_keeps_its_bounds_and_how_to_remove_it() {
+    // `history.json` (crates/banager-core/src/history/mod.rs) is the one
+    // file Banager writes besides its settings and its window's state:
+    // every place that lists what Banager writes names it, and the section
+    // says what is in it, what never is, its two bounds -- the constants
+    // themselves -- and how to remove it.
+    use banager_core::history::{MAX_AGE_MS, MAX_RECORDS};
+    let doc = read_doc();
+    let writes = section_body(&doc, "Files Banager writes")
+        .expect("a `## Files Banager writes` section")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for phrase in [
+        "Three, all in Banager's application data directory".to_string(),
+        "`history.json`, Banager's record of the updates and uninstalls it ran".to_string(),
+        "Never a line of a log, a command line, an error message or any other path".to_string(),
+        "An operation cancelled before its command started is not recorded.".to_string(),
+        format!(
+            "The file keeps the newest {} records and nothing older than {} days.",
+            with_commas(MAX_RECORDS as u64),
+            MAX_AGE_MS / 86_400_000
+        ),
+        "renamed into place, on a thread of its own".to_string(),
+        "a file a newer Banager wrote is left exactly as it is".to_string(),
+        "To remove the history, quit Banager and delete `history.json`".to_string(),
+        "Clear does not delete it.".to_string(),
+    ] {
+        assert!(
+            writes.contains(&phrase),
+            "`## Files Banager writes` does not say {phrase:?}"
+        );
+    }
+    let reads = section_body(&doc, "Files Banager reads")
+        .expect("a `## Files Banager reads` section")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        reads.contains("Banager's own `history.json` beside it, once, as Banager starts"),
+        "`## Files Banager reads` does not list the history"
+    );
+    let never = never_list_bullets(&doc);
+    assert!(
+        never.iter().any(|b| b.contains(
+            "Never writes a file on the Mac itself other than its own `settings.json`, `history.json` and `.window-state.json`"
+        )),
+        "the never-list does not name the history among the files Banager writes"
+    );
+    let trash = section_body(&doc, "Moving files to the Trash")
+        .expect("a `## Moving files to the Trash` section")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(trash.contains("other than its own settings and history."));
+    // No place still promises settings.json and the window's state alone.
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(!folded.contains("other than its own `settings.json` and `.window-state.json`"));
+    assert!(!folded.contains("Two, both in Banager's application data directory"));
+}
