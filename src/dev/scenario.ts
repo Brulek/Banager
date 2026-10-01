@@ -109,6 +109,12 @@ export interface Scenario {
   scan: ScenarioScan;
   sizes: ScenarioSizes;
   path: ScenarioPath;
+  /**
+   * `?welcome=1`: the settings say the welcome sheet has not been shown,
+   * so it opens over the first page, as at a first launch. Off by default,
+   * so that every other look at the preview is as it was.
+   */
+  welcome: boolean;
 }
 
 export const DEFAULT_SCENARIO: Scenario = {
@@ -120,6 +126,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   scan: "found",
   sizes: "measured",
   path: "read",
+  welcome: false,
 };
 
 function pick<T extends string>(
@@ -157,6 +164,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
     }
   }
   const tech = params.get("tech");
+  const welcome = params.get("welcome");
   const page = pick<Page | "">(params, "page", PAGES, "", problems);
   return {
     scenario: {
@@ -168,6 +176,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       scan: pick(params, "scan", SCENARIO_SCANS, DEFAULT_SCENARIO.scan, problems),
       sizes: pick(params, "sizes", SCENARIO_SIZES, DEFAULT_SCENARIO.sizes, problems),
       path: pick(params, "path", SCENARIO_PATHS, DEFAULT_SCENARIO.path, problems),
+      welcome: welcome === "1" || welcome === "true",
     },
     problems,
   };

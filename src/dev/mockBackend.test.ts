@@ -574,7 +574,7 @@ describe("the preview's stand-ins for Tauri", () => {
 describe("the preview's URL switches", () => {
   it("reads every switch", () => {
     const { scenario, problems } = parseScenario(
-      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread",
+      "?state=offline&lang=zh-CN&tech=1&page=updates&outcome=failed&scan=stopped&sizes=pending&path=unread&welcome=1",
     );
     expect(problems).toEqual([]);
     expect(scenario).toEqual({
@@ -586,7 +586,16 @@ describe("the preview's URL switches", () => {
       scan: "stopped",
       sizes: "pending",
       path: "unread",
+      welcome: true,
     });
+  });
+
+  it("shows the welcome sheet only with ?welcome=1", async () => {
+    const seen = async (overrides: Partial<Scenario>) =>
+      ((await backendFor(overrides).backend.invoke("get_settings")) as Settings).welcome_seen;
+    expect(parseScenario("").scenario.welcome).toBe(false);
+    expect(await seen({})).toBe(true);
+    expect(await seen({ welcome: parseScenario("?welcome=1").scenario.welcome })).toBe(false);
   });
 
   it("opens on any page, the Overview included", () => {

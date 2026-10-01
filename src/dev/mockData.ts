@@ -971,6 +971,9 @@ export function initialSettings(scenario: Scenario): Settings {
     snoozed_updates: [
       { key: key(IDS.brew, "Formula", "wget"), until: Math.floor(Date.now() / 1000) + 12 * 24 * 60 * 60 },
     ],
+    // Seen, as on any launch after the first, unless `?welcome=1` asks for
+    // the first one's welcome sheet.
+    welcome_seen: !scenario.welcome,
   };
 }
 

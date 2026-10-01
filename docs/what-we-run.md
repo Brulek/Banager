@@ -2515,7 +2515,9 @@ choices, among them the updates hidden from the Updates page: versions
 skipped (`skipped_versions`), tools never to remind about
 (`ignored_updates`) and tools put off for 30 days (`snoozed_updates`,
 each with the time it ends; it hides every version of the tool, not only
-the one offered, and is dropped as the file is loaded after that time).
+the one offered, and is dropped as the file is loaded after that time),
+and whether the welcome sheet of the first launch has been shown
+(`welcome_seen`), so that it shows once.
 
 `history.json`, Banager's record of the updates and uninstalls it ran,
 which the Updates page's 「最近更新」 lists after a restart
