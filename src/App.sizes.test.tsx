@@ -117,6 +117,19 @@ describe("the Ollama source's page", () => {
     await waitFor(() => expect(subtitle()).toBe("1 model · Ollama models: about\u00a06.6 GB in all"));
   });
 
+  it("says only its count while the models measured are a round before the list", async () => {
+    // A model deleted, the list refreshed (round 2), the folder not yet
+    // measured again: round 1's total would be the folder before.
+    served = {
+      ...NO_SIZES,
+      round: 1,
+      done: true,
+      models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
+    };
+    const subtitle = await subtitleOn("Ollama");
+    await waitFor(() => expect(subtitle()).toBe("1 model"));
+  });
+
   it("says only its count while they are measured", async () => {
     served = { ...NO_SIZES, round: 2, models: [{ instance_id: OLLAMA, measured: null }] };
     const subtitle = await subtitleOn("Ollama");

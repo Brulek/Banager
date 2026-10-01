@@ -95,15 +95,28 @@ describe("the size words", () => {
       done: true,
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
     });
-    expect(modelsTotalText(zh, done, OLLAMA)).toBe("Ollama模型共约6.6 GB");
-    expect(modelsTotalText(en, done, OLLAMA)).toBe("Ollama models: about\u00a06.6 GB in all");
-    expect(modelsTotalText(zh, done, "brew:/opt/homebrew")).toBeNull();
-    expect(modelsTotalText(zh, sizes({ models: [{ instance_id: OLLAMA, measured: null }] }), OLLAMA)).toBeNull();
-    expect(modelsTotalText(zh, undefined, OLLAMA)).toBeNull();
+    expect(modelsTotalText(zh, done, OLLAMA, 1)).toBe("Ollama模型共约6.6 GB");
+    expect(modelsTotalText(en, done, OLLAMA, 1)).toBe("Ollama models: about\u00a06.6 GB in all");
+    expect(modelsTotalText(zh, done, "brew:/opt/homebrew", 1)).toBeNull();
+    expect(modelsTotalText(zh, sizes({ models: [{ instance_id: OLLAMA, measured: null }] }), OLLAMA, 1)).toBeNull();
+    expect(modelsTotalText(zh, undefined, OLLAMA, 1)).toBeNull();
     const cut = sizes({
       models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: true } }],
     });
-    expect(modelsTotalText(zh, cut, OLLAMA)).toBe("Ollama模型共6.6 GB以上");
+    expect(modelsTotalText(zh, cut, OLLAMA, 1)).toBe("Ollama模型共6.6 GB以上");
+  });
+
+  it("say nothing of the models from a round before the list shown", () => {
+    // A model deleted and the list refreshed: the new list's count beside
+    // the old round's total would be the old folder's size.
+    const earlier = sizes({
+      round: 1,
+      done: true,
+      models: [{ instance_id: OLLAMA, measured: { bytes: 6_620_000_000, partial: false, at_least: false } }],
+    });
+    expect(modelsTotalText(zh, earlier, OLLAMA, 2)).toBeNull();
+    expect(modelsTotalText(zh, earlier, OLLAMA, undefined)).toBeNull();
+    expect(modelsTotalText(zh, earlier, OLLAMA, 1)).toBe("Ollama模型共约6.6 GB");
   });
 
   it("never claim what could be freed", () => {

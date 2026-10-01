@@ -126,7 +126,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
           const shown = inSource.filter((artifact) => shownBy(show, artifact, twins)).length;
           return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
         }
-        const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource);
+        const models = shownSource === null ? null : modelsTotalText(t, sizes, shownSource, snapshot?.round);
         const total = models === null ? viewTotal(shownSource) : null;
         // Ollama's page counts models, 「2个模型」.
         const ollama = snapshot?.instances.find((instance) => instance.id === shownSource)?.adapter_id === "ollama";

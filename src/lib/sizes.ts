@@ -93,11 +93,20 @@ export function otherVersionsSizeText(t: Translate, measured: Measured, count: n
  * 「Ollama模型共约41 GB」: the models of the Ollama `instanceId`, measured
  * once as the folder they are in -- never their own sizes added up, which
  * would count a layer two models share twice. Null while it is measured,
- * and when there is no such line (the models are not on this Mac, or not
- * in the folder Banager looks in).
+ * when there is no such line (the models are not on this Mac, or not
+ * in the folder Banager looks in), and when the sizes are of another round
+ * than the list shown (`round`, the snapshot's), as `sizeTotalsOf` has it:
+ * after a model is deleted, the new list's count beside the round before's
+ * total would be the folder as it was.
  */
-export function modelsTotalText(t: Translate, sizes: Sizes | undefined, instanceId: string): string | null {
-  const measured = sizes?.models.find((models) => models.instance_id === instanceId)?.measured ?? null;
+export function modelsTotalText(
+  t: Translate,
+  sizes: Sizes | undefined,
+  instanceId: string,
+  round: number | undefined,
+): string | null {
+  if (sizes === undefined || round === undefined || sizes.round !== round) return null;
+  const measured = sizes.models.find((models) => models.instance_id === instanceId)?.measured ?? null;
   if (measured === null) return null;
   const size = formatBytes(measured.bytes);
   return measured.at_least || measured.partial
