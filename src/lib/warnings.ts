@@ -5,7 +5,7 @@
  * only as a parameter, so both confirmations and the updates page share
  * one rule and it is testable without rendering anything.
  */
-import type { CaskStep, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
+import type { CaskStep, KeptData, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -25,6 +25,18 @@ const KEPT_WHAT_KEYS: Record<KeptWhat, string> = {
   OutsideHome: "warnings.willKeep.OutsideHome",
   NotOurs: "warnings.willKeep.NotOurs",
   InstallerCache: "warnings.willKeep.InstallerCache",
+};
+
+/**
+ * The line for each kind of data an uninstall leaves behind
+ * (`Warning.KeepsData`), the path in it. The uninstall confirmation shows
+ * these in a group of their own, with the size and Copy Path
+ * (`KeptDataGroup`); this is the same thing said as one line. A `Record`
+ * over `KeptData`, so a kind without copy fails `tsc`.
+ */
+export const KEPT_DATA_KEYS: Record<KeptData, { line: string; what: string }> = {
+  ToolData: { line: "keepsData.line.ToolData", what: "keepsData.what.ToolData" },
+  Models: { line: "keepsData.line.Models", what: "keepsData.what.Models" },
 };
 
 /**
@@ -252,6 +264,7 @@ export function warningKey(warning: Warning): string | null {
     const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
     return caskStepKey(step, items, onlyIf);
   }
+  if ("KeepsData" in warning) return KEPT_DATA_KEYS[warning.KeepsData.what].line;
   if ("Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
@@ -298,6 +311,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
       ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
     };
   }
+  if ("KeepsData" in warning) return { path: warning.KeepsData.path };
   if ("Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;
@@ -402,6 +416,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
     "UninstallScope" in warning ||
+    "KeepsData" in warning ||
     "Message" in warning
   ) {
     return null;
@@ -416,7 +431,8 @@ export function warningDetailKey(warning: Warning): string | null {
  * `scope`, the one sentence an uninstall says directly under the tool
  * about what goes and what stays; `trash`, what a path-list uninstall
  * moves to the Trash, and what it found already gone from there; `keep`,
- * what it leaves where it is; and `note`, everything else -- what to know
+ * what it leaves where it is; `data`, a tool's settings and data or
+ * Ollama's models, which no uninstall removes (`KeepsData`); and `note`, everything else -- what to know
  * before you continue, from a dependency Banager could not check to a
  * cask's extra uninstall steps and rustup deleting a folder for good.
  *
@@ -424,13 +440,14 @@ export function warningDetailKey(warning: Warning): string | null {
  * here; at run time, a variant this build does not know is a `note`, the
  * group no one skims past. So is every bare-string variant.
  */
-export type WarningGroup = "scope" | "trash" | "keep" | "note";
+export type WarningGroup = "scope" | "trash" | "keep" | "data" | "note";
 
 export function warningGroup(warning: Warning): WarningGroup {
   if (typeof warning === "string") return "note";
   if ("UninstallScope" in warning) return "scope";
   if ("WillTrash" in warning || "AlreadyGone" in warning) return "trash";
   if ("WillKeep" in warning) return "keep";
+  if ("KeepsData" in warning) return "data";
   if (
     "WouldBreak" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -503,6 +520,7 @@ export function deletesForGood(warning: Warning): boolean {
     "AlreadyGone" in warning ||
     "LeavesShellConfigLine" in warning ||
     "UninstallScope" in warning ||
+    "KeepsData" in warning ||
     "Message" in warning
   ) {
     return false;
@@ -611,7 +629,13 @@ export function isCaution(warning: Warning): boolean {
       }
     }
   }
-  if ("WillTrash" in warning || "WillKeep" in warning || "AlreadyGone" in warning || "UninstallScope" in warning) {
+  if (
+    "WillTrash" in warning ||
+    "WillKeep" in warning ||
+    "AlreadyGone" in warning ||
+    "UninstallScope" in warning ||
+    "KeepsData" in warning
+  ) {
     return false;
   }
   if (
@@ -673,7 +697,7 @@ export function warningLines(
   affected: string[] = [],
   subject?: string,
 ): WarningLines {
-  const lines: WarningLines = { scope: [], trash: [], keep: [], note: [] };
+  const lines: WarningLines = { scope: [], trash: [], keep: [], data: [], note: [] };
   for (const warning of warnings) {
     if (affected.length > 0 && typeof warning !== "string" && "WouldBreak" in warning) continue;
     const line = warningLine(t, warning, subject);

@@ -15,6 +15,7 @@ import {
 import type { OpRequest } from "../lib/types";
 import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
+import { KeptDataGroup } from "./KeptDataGroup";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { Dialog } from "./ui/Dialog";
@@ -380,6 +381,10 @@ export function UninstallDialog({
               <SheetLines lines={lines.keep} />
             </SheetSection>
           ) : null}
+
+          {/* A tool's settings and data, Ollama's models: no uninstall
+              removes them, and nothing here offers to (`KeptDataGroup`). */}
+          <KeptDataGroup warnings={plan.warnings} />
 
           {trashPlan ? null : <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />}
         </>

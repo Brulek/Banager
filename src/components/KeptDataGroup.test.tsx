@@ -1,0 +1,152 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
+import { renderWithProviders } from "../test/setup";
+import i18n from "../i18n";
+import { UninstallDialog } from "./UninstallDialog";
+import { keptDataOf } from "../lib/keptData";
+import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs } from "../lib/warnings";
+import type { IssuedPlan, OpRequest, Warning } from "../lib/types";
+
+// The same strings `test_keeps_data_is_the_json_the_typescript_mirror_reads`
+// pins in crates/banager-core/src/model.rs.
+const MEASURED_WIRE =
+  '{"KeepsData":{"path":"~/.claude","what":"ToolData","size":{"bytes":432013312,"partial":false,"at_least":true}}}';
+const UNKNOWN_WIRE = '{"KeepsData":{"path":"~/.ollama/models","what":"Models","size":null}}';
+
+const npmClaude: OpRequest = {
+  kind: "Uninstall",
+  instance_id: "npm:/opt/homebrew",
+  artifact_kind: "Package",
+  name: "@anthropic-ai/claude-code",
+};
+
+function issued(warnings: Warning[], request: OpRequest = npmClaude): IssuedPlan {
+  return {
+    id: "1",
+    plan: {
+      request,
+      action: {
+        Command: { program: "/opt/homebrew/bin/npm", args: ["uninstall", "-g", request.name], env: [] },
+      },
+      needs_password: false,
+      locks: [request.instance_id],
+      cancel_policy: "KillThenReconcile",
+      warnings,
+      affected: [],
+      timeout_secs: 1800,
+    },
+    issued_at: 1758000000,
+  };
+}
+
+const claudeKept: Warning[] = [
+  { UninstallScope: { what: "Npm" } },
+  { KeepsData: { path: "~/.claude", what: "ToolData", size: { bytes: 432_013_312, partial: false, at_least: false } } },
+  { KeepsData: { path: "~/.claude.json", what: "ToolData", size: null } },
+];
+
+describe("KeepsData on the wire", () => {
+  it("reads what Rust sends and sends it back the same", () => {
+    for (const wire of [MEASURED_WIRE, UNKNOWN_WIRE]) {
+      const warning = JSON.parse(wire) as Warning;
+      expect(JSON.stringify(warning)).toBe(wire);
+    }
+    expect(keptDataOf([JSON.parse(MEASURED_WIRE) as Warning, JSON.parse(UNKNOWN_WIRE) as Warning])).toEqual([
+      { path: "~/.claude", what: "ToolData", size: { bytes: 432013312, partial: false, at_least: true } },
+      { path: "~/.ollama/models", what: "Models", size: null },
+    ]);
+  });
+
+  it("is its own group, plain, never a deletion", () => {
+    const warning = JSON.parse(UNKNOWN_WIRE) as Warning;
+    expect(warningGroup(warning)).toBe("data");
+    expect(warningKey(warning)).toBe("keepsData.line.Models");
+    expect(warningArgs(warning)).toEqual({ path: "~/.ollama/models" });
+    expect(warningDetailKey(warning)).toBeNull();
+    expect(isCaution(warning)).toBe(false);
+    expect(deletesForGood(warning)).toBe(false);
+  });
+});
+
+describe("the uninstall dialog's 「卸载后会保留」 group", () => {
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  });
+
+  afterEach(async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    await i18n.changeLanguage("en");
+  });
+
+  function open(warnings: Warning[], request: OpRequest = npmClaude, name = "Claude Code") {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") return issued(warnings, request);
+      return null;
+    });
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />);
+  }
+
+  it("lists each path that stays, about how big where known, what it holds, and Copy Path", async () => {
+    open(claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const rows = within(group).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "~/.claude · About 432 MBThis tool's settings and dataCopy Path",
+      // Size unknown: the path alone.
+      "~/.claude.jsonThis tool's settings and dataCopy Path",
+    ]);
+    fireEvent.click(within(group).getByRole("button", { name: "Copy path: ~/.claude" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("~/.claude"));
+    expect(await within(group).findByRole("status")).toHaveTextContent("Copied");
+  });
+
+  it("offers nothing that deletes what stays", async () => {
+    open(claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const buttons = within(group).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Copy Path", "Copy Path"]);
+    expect(group.textContent).not.toMatch(/delete|remove|trash|删除|移除|废纸篓/i);
+    // Nor does it make the uninstall a permanent one.
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
+  });
+
+  it("says a budget cut short as at least, and the models as models, in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const ollama: OpRequest = {
+      kind: "Uninstall",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name: "ollama",
+    };
+    open(
+      [
+        {
+          KeepsData: {
+            path: "~/.ollama/models",
+            what: "Models",
+            size: { bytes: 6_600_000_000, partial: false, at_least: true },
+          },
+        },
+      ],
+      ollama,
+      "ollama",
+    );
+    const group = await screen.findByRole("region", { name: "卸载后会保留" });
+    const [row] = within(group).getAllByRole("listitem");
+    expect(row.textContent).toContain("~/.ollama/models");
+    expect(row.textContent).toContain("至少约");
+    expect(row.textContent).toContain("下载的模型");
+    expect(within(group).getByRole("button", { name: "拷贝路径：~/.ollama/models" })).toHaveTextContent("拷贝路径");
+  });
+
+  it("has no group when nothing stays", async () => {
+    open([{ UninstallScope: { what: "Npm" } }]);
+    await screen.findByRole("button", { name: "Show Command" });
+    expect(screen.queryByRole("region", { name: "Stays after uninstalling" })).toBeNull();
+  });
+});

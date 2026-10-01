@@ -160,6 +160,13 @@ export type KeptWhat =
   | "NotOurs"
   | "InstallerCache";
 /**
+ * What a folder an uninstall leaves behind holds (`Warning.KeepsData`, added
+ * to an uninstall preview of an AI coding tool by `Session::issue_plan`).
+ * Mirrors `KeptData` in crates/banager-core/src/model.rs; read through
+ * `KEPT_DATA_KEYS` in src/lib/warnings.ts.
+ */
+export type KeptData = "ToolData" | "Models";
+/**
  * Which sentence an uninstall says under the tool about what goes and what
  * stays, the payload of `Warning.UninstallScope`. Mirrors `UninstallScope`
  * in crates/banager-core/src/model.rs: bare-string unit variants. Homebrew's
@@ -278,6 +285,7 @@ export type Warning =
   | "HomebrewCleanupAutoremoves"
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
+  | { KeepsData: { path: string; what: KeptData; size: Measured | null } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

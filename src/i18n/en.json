@@ -700,7 +700,20 @@
     "cannotUndo": "You can't undo this action.",
     "endsCannotUndo": "{{sentence}} You can't undo this action.",
     "endsSkipsTrash": "{{sentence}} Removed files don't go to the Trash."
+  },  "keepsData": {
+    "title": "Stays after uninstalling",
+    "what": {
+      "ToolData": "This tool's settings and data",
+      "Models": "Downloaded models"
+    },
+    "line": {
+      "ToolData": "This tool's settings and data: {{path}}",
+      "Models": "Downloaded models: {{path}}"
+    },
+    "copyPath": "Copy Path",
+    "copyPathLabel": "Copy path: {{path}}"
   },
+
   "settings": {
     "groups": {
       "general": "General",

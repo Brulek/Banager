@@ -899,6 +899,7 @@ describe("warningLines", () => {
         },
         { text: 'warnings.willKeep.Settings({"path":"~/.claude.json"})', detail: null, caution: false },
       ],
+      data: [],
       note: [
         { text: "warnings.dependentsUnknown", detail: null, caution: true },
         { text: "boom", detail: null, caution: true },
@@ -939,6 +940,6 @@ describe("warningLines", () => {
   });
 
   it("is empty for an empty list", () => {
-    expect(warningLines(fakeT, [])).toEqual({ scope: [], trash: [], keep: [], note: [] });
+    expect(warningLines(fakeT, [])).toEqual({ scope: [], trash: [], keep: [], data: [], note: [] });
   });
 });
