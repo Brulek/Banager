@@ -2385,7 +2385,9 @@ All read-only, none saved anywhere else, none uploaded:
   contents are read, and no command runs (opencode's section).
 - The Other Programs page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
-  a file's contents. A row's Show in Finder: where the path it shows
+  a file's contents; and where each source's owned folder leads
+  (`realpath`), uv's Python folder `~/.local/share/uv/python` among them
+  when uv is found. A row's Show in Finder: where the path it shows
   leads (`realpath`), and nothing else (Unknown-source scan, above).
 - Disk use, after each refresh: each tool's own folder or program file, the
   names in each formula's `<prefix>/Cellar/<name>`, Ollama's
