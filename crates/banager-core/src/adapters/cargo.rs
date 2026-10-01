@@ -79,6 +79,11 @@ struct Crates2Bins {
 /// (the artifact's `path`); from this step's Task 5 on, the rustup
 /// recipe's uninstall warnings (`adapters/standalone/rustup.rs`, which
 /// name what `rustup self uninstall` deletes) read it too.
+///
+/// Cargo copies each program to `<cargo_home>/bin/<bin>`, so a bin is a
+/// plain file name; one that is not (`""`, `..`, `/etc/x`, a control
+/// character) names no file there -- joined to the folder, an absolute
+/// one would even name a file outside it -- and is left out (`plain_bin`).
 pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)>, AdapterError> {
     let root: Crates2Bins =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
@@ -86,11 +91,18 @@ pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)
         .installs
         .into_iter()
         .filter_map(|(key, install)| {
-            parse_install_key(&key).map(|(name, _, _)| (name, install.bins))
+            let bins = install.bins.into_iter().filter(|b| plain_bin(b)).collect();
+            parse_install_key(&key).map(|(name, _, _)| (name, bins))
         })
         .collect();
     out.sort();
     Ok(out)
+}
+
+/// A file name in `<cargo_home>/bin`: one usable name
+/// (`sanity::is_name`), not `.` or `..`, with no `/`.
+fn plain_bin(bin: &str) -> bool {
+    crate::adapters::sanity::is_name(bin) && bin != "." && bin != ".." && !bin.contains('/')
 }
 
 /// One artifact per crate. `path` is the program the crate installed
@@ -104,60 +116,69 @@ pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)
 /// canonicalises to this path is cargo's. Every binary the record lists
 /// is one of the crate's commands (`CommandInputs.provided`), at
 /// `<cargo_home>/bin/<bin>`, which cargo copies the program to.
-fn parse_crates2(
+pub(crate) fn parse_crates2(
     json: &str,
     instance_id: &str,
     cargo_home: &Path,
 ) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let entries = parse_crates2_entries(json)?;
     let bins = parse_crates2_bins(json)?;
+    // Each crate's programs by name, the first record of a name winning
+    // as it does in the sorted list. A lookup per crate, not a search of
+    // the list per crate: that was quadratic, 16 s over a record of 60,000
+    // crates in a debug build.
+    let mut bins_of: HashMap<&str, &[String]> = HashMap::new();
+    for (crate_name, crate_bins) in &bins {
+        bins_of
+            .entry(crate_name.as_str())
+            .or_insert(crate_bins.as_slice());
+    }
     let bin_dir = cargo_home.join("bin");
-    Ok(entries
-        .into_iter()
-        .map(|(name, version, _source_kind)| {
-            let crate_bins: &[String] = bins
-                .iter()
-                .find(|(crate_name, _)| *crate_name == name)
-                .map_or(&[], |(_, bins)| bins.as_slice());
-            let path = crate_bins
-                .iter()
-                .find(|b| **b == name)
-                .or_else(|| crate_bins.first())
-                .map(|bin| bin_dir.join(bin));
-            let provided = crate_bins
-                .iter()
-                .map(|bin| ProvidedCommand {
-                    name: bin.clone(),
-                    path: bin_dir.join(bin),
-                    within: Vec::new(),
-                })
-                .collect();
-            InstalledArtifact {
-                key: ArtifactKey {
-                    instance_id: instance_id.to_string(),
-                    kind: ArtifactKind::Binary,
-                    name: name.clone(),
-                },
-                display_name: name,
-                version,
-                reason: InstallReason::Requested,
-                description: None,
-                homepage: None,
-                size_bytes: None,
-                installed_at: None,
-                path,
-                auto_updates: false,
-                uninstall_blocked: None,
-                facts: ArtifactFacts {
-                    command_inputs: CommandInputs {
-                        provided,
+    Ok(crate::adapters::sanity::artifacts(
+        entries
+            .into_iter()
+            .map(|(name, version, _source_kind)| {
+                let crate_bins: &[String] = bins_of.get(name.as_str()).copied().unwrap_or(&[]);
+                let path = crate_bins
+                    .iter()
+                    .find(|b| **b == name)
+                    .or_else(|| crate_bins.first())
+                    .map(|bin| bin_dir.join(bin));
+                let provided = crate_bins
+                    .iter()
+                    .map(|bin| ProvidedCommand {
+                        name: bin.clone(),
+                        path: bin_dir.join(bin),
+                        within: Vec::new(),
+                    })
+                    .collect();
+                InstalledArtifact {
+                    key: ArtifactKey {
+                        instance_id: instance_id.to_string(),
+                        kind: ArtifactKind::Binary,
+                        name: name.clone(),
+                    },
+                    display_name: name,
+                    version,
+                    reason: InstallReason::Requested,
+                    description: None,
+                    homepage: None,
+                    size_bytes: None,
+                    installed_at: None,
+                    path,
+                    auto_updates: false,
+                    uninstall_blocked: None,
+                    facts: ArtifactFacts {
+                        command_inputs: CommandInputs {
+                            provided,
+                            ..Default::default()
+                        },
                         ..Default::default()
                     },
-                    ..Default::default()
-                },
-            }
-        })
-        .collect())
+                }
+            })
+            .collect(),
+    ))
 }
 
 /// rustup's switch against installing a toolchain as a side effect
@@ -601,6 +622,51 @@ impl Adapter for CargoAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_crates2_reads_sixty_thousand_crates_in_linear_time() {
+        let many: Vec<String> = (0..60_000)
+            .map(|i| format!("\"c{i} 1.0.{i} (registry+https://x)\":{{\"bins\":[\"c{i}\"]}}"))
+            .collect();
+        let json = format!("{{\"installs\":{{{}}}}}", many.join(","));
+        let started = std::time::Instant::now();
+        let artifacts = parse_crates2(&json, "cargo:/x", Path::new("/h/.cargo")).unwrap();
+        assert_eq!(artifacts.len(), 60_000);
+        assert_eq!(
+            artifacts[0].path.as_deref(),
+            Some(Path::new("/h/.cargo/bin/c0"))
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn regression_parse_crates2_names_no_program_outside_the_bin_folder() {
+        let json = r#"{"installs":{
+            "hexyl 0.17.0 (registry+https://x)":{"bins":["/exyl","..","","a\nb","hexyl"]},
+            " 1.0 (registry+https://x)":{"bins":["x"]}}}"#;
+        let artifacts = parse_crates2(json, "cargo:/x", Path::new("/h/.cargo")).unwrap();
+        assert_eq!(artifacts.len(), 1, "the crate with no name is left out");
+        assert_eq!(
+            artifacts[0].path.as_deref(),
+            Some(Path::new("/h/.cargo/bin/hexyl"))
+        );
+        let commands: Vec<&str> = artifacts[0]
+            .facts
+            .command_inputs
+            .provided
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(commands, vec!["hexyl"]);
+        let bins = parse_crates2_bins(json).unwrap();
+        assert_eq!(bins[1], ("hexyl".to_string(), vec!["hexyl".to_string()]));
+    }
     use crate::testing::{command_args, command_env, command_program};
     use std::path::Path;
 
