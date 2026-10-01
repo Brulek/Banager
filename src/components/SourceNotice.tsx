@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { InfoIcon, WarningFilledIcon } from "./icons";
 import { InfoDetail } from "./InfoDetail";
 import { BUTTON, LINK } from "./ui/controls";
@@ -158,13 +158,18 @@ export function SourceNoticeLine({
   grid = "avatar",
 }: SourceNoticeLineProps) {
   const columns = NOTICE_GRID[grid];
+  // The button's own word (Show, Check Again) says what, not which: with
+  // the notices unfolded a screen reader would hear two alike. The line's
+  // title tells them apart, as a description, so the name stays the word
+  // the button shows.
+  const titleId = useId();
   return (
     <div className="flex flex-col">
       <div data-notice-line="" className="flex h-8 min-w-0 items-center text-body">
         <span data-notice-symbol="" className={`flex shrink-0 justify-center ${columns.symbol}`}>
           <NoticeIcon variant={variant} />
         </span>
-        <span title={title} className={`min-w-0 truncate text-foreground ${columns.gap}`}>
+        <span id={titleId} title={title} className={`min-w-0 truncate text-foreground ${columns.gap}`}>
           {title}
         </span>
         {description ? (
@@ -178,6 +183,7 @@ export function SourceNoticeLine({
             type="button"
             onClick={action.onClick}
             disabled={action.disabled}
+            aria-describedby={titleId}
             className={`ml-2 shrink-0 ${ACTION_CLASS}`}
           >
             {action.label}

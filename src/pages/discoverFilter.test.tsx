@@ -284,6 +284,16 @@ describe("the lines over 所有工具 that point at them", () => {
     expect(noticeLines()).toHaveLength(2);
   });
 
+  it("tells each Show apart by its line's title, its name staying the word it shows", async () => {
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    await unfold();
+    const lines = [...document.querySelectorAll<HTMLElement>("[data-notice-line]")];
+    const shows = lines.map((line) => within(line).getByRole("button", { name: "Show" }));
+    expect(shows[0]).toHaveAccessibleDescription("2 tools can't be found in Terminal");
+    expect(shows[1]).toHaveAccessibleDescription("2 tools were disabled or deprecated by Homebrew");
+  });
+
   it("shows the tools Terminal can't find when its Show is pressed, and the line goes", async () => {
     artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
     renderInstalled();
