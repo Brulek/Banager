@@ -615,6 +615,69 @@ fn test_a_keg_only_formula_linked_by_hand_is_judged_but_never_said_not_found() {
 }
 
 #[test]
+fn test_homebrews_node_owns_the_commands_its_corepack_links_lead_to_through_npms_folder() {
+    // The layout on the author's Mac (2026-10-01), where Homebrew and npm
+    // share one prefix: `node@22` keg-only and linked by hand, whose
+    // `corepack` npm lists as a global package of its own. npm's
+    // `lib/node_modules/corepack` is links into the keg, file by file, so
+    // `bin/pnpm` leads into npm's folder first and into the keg in the end
+    // -- and the keg is what runs. npm's own copy of `npm`, a real folder,
+    // provides nothing here: `bin/npm` leads into the keg.
+    let home = Home::new("homebrew-node");
+    let prefix = home.dir("homebrew");
+    let keg = "Cellar/node@22/22.23.3";
+    home.exe(&format!("homebrew/{keg}/bin/node"));
+    home.exe(&format!(
+        "homebrew/{keg}/lib/node_modules/npm/bin/npm-cli.js"
+    ));
+    home.link(
+        &format!("homebrew/{keg}/bin/npm"),
+        Path::new("../lib/node_modules/npm/bin/npm-cli.js"),
+    );
+    home.exe(&format!(
+        "homebrew/{keg}/lib/node_modules/corepack/dist/pnpm.js"
+    ));
+    home.link(
+        "homebrew/lib/node_modules/corepack/dist/pnpm.js",
+        Path::new(&format!(
+            "../../../../{keg}/lib/node_modules/corepack/dist/pnpm.js"
+        )),
+    );
+    home.exe("homebrew/lib/node_modules/npm/bin/npm-cli.js");
+    home.link(
+        "homebrew/bin/node",
+        Path::new(&format!("../{keg}/bin/node")),
+    );
+    home.link("homebrew/bin/npm", Path::new(&format!("../{keg}/bin/npm")));
+    home.link(
+        "homebrew/bin/pnpm",
+        Path::new("../lib/node_modules/corepack/dist/pnpm.js"),
+    );
+    let brew_id = format!("brew:{}", prefix.display());
+    let npm_id = format!("npm:{}", prefix.display());
+    let instances = vec![
+        instance("brew", &brew_id, &prefix, &prefix.join("bin/brew")),
+        instance("npm", &npm_id, &prefix, &prefix.join("bin/npm")),
+    ];
+    let mut node = artifact(&brew_id, ArtifactKind::Formula, "node@22");
+    node.facts.command_inputs.keg_only = true;
+    let artifacts = vec![
+        node,
+        artifact(&npm_id, ArtifactKind::Package, "corepack"),
+        artifact(&npm_id, ArtifactKind::Package, "npm"),
+    ];
+    let found = verdicts(&home, &[prefix.join("bin")], &instances, &artifacts);
+    assert_eq!(
+        found,
+        vec![
+            vec![runs("node"), runs("npm"), runs("pnpm")],
+            vec![],
+            vec![]
+        ]
+    );
+}
+
+#[test]
 fn test_a_formula_that_comes_first_is_another_program_with_the_name() {
     // Homebrew's formula `grok`, a regular-expression tool, before Grok
     // Build's own `grok`: what runs is named by its artifact, which is not
