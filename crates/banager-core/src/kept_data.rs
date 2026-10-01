@@ -312,6 +312,48 @@ mod tests {
     }
 
     #[test]
+    fn test_a_standalone_recipe_spells_its_familys_data_paths_as_the_table_does() {
+        // `kept_data` skips what the plan names by comparing spellings, so
+        // a recipe that kept `~/.claude/` while the table says `~/.claude`
+        // would have the dialog list the folder twice. Pinned for every
+        // standalone recipe that removes by paths.
+        use crate::adapters::standalone::recipe::Uninstall;
+        use crate::adapters::standalone::recipes::RECIPES;
+        use crate::model::{ArtifactKey, ArtifactKind};
+        let same = |a: &str, b: &str| a.trim_end_matches('/') == b.trim_end_matches('/');
+        let mut matched = Vec::new();
+        for recipe in RECIPES {
+            let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
+                continue;
+            };
+            let key = ArtifactKey {
+                instance_id: "x".to_string(),
+                kind: ArtifactKind::Binary,
+                name: recipe.id.to_string(),
+            };
+            let Some(family) = families::family_for(&format!("standalone-{}", recipe.id), &key)
+            else {
+                continue;
+            };
+            let named = remove
+                .iter()
+                .map(|spec| spec.path)
+                .chain(keep.iter().map(|spec| spec.path));
+            for path in named {
+                for (data, _) in data_paths(&family.id) {
+                    if same(path, data) {
+                        assert_eq!(path, data, "{} spells it differently", recipe.id);
+                        matched.push(data);
+                    }
+                }
+            }
+        }
+        // Claude Code's two, at least: not a test that compares nothing.
+        assert!(matched.contains(&"~/.claude"), "{matched:?}");
+        assert!(matched.contains(&"~/.claude.json"), "{matched:?}");
+    }
+
+    #[test]
     fn test_reading_what_stays_writes_and_removes_nothing() {
         let home = Home::new("untouched");
         let file = home.file(".codex/config.toml", 50);
