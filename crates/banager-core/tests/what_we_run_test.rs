@@ -188,11 +188,11 @@ fn test_what_we_run_names_every_allowed_https_host() {
 #[test]
 fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
     // `normalize_ollama_host` keeps an `https://` OLLAMA_HOST as it is
-    // (`runner/path_env.rs`), `OllamaAdapter::detect` then asks
-    // `{host}/api/tags`, and `host_allowed` exempts `http` only -- so the
-    // request is refused before it is sent, and `detect`, which discards
-    // the error, reports the daemon as one that did not answer. Both
-    // sections of the document that describe that host have to say so:
+    // (`runner/path_env.rs`), and `host_allowed` exempts `http` only -- so
+    // `OllamaAdapter::detect`, which asks that same function, does not
+    // send `{host}/api/tags` and reports `HttpsHostRefused`, whose notice
+    // says Banager does not connect to Ollama over https. Both sections
+    // of the document that describe that host have to say it is refused:
     // a reader who is told https is accepted and the daemon host is exempt
     // debugs their daemon instead of Banager.
     let refused = host_allowed("https://ollama.home.lan/api/tags");
@@ -209,6 +209,17 @@ fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
         assert!(
             folded.contains("an `https://` `OLLAMA_HOST` is refused"),
             "the `## {section}` section of docs/what-we-run.md does not say that an `https://` `OLLAMA_HOST` is refused, which host_allowed does"
+        );
+        // And what the window shows for it, which is no longer a daemon
+        // that did not answer.
+        assert!(
+            folded.contains("Banager does not connect to Ollama over https")
+                || folded.contains("Banager doesn't connect to Ollama over https"),
+            "the `## {section}` section of docs/what-we-run.md does not say what the notice for that Ollama says"
+        );
+        assert!(
+            !folded.contains("Nothing on screen says that it was Banager that refused"),
+            "the `## {section}` section of docs/what-we-run.md still says nothing on screen names the refusal"
         );
     }
 }

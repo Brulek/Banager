@@ -1017,6 +1017,15 @@ two names for one interpreter count once, and runs `<python> -m pip
 environment variables are added, and Banager makes no network request of
 its own for pip: `pip list --outdated` reaches PyPI itself.
 
+When that command fails, the interpreter is still listed as a source,
+and Banager reads the command's error output to say which failure it was
+(`says_no_pip_module`): a line that is Python's own `No module named pip`
+— the interpreter has no pip module at all — is shown as "this Python
+doesn't include pip", a note and no warning, since checking again changes
+nothing (the `NoPip` state). Any other failure — a pip that is there but broken
+(`No module named pip.__main__`), a crash, a timeout — is shown as not
+responding, as before. No other command runs to tell them apart.
+
 **The `/usr/bin` shim.** Banager takes an interpreter found in
 `/usr/bin`, or one that leads there, for one of the developer-tool shims
 `man xcode-select` lists — on a Mac, `/usr/bin/python3` — which run the
@@ -1127,12 +1136,16 @@ No environment variables are added to any ollama command.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
 an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
-Network section, which exempts `http` only, so Banager never sends the
-request, and the daemon is reported exactly as one that did not answer —
-not responding, or, when the address is this Mac and Ollama.app is there,
-not running with an Open Ollama button that cannot help, since the next
-request is refused the same way. Nothing on screen says that it was
-Banager that refused. Recorded in `docs/superpowers/backlog.md`.
+Network section, which exempts `http` only. `detect` checks the URL with
+that same allowlist (`https_refused`, calling `host_allowed`) and does not
+send the request at all. The notice says it was Banager that refused:
+"Banager doesn't connect to Ollama over https", that `OLLAMA_HOST` is set
+to an `https://` address, and, if that Ollama also answers over http, to
+change `OLLAMA_HOST` to its `http://` address and quit and open Banager
+again — with no Check Again and no Open Ollama button, since
+both would meet the same refusal (the `HttpsHostRefused` state). Banager
+still does not connect to such an address; recorded in
+`docs/superpowers/backlog.md`.
 
 **Read-only reads:**
 
@@ -2904,8 +2917,9 @@ Plain `http` is exempt from the list for one caller: the Ollama daemon at
 `OLLAMA_HOST` or `http://127.0.0.1:11434` (`GET /api/tags`), which may be
 a machine the user named. The exemption is by scheme, not by caller: an
 `https://` `OLLAMA_HOST` is refused like any other https host that is not
-in the table, before any connection, and that Ollama is shown as a daemon
-that did not answer (its section says exactly how). Recorded in
+in the table, before any connection — Ollama's `detect` does not even
+build the request — and that Ollama's notice says Banager does not
+connect to Ollama over https (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
 Every request: TLS through rustls; the header `User-Agent:
