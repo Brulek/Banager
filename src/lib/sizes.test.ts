@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { modelsTotalText, oldVersionsText, sizeText, sizeViewOf } from "./sizes";
+import { compareBySize, modelsTotalText, oldVersionsText, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
 
 const ruff: InstalledArtifact = {
@@ -100,5 +100,49 @@ describe("the size words", () => {
     for (const text of words) {
       expect(text).not.toMatch(/腾出|释放|清理|free up|reclaim|clean/i);
     }
+  });
+});
+
+describe("By Size", () => {
+  const tool = (name: string, version = "1.0", size_bytes: number | null = null): InstalledArtifact => ({
+    ...ruff,
+    key: { ...ruff.key, name },
+    display_name: name,
+    version,
+    size_bytes,
+  });
+
+  it("goes by a measured size of the version listed, or the size the source reports, and nothing else", () => {
+    const big = tool("big");
+    const small = tool("small");
+    const stale = tool("stale", "2.0");
+    const pending = tool("pending");
+    const model = tool("model", "abc", 2_019_393_189);
+    const order = sizeOrderOf(
+      sizes({
+        artifacts: [
+          { key: big.key, version: "1.0", measured: { bytes: 900, partial: false, at_least: false }, old_versions: null },
+          { key: small.key, version: "1.0", measured: { bytes: 10, partial: true, at_least: false }, old_versions: null },
+          { key: stale.key, version: "1.0", measured: { bytes: 5_000, partial: false, at_least: false }, old_versions: null },
+          { key: pending.key, version: "1.0", measured: null, old_versions: null },
+        ],
+      }),
+      [big, small, stale, pending, model, tool("unknown")],
+    );
+    expect([...order.entries()]).toEqual([
+      ["uv|Tool|big", 900],
+      ["uv|Tool|small", 10],
+      ["uv|Tool|model", 2_019_393_189],
+    ]);
+  });
+
+  it("puts the larger first and a row with no size after every row with one", () => {
+    const order = new Map([
+      ["uv|Tool|a", 10],
+      ["uv|Tool|b", 900],
+    ]);
+    const [a, b, c] = [tool("a"), tool("b"), tool("c")];
+    expect([a, c, b].sort((x, y) => compareBySize(order, x, y)).map((t) => t.key.name)).toEqual(["b", "a", "c"]);
+    expect(compareBySize(order, c, tool("d"))).toBe(0);
   });
 });

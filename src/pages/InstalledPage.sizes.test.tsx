@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
@@ -250,5 +250,26 @@ describe("the Installed page's details, on disk use", () => {
     expect(factsOf(inspector)["占用空间"]).toBe("约312.6 MB" + "旧版本约1.2 GB");
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("正在计算…")).toBeInTheDocument();
+  });
+
+  it("order the list By Size, the largest first, a tool with no size last, a model by its own size", async () => {
+    served = {
+      ...NO_SIZES,
+      round: 4,
+      done: true,
+      artifacts: [
+        { key: node.key, version: "22.23.3", measured: about(312_600_000), old_versions: null },
+        { key: jq.key, version: "1.8.2", measured: about(1_200_000), old_versions: null },
+      ],
+    };
+    render();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    const rowNames = () =>
+      [...document.querySelectorAll("[data-tool-row]")].map((row) => row.querySelector("p")?.textContent ?? "");
+    expect(rowNames()).toEqual(["jq", "llama3.2:3b", "node@22", "wget"]);
+    const sortBy = screen.getByRole("combobox", { name: "Sort Order" });
+    fireEvent.change(sortBy, { target: { value: "size" } });
+    await waitFor(() => expect(rowNames()).toEqual(["llama3.2:3b", "node@22", "jq", "wget"]));
+    expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Size$/);
   });
 });

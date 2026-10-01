@@ -1,5 +1,6 @@
 import { formatBytes } from "./format";
 import type { InstalledArtifact, Measured, Sizes } from "./types";
+import { artifactKeyId } from "../store/ui";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 export type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -66,4 +67,39 @@ export function modelsTotalText(t: Translate, sizes: Sizes | undefined, instance
   return measured.at_least || measured.partial
     ? t("sizes.ollamaModelsAtLeast", { size })
     : t("sizes.ollamaModels", { size });
+}
+
+/**
+ * What the Installed page's "By Size" goes by, per row (`artifactKeyId`):
+ * the bytes it takes -- a measured size of the version listed, or the size
+ * its source reports (an Ollama model's) -- for every row that has one.
+ */
+export function sizeOrderOf(sizes: Sizes | undefined, artifacts: InstalledArtifact[]): Map<string, number> {
+  const measured = new Map((sizes?.artifacts ?? []).map((size) => [artifactKeyId(size.key), size]));
+  const order = new Map<string, number>();
+  for (const artifact of artifacts) {
+    const id = artifactKeyId(artifact.key);
+    if (artifact.size_bytes !== null) {
+      order.set(id, artifact.size_bytes);
+      continue;
+    }
+    // As `sizeViewOf` reads it: of the version listed, and measured.
+    const size = measured.get(id);
+    if (size?.measured != null && size.version === artifact.version) order.set(id, size.measured.bytes);
+  }
+  return order;
+}
+
+/**
+ * "By Size": the larger first; a row with no size to show -- none, or still
+ * measuring -- after every row with one, so that 0 means "same size, or
+ * neither has one", for the caller to order by name.
+ */
+export function compareBySize(order: Map<string, number>, a: InstalledArtifact, b: InstalledArtifact): number {
+  const left = order.get(artifactKeyId(a.key));
+  const right = order.get(artifactKeyId(b.key));
+  if (left === right) return 0;
+  if (left === undefined) return 1;
+  if (right === undefined) return -1;
+  return right - left;
 }

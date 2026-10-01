@@ -419,7 +419,8 @@
     "oldVersions": "旧版本约{{size}}",
     "oldVersionsAtLeast": "旧版本至少约{{size}}",
     "ollamaModels": "Ollama模型共约{{size}}",
-    "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}"
+    "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}",
+    "sortBySize": "按大小"
   },
   "sourceNotice": {
     "pipReadOnly": {

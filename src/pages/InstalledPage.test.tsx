@@ -517,7 +517,11 @@ describe("InstalledPage", () => {
     expect(sort.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const popup = sort.parentElement as HTMLElement;
     expect(popup.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "rounded-control", "bg-fill", "text-body"]));
-    expect(within(sort).getAllByRole("option").map((option) => option.textContent)).toEqual(["By Name", "By Source"]);
+    expect(within(sort).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "By Name",
+      "By Source",
+      "By Size",
+    ]);
     // Nothing of either over the list any more.
     const list = container.querySelector("[data-list]") as HTMLElement;
     expect(list.parentElement?.previousElementSibling).toBeNull();

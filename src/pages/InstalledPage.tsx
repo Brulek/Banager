@@ -73,6 +73,7 @@ import {
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
+import { compareBySize, sizeOrderOf } from "../lib/sizes";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -410,6 +411,7 @@ export function InstalledPage() {
   const { data: operations } = useOperations();
   // How much each tool takes on disk, measured after each check (`sizeFact`).
   const { data: sizes } = useSizes();
+  const sizeOrder = useMemo(() => sizeOrderOf(sizes, snapshot?.artifacts ?? []), [sizes, snapshot]);
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
@@ -674,10 +676,15 @@ export function InstalledPage() {
     if (!grouped) {
       const byName = (a: ListItem, b: ListItem) =>
         a.type === "row" && b.type === "row" ? compareArtifacts(a.artifact, b.artifact) : 0;
-      result.push(...rows.sort(byName), ...folds);
+      // By size: the largest first, then by name, a row with no size last.
+      const bySize = (a: ListItem, b: ListItem) =>
+        a.type === "row" && b.type === "row"
+          ? compareBySize(sizeOrder, a.artifact, b.artifact) || compareArtifacts(a.artifact, b.artifact)
+          : 0;
+      result.push(...rows.sort(sort === "size" ? bySize : byName), ...folds);
     }
     return result;
-  }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped]);
+  }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped, sort, sizeOrder]);
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
@@ -1435,6 +1442,7 @@ export function InstalledPage() {
           options={[
             { value: "name", label: t("installed.sortByName") },
             { value: "source", label: t("installed.sortBySource") },
+            { value: "size", label: t("sizes.sortBySize") },
           ]}
           onChange={setSort}
         />

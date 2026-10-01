@@ -185,6 +185,8 @@ Paths are under a generic home folder, `/Users/you`.
   tool measured before at the same version shows at once. pip's packages,
   the font and a model get no measured size (a model keeps its own), and
   the Ollama source's page says 「Ollama模型共约6.6 GB」 under its title.
+  The Installed page's sort has 「按大小」 ("By Size"): the two models
+  first, then Visual Studio Code and node@22, a tool with no size last.
 - On the Other Programs page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise
