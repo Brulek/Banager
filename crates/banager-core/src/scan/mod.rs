@@ -29,8 +29,10 @@
 //! is listed, and its entries looked at, through a descriptor held open on
 //! it (`dirfd`), so a folder replaced by a link meanwhile is never
 //! followed. A scanned folder in a protected place is not read and is
-//! named on the page (`UnknownScan::protected_dirs`); a link into one is
-//! listed by its own name and not followed (`EntryKind::ProtectedSymlink`).
+//! named on the page (`UnknownScan::protected_dirs`); an entry of a scanned
+//! folder that is itself one (`Documents` in a home folder on `PATH`) is
+//! passed over unlooked-at; a link into one is listed by its own name and
+//! not followed (`EntryKind::ProtectedSymlink`).
 //!
 //! Under `scan/`, not `adapters/unknown.rs` as the design spec's §3 drew
 //! it: someone reading `adapters/` should not find a module there with no
@@ -502,8 +504,9 @@ struct Known {
 /// one step at a time, never into a protected place (`protected::resolve`).
 /// For a path that is, or leads into, a protected place, the path as far
 /// as the links outside it were followed and the rest as written
-/// (`Resolution::Protected`): nothing there is looked at, so it is
-/// compared by name alone. That is how a Homebrew whose prefix is on
+/// (`Resolution::Protected`, a `..` in it folded by name): nothing there is
+/// looked at, so it is compared by name alone -- and not at all once a
+/// `..` climbs back out of the place (`by_name`). That is how a Homebrew whose prefix is on
 /// `/Volumes` keeps its programs: the link in `/usr/local/bin` leads, by
 /// name, under `/Volumes/<disk>/homebrew/Cellar`, and so does that root,
 /// and neither is entered. `None` when nothing is there, or a folder on
@@ -511,9 +514,22 @@ struct Known {
 fn leads_to(path: &Path, protected: &Protected) -> Option<PathBuf> {
     match protected::resolve(path, protected, true) {
         Resolution::Found(real, _) => Some(real),
-        Resolution::Protected(at) => Some(at),
+        Resolution::Protected(at) => by_name(at, protected),
         Resolution::Missing | Resolution::Refused => None,
     }
+}
+
+/// A path `resolve` answered `Resolution::Protected` with, for comparing
+/// by name: kept while it is still in a protected place, `None` once a
+/// `..` after the protected place took it back out. `resolve` folds such a
+/// `..` by name, but the place it climbs out of may itself be a link
+/// elsewhere (`~/Documents` moved to another disk), so
+/// `~/Documents/../.local/share/claude/x` may really lead anywhere; by
+/// name it would pass for Claude Code's, and an odd link could hide an
+/// unknown program behind it. A `..` that stays inside the place is still
+/// folded by name, as the rest is taken as written.
+fn by_name(at: PathBuf, protected: &Protected) -> Option<PathBuf> {
+    protected.contains(&at).then_some(at)
 }
 
 /// Whether `a` and `b` are one place: compared as a Mac's disk compares
@@ -825,7 +841,7 @@ fn examine(
                 None,
                 link_target,
                 None,
-                Some(leads),
+                by_name(leads, protected),
             ),
             Resolution::Missing | Resolution::Refused => {
                 (EntryKind::BrokenSymlink, None, link_target, None, None)
@@ -979,6 +995,14 @@ pub fn scan_dirs(
             }
             examined += 1;
             count += 1;
+            // An entry that is itself one of the protected places --
+            // `Documents` in a home folder that is on `PATH`, `Containers`
+            // in a scanned `~/Library` -- is not looked at at all, not even
+            // its `lstat`: it is that place, or a link standing in its
+            // name, and never a program anyway.
+            if protected.contains(&canonical.join(&name)) {
+                continue;
+            }
             let raw = dir.join(&name);
             let Some(found) = examine(&folder, &canonical, &name, &raw, env, &protected) else {
                 continue;

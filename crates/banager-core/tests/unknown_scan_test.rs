@@ -1217,3 +1217,183 @@ fn test_a_folder_that_cannot_be_read_is_left_untouched_and_not_reported() {
     assert_eq!(scan.entries[0].path, tilde(".local/bin/through-shut"));
     assert_eq!(scan.entries[0].kind, EntryKind::BrokenSymlink);
 }
+
+#[test]
+fn test_an_entry_named_like_a_protected_place_is_passed_over_unlooked_at() {
+    // A home folder that is itself on `PATH`, and `~/Library` scanned too:
+    // their entries `Documents`, `Desktop`, `downloads` (any case) and
+    // `Containers` are protected places themselves. Not one is looked at,
+    // as a folder or as a link, so none is listed and no link's text is
+    // read -- even where the link leads to a program outside.
+    let home = Home::new("protected-entry-names");
+    let elsewhere = home.dir("elsewhere");
+    let tool = exe(&elsewhere, "tool", b"x");
+    exe(home.path(), "mine", b"x");
+    link(home.path(), "Documents", &tool);
+    home.dir("Desktop");
+    link(home.path(), "downloads", Path::new("elsewhere/tool"));
+    let library = home.dir("Library");
+    link(&library, "Containers", &tool);
+    home.dir("Library/CloudStorage");
+    exe(&library, "lib-tool", b"x");
+
+    let scan = scan_dirs(
+        &[home.path().to_path_buf(), library],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        listed,
+        vec![tilde("mine"), tilde("Library/lib-tool")],
+        "{:?}",
+        scan.entries
+    );
+    assert!(
+        scan.entries.iter().all(|e| e.link_target.is_none()),
+        "{:?}",
+        scan.entries
+    );
+    assert!(scan.protected_dirs.is_empty(), "{:?}", scan.protected_dirs);
+    assert_eq!(scan.attributed, 0);
+}
+
+#[test]
+fn test_a_dot_dot_out_of_a_protected_place_is_not_taken_by_name() {
+    // `~/Documents` is a link elsewhere, so `~/Documents/..` is not the
+    // home folder; by name alone the link below would pass for the source's
+    // own program. Once a `..` climbs back out of the place, the link is
+    // compared with nothing and listed.
+    let home = Home::new("protected-dot-dot");
+    let elsewhere = home.dir("elsewhere/deep");
+    link(home.path(), "Documents", &elsewhere);
+    let share = home.dir(".local/share/thing");
+    let program = exe(&share, "tool", b"x");
+    let bin = home.dir(".local/bin");
+    link(
+        &bin,
+        "odd",
+        &home.path().join("Documents/../.local/share/thing/tool"),
+    );
+    // A `..` that stays inside the place is still folded by name.
+    link(
+        &bin,
+        "inside",
+        &home.path().join("Documents/x/../.hidden/tool"),
+    );
+    let instance = ManagerInstance {
+        exe_path: program,
+        prefix: home.path().join(".local/share/thing"),
+        ..manager_instance("standalone-thing", "standalone-thing")
+    };
+    let hidden = ManagerInstance {
+        exe_path: home.path().join("Documents/.hidden/tool"),
+        prefix: home.path().join("Documents/.hidden"),
+        ..manager_instance("standalone-hidden", "standalone-hidden")
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[instance, hidden],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries[0].path, tilde(".local/bin/odd"));
+    assert_eq!(scan.entries[0].kind, EntryKind::ProtectedSymlink);
+}
+
+#[test]
+fn test_a_sources_own_paths_in_documents_claim_their_programs_by_name_unread() {
+    // A source whose own executable, and an artifact whose path, are in
+    // `~/Documents`. Nothing there exists: had the scan looked, it would
+    // have found nothing and listed the links as broken. By name alone,
+    // they are the source's.
+    let home = Home::new("protected-sources");
+    let bin = home.dir(".local/bin");
+    let documents = home.path().join("Documents");
+    let exe_path = documents.join("tools/foo");
+    link(&bin, "foo", &exe_path);
+    link(&bin, "bar", &documents.join("venvs/bar/bin/bar"));
+    let foo = ManagerInstance {
+        exe_path,
+        prefix: documents.join("tools"),
+        ..manager_instance("standalone-foo", "standalone-foo")
+    };
+    let venv = artifact("uv:test", "bar", &documents.join("venvs/bar"));
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[foo],
+        &[venv],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 2, "{:?}", scan.entries);
+    assert!(scan.entries.is_empty(), "{:?}", scan.entries);
+}
+
+#[test]
+fn test_a_launcher_whose_downloads_lead_into_documents_is_compared_by_name_unread() {
+    // Grok Build's layout with `~/.grok/downloads` a link into
+    // `~/Documents`, where nothing is looked at -- not even whether the
+    // download is there (it is not). The launcher leads there by name, so
+    // `agent` beside it and the fallback link in `~/.local/bin` are
+    // Grok's; a link naming another download is listed by its own name.
+    let home = Home::new("protected-grok");
+    let grok_bin = home.dir(".grok/bin");
+    let local_bin = home.dir(".local/bin");
+    link(
+        &home.path().join(".grok"),
+        "downloads",
+        &home.path().join("Documents/grok-dl"),
+    );
+    let downloads = home.path().join(".grok/downloads");
+    let text = Path::new("../downloads/grok-1.0.41-macos-aarch64");
+    let launcher = link(&grok_bin, "grok", text);
+    link(&grok_bin, "agent", text);
+    link(
+        &local_bin,
+        "grok",
+        &downloads.join("grok-1.0.41-macos-aarch64"),
+    );
+    link(
+        &local_bin,
+        "grok-old",
+        &downloads.join("grok-1.0.40-macos-aarch64"),
+    );
+    let instance = ManagerInstance {
+        exe_path: launcher,
+        prefix: home.path().join(".grok"),
+        ..manager_instance("standalone-grok", "standalone-grok")
+    };
+
+    let scan = scan_dirs(
+        &[grok_bin, local_bin],
+        &home.env(vec![]),
+        &[instance],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(
+        scan.attributed, 3,
+        "the launcher, `agent` and the fallback link: {:?}",
+        scan.entries
+    );
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries[0].path, tilde(".local/bin/grok-old"));
+    assert_eq!(scan.entries[0].kind, EntryKind::ProtectedSymlink);
+    assert!(!home.path().join("Documents").exists());
+}
