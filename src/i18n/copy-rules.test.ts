@@ -53,6 +53,7 @@ describe("the copy rules, over every string in both languages", () => {
             "installed.updateSkipped",
             "installed.updateSkippedNewBuild",
             "installed.uninstallHold.label",
+            "majorVersion.tag",
           ].includes(key),
       );
     expect(statusKeys.length).toBeGreaterThanOrEqual(13);

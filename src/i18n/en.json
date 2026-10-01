@@ -743,10 +743,10 @@
     "saveError": "Couldn't save: {{message}}. Your previous setting is back.",
     "saveErrorPlain": "Couldn't save. Your previous setting is back.",
     "nextAutoCheck": {
-      "today": "Next automatic check: about {{time}} today (Banager needs to be open)",
-      "tomorrow": "Next automatic check: about {{time}} tomorrow (Banager needs to be open)",
-      "date": "Next automatic check: about {{time}}, {{date}} (Banager needs to be open)",
-      "soon": "Next automatic check: soon (Banager needs to be open)"
+      "today": "Next automatic check: about {{time}} today",
+      "tomorrow": "Next automatic check: about {{time}} tomorrow",
+      "date": "Next automatic check: about {{time}} on {{date}}",
+      "soon": "Next automatic check: soon"
     }
   },
   "settingsSaveFailed": {

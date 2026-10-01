@@ -551,7 +551,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const line = await screen.findByText(
-      /^Next automatic check: about .+ (today|tomorrow) \(Banager needs to be open\)$/,
+      /^Next automatic check: about .+ (today|tomorrow)$/,
     );
     expect(line).toHaveAttribute("data-next-auto-check");
     // Under the switch's own description, in its row.

@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 
 /**
  * The line under Settings' 「每天自动检查」 switch, while it is on: when the
- * daily check is next expected -- 「下次自动检查：约今天21:10（需要Banager开着）」
+ * daily check is next expected -- 「下次自动检查：今天21:10左右」
  * (critique §2 item 8). The time is the shell's
  * (`Snapshot::next_auto_check_at`, from `auto_check::next_check_due`): a day
  * after the last check that counted, the user's own Check again included,
@@ -12,7 +12,8 @@ import type { TFunction } from "i18next";
  * "last automatic check" days ago that reads as broken. Said as "about":
  * the check starts at the first of the task's looks after it, which come
  * every 15 minutes of the Mac being awake, and only while Banager runs --
- * which the line says too.
+ * which the switch's own description says (「Banager运行时…」), so this
+ * line does not say it again in brackets (src/i18n/copy-rules.test.ts).
  *
  * Nothing while `at` is not known (`null`: no check has counted yet, the
  * check at launch still under way).
