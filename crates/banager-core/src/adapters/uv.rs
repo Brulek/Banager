@@ -12,6 +12,7 @@ use crate::model::{
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,7 +52,7 @@ fn tool_list_header_lines(text: &str) -> impl Iterator<Item = (&str, &str)> {
 /// can have put a `ruff` at the same path. They are read here alone:
 /// `tool_list_header_lines`, which `--outdated`'s parser shares, still
 /// skips them, and this function reads a header the way it does.
-fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArtifact> {
+pub(crate) fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArtifact> {
     // Each `- binary (path)` line, with the tool whose header it follows.
     // A line with no path (uv without `--show-paths`) names no file.
     let mut binaries: Vec<(&str, &str, &str)> = Vec::new();
@@ -71,14 +72,23 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
                 .map(|(name, _)| name);
         }
     }
-    tool_list_header_lines(text)
+    // Each tool's binaries, in order, looked up by name: filtering the
+    // whole list for every tool was quadratic, 56 s over 100,000 tools in
+    // a debug build.
+    let mut binaries_of: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
+    for (tool, command, link) in binaries {
+        binaries_of.entry(tool).or_default().push((command, link));
+    }
+    let artifacts = tool_list_header_lines(text)
         .filter_map(|(name, rest)| {
             let (version, path_part) = rest.split_once(" (")?;
             let path = path_part.trim_end_matches(')');
-            let provided = binaries
+            let provided = binaries_of
+                .get(name)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
                 .iter()
-                .filter(|(tool, _, _)| *tool == name)
-                .map(|(_, command, link)| ProvidedCommand {
+                .map(|(command, link)| ProvidedCommand {
                     name: command.to_string(),
                     path: PathBuf::from(link),
                     within: vec![PathBuf::from(path)],
@@ -109,7 +119,8 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
                 },
             })
         })
-        .collect()
+        .collect();
+    crate::adapters::sanity::artifacts(artifacts)
 }
 
 /// Parses `uv tool list --outdated`: `name vOLD [latest: NEW]` per outdated
@@ -118,8 +129,8 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
 /// and with no tools installed at all it prints `No tools installed`; both
 /// are treated as "no updates", never an error (this phase's documented
 /// trap for uv).
-fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
-    tool_list_header_lines(text)
+pub(crate) fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
+    let candidates = tool_list_header_lines(text)
         .filter_map(|(name, rest)| {
             let (old, bracket) = rest.split_once(" [latest: ")?;
             let new = bracket.strip_suffix(']')?;
@@ -137,7 +148,8 @@ fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidat
                 blocked: None,
             })
         })
-        .collect()
+        .collect();
+    crate::adapters::sanity::candidates(candidates)
 }
 
 pub struct UvAdapter {
@@ -466,6 +478,39 @@ impl Adapter for UvAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_parse_tool_list_show_paths_reads_a_hundred_thousand_tools_in_linear_time() {
+        let text: String = (0..100_000)
+            .map(|i| format!("t{i} v1.{i} (/u/t{i})\n- b{i} (/u/bin/b{i})\n"))
+            .collect();
+        let started = std::time::Instant::now();
+        let artifacts = parse_tool_list_show_paths(&text, "uv:/x");
+        assert_eq!(artifacts.len(), 100_000);
+        assert_eq!(
+            artifacts[99_999].facts.command_inputs.provided[0].name,
+            "b99999"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn regression_uv_parsers_drop_a_control_character() {
+        let shown = parse_tool_list_show_paths("ruff v0.15\u{e}0 (/u/ruff)\n", "uv:/x");
+        assert_eq!(shown[0].version, "");
+        let outdated = parse_tool_list_outdated(
+            "r\rff v0.15.0 [latest: 0.16.8]\nruff v0.15.0 [latest: 0.16\u{e}8]\nty v0.1 [latest: 0.2]\n",
+            "uv:/x",
+        );
+        let names: Vec<String> = outdated.into_iter().map(|c| c.key.name).collect();
+        assert_eq!(names, vec!["ty".to_string()]);
+    }
     use crate::model::Warning;
     use crate::testing::command_args;
 
