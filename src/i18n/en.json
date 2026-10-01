@@ -818,7 +818,8 @@
       "permission": "No permission",
       "busy": "Another operation is running",
       "homebrewUpdating": "Homebrew is updating its software list",
-      "needsPassword": "Needs your password"
+      "needsPassword": "Needs your password",
+      "passwordNotAccepted": "Password not accepted"
     },
     "next": {
       "network": "Check your internet connection, then try again.",
@@ -826,7 +827,8 @@
       "permission": "Make sure you can change its files, then try again.",
       "busy": "Wait for the other operation to finish, then try again.",
       "homebrewUpdating": "Try again later.",
-      "needsPassword": "This step needs your Mac login password, which can't be entered here."
+      "needsPassword": "This step needs your Mac login password, which can't be entered here.",
+      "passwordNotAccepted": "Enter your Mac login password in the password window, then try again."
     },
     "line": {
       "network": "The connection failed. Check your internet connection, then try again.",
@@ -834,7 +836,8 @@
       "permission": "There's no permission to change its files. Check the permissions, then try again.",
       "busy": "Another operation is running. Wait for it to finish, then try again.",
       "homebrewUpdating": "Homebrew is updating its software list. Try again later.",
-      "needsPassword": "This needs your Mac login password, which can't be entered here."
+      "needsPassword": "This needs your Mac login password, which can't be entered here.",
+      "passwordNotAccepted": "The password wasn't accepted. Enter your Mac login password in the password window, then try again."
     }
   },
   "needsPassword": {

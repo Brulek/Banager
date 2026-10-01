@@ -149,6 +149,22 @@ describe("LogDrawer, where sudo wanted a password", () => {
     }
   });
 
+  it("where a password window asked and got none, says so, not that it can't be entered here, and still hands over the command", async () => {
+    operations = [
+      {
+        ...passwordOp,
+        outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required" } },
+      },
+    ];
+    const { findByText, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
+    expect(await findByText("Password not accepted")).toBeInTheDocument();
+    expect(
+      await findByText("Enter your Mac login password in the password window, then try again."),
+    ).toBeInTheDocument();
+    expect(queryByText(/can't be entered here/)).toBeNull();
+    expect(getByRole("dialog").querySelector("code")?.textContent).toBe(EXPECTED_COMMAND);
+  });
+
   it("shows no command for a failure with another cause", async () => {
     operations = [
       { ...passwordOp, outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "example"' } } },

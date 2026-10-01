@@ -761,7 +761,8 @@
       "permission": "没有权限",
       "busy": "另一个操作正在进行",
       "homebrewUpdating": "Homebrew正在更新软件清单",
-      "needsPassword": "需要输入密码"
+      "needsPassword": "需要输入密码",
+      "passwordNotAccepted": "密码未被接受"
     },
     "next": {
       "network": "请检查网络连接后重试。",
@@ -769,7 +770,8 @@
       "permission": "请确认有权限修改它的文件后重试。",
       "busy": "请等另一个操作完成后重试。",
       "homebrewUpdating": "请稍后再试。",
-      "needsPassword": "这一步需要输入Mac的登录密码，无法在这里输入。"
+      "needsPassword": "这一步需要输入Mac的登录密码，无法在这里输入。",
+      "passwordNotAccepted": "请在密码窗口输入Mac的登录密码后重试。"
     },
     "line": {
       "network": "网络连接失败，请检查网络连接后重试。",
@@ -777,7 +779,8 @@
       "permission": "没有权限修改它的文件，请确认权限后重试。",
       "busy": "另一个操作正在进行，请等它完成后重试。",
       "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。",
-      "needsPassword": "需要输入Mac的登录密码，无法在这里输入。"
+      "needsPassword": "需要输入Mac的登录密码，无法在这里输入。",
+      "passwordNotAccepted": "密码未被接受，请在密码窗口输入Mac的登录密码后重试。"
     }
   },
   "needsPassword": {

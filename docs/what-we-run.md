@@ -124,7 +124,9 @@ in Banager's environment (Homebrew's section); it never sets it on its
 own behalf. Its commands run with no terminal (stdin is `/dev/null`), so
 when a cask's own step runs `sudo`, sudo cannot ask and the operation
 fails. Banager recognises sudo's own words for this
-(`needsPassword` in `src/lib/failureCause.ts`), and the operation's log
+(`needsPassword` in `src/lib/failureCause.ts`), and for a password window
+that `SUDO_ASKPASS` opened and that got no password or a wrong one
+(`passwordNotAccepted`), and the operation's log
 shows the command it ran — the confirmation's command, without
 `SUDO_ASKPASS` (`src/components/PasswordCommand.tsx`) — with a Copy
 Command button, to be run in Terminal, where sudo can ask. Banager runs

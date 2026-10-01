@@ -32,9 +32,11 @@ export function terminalCommand(op: OpSummary): string | null {
 /**
  * Under a log's next step, where an operation failed because `sudo`
  * wanted the Mac's password and had no way to ask for it
- * (`needsPassword`, src/lib/failureCause.ts): the way on. Banager runs
- * every command without a terminal and has no password window, so the
- * same command, run in Terminal, is where sudo can ask -- said in one
+ * (`needsPassword`, src/lib/failureCause.ts), or asked in a password
+ * window that got none or a wrong one (`passwordNotAccepted`): the way on.
+ * Banager runs every command without a terminal and has no password
+ * window of its own, so the same command, run in Terminal, is where sudo
+ * can always ask -- said in one
  * sentence with the one thing that stops people there (nothing shows as
  * the password is typed), then the command itself, set as code that
  * selects whole, Copy Command beside a word on whether it worked, and
@@ -47,7 +49,9 @@ export function terminalCommand(op: OpSummary): string | null {
 export function PasswordCommand({ op }: { op: OpSummary }) {
   const { t } = useTranslation();
   const { status, copy } = useCopyCommand();
-  if (op.status !== "Done" || outcomeCause(op.outcome) !== "needsPassword") return null;
+  if (op.status !== "Done") return null;
+  const cause = outcomeCause(op.outcome);
+  if (cause !== "needsPassword" && cause !== "passwordNotAccepted") return null;
   const command = terminalCommand(op);
   if (command === null) return null;
   const copyWords = status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;

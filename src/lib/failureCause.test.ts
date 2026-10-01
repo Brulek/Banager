@@ -165,7 +165,7 @@ const CASES: Array<[string, string, FailureCause | null]> = [
   [
     "brew: the password window SUDO_ASKPASS names was closed",
     "sudo: no password was provided\nsudo: a password is required",
-    "needsPassword",
+    "passwordNotAccepted",
   ],
   [
     "brew: SUDO_ASKPASS set but empty",
@@ -175,7 +175,7 @@ const CASES: Array<[string, string, FailureCause | null]> = [
   [
     "brew: the password window answered wrongly three times",
     "sudo: 3 incorrect password attempts",
-    "needsPassword",
+    "passwordNotAccepted",
   ],
   [
     "sudo's password line wins over a refused file the rollback hit after it",
@@ -226,8 +226,37 @@ describe("failureCause", () => {
 
   it("covers every cause with real output, and says nothing of what it cannot tell", () => {
     const found = new Set(CASES.map(([, , cause]) => cause));
-    expect(found).toEqual(new Set(["network", "diskFull", "permission", "busy", "needsPassword", null]));
+    expect(found).toEqual(
+      new Set(["network", "diskFull", "permission", "busy", "needsPassword", "passwordNotAccepted", null]),
+    );
     expect(CASES.filter(([, , cause]) => cause === null).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("takes no way to ask over a window that asked, and a bare 'a password is required' for no way to ask", () => {
+    expect(
+      failureCause(
+        "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: no password was provided\nsudo: a password is required",
+      ),
+    ).toBe("needsPassword");
+    expect(failureCause("sudo: a password is required")).toBe("needsPassword");
+  });
+
+  it("finds sudo's lines only while they are in the text: a long rollback after them in a five-line summary hides them", () => {
+    const sudo = [
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+      "sudo: a password is required",
+    ];
+    const rollback = [
+      "==> Purging files for version 2.4.1 of Cask example",
+      "==> Moving App 'Example.app' back to '/Applications/Example.app'",
+      "==> Removing App '/Applications/Example.app'",
+      "==> Backing App 'Example.app' up",
+      "Error: Permission denied @ apply2files - /Applications/Example.app/Contents/Info.plist",
+    ];
+    // What `run_plan` keeps: the last five lines of stderr.
+    const lastFive = (lines: string[]) => lines.slice(-5).join("\n");
+    expect(failureCause(lastFive([...sudo, ...rollback.slice(-3)]))).toBe("needsPassword");
+    expect(failureCause(lastFive([...sudo, ...rollback]))).toBe("permission");
   });
 
   it("reads a check that ran over waiting for brew update as Homebrew's list, not the network", () => {
@@ -288,6 +317,7 @@ describe("FAILURE_CAUSE_KEYS", () => {
   });
 
   it("says the four causes as the spec words them, and a next step as one sentence", () => {
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.passwordNotAccepted.word)).toBe("密码未被接受");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.network.word)).toBe("网络连接失败");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.diskFull.word)).toBe("磁盘空间不足");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.permission.word)).toBe("没有权限");
