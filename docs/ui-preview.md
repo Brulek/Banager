@@ -231,9 +231,12 @@ Paths are under a generic home folder, `/Users/you`.
   `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
   `?state=uptodate`, which leaves Codex's own install out,
   「没有发现装了不止一份的工具」.
-- The 「显示」 popup's last two choices say how many they show: on the
-  default pretend Mac 「终端里找不到（1）」, Grok Build, and
-  「Homebrew已停用或弃用（2）」, QuickJot (已停用) and youtube-dl (已弃用).
+- The 「显示」 popup's last three choices say how many they show: on the
+  default pretend Mac 「终端里找不到（1）」, Grok Build,
+  「Homebrew已停用或弃用（2）」, QuickJot (已停用) and youtube-dl (已弃用), and
+  「保留了其他版本（8）」, the formulae with an older version kept, components
+  unfolded. No line over the list points at that last one; the tool setup
+  check's 「8个工具保留了其他版本」 has its 查看.
   With every tool shown, the notices over the list, unfolded, end on
   「2个工具已被Homebrew停用或弃用」 with 查看, which picks that choice and
   puts the focus on its first row. No such line says how many Terminal
@@ -291,7 +294,8 @@ Paths are under a generic home folder, `/Users/you`.
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应
   (each with 查看 to its page), 1 tool Terminal can't find and 1 installed twice
   (查看 opens Installed on that 「显示」 choice), 2 that Homebrew disabled or
-  deprecated, 8 keeping other versions with their measured size, and the disk.
+  deprecated and 8 keeping other versions with their measured size (each with
+  查看 to its 「显示」 choice), and the disk.
   `?state=notices` names the Intel Homebrew; `?state=preview` shows it while
   the first check runs; `?path=unread&tech=1` adds an unread folder in
   Documents, by path; `?path=default` shows it with Terminal's login settings

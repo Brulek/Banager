@@ -398,13 +398,13 @@ describe("toolSetupCheck's Homebrew lines", () => {
     const check = toolSetupCheck(zh, input({ snapshot, sizes }));
     expect(shape(check)["Homebrew"]).toEqual([
       "note 2个工具已被Homebrew停用或弃用 → installed:brewRetired",
-      "note 2个工具保留了其他版本，共约500 MB",
+      "note 2个工具保留了其他版本，共约500 MB → installed:otherVersions",
     ]);
     expect(lineOf(check, "homebrew", "retired").detail).toBe(zh("families.brewRetiredNoticeDetail"));
     expect(lineOf(check, "homebrew", "otherVersions").detail).toBe(zh("clarity.otherVersionsDetail"));
     expect(shape(toolSetupCheck(en, input({ snapshot, sizes })))["Homebrew"]).toEqual([
       "note 2 tools were disabled or deprecated by Homebrew → installed:brewRetired",
-      "note 2 tools keep other versions, about\u00a0500 MB in all",
+      "note 2 tools keep other versions, about\u00a0500 MB in all → installed:otherVersions",
     ]);
   });
 
@@ -436,7 +436,7 @@ describe("toolSetupCheck's Homebrew lines", () => {
     keeping.artifacts = keeping.artifacts.filter((a) => !["youtube-dl", "old-cask"].includes(a.key.name));
     expect(shape(toolSetupCheck(zh, input({ snapshot: keeping, sizes: null })))["Homebrew"]).toEqual([
       "fine 没有Homebrew已停用或弃用的工具",
-      "note 2个工具保留了其他版本",
+      "note 2个工具保留了其他版本 → installed:otherVersions",
     ]);
   });
 });

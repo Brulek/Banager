@@ -8,6 +8,7 @@ import {
   isAiTool,
   isBrewRetired,
   isDiscoverShow,
+  keepsOtherVersions,
   shownBy,
 } from "./families";
 import { NO_FACTS, type ArtifactFacts, type InstalledArtifact, type ManagerInstance } from "./types";
@@ -82,8 +83,12 @@ describe("the discovery choices", () => {
     key: { ...key, name: "git" },
     facts: { ...NO_FACTS, homebrew: { ...homebrew, caveats: "note" } },
   };
+  const keeping = {
+    key: { ...key, name: "readline" },
+    facts: { ...NO_FACTS, homebrew: { ...homebrew, other_versions: ["8.3.3"] } },
+  };
   const plain = { key, facts: NO_FACTS };
-  const all = [offPath, shadowed, unjudged, deprecated, disabled, caveatsOnly, plain];
+  const all = [offPath, shadowed, unjudged, deprecated, disabled, caveatsOnly, keeping, plain];
 
   it("finds a tool with one command Terminal does not find, and nothing else", () => {
     expect(all.filter((a) => hasCommandNotOnPath(a)).map((a) => a.key.name)).toEqual(["grok"]);
@@ -97,16 +102,22 @@ describe("the discovery choices", () => {
     expect(isBrewRetired(undefined)).toBe(false);
   });
 
+  it("finds the formulae Homebrew keeps another version of, and nothing else", () => {
+    expect(all.filter((a) => keepsOtherVersions(a)).map((a) => a.key.name)).toEqual(["readline"]);
+    expect(all.filter((a) => shownBy("otherVersions", a)).map((a) => a.key.name)).toEqual(["readline"]);
+    expect(keepsOtherVersions(undefined)).toBe(false);
+  });
+
   it("counts what each choice shows", () => {
-    expect(discoverCounts(all)).toEqual({ notOnPath: 1, brewRetired: 2 });
-    expect(discoverCounts([])).toEqual({ notOnPath: 0, brewRetired: 0 });
-    expect(DISCOVER_SHOWS).toEqual(["notOnPath", "brewRetired"]);
+    expect(discoverCounts(all)).toEqual({ notOnPath: 1, brewRetired: 2, otherVersions: 1 });
+    expect(discoverCounts([])).toEqual({ notOnPath: 0, brewRetired: 0, otherVersions: 0 });
+    expect(DISCOVER_SHOWS).toEqual(["notOnPath", "brewRetired", "otherVersions"]);
   });
 });
 
 describe("discoverNotices", () => {
   it("points at each choice with tools to show, in the popup's order, only over every tool", () => {
-    expect(discoverNotices("all", { notOnPath: 2, brewRetired: 1 })).toEqual([
+    expect(discoverNotices("all", { notOnPath: 2, brewRetired: 1, otherVersions: 0 })).toEqual([
       {
         id: "discover:notOnPath",
         variant: "info",
@@ -124,21 +135,29 @@ describe("discoverNotices", () => {
         action: { id: "showList", labelKey: "families.view", show: "brewRetired" },
       },
     ]);
-    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 3 }).map((n) => n.id)).toEqual([
+    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 3, otherVersions: 0 }).map((n) => n.id)).toEqual([
       "discover:brewRetired",
     ]);
-    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 0 })).toEqual([]);
-    for (const show of ["ai", "twins", "notOnPath", "brewRetired"] as const) {
-      expect(discoverNotices(show, { notOnPath: 2, brewRetired: 1 })).toEqual([]);
+    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 0, otherVersions: 0 })).toEqual([]);
+    for (const show of ["ai", "twins", "notOnPath", "brewRetired", "otherVersions"] as const) {
+      expect(discoverNotices(show, { notOnPath: 2, brewRetired: 1, otherVersions: 0 })).toEqual([]);
     }
   });
 
-  it("leaves out a line whose every tool a source's notice names, and keeps the whole count otherwise", () => {
-    const counts = { notOnPath: 2, brewRetired: 1 };
-    expect(discoverNotices("all", counts, { notOnPath: 2, brewRetired: 0 }).map((n) => n.id)).toEqual([
+  it("never points at Keeping Other Versions: the popup and the setup check do", () => {
+    expect(discoverNotices("all", { notOnPath: 0, brewRetired: 0, otherVersions: 8 })).toEqual([]);
+    expect(discoverNotices("all", { notOnPath: 1, brewRetired: 1, otherVersions: 8 }).map((n) => n.id)).toEqual([
+      "discover:notOnPath",
       "discover:brewRetired",
     ]);
-    expect(discoverNotices("all", counts, { notOnPath: 1, brewRetired: 0 })[0]?.values).toEqual({ count: 2 });
+  });
+
+  it("leaves out a line whose every tool a source's notice names, and keeps the whole count otherwise", () => {
+    const counts = { notOnPath: 2, brewRetired: 1, otherVersions: 0 };
+    expect(discoverNotices("all", counts, { notOnPath: 2, brewRetired: 0, otherVersions: 0 }).map((n) => n.id)).toEqual([
+      "discover:brewRetired",
+    ]);
+    expect(discoverNotices("all", counts, { notOnPath: 1, brewRetired: 0, otherVersions: 0 })[0]?.values).toEqual({ count: 2 });
   });
 });
 
@@ -156,8 +175,8 @@ describe("discoverCovered", () => {
     const artifacts = [offPath("standalone-grok", "grok"), offPath("pipx:/opt/homebrew/bin", "http")];
     expect(
       discoverCovered(artifacts, [source("standalone-grok", ["NotOnPath"]), source("pipx:/opt/homebrew/bin", [])]),
-    ).toEqual({ notOnPath: 1, brewRetired: 0 });
-    expect(discoverCovered(artifacts, [source("standalone-grok", [])])).toEqual({ notOnPath: 0, brewRetired: 0 });
+    ).toEqual({ notOnPath: 1, brewRetired: 0, otherVersions: 0 });
+    expect(discoverCovered(artifacts, [source("standalone-grok", [])])).toEqual({ notOnPath: 0, brewRetired: 0, otherVersions: 0 });
   });
 });
 

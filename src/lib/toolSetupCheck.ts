@@ -21,7 +21,7 @@
 import { create } from "zustand";
 import { commandsKnown } from "./commandsKnown";
 import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
-import { discoverCounts, type DiscoverShow } from "./families";
+import { discoverCounts, keepsOtherVersions, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
 import { instanceLabels } from "./sources";
@@ -293,7 +293,8 @@ function otherVersionsTotal(
 /**
  * 「Homebrew」, on a Mac with one: how many formulae and casks it disabled
  * or deprecated, with 查看 to the Installed page's choice that lists them,
- * and how many keep other versions, with what those take once measured.
+ * and how many keep other versions, with what those take once measured
+ * and 查看 to the choice that lists those.
  * Of every Homebrew together.
  */
 function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null {
@@ -305,7 +306,7 @@ function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null 
   if (brews.size === 0) return null;
   const artifacts = snapshot.artifacts.filter((artifact) => brews.has(artifact.key.instance_id));
   const retired = discoverCounts(artifacts).brewRetired;
-  const keeping = artifacts.filter((artifact) => (artifact.facts.homebrew?.other_versions.length ?? 0) > 0);
+  const keeping = artifacts.filter((artifact) => keepsOtherVersions(artifact));
   if (retired === 0 && keeping.length === 0) return [line("fine", "fine", t("setupCheck.homebrew.fine"))];
   const lines: SetupLine[] = [];
   lines.push(
@@ -327,7 +328,7 @@ function homebrewLines(t: Translate, input: ToolSetupInput): SetupLine[] | null 
         total === null
           ? t("setupCheck.homebrew.otherVersions", { count: keeping.length })
           : t("setupCheck.homebrew.otherVersionsSize", { count: keeping.length, size: sourceTotalText(t, total) }),
-        { detail: t("clarity.otherVersionsDetail") },
+        { detail: t("clarity.otherVersionsDetail"), view: { kind: "installed", show: "otherVersions" } },
       ),
     );
   }

@@ -22,15 +22,29 @@ export type InstalledShow = ToolShow | "twins" | DiscoverShow;
 /**
  * The Installed page's choices that find a fact a tool's inspector shows,
  * without opening each tool's: 「终端里找不到」, the tools with a command
- * Terminal does not find (`notOnPath`), and 「Homebrew已停用或弃用」, the
- * formulae and casks Homebrew disabled or deprecated (`isBrewRetired`).
- * Each is offered with how many it shows (`discoverCounts`), and the
- * notices over the list point at them (`discoverNotices`).
+ * Terminal does not find (`notOnPath`); 「Homebrew已停用或弃用」, the
+ * formulae and casks Homebrew disabled or deprecated (`isBrewRetired`);
+ * and 「保留了其他版本」, the formulae Homebrew keeps an older version of
+ * beside the current one (`keepsOtherVersions`). Each is offered with how
+ * many it shows (`discoverCounts`). The notices over the list point at the
+ * first two (`NoticedShow`, `discoverNotices`); the setup check's line
+ * points at the third.
  */
-export type DiscoverShow = "notOnPath" | "brewRetired";
+export type DiscoverShow = NoticedShow | "otherVersions";
+
+/**
+ * The discovery choices a line over the list points at while it shows
+ * every tool. Not 「保留了其他版本」: older versions are kept on most Macs
+ * with Homebrew, the tools work all the same, and a line saying so on
+ * every visit would only be in the way.
+ */
+export type NoticedShow = "notOnPath" | "brewRetired";
 
 /** The discovery choices, in the popup's order. */
-export const DISCOVER_SHOWS: readonly DiscoverShow[] = ["notOnPath", "brewRetired"];
+export const DISCOVER_SHOWS: readonly DiscoverShow[] = ["notOnPath", "brewRetired", "otherVersions"];
+
+/** The ones with a line over the list, in the lines' order. */
+const NOTICED_SHOWS: readonly NoticedShow[] = ["notOnPath", "brewRetired"];
 
 /**
  * Whether `show` is a discovery choice. The list unfolds a source's
@@ -67,6 +81,15 @@ export function isBrewRetired(artifact: Pick<InstalledArtifact, "facts"> | undef
   return homebrew != null && (homebrew.disabled !== null || homebrew.deprecated !== null);
 }
 
+/**
+ * Whether Homebrew keeps another version of this formula beside the one in
+ * use (`facts.homebrew.other_versions`, what the inspector lists under
+ * 「其他版本」). What the setup check counts too.
+ */
+export function keepsOtherVersions(artifact: Pick<InstalledArtifact, "facts"> | undefined): boolean {
+  return (artifact?.facts.homebrew?.other_versions.length ?? 0) > 0;
+}
+
 /** How many artifacts each discovery choice shows. */
 export type DiscoverCounts = Record<DiscoverShow, number>;
 
@@ -79,6 +102,7 @@ export function discoverCounts(artifacts: readonly Pick<InstalledArtifact, "fact
   return {
     notOnPath: artifacts.filter((artifact) => hasCommandNotOnPath(artifact)).length,
     brewRetired: artifacts.filter((artifact) => isBrewRetired(artifact)).length,
+    otherVersions: artifacts.filter((artifact) => keepsOtherVersions(artifact)).length,
   };
 }
 
@@ -96,6 +120,7 @@ export function shownBy(
   if (show === "ai") return isAiTool(artifact);
   if (show === "notOnPath") return hasCommandNotOnPath(artifact);
   if (show === "brewRetired") return isBrewRetired(artifact);
+  if (show === "otherVersions") return keepsOtherVersions(artifact);
   return artifact !== undefined && twins !== undefined && twins.has(artifactKeyId(artifact.key));
 }
 
@@ -103,7 +128,8 @@ export function shownBy(
  * How many of each choice's tools a source's own notice already names:
  * a tool Terminal can't find whose source carries the `NotOnPath` note,
  * which `sourceNoticesFor` says as 「Grok Build已安装，但在终端输入“grok”
- * 打不开它」. Homebrew says nothing of the sort, so `brewRetired` is 0.
+ * 打不开它」. Homebrew says nothing of the sort, so `brewRetired` and
+ * `otherVersions` are 0.
  */
 export function discoverCovered(
   artifacts: readonly Pick<InstalledArtifact, "facts" | "key">[],
@@ -116,18 +142,19 @@ export function discoverCovered(
     notOnPath: artifacts.filter((artifact) => hasCommandNotOnPath(artifact) && noted.has(artifact.key.instance_id))
       .length,
     brewRetired: 0,
+    otherVersions: 0,
   };
 }
 
 /** Each discovery choice's line over the list: its words and their ⓘ. */
-const DISCOVER_NOTICE_KEYS: Record<DiscoverShow, { title: string; description: string }> = {
+const DISCOVER_NOTICE_KEYS: Record<NoticedShow, { title: string; description: string }> = {
   notOnPath: { title: "families.notOnPathNotice", description: "families.notOnPathNoticeDetail" },
   brewRetired: { title: "families.brewRetiredNotice", description: "families.brewRetiredNoticeDetail" },
 };
 
 /**
  * The lines the Installed page adds after the sources' own notices while
- * it shows every tool: one for each discovery choice that has tools to
+ * it shows every tool: one for each noticed choice (`NoticedShow`) that has tools to
  * show, 「2个工具在终端里找不到」, whose 查看 picks that choice in the
  * 「显示」 popup. An info line, as a source's 「终端找不到它」 is: the tools
  * work, the user just would not see it without opening each one. With
@@ -140,10 +167,10 @@ const DISCOVER_NOTICE_KEYS: Record<DiscoverShow, { title: string; description: s
 export function discoverNotices(
   show: InstalledShow,
   counts: DiscoverCounts,
-  covered: DiscoverCounts = { notOnPath: 0, brewRetired: 0 },
+  covered: DiscoverCounts = { notOnPath: 0, brewRetired: 0, otherVersions: 0 },
 ): SourceNoticeSpec[] {
   if (show !== "all") return [];
-  return DISCOVER_SHOWS.filter((choice) => counts[choice] > covered[choice]).map((choice) => ({
+  return NOTICED_SHOWS.filter((choice) => counts[choice] > covered[choice]).map((choice) => ({
     id: `discover:${choice}`,
     variant: "info",
     titleKey: DISCOVER_NOTICE_KEYS[choice].title,

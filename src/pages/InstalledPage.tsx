@@ -409,6 +409,7 @@ const SHOW_NONE_KEYS: Record<Exclude<InstalledShow, "all">, { none: string; none
   twins: { none: "twinsFilter.none", noneInSource: "twinsFilter.noneInSource" },
   notOnPath: { none: "families.notOnPathNone", noneInSource: "families.notOnPathNoneInSource" },
   brewRetired: { none: "families.brewRetiredNone", noneInSource: "families.brewRetiredNoneInSource" },
+  otherVersions: { none: "otherVersionsShow.none", noneInSource: "otherVersionsShow.noneInSource" },
 };
 
 /** The size order under any sort but By Size: one map, so it never changes. */

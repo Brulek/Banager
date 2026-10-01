@@ -8,7 +8,7 @@ import { ToolbarPopupButton } from "./ui/PopupButton";
  * (`facts.family`) -- and, on the Installed page alone (`twins`),
  * 「装了不止一份」: the tools another source installed a copy of too, the
  * rows that carry the 「装了两份」 word; then 「终端里找不到」 and
- * 「Homebrew已停用或弃用」 (`DiscoverShow`), each with how many it shows
+ * 「Homebrew已停用或弃用」 and 「保留了其他版本」 (`DiscoverShow`), each with how many it shows
  * while there are some (`counts`): 「终端里找不到（2）」. With none, the
  * choice stays, without a number, and the list it shows says none was
  * found -- a menu whose items come and go is harder to learn, and the
@@ -38,6 +38,10 @@ export function ToolShowButton(
           {
             value: "brewRetired" as const,
             label: counted("families.showBrewRetired", "families.showBrewRetiredCount", counts?.brewRetired),
+          },
+          {
+            value: "otherVersions" as const,
+            label: counted("otherVersionsShow.show", "otherVersionsShow.showCount", counts?.otherVersions),
           },
         ]
       : []),

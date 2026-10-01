@@ -166,7 +166,7 @@ function options(): [string, string | null][] {
 }
 
 describe("the Installed page's discovery choices", () => {
-  it("offers both after the others, each with how many it shows", async () => {
+  it("offers all three after the others, each with how many it shows", async () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     expect(options()).toEqual([
@@ -175,11 +175,16 @@ describe("the Installed page's discovery choices", () => {
       ["twins", "Installed More Than Once"],
       ["notOnPath", "Not Found in Terminal (2)"],
       ["brewRetired", "Disabled or Deprecated by Homebrew (2)"],
+      ["otherVersions", "Keeping Other Versions"],
     ]);
 
     await i18n.changeLanguage("zh-CN");
     await waitFor(() =>
-      expect(options().slice(3).map(([, label]) => label)).toEqual(["终端里找不到（2）", "Homebrew已停用或弃用（2）"]),
+      expect(options().slice(3).map(([, label]) => label)).toEqual([
+        "终端里找不到（2）",
+        "Homebrew已停用或弃用（2）",
+        "保留了其他版本",
+      ]),
     );
   });
 
@@ -218,6 +223,35 @@ describe("the Installed page's discovery choices", () => {
     expect(screen.queryByText(/more component/)).not.toBeInTheDocument();
   });
 
+  it("lists the formulae Homebrew keeps another version of under Keeping Other Versions, components unfolded", async () => {
+    const readline: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "readline" };
+    const node: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "node@22" };
+    artifacts = [
+      ...fullWorld(),
+      artifact(node, [{ name: "node", state: "Runs" }], { other_versions: ["22.22.0"] }),
+      { ...artifact(readline, [], { other_versions: ["8.3.3"] }), reason: "Dependency" },
+    ];
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    expect(options()[5]).toEqual(["otherVersions", "Keeping Other Versions (2)"]);
+    // No line over 所有工具 points at it: keeping one is common, and the tools work.
+    expect(screen.queryByText(/keep other versions/)).not.toBeInTheDocument();
+    show("otherVersions");
+    await waitFor(() => expect(rowNames()).toEqual(["node@22", "readline"]));
+    expect(useUiStore.getState().installedShow).toBe("otherVersions");
+
+    await i18n.changeLanguage("zh-CN");
+    await waitFor(() => expect(options()[5]).toEqual(["otherVersions", "保留了其他版本（2）"]));
+  });
+
+  it("says none keeps other versions in a source, by name, in Chinese too", async () => {
+    await i18n.changeLanguage("zh-CN");
+    useUiStore.getState().openInstalled(PIPX);
+    useUiStore.getState().setInstalledShow("otherVersions");
+    renderInstalled();
+    expect(await screen.findByText(/^pipx中没有发现保留了其他版本的工具/)).toBeInTheDocument();
+  });
+
   it("counts only the source in view, and keeps a choice with none, without a number", async () => {
     useUiStore.getState().openInstalled(PIPX);
     renderInstalled();
@@ -225,6 +259,7 @@ describe("the Installed page's discovery choices", () => {
     expect(options().slice(3)).toEqual([
       ["notOnPath", "Not Found in Terminal (1)"],
       ["brewRetired", "Disabled or Deprecated by Homebrew"],
+      ["otherVersions", "Keeping Other Versions"],
     ]);
   });
 
@@ -235,7 +270,10 @@ describe("the Installed page's discovery choices", () => {
     expect(options().slice(3)).toEqual([
       ["notOnPath", "Not Found in Terminal"],
       ["brewRetired", "Disabled or Deprecated by Homebrew"],
+      ["otherVersions", "Keeping Other Versions"],
     ]);
+    show("otherVersions");
+    expect(await screen.findByText("No tools keeping other versions were found")).toBeInTheDocument();
     show("notOnPath");
     expect(await screen.findByText("No tools missing from Terminal were found")).toBeInTheDocument();
     show("brewRetired");

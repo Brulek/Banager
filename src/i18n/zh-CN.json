@@ -105,6 +105,12 @@
     "brewRetiredNoticeDetail": "Homebrew不再为停用的工具提供更新，弃用的以后可能会停用。已安装的不会被删除。",
     "view": "查看"
   },
+  "otherVersionsShow": {
+    "show": "保留了其他版本",
+    "showCount": "保留了其他版本（{{number}}）",
+    "none": "没有发现保留了其他版本的工具",
+    "noneInSource": "{{source}}中没有发现保留了其他版本的工具"
+  },
   "twinsFilter": {
     "show": "装了不止一份",
     "none": "没有发现装了不止一份的工具",

@@ -48,7 +48,7 @@ function artifact(instanceId: string, name: string, facts: Partial<InstalledArti
   };
 }
 
-/** A Mac with one of everything the sheet can point at: uv not answering, a tool Terminal can't find, two copies of Claude Code, a formula Homebrew disabled. */
+/** A Mac with one of everything the sheet can point at: uv not answering, a tool Terminal can't find, two copies of Claude Code, a formula Homebrew disabled, one it keeps an older version of. */
 const SNAPSHOT: Snapshot = {
   generation: 2,
   round: 2,
@@ -64,6 +64,9 @@ const SNAPSHOT: Snapshot = {
         other_versions: [],
       },
       commands: [{ name: "youtube-dl", state: "Runs" }],
+    }),
+    artifact(BREW, "readline", {
+      homebrew: { deprecated: null, disabled: null, caveats: null, other_versions: ["8.3.3"] },
     }),
     artifact(NPM, "@anthropic-ai/claude-code", {
       family: "claude-code",
@@ -148,6 +151,7 @@ describe("ToolSetupSheet", () => {
     ["1 tool can't be found in Terminal", "notOnPath"],
     ["1 tool is installed more than once", "twins"],
     ["1 tool was disabled or deprecated by Homebrew", "brewRetired"],
+    ["1 tool keeps other versions", "otherVersions"],
   ] as const)("closes on 查看 of “%s” and opens Installed on every source showing that choice", async (line, show) => {
     const { dialog, findByRole, queryByRole } = await openedFromHelp();
     fireEvent.click(within(dialog).getByRole("button", { name: `Show: ${line}` }));

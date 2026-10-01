@@ -168,6 +168,7 @@ describe("the Show popup", () => {
       // And its discovery choices (discoverFilter.test.tsx), with no number while none matches.
       ["notOnPath", "Not Found in Terminal"],
       ["brewRetired", "Disabled or Deprecated by Homebrew"],
+      ["otherVersions", "Keeping Other Versions"],
     ]);
     expect(popup).toHaveValue("all");
     expect(useUiStore.getState().installedShow).toBe("all");

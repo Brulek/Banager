@@ -116,6 +116,12 @@
     "brewRetiredNoticeDetail": "Homebrew no longer updates a disabled tool, and may disable a deprecated one later. What's installed isn't removed.",
     "view": "Show"
   },
+  "otherVersionsShow": {
+    "show": "Keeping Other Versions",
+    "showCount": "Keeping Other Versions ({{number}})",
+    "none": "No tools keeping other versions were found",
+    "noneInSource": "No tools keeping other versions were found in {{source}}"
+  },
   "twinsFilter": {
     "show": "Installed More Than Once",
     "none": "No tools installed more than once were found",
