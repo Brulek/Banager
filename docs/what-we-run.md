@@ -1920,6 +1920,8 @@ each folder, every folder above it is `lstat`ed and a link among them read
 (`readlink`), so that where it leads is known before anything there is
 looked at. A model's own size is the one Ollama reports; the models
 together are their folder's, each layer once, since models share layers.
+That folder is all of `blobs`, so a layer no model uses any more (left
+by a removed model, or by a download that stopped) counts in it too.
 
 How it counts: a symbolic link is never followed — the link itself counts,
 not what it points at; a folder on another volume is never entered; a file
