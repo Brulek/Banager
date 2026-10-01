@@ -229,6 +229,10 @@ fn mutations(name: &str, base: &str, rng: &mut Rng, budget: usize) -> Vec<(Strin
             ("every string empty", Value::String(String::new())),
             ("every string a newline", Value::String("a\nb".into())),
             ("every string a control", Value::String("\u{1b}[31m".into())),
+            (
+                "every string reordered",
+                Value::String("jq\u{202e}gnp\u{200b}".into()),
+            ),
             ("every string blank", Value::String("  ".into())),
         ] {
             let mut all = value.clone();
@@ -483,8 +487,10 @@ fn short(s: &str) -> String {
     s.chars().take(80).collect()
 }
 
+/// A control character, or one invisible or reordering
+/// (`sanity::is_unshowable`).
 fn has_control(s: &str) -> bool {
-    s.chars().any(char::is_control)
+    s.chars().any(crate::adapters::sanity::is_unshowable)
 }
 
 fn name_ok(what: &str, name: &str) -> Result<(), String> {
@@ -537,7 +543,7 @@ fn hits_ok(hits: &[SearchHit]) -> Result<(), String> {
 
 fn version_token_ok(version: &Option<String>) -> Result<(), String> {
     match version {
-        Some(v) if v.trim().is_empty() || v.chars().any(|c| c.is_control()) => {
+        Some(v) if v.trim().is_empty() || has_control(v) => {
             Err(format!("bad version: {:?}", short(v)))
         }
         _ => Ok(()),

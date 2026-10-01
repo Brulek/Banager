@@ -14,17 +14,54 @@
 
 use crate::model::{InstalledArtifact, SearchHit, UpdateCandidate};
 
-/// A name a row can show and a command can be given: something besides
-/// white space, and no control character -- no newline, no `\r` a CRLF
-/// left, no escape sequence, no NUL.
-pub(crate) fn is_name(s: &str) -> bool {
-    !s.trim().is_empty() && !s.chars().any(char::is_control)
+/// A character a row must not show: a control character (Unicode Cc --
+/// newline, `\r`, escape, NUL), or one that is invisible or reorders
+/// the text around it: the format characters (Cf -- bidi overrides and
+/// isolates such as U+202E, zero-width spaces and joiners, the BOM, the
+/// soft hyphen, tag characters) and the line and paragraph separators
+/// (U+2028, U+2029). With one of these a name can look like another, or
+/// like nothing. The Cf list is Unicode 16's, written out because `std`
+/// has no general-category lookup.
+pub(crate) fn is_unshowable(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{ad}'
+                | '\u{600}'..='\u{605}'
+                | '\u{61c}'
+                | '\u{6dd}'
+                | '\u{70f}'
+                | '\u{890}'..='\u{891}'
+                | '\u{8e2}'
+                | '\u{180e}'
+                | '\u{200b}'..='\u{200f}'
+                | '\u{2028}'..='\u{202e}'
+                | '\u{2060}'..='\u{2064}'
+                | '\u{2066}'..='\u{206f}'
+                | '\u{feff}'
+                | '\u{fff9}'..='\u{fffb}'
+                | '\u{110bd}'
+                | '\u{110cd}'
+                | '\u{13430}'..='\u{1343f}'
+                | '\u{1bca0}'..='\u{1bca3}'
+                | '\u{1d173}'..='\u{1d17a}'
+                | '\u{e0001}'
+                | '\u{e0020}'..='\u{e007f}'
+        )
 }
 
-/// A version as text: no control character. Empty is allowed: it is an
-/// unknown version.
+/// A name a row can show and a command can be given: something besides
+/// white space, and no character `is_unshowable` -- no newline, no `\r`
+/// a CRLF left, no escape sequence, no NUL, no bidi override or
+/// zero-width character.
+pub(crate) fn is_name(s: &str) -> bool {
+    !s.trim().is_empty() && !s.chars().any(is_unshowable)
+}
+
+/// A version as text: no character `is_unshowable`. Empty is allowed: it
+/// is an unknown version.
 pub(crate) fn is_version(s: &str) -> bool {
-    !s.chars().any(char::is_control)
+    !s.chars().any(is_unshowable)
 }
 
 /// A version read off a `--version` line: a non-empty token with no
@@ -93,6 +130,28 @@ mod tests {
             "\u{7f}",
         ] {
             assert!(!is_name(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn regression_a_name_or_version_holds_no_invisible_or_reordering_character() {
+        for bad in [
+            "jq\u{202e}gnp.exe",
+            "\u{2066}jq\u{2069}",
+            "j\u{200b}q",
+            "\u{200d}",
+            "\u{feff}jq",
+            "jq\u{2028}",
+            "jq\u{2029}x",
+            "j\u{ad}q",
+            "jq\u{e0041}",
+        ] {
+            assert!(!is_name(bad), "{bad:?}");
+            assert!(!is_version(bad), "{bad:?}");
+        }
+        // Not format characters: letters with marks, CJK, a plain space.
+        for ok in ["café", "名字", "naïve", "a b"] {
+            assert!(is_name(ok), "{ok:?}");
         }
     }
 
