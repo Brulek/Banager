@@ -170,9 +170,10 @@ describe("sourceNoticesFor", () => {
       descriptionKey: "sourceNotice.httpsHostRefused.description",
       values: { source: "Ollama" },
     });
-    // Says it is Banager, names the variable, and is not "not responding".
+    // Says it is what this app supports, names the variable, and is not
+    // "not responding".
     for (const locale of [en, zhCN]) {
-      expect(locale.sourceNotice.httpsHostRefused.title).toMatch(/Banager/);
+      expect(locale.sourceNotice.httpsHostRefused.title).toMatch(/isn't supported|不支持/);
       expect(locale.sourceNotice.httpsHostRefused.description).toMatch(/OLLAMA_HOST/);
       expect(locale.sourceNotice.httpsHostRefused.description).toContain("{{source}}");
       expect(locale.sourceNotice.httpsHostRefused.description).not.toMatch(/respond|响应|later|稍后/);

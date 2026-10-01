@@ -592,9 +592,9 @@
     "more_other": "还有{{count}}条提示",
     "showFewer": "收起",
     "httpsHostRefused": {
-      "title": "Banager不通过https连接Ollama",
-      "description": "OLLAMA_HOST设置的是https://开头的地址，而Banager只通过http连接Ollama，因此无法检查{{source}}。如果那里的Ollama也能通过http访问，请把OLLAMA_HOST改为它的http://地址，然后退出并重新打开Banager。",
-      "statusWord": "不通过https连接"
+      "title": "不支持通过https连接Ollama",
+      "description": "OLLAMA_HOST设置的是https://开头的地址，而连接Ollama只支持http，因此无法检查{{source}}。如果那里的Ollama也能通过http访问，请把OLLAMA_HOST改为它的http://地址，然后退出并重新打开此App。",
+      "statusWord": "不支持https"
     },
     "noPip": {
       "title": "“{{command}}”没有附带pip",

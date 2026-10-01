@@ -1143,7 +1143,7 @@ an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
 Network section, which exempts `http` only. `detect` checks the URL with
 that same allowlist (`https_refused`, calling `host_allowed`) and does not
 send the request at all. The notice says it was Banager that refused:
-"Banager doesn't connect to Ollama over https", that `OLLAMA_HOST` is set
+"Connecting to Ollama over https isn't supported", that `OLLAMA_HOST` is set
 to an `https://` address, and, if that Ollama also answers over http, to
 change `OLLAMA_HOST` to its `http://` address and quit and open Banager
 again — with no Check Again and no Open Ollama button, since
@@ -2922,8 +2922,8 @@ Plain `http` is exempt from the list for one caller: the Ollama daemon at
 a machine the user named. The exemption is by scheme, not by caller: an
 `https://` `OLLAMA_HOST` is refused like any other https host that is not
 in the table, before any connection — Ollama's `detect` does not even
-build the request — and that Ollama's notice says Banager does not
-connect to Ollama over https (its section says exactly how). Recorded in
+build the request — and that Ollama's notice says "Connecting to Ollama
+over https isn't supported" (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
 Every request: TLS through rustls; the header `User-Agent:

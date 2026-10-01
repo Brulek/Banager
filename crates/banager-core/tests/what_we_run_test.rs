@@ -191,7 +191,7 @@ fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
     // (`runner/path_env.rs`), and `host_allowed` exempts `http` only -- so
     // `OllamaAdapter::detect`, which asks that same function, does not
     // send `{host}/api/tags` and reports `HttpsHostRefused`, whose notice
-    // says Banager does not connect to Ollama over https. Both sections
+    // says connecting to Ollama over https isn't supported. Both sections
     // of the document that describe that host have to say it is refused:
     // a reader who is told https is accepted and the daemon host is exempt
     // debugs their daemon instead of Banager.
@@ -213,8 +213,7 @@ fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
         // And what the window shows for it, which is no longer a daemon
         // that did not answer.
         assert!(
-            folded.contains("Banager does not connect to Ollama over https")
-                || folded.contains("Banager doesn't connect to Ollama over https"),
+            folded.contains("\"Connecting to Ollama over https isn't supported\""),
             "the `## {section}` section of docs/what-we-run.md does not say what the notice for that Ollama says"
         );
         assert!(

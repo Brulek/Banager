@@ -382,8 +382,8 @@ describe("a source's state words", () => {
       read_only_reason: "ByDesign",
       status: { unavailable: "NoPip", notes: [] },
     });
-    expect(sourceStateWords(en, ollama)).toEqual(["Not connected over https"]);
-    expect(sourceStateWords(zh, ollama)).toEqual(["不通过https连接"]);
+    expect(sourceStateWords(en, ollama)).toEqual(["https not supported"]);
+    expect(sourceStateWords(zh, ollama)).toEqual(["不支持https"]);
     expect(sourceStateWords(en, noPip)).toEqual(["No pip", "View only"]);
     expect(sourceStateWords(zh, noPip)).toEqual(["没有pip", "仅供查看"]);
   });
