@@ -146,7 +146,7 @@ function lineOf(check: ToolSetupCheck, section: string, id: string): SetupLine {
 describe("toolSetupCheck, on a Mac with nothing wrong", () => {
   it("says each section is fine in one line, in English", () => {
     expect(shape(toolSetupCheck(en, input()))).toEqual({
-      "Terminal settings": ["fine Terminal's login settings were read, and so were all 3 folders it looks in for commands"],
+      "Terminal settings": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: [
         "fine Every source answered normally · Homebrew, npm",
         "note Look in Other Programs for command-line programs from none of these sources → unknown",
@@ -159,7 +159,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
 
   it("and in Chinese", () => {
     expect(shape(toolSetupCheck(zh, input()))).toEqual({
-      终端设置: ["fine 已读取终端登录时的设置，它查找命令的3个文件夹也都已读取"],
+      终端设置: ["fine 终端设置读取正常，查找命令的3个文件夹也都能读取"],
       来源: [
         "fine 所有来源都正常回应 · Homebrew、npm",
         "note 不属于这些来源的命令行程序，可以在“其他程序”里找 → unknown",
@@ -236,7 +236,7 @@ describe("toolSetupCheck's terminal lines", () => {
   it("says one folder in the singular", () => {
     const check = toolSetupCheck(en, input({ facts: { ...FACTS, path_folders: { read: 1, unread: [] } } }));
     expect(check.sections[0].lines[0].text).toBe(
-      "Terminal's login settings were read, and so was the 1 folder it looks in for commands",
+      "Terminal's settings were read normally, and so was the 1 folder it looks in for commands",
     );
   });
 
@@ -493,7 +493,7 @@ describe("toolSetupCheck while the first check runs", () => {
   it("says it is checking while nothing is listed yet", () => {
     const check = toolSetupCheck(en, input({ snapshot: null, pending: true }));
     expect(shape(check)).toEqual({
-      "Terminal settings": ["fine Terminal's login settings were read, and so were all 3 folders it looks in for commands"],
+      "Terminal settings": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: ["busy Checking…"],
       Commands: ["busy These appear here when the check finishes"],
     });

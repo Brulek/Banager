@@ -124,7 +124,7 @@ async function openedFromHelp() {
   menu.choose("checkToolSetup");
   const dialog = await view.findByRole("dialog", { name: "Tool Setup" });
   // The facts are in: the terminal section says what they say.
-  await within(dialog).findByText(/Terminal's login settings were read/);
+  await within(dialog).findByText(/Terminal's settings were read normally/);
   return { ...view, dialog };
 }
 

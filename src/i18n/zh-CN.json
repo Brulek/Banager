@@ -944,7 +944,7 @@
       "loginNotRead": "无法读取终端登录时的设置，所以这次没有判断终端里运行的是哪一份",
       "loginNotReadDetail": "从访达打开的App只带有系统默认的命令查找位置。用它来判断，几乎每个工具都会显示为终端里找不到。",
       "noFacts": "无法读取终端的设置",
-      "allFine_other": "已读取终端登录时的设置，它查找命令的{{count}}个文件夹也都已读取",
+      "allFine_other": "终端设置读取正常，查找命令的{{count}}个文件夹也都能读取",
       "foldersSomeUnread": "终端查找命令的文件夹中，{{read}}个已读取，{{unread}}个无法读取",
       "foldersUnreadDetail": "无法读取的文件夹在受保护的位置，或者不允许列出内容。里面有哪些命令无法得知，受它们影响的判断不会给出。",
       "foldersCount": "终端查找命令的文件夹：{{number}}个",
