@@ -977,6 +977,37 @@ describe("InstalledPage", () => {
     expect(container.querySelector("code")).toBeNull();
   });
 
+  it("offers no Uninstall on npm's own npm, and says why behind its chip, while its other packages keep theirs", async () => {
+    // `UninstallBlocked::SourceProgram` (npm's inventory, on its own `npm`):
+    // `npm uninstall -g npm` would take the npm every other package is
+    // updated and uninstalled with. `Session::issue_plan` and npm's own
+    // plan refuse it in Rust too.
+    const npm: ManagerInstance = {
+      ...brew,
+      id: "npm:/opt/homebrew",
+      adapter_id: "npm",
+      exe_path: "/opt/homebrew/bin/npm",
+      version: "12.0.2",
+    };
+    const npmRow = (name: string, blocked: InstalledArtifact["uninstall_blocked"]) =>
+      formula(name, { key: { instance_id: npm.id, kind: "Package", name }, uninstall_blocked: blocked, facts: NO_FACTS });
+    served = {
+      ...snapshot,
+      instances: [npm],
+      artifacts: [npmRow("npm", "SourceProgram"), npmRow("prettier", null)],
+      updates: [],
+    };
+    const { queryAllByRole, container } = renderInstalled();
+
+    const own = await findRow("npm");
+    expect(queryAllByRole("button", { name: ANY_UNINSTALL })).toHaveLength(1);
+    expect(within(rowOf("prettier")).getByRole("button", { name: ANY_UNINSTALL })).toBeInTheDocument();
+    expect(chipDetail(own, "Can't uninstall here")).toHaveTextContent(
+      "This is npm itself. Every tool installed with npm is updated and uninstalled with it, so it can't be uninstalled here.",
+    );
+    expect(container.querySelector("code")).toBeNull();
+  });
+
   it("shows the standalone summary beside its chip, and a Homebrew package with no description what Homebrew says it is", async () => {
     // A standalone artifact carries `description: null` (the line has to
     // be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a
