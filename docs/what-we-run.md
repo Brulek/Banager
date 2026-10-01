@@ -2347,6 +2347,19 @@ Every path in the text has the home folder written as `~`. The folders on
 so; it never holds any other environment variable's value (a proxy setting
 can hold a password), anything from a shell file, or a token.
 
+Check Tool Setup (「检查工具环境」), in the Help menu and beside Copy
+Diagnostic Info in Settings' About, opens a sheet that says the same facts
+in sentences: whether the login shell's `PATH` was read, how many of its
+folders the last check read and how many it could not, each source's
+status, how many tools Terminal cannot find or has twice, what Homebrew
+disabled, deprecated or keeps other versions of, and the disk measured. It
+is built from the same `get_system_facts` answer and the snapshot and sizes
+the window holds; the folder counts, and the unread folders' paths that it
+shows only with Show Technical Details on, are what the last refresh round
+made of the `PATH` folders when it read them to say which copy of a
+command runs (`Session::path_folders`, `commands::finish`). Nothing more is
+read, nothing runs, nothing is written, and no connection is made for it.
+
 ## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded:

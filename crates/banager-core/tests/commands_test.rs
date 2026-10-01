@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use banager_core::adapters::brew::parse::parse_info_installed;
 use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
 use banager_core::commands::{bin_folders, judge, read_folders, CommandBudget, Folders};
+use banager_core::diagnostics::PathFolders;
 use banager_core::events::{EventSink, OpId, VecSink};
 use banager_core::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CommandFact, CommandInputs, CommandState,
@@ -1095,6 +1096,46 @@ async fn test_a_refresh_writes_the_verdicts_and_an_unchanged_disk_does_not_move_
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_a_session_keeps_what_its_last_round_made_of_the_path_folders() {
+    let home = Home::new("session-path-folders");
+    let setup = two_claudes(&home);
+    let session = session_over(&setup);
+    assert_eq!(session.path_folders(), None, "no round yet");
+    let env = home.env(vec![setup.npm_bin.clone(), setup.local_bin.clone()]);
+    session.refresh(&env, &CheckOptions::default()).await;
+    assert_eq!(
+        session.path_folders(),
+        Some(PathFolders {
+            read: 2,
+            unread: Vec::new(),
+        })
+    );
+    // A round against a PATH that is not the login shell's reads none of
+    // it, and says nothing of it.
+    session.note_login_path(false);
+    session.refresh(&env, &CheckOptions::default()).await;
+    assert_eq!(session.path_folders(), None);
+}
+
+#[test]
+fn test_a_read_the_budget_stopped_says_nothing_of_the_path_folders() {
+    let home = Home::new("path-summary-stopped");
+    let bin = home.dir("bin");
+    home.exe("bin/one");
+    let folders = read_folders(
+        std::slice::from_ref(&bin),
+        &[],
+        home.path(),
+        CommandBudget {
+            max_entries: 0,
+            max_duration: Duration::from_secs(5),
+        },
+    );
+    assert!(!folders.complete());
+    assert_eq!(folders.path_summary(home.path()), None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_a_session_told_the_path_was_not_restored_says_nothing_about_which_runs() {
     let home = Home::new("session-unknown");
     let setup = two_claudes(&home);
@@ -1422,6 +1463,15 @@ fn test_a_path_folder_that_is_there_but_cannot_be_listed_is_kept_unread() {
     assert_eq!(
         folders.path_folders(),
         vec![home.at(".cargo/bin").as_path()]
+    );
+    // What the window's tool setup check is told: one read, one not, the
+    // one not as named on PATH with the home folder as `~`.
+    assert_eq!(
+        folders.path_summary(home.path()),
+        Some(PathFolders {
+            read: 1,
+            unread: vec!["~/tools/bin".to_string()],
+        })
     );
     let found = verdicts(
         &home,

@@ -324,6 +324,9 @@ pub struct Session {
     /// on a folder that stopped answering is not joined by another each
     /// round.
     commands_in_flight: Arc<std::sync::atomic::AtomicBool>,
+    /// What the last round made of `PATH`'s folders (`commands::finish`),
+    /// for `get_system_facts`: `None` until a round read them in full.
+    path_folders: Mutex<Option<crate::diagnostics::PathFolders>>,
     /// Measures how much disk each installed thing takes after every round
     /// commits (`refresh_recording`, `sizes.rs`), or `None`: on in
     /// `Session::new` and `with_adapters_and_sizes`, off for every other
@@ -474,6 +477,7 @@ impl Session {
             background_change,
             login_path: std::sync::atomic::AtomicBool::new(true),
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            path_folders: Mutex::new(None),
             sizes,
             kept_data_home: Mutex::new(None),
             history: std::sync::OnceLock::new(),
@@ -533,6 +537,15 @@ impl Session {
     /// shell's. Read by `get_system_facts` for the diagnostic text.
     pub fn login_path_restored(&self) -> bool {
         self.login_path.load(Ordering::SeqCst)
+    }
+
+    /// What the last refresh round made of `PATH`'s folders when it read
+    /// them to say which copy of a command runs: how many it read, and
+    /// those it left unread (`commands::finish`). `None` before a round
+    /// has, and after one that did not read them in full. Read by
+    /// `get_system_facts` for the window's tool setup check.
+    pub fn path_folders(&self) -> Option<crate::diagnostics::PathFolders> {
+        self.path_folders.lock().unwrap().clone()
     }
 
     /// Resolves when something a refresh reported has since changed by

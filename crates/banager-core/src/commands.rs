@@ -59,6 +59,7 @@
 
 use crate::adapters::standalone::recipe::RouteKind;
 use crate::adapters::standalone::recipes::RECIPES;
+use crate::diagnostics::{shown_path, PathFolders};
 use crate::dirfd::{Dir, Stat};
 use crate::model::{
     ArtifactKind, CommandFact, CommandState, InstallReason, InstalledArtifact, ManagerInstance,
@@ -175,6 +176,24 @@ impl Folders {
 
     pub fn complete(&self) -> bool {
         self.complete
+    }
+
+    /// What the window's tool setup check says of `PATH`'s folders
+    /// (`SystemFacts::path_folders`): how many were read, and the ones
+    /// left unread, as named, home folder as `~`. `None` for a read the
+    /// budget stopped: its counts would be of half a `PATH`.
+    pub fn path_summary(&self, home: &Path) -> Option<PathFolders> {
+        if !self.complete {
+            return None;
+        }
+        Some(PathFolders {
+            read: self.path.iter().filter(|folder| folder.read).count(),
+            unread: self
+                .unread_path_folders()
+                .into_iter()
+                .map(|dir| shown_path(dir, Some(home)))
+                .collect(),
+        })
     }
 }
 
@@ -918,6 +937,10 @@ pub(crate) fn start_reading(
 /// files. With no answer this round (the budget, a read that did not come
 /// back, one still stuck from an earlier round), the rows the inventories
 /// listed have no verdicts.
+///
+/// Returns what the round made of `PATH`'s folders (`Folders::path_summary`)
+/// when it read them in full against the login shell's `PATH`, for the
+/// window's tool setup check; `None` otherwise. Nothing more is read for it.
 pub(crate) async fn finish(
     reading: Reading,
     instances: &[ManagerInstance],
@@ -926,9 +949,15 @@ pub(crate) async fn finish(
     path_known: bool,
     in_flight: &Arc<AtomicBool>,
     budget: CommandBudget,
-) {
+) -> Option<PathFolders> {
+    let folders = folders_read(reading, budget).await?;
+    let summary = if path_known {
+        folders.path_summary(home)
+    } else {
+        None
+    };
     let answer = judged_in_background(
-        reading, instances, artifacts, home, path_known, in_flight, budget,
+        folders, instances, artifacts, home, path_known, in_flight, budget,
     )
     .await;
     if let Some(commands) = answer {
@@ -938,10 +967,23 @@ pub(crate) async fn finish(
             }
         }
     }
+    summary
+}
+
+/// The folders the first half read, or `None` when it was not started (an
+/// earlier round's read still running) or did not come back within its
+/// budget and `GRACE`.
+async fn folders_read(reading: Reading, budget: CommandBudget) -> Option<Folders> {
+    let handle = reading.handle?;
+    let deadline = reading.started + budget.max_duration + GRACE;
+    tokio::time::timeout_at(deadline.into(), handle)
+        .await
+        .ok()?
+        .ok()
 }
 
 async fn judged_in_background(
-    reading: Reading,
+    folders: Folders,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
     home: &Path,
@@ -949,12 +991,6 @@ async fn judged_in_background(
     in_flight: &Arc<AtomicBool>,
     budget: CommandBudget,
 ) -> Option<Vec<Vec<CommandFact>>> {
-    let handle = reading.handle?;
-    let deadline = reading.started + budget.max_duration + GRACE;
-    let folders = tokio::time::timeout_at(deadline.into(), handle)
-        .await
-        .ok()?
-        .ok()?;
     if in_flight.swap(true, Ordering::SeqCst) {
         return None;
     }

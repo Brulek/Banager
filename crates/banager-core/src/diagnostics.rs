@@ -1,7 +1,10 @@
 //! What the window cannot find out by itself for 「拷贝诊断信息」 ("Copy
-//! Diagnostic Info"): which macOS this is, on which chip, whether `PATH`
-//! is the login shell's, the `PATH` folders, and where each source's
-//! program is -- every path with the home folder written as `~`.
+//! Diagnostic Info") and 「检查工具环境」 ("Check Tool Setup"): which macOS
+//! this is, on which chip, whether `PATH` is the login shell's, the `PATH`
+//! folders, where each source's program is, and -- filled in by the shell
+//! from the last refresh round, which read them already -- how many of the
+//! `PATH` folders that round read and which it left unread
+//! (`PathFolders`): every path with the home folder written as `~`.
 //!
 //! Read-only and quick: two `sysctlbyname` reads of the kernel's own
 //! strings (`kern.osproductversion`, `machdep.cpu.brand_string`), the
@@ -40,6 +43,25 @@ pub struct SystemFacts {
     /// Each source's program, home folder as `~`, by instance id, in the
     /// snapshot's order.
     pub sources: Vec<SourcePath>,
+    /// What the last refresh round made of `PATH`'s folders when it read
+    /// them to say which copy of a command runs (`commands::finish`): how
+    /// many it read, and the ones it left unread. `None` before a round
+    /// has, and after one that did not read them in full -- the `PATH`
+    /// was not the login shell's, the budget ran out, an earlier read was
+    /// still under way. Nothing is read for it: the round already did.
+    /// Filled in by the shell (`get_system_facts`), not by `system_facts`.
+    pub path_folders: Option<PathFolders>,
+}
+
+/// `PATH`'s folders as one refresh round read them (`commands::read_folders`):
+/// each folder once, by where it leads. `unread` are those left unread, as
+/// named on `PATH`, home folder as `~`: one in a protected place, or that
+/// leads into one or onto another disk (`protected`), and one that is there
+/// but cannot be listed. Mirrored by `PathFolders` in src/lib/types.ts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathFolders {
+    pub read: usize,
+    pub unread: Vec<String>,
 }
 
 /// One source's program, as `SystemFacts::sources` lists it.
@@ -88,6 +110,7 @@ pub fn system_facts(
         login_path,
         path_dirs,
         sources,
+        path_folders: None,
     }
 }
 
@@ -108,7 +131,7 @@ pub fn current(login_path: bool, instances: &[ManagerInstance]) -> SystemFacts {
 /// `path` with the home folder written as `~`, as Finder and Terminal show
 /// one. A home that is missing, relative or the root folder abbreviates
 /// nothing: every path would start with `/`.
-fn shown_path(path: &Path, home: Option<&Path>) -> String {
+pub(crate) fn shown_path(path: &Path, home: Option<&Path>) -> String {
     let home = home.filter(|home| home.is_absolute() && home.parent().is_some());
     match home.map(|home| path.strip_prefix(home)) {
         Some(Ok(rest)) if rest.as_os_str().is_empty() => "~".to_string(),
@@ -284,7 +307,8 @@ mod tests {
                 concat!(
                     r#"{{"macos_version":"27.0","chip":"Apple M2 Pro","arch":"{}","#,
                     r#""login_path":true,"path_dirs":["/usr/bin"],"#,
-                    r#""sources":[{{"instance_id":"npm:/opt/homebrew","exe_path":"/opt/homebrew/bin/npm"}}]}}"#
+                    r#""sources":[{{"instance_id":"npm:/opt/homebrew","exe_path":"/opt/homebrew/bin/npm"}}],"#,
+                    r#""path_folders":null}}"#
                 ),
                 std::env::consts::ARCH
             )
@@ -294,8 +318,22 @@ mod tests {
         let empty = serde_json::to_string(&SystemFacts::default()).unwrap();
         assert_eq!(
             empty,
-            r#"{"macos_version":null,"chip":null,"arch":"","login_path":false,"path_dirs":[],"sources":[]}"#
+            r#"{"macos_version":null,"chip":null,"arch":"","login_path":false,"path_dirs":[],"sources":[],"path_folders":null}"#
         );
+        // What the shell fills in once a round has read the folders.
+        let read = SystemFacts {
+            path_folders: Some(PathFolders {
+                read: 9,
+                unread: vec!["~/Documents/bin".to_string()],
+            }),
+            ..SystemFacts::default()
+        };
+        let json = serde_json::to_string(&read).unwrap();
+        assert!(
+            json.ends_with(r#""path_folders":{"read":9,"unread":["~/Documents/bin"]}}"#),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<SystemFacts>(&json).unwrap(), read);
     }
 
     #[cfg(target_os = "macos")]
@@ -333,9 +371,13 @@ mod tests {
                 "login_path",
                 "macos_version",
                 "path_dirs",
+                // Counts and folder paths a refresh round already made,
+                // never a variable's value; none until the shell fills it in.
+                "path_folders",
                 "sources"
             ]
         );
+        assert_eq!(facts.path_folders, None);
         if let Some(home) = std::env::var_os("HOME").filter(|home| home.len() > 1) {
             let home = home.to_string_lossy().into_owned();
             for dir in &facts.path_dirs {

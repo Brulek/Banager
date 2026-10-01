@@ -753,7 +753,9 @@ impl Session {
 
         // The rows this round's inventories listed, judged against this
         // round's reading; a carried row keeps its own (`commands::finish`).
-        crate::commands::finish(
+        // What it made of `PATH`'s folders is kept for the window's tool
+        // setup check (`Session::path_folders`): this round's, or none.
+        let path_folders = crate::commands::finish(
             commands,
             &instances,
             &mut artifacts,
@@ -763,6 +765,7 @@ impl Session {
             crate::commands::CommandBudget::default(),
         )
         .await;
+        *self.path_folders.lock().unwrap() = path_folders;
 
         // Stamped because a refresh *ran*, not because it came back
         // perfect. Gated on `stale`, a Mac with one permanently unavailable

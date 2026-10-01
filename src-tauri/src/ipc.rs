@@ -771,18 +771,22 @@ pub async fn get_sizes(state: State<'_, AppState>) -> Result<banager_core::size:
     get_sizes_impl(&state)
 }
 
-/// What the window's 「拷贝诊断信息」 needs and cannot read itself
-/// (`banager_core::diagnostics`): macOS's version and the chip, from two
-/// `sysctlbyname` reads; whether `PATH` is the login shell's and its
-/// folders; and each source's program in the current snapshot -- every
-/// path with the home folder as `~`. Takes nothing from the window, runs
-/// no command, opens no file and reads no environment variable but `PATH`
-/// and `HOME`; quick, so it runs inline.
+/// What the window's 「拷贝诊断信息」 and 「检查工具环境」 need and cannot
+/// read themselves (`banager_core::diagnostics`): macOS's version and the
+/// chip, from two `sysctlbyname` reads; whether `PATH` is the login
+/// shell's and its folders; each source's program in the current snapshot;
+/// and what the last refresh round made of the `PATH` folders
+/// (`Session::path_folders`: how many it read, which it left unread) --
+/// every path with the home folder as `~`. Takes nothing from the window,
+/// runs no command, opens no file and reads no environment variable but
+/// `PATH` and `HOME`; quick, so it runs inline.
 pub(crate) fn get_system_facts_impl(state: &AppState) -> banager_core::diagnostics::SystemFacts {
-    banager_core::diagnostics::current(
+    let mut facts = banager_core::diagnostics::current(
         state.session.login_path_restored(),
         &state.session.snapshot().instances,
-    )
+    );
+    facts.path_folders = state.session.path_folders();
+    facts
 }
 
 #[tauri::command]
@@ -2657,8 +2661,12 @@ mod tests {
         // shell owes the snapshot's sources and the session's word on PATH.
         let state = state_measuring_sizes();
         assert!(get_system_facts_impl(&state).sources.is_empty());
+        // Nothing of the PATH folders before a round has read them.
+        assert_eq!(get_system_facts_impl(&state).path_folders, None);
         refresh_impl(&state).await.expect("refresh_impl");
         let facts = get_system_facts_impl(&state);
+        // The round's own word on them, as the session keeps it.
+        assert_eq!(facts.path_folders, state.session.path_folders());
         assert_eq!(
             facts
                 .sources
