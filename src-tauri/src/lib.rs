@@ -1,5 +1,6 @@
 mod auto_check;
 pub mod events;
+mod history;
 mod ipc;
 mod menu;
 mod notify;
@@ -70,9 +71,14 @@ pub fn run() {
         // reads it.
         .manage(std::sync::Arc::new(banager_core::icon::AppIcons::real()))
         .setup(move |app| {
-            let settings_path = app.path().app_data_dir()?.join("settings.json");
+            let data_dir = app.path().app_data_dir()?;
+            let settings_path = data_dir.join("settings.json");
             let channel_sink = events::ChannelSink::new();
             app.manage(AppState::new(settings_path, channel_sink));
+            // 「最近更新」 after a restart: `history.json` beside
+            // `settings.json` (history.rs; docs/what-we-run.md, "Files
+            // Banager writes").
+            history::attach(&app.state::<AppState>(), &data_dir);
             app.state::<AppState>().session.note_login_path(login_path);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -136,6 +142,8 @@ pub fn run() {
             ipc::artifact_icon,
             ipc::get_sizes,
             ipc::get_system_facts,
+            history::get_history,
+            history::clear_history,
             menu::set_menu_language,
             notify::report_update_set,
             notify::request_notification_permission,
