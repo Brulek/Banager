@@ -29,6 +29,7 @@ import { withFamilies } from "./mockFamilies";
 import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import { withMockKeptData } from "./mockKeptData";
 import { mockSizes } from "./mockSizes";
+import { mockSystemFacts } from "./mockDiagnostics";
 import type { Scenario } from "./scenario";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
@@ -46,6 +47,7 @@ export const MOCK_COMMANDS = [
   "scan_unknown",
   "artifact_icon",
   "get_sizes",
+  "get_system_facts",
   "set_menu_language",
   "report_update_set",
   "request_notification_permission",
@@ -587,6 +589,11 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     async get_sizes() {
       // `Session::sizes`: what the newest round has said so far.
       return clone(sizes);
+    },
+    async get_system_facts() {
+      // `diagnostics::current`: the committed snapshot's sources, none
+      // before the first refresh.
+      return mockSystemFacts(committed?.instances ?? []);
     },
     async report_update_set(args) {
       // No notification to post: the preview has no daily check, and so no

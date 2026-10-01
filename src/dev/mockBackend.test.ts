@@ -12,6 +12,7 @@ import type {
   Settings,
   Sizes,
   Snapshot,
+  SystemFacts,
   UiEvent,
   UpdateCandidate,
 } from "../lib/types";
@@ -717,5 +718,32 @@ describe("the mock backend's first-round list (InventoryPreview)", () => {
       await vi.runOnlyPendingTimersAsync();
       expect(previewsIn(events), state).toEqual([]);
     }
+  });
+});
+
+describe("the mock backend's facts for the diagnostic text (get_system_facts)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("names each source the last refresh found, every path under the home folder as ~", async () => {
+    const { backend } = backendFor();
+    const before = await answer<SystemFacts>(backend.invoke("get_system_facts"));
+    expect(before.sources).toEqual([]);
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const facts = await answer<SystemFacts>(backend.invoke("get_system_facts"));
+    expect(facts.sources.map((source) => source.instance_id)).toEqual(snapshot.instances.map((i) => i.id));
+    // The ids name where a source is, as Rust's do; the text never
+    // prints one, and the paths it does print are written with ~.
+    expect(JSON.stringify([facts.path_dirs, facts.sources.map((source) => source.exe_path)])).not.toContain(
+      "/Users/",
+    );
+    expect(facts.path_dirs).toContain("~/.local/bin");
+    expect(facts.sources.find((source) => source.instance_id.startsWith("standalone-claude"))?.exe_path).toBe(
+      "~/.local/bin/claude",
+    );
   });
 });
