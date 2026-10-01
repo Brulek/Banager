@@ -2464,10 +2464,20 @@ so that the page lists an update it watched finish only once. The file
 keeps the newest 1,000 records and nothing older than 180 days: as Banager
 starts it drops the rest and, if it dropped any, writes the file again
 straight away; it drops them again at each record. The 180 days count back
-from now, or from the newest record when the Mac's clock says a later time
-than that, so a clock set far ahead drops nothing; after more than 180 days
-with no update, the file can therefore keep records up to 180 days older
-than its newest one, until the next record. 「最近更新」 lists none older
+from a time the file keeps as trusted (`trusted_at`), or from now when the
+Mac's clock says an earlier one. A later time the clock says is kept as
+not yet trusted (`pending_at`) and becomes trusted only once the clock has
+said a time at least a week after it (`CLOCK_CONFIRM_MS`); set back before
+then, it is forgotten. Records are stamped with the clock as it is, but a
+record's own time never decides what is too old. So a clock set far ahead
+drops nothing for a week -- however many updates finish under it and
+however often Banager is opened again -- and nothing at all if it is put
+right within the week; with a right clock, a record is dropped up to a week
+(plus the time until the next record) after it is 180 days old, and after
+more than 180 days with no update the file can keep older records until
+the next record. A file from before these two times were kept starts
+trusting from now, or from its newest record when that is earlier.
+「最近更新」 lists none older
 than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
 a `history.json.tmp.<n>` beside it and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,

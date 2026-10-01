@@ -11,10 +11,12 @@
 //! already carries (an instance id names its source's prefix, which can be
 //! in the home folder; the window never shows one).
 //!
-//! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS` -- by
-//! the clock, or by the newest record when the clock says later, so a
-//! clock set far ahead drops nothing (`age_anchor`). What is listed is
-//! never older than `MAX_AGE_MS` by the clock (`HistoryStore::view`).
+//! Bounded: the newest `MAX_RECORDS`, none older than `MAX_AGE_MS` before
+//! a time the file keeps as trusted (`Clock`): a time the clock jumped to
+//! is believed only once the clock has run on from it for
+//! `CLOCK_CONFIRM_MS`, so a clock set far ahead -- and the records stamped
+//! with it -- drops nothing until then. What is listed is never older than
+//! `MAX_AGE_MS` by the clock (`HistoryStore::view`).
 //! A missing, unreadable or malformed file is an empty history, and a file
 //! a newer Banager wrote is left exactly as it is (`HistoryStore::open`).
 //! Written whole, to a staging file beside it renamed into place, as
@@ -41,6 +43,11 @@ pub const MAX_RECORDS: usize = 1_000;
 
 /// How old a record may be before it is dropped: 180 days.
 pub const MAX_AGE_MS: i64 = 180 * 24 * 60 * 60 * 1_000;
+
+/// How long the clock must run on from a time it moved ahead to before
+/// that time is trusted (`Clock`): a week. A clock set ahead by mistake
+/// is usually put right long before.
+pub const CLOCK_CONFIRM_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// What an operation was. Banager runs no install, so there are two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,12 +128,18 @@ pub struct HistoryView {
     pub records: Vec<HistoryRecord>,
 }
 
-/// The file. `records` oldest first.
+/// The file. `records` oldest first. `trusted_at` and `pending_at` are
+/// `Clock`'s; a file without them (written before they were) starts from
+/// `age_anchor`.
 #[derive(Serialize, Deserialize)]
 struct HistoryFile {
     format: u32,
     cleared_before: Option<i64>,
     records: Vec<HistoryRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    trusted_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_at: Option<i64>,
 }
 
 /// What `Session::submit` knows of an operation when it starts, kept for
@@ -228,8 +241,8 @@ pub fn record_for(
     })
 }
 
-/// What the records' age is measured from: `now`, or the newest of
-/// `records` when that is earlier. A clock set far ahead -- a wrong answer
+/// Where a history with no `Clock` yet starts trusting from: `now`, or
+/// the newest of `records` when that is earlier. A clock set far ahead -- a wrong answer
 /// from the network at boot, a date changed by hand -- then drops nothing
 /// the records do not show to be old among themselves: dropped records
 /// are gone from the file for good once it is written, and the clock may
@@ -243,7 +256,48 @@ fn age_anchor(records: &[HistoryRecord], now: i64) -> i64 {
         .map_or(now, |newest| newest.min(now))
 }
 
-/// Drops what is older than `MAX_AGE_MS` before `anchor` (`age_anchor`),
+/// What the records' age is measured from, kept in the file: the latest
+/// time the history trusts, and a later time the clock said that it does
+/// not trust yet. A record is stamped with the clock as it is, but only
+/// `trusted` -- or `now`, when the clock says earlier -- decides what is
+/// too old (`anchor`). A time the clock moved ahead to becomes trusted
+/// once the clock has said one at least `CLOCK_CONFIRM_MS` later; set back
+/// before then, it is forgotten. So a clock set far ahead, and every
+/// record stamped with it, drops nothing for a week, also across launches,
+/// and nothing at all when it is put right within the week; a Mac whose
+/// clock is right drops records up to a week (plus the time to the next
+/// record) after they pass 180 days.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Clock {
+    trusted: i64,
+    pending: Option<i64>,
+}
+
+impl Clock {
+    /// What the clock says now, taken in.
+    fn observe(&mut self, now: i64) {
+        match self.pending {
+            // Set back before it was believed: that time is not kept.
+            Some(pending) if now < pending => self.pending = None,
+            // Run on from it for long enough: believed.
+            Some(pending) if now >= pending.saturating_add(CLOCK_CONFIRM_MS) => {
+                self.trusted = self.trusted.max(pending);
+                self.pending = None;
+            }
+            _ => {}
+        }
+        if self.pending.is_none() && now > self.trusted {
+            self.pending = Some(now);
+        }
+    }
+
+    /// What age is measured from: `trusted`, or `now` when it is earlier.
+    fn anchor(&self, now: i64) -> i64 {
+        self.trusted.min(now)
+    }
+}
+
+/// Drops what is older than `MAX_AGE_MS` before `anchor` (`Clock::anchor`),
 /// then all but the newest `MAX_RECORDS`. Leaves `records` oldest first.
 fn bound(records: &mut Vec<HistoryRecord>, anchor: i64) {
     records.retain(|r| r.finished_at >= anchor.saturating_sub(MAX_AGE_MS));
@@ -263,6 +317,7 @@ enum Loaded {
     Usable {
         cleared_before: Option<i64>,
         records: Vec<HistoryRecord>,
+        clock: Clock,
         /// Whether `bound` dropped records the file still has: too old, or
         /// past the newest `MAX_RECORDS`. The file is then written again
         /// at once, so that it holds no more than its bounds say for
@@ -277,6 +332,10 @@ fn load(path: &Path, now: i64) -> Loaded {
     let empty = Loaded::Usable {
         cleared_before: None,
         records: Vec::new(),
+        clock: Clock {
+            trusted: now,
+            pending: None,
+        },
         pruned: false,
     };
     let Ok(bytes) = std::fs::read(path) else {
@@ -307,12 +366,20 @@ fn load(path: &Path, now: i64) -> Loaded {
         })
         .unwrap_or_default();
     let read = records.len();
-    let anchor = age_anchor(&records, now);
-    bound(&mut records, anchor);
+    let mut clock = Clock {
+        trusted: value
+            .get("trusted_at")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or_else(|| age_anchor(&records, now)),
+        pending: value.get("pending_at").and_then(serde_json::Value::as_i64),
+    };
+    clock.observe(now);
+    bound(&mut records, clock.anchor(now));
     Loaded::Usable {
         cleared_before,
         pruned: records.len() < read,
         records,
+        clock,
     }
 }
 
@@ -360,6 +427,8 @@ struct State {
     cleared_before: Option<i64>,
     /// Oldest first.
     records: Vec<HistoryRecord>,
+    /// What the records' age is measured from.
+    clock: Clock,
     /// False for a newer Banager's file, which is never written over.
     writable: bool,
     /// Bumped on every change; `written` is the change the file has.
@@ -406,13 +475,24 @@ impl HistoryStore {
     /// `open`, with the clock a test sets: `now_fn` answers in
     /// milliseconds since 1970.
     pub fn open_with_clock(path: PathBuf, now_fn: fn() -> i64) -> Arc<HistoryStore> {
-        let (cleared_before, records, writable, pruned) = match load(&path, now_fn()) {
+        let now = now_fn();
+        let (cleared_before, records, clock, writable, pruned) = match load(&path, now) {
             Loaded::Usable {
                 cleared_before,
                 records,
+                clock,
                 pruned,
-            } => (cleared_before, records, true, pruned),
-            Loaded::Newer => (None, Vec::new(), false, false),
+            } => (cleared_before, records, clock, true, pruned),
+            Loaded::Newer => (
+                None,
+                Vec::new(),
+                Clock {
+                    trusted: now,
+                    pending: None,
+                },
+                false,
+                false,
+            ),
         };
         let (tx, rx) = mpsc::channel::<()>();
         let store = Arc::new(HistoryStore {
@@ -422,6 +502,7 @@ impl HistoryStore {
             state: Mutex::new(State {
                 cleared_before,
                 records,
+                clock,
                 writable,
                 // A file with records past its bounds is written again
                 // straight away, without them.
@@ -473,9 +554,11 @@ impl HistoryStore {
         };
         {
             let mut state = self.state.lock().unwrap();
-            // Measured from the records before this one: its own time is
-            // `now`, which is what may be wrong.
-            let anchor = age_anchor(&state.records, now);
+            // Measured from the time the history trusts, never from this
+            // record's own, which is `now` and may be wrong -- nor from
+            // another record stamped under the same wrong clock.
+            state.clock.observe(now);
+            let anchor = state.clock.anchor(now);
             state.records.push(record);
             bound(&mut state.records, anchor);
             state.changes += 1;
@@ -570,6 +653,8 @@ impl HistoryStore {
                 format: HISTORY_FORMAT,
                 cleared_before: state.cleared_before,
                 records: state.records.clone(),
+                trusted_at: Some(state.clock.trusted),
+                pending_at: state.clock.pending,
             };
             (serde_json::to_vec_pretty(&file), state.changes, state.tries)
         };
@@ -887,6 +972,8 @@ mod tests {
                 record_at("old", NOW - 200 * DAY),
                 record_at("new", NOW - DAY),
             ],
+            trusted_at: None,
+            pending_at: None,
         };
         std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), now);
@@ -938,6 +1025,8 @@ mod tests {
                 record_at("older", NOW - 100 * DAY),
                 record_at("recent", NOW - DAY),
             ],
+            trusted_at: None,
+            pending_at: None,
         };
         let bytes = serde_json::to_vec(&file).unwrap();
         std::fs::write(dir.file(), &bytes).unwrap();
@@ -986,6 +1075,92 @@ mod tests {
         );
     }
 
+    fn a_year_ahead_an_hour_on() -> i64 {
+        a_year_ahead() + 60 * 60 * 1_000
+    }
+
+    fn a_year_and_eight_days_ahead() -> i64 {
+        a_year_ahead() + 8 * DAY
+    }
+
+    /// A file of two records from the past days, as the clock had them.
+    fn past_days(dir: &TempDir) {
+        let file = HistoryFile {
+            format: HISTORY_FORMAT,
+            cleared_before: None,
+            records: vec![
+                record_at("older", NOW - 100 * DAY),
+                record_at("recent", NOW - DAY),
+            ],
+            trusted_at: None,
+            pending_at: None,
+        };
+        std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
+    }
+
+    fn update(store: &HistoryStore, name: &str, op_id: OpId) {
+        let k = key(name);
+        let mut e = ended(&k, &Outcome::Succeeded);
+        e.op_id = op_id;
+        store.record(&e, &started(name));
+        assert!(store.flush(Duration::from_secs(5)));
+    }
+
+    fn names_on_disk(dir: &TempDir) -> Vec<String> {
+        let on_disk: HistoryFile =
+            serde_json::from_slice(&std::fs::read(dir.file()).unwrap()).unwrap();
+        let mut names: Vec<String> = on_disk.records.into_iter().map(|r| r.key.name).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn test_a_second_update_under_a_clock_set_far_ahead_drops_nothing_either() {
+        // The first record under the wrong clock is stamped with it: it
+        // must not be what the second one measures the others' age from.
+        let dir = TempDir::new("clock-ahead-twice");
+        past_days(&dir);
+        let store = HistoryStore::open_with_clock(dir.file(), a_year_ahead);
+        update(&store, "cmake", 1);
+        update(&store, "git", 2);
+        drop(store);
+        assert_eq!(names_on_disk(&dir), vec!["cmake", "git", "older", "recent"]);
+    }
+
+    #[test]
+    fn test_opening_again_under_a_clock_still_far_ahead_drops_nothing() {
+        let dir = TempDir::new("clock-ahead-reopen");
+        past_days(&dir);
+        let store = HistoryStore::open_with_clock(dir.file(), a_year_ahead);
+        update(&store, "cmake", 1);
+        drop(store);
+        let again = HistoryStore::open_with_clock(dir.file(), a_year_ahead_an_hour_on);
+        assert!(again.flush(Duration::from_secs(5)));
+        assert_eq!(names_on_disk(&dir), vec!["cmake", "older", "recent"]);
+        update(&again, "git", 2);
+        drop(again);
+        assert_eq!(names_on_disk(&dir), vec!["cmake", "git", "older", "recent"]);
+        // Put right, the whole history is listed again.
+        let right = HistoryStore::open_with_clock(dir.file(), now);
+        assert_eq!(right.view().records.len(), 4);
+    }
+
+    #[test]
+    fn test_a_clock_that_keeps_running_from_where_it_jumped_is_believed_after_a_week() {
+        // Not put right: after more than `CLOCK_CONFIRM_MS` on from the
+        // time it jumped to, that time is taken as true, and what is 180
+        // days older than it goes.
+        let dir = TempDir::new("clock-ahead-kept");
+        past_days(&dir);
+        let store = HistoryStore::open_with_clock(dir.file(), a_year_ahead);
+        update(&store, "cmake", 1);
+        drop(store);
+        let later = HistoryStore::open_with_clock(dir.file(), a_year_and_eight_days_ahead);
+        update(&later, "git", 2);
+        drop(later);
+        assert_eq!(names_on_disk(&dir), vec!["cmake", "git"]);
+    }
+
     #[test]
     fn test_after_half_a_year_with_no_update_the_page_lists_nothing_older_than_180_days() {
         // No update for more than 180 days: the file's age rule counts
@@ -999,6 +1174,8 @@ mod tests {
                 record_at("long-ago", NOW - 300 * DAY),
                 record_at("last", NOW - 200 * DAY),
             ],
+            trusted_at: None,
+            pending_at: None,
         };
         std::fs::write(dir.file(), serde_json::to_vec(&file).unwrap()).unwrap();
         let store = HistoryStore::open_with_clock(dir.file(), now);
