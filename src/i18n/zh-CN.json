@@ -738,7 +738,6 @@
     "selectAllLabel": "全选这里可以卸载的项目",
     "selected_other": "已选择{{count}}个",
     "selectedSize_other": "已选择{{count}}个 · {{size}}",
-    "limit": "一次最多卸载{{max}}个",
     "overLimit_other": "已选择{{count}}个，一次最多卸载{{max}}个",
     "uninstallSelected": "卸载所选（{{number}}）…",
     "title_other": "要卸载这{{count}}个工具吗？",
@@ -813,7 +812,9 @@
       "music": "音乐",
       "icloud": "iCloud云盘",
       "volumes": "其他磁盘"
-    }
+    },
+    "selectHint": "选择要一起卸载的工具",
+    "selectHintLimit": "选择要一起卸载的工具，一次最多{{max}}个"
   },
   "keepsData": {
     "title": "卸载后会保留",

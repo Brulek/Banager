@@ -59,7 +59,8 @@ describe("the Installed list's header", () => {
     const { rerender } = renderWithProviders(<InstalledSelectionHeader shown={[jq, wget, git]} counted={[]} sizes={undefined} />);
     expect(box().checked).toBe(false);
     expect(box().indeterminate).toBe(false);
-    expect(status()).toBe("");
+    // Nothing ticked: what ticking is for.
+    expect(status()).toBe("Select tools to uninstall together");
     fireEvent.click(box());
     expect(useUiStore.getState().selectedUninstalls).toEqual([jq, wget, git].map((a) => artifactKeyId(a.key)));
 
@@ -79,7 +80,7 @@ describe("the Installed list's header", () => {
   it("only clears when more rows are shown than one batch takes, and says the limit", () => {
     const many = rows(MAX_BATCH_UNINSTALL + 1);
     const { rerender } = renderWithProviders(<InstalledSelectionHeader shown={many} counted={[]} sizes={undefined} />);
-    expect(status()).toBe("Up to 20 can be uninstalled at a time");
+    expect(status()).toBe("Select tools to uninstall together, up to 20 at a time");
     fireEvent.click(box());
     expect(useUiStore.getState().selectedUninstalls).toEqual([]);
 

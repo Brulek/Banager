@@ -18,8 +18,9 @@ export interface InstalledSelectionHeaderProps {
 /**
  * What the Installed page's list header says on its right: how many rows
  * are ticked and about how much they take together -- 「已选择3个 · 约1.2
- * GB」 -- or, past the most one batch takes, that limit; nothing while
- * nothing is ticked and the rows shown are few enough to tick at once.
+ * GB」 -- or, past the most one batch takes, that limit; while nothing is
+ * ticked, what ticking is for: 「选择要一起卸载的工具」, with the limit where
+ * the rows shown are more than one batch takes.
  */
 function statusOf(
   t: ReturnType<typeof useTranslation>["t"],
@@ -35,7 +36,10 @@ function statusOf(
       ? t("batchUninstall.selected", { count: counted.length })
       : t("batchUninstall.selectedSize", { count: counted.length, size: sizeText(t, measured) });
   }
-  return shown > max ? t("batchUninstall.limit", { max }) : null;
+  // Nothing ticked: what ticking is for, as the box's own 「全选」 says
+  // nothing of it, and the Updates page's same box selects to update.
+  if (shown === 0) return null;
+  return shown > max ? t("reviewFixes.selectHintLimit", { max }) : t("reviewFixes.selectHint");
 }
 
 /**

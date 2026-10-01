@@ -795,7 +795,6 @@
     "selected_other": "{{count}} selected",
     "selectedSize_one": "{{count}} selected · {{size}}",
     "selectedSize_other": "{{count}} selected · {{size}}",
-    "limit": "Up to {{max}} can be uninstalled at a time",
     "overLimit_one": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
     "overLimit_other": "{{count}} selected. Up to {{max}} can be uninstalled at a time",
     "uninstallSelected": "Uninstall Selected ({{number}})…",
@@ -898,7 +897,9 @@
       "music": "Music",
       "icloud": "iCloud Drive",
       "volumes": "other disks"
-    }
+    },
+    "selectHint": "Select tools to uninstall together",
+    "selectHintLimit": "Select tools to uninstall together, up to {{max}} at a time"
   },
   "keepsData": {
     "title": "Stays after uninstalling",
