@@ -226,9 +226,9 @@ pub fn read_folders(
 
 /// One folder's names, or `None` for one that is not there (or is not a
 /// folder), that no shell could reach either (a folder on the way it may
-/// not search), that cannot be listed, or that was read already (`seen`,
-/// by where it leads). One that is, or leads into, a protected place comes
-/// back unread. The way to it is
+/// not search), or that was read already (`seen`, by where it leads). One
+/// that is, or leads into, a protected place comes back unread, and so
+/// does one that is there but cannot be listed. The way to it is
 /// followed one step at a time (`protected::resolve`), each step checked
 /// before it is looked at: nothing inside a protected place is ever
 /// `lstat`ed, nor a link there read.
@@ -265,7 +265,9 @@ fn read_one(
     }
     seen.push(canonical.clone());
     let Ok(read) = std::fs::read_dir(&canonical) else {
-        return Ok(None);
+        // There, but not listable: a shell may still run what is in a
+        // folder it may search but not read.
+        return Ok(Some(unread(canonical)));
     };
     let mut names = BTreeSet::new();
     for entry in read {

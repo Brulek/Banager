@@ -1404,3 +1404,30 @@ fn test_links_onto_another_disk_are_never_followed() {
     );
     assert_eq!(found, vec![vec![unjudged("myproj")]]);
 }
+
+#[test]
+fn test_a_path_folder_that_is_there_but_cannot_be_listed_is_kept_unread() {
+    // A shell runs what is in a folder it may search but not list (mode
+    // 711): dropping the folder would let a copy further along read as the
+    // one that runs. One that is not there at all is still skipped.
+    let home = Home::new("unlistable");
+    let tools = home.dir("tools/bin");
+    home.exe("tools/bin/myproj");
+    let (cargo, crate_row) = cargo_myproj(&home);
+    fs::set_permissions(&tools, fs::Permissions::from_mode(0o311)).unwrap();
+    let _restore = Locked(tools.clone());
+    let path = [home.at("missing/bin"), tools.clone(), home.at(".cargo/bin")];
+    let folders = read_folders(&path, &[], home.path(), CommandBudget::default());
+    assert_eq!(folders.unread_path_folders(), vec![tools.as_path()]);
+    assert_eq!(
+        folders.path_folders(),
+        vec![home.at(".cargo/bin").as_path()]
+    );
+    let found = verdicts(
+        &home,
+        &path,
+        std::slice::from_ref(&cargo),
+        std::slice::from_ref(&crate_row),
+    );
+    assert_eq!(found, vec![vec![unjudged("myproj")]]);
+}
