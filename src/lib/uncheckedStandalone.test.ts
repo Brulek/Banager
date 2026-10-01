@@ -38,9 +38,10 @@ function artifact(adapterId: string, autoUpdates: boolean): InstalledArtifact {
 }
 
 describe("tools whose updates Banager does not check", () => {
-  it("is Codex's own install alone, the one recipe with Latest::Unchecked", () => {
-    expect([...UNCHECKED_STANDALONE]).toEqual(["standalone-codex"]);
+  it("is Codex's and opencode's own installs, the recipes with Latest::Unchecked", () => {
+    expect([...UNCHECKED_STANDALONE]).toEqual(["standalone-codex", "standalone-opencode"]);
     expect(updatesUnchecked(instance("standalone-codex"))).toBe(true);
+    expect(updatesUnchecked(instance("standalone-opencode"))).toBe(true);
     // Claude Code updates itself too, but its updates are checked.
     for (const id of ["standalone-claude", "standalone-agy", "standalone-grok", "standalone-rustup", "npm", "brew"]) {
       expect(updatesUnchecked(instance(id)), id).toBe(false);
@@ -77,5 +78,23 @@ describe("tools whose updates Banager does not check", () => {
       expect(word.length).toBeLessThanOrEqual(6);
       expect(word).not.toMatch(/[！!您]/);
     }
+  });
+
+  it("gives opencode its name, its line, why its version is unknown, and its own words for no uninstall", () => {
+    expect(ADAPTER_LABEL_KEYS["standalone-opencode"]).toBe("adapters.standalone-opencode");
+    expect(en.adapters["standalone-opencode"]).toBe("opencode");
+    expect(zhCN.adapters["standalone-opencode"]).toBe("opencode");
+    expect(standaloneSummaryKey("standalone-opencode")).toBe("standalone.summary.standalone-opencode");
+    expect(zhCN.standalone.summary["standalone-opencode"]).toBe("开源的AI编程助手");
+    // Its documentation says it downloads updates itself by default.
+    expect(uncheckedUpdatesOf(artifact("standalone-opencode", true), instance("standalone-opencode"))).toBe(
+      "updatesItself",
+    );
+    expect(zhCN.standalone.opencode.updatesItselfDetail).toContain("默认");
+    expect(zhCN.standalone.opencode.versionNotRead).toContain("不知道它的版本");
+    const copy = uninstallBlockedCopy("NoSafeMethod", "standalone-opencode");
+    expect(copy.description).toBe("standalone.opencode.uninstallDescription");
+    expect(zhCN.standalone.opencode.uninstallDescription).not.toMatch(/没有卸载命令|官方说明/);
+    expect(copy.command(artifact("standalone-opencode", true).key, instance("standalone-opencode"))).toBe("");
   });
 });

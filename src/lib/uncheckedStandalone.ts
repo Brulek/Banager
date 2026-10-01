@@ -3,13 +3,13 @@ import type { InstalledArtifact, ManagerInstance } from "./types";
 /**
  * The tools with their own installer whose updates Banager does not check
  * at all: the recipes whose `latest` is `Latest::Unchecked`
- * (crates/banager-core/src/adapters/standalone/recipe.rs). Today only
- * Codex's own install, listed only: its newest version lives on hosts
+ * (crates/banager-core/src/adapters/standalone/recipe.rs): Codex's and
+ * opencode's own installs, listed only: their newest versions live on hosts
  * Banager does not connect to, so `check_updates` lists nothing for it --
  * no update, and no "could not check" either. No update listed is then no
  * news, and the Installed page must not call the row 「已是最新」.
  */
-export const UNCHECKED_STANDALONE: ReadonlySet<string> = new Set(["standalone-codex"]);
+export const UNCHECKED_STANDALONE: ReadonlySet<string> = new Set(["standalone-codex", "standalone-opencode"]);
 
 /** Whether Banager checks `instance`'s rows for updates at all. */
 export function updatesUnchecked(instance: ManagerInstance): boolean {

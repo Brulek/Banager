@@ -35,6 +35,7 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   "standalone-agy": "adapters.standalone-agy",
   "standalone-grok": "adapters.standalone-grok",
   "standalone-codex": "adapters.standalone-codex",
+  "standalone-opencode": "adapters.standalone-opencode",
 };
 
 /** The adapter ids of the tools with their own installer, one per recipe
@@ -46,7 +47,8 @@ export type StandaloneAdapterId =
   | "standalone-rustup"
   | "standalone-agy"
   | "standalone-grok"
-  | "standalone-codex";
+  | "standalone-codex"
+  | "standalone-opencode";
 
 /**
  * One line per standalone tool, for the description slot of its rows on
@@ -64,6 +66,7 @@ export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-agy": "standalone.summary.standalone-agy",
   "standalone-grok": "standalone.summary.standalone-grok",
   "standalone-codex": "codexStandalone.summary",
+  "standalone-opencode": "standalone.summary.standalone-opencode",
 };
 
 /**
@@ -778,6 +781,16 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
       // 「只列出」, not 「需手动卸载」: nothing here knows a manual way to give.
       badge: "clarity.listedOnly",
       description: "codexStandalone.uninstallDescription",
+      command: () => "",
+      refused: "installed.blocked.NoSafeMethod.refused",
+    },
+  },
+  // opencode's own install, listed only, as Codex's: no uninstall here, by
+  // the author's decision, not for want of a command.
+  "standalone-opencode": {
+    NoSafeMethod: {
+      badge: "installed.blocked.NoSafeMethod.badge",
+      description: "standalone.opencode.uninstallDescription",
       command: () => "",
       refused: "installed.blocked.NoSafeMethod.refused",
     },

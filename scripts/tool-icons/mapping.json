@@ -6089,6 +6089,10 @@
       "icon": "gh:openai",
       "relation": "same"
     },
+    "standalone:opencode": {
+      "icon": "si:opencode",
+      "relation": "same"
+    },
     "standalone:grok": {
       "icon": "gh:xai-org",
       "relation": "maker"
@@ -6110,6 +6114,7 @@
     "standalone-rustup": "si:rust",
     "standalone-agy": "gh:google-antigravity",
     "standalone-grok": "gh:xai-org",
-    "standalone-codex": "gh:openai"
+    "standalone-codex": "gh:openai",
+    "standalone-opencode": "si:opencode"
   }
 }

@@ -6523,6 +6523,7 @@
     "standalone:claude": "si-claude",
     "standalone:codex": "gh-openai",
     "standalone:grok": "gh-xai-org",
+    "standalone:opencode": "si-opencode",
     "standalone:rustup": "si-rust"
   },
   "sources": {
@@ -6536,6 +6537,7 @@
     "standalone-claude": "si-claude",
     "standalone-codex": "gh-openai",
     "standalone-grok": "gh-xai-org",
+    "standalone-opencode": "si-opencode",
     "standalone-rustup": "si-rust",
     "uv": "si-uv"
   }

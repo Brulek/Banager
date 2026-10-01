@@ -24,6 +24,8 @@ export const SOURCE_AVATAR_CLASSES: Record<string, string> = {
   // Codex's own install: OpenAI's logo from the pack; no colour of its own
   // (no new colours), so the neutral grey under the initial if it is missing.
   "standalone-codex": "bg-neutral-avatar text-white",
+  // opencode's own install: its logo from the pack, the same neutral grey.
+  "standalone-opencode": "bg-neutral-avatar text-white",
 };
 
 /** A source this build has no colour for: the muted grey, never a guess. */

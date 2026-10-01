@@ -132,7 +132,8 @@
     "standalone-rustup": "rustup",
     "standalone-agy": "Antigravity CLI",
     "standalone-grok": "Grok Build",
-    "standalone-codex": "Codex"
+    "standalone-codex": "Codex",
+    "standalone-opencode": "opencode"
   },
   "brewStatus": {
     "disabledWord": "已停用",
@@ -445,7 +446,13 @@
       "standalone-claude": "Anthropic的AI编程助手",
       "standalone-rustup": "安装和更新Rust的工具",
       "standalone-agy": "Google的AI编程助手",
-      "standalone-grok": "xAI的AI编程助手"
+      "standalone-grok": "xAI的AI编程助手",
+      "standalone-opencode": "开源的AI编程助手"
+    },
+    "opencode": {
+      "updatesItselfDetail": "{{source}}默认会在启动时自己下载新版本。这里不检查也不安装它的更新。",
+      "versionNotRead": "{{source}}的安装脚本没有留下写着版本的文件，这里也不运行它，所以不知道它的版本。",
+      "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
     }
   },
   "codexStandalone": {
