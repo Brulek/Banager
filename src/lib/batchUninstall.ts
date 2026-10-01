@@ -13,7 +13,7 @@
  */
 import { canWrite, isAvailable, uninstallHoldKey } from "./sources";
 import { deletesForGood } from "./warnings";
-import { saysSize, sizeViewOf } from "./sizes";
+import { saysSize, sizeNoteOf, sizeViewOf } from "./sizes";
 import { artifactKeyId } from "../store/ui";
 import type {
   InstalledArtifact,
@@ -772,8 +772,6 @@ export function sizeCaveats(
     instance.adapter_id === "uv" ||
     (instance.adapter_id === "brew" && artifact.key.kind === "Formula");
   if (items.some(shared)) caveats.push("batchUninstall.takesShared");
-  if (items.some(({ instance }) => instance.adapter_id === "cargo" || instance.adapter_id.startsWith("standalone-"))) {
-    caveats.push("sizes.programOnly");
-  }
+  if (items.some(({ artifact }) => sizeNoteOf(artifact) === "sizes.programOnly")) caveats.push("sizes.programOnly");
   return caveats;
 }
