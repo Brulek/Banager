@@ -564,7 +564,9 @@ fn test_what_we_run_says_what_the_uninstall_preview_follows_for_what_runs_on_a_h
     // per-source test never asks for it.
     let doc = read_doc();
     let body = section_body(&doc, "What runs on a Homebrew package").unwrap_or_else(|| {
-        panic!("docs/what-we-run.md has no `## What runs on a Homebrew package` section for needed_by")
+        panic!(
+            "docs/what-we-run.md has no `## What runs on a Homebrew package` section for needed_by"
+        )
     });
     let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
     // Every kind of source it looks at, by the name its section has.
@@ -585,7 +587,11 @@ fn test_what_we_run_says_what_the_uninstall_preview_follows_for_what_runs_on_a_h
             "the `## What runs on a Homebrew package` section does not name {name}"
         );
     }
-    assert_eq!(banager_core::needed_by::HOSTED.len(), 6, "a kind of source added to the look needs its line");
+    assert_eq!(
+        banager_core::needed_by::HOSTED.len(),
+        6,
+        "a kind of source added to the look needs its line"
+    );
     let budget = banager_core::needed_by::BUDGET;
     for limit in [
         format!("{} paths", with_commas(budget.max_looks as u64)),
@@ -619,7 +625,9 @@ fn test_what_we_run_says_what_the_uninstall_preview_follows_for_what_runs_on_a_h
         section_body(&doc, "Files Banager reads").expect("a `## Files Banager reads` section");
     let reads = reads.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        reads.contains("What runs on a Homebrew package, during the uninstall preview of a formula or cask"),
+        reads.contains(
+            "What runs on a Homebrew package, during the uninstall preview of a formula or cask"
+        ),
         "`## Files Banager reads` does not list what the uninstall preview follows"
     );
     let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
