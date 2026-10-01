@@ -574,6 +574,12 @@ export interface SkippedVersion {
   key: ArtifactKey;
   version: string;
 }
+/**
+ * Rust `CheckEvery` (crates/banager-core/src/settings.rs): how often the
+ * automatic check runs while `auto_check` is on -- Settings' 「每天」 or
+ * 「每周」. Its 「不自动检查」 is `auto_check` off.
+ */
+export type CheckEvery = "Day" | "Week";
 export interface Settings {
   language: Language;
   show_technical_details: boolean;
@@ -582,8 +588,9 @@ export interface Settings {
   skipped_versions: SkippedVersion[];
   include_self_updating: boolean;
   /**
-   * The daily check, 「每天自动检查」 in Settings: a refresh by itself once
-   * a day while Banager runs (src-tauri/src/auto_check.rs). Off by default.
+   * The automatic check, on when Settings' 「检查更新」 is 「每天」 or
+   * 「每周」 (`auto_check_every`): a refresh by itself once a day or a week
+   * while Banager runs (src-tauri/src/auto_check.rs). Off by default.
    */
   auto_check: boolean;
   /**
@@ -591,6 +598,14 @@ export interface Settings {
    * `auto_check` is on and turns it off with it. Off by default.
    */
   notify_updates: boolean;
+  /**
+   * How often the automatic check runs while `auto_check` is on. Rust
+   * always sends it; optional here, read as "Day" when missing
+   * (`autoCheckChoice` in src/lib/checkFrequency.ts), only so
+   * that the settings a page or test builds by hand need not spell it --
+   * Rust reads a settings.json without it the same way (`#[serde(default)]`).
+   */
+  auto_check_every?: CheckEvery;
 }
 /**
  * Rust `UpdatePair` (crates/banager-core/src/notify_updates.rs): one row

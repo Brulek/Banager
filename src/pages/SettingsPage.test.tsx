@@ -68,6 +68,7 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
     include_self_updating: false,
     auto_check: false,
     notify_updates: false,
+    auto_check_every: "Day",
     ...overrides,
   };
 }
@@ -532,19 +533,24 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const updates = await screen.findByRole("region", { name: "Updates" });
-    const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
-    expect(daily).not.toBeChecked();
+    const daily = within(updates).getByRole("combobox", { name: "Check for updates" });
+    expect(daily).toHaveValue("Off");
+    expect([...(daily as HTMLSelectElement).options].map((option) => option.textContent)).toEqual([
+      "Manually",
+      "Daily",
+      "Weekly",
+    ]);
     expect(daily).toHaveAccessibleDescription(
-      "Banager checks for updates once a day while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
     expect(notify).toBeDisabled();
     // Why it does not move, and what turns it on.
-    expect(notify).toHaveAccessibleDescription("Requires “Check for updates every day”.");
-    // Under the daily check, the row it depends on.
-    const switches = within(updates).getAllByRole("switch");
-    expect(switches.indexOf(notify)).toBe(switches.indexOf(daily) + 1);
+    expect(notify).toHaveAccessibleDescription("Requires “Check for updates” set to Daily or Weekly.");
+    // Under the automatic check, the row it depends on.
+    const controls = [...updates.querySelectorAll("select, [role=switch]")];
+    expect(controls.indexOf(notify)).toBe(controls.indexOf(daily) + 1);
   });
 
   it("says when the next automatic check is due under the daily check while it is on, and nothing while it is off", async () => {
@@ -564,12 +570,62 @@ describe("SettingsPage", () => {
     );
     expect(line).toHaveAttribute("data-next-auto-check");
     // Under the switch's own description, in its row.
-    const daily = screen.getByRole("switch", { name: "Check for updates every day" });
-    expect(daily.parentElement).toContainElement(line);
+    const daily = screen.getByRole("combobox", { name: "Check for updates" });
+    expect(daily.closest(".px-2\\.5")).toContainElement(line);
 
-    fireEvent.click(daily);
+    fireEvent.change(daily, { target: { value: "Off" } });
     await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: false })));
     expect(document.querySelector("[data-next-auto-check]")).toBeNull();
+  });
+
+  it("checks every week once Weekly is chosen, keeps Notify me, and asks for the next check's time again", async () => {
+    const day = Math.floor(Date.now() / 1000) + 2 * 60 * 60;
+    let weekly = false;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true, notify_updates: true });
+      if (cmd === "get_snapshot") {
+        return { ...snapshotOf([]), next_auto_check_at: weekly ? day + 6 * 24 * 60 * 60 : day };
+      }
+      if (cmd === "set_settings") {
+        weekly = (args as { settings: Settings }).settings.auto_check_every === "Week";
+        return undefined;
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const popup = await screen.findByRole("combobox", { name: "Check for updates" });
+    expect(popup).toHaveValue("Day");
+    await screen.findByText(/^Next automatic check: about .+ (today|tomorrow)$/);
+    fireEvent.change(popup, { target: { value: "Week" } });
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true, auto_check_every: "Week" })),
+    );
+    expect(popup).toHaveValue("Week");
+    expect(screen.getByRole("switch", { name: "Notify me when there are updates" })).toBeChecked();
+    // Six days later than the daily one was: a date, not today or tomorrow.
+    await screen.findByText(/^Next automatic check: about .+ on .+$/);
+
+    // Manually: off, Notify me with it; how often it ran is kept for next time.
+    fireEvent.change(popup, { target: { value: "Off" } });
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false, auto_check_every: "Week" })),
+    );
+    expect(document.querySelector("[data-next-auto-check]")).toBeNull();
+  });
+
+  it("reads settings without how often to check as a daily check", async () => {
+    const { auto_check_every: _dropped, ...old } = baseSettings({ auto_check: true });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return old;
+      if (cmd === "get_snapshot") return { ...snapshotOf([]), next_auto_check_at: null };
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByRole("combobox", { name: "Check for updates" })).toHaveValue("Day");
   });
 
   it("says nothing about the next automatic check before any check has counted", async () => {
@@ -581,7 +637,7 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    await screen.findByRole("switch", { name: "Check for updates every day" });
+    await screen.findByRole("combobox", { name: "Check for updates" });
     await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "get_snapshot")).toBe(true));
     expect(document.querySelector("[data-next-auto-check]")).toBeNull();
   });
@@ -598,16 +654,18 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    fireEvent.click(await screen.findByRole("switch", { name: "Check for updates every day" }));
+    fireEvent.change(await screen.findByRole("combobox", { name: "Check for updates" }), {
+      target: { value: "Day" },
+    });
 
     await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: true })));
-    expect(screen.getByRole("switch", { name: "Check for updates every day" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Check for updates" })).toHaveValue("Day");
     const notify = screen.getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).toBeEnabled();
     expect(notify).not.toBeChecked();
     // Nothing left to say about why it would not move.
     expect(notify).not.toHaveAttribute("aria-describedby");
-    expect(screen.queryByText("Requires “Check for updates every day”.")).toBeNull();
+    expect(screen.queryByText("Requires “Check for updates” set to Daily or Weekly.")).toBeNull();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
 
@@ -631,7 +689,7 @@ describe("SettingsPage", () => {
     expect(notify).toBeEnabled();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "request_notification_permission")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Check for updates" }), { target: { value: "Off" } });
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false })),
     );
@@ -741,7 +799,7 @@ describe("SettingsPage", () => {
     );
     fireEvent.click(notify);
     await waitFor(() => expect(notifyStatus()).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Check for updates" }), { target: { value: "Off" } });
     await waitFor(() => expect(notifyStatus()).toBeNull());
   });
 
@@ -763,7 +821,7 @@ describe("SettingsPage", () => {
     const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
     fireEvent.click(notify);
     await waitFor(() => expect(notify).toBeChecked());
-    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Check for updates" }), { target: { value: "Off" } });
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false })),
     );
@@ -798,8 +856,9 @@ describe("SettingsPage", () => {
     // (docs/what-we-run.md, Homebrew), so the subtitle claims only that no
     // update the check finds is installed. The same holds against the
     // polish-3 copy table's 「不会自动安装」, which claims more than that.
-    expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
-    expect(zhCN.settings.autoCheck.description).toBe("Banager运行时每天检查一次更新，查到的更新不会自动安装。");
+    expect(zhCN.settings.autoCheck.label).toBe("检查更新");
+    expect(zhCN.settings.checkEvery).toEqual({ off: "不自动检查", day: "每天", week: "每周" });
+    expect(zhCN.settings.autoCheck.description).toBe("Banager运行时按所选频率检查更新，查到的更新不会自动安装。");
     expect(zhCN.settings.notifyUpdates.label).toBe("有更新时通知我");
     expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Banager发送通知。");
   });
@@ -985,9 +1044,8 @@ describe("SettingsPage", () => {
         .map(rowOf)
         .filter((row) => row.className.includes("min-h-11.5"));
     expect(twoLines(screen.getByRole("region", { name: "General" }))).toHaveLength(1);
-    expect(twoLines(screen.getByRole("region", { name: "Updates" }))).toEqual([
-      rowOf(screen.getByRole("switch", { name: "Check for updates every day" })),
-    ]);
+    expect(twoLines(screen.getByRole("region", { name: "Updates" }))).toEqual([]);
+    expect(rowOf(screen.getByRole("combobox", { name: "Check for updates" })).className).toContain("min-h-11.5");
     for (const name of ["Notify me when there are updates", "Show apps that update themselves"]) {
       expect(rowOf(screen.getByRole("switch", { name })).className).toContain("min-h-9");
     }
@@ -1008,9 +1066,9 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const updates = await screen.findByRole("region", { name: "Updates" });
-    const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
+    const daily = within(updates).getByRole("combobox", { name: "Check for updates" });
     const what = within(updates).getByText(
-      "Banager checks for updates once a day while it's running, and doesn't install the updates it finds.",
+      "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds.",
     );
     // In the daily check's own row, under its label.
     expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);
@@ -1042,7 +1100,7 @@ describe("SettingsPage", () => {
 
       const notify = await screen.findByRole("switch", { name: "有更新时通知我" });
       expect(notify).toBeDisabled();
-      expect(notify).toHaveAccessibleDescription("请先打开上方的“每天自动检查”。");
+      expect(notify).toHaveAccessibleDescription("请先把上方的“检查更新”设为“每天”或“每周”。");
     } finally {
       await i18n.changeLanguage("en");
     }

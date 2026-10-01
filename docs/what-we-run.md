@@ -257,10 +257,16 @@ holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 
 ## The daily check: off unless turned on
 
-Settings → Updates has a switch, "Check for updates every day"
-(「每天自动检查」), which is off by default (`Settings::auto_check` in
-`crates/banager-core/src/settings.rs`). While it is off, the daily check
-starts nothing. Turned on:
+Settings → Updates has a popup, "Check for updates" (「检查更新」):
+"Manually" (「不自动检查」), the default, "Daily" (「每天」) or "Weekly"
+(「每周」) (`Settings::auto_check` and `Settings::auto_check_every` in
+`crates/banager-core/src/settings.rs`; a settings.json saved by the
+Banager that had a "Check for updates every day" switch, on, reads as
+Daily). Set to Manually, the daily check starts nothing. Set to Weekly,
+everything below holds with 7 days (`auto_check::WEEKLY_DUE_AFTER_SECS`,
+by `CheckEvery::due_after_secs`) in place of the 24 hours after the last
+check: the looks, the retries after failed checks and the notification
+are the same. Set to Daily or Weekly:
 
 - **When.** A task Banager starts at launch (`check_automatically` in
   `src-tauri/src/auto_check.rs`) looks every 15 minutes the Mac is awake
@@ -336,10 +342,10 @@ writes"). Banager itself runs no install, upgrade or uninstall from it,
 and installs none of the updates it finds: every write command runs only
 after a preview the user confirmed.
 
-**The notification.** Under the switch is another, "Notify me when there
+**The notification.** Under the popup is a switch, "Notify me when there
 are updates" (「有更新时通知我」), off by default too
-(`Settings::notify_updates`), which Settings offers only while the daily
-check is on and turns off with it. Turning it on asks for permission to
+(`Settings::notify_updates`), which Settings offers only while the check
+is set to Daily or Weekly, and turns off when it is set to Manually. Turning it on asks for permission to
 post first (`request_notification_permission` in
 `src-tauri/src/notify.rs`), through the Tauri notification plugin's
 `request_permission`. The plugin, at the 2.4 line `src-tauri/Cargo.toml`

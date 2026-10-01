@@ -28,6 +28,20 @@ pub struct SkippedVersion {
     pub version: String,
 }
 
+/// How often the automatic check runs while it is on, Settings → Updates'
+/// 「检查更新」 popup: 「每天」 or 「每周」 (`Settings::auto_check_every`).
+/// Its third choice, 「不自动检查」, is `Settings::auto_check` off, so a
+/// settings.json written before this existed, with `auto_check` on, reads
+/// as 「每天」 -- the check it ran -- and one written by this version reads
+/// in an older one as the daily check, on or off as it was saved. A bare
+/// string on the wire, `"Day"` or `"Week"`, as `Language` is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckEvery {
+    #[default]
+    Day,
+    Week,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub language: Language,
@@ -59,8 +73,11 @@ pub struct Settings {
     /// `Settings::default()` in `load()`.
     #[serde(default)]
     pub include_self_updating: bool,
-    /// The daily check, Settings → Updates' 「每天自动检查」: whether
-    /// Banager, while it runs, refreshes by itself once a day -- the same
+    /// The automatic check, on when Settings → Updates' 「检查更新」 is
+    /// 「每天」 or 「每周」 (`auto_check_every`) and off at 「不自动检查」
+    /// -- it was the 「每天自动检查」 switch before there was a choice of
+    /// how often: whether Banager, while it runs, refreshes by itself
+    /// once a day or a week -- the same
     /// refresh as Check again, which runs no install, upgrade or uninstall
     /// of Banager's; the `brew update` in it can install, move or uninstall
     /// Homebrew packages Homebrew has moved or renamed (docs/what-we-run.md,
@@ -81,6 +98,23 @@ pub struct Settings {
     /// `#[serde(default)]` for the same reason as `auto_check`.
     #[serde(default)]
     pub notify_updates: bool,
+    /// How often the automatic check runs while `auto_check` is on: every
+    /// day or every week (`CheckEvery`), the popup's 「每天」 and 「每周」;
+    /// `auto_check` off is its 「不自动检查」. Read with it at every tick
+    /// (`auto_check_schedule`), and for when the next check is due
+    /// (`RoundLog::next_check_due`). `#[serde(default)]`, `Day`: a
+    /// settings.json written before the choice existed, its daily check
+    /// on, keeps checking every day.
+    #[serde(default)]
+    pub auto_check_every: CheckEvery,
+}
+
+impl Settings {
+    /// The automatic check as the popup shows it: `None` for
+    /// 「不自动检查」 (`auto_check` off), else how often it runs.
+    pub fn auto_check_schedule(&self) -> Option<CheckEvery> {
+        self.auto_check.then_some(self.auto_check_every)
+    }
 }
 
 impl Default for Settings {
@@ -93,6 +127,7 @@ impl Default for Settings {
             include_self_updating: false,
             auto_check: false,
             notify_updates: false,
+            auto_check_every: CheckEvery::Day,
         }
     }
 }
@@ -169,6 +204,8 @@ mod tests {
         assert!(settings.skipped_versions.is_empty());
         assert!(!settings.auto_check, "the daily check is off by default");
         assert!(!settings.notify_updates, "and so are its notifications");
+        assert_eq!(settings.auto_check_every, CheckEvery::Day);
+        assert_eq!(settings.auto_check_schedule(), None, "不自动检查");
     }
 
     #[test]
@@ -186,6 +223,7 @@ mod tests {
         assert!(json.contains("\"include_self_updating\":false"));
         assert!(json.contains("\"auto_check\":false"));
         assert!(json.contains("\"notify_updates\":false"));
+        assert!(json.contains("\"auto_check_every\":\"Day\""));
     }
 
     #[test]
@@ -195,7 +233,7 @@ mod tests {
         // this order, the daily check's two last.
         assert_eq!(
             serde_json::to_string(&Settings::default()).expect("serialize"),
-            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false}"#
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day"}"#
         );
     }
 
@@ -298,6 +336,7 @@ mod tests {
                 include_self_updating: true,
                 auto_check: false,
                 notify_updates: false,
+                auto_check_every: CheckEvery::Day,
             }
         );
         let _ = std::fs::remove_file(&path);
@@ -321,6 +360,63 @@ mod tests {
     }
 
     #[test]
+    fn test_a_daily_check_saved_before_the_choice_of_how_often_reads_as_every_day() {
+        // Written by a Banager whose Settings had the 「每天自动检查」
+        // switch, on: no `auto_check_every`. It reads as 「每天」, and the
+        // rest is kept.
+        let path = temp_settings_path("no-auto-check-every");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":true}"#,
+        )
+        .expect("write settings.json without auto_check_every");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.auto_check && loaded.notify_updates);
+        assert_eq!(loaded.auto_check_every, CheckEvery::Day);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Day));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_the_three_choices_of_how_often_to_check() {
+        let with = |auto_check, auto_check_every| Settings {
+            auto_check,
+            auto_check_every,
+            ..Settings::default()
+        };
+        assert_eq!(with(false, CheckEvery::Day).auto_check_schedule(), None);
+        assert_eq!(
+            with(false, CheckEvery::Week).auto_check_schedule(),
+            None,
+            "off is off, whichever choice it keeps for when it is on again"
+        );
+        assert_eq!(
+            with(true, CheckEvery::Day).auto_check_schedule(),
+            Some(CheckEvery::Day)
+        );
+        assert_eq!(
+            with(true, CheckEvery::Week).auto_check_schedule(),
+            Some(CheckEvery::Week)
+        );
+    }
+
+    #[test]
+    fn test_how_often_is_a_bare_string_on_the_wire() {
+        // `CheckEvery` in src/lib/types.ts.
+        assert_eq!(serde_json::to_string(&CheckEvery::Day).unwrap(), r#""Day""#);
+        assert_eq!(
+            serde_json::to_string(&CheckEvery::Week).unwrap(),
+            r#""Week""#
+        );
+        let weekly: Settings = serde_json::from_str(
+            r#"{"language":"En","show_technical_details":false,"ignored_updates":[],"include_self_updating":false,"auto_check":true,"auto_check_every":"Week"}"#,
+        )
+        .expect("a weekly check");
+        assert_eq!(weekly.auto_check_schedule(), Some(CheckEvery::Week));
+    }
+
+    #[test]
     fn test_save_then_load_round_trips_a_non_default_settings() {
         let path = temp_settings_path("roundtrip");
         let settings = Settings {
@@ -334,6 +430,7 @@ mod tests {
             include_self_updating: true,
             auto_check: true,
             notify_updates: true,
+            auto_check_every: CheckEvery::Week,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

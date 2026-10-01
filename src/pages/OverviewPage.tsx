@@ -1,4 +1,5 @@
 import { Fragment, useId, useState } from "react";
+import { AUTO_CHECK_CHOICE_KEYS, autoCheckChoice } from "../lib/checkFrequency";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
@@ -285,18 +286,18 @@ function StatusRow({
 }
 
 /**
- * The daily check, on or off, as Software Update shows its automatic
- * updates -- 「打开」/「关闭」, as System Settings words a switch's state --
- * a row that opens Settings, where it is changed. A screen reader hears
- * it as a button named by both, 「每天自动检查：关闭」, and what pressing
- * it does: it is no switch.
+ * The automatic check, as Software Update shows its automatic updates --
+ * the choice Settings' popup shows, 「不自动检查」, 「每天」 or 「每周」
+ * (src/lib/checkFrequency.ts) -- a row that opens Settings, where it is
+ * changed. A screen reader hears it as a button named by both,
+ * 「检查更新：每周」, and what pressing it does: it is no popup.
  */
 function AutoCheckRow({ settings }: { settings: Settings }) {
   const { t } = useTranslation();
   const setPage = useUiStore((s) => s.setPage);
   const hintId = useId();
   const label = t("settings.autoCheck.label");
-  const value = settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff");
+  const value = t(AUTO_CHECK_CHOICE_KEYS[autoCheckChoice(settings)]);
   return (
     <div className={GROUP}>
       <button

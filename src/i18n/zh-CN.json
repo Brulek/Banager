@@ -107,8 +107,6 @@
     "nothingToUpdate": "没有要更新的工具",
     "updating_other": "正在更新{{count}}个工具",
     "seeProgress": "查看进度",
-    "autoCheckOn": "打开",
-    "autoCheckOff": "关闭",
     "autoCheckRowLabel": "{{label}}：{{value}}",
     "autoCheckOpensSettings": "在“设置”中更改",
     "nothingToUpdateChecked": "已检查的来源中没有可更新的工具",
@@ -710,12 +708,12 @@
       "description": "在“更新”中也显示通过Homebrew安装、会自行更新的App，例如Chrome。"
     },
     "autoCheck": {
-      "label": "每天自动检查",
-      "description": "Banager运行时每天检查一次更新，查到的更新不会自动安装。"
+      "label": "检查更新",
+      "description": "Banager运行时按所选频率检查更新，查到的更新不会自动安装。"
     },
     "notifyUpdates": {
       "label": "有更新时通知我",
-      "needsAutoCheck": "请先打开上方的“{{setting}}”。",
+      "needsAutoCheck": "请先把上方的“{{setting}}”设为“{{day}}”或“{{week}}”。",
       "refused": "请在“系统设置”>“通知”中允许Banager发送通知。"
     },
     "language": {
@@ -752,7 +750,12 @@
     "hiddenNone": "无",
     "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "无法保存：{{message}}。已恢复原来的设置。",
-    "saveErrorPlain": "无法保存。已恢复原来的设置。"
+    "saveErrorPlain": "无法保存。已恢复原来的设置。",
+    "checkEvery": {
+      "off": "不自动检查",
+      "day": "每天",
+      "week": "每周"
+    }
   },
   "settingsSaveFailed": {
     "permissionDenied": "没有权限写入设置文件夹",

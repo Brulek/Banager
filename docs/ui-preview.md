@@ -176,7 +176,8 @@ Paths are under a generic home folder, `/Users/you`.
   refuses once it runs.
 - Settings are kept until the page reloads. Turning on Show
   self-updating apps adds the Visual Studio Code update on the next
-  refresh. Check for updates every day is kept too, and checks nothing:
+  refresh. Check for updates (Manually, Daily or Weekly) is kept too,
+  and moves the next check's time under it, and checks nothing:
   the daily check is a task of the app's Rust side, which the preview
   does not have. Notify me when there are updates turns on without
   asking anything, as where permission is granted, and nothing is ever

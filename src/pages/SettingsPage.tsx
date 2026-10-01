@@ -5,6 +5,7 @@ import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
+import { AUTO_CHECK_CHOICES, AUTO_CHECK_CHOICE_KEYS, autoCheckChoice, withAutoCheckChoice } from "../lib/checkFrequency";
 import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
@@ -136,7 +137,8 @@ function NoEntries({ text }: { text: string }) {
 /**
  * Settings, a grouped form as System Settings' own (spec §3.7), in five
  * groups: 「通用」 -- the language, and whether to show technical details
- * -- 「更新」 -- the daily check, 「有更新时通知我」 under it, and
+ * -- 「更新」 -- how often to check (「检查更新」: 不自动检查, 每天 or
+ * 每周), 「有更新时通知我」 under it, and
  * whether Homebrew's self-updating apps are listed -- then the two kinds
  * of hidden update, 「已跳过的版本」 and 「不再提醒的工具」, each entry
  * with the button that takes it back, where the Overview's count of
@@ -348,8 +350,9 @@ export function SettingsPage() {
         />
       </SettingsGroup>
 
-      {/* The daily check (src-tauri/src/auto_check.rs), off by default,
-          and under it the notification that belongs to it
+      {/* The automatic check (src-tauri/src/auto_check.rs), off by
+          default, every day or every week when on, and under it the
+          notification that belongs to it
           (src-tauri/src/notify.rs): offered only while the daily check
           is on, shown off -- saying so, and what turns it on -- while it
           is not, saved off when the daily check is turned off, and
@@ -383,13 +386,16 @@ export function SettingsPage() {
             </>
           }
           control={
-            <Switch
+            // 「不自动检查」, 「每天」 or 「每周」 (src/lib/checkFrequency.ts):
+            // a popup, as the language is chosen.
+            <PopupButton
               id="settings-auto-check"
-              aria-describedby="settings-auto-check-desc"
-              checked={current.auto_check}
-              onCheckedChange={(checked) => {
+              describedBy="settings-auto-check-desc"
+              value={autoCheckChoice(current)}
+              options={AUTO_CHECK_CHOICES.map((choice) => ({ value: choice, label: t(AUTO_CHECK_CHOICE_KEYS[choice]) }))}
+              onChange={(choice) => {
                 setNotifyRefused(false);
-                persist({ ...current, auto_check: checked, notify_updates: checked && current.notify_updates });
+                persist(withAutoCheckChoice(current, choice));
               }}
             />
           }
@@ -407,7 +413,11 @@ export function SettingsPage() {
             !current.auto_check ? (
               // Why it does not move: a faded switch alone said nothing.
               <p id="settings-notify-updates-desc" className={ROW_SUBTITLE}>
-                {t("settings.notifyUpdates.needsAutoCheck", { setting: t("settings.autoCheck.label") })}
+                {t("settings.notifyUpdates.needsAutoCheck", {
+                  setting: t("settings.autoCheck.label"),
+                  day: t("settings.checkEvery.day"),
+                  week: t("settings.checkEvery.week"),
+                })}
               </p>
             ) : notifyRefused ? (
               <p id="settings-notify-updates-desc" role="status" className={ROW_SUBTITLE}>

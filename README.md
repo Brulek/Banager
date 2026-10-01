@@ -93,15 +93,15 @@ one, can install, move or uninstall Homebrew packages by itself (`docs/what-we-r
 "Homebrew"). After one that succeeded, checks skip it for six hours on the clock (time the Mac spends
 asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
 failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
-the one its end sets off. With **Check for updates every day** turned on in Settings — it is off
-until you turn it
-on — Banager also runs the same check once a day while it is running, installs none of the updates
+the one its end sets off. With **Check for updates** set to Daily in Settings — it is set to
+Manually until you choose
+otherwise — Banager also runs the same check once a day (or once a week, set to Weekly) while it is running, installs none of the updates
 it finds, and checks nothing after you quit. A daily check in which every source failed — a
 Homebrew whose index couldn't be updated counting as failed — doesn't count: the next runs 15
 minutes later, and each more that fails in a row doubles the wait (30, 60, 120, 240 minutes) up to
 six hours. A check of yours, or a daily one in which not every source failed, counts, and starts
 the waits over (`docs/what-we-run.md`, "The daily check"). Turn on **Notify me when there are
-updates** under that switch as well, and a daily check that finds an update you haven't been
+updates** under that popup as well, and a daily check that finds an update you haven't been
 shown, while another app is in front, not Banager, posts a notification saying how many tools can
 be updated. A click on it brings Banager
 to the front, and if Banager's window is closed or minimized into the Dock and hasn't been in front
@@ -442,12 +442,12 @@ Banager 在打开时、每次操作完成后，以及你按下“概览”“更
 上一次 `brew update` 成功后，六小时内的检查都不再运行它（按时钟算，Mac 睡眠的时间也算在内；
 时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。
-在“设置”里打开“每天自动检查”后（默认关闭），
+在“设置”里把“检查更新”设为“每天”后（默认“不自动检查”；设为“每周”就是每周一次），
 Banager 开着时还会每天做一次同样的检查，查到的更新都不安装，退出后不检查。
 所有来源都失败的那次每天检查——Homebrew 的索引没能更新也算失败——不算数：15 分钟后再查，
 之后每连续失败一次，等的时间就翻一倍（30、60、120、240 分钟），最长六小时。你自己检查一次，
 或者某次每天检查不是所有来源都失败，就算数，等待也从头算起（见 `docs/what-we-run.md` 的“The daily check”一节）。
-再打开“每天自动检查”下面的“有更新时通知我”，
+再打开“检查更新”下面的“有更新时通知我”，
 每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Banager 时，会发一条通知，说有几个
 工具可更新。点这条通知会把 Banager 切到最前面；如果 Banager 的窗口关着或最小化在程序坞里，
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Banager 收不到点击本身，只知道自己到了

@@ -120,8 +120,6 @@
     "updating_one": "Updating {{count}} tool",
     "updating_other": "Updating {{count}} tools",
     "seeProgress": "See Progress",
-    "autoCheckOn": "On",
-    "autoCheckOff": "Off",
     "autoCheckRowLabel": "{{label}}: {{value}}",
     "autoCheckOpensSettings": "Opens Settings",
     "nothingToUpdateChecked": "No updates in the sources checked",
@@ -765,12 +763,12 @@
       "description": "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates."
     },
     "autoCheck": {
-      "label": "Check for updates every day",
-      "description": "Banager checks for updates once a day while it's running, and doesn't install the updates it finds."
+      "label": "Check for updates",
+      "description": "Banager checks for updates on this schedule while it's running, and doesn't install the updates it finds."
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
-      "needsAutoCheck": "Requires “{{setting}}”.",
+      "needsAutoCheck": "Requires “{{setting}}” set to {{day}} or {{week}}.",
       "refused": "Allow Banager to send notifications in System Settings > Notifications."
     },
     "language": {
@@ -807,7 +805,12 @@
     "hiddenNone": "None",
     "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "Couldn't save: {{message}}. Your previous setting is back.",
-    "saveErrorPlain": "Couldn't save. Your previous setting is back."
+    "saveErrorPlain": "Couldn't save. Your previous setting is back.",
+    "checkEvery": {
+      "off": "Manually",
+      "day": "Daily",
+      "week": "Weekly"
+    }
   },
   "settingsSaveFailed": {
     "permissionDenied": "no permission to write to the settings folder",

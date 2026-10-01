@@ -10,7 +10,7 @@ export interface SwitchProps {
   /**
    * A switch that cannot be changed now, because another setting it
    * depends on is off: drawn faded, and neither a click nor the keyboard
-   * changes it. Settings' 「有更新时通知我」 under 「每天自动检查」.
+   * changes it. Settings' 「有更新时通知我」 under 「检查更新」.
    */
   disabled?: boolean;
 }

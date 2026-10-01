@@ -21,6 +21,7 @@ import {
   artifactIcon,
   getSizes,
 } from "./api";
+import { checkEvery } from "./checkFrequency";
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
@@ -180,6 +181,13 @@ export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
       // a bad refresh.
       if (previous && previous.include_self_updating !== settings.include_self_updating) {
         return refreshIntoCache(queryClient, "include_self_updating changed").catch(() => {});
+      }
+      // When the next automatic check is due (`Snapshot::next_auto_check_at`)
+      // is worked out for how often it runs, as the settings are saved
+      // (`with_next_auto_check` in src-tauri/src/ipc.rs): fetched again --
+      // the same round, no refresh -- so 「每周」 says a week on at once.
+      if (previous && checkEvery(previous) !== checkEvery(settings)) {
+        return queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }
     },
   });

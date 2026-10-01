@@ -1,6 +1,10 @@
-//! The daily check, Settings → Updates' 「每天自动检查」
-//! (`Settings::auto_check`): Banager, left running, refreshes by itself
-//! once a day. What is decided here is pure -- the clock, the last check,
+//! The automatic check, Settings → Updates' 「检查更新」 popup
+//! (`Settings::auto_check`, and `Settings::auto_check_every`): Banager,
+//! left running, refreshes by itself once a day, or once a week
+//! ([`CheckEvery`]). Called "the daily check" throughout, for its first
+//! and default choice: every rule here holds for the weekly one too, with
+//! a week in place of the day ([`CheckEvery::due_after_secs`]). What is
+//! decided here is pure -- the clock, the last check,
 //! the daily checks that have failed since it and whether anything is
 //! under way are handed in -- so every case can be tested without waiting
 //! a day. The task that asks every [`TICK`] and runs the round is the
@@ -16,6 +20,7 @@
 
 use crate::model::InstanceNote;
 use crate::session::Snapshot;
+pub use crate::settings::CheckEvery;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
@@ -30,6 +35,24 @@ pub const TICK: Duration = Duration::from_secs(15 * 60);
 /// A day, in seconds: how long after the last round that counts as a
 /// check ended ([`counts_as_check`]) the daily check is due.
 pub const DUE_AFTER_SECS: i64 = 24 * 60 * 60;
+
+/// A week, in seconds: how long after the last round that counts as a
+/// check ended the weekly check is due ([`CheckEvery::Week`]).
+pub const WEEKLY_DUE_AFTER_SECS: i64 = 7 * DUE_AFTER_SECS;
+
+impl CheckEvery {
+    /// How long after the last round that counts as a check ended
+    /// ([`counts_as_check`]) the check is due: [`DUE_AFTER_SECS`] for
+    /// 「每天」, [`WEEKLY_DUE_AFTER_SECS`] for 「每周」. Only this differs
+    /// between the two: the retries after failed checks
+    /// ([`retry_after_secs`]), and everything else, are the same.
+    pub fn due_after_secs(self) -> i64 {
+        match self {
+            CheckEvery::Day => DUE_AFTER_SECS,
+            CheckEvery::Week => WEEKLY_DUE_AFTER_SECS,
+        }
+    }
+}
 
 /// A minute, in seconds: how far before the last check's end, or before
 /// the look that started the last daily check that failed
@@ -92,9 +115,10 @@ pub struct FailedChecks {
 /// What one tick of the daily check does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tick {
-    /// `Settings::auto_check` is off: nothing.
+    /// `Settings::auto_check` is off, 「不自动检查」: nothing.
     Off,
-    /// The last check ended less than [`DUE_AFTER_SECS`] ago: nothing.
+    /// The last check ended less than a day ago -- a week, for the weekly
+    /// check ([`CheckEvery::due_after_secs`]): nothing.
     NotDue,
     /// Due by the day, but daily checks in which every source failed have
     /// run since the last check, and the wait after the last of them
@@ -147,17 +171,22 @@ pub enum Tick {
 ///
 /// `busy` wins only over a check that is due, so that `Tick` says why
 /// nothing ran.
+///
+/// `every` is the setting as it is saved now
+/// (`Settings::auto_check_schedule`): `None`, 「不自动检查」, is
+/// [`Tick::Off`]; with [`CheckEvery::Week`] the day above is a week
+/// ([`CheckEvery::due_after_secs`]), and nothing else changes.
 pub fn tick(
     now: i64,
     last_check_ended: Option<i64>,
     failed: Option<FailedChecks>,
     busy: bool,
-    auto_check: bool,
+    every: Option<CheckEvery>,
 ) -> Tick {
-    if !auto_check {
+    let Some(every) = every else {
         return Tick::Off;
-    }
-    if !last_check_ended.is_none_or(|ended| waited(now, ended, DUE_AFTER_SECS)) {
+    };
+    if !last_check_ended.is_none_or(|ended| waited(now, ended, every.due_after_secs())) {
         return Tick::NotDue;
     }
     let retry_due = failed.is_none_or(|failed| {
@@ -178,7 +207,8 @@ pub fn tick(
 
 /// When the daily check is next due, in Unix seconds on the wall clock:
 /// the first `now` at or after which [`tick`] -- handed the same
-/// `last_check_ended` and `failed`, nothing under way and the setting on --
+/// `last_check_ended` and `failed`, nothing under way and the setting on,
+/// checking `every` day or week --
 /// answers [`Tick::Check`], for a clock that moves forward. That is a day
 /// after the last round that counts as a check ended ([`counts_as_check`]:
 /// one of the window's -- the check at launch, Check again, ⌘R -- resets
@@ -191,8 +221,12 @@ pub fn tick(
 /// looks come every [`TICK`] of the Mac being awake -- and only while
 /// Banager runs and nothing else is under way, so Settings says it as
 /// "about" ("约").
-pub fn next_check_due(last_check_ended: Option<i64>, failed: Option<FailedChecks>) -> Option<i64> {
-    let by_day = last_check_ended.map(|ended| ended.saturating_add(DUE_AFTER_SECS));
+pub fn next_check_due(
+    last_check_ended: Option<i64>,
+    failed: Option<FailedChecks>,
+    every: CheckEvery,
+) -> Option<i64> {
+    let by_day = last_check_ended.map(|ended| ended.saturating_add(every.due_after_secs()));
     let by_retry = failed.map(|failed| {
         failed
             .looked_at
@@ -416,12 +450,12 @@ impl RoundLog {
         self.last_check_ended
     }
 
-    /// When the daily check is next due ([`next_check_due`] over
-    /// [`RoundLog::last_check_ended`] and [`RoundLog::failed_checks`]):
-    /// what Settings shows under its switch, by way of
-    /// `Snapshot::next_auto_check_at`, which the shell fills in.
-    pub fn next_check_due(&self) -> Option<i64> {
-        next_check_due(self.last_check_ended, self.failed)
+    /// When the check that runs `every` day or week is next due
+    /// ([`next_check_due`] over [`RoundLog::last_check_ended`] and
+    /// [`RoundLog::failed_checks`]): what Settings shows under its popup,
+    /// by way of `Snapshot::next_auto_check_at`, which the shell fills in.
+    pub fn next_check_due(&self, every: CheckEvery) -> Option<i64> {
+        next_check_due(self.last_check_ended, self.failed, every)
     }
 
     /// The daily checks in which every source failed that have run in a
@@ -487,6 +521,10 @@ mod tests {
     use crate::session::{DetectOutcome, SourceError};
 
     const DAY: i64 = DUE_AFTER_SECS;
+    /// The setting on, 「每天」.
+    const DAILY: Option<CheckEvery> = Some(CheckEvery::Day);
+    /// The setting on, 「每周」.
+    const WEEKLY: Option<CheckEvery> = Some(CheckEvery::Week);
     /// 2026-09-28 09:00 UTC, an arbitrary wall-clock "now".
     const NINE_AM: i64 = 1_790_586_000;
 
@@ -503,7 +541,7 @@ mod tests {
         // between the tick reading `now` and reading the last check.
         for behind in [1, 2, 30, SET_BACK_SLACK_SECS - 1] {
             assert_eq!(
-                tick(NINE_AM - behind, Some(NINE_AM), None, false, true),
+                tick(NINE_AM - behind, Some(NINE_AM), None, false, DAILY),
                 Tick::NotDue,
                 "{behind} s before the last check"
             );
@@ -514,7 +552,7 @@ mod tests {
     fn test_a_now_a_minute_or_more_before_the_last_check_checks_once() {
         for behind in [SET_BACK_SLACK_SECS, 10 * 60, 365 * DAY] {
             assert_eq!(
-                tick(NINE_AM - behind, Some(NINE_AM), None, false, true),
+                tick(NINE_AM - behind, Some(NINE_AM), None, false, DAILY),
                 Tick::Check,
                 "{behind} s before the last check"
             );
@@ -522,7 +560,7 @@ mod tests {
             // not due.
             let checked = NINE_AM - behind + 30;
             assert_eq!(
-                tick(checked + 15 * 60, Some(checked), None, false, true),
+                tick(checked + 15 * 60, Some(checked), None, false, DAILY),
                 Tick::NotDue
             );
         }
@@ -532,7 +570,7 @@ mod tests {
     fn test_nothing_runs_while_the_setting_is_off_however_long_ago_the_last_round_was() {
         for last in [None, Some(NINE_AM - 30 * DAY), Some(NINE_AM - 60)] {
             for busy in [false, true] {
-                assert_eq!(tick(NINE_AM, last, None, busy, false), Tick::Off);
+                assert_eq!(tick(NINE_AM, last, None, busy, None), Tick::Off);
             }
         }
     }
@@ -540,11 +578,11 @@ mod tests {
     #[test]
     fn test_a_round_that_ended_less_than_a_day_ago_is_not_due() {
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - 60), None, false, true),
+            tick(NINE_AM, Some(NINE_AM - 60), None, false, DAILY),
             Tick::NotDue
         );
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - DAY + 1), None, false, true),
+            tick(NINE_AM, Some(NINE_AM - DAY + 1), None, false, DAILY),
             Tick::NotDue,
             "one second short of a day"
         );
@@ -553,11 +591,11 @@ mod tests {
     #[test]
     fn test_a_day_after_the_last_round_ended_the_check_is_due() {
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - DAY), None, false, true),
+            tick(NINE_AM, Some(NINE_AM - DAY), None, false, DAILY),
             Tick::Check
         );
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - DAY - 1), None, false, true),
+            tick(NINE_AM, Some(NINE_AM - DAY - 1), None, false, DAILY),
             Tick::Check
         );
     }
@@ -566,7 +604,7 @@ mod tests {
     fn test_no_round_since_launch_is_due() {
         // The window's check at launch has not ended (it would be busy
         // then) and none ever ran: nothing has been checked in this run.
-        assert_eq!(tick(NINE_AM, None, None, false, true), Tick::Check);
+        assert_eq!(tick(NINE_AM, None, None, false, DAILY), Tick::Check);
     }
 
     #[test]
@@ -577,15 +615,18 @@ mod tests {
         // tick after waking finds two days gone.
         let ended = NINE_AM;
         let woke = NINE_AM + 2 * DAY;
-        assert_eq!(tick(woke + 60, Some(ended), None, false, true), Tick::Check);
+        assert_eq!(
+            tick(woke + 60, Some(ended), None, false, DAILY),
+            Tick::Check
+        );
         // That round stamps its own end; the ticks after it are not due.
         let checked = woke + 90;
         assert_eq!(
-            tick(woke + 15 * 60, Some(checked), None, false, true),
+            tick(woke + 15 * 60, Some(checked), None, false, DAILY),
             Tick::NotDue
         );
         assert_eq!(
-            tick(woke + 30 * 60, Some(checked), None, false, true),
+            tick(woke + 30 * 60, Some(checked), None, false, DAILY),
             Tick::NotDue
         );
     }
@@ -593,10 +634,10 @@ mod tests {
     #[test]
     fn test_a_due_check_waits_while_something_is_under_way_and_runs_at_the_next_free_tick() {
         let last = Some(NINE_AM - 2 * DAY);
-        assert_eq!(tick(NINE_AM, last, None, true, true), Tick::Busy);
-        assert_eq!(tick(NINE_AM + 15 * 60, last, None, true, true), Tick::Busy);
+        assert_eq!(tick(NINE_AM, last, None, true, DAILY), Tick::Busy);
+        assert_eq!(tick(NINE_AM + 15 * 60, last, None, true, DAILY), Tick::Busy);
         assert_eq!(
-            tick(NINE_AM + 30 * 60, last, None, false, true),
+            tick(NINE_AM + 30 * 60, last, None, false, DAILY),
             Tick::Check
         );
     }
@@ -604,7 +645,7 @@ mod tests {
     #[test]
     fn test_busy_does_not_hide_that_nothing_was_due() {
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - 60), None, true, true),
+            tick(NINE_AM, Some(NINE_AM - 60), None, true, DAILY),
             Tick::NotDue
         );
     }
@@ -616,12 +657,12 @@ mod tests {
         // would stop the daily check for a year.
         let stamped_by_the_fast_clock = NINE_AM + 365 * DAY;
         assert_eq!(
-            tick(NINE_AM, Some(stamped_by_the_fast_clock), None, false, true),
+            tick(NINE_AM, Some(stamped_by_the_fast_clock), None, false, DAILY),
             Tick::Check
         );
         // The round that runs stamps the corrected time.
         assert_eq!(
-            tick(NINE_AM + 15 * 60, Some(NINE_AM + 60), None, false, true),
+            tick(NINE_AM + 15 * 60, Some(NINE_AM + 60), None, false, DAILY),
             Tick::NotDue
         );
     }
@@ -998,7 +1039,7 @@ mod tests {
             log.last_check_ended(),
             log.failed_checks(),
             false,
-            true,
+            DAILY,
         )
     }
 
@@ -1194,7 +1235,7 @@ mod tests {
             looked_at: NINE_AM,
             in_a_row: 2,
         });
-        let at = |now| tick(now, last, failed, false, true);
+        let at = |now| tick(now, last, failed, false, DAILY);
         assert_eq!(at(NINE_AM + 15 * MINUTE), Tick::BackingOff);
         assert_eq!(
             at(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS - 1),
@@ -1220,13 +1261,13 @@ mod tests {
             looked_at: NINE_AM + 365 * DAY,
             in_a_row: 6,
         });
-        assert_eq!(tick(NINE_AM, last, failed, false, true), Tick::Check);
+        assert_eq!(tick(NINE_AM, last, failed, false, DAILY), Tick::Check);
         // Less than a minute before it is a small correction, not a clock
         // set back: the wait stands.
         let stamped = NINE_AM + 365 * DAY;
         for behind in [1, SET_BACK_SLACK_SECS - 1] {
             assert_eq!(
-                tick(stamped - behind, last, failed, false, true),
+                tick(stamped - behind, last, failed, false, DAILY),
                 Tick::BackingOff,
                 "{behind} s before the look"
             );
@@ -1253,17 +1294,17 @@ mod tests {
             in_a_row: 1,
         });
         let due = Some(NINE_AM - 2 * DAY);
-        assert_eq!(tick(NINE_AM + 60, due, failed, true, false), Tick::Off);
+        assert_eq!(tick(NINE_AM + 60, due, failed, true, None), Tick::Off);
         assert_eq!(
-            tick(NINE_AM + 60, Some(NINE_AM - 60), failed, true, true),
+            tick(NINE_AM + 60, Some(NINE_AM - 60), failed, true, DAILY),
             Tick::NotDue
         );
         assert_eq!(
-            tick(NINE_AM + 60, due, failed, true, true),
+            tick(NINE_AM + 60, due, failed, true, DAILY),
             Tick::BackingOff
         );
         assert_eq!(
-            tick(NINE_AM + 15 * MINUTE, due, failed, true, true),
+            tick(NINE_AM + 15 * MINUTE, due, failed, true, DAILY),
             Tick::Busy,
             "the wait has passed, and busy says why nothing ran"
         );
@@ -1386,10 +1427,22 @@ mod tests {
     /// checks, for every `now` from `from` on, a minute apart, over two
     /// days: the line Settings shows and the task's decision agree.
     fn agrees_with_tick(last: Option<i64>, failed: Option<FailedChecks>, from: i64) {
-        let due = next_check_due(last, failed);
-        for step in 0..(2 * DAY / MINUTE) {
-            let now = from + step * MINUTE;
-            let checks = tick(now, last, failed, false, true) == Tick::Check;
+        agrees_with_tick_every(CheckEvery::Day, last, failed, from, MINUTE);
+    }
+
+    /// `agrees_with_tick` for the check that runs `every` day or week,
+    /// over two of them, `step` seconds apart.
+    fn agrees_with_tick_every(
+        every: CheckEvery,
+        last: Option<i64>,
+        failed: Option<FailedChecks>,
+        from: i64,
+        step_secs: i64,
+    ) {
+        let due = next_check_due(last, failed, every);
+        for step in 0..(2 * every.due_after_secs() / step_secs) {
+            let now = from + step * step_secs;
+            let checks = tick(now, last, failed, false, Some(every)) == Tick::Check;
             assert_eq!(
                 checks,
                 due.is_none_or(|due| now >= due),
@@ -1424,18 +1477,25 @@ mod tests {
 
     #[test]
     fn test_the_next_check_is_a_day_after_the_last_check_or_the_retry_after_failed_ones() {
-        assert_eq!(next_check_due(None, None), None, "due at the next look");
-        assert_eq!(next_check_due(Some(NINE_AM), None), Some(NINE_AM + DAY));
+        assert_eq!(
+            next_check_due(None, None, CheckEvery::Day),
+            None,
+            "due at the next look"
+        );
+        assert_eq!(
+            next_check_due(Some(NINE_AM), None, CheckEvery::Day),
+            Some(NINE_AM + DAY)
+        );
         let failed = FailedChecks {
             looked_at: NINE_AM,
             in_a_row: 2,
         };
         assert_eq!(
-            next_check_due(Some(NINE_AM - DAY), Some(failed)),
+            next_check_due(Some(NINE_AM - DAY), Some(failed), CheckEvery::Day),
             Some(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS)
         );
         assert_eq!(
-            next_check_due(None, Some(failed)),
+            next_check_due(None, Some(failed), CheckEvery::Day),
             Some(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS)
         );
     }
@@ -1443,14 +1503,14 @@ mod tests {
     #[test]
     fn test_a_check_the_user_runs_moves_the_next_daily_check_a_day_on() {
         let mut log = RoundLog::default();
-        assert_eq!(log.next_check_due(), None);
+        assert_eq!(log.next_check_due(CheckEvery::Day), None);
         // The window's check at launch.
         log.record(
             1,
             RoundTrigger::Window,
             &round_at(NINE_AM, &[("fake:1", false)]),
         );
-        assert_eq!(log.next_check_due(), Some(NINE_AM + DAY));
+        assert_eq!(log.next_check_due(CheckEvery::Day), Some(NINE_AM + DAY));
         // Check again, an hour on, however it went: the day starts again.
         let later = NINE_AM + 60 * MINUTE;
         log.record(
@@ -1458,13 +1518,13 @@ mod tests {
             RoundTrigger::Window,
             &round_at(later, &[("fake:1", true)]),
         );
-        assert_eq!(log.next_check_due(), Some(later + DAY));
+        assert_eq!(log.next_check_due(CheckEvery::Day), Some(later + DAY));
         // The daily check, a day on, offline: the retry 15 minutes after
         // its look.
         let look = later + DAY;
         log.record_daily(3, look, &round_at(look + TOOK, &[("fake:1", true)]));
         assert_eq!(
-            log.next_check_due(),
+            log.next_check_due(CheckEvery::Day),
             Some(look + RETRY_FIRST_SECS - RETRY_SLACK_SECS)
         );
         // A round of the window's clears the failures and starts the day.
@@ -1474,6 +1534,107 @@ mod tests {
             RoundTrigger::Window,
             &round_at(mine, &[("fake:1", false)]),
         );
-        assert_eq!(log.next_check_due(), Some(mine + DAY));
+        assert_eq!(log.next_check_due(CheckEvery::Day), Some(mine + DAY));
+    }
+
+    #[test]
+    fn test_a_week_is_seven_days_and_only_the_wait_for_the_next_check_changes() {
+        assert_eq!(CheckEvery::Day.due_after_secs(), DAY);
+        assert_eq!(CheckEvery::Week.due_after_secs(), 7 * DAY);
+        assert_eq!(WEEKLY_DUE_AFTER_SECS, 604_800);
+    }
+
+    #[test]
+    fn test_the_weekly_check_is_due_a_week_after_the_last_check_not_a_day() {
+        let last = Some(NINE_AM - DAY);
+        assert_eq!(tick(NINE_AM, last, None, false, DAILY), Tick::Check);
+        assert_eq!(
+            tick(NINE_AM, last, None, false, WEEKLY),
+            Tick::NotDue,
+            "a day is not a week"
+        );
+        assert_eq!(
+            tick(NINE_AM - DAY + 7 * DAY - 1, last, None, false, WEEKLY),
+            Tick::NotDue
+        );
+        assert_eq!(
+            tick(NINE_AM - DAY + 7 * DAY, last, None, false, WEEKLY),
+            Tick::Check
+        );
+        assert_eq!(
+            tick(NINE_AM, None, None, false, WEEKLY),
+            Tick::Check,
+            "nothing counted since launch: due at the next look, as daily"
+        );
+        assert_eq!(tick(NINE_AM, None, None, false, None), Tick::Off);
+    }
+
+    #[test]
+    fn test_the_weekly_check_waits_for_what_is_under_way_and_retries_as_the_daily_one() {
+        let last = Some(NINE_AM - 8 * DAY);
+        assert_eq!(tick(NINE_AM, last, None, true, WEEKLY), Tick::Busy);
+        // Failed weekly checks are retried 15 minutes on, then 30, as
+        // daily ones are: not a week on.
+        let failed = Some(FailedChecks {
+            looked_at: NINE_AM,
+            in_a_row: 1,
+        });
+        assert_eq!(
+            tick(NINE_AM + 5 * MINUTE, last, failed, false, WEEKLY),
+            Tick::BackingOff
+        );
+        assert_eq!(
+            tick(NINE_AM + 15 * MINUTE, last, failed, false, WEEKLY),
+            Tick::Check
+        );
+    }
+
+    #[test]
+    fn test_the_next_weekly_check_is_due_when_tick_first_checks() {
+        // An hour apart over two weeks: every hour is a look the line and
+        // the task must agree on.
+        agrees_with_tick_every(CheckEvery::Week, None, None, NINE_AM, 60 * MINUTE);
+        agrees_with_tick_every(CheckEvery::Week, Some(NINE_AM), None, NINE_AM, 60 * MINUTE);
+        let failed = Some(FailedChecks {
+            looked_at: NINE_AM,
+            in_a_row: 3,
+        });
+        agrees_with_tick_every(
+            CheckEvery::Week,
+            Some(NINE_AM - 7 * DAY),
+            failed,
+            NINE_AM,
+            MINUTE,
+        );
+        assert_eq!(
+            next_check_due(Some(NINE_AM), None, CheckEvery::Week),
+            Some(NINE_AM + 7 * DAY)
+        );
+    }
+
+    #[test]
+    fn test_a_check_the_user_runs_moves_the_next_weekly_check_a_week_on() {
+        let mut log = RoundLog::default();
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM, &[("fake:1", false)]),
+        );
+        assert_eq!(
+            log.next_check_due(CheckEvery::Week),
+            Some(NINE_AM + 7 * DAY)
+        );
+        let later = NINE_AM + 3 * DAY;
+        log.record(
+            2,
+            RoundTrigger::Window,
+            &round_at(later, &[("fake:1", false)]),
+        );
+        assert_eq!(log.next_check_due(CheckEvery::Week), Some(later + 7 * DAY));
+        assert_eq!(
+            log.next_check_due(CheckEvery::Day),
+            Some(later + DAY),
+            "the same log, read for the daily check"
+        );
     }
 }

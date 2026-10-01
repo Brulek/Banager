@@ -204,7 +204,7 @@ describe("OverviewPage", () => {
       "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     );
     // Once the settings are in, as they are long before the first check.
-    expect(await findByRole("button", { name: "Check for updates every day: Off" })).toBeInTheDocument();
+    expect(await findByRole("button", { name: "Check for updates: Manually" })).toBeInTheDocument();
     expect(heading).toHaveTextContent("Checking…");
     // Nothing to press in the row yet, no number, no ring.
     expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
@@ -266,7 +266,7 @@ describe("OverviewPage", () => {
     expect(button).toHaveAccessibleName("Check Again");
     expect(button.className).toBe(BUTTON.regular.grey);
     // The daily check under it, as in every other state.
-    expect(getByRole("button", { name: "Check for updates every day: Off" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Check for updates: Manually" })).toBeInTheDocument();
     fireEvent.click(button);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
@@ -783,18 +783,18 @@ describe("OverviewPage", () => {
     expect(container.querySelector(".text-headline")).toBeNull();
   });
 
-  it("shows whether the daily check is on in a row of its own, which opens Settings", async () => {
+  it("shows how often the automatic check runs in a row of its own, which opens Settings", async () => {
     settings.auto_check = true;
     useUiStore.setState({ page: "overview" });
     const { findByRole } = renderOverview();
 
-    const row = await findByRole("button", { name: "Check for updates every day: On" });
+    const row = await findByRole("button", { name: "Check for updates: Daily" });
     // A button to Settings, not a switch: what pressing it does, said.
     expect(row).toHaveAccessibleDescription("Opens Settings");
     expect(row).not.toHaveAttribute("role");
     // A row of its group, 36 high, the value muted with a chevron after it.
     expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "w-full"]));
-    expect(within(row).getByText("On").parentElement?.className).toContain("text-muted");
+    expect(within(row).getByText("Daily").parentElement?.className).toContain("text-muted");
     expect(row.querySelector("svg")).not.toBeNull();
 
     fireEvent.click(row);
@@ -803,15 +803,22 @@ describe("OverviewPage", () => {
     expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
   });
 
-  it("says the daily check is off, in Chinese as System Settings does: 关闭", async () => {
+  it("says the automatic check is off, in Chinese as Settings' popup does: 不自动检查", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByRole } = renderOverview();
-      const row = await findByRole("button", { name: "每天自动检查：关闭" });
+      const row = await findByRole("button", { name: "检查更新：不自动检查" });
       expect(row).toHaveAccessibleDescription("在“设置”中更改");
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+
+  it("says a weekly check is weekly", async () => {
+    settings.auto_check = true;
+    settings.auto_check_every = "Week";
+    const { findByRole } = renderOverview();
+    expect(await findByRole("button", { name: "Check for updates: Weekly" })).toBeInTheDocument();
   });
 
   it("turns the symbol and says Checking… under the verdict while a check runs", async () => {

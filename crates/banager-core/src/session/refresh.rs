@@ -3011,7 +3011,9 @@ mod tests {
         // not asked again at every 15-minute tick -- unless it was a daily
         // one in which every source failed, which is one more failed daily
         // check instead (`RoundLog::failed_checks`).
-        use crate::auto_check::{tick, FailedChecks, RoundLog, RoundTrigger, Tick, DUE_AFTER_SECS};
+        use crate::auto_check::{
+            tick, CheckEvery, FailedChecks, RoundLog, RoundTrigger, Tick, DUE_AFTER_SECS,
+        };
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -3036,7 +3038,13 @@ mod tests {
         assert_eq!(log.failed_checks(), None);
         assert!(!session.busy(), "precondition: nothing under way");
         assert_eq!(
-            tick(1_700_000_000 + 15 * 60, ended, None, session.busy(), true),
+            tick(
+                1_700_000_000 + 15 * 60,
+                ended,
+                None,
+                session.busy(),
+                Some(CheckEvery::Day)
+            ),
             Tick::NotDue
         );
         assert_eq!(
@@ -3045,7 +3053,7 @@ mod tests {
                 ended,
                 None,
                 session.busy(),
-                true
+                Some(CheckEvery::Day)
             ),
             Tick::Check
         );

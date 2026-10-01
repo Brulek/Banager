@@ -24,6 +24,7 @@ import type {
   UiEvent,
 } from "../lib/types";
 import { NO_SIZES } from "../lib/types";
+import { checkEvery } from "../lib/checkFrequency";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
@@ -231,9 +232,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       refreshed_at: refreshedAt,
       stale: content.errors.length > 0,
       // Every round here is the window's, and counts as a check: the daily
-      // one is due a day after it (`auto_check::next_check_due`), which
-      // Settings shows under its switch once it is on.
-      next_auto_check_at: refreshedAt + DAY_SECONDS,
+      // one is due a day after it (`auto_check::next_check_due`), the
+      // weekly one a week, which Settings shows under its popup once it is
+      // on.
+      next_auto_check_at: refreshedAt + (checkEvery(settings) === "Week" ? 7 : 1) * DAY_SECONDS,
     });
     if (generation > lastAnnounced) {
       lastAnnounced = generation;
@@ -523,7 +525,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   const handlers: Record<MockCommand, (args: Args) => Promise<unknown>> = {
     async get_snapshot() {
       if (scenario.state === "error") throw BROKEN("get_snapshot");
-      return clone(committed ?? EMPTY_SNAPSHOT);
+      if (committed === null) return clone(EMPTY_SNAPSHOT);
+      // The next automatic check, for how often it runs as the settings
+      // say now (`with_next_auto_check` in src-tauri/src/ipc.rs): a day,
+      // or a week, after the last round.
+      const days = checkEvery(settings) === "Week" ? 7 : 1;
+      return clone({
+        ...committed,
+        next_auto_check_at: committed.refreshed_at === null ? null : committed.refreshed_at + days * DAY_SECONDS,
+      });
     },
     async refresh() {
       if (scenario.state === "loading") return never();

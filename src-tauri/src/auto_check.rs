@@ -47,7 +47,8 @@ async fn check_every(state: &AppState, tick: Duration, now: fn() -> i64) {
 /// of any trigger, but a daily one in which every source failed), the daily
 /// checks in which every source failed that have run in a row since
 /// (`RoundLog::failed_checks`), whether a refresh or an operation is under
-/// way (`Session::busy`), and the setting as it is saved now.
+/// way (`Session::busy`), and the setting as it is saved now: off, every
+/// day or every week (`Settings::auto_check_schedule`).
 fn tick_at(state: &AppState, now: i64) -> Tick {
     let (last_check_ended, failed) = {
         let rounds = state.rounds.lock().unwrap();
@@ -58,7 +59,7 @@ fn tick_at(state: &AppState, now: i64) -> Tick {
         last_check_ended,
         failed,
         state.session.busy(),
-        state.get_settings().auto_check,
+        state.get_settings().auto_check_schedule(),
     )
 }
 
@@ -353,6 +354,32 @@ mod tests {
             "one round: it stamps its end, and the next is a day after that"
         );
         assert_eq!(state.session.snapshot().refreshed_at, Some(T0 + DAY));
+        task.abort();
+    }
+
+    static CLOCK_WEEKLY: AtomicI64 = AtomicI64::new(T0);
+    fn clock_weekly() -> i64 {
+        CLOCK_WEEKLY.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_set_to_every_week_the_task_waits_a_week_not_a_day() {
+        let fake = Fake::new();
+        let state = state_on(&fake, clock_weekly, true);
+        state.settings.lock().unwrap().auto_check_every = banager_core::settings::CheckEvery::Week;
+        ipc::refresh_impl(&state).await.expect("refresh");
+        let task = start(&state, TICK, clock_weekly);
+
+        CLOCK_WEEKLY.store(T0 + DAY, Ordering::SeqCst);
+        tokio::time::sleep(TICK * 6).await;
+        assert_eq!(fake.rounds(), 1, "a day on: not due every week");
+        CLOCK_WEEKLY.store(T0 + 6 * DAY, Ordering::SeqCst);
+        tokio::time::sleep(TICK * 6).await;
+        assert_eq!(fake.rounds(), 1, "six days on: still not");
+
+        CLOCK_WEEKLY.store(T0 + 7 * DAY, Ordering::SeqCst);
+        wait_for_rounds(&fake, 2).await;
+        assert_eq!(recorded(&state, 2).await, RoundTrigger::Automatic);
         task.abort();
     }
 

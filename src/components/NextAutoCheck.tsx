@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 /**
- * The line under Settings' 「每天自动检查」 switch, while it is on: when the
- * daily check is next expected -- 「下次自动检查：今天21:10左右」
+ * The line under Settings' 「检查更新」 popup, while it is set to 「每天」 or
+ * 「每周」: when the automatic check is next expected -- 「下次自动检查：今天21:10左右」
  * (critique §2 item 8). The time is the shell's
- * (`Snapshot::next_auto_check_at`, from `auto_check::next_check_due`): a day
+ * (`Snapshot::next_auto_check_at`, from `auto_check::next_check_due`): a day (a week)
  * after the last check that counted, the user's own Check again included,
  * so someone who checks by hand every day sees the next one move on, not a
  * "last automatic check" days ago that reads as broken. Said as "about":

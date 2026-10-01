@@ -21,10 +21,13 @@ pub(crate) fn get_snapshot_impl(state: &AppState) -> Result<Snapshot, String> {
 /// from the round log as it is now (`RoundLog::next_check_due`), which a
 /// round is recorded in before its snapshot is committed
 /// (`refresh_for`), so a snapshot handed out here is never older than the
-/// time it carries. Every snapshot the window is handed goes through here:
+/// time it carries -- for the check every day or every week, as the
+/// settings are saved now (`Settings::auto_check_every`; the page fetches
+/// the snapshot again when that changes). Every snapshot the window is handed goes through here:
 /// `get_snapshot`'s and `refresh`'s.
 fn with_next_auto_check(state: &AppState, mut snapshot: Snapshot) -> Snapshot {
-    snapshot.next_auto_check_at = state.rounds.lock().unwrap().next_check_due();
+    let every = state.get_settings().auto_check_every;
+    snapshot.next_auto_check_at = state.rounds.lock().unwrap().next_check_due(every);
     snapshot
 }
 
@@ -1533,6 +1536,16 @@ mod tests {
             .remove("next_auto_check_at");
         let back: Snapshot = serde_json::from_value(without).expect("deserialize without it");
         assert_eq!(back.next_auto_check_at, None);
+
+        // Set to 「每周」: the same round, read for the weekly check, as
+        // soon as the settings say so -- the page fetches the snapshot
+        // again once it has saved them.
+        state.settings.lock().unwrap().auto_check_every = banager_core::settings::CheckEvery::Week;
+        let weekly = get_snapshot_impl(&state).expect("get_snapshot_impl");
+        assert_eq!(
+            weekly.next_auto_check_at,
+            Some(nine_am() + banager_core::auto_check::WEEKLY_DUE_AFTER_SECS)
+        );
     }
 
     #[tokio::test]
