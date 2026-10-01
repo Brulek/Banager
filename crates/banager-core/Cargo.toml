@@ -47,6 +47,12 @@ getrandom = "0.4"
 # crate to the build graph; declared directly for the same reason as
 # percent-encoding above.
 base64 = "0.22"
+# `history::failure_cause` reads a failed tool's last lines for the cause
+# in a word, with the phrases src/lib/failureCause.ts has, so the history
+# keeps the word and never the lines. Already in Cargo.lock at this version
+# as a dependency of tauri (through tauri-utils), so no new crate enters
+# the build.
+regex = "1"
 
 # `RealTrasher` (src/trash/real.rs) is one call: `NSFileManager
 # trashItemAtURL:resultingItemURL:error:`, the call Finder makes to move an

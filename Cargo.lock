@@ -287,6 +287,7 @@ dependencies = [
  "percent-encoding",
  "plist",
  "png 0.18.1",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
