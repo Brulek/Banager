@@ -726,8 +726,9 @@ export function InstalledPage() {
     () => (snapshot?.instances ?? []).filter((instance) => activeFilter === null || instance.id === activeFilter),
     [snapshot, activeFilter],
   );
-  // How many of the sources in view's tools 「终端里找不到」 and
-  // 「Homebrew已停用或弃用」 show, search aside (`discoverCounts`).
+  // How many of the sources in view's tools 「终端里找不到」,
+  // 「Homebrew已停用或弃用」 and 「保留了其他版本」 show, search aside
+  // (`discoverCounts`).
   // And how many of those a source's own notice already names, whose
   // line over the list would only say it again (`discoverCovered`).
   const { discover, discoverNamed } = useMemo(() => {
@@ -750,9 +751,10 @@ export function InstalledPage() {
       // Unknown or Dependency (its `--not-required` marks a leaf, which is
       // not the same as "the user asked for it"), so keying off "Requested"
       // would fold every pip package away.
-      // Under 「终端里找不到」 or 「Homebrew已停用或弃用」 nothing folds: a
-      // retired formula is often a component, and the count the popup and
-      // the notice said is the rows 查看 shows (`isDiscoverShow`).
+      // Under 「终端里找不到」, 「Homebrew已停用或弃用」 or 「保留了其他版本」
+      // nothing folds: a retired formula, or one keeping another version,
+      // is often a component, and the count the popup and the notice said
+      // is the rows 查看 shows (`isDiscoverShow`).
       const folding = !isDiscoverShow(show);
       const primary = artifacts.filter((a) => !folding || a.reason !== "Dependency").sort(compareArtifacts);
       const dependencies = folding ? artifacts.filter((a) => a.reason === "Dependency").sort(compareArtifacts) : [];

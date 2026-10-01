@@ -52,7 +52,7 @@ page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
 never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
-Again, Search or Help's Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
+Again, Search or Help's Welcome to Banager, Check Tool Setup… and Copy Diagnostic Info…, which Rust sends only to a
 page that asked it to listen:
 in this window those items do nothing but bring the window back when it
 is closed or minimized. (The page hears one only when

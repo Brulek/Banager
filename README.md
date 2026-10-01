@@ -57,8 +57,8 @@ a protected place**, and the link is not followed.
 - The **Show** menu in the toolbar of the Updates and Installed pages narrows the list to **AI Tools**:
   Claude Code, Codex, Gemini CLI, Ollama and the other AI tools in a table built into Banager,
   whichever source installed them. On the Installed page it also offers **Installed More Than Once**, **Not Found
-  in Terminal**, **Disabled or Deprecated by Homebrew** and **Keeping Other Versions** (Homebrew formulae with an
-  older version kept beside the current one), the last three with how many tools they show.
+  in Terminal**, **Disabled or Deprecated by Homebrew** and **Keeping Other Versions** (Homebrew formulae with
+  another version kept beside the one in use), the last three with how many tools they show.
 - A tool's details say, under **In Terminal**, what typing each of its commands runs — this copy,
   another copy or program, or nothing, when the command sits in a folder Terminal doesn't search —
   judged from the Terminal settings read when Banager opened. A tool another source installed too says
@@ -88,8 +88,9 @@ a protected place**, and the link is not followed.
   run; the ones it leaves to their own row, each with why — such as an uninstall that can't be cancelled
   once it starts, one that deletes files permanently, one whose steps can't be known in advance, one still
   used by software you didn't select; what stays afterwards, each path once; and the exact commands
-  and paths under **Show Commands and Paths**. Confirming queues each tool's own uninstall, the same
-  one its row runs; on one source they start in the order listed.
+  under **Show Commands** (**Show Commands and Paths** when an uninstall moves files to the Trash).
+  Confirming queues each tool's own uninstall, the same one its row runs — a tool whose dependent in
+  the batch could not be started is left for later; on one source they start in the order listed.
 - When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
   command to copy and run in Terminal, where you can type it.
 - With **Check for updates** set to Daily or Weekly, Settings says about when the next check is due,
@@ -150,8 +151,9 @@ or minimized, each of these brings it back first.
 
 The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
 command-line tools and AI coding tools from Homebrew, npm, pipx and the rest in one place; an update or
-uninstall shows what it will do and starts only when you confirm; and it doesn't edit your shell's
-startup files, collects no usage data and needs no account. The first check runs behind it. However
+uninstall shows what it will do and starts only when you confirm; and Banager itself doesn't edit your
+shell's startup files, collects no usage data and needs no account. (The one exception to the first is
+rustup's own uninstall, which removes the line it added to them; its preview says so.) The first check runs behind it. However
 you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
 it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
 again at any time.
@@ -447,7 +449,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 
 - “更新”和“已安装”两页工具栏里的“显示”菜单，可以只列出“AI工具”：Claude Code、Codex、Gemini CLI、
   Ollama 等 Banager 内置表格里的 AI 工具，不管是哪个来源装的。在“已安装”页，它还有“装了不止一份”“终端里找不到”
-  “Homebrew已停用或弃用”和“保留了其他版本”（Homebrew 在当前版本之外还留着旧版本的 formula），后三项会写出各有几个。
+  “Homebrew已停用或弃用”和“保留了其他版本”（在当前使用的版本之外还留着其他版本的 Homebrew formula），后三项会写出各有几个。
 - 工具详情里的“在终端里输入”，说明输入它的每条命令会运行什么：这一份、另一份或另一个同名程序，或者什么都
   运行不了（命令所在的文件夹不在终端的搜索路径里）——按打开 Banager 时读到的终端设置判断。别的来源也装了
   一份的工具会标“装了两份”，能判断时，详情里说终端运行的是哪一份。
@@ -466,9 +468,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
 - “已安装”页里，“卸载…”可用的行前面有复选框。最多勾 20 个，点“卸载所选”，一个预览里列出全部：按实际执行的
   顺序写出每个会删什么；留给它自己那一行单独卸载的，逐个写明原因，例如开始后无法取消的、会永久删除文件的、
-  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的；卸载后会保留的东西，每条路径只列一次；确切的命令和
-  路径收在“查看命令和路径”里。确认后，每个工具运行的就是它那一行单独卸载时的那一次卸载；同一个来源上的按列出的
-  顺序开始。
+  卸载步骤删什么无法事先得知的、还有没选上的软件要用到的；卸载后会保留的东西，每条路径只列一次；确切的命令收在“查看命令”
+  里（有工具的卸载会把文件移到废纸篓时是“查看命令和路径”）。确认后，每个工具运行的就是它那一行单独卸载时的那一次
+  卸载——批量里依赖它的工具没能开始的，它先不卸载；同一个来源上的按列出的顺序开始。
 - “其他程序”页的扫描不读 macOS 在应用读取前会先问你的那些位置——桌面、文稿、下载、图片、影片、音乐、iCloud
   云盘和其他云盘、其他应用的数据——也不读 `/Volumes` 下的其他磁盘，经过链接也一样。要扫描的文件夹在这些位置里时
   不读取，列表下方有一行写出有几个没有读取（打开“显示技术细节”后，它的 ⓘ 里列出是哪些）；指向这些位置的程序
@@ -526,8 +528,8 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 选这些项会先把窗口叫回来。
 
 第一次打开 Banager 时，会出现一个欢迎页，用三条短句说明它做什么：用 Homebrew、npm、pipx 等装的命令行工具和
-AI 编程工具都列在一处；更新或卸载前先写明要做什么，确认后才开始；不改终端的配置文件，不收集使用情况，也不需要
-账号。第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
+AI 编程工具都列在一处；更新或卸载前先写明要做什么，确认后才开始；Banager 自己不改终端的配置文件，不收集使用情况，也不需要
+账号。（唯一的例外是 rustup 自己的卸载，它会删掉当初加进这些文件的那一行，预览里会写明。）第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
 已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Banager 仍在运行，进行中的操作照常
