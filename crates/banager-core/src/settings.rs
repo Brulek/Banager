@@ -133,6 +133,15 @@ pub struct Settings {
     /// `skipped_versions`; those that have run out are dropped on `load`.
     #[serde(default)]
     pub snoozed_updates: Vec<SnoozedUpdate>,
+    /// Whether the welcome sheet (`WelcomeSheet` in
+    /// src/components/WelcomeSheet.tsx) has been shown: false until it is
+    /// closed the first time, by its button, Escape or a click beside it,
+    /// and true from then on, so it shows once. `#[serde(default)]`, false,
+    /// for the same reason as `auto_check`: a settings.json written before
+    /// the sheet existed loads with its other fields, and shows it once.
+    /// Never goes back to false (`keep_welcome_seen`).
+    #[serde(default)]
+    pub welcome_seen: bool,
 }
 
 impl Settings {
@@ -140,6 +149,15 @@ impl Settings {
     /// 「不自动检查」 (`auto_check` off), else how often it runs.
     pub fn auto_check_schedule(&self) -> Option<CheckEvery> {
         self.auto_check.then_some(self.auto_check_every)
+    }
+
+    /// `self`, about to replace `previous`, with `welcome_seen` kept true
+    /// once it was: a page that read the settings before the welcome sheet
+    /// closed, and saves them afterwards, cannot bring the sheet back at
+    /// the next launch.
+    pub fn keep_welcome_seen(mut self, previous: &Settings) -> Settings {
+        self.welcome_seen |= previous.welcome_seen;
+        self
     }
 }
 
@@ -156,6 +174,7 @@ impl Default for Settings {
             auto_check_every: CheckEvery::Day,
             notify_operations: false,
             snoozed_updates: Vec::new(),
+            welcome_seen: false,
         }
     }
 }
@@ -255,6 +274,7 @@ mod tests {
             !settings.notify_operations,
             "no notification when operations finish"
         );
+        assert!(!settings.welcome_seen, "the welcome sheet is still to show");
     }
 
     #[test]
@@ -275,6 +295,7 @@ mod tests {
         assert!(json.contains("\"auto_check_every\":\"Day\""));
         assert!(json.contains("\"notify_operations\":false"));
         assert!(json.contains("\"snoozed_updates\":[]"));
+        assert!(json.contains("\"welcome_seen\":false"));
     }
 
     #[test]
@@ -284,7 +305,7 @@ mod tests {
         // this order, the daily check's two last.
         assert_eq!(
             serde_json::to_string(&Settings::default()).expect("serialize"),
-            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[]}"#
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false,"auto_check_every":"Day","notify_operations":false,"snoozed_updates":[],"welcome_seen":false}"#
         );
     }
 
@@ -390,6 +411,7 @@ mod tests {
                 auto_check_every: CheckEvery::Day,
                 notify_operations: false,
                 snoozed_updates: Vec::new(),
+                welcome_seen: false,
             }
         );
         let _ = std::fs::remove_file(&path);
@@ -558,11 +580,66 @@ mod tests {
                 key: key("wget"),
                 until: 4_102_444_800,
             }],
+            welcome_seen: true,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);
         assert_eq!(loaded, settings);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_written_before_the_welcome_sheet_shows_it_and_keeps_the_rest() {
+        // Every settings.json written before the welcome sheet existed:
+        // all of today's other fields, set, and no `welcome_seen`.
+        let path = temp_settings_path("no-welcome-seen");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true,"notify_updates":true,"auto_check_every":"Week","notify_operations":true,"snoozed_updates":[]}"#,
+        )
+        .expect("write settings.json without welcome_seen");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details && loaded.notify_operations);
+        assert_eq!(loaded.auto_check_schedule(), Some(CheckEvery::Week));
+        assert!(!loaded.welcome_seen, "shown once, at the next launch");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_welcome_seen_saved_true_loads_true() {
+        let path = temp_settings_path("welcome-seen");
+        save(
+            &path,
+            &Settings {
+                welcome_seen: true,
+                ..Settings::default()
+            },
+        )
+        .expect("save");
+        assert!(load(&path).welcome_seen, "never shown again");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_keep_welcome_seen_never_turns_it_back_off() {
+        let seen = Settings {
+            welcome_seen: true,
+            ..Settings::default()
+        };
+        let unseen = Settings::default();
+        // A page that read the settings before the sheet closed saves its
+        // change over them: the change is kept, and so is welcome_seen.
+        let stale = Settings {
+            language: Language::En,
+            ..Settings::default()
+        };
+        let kept = stale.clone().keep_welcome_seen(&seen);
+        assert!(kept.welcome_seen);
+        assert_eq!(kept.language, Language::En);
+        assert!(unseen.clone().keep_welcome_seen(&seen).welcome_seen);
+        assert!(seen.clone().keep_welcome_seen(&unseen).welcome_seen);
+        assert!(!unseen.clone().keep_welcome_seen(&unseen).welcome_seen);
     }
 
     #[test]

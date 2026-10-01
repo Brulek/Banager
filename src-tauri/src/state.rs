@@ -75,8 +75,13 @@ impl AppState {
     /// actually lands on disk last is also the one left in memory. This
     /// stays synchronous throughout (no `.await` inside), so holding a
     /// `std::sync::Mutex` guard across it is safe.
+    ///
+    /// `welcome_seen` is kept true once it is (`Settings::keep_welcome_seen`):
+    /// a page holding settings read before the welcome sheet closed cannot
+    /// bring the sheet back by saving over them.
     pub fn set_settings(&self, new_settings: Settings) -> std::io::Result<()> {
         let mut settings = self.settings.lock().unwrap();
+        let new_settings = new_settings.keep_welcome_seen(&settings);
         settings::save(&self.settings_path, &new_settings)?;
         *settings = new_settings;
         Ok(())
@@ -128,6 +133,34 @@ mod tests {
             .expect("set_settings");
         assert_eq!(state.get_settings(), new_settings);
         assert_eq!(settings::load(&path), new_settings);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_set_settings_never_turns_welcome_seen_back_off() {
+        let path = temp_settings_path("welcome");
+        let _ = std::fs::remove_file(&path);
+        let state = AppState::new(path.clone(), ChannelSink::new());
+        assert!(
+            !state.get_settings().welcome_seen,
+            "shown at the first launch"
+        );
+        state
+            .set_settings(Settings {
+                welcome_seen: true,
+                ..Settings::default()
+            })
+            .expect("the sheet closes");
+        // Settings a page read before the sheet closed, saved with a change.
+        state
+            .set_settings(Settings {
+                show_technical_details: true,
+                ..Settings::default()
+            })
+            .expect("a stale save");
+        let saved = settings::load(&path);
+        assert!(saved.welcome_seen && saved.show_technical_details);
+        assert_eq!(state.get_settings(), saved);
         let _ = std::fs::remove_file(&path);
     }
 
