@@ -3147,6 +3147,8 @@ describe("UpdatesPage", () => {
       await waitFor(() => expect(rowNames()).toEqual([]));
       // Over the page's empty sentence, which says there is nothing to install.
       expect(section.closest("[data-index]")).toBeNull();
+      const sentence = screen.getByText(/^(Everything is up to date|No updates in the sources checked)$/);
+      expect(section.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       // A new update to install: the rows come first, the section after.
       act(() => {
         queryClient.setQueryData(queryKeys.snapshot, {
