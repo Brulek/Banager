@@ -848,14 +848,16 @@
     "bar": {
       "allUninstalled_one": "Uninstalled {{count}} tool",
       "allUninstalled_other": "Uninstalled {{count}} tools",
-      "notUninstalled_one": "{{count}} couldn't be uninstalled",
-      "notUninstalled_other": "{{count}} couldn't be uninstalled"
+      "notUninstalled_one": "{{count}} wasn't uninstalled",
+      "notUninstalled_other": "{{count}} weren't uninstalled"
     },
     "uninstallSelectedShort": "Uninstall ({{number}})…"
   },
   "batchUninstallMore": {
     "commandsGo_one": "This command goes with its copy too: {{names}}.",
-    "commandsGo_other": "These commands go with their copies too: {{names}}."
+    "commandsGo_other": "These commands go with their copies too: {{names}}.",
+    "mixed_one": "Uninstalled {{done}}; {{count}} wasn't uninstalled",
+    "mixed_other": "Uninstalled {{done}}; {{count}} weren't uninstalled"
   },
   "keepsData": {
     "title": "Stays after uninstalling",

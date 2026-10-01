@@ -774,12 +774,13 @@
     "viewLogOf": "查看“{{name}}”的日志",
     "bar": {
       "allUninstalled_other": "已卸载{{count}}个工具",
-      "notUninstalled_other": "{{count}}个未能卸载"
+      "notUninstalled_other": "{{count}}个没有卸载"
     },
     "uninstallSelectedShort": "卸载（{{number}}）…"
   },
   "batchUninstallMore": {
-    "commandsGo_other": "以下命令也会随它们那一份一起删除：{{names}}。"
+    "commandsGo_other": "以下命令也会随它们那一份一起删除：{{names}}。",
+    "mixed_other": "已卸载{{done}}个，{{count}}个没有卸载"
   },
   "keepsData": {
     "title": "卸载后会保留",

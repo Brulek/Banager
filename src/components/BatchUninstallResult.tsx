@@ -45,16 +45,22 @@ export function BatchUninstallResult() {
   const succeeded = new Set(
     started.filter(({ op }) => op.outcome === "Succeeded").map(({ item }) => artifactKeyId(item.key)),
   );
+  // 「已卸载2个，1个没有卸载」 when some did: the block says what became
+  // of the whole batch, not only of what went wrong.
+  const heading =
+    succeeded.size > 0
+      ? t("batchUninstallMore.mixed", { done: succeeded.size, count: notUninstalled.length })
+      : t("batchUninstall.result", { count: notUninstalled.length });
   const viewLog = (opId: number) => {
     setFocusedOpId(opId);
     setDrawerOpen(true);
   };
   return (
-    <section aria-label={t("batchUninstall.result", { count: notUninstalled.length })} data-batch-result="" className="px-5 pb-2 pt-2">
+    <section aria-label={heading} data-batch-result="" className="px-5 pb-2 pt-2">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p role="alert" className="text-body text-danger-text">
-            {t("batchUninstall.result", { count: notUninstalled.length })}
+            {heading}
           </p>
           <ul className="mt-1 flex flex-col gap-1.5">
             {notUninstalled.map(({ item, op }) => {

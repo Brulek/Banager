@@ -700,14 +700,15 @@ describe("OperationBar, after a batch uninstall", () => {
       uninstall(2, "jq", "Done", "Succeeded"),
       uninstall(1, "git", "Done", "Succeeded"),
     ]);
-    await findByText("2 couldn't be uninstalled");
+    // htop succeeded in the same run: said with the two that didn't.
+    await findByText("Uninstalled 1; 2 weren't uninstalled");
     fireEvent.click(getByRole("button", { name: "View Log" }));
     expect(useUiStore.getState().focusedOpId).toBe(6);
 
     await act(async () => {
       await i18n.changeLanguage("zh-CN");
     });
-    await findByText("2个未能卸载");
+    await findByText("已卸载1个，2个没有卸载");
     await act(async () => {
       await i18n.changeLanguage("en");
     });

@@ -92,8 +92,8 @@ describe("what a batch uninstall did not uninstall", () => {
       op(12, "python@3.13", "Done", refused),
       op(11, "pipx", "Done", "Cancelled"),
     ]);
-    const block = await screen.findByRole("region", { name: "2 weren't uninstalled" });
-    expect(within(block).getByRole("alert")).toHaveTextContent("2 weren't uninstalled");
+    const block = await screen.findByRole("region", { name: "Uninstalled 1; 2 weren't uninstalled" });
+    expect(within(block).getByRole("alert")).toHaveTextContent("Uninstalled 1; 2 weren't uninstalled");
     const items = [...block.querySelectorAll("[data-batch-result-item]")] as HTMLElement[];
     expect(items.map((item) => item.textContent)).toEqual([
       "pipxCancelledView Log",
@@ -121,7 +121,7 @@ describe("what a batch uninstall did not uninstall", () => {
     useUiStore.getState().setUninstallBatch(record);
     operations = [op(13, "wget", "Done", refused), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
     renderWithProviders(<BatchUninstallResult />);
-    const block = await screen.findByRole("region", { name: "1 wasn't uninstalled" });
+    const block = await screen.findByRole("region", { name: "Uninstalled 2; 1 wasn't uninstalled" });
     expect(within(block).getByText("wget")).toBeInTheDocument();
     act(() =>
       useUiStore.getState().setUninstallBatch({ id: 2, items: [{ key: key("pipx"), name: "pipx", opId: 11, after: [] }] }),
@@ -152,12 +152,20 @@ describe("what a batch uninstall did not uninstall", () => {
     expect(screen.getByRole("heading", { name: "Installed" })).toHaveFocus();
   });
 
+  it("says only how many weren't uninstalled when none was", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    operations = [op(13, "wget", "Done", refused), op(12, "python@3.13", "Done", refused), op(11, "pipx", "Done", "Cancelled")];
+    renderWithProviders(<BatchUninstallResult />);
+    const block = await screen.findByRole("region", { name: "3 weren't uninstalled" });
+    expect(within(block).getByRole("alert")).toHaveTextContent(/^3 weren't uninstalled$/);
+  });
+
   it("says it in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     useUiStore.getState().setUninstallBatch(record);
     operations = [op(13, "wget", "Done", "Succeeded"), op(12, "python@3.13", "Done", refused), op(11, "pipx", "Done", refused)];
     renderWithProviders(<BatchUninstallResult />);
-    const block = await screen.findByRole("region", { name: "2个没有卸载" });
+    const block = await screen.findByRole("region", { name: "已卸载1个，2个没有卸载" });
     expect(within(block).getByText("“pipx”没有卸载，Homebrew不会卸载仍被需要的软件。")).toBeInTheDocument();
     expect(within(block).getByRole("button", { name: "查看“python@3.13”的日志" })).toHaveTextContent("查看日志");
   });

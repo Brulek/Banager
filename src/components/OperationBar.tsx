@@ -227,7 +227,10 @@ export function OperationBar() {
       words = !onlyFailed
         ? t("operations.batch.needsAttention", { count: toLook.length, total })
         : uninstalls
-          ? t("batchUninstall.bar.notUninstalled", { count: toLook.length })
+          ? // The same words as the result block over the list.
+            total > toLook.length
+            ? t("batchUninstallMore.mixed", { done: total - toLook.length, count: toLook.length })
+            : t("batchUninstall.bar.notUninstalled", { count: toLook.length })
           : t("operations.batch.notUpdated", { count: toLook.length });
       logOf = newestToLook;
     } else if (tones.every((each) => each === "success")) {
