@@ -118,7 +118,8 @@
     "standalone-claude": "Claude Code",
     "standalone-rustup": "rustup",
     "standalone-agy": "Antigravity CLI",
-    "standalone-grok": "Grok Build"
+    "standalone-grok": "Grok Build",
+    "standalone-codex": "Codex"
   },
   "brewStatus": {
     "disabledWord": "已停用",
@@ -425,6 +426,16 @@
       "standalone-rustup": "安装和更新Rust的工具",
       "standalone-agy": "Google的AI编程助手",
       "standalone-grok": "xAI的AI编程助手"
+    },
+    "codex": {
+      "summary": "OpenAI的AI编程助手",
+      "updatesItself": "它自己更新",
+      "updatesItselfAria": "它自己更新：{{name}}",
+      "updatesItselfDetail": "新版本由{{source}}自己安装。这里不检查也不安装它的更新。",
+      "notChecked": "不检查更新",
+      "notCheckedAria": "不检查更新：{{name}}",
+      "notCheckedDetail": "这里不检查也不安装{{source}}的更新。",
+      "uninstallDescription": "目前这里只列出{{source}}，还不能卸载它。请按照{{source}}的官方说明卸载。"
     }
   },
   "sizes": {

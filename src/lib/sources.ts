@@ -33,6 +33,7 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   "standalone-rustup": "adapters.standalone-rustup",
   "standalone-agy": "adapters.standalone-agy",
   "standalone-grok": "adapters.standalone-grok",
+  "standalone-codex": "adapters.standalone-codex",
 };
 
 /** The adapter ids of the tools with their own installer, one per recipe
@@ -43,7 +44,8 @@ export type StandaloneAdapterId =
   | "standalone-claude"
   | "standalone-rustup"
   | "standalone-agy"
-  | "standalone-grok";
+  | "standalone-grok"
+  | "standalone-codex";
 
 /**
  * One line per standalone tool, for the description slot of its rows on
@@ -60,6 +62,7 @@ export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-rustup": "standalone.summary.standalone-rustup",
   "standalone-agy": "standalone.summary.standalone-agy",
   "standalone-grok": "standalone.summary.standalone-grok",
+  "standalone-codex": "standalone.codex.summary",
 };
 
 /**
@@ -757,6 +760,17 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
       description: "installed.blocked.NoSafeMethod.standalone-rustup.description",
       command: () => "",
       refused: "installed.blocked.NoSafeMethod.standalone-rustup.refused",
+    },
+  },
+  // Codex's own install is listed only: whether it has an uninstall
+  // command was not looked into, so B's "has no uninstall command" would
+  // be a claim; what is true is that this build does not remove it (D5).
+  "standalone-codex": {
+    NoSafeMethod: {
+      badge: "installed.blocked.NoSafeMethod.badge",
+      description: "standalone.codex.uninstallDescription",
+      command: () => "",
+      refused: "installed.blocked.NoSafeMethod.refused",
     },
   },
 };

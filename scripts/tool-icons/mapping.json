@@ -6085,6 +6085,10 @@
       "icon": "si:claude",
       "relation": "same"
     },
+    "standalone:codex": {
+      "icon": "gh:openai",
+      "relation": "same"
+    },
     "standalone:grok": {
       "icon": "gh:xai-org",
       "relation": "maker"
@@ -6105,6 +6109,7 @@
     "standalone-claude": "si:claude",
     "standalone-rustup": "si:rust",
     "standalone-agy": "gh:google-antigravity",
-    "standalone-grok": "gh:xai-org"
+    "standalone-grok": "gh:xai-org",
+    "standalone-codex": "gh:openai"
   }
 }

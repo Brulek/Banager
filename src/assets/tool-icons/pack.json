@@ -6521,6 +6521,7 @@
     "pypi:yt-dlp": "gh-yt-dlp",
     "standalone:agy": "gh-google-antigravity",
     "standalone:claude": "si-claude",
+    "standalone:codex": "gh-openai",
     "standalone:grok": "gh-xai-org",
     "standalone:rustup": "si-rust"
   },
@@ -6533,6 +6534,7 @@
     "pipx": "si-pipx",
     "standalone-agy": "gh-google-antigravity",
     "standalone-claude": "si-claude",
+    "standalone-codex": "gh-openai",
     "standalone-grok": "gh-xai-org",
     "standalone-rustup": "si-rust",
     "uv": "si-uv"

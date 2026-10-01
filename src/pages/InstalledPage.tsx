@@ -71,6 +71,8 @@ import {
   homepageFact,
   otherVersionsFact,
 } from "../components/HomebrewStatus";
+import { uncheckedUpdatesChip } from "../components/UncheckedUpdates";
+import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
@@ -1135,6 +1137,10 @@ export function InstalledPage() {
       }
     } else if (hidden !== undefined) {
       chips.push(hiddenChip(hidden));
+    } else if (updatesUnchecked(instance)) {
+      // Codex's own install: no check was made, so not 「已是最新」.
+      const unchecked = uncheckedUpdatesChip(t, artifact, instance, label);
+      if (unchecked !== null) chips.push(unchecked);
     } else if (
       // The first check's list knows nothing of updates yet.
       !preview &&
