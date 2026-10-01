@@ -1,11 +1,11 @@
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { HomebrewLifecycle, InstalledArtifact } from "../lib/types";
+import type { HomebrewLifecycle, InstalledArtifact, Sizes } from "../lib/types";
+import { otherVersionsSizeText, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureIcon } from "./icons";
 import { BUTTON } from "./ui/controls";
-import { SMALL_WRAPPING } from "./ui/group";
 
 /**
  * Homebrew's reasons it knows by name (`DeprecateDisable`'s
@@ -141,6 +141,44 @@ export function homepageFact(
 }
 
 /**
+ * The inspector's 「其他版本」 fact: a Homebrew formula's other kegs, by
+ * version -- selectable, as the inspector's versions are -- and under
+ * them, once measured, what they take together, 「约120 MB」 (「共约…」 for
+ * several), in the secondary colour. Null for a package with none.
+ *
+ * Said as they are, with no cause and not as "old": Homebrew lists a
+ * formula's kegs by version, the one linked is not always the newest, and
+ * its own cleanup leaves some (a dependency's old keg among them) for
+ * reasons not in what it reports. The size is the same kegs' (size.rs
+ * `old_versions_job`, every `Cellar/<name>/*` besides the one listed); a
+ * size with no versions to say it under is not shown.
+ */
+export function otherVersionsFact(
+  t: TFunction,
+  artifact: InstalledArtifact,
+  sizes: Sizes | undefined,
+): { term: string; value: ReactNode; selectable: boolean } | null {
+  const others = artifact.facts.homebrew?.other_versions ?? [];
+  if (others.length === 0) return null;
+  const view = sizeViewOf(sizes, artifact);
+  const measured = view?.kind === "measured" ? view.otherVersions : null;
+  return {
+    term: t("brewStatus.otherVersionsTerm"),
+    value: (
+      <span data-other-versions="" className="flex flex-col items-end">
+        <span>{others.join(t("common.listSeparator"))}</span>
+        {measured !== null ? (
+          <span data-other-versions-size="" className="text-muted">
+            {otherVersionsSizeText(t, measured, others.length)}
+          </span>
+        ) : null}
+      </span>
+    ),
+    selectable: true,
+  };
+}
+
+/**
  * Homebrew's caveats behind a closed disclosure, as Homebrew wrote them,
  * in English. Plain text with its line breaks and indents, and no Copy:
  * caveats often hold shell lines to paste into Terminal, which is not a
@@ -179,13 +217,9 @@ function Caveats({ text }: { text: string }) {
 /**
  * What Homebrew says about a package beyond its facts, under the
  * inspector's group: what its mark means, the name Homebrew suggests
- * instead (a name only: installing it is not offered here), the other
- * versions still installed, and its caveats. Nothing for a package
- * Homebrew has nothing to say about.
- *
- * The other versions are said as they are, with no cause: Homebrew's own
- * cleanup leaves some (a dependency's old keg among them), and which one
- * left them is not in what Homebrew reports.
+ * instead (a name only: installing it is not offered here), and its
+ * caveats. Nothing for a package Homebrew has nothing to say about. Its
+ * other versions are a fact of the group (`otherVersionsFact`).
  */
 export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
   const { t } = useTranslation();
@@ -195,7 +229,6 @@ export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
   // A package both deprecated and disabled may name its replacement on the
   // deprecation only; Homebrew still said it.
   const replacement = mark?.lifecycle.replacement ?? homebrew.deprecated?.replacement ?? null;
-  const others = homebrew.other_versions;
   const lines: ReactNode[] = [];
   if (mark !== null) {
     lines.push(
@@ -208,16 +241,6 @@ export function HomebrewNotes({ artifact }: { artifact: InstalledArtifact }) {
     lines.push(
       <p key="replacement" data-homebrew-replacement="" className="text-body-long text-foreground">
         {t("brewStatus.replacement", { name: replacement })}
-      </p>,
-    );
-  }
-  if (others.length > 0) {
-    lines.push(
-      <p key="others" data-other-versions="" className={`text-muted ${SMALL_WRAPPING}`}>
-        {t("brewStatus.otherVersions", {
-          count: others.length,
-          versions: others.join(t("common.listSeparator")),
-        })}
       </p>,
     );
   }

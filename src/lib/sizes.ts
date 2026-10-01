@@ -7,11 +7,12 @@ export type Translate = (key: string, options?: Record<string, string | number>)
 
 /**
  * What the details say of an installed thing's size: still being measured,
- * or measured -- with, for a Homebrew formula, its old versions.
+ * or measured -- with, for a Homebrew formula, its other versions' kegs
+ * together (`otherVersionsFact`, beside the versions they are).
  */
 export type SizeView =
   | { kind: "measuring" }
-  | { kind: "measured"; measured: Measured; oldVersions: Measured | null };
+  | { kind: "measured"; measured: Measured; otherVersions: Measured | null };
 
 /**
  * `artifact`'s size as the newest round of measuring has it (`useSizes`),
@@ -30,7 +31,7 @@ export function sizeViewOf(sizes: Sizes | undefined, artifact: InstalledArtifact
   );
   if (entry === undefined) return null;
   if (entry.measured === null || entry.version !== artifact.version) return { kind: "measuring" };
-  return { kind: "measured", measured: entry.measured, oldVersions: entry.old_versions };
+  return { kind: "measured", measured: entry.measured, otherVersions: entry.old_versions };
 }
 
 /**
@@ -63,12 +64,16 @@ export function sizeNoteOf(artifact: InstalledArtifact): "sizes.programOnly" | "
   return null;
 }
 
-/** 「旧版本约1.2 GB」: a Homebrew formula's other kegs, together; "at least" when part of them was not measured. */
-export function oldVersionsText(t: Translate, measured: Measured): string {
+/**
+ * 「约120 MB」 under one other version, 「共约1.2 GB」 under several: what a
+ * Homebrew formula's other kegs take together, said under the versions
+ * they are. "At least" when part of them was not measured.
+ */
+export function otherVersionsSizeText(t: Translate, measured: Measured, count: number): string {
   const size = formatBytes(measured.bytes);
-  return measured.at_least || measured.partial
-    ? t("sizes.oldVersionsAtLeast", { size })
-    : t("sizes.oldVersions", { size });
+  const short = measured.at_least || measured.partial;
+  if (count > 1) return t(short ? "sizes.otherVersionsTotalAtLeast" : "sizes.otherVersionsTotal", { size });
+  return t(short ? "sizes.atLeast" : "sizes.about", { size });
 }
 
 /**

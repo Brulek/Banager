@@ -166,14 +166,14 @@ describe("InstalledPage, Homebrew's state", () => {
     expect(within(status).queryByRole("button", { name: "Details: Disabled" })).toBeNull();
   });
 
-  it("says a formula's other installed version and keeps its caveats folded", async () => {
+  it("says a formula's other installed version as a fact and keeps its caveats folded", async () => {
     renderWithProviders(
       <WithToolbarSlot>
         <InstalledPage />
       </WithToolbarSlot>,
     );
     const pane = await openDetails("openssl@3");
-    expect(within(pane).getByText("1 other version is also installed: 3.6.3")).toBeInTheDocument();
+    expect(within(pane).getByText("Other versions").nextElementSibling).toHaveTextContent("3.6.3");
     expect(within(pane).getByRole("button", { name: "Homebrew's notes in English" })).toHaveAttribute(
       "aria-expanded",
       "false",

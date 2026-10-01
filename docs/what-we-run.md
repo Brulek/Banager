@@ -1905,7 +1905,8 @@ banager-core --lib icon::real -- --ignored`; CI does not.
 
 The Installed page's details say about how much disk a tool takes
 (「占用空间：约312 MB」, "Space used: About 312 MB"), and for a Homebrew
-formula the older versions Homebrew keeps beside it (「旧版本约1.2 GB」);
+formula the other versions Homebrew keeps beside it, under those versions
+(「其他版本：3.6.3」, 「约120 MB」);
 the page of the Ollama source says how much its models take together.
 Measuring runs no command, and the one file it opens is
 `<CARGO_HOME>/.crates2.json`, which Cargo's inventory reads already. After
@@ -1917,7 +1918,7 @@ refresh's locks released — a thread of its own (`SizeMeter` in
 
 | For | It measures |
 |---|---|
-| a Homebrew formula | `<prefix>/Cellar/<name>/<version>`; the names in `<prefix>/Cellar/<name>`, and each other version's folder there, as its old versions |
+| a Homebrew formula | `<prefix>/Cellar/<name>/<version>`; the names in `<prefix>/Cellar/<name>`, and each other version's folder there, as its other versions |
 | a Homebrew cask with an app | the `.app` Homebrew names for it (Homebrew's section, `brew info --installed --json=v2`) and `<prefix>/Caskroom/<token>` |
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |

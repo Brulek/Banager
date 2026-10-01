@@ -52,7 +52,15 @@ function formula(name: string, version: string): InstalledArtifact {
   };
 }
 
-const node = formula("node@22", "22.23.3");
+// Homebrew keeps one other keg of node@22: its other version, whose size
+// the round measures with it (`old_versions`).
+const node: InstalledArtifact = {
+  ...formula("node@22", "22.23.3"),
+  facts: {
+    ...NO_FACTS,
+    homebrew: { deprecated: null, disabled: null, caveats: null, other_versions: ["22.22.0"] },
+  },
+};
 const jq = formula("jq", "1.8.2");
 const wget = formula("wget", "1.25.0");
 const llama: InstalledArtifact = {
@@ -140,7 +148,7 @@ function render() {
 }
 
 describe("the Installed page's details, on disk use", () => {
-  it("say about how much a tool takes, and a formula's old versions on a second line", async () => {
+  it("say about how much a tool takes, and what a formula's other versions take under those versions", async () => {
     served = {
       ...NO_SIZES,
       round: 4,
@@ -153,17 +161,24 @@ describe("the Installed page's details, on disk use", () => {
     render();
     const inspector = await openDetails("node@22");
     expect(await within(inspector).findByText("About 312.6 MB")).toBeInTheDocument();
-    expect(factsOf(inspector)["Space used"]).toBe("About\u00a0312.6 MB" + "Old versions: about\u00a0298.4 MB");
-    const old = inspector.querySelector("[data-size-old-versions]");
-    expect(old?.textContent).toBe("Old versions: about\u00a0298.4 MB");
-    expect(old).toHaveClass("text-muted");
+    expect(factsOf(inspector)["Space used"]).toBe("About\u00a0312.6 MB");
+    // One word for those kegs, 「其他版本」, and their size beside them, in
+    // the row right under the tool's own.
+    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0" + "About\u00a0298.4 MB");
+    const other = inspector.querySelector("[data-other-versions-size]");
+    expect(other?.textContent).toBe("About\u00a0298.4 MB");
+    expect(other).toHaveClass("text-muted");
+    const terms = Object.keys(factsOf(inspector));
+    expect(terms.indexOf("Other versions")).toBe(terms.indexOf("Space used") + 1);
+    expect(within(inspector).getByText("Other versions").nextElementSibling).toHaveClass("select-text");
+    expect(within(inspector).queryByText(/also installed/)).toBeNull();
     // The row's value selects, as a version does, to be copied.
     const value = within(inspector).getByText("Space used").nextElementSibling;
     expect(value).toHaveClass("select-text", "tabular-nums", "text-right");
 
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("About 1.2 MB")).toBeInTheDocument();
-    expect(jqDetails.querySelector("[data-size-old-versions]")).toBeNull();
+    expect(within(jqDetails).queryByText("Other versions")).toBeNull();
   });
 
   it("say Calculating… while it is measured, and for a size measured at another version", async () => {
@@ -180,6 +195,8 @@ describe("the Installed page's details, on disk use", () => {
     const measuring = await within(inspector).findByText("Calculating…");
     expect(measuring).toHaveClass("text-muted");
     expect(within(inspector).getByText("Space used").nextElementSibling).not.toHaveClass("select-text");
+    // The other versions are said all the same; their size once it is in.
+    expect(factsOf(inspector)["Other versions"]).toBe("22.22.0");
 
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("Calculating…")).toBeInTheDocument();
@@ -247,7 +264,8 @@ describe("the Installed page's details, on disk use", () => {
     render();
     const inspector = await openDetails("node@22");
     await within(inspector).findByText("占用空间");
-    expect(factsOf(inspector)["占用空间"]).toBe("约312.6 MB" + "旧版本约1.2 GB");
+    expect(factsOf(inspector)["占用空间"]).toBe("约312.6 MB");
+    expect(factsOf(inspector)["其他版本"]).toBe("22.22.0" + "约1.2 GB");
     const jqDetails = await openDetails("jq");
     expect(await within(jqDetails).findByText("正在计算…")).toBeInTheDocument();
   });

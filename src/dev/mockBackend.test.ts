@@ -199,9 +199,19 @@ describe("the browser preview's mock backend", () => {
     }
     expect(listed.has("brew:/opt/homebrew|Cask|font-jetbrains-mono")).toBe(false);
     expect(listed.has("brew:/opt/homebrew|Cask|iterm2")).toBe(true);
-    // A formula with older kegs, one partial, one cut short, the models.
+    // A formula with other kegs, one partial, one cut short, the models.
     const node = measured.artifacts.find((size) => size.key.name === "node@22");
     expect(node?.old_versions?.bytes).toBeGreaterThan(0);
+    // The other kegs' size and the other versions Homebrew names are the
+    // same kegs: a formula has both or neither (git, node@22 among them).
+    const sizeOf = new Map(measured.artifacts.map((size) => [artifactKeyId(size.key), size]));
+    for (const artifact of snapshot.artifacts) {
+      const size = sizeOf.get(artifactKeyId(artifact.key));
+      if (size === undefined) continue;
+      const others = artifact.facts.homebrew?.other_versions.length ?? 0;
+      expect(size.old_versions !== null, artifact.key.name).toBe(others > 0);
+    }
+    expect(sizeOf.get("brew:/opt/homebrew|Formula|git")?.old_versions).not.toBeNull();
     expect(measured.artifacts.some((size) => size.measured?.partial)).toBe(true);
     expect(measured.artifacts.some((size) => size.measured?.at_least)).toBe(true);
     expect(measured.models).toEqual([

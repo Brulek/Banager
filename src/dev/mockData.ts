@@ -299,7 +299,13 @@ function withHomebrewState(artifacts: InstalledArtifact[]): InstalledArtifact[] 
         "A CA file has been bootstrapped using certificates from the system\nkeychain. To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3/bin/c_rehash",
     },
     readline: { other_versions: ["8.3.3"] },
+    // The other kegs mockSizes.ts measures (OTHER_VERSIONS): the same kegs,
+    // so the versions and their size agree.
+    "node@22": { other_versions: ["22.22.0"] },
+    gettext: { other_versions: ["0.26"] },
+    libuv: { other_versions: ["1.51.0"] },
     "python@3.13": {
+      other_versions: ["3.13.7"],
       caveats:
         "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.13\n\n`idle3.13` requires tkinter, which is available separately:\n  brew install python-tk@3.13",
     },
@@ -325,9 +331,14 @@ function withHomebrewState(artifacts: InstalledArtifact[]): InstalledArtifact[] 
       installed_at: daysAgo(500),
       facts: {
         ...NO_FACTS,
+        // Every row Homebrew's facts can give a formula at once: its mark,
+        // another version, caveats -- and, from the other helpers, a size
+        // and a command.
         homebrew: {
           ...empty,
           deprecated: { date: "2025-11-01", reason: "unmaintained", replacement: "yt-dlp" },
+          other_versions: ["2021.6.6"],
+          caveats: "zsh completions have been installed to:\n  $HOMEBREW_PREFIX/share/zsh/site-functions",
         },
       },
     }),
@@ -1024,6 +1035,7 @@ const COMMANDS: Record<string, CommandFact[]> = {
   "brew|Formula|python@3.13": runs(["idle3.13", "pip3.13", "pydoc3.13", "python3.13"]),
   "brew|Formula|ripgrep": runs(["rg"]),
   "brew|Formula|wget": runs(["wget"]),
+  "brew|Formula|youtube-dl": runs(["youtube-dl"]),
   // Dependencies: nobody asked for them by name.
   "brew|Formula|openssl@3": unjudged(["openssl"]),
   "brew|Formula|sqlite": unjudged(["sqlite3"]),

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatBytes } from "../lib/format";
-import { oldVersionsText, sizeNoteOf, sizeText, sizeViewOf, type Translate } from "../lib/sizes";
+import { sizeNoteOf, sizeText, sizeViewOf, type Translate } from "../lib/sizes";
 import { TextWithInfo } from "./InfoDetail";
 import type { InstalledArtifact, Sizes } from "../lib/types";
 
@@ -19,10 +19,11 @@ export interface SizeFactRow {
  *   the row it always had, 「大小」 and the number;
  * - a measured one is 「占用空间」 and 「约312 MB」 -- 「至少约…」 when the
  *   round's budget ran out, 「…，部分无法读取」 when part of it could not be
- *   read -- with, for a Homebrew formula that keeps older versions, a
- *   second line, 「旧版本约1.2 GB」, in the secondary colour; for a Cargo
- *   crate, a tool with its own installer and a uv tool, an ⓘ after the
- *   number says what it leaves out or shares (`sizeNoteOf`);
+ *   read; for a Cargo crate, a tool with its own installer and a uv tool,
+ *   an ⓘ after the number says what it leaves out or shares
+ *   (`sizeNoteOf`). What a Homebrew formula's other versions take is
+ *   said with those versions, in the row under this one
+ *   (`otherVersionsFact`);
  * - while it is measured, 「正在计算…」 in the secondary colour;
  * - with nothing measured for it (`sizeViewOf`), no row at all.
  *
@@ -51,21 +52,14 @@ export function sizeFact(t: Translate, artifact: InstalledArtifact, sizes: Sizes
   return {
     term: t("sizes.term"),
     value: (
-      <span data-size="measured" className="flex flex-col items-end">
-        <span>
-          {note === null ? (
-            text
-          ) : (
-            <TextWithInfo text={text} label={t("common.detailsLabel", { title: t("sizes.term") })}>
-              {t(note)}
-            </TextWithInfo>
-          )}
-        </span>
-        {view.oldVersions !== null ? (
-          <span data-size-old-versions="" className="text-muted">
-            {oldVersionsText(t, view.oldVersions)}
-          </span>
-        ) : null}
+      <span data-size="measured">
+        {note === null ? (
+          text
+        ) : (
+          <TextWithInfo text={text} label={t("common.detailsLabel", { title: t("sizes.term") })}>
+            {t(note)}
+          </TextWithInfo>
+        )}
       </span>
     ),
     selectable: true,

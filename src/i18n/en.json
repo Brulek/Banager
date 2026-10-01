@@ -159,11 +159,10 @@
       "fails_gatekeeper_check": "It doesn't pass macOS's security check."
     },
     "replacement": "Homebrew suggests “{{name}}” instead.",
-    "otherVersions_one": "{{count}} other version is also installed: {{versions}}",
-    "otherVersions_other": "{{count}} other versions are also installed: {{versions}}",
     "caveatsTitle": "Homebrew's notes in English",
     "homepage": "Homepage",
-    "copyLink": "Copy Link"
+    "copyLink": "Copy Link",
+    "otherVersionsTerm": "Other versions"
   },
   "installed": {
     "filterLabel": "Search installed tools",
@@ -467,13 +466,13 @@
     "about": "About\u00a0{{size}}",
     "atLeast": "At least about\u00a0{{size}}",
     "partial": "About\u00a0{{size}}; some of it couldn't be read",
-    "oldVersions": "Old versions: about\u00a0{{size}}",
-    "oldVersionsAtLeast": "Old versions: at least about\u00a0{{size}}",
     "ollamaModels": "Ollama models: about\u00a0{{size}} in all",
     "ollamaModelsAtLeast": "Ollama models: at least about\u00a0{{size}} in all",
     "sortBySize": "By Size",
     "programOnly": "Counts only its program files, not what it downloads or caches.",
-    "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less."
+    "sharedWithCache": "uv lets a tool share some files with its cache. Those count here too, so the tool alone may take less.",
+    "otherVersionsTotal": "About\u00a0{{size}} in all",
+    "otherVersionsTotalAtLeast": "At least about\u00a0{{size}} in all"
   },
   "sourceNotice": {
     "pipReadOnly": {

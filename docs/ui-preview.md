@@ -179,8 +179,10 @@ Paths are under a generic home folder, `/Users/you`.
 - After each refresh the tools' sizes are measured, as the app measures
   them (`src/dev/mockSizes.ts`): about a second and a half of 「正在计算…」
   in the Installed page's details, then 「占用空间：约312.6 MB」 for node@22,
-  with 「旧版本约298.4 MB」 under it -- node@22, python@3.13, gettext and
-  libuv keep older kegs -- 「至少约612.4 MB」 for Visual Studio Code (the
+  and in the row under it 「其他版本：22.22.0」 with 「约298.4 MB」 under the
+  version -- git, node@22, python@3.13, gettext, libuv, openssl@3,
+  readline and youtube-dl keep other kegs, and each one's versions and
+  size agree -- 「至少约612.4 MB」 for Visual Studio Code (the
   round's budget ran out) and 「约22.7 MB，部分无法读取」 for pre-commit. A
   tool measured before at the same version shows at once. pip's packages,
   the font and a model get no measured size (a model keeps its own), and

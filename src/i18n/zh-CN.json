@@ -144,10 +144,10 @@
       "fails_gatekeeper_check": "它没有通过macOS的安全检查。"
     },
     "replacement": "Homebrew建议改用“{{name}}”。",
-    "otherVersions_other": "另外还装着{{count}}个其他版本：{{versions}}",
     "caveatsTitle": "Homebrew的英文原文说明",
     "homepage": "主页",
-    "copyLink": "拷贝链接"
+    "copyLink": "拷贝链接",
+    "otherVersionsTerm": "其他版本"
   },
   "installed": {
     "filterLabel": "搜索已安装的工具",
@@ -428,13 +428,13 @@
     "about": "约{{size}}",
     "atLeast": "至少约{{size}}",
     "partial": "约{{size}}，部分无法读取",
-    "oldVersions": "旧版本约{{size}}",
-    "oldVersionsAtLeast": "旧版本至少约{{size}}",
     "ollamaModels": "Ollama模型共约{{size}}",
     "ollamaModelsAtLeast": "Ollama模型共至少约{{size}}",
     "sortBySize": "按大小",
     "programOnly": "只算程序文件本身，不含它下载的内容和缓存。",
-    "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占的可能更少。"
+    "sharedWithCache": "uv会让工具和它的缓存共用一部分文件，这部分也算在里面，所以它单独占的可能更少。",
+    "otherVersionsTotal": "共约{{size}}",
+    "otherVersionsTotalAtLeast": "共至少约{{size}}"
   },
   "sourceNotice": {
     "pipReadOnly": {

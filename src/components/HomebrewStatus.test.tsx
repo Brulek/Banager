@@ -4,9 +4,16 @@ import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
-import type { HomebrewFacts, InstalledArtifact } from "../lib/types";
-import { NO_FACTS } from "../lib/types";
-import { HomebrewNotes, REASON_KEYS, homebrewStatusChip, homepageFact, lifecycleSentence } from "./HomebrewStatus";
+import type { HomebrewFacts, InstalledArtifact, Measured, Sizes } from "../lib/types";
+import { NO_FACTS, NO_SIZES } from "../lib/types";
+import {
+  HomebrewNotes,
+  REASON_KEYS,
+  homebrewStatusChip,
+  homepageFact,
+  lifecycleSentence,
+  otherVersionsFact,
+} from "./HomebrewStatus";
 
 const zh = i18n.getFixedT("zh-CN");
 const enT = i18n.getFixedT("en");
@@ -132,11 +139,12 @@ describe("homepageFact", () => {
 });
 
 describe("HomebrewNotes", () => {
-  it("says the suggested name with no button to install it, and the other version with no cause", async () => {
-    renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
+  it("says the suggested name with no button to install it, and leaves the other versions to the facts", async () => {
+    const { container } = renderWithProviders(<HomebrewNotes artifact={deprecatedFormula} />);
     expect(screen.getByText(`Homebrew's reason: “${FREE_TEXT}”. Homebrew deprecated it on 2026-06-15 and may disable it later.`)).toBeInTheDocument();
     expect(screen.getByText("Homebrew suggests “newtool” instead.")).toBeInTheDocument();
-    expect(screen.getByText("1 other version is also installed: 1.9")).toBeInTheDocument();
+    // Said once, as the facts' 「其他版本」 row (`otherVersionsFact`).
+    expect(container.textContent).not.toContain("1.9");
     // The one control is the caveats' disclosure: nothing installs, opens or copies.
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Homebrew's notes in English"]);
     expect(screen.queryByRole("link")).toBeNull();
@@ -156,16 +164,6 @@ describe("HomebrewNotes", () => {
     expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
-  it("says the other versions in Chinese, listed with 、", async () => {
-    await i18n.changeLanguage("zh-CN");
-    try {
-      renderWithProviders(<HomebrewNotes artifact={artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.2", "3.6.3"] })} />);
-      expect(screen.getByText("另外还装着2个其他版本：3.6.2、3.6.3")).toBeInTheDocument();
-    } finally {
-      await i18n.changeLanguage("en");
-    }
-  });
-
   it("says the replacement a disabled package named only when Homebrew deprecated it", () => {
     renderWithProviders(
       <HomebrewNotes
@@ -182,5 +180,50 @@ describe("HomebrewNotes", () => {
   it("says nothing for a package Homebrew has nothing to say about", () => {
     const { container } = renderWithProviders(<HomebrewNotes artifact={artifact("jq", null)} />);
     expect(container.querySelector("[data-homebrew-notes]")).toBeNull();
+  });
+});
+
+describe("otherVersionsFact", () => {
+  const about = (bytes: number, more: Partial<Measured> = {}): Measured => ({
+    bytes,
+    partial: false,
+    at_least: false,
+    ...more,
+  });
+  const sizesOf = (target: InstalledArtifact, other: Measured | null, measured: Measured | null = about(1)): Sizes => ({
+    ...NO_SIZES,
+    round: 2,
+    done: measured !== null,
+    artifacts: [{ key: target.key, version: target.version, measured, old_versions: other }],
+  });
+  const textOf = (value: unknown) => render(<>{value}</>).container.textContent;
+
+  it("is nothing for a package with no other versions", () => {
+    expect(otherVersionsFact(enT, artifact("jq", EMPTY), undefined)).toBeNull();
+    expect(otherVersionsFact(enT, artifact("jq", null), undefined)).toBeNull();
+    // A size with no versions to put it under is not said on its own.
+    const jq = artifact("jq", EMPTY);
+    expect(otherVersionsFact(enT, jq, sizesOf(jq, about(5_000_000)))).toBeNull();
+  });
+
+  it("names the versions, and once measured what they take, in one row: 其他版本", () => {
+    const openssl = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.3"] });
+    const fact = otherVersionsFact(zh, openssl, sizesOf(openssl, about(120_000_000)));
+    expect(fact?.term).toBe("其他版本");
+    expect(fact?.selectable).toBe(true);
+    expect(textOf(fact?.value)).toBe("3.6.3" + "约120 MB");
+    // Several: 、 between them, and the size is theirs together.
+    const two = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.2", "3.6.3"] });
+    expect(textOf(otherVersionsFact(zh, two, sizesOf(two, about(240_000_000)))?.value)).toBe("3.6.2、3.6.3" + "共约240 MB");
+    expect(textOf(otherVersionsFact(enT, two, sizesOf(two, about(240_000_000, { partial: true })))?.value)).toBe(
+      "3.6.2, 3.6.3" + "At least about\u00a0240 MB in all",
+    );
+  });
+
+  it("names the versions alone while they are measured, or when no size came", () => {
+    const openssl = artifact("openssl@3", { ...EMPTY, other_versions: ["3.6.3"] });
+    expect(textOf(otherVersionsFact(enT, openssl, undefined)?.value)).toBe("3.6.3");
+    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null, null))?.value)).toBe("3.6.3");
+    expect(textOf(otherVersionsFact(enT, openssl, sizesOf(openssl, null))?.value)).toBe("3.6.3");
   });
 });

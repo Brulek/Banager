@@ -4,7 +4,7 @@
  * way crates/banager-core/src/size.rs measures -- and not -- each kind.
  * Dev-only, like everything in src/dev.
  *
- * Measured: Homebrew formulae (their old versions apart), casks with an
+ * Measured: Homebrew formulae (their other versions apart), casks with an
  * app, npm packages, pipx and uv tools, crates, and the tools with their
  * own installer. Not: pip packages, a cask with no app, a tool whose
  * program is gone, and an Ollama model, which keeps the size Ollama gives
@@ -63,14 +63,23 @@ const KNOWN: Record<string, number> = {
   rustup: 11.1 * MB,
   "pre-commit": 22.7 * MB,
   ruff: 28.3 * MB,
+  "youtube-dl": 8.6 * MB,
 };
 
-/** The older kegs Homebrew keeps beside these formulae, together. */
-const OLD_VERSIONS: Record<string, number> = {
+/**
+ * What the other kegs Homebrew keeps beside a formula take together: one
+ * entry for each formula mockData.ts gives `other_versions`, as size.rs
+ * measures the same kegs those versions are.
+ */
+const OTHER_VERSIONS: Record<string, number> = {
   "node@22": 298.4 * MB,
   "python@3.13": 231.9 * MB,
   gettext: 9.1 * MB,
   libuv: 1.2 * MB,
+  git: 70.9 * MB,
+  "openssl@3": 36.5 * MB,
+  readline: 1.9 * MB,
+  "youtube-dl": 8.4 * MB,
 };
 
 /** One that could not all be read, and one the round's budget cut short. */
@@ -127,7 +136,9 @@ export function mockSizes(
     if (adapterId === undefined || !isMeasured(artifact, adapterId)) continue;
     const name = artifact.key.name;
     const done = isDone(artifact);
-    const old = OLD_VERSIONS[name];
+    // Only a formula Homebrew says has other versions has their size.
+    const hasOthers = (artifact.facts.homebrew?.other_versions.length ?? 0) > 0;
+    const old = hasOthers ? (OTHER_VERSIONS[name] ?? sizeFromName(`${name} other`)) : undefined;
     sizes.push({
       key: artifact.key,
       version: artifact.version,

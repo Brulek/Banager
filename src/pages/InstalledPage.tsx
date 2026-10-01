@@ -69,6 +69,7 @@ import {
   HomebrewNotes,
   homebrewStatusChip,
   homepageFact,
+  otherVersionsFact,
 } from "../components/HomebrewStatus";
 import { CommandsGroup, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
@@ -1279,6 +1280,8 @@ export function InstalledPage() {
     }
     const size = sizeFact(t, artifact, sizes);
     if (size !== null) facts.push(size);
+    const otherVersions = otherVersionsFact(t, artifact, sizes);
+    if (otherVersions !== null) facts.push(otherVersions);
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
     if (showTechnicalDetails && artifact.path !== null) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { compareBySize, modelsTotalText, oldVersionsText, sizeNoteOf, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
+import { compareBySize, modelsTotalText, otherVersionsSizeText, sizeNoteOf, sizeOrderOf, sizeText, sizeViewOf } from "./sizes";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
 
 const ruff: InstalledArtifact = {
@@ -48,11 +48,11 @@ describe("sizeViewOf", () => {
     expect(sizeViewOf(older, ruff)).toEqual({ kind: "measuring" });
   });
 
-  it("is the measured size, with the old versions, for the version listed", () => {
+  it("is the measured size, with the other versions', for the version listed", () => {
     const measured = { bytes: 312_600_000, partial: false, at_least: false };
     const old = { bytes: 298_400_000, partial: false, at_least: false };
     const done = sizes({ done: true, artifacts: [{ key: ruff.key, version: "0.14.3", measured, old_versions: old }] });
-    expect(sizeViewOf(done, ruff)).toEqual({ kind: "measured", measured, oldVersions: old });
+    expect(sizeViewOf(done, ruff)).toEqual({ kind: "measured", measured, otherVersions: old });
   });
 });
 
@@ -69,11 +69,15 @@ describe("the size words", () => {
     expect(sizeText(zh, { ...exact, partial: true, at_least: true })).toBe("至少约312.6 MB");
   });
 
-  it("say a formula's old versions together, as at least when not all were measured", () => {
-    const old = { bytes: 1_200_000_000, partial: false, at_least: false };
-    expect(oldVersionsText(zh, old)).toBe("旧版本约1.2 GB");
-    expect(oldVersionsText(en, old)).toBe("Old versions: about\u00a01.2 GB");
-    expect(oldVersionsText(zh, { ...old, partial: true })).toBe("旧版本至少约1.2 GB");
+  it("say what a formula's other versions take, in all for several, as at least when not all were measured", () => {
+    const other = { bytes: 1_200_000_000, partial: false, at_least: false };
+    expect(otherVersionsSizeText(zh, other, 1)).toBe("约1.2 GB");
+    expect(otherVersionsSizeText(en, other, 1)).toBe("About\u00a01.2 GB");
+    expect(otherVersionsSizeText(zh, other, 3)).toBe("共约1.2 GB");
+    expect(otherVersionsSizeText(en, other, 3)).toBe("About\u00a01.2 GB in all");
+    expect(otherVersionsSizeText(zh, { ...other, partial: true }, 1)).toBe("至少约1.2 GB");
+    expect(otherVersionsSizeText(zh, { ...other, at_least: true }, 2)).toBe("共至少约1.2 GB");
+    expect(otherVersionsSizeText(en, { ...other, partial: true }, 2)).toBe("At least about\u00a01.2 GB in all");
   });
 
   it("say what an Ollama's models take together, and nothing while it is measured or for another source", () => {
