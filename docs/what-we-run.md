@@ -820,8 +820,8 @@ Banager's or anyone's — overlapped its `brew uses` read
 opened read-only, without waiting (`O_NONBLOCK`, so a named pipe there
 cannot stall the preview), and never created, and when `fstat` says it is
 a regular file `fcntl(F_GETLK)` asks whether the lock is held without
-taking it; anything else is a lock it cannot look at. Every install, uninstall and upgrade
-preview also reads the `brew.env` files named above
+taking it; anything else is a lock it cannot look at. Every install,
+uninstall and upgrade preview also reads the `brew.env` files named above
 (`read_brew_env_file`): each is opened without waiting (links followed,
 `O_NONBLOCK`, so a named pipe there cannot stall it), checked with `fstat`
 once open, and read only when that says it is a regular file of at most
