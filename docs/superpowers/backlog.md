@@ -437,7 +437,9 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 **测试与工具链**
 - `src/pages/UpdatesPage.tsx` 的 14 个测试里 `snapshot.artifacts` 全是空数组，所以 `artifactsById` 从来没命中过，非技术细节视图的描述路径从未被真正执行。补一个带 artifact 的夹具。全部规划失败那条页面错误分支也没有任何测试。
-- `tsconfig.json:16` 的 `"types": ["node"]` 把 Node 全局类型套给了整个 `src/`，而这是个 WebView 应用。改用 `tsconfig.test.json` 把这个让步限制在测试里；同时复查 `vite.config.ts:5` 那个在 `tsc -b` 下已过时的 `@ts-expect-error`。
+- `tsconfig.json:16` 的 `"types": ["node"]` 把 Node 全局类型套给了整个 `src/`，而这是个 WebView 应用。改用 `tsconfig.test.json` 把这个让步限制在测试里；同时复查 `vite.config.ts:5` 那个在 `tsc -b` 下已过时的 `@ts-expect-error`。（`vite.config.ts` 那半**已于
+  2026-10-02 做了**：删掉那行，`pnpm typecheck` 加跑 `tsc -p tsconfig.node.json --noEmit --composite false`，以后再过时
+  会报错。）
 - `src/i18n/no-literal-strings.test.ts:8` 只扫 `components` 与 `pages`，漏了 `App.tsx`、`lib/` 与 `store/`；正则要求至少 4 个字符，"OK"、"Done" 这类短文案会溜过去。
 - `crates/banager-core/src/session/mod.rs` 已 1152 行，阶段 3 值得拆分。
 
@@ -493,14 +495,28 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 三轮对抗式核对后仍剩的少见情况，都不会把"会删"说成"不删"，只是说得不够全（证据见
 `~/dev/Banager/.superpowers/round2/uninstall-scope.md` 与各轮 review）：
-- 第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
-  （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。
-- 旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，
-  不是记录里的。
-- `HomebrewCaskPlain` 仍写"删除 Homebrew 为 X 装的文件"：目前 7,763 个官方 cask 里没有带 pkg/installer 又被判为
-  plain 的，第三方 tap 可能有。
-- `HOMEBREW_NO_CLEANUP_FORMULAE` 点名的软件不会被安装后清理，`brew_env.rs` 没读这个变量，提示仍说会清理。
-- `brew uninstall` 还会删掉该 cask 自己在 `~/.homebrew/trust.json` 里的信任条目（`cmd/uninstall.rb:122-127`）。
+- ~~第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
+  （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。~~ —— **已于 2026-10-02 做了**
+  （`UninstallScope::HomebrewCaskStepsIfTrusted` / `HomebrewCaskStepsOnlyIfTrusted`，`adapters/brew/trust.rs`）：
+  Homebrew 7.0.7 起默认要求信任，只有存成 `.rb` 的记录才会因为不信任而整个不加载（`installer.rb:1010-1043`）；
+  这种 cask 来自非 Homebrew 自己的 tap、信任列表里既没写它也没写它的 tap（或读不了列表）时，句子改说「它的卸载步骤，
+  只在Homebrew信任它的来源时才执行」。设了 `HOMEBREW_NO_REQUIRE_TAP_TRUST` 时照旧。
+- ~~旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，
+  不是记录里的。~~ —— **已于 2026-10-02 做了**（`HomebrewCaskRuby` / `HomebrewCaskStepsOnlyRuby`）：7.0.7 读不出时
+  先按收据重建，收据或现在的定义有 Ruby 块时才改用现在的定义（`installer.rb:1046-1055`、`cask_loader.rb:879-920`）；
+  记录是 `.rb` 的 cask 改说「并执行它的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的
+  步骤时，会按它现在的定义执行。」，不再说什么保留不动；批量卸载把它留给单个卸载。
+- ~~`HomebrewCaskPlain` 仍写"删除 Homebrew 为 X 装的文件"：目前 7,763 个官方 cask 里没有带 pkg/installer 又被判为
+  plain 的，第三方 tap 可能有。~~ —— **已于 2026-10-02 做了**（`HomebrewCaskPlainThirdParty`）：来自非 Homebrew 自己
+  tap 的 plain cask 改说「删除Homebrew为“X”放置的文件；它的设置和数据保留不动，它的安装器如果另外装了文件，也不删除。」
+  官方 cask 的句子不变。本机的 claudebar、codexbar 等第三方 cask 卸载时会看到新句子。
+- ~~`HOMEBREW_NO_CLEANUP_FORMULAE` 点名的软件不会被安装后清理，`brew_env.rs` 没读这个变量，提示仍说会清理。~~
+  —— **已于 2026-10-02 做了**（`Warning::HomebrewNoCleanupFormulae`）：brew.env 重放现在也读这个变量（按 Homebrew
+  的逗号切法），清理或自动删除那几句后面加一句「HOMEBREW_NO_CLEANUP_FORMULAE列出的…除外：…」。
+- ~~`brew uninstall` 还会删掉该 cask 自己在 `~/.homebrew/trust.json` 里的信任条目（`cmd/uninstall.rb:122-127`）。~~
+  —— **已于 2026-10-02 做了**（`Warning::HomebrewForgetsTrust`）：卸载预览只读 `trust.json`（在用户的 Homebrew 配置
+  目录，已写进 what-we-run 的「Files Banager reads」），列表里单独写了这个包、又肯定没写它的 tap 时，说「Homebrew还会
+  从它的信任列表中删除“X”」；读不了列表或 tap 可能按网址写着时不说。
 
 ## 第二轮推迟项（2026-09-29 立，分支 feat/ui-round-2）
 
@@ -550,6 +566,12 @@ app 或更多工作。
   来源只说「拷贝日志」），不提那一行没有的「重试」。点名的是来源（Homebrew、npm），不是工具本身，因为报错是来源写的。
   「拷贝日志」与常见原因此前几轮已经有了。**没覆盖到的**：只在日志里加了这句；打开「显示技术细节」后，操作条单个
   操作那一行、日志标题下面、批量卸载结果块各行也会显示工具原话，那几处下面没有这句（各有「查看日志」通向日志）。
+  ~~批量卸载结果块各行与日志标题下面~~ —— **已于 2026-10-02 做了**（`src/components/FailureNextStep.tsx` 的
+  `ResultRowStep`、`SubtitleStep`，键 `failure.toolWords.*`）：开着技术细节时，结果块里显示工具原话的那一行下面加一句
+  「上面是Homebrew自己的报错。……」，认不出原因的说怎样再试、再点「查看日志」「拷贝日志」，认得出原因的接那条原因的
+  做法（技术细节关着时那一行本来就说这句），要密码的指向日志里那条终端命令；日志窗口只在这个窗口的日志里已经没有工具
+  那几行（日志只留最近 2000 行）、标题下只剩原话时，才在标题下说一句，不说两遍；macOS 不肯移到废纸篓的那种失败
+  （没有退出码）不算来源的原话，不加。操作条单行没地方，没加。
 - 【待作者定】**管理员密码的承诺兑现不了：要 sudo 的 App 直接失败**（`commandPreview.needsPassword`「部分 App 在这一步
   会要求输入 Mac 密码。」）：先做完搁着的 askpass 试验（`docs/spikes/2026-09-askpass.md`，上文「需要作者本人操作的
   事项」任务 13），再二选一：(1) 带一个 askpass 助手，让 macOS 真的弹出密码框；(2) 说实话：只在 cask 记录里有 pkg 或
