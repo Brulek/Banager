@@ -753,7 +753,7 @@
       "both": "HOMEBREW_NO_CLEANUP_FORMULAE列出的{{names}}除外：Homebrew不会删除它们的旧版本，也不会自动删除它们和它们运行时需要的软件。"
     },
     "forgetsTrust": "Homebrew还会从它的信任列表中删除“{{name}}”。",
-    "forgetsTrustDetail": "这条记录是用brew trust单独为它加的。删除后，Homebrew不再把它当作受信任的软件。",
+    "forgetsTrustDetail": "这条记录只针对它本身，列表里的其他记录不受影响。",
     "scopeMore": {
       "HomebrewCaskPlainThirdParty": "删除Homebrew为“{{name}}”放置的文件；它的设置和数据保留不动，它的安装器如果另外装了文件，也不删除。",
       "HomebrewCaskRuby": "删除Homebrew为“{{name}}”放置的文件，并执行它的卸载步骤；其中部分步骤还会删除什么，无法事先得知。Homebrew读不出安装时记下的步骤时，会按它现在的定义执行。",

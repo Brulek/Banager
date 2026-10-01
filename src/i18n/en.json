@@ -807,7 +807,7 @@
       "both": "Homebrew leaves out {{names}}, which HOMEBREW_NO_CLEANUP_FORMULAE lists: it won't delete their older versions, or autoremove them or what they need to run."
     },
     "forgetsTrust": "Homebrew also removes {{name}} from its trust list.",
-    "forgetsTrustDetail": "That entry was added for it alone with brew trust. Once it's gone, Homebrew no longer treats it as trusted.",
+    "forgetsTrustDetail": "That entry names this package alone. The other entries on the list stay as they are.",
     "scopeMore": {
       "HomebrewCaskPlainThirdParty": "Deletes the files Homebrew placed for {{name}}; its settings and data stay, and so does anything its installer put on this Mac separately.",
       "HomebrewCaskRuby": "Deletes the files Homebrew placed for {{name}} and runs its uninstall steps; what else some of those steps delete can't be seen in advance. If Homebrew can't read the steps it recorded at install, it uses the cask's current definition.",

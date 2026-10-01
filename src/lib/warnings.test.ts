@@ -140,7 +140,7 @@ describe("warningKey", () => {
       "Homebrew还会从它的信任列表中删除“gautham-v/tap/claudebar”。",
     );
     expect(zh(warningDetailKey(warning) as string)).toBe(
-      "这条记录是用brew trust单独为它加的。删除后，Homebrew不再把它当作受信任的软件。",
+      "这条记录只针对它本身，列表里的其他记录不受影响。",
     );
     expect(warningGroup(warning)).toBe("note");
     expect(isCaution(warning)).toBe(false);
