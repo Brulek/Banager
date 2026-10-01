@@ -2198,6 +2198,23 @@ describe("InstalledPage", () => {
       expect(await findByText("python3.13 doesn't include pip")).toBeInTheDocument();
       expect(getByText("This Python doesn't include pip, so there's nothing to list.")).toBeInTheDocument();
       expect(queryByText("Nothing installed with pip")).toBeNull();
+      // Checking again cannot change this answer, so no button offers to.
+      expect(screen.queryByRole("button", { name: "Check Again" })).toBeNull();
+      expect(rowNames()).toEqual([]);
+    });
+
+    it("offers no Check Again on an https Ollama, which only a new address and a reopened app fix", async () => {
+      const https: ManagerInstance = {
+        ...ollama,
+        id: "ollama:https://ollama.example:11434",
+        status: { unavailable: "HttpsHostRefused", notes: [] },
+      };
+      served = { ...snapshot, instances: [brew, https] };
+      useUiStore.getState().openInstalled(https.id);
+      const { findByText } = renderInstalled();
+
+      expect(await findByText("Connecting to Ollama over https isn't supported")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Check Again" })).toBeNull();
       expect(rowNames()).toEqual([]);
     });
 

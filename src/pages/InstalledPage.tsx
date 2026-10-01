@@ -378,8 +378,10 @@ const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
  * (`unfinishedChecksNotice`): nothing listed may be only what it did not
  * get to; for one that answered in full, that
  * nothing is installed with it; and Check again, the header's, which
- * shows what it has once it answers or has something. In the list's
- * place, so the source's notice is not said a second time over it.
+ * shows what it has once it answers or has something -- except where
+ * checking again cannot change the answer (`NoPip`, `HttpsHostRefused`).
+ * In the list's place, so the source's notice is not said a second time
+ * over it.
  */
 function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: string }) {
   const { t } = useTranslation();
@@ -392,6 +394,11 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
     sourceWarningOf(instance, label, 0) ??
     unfinishedChecksNotice(t, snapshot?.errors ?? [], snapshot?.instances ?? [], [instance]) ??
     (isAvailable(instance) ? null : (sourceNoticesFor(instance, label, 0)[0] ?? null));
+  // No Check Again where checking again cannot change the answer: a Python
+  // with no pip, and an https OLLAMA_HOST, which only a new address and a
+  // reopened app fix -- their notices have no button either.
+  const checkingAgainHelps =
+    instance.status.unavailable !== "NoPip" && instance.status.unavailable !== "HttpsHostRefused";
   return (
     <EmptyState
       symbol={warning === null || warning.variant === "info" ? "info" : "warning"}
@@ -403,7 +410,7 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
           ? t("installed.sourceEmpty.description", { source: label })
           : t(EMPTY_PAGE_DESCRIPTION_KEYS[warning.descriptionKey] ?? warning.descriptionKey, warning.values)
       }
-      action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
+      {...(checkingAgainHelps ? { action: { label: t("header.checkAgain"), onClick: checkAgain, disabled: checking } } : {})}
     />
   );
 }
