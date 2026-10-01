@@ -87,8 +87,8 @@ struct CaskInfo {
     /// When brew installed it, in unix seconds (`"installed_time" =>
     /// install_time&.to_i`, `cask/cask.rb:571` in Homebrew 7.0.7; all four
     /// casks of the recorded `7.0.3/info-installed.json` carry one). Read
-    /// leniently (`StatusFields` says why): anything but a whole number is
-    /// no date.
+    /// leniently (`StatusFields` says why): anything but a positive whole
+    /// number is no date.
     #[serde(default)]
     installed_time: Option<Value>,
     #[serde(flatten)]
@@ -166,6 +166,11 @@ fn lifecycle(
 /// `ArtifactFacts.homebrew` for one package: `None` when Homebrew has
 /// nothing of the kind to say, so the wire stays as small as before for
 /// the many that have none.
+///
+/// Known limitation: the inventory (`brew info --installed`) is read before
+/// a check runs `brew update`, so `deprecated` / `disabled` are as of the
+/// previous update -- one refresh old when Homebrew has just marked a
+/// package, or just lifted a mark.
 fn homebrew_facts(status: &StatusFields, other_versions: Vec<String>) -> Option<HomebrewFacts> {
     let facts = HomebrewFacts {
         deprecated: lifecycle(
@@ -342,7 +347,12 @@ pub fn parse_info_installed(
             description: c.desc,
             homepage: c.homepage,
             size_bytes: None,
-            installed_at: c.installed_time.as_ref().and_then(Value::as_i64),
+            // 0 or less is no date, not 1970.
+            installed_at: c
+                .installed_time
+                .as_ref()
+                .and_then(Value::as_i64)
+                .filter(|t| *t > 0),
             path,
             auto_updates: c.auto_updates.unwrap_or(false),
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
@@ -607,8 +617,8 @@ mod tests {
     fn parse_info_installed_says_nothing_of_a_date_without_its_flag_or_of_odd_shapes() {
         // `deprecate!` dated in the future fills the date while
         // `deprecated` is still false; a reason that is not a string, a
-        // blank caveat and a non-numeric install time are nothing -- and
-        // none of them fails the inventory.
+        // blank caveat and a non-numeric or non-positive install time are
+        // nothing -- and none of them fails the inventory.
         let json = r#"{
             "formulae": [
                 {
@@ -630,12 +640,17 @@ mod tests {
                     "deprecation_reason": {"symbol": "unmaintained"},
                     "deprecation_replacement_formula": "",
                     "deprecation_replacement_cask": "newer"
-                }
+                },
+                {"token": "epoch", "installed": "1.0", "installed_time": 0},
+                {"token": "before", "installed": "1.0", "installed_time": -5}
             ]
         }"#;
         let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
         assert_eq!(result[0].facts.homebrew, None);
         assert_eq!(result[1].installed_at, None);
+        // An install time of 0 or less is no date, not 1970.
+        assert_eq!(result[2].installed_at, None);
+        assert_eq!(result[3].installed_at, None);
         assert_eq!(
             result[1].facts.homebrew,
             Some(HomebrewFacts {
