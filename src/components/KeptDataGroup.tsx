@@ -38,7 +38,7 @@ export function KeptDataGroup({ warnings }: { warnings: readonly Warning[] }) {
                   </span>
                 ) : null}
               </p>
-              <p className={`break-words text-muted ${SMALL_WRAPPING}`}>{t(KEPT_DATA_KEYS[item.what].what)}</p>
+              <p className={`break-words text-muted ${SMALL_WRAPPING}`}>{t(KEPT_DATA_KEYS[item.what])}</p>
             </div>
             <button
               type="button"

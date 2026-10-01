@@ -5,7 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { UninstallDialog } from "./UninstallDialog";
 import { keptDataOf } from "../lib/keptData";
-import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs } from "../lib/warnings";
+import { deletesForGood, isCaution, warningDetailKey, warningGroup, warningKey, warningArgs, warningLines } from "../lib/warnings";
 import type { IssuedPlan, OpRequest, Warning } from "../lib/types";
 
 // The same strings `test_keeps_data_is_the_json_the_typescript_mirror_reads`
@@ -61,8 +61,10 @@ describe("KeepsData on the wire", () => {
   it("is its own group, plain, never a deletion", () => {
     const warning = JSON.parse(UNKNOWN_WIRE) as Warning;
     expect(warningGroup(warning)).toBe("data");
-    expect(warningKey(warning)).toBe("keepsData.line.Models");
-    expect(warningArgs(warning)).toEqual({ path: "~/.ollama/models" });
+    // No line: only its own group shows it (`KeptDataGroup`).
+    expect(warningKey(warning)).toBeNull();
+    expect(warningArgs(warning)).toEqual({});
+    expect(warningLines((key) => key, [warning]).data).toEqual([]);
     expect(warningDetailKey(warning)).toBeNull();
     expect(isCaution(warning)).toBe(false);
     expect(deletesForGood(warning)).toBe(false);

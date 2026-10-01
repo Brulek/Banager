@@ -28,15 +28,15 @@ const KEPT_WHAT_KEYS: Record<KeptWhat, string> = {
 };
 
 /**
- * The line for each kind of data an uninstall leaves behind
- * (`Warning.KeepsData`), the path in it. The uninstall confirmation shows
- * these in a group of their own, with the size and Copy Path
- * (`KeptDataGroup`); this is the same thing said as one line. A `Record`
- * over `KeptData`, so a kind without copy fails `tsc`.
+ * What each kind of data an uninstall leaves behind (`Warning.KeepsData`)
+ * is, said under its path. Only the uninstall confirmation's own group
+ * shows these, with the size and Copy Path (`KeptDataGroup`); no screen
+ * says them as a warning line, so `warningKey` gives them none. A
+ * `Record` over `KeptData`, so a kind without copy fails `tsc`.
  */
-export const KEPT_DATA_KEYS: Record<KeptData, { line: string; what: string }> = {
-  ToolData: { line: "keepsData.line.ToolData", what: "keepsData.what.ToolData" },
-  Models: { line: "keepsData.line.Models", what: "keepsData.what.Models" },
+export const KEPT_DATA_KEYS: Record<KeptData, string> = {
+  ToolData: "keepsData.what.ToolData",
+  Models: "keepsData.what.Models",
 };
 
 /**
@@ -200,7 +200,8 @@ function caskStepKey(step: CaskStep, items: string[], onlyIf: RemoveCheck | unde
 /**
  * The `warnings.*` key for a `Warning`'s copy, or `null` for the `Message`
  * catch-all, whose text is read straight off the wire (see
- * `warningMessage` below).
+ * `warningMessage` below), and for `KeepsData`, which only the uninstall
+ * confirmation's own group renders (`KeptDataGroup`).
  *
  * Exhaustive, the way `faultKey` in `src/lib/format.ts` is: every variant
  * of `Warning` is named here, and the `never` defaults make `tsc` fail on
@@ -264,8 +265,8 @@ export function warningKey(warning: Warning): string | null {
     const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
     return caskStepKey(step, items, onlyIf);
   }
-  if ("KeepsData" in warning) return KEPT_DATA_KEYS[warning.KeepsData.what].line;
-  if ("Message" in warning) return null;
+  // Its own group renders it (`KeptDataGroup`), never a line.
+  if ("KeepsData" in warning || "Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
 }
@@ -311,8 +312,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
       ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
     };
   }
-  if ("KeepsData" in warning) return { path: warning.KeepsData.path };
-  if ("Message" in warning) return {};
+  if ("KeepsData" in warning || "Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;
 }
@@ -342,7 +342,8 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * `warningArgs`/`warningMessage` stay exported and `t()`-free for testing.
  * `subject` is the name of the tool the plan is about, as its row names
  * it: an `UninstallScope` sentence says it, and without one has no line
- * (`null`) rather than a line with an empty name in it. Otherwise, with
+ * (`null`) rather than a line with an empty name in it. A `KeepsData` has
+ * no line either: `KeptDataGroup` renders it. Otherwise, with
  * `warningKey` exhaustive, a fixed warning always has a key and a
  * `Message` always has its text.
  */
@@ -432,7 +433,8 @@ export function warningDetailKey(warning: Warning): string | null {
  * about what goes and what stays; `trash`, what a path-list uninstall
  * moves to the Trash, and what it found already gone from there; `keep`,
  * what it leaves where it is; `data`, a tool's settings and data or
- * Ollama's models, which no uninstall removes (`KeepsData`); and `note`, everything else -- what to know
+ * Ollama's models, which no uninstall removes (`KeepsData`, which has no
+ * line, so `warningLines` leaves this empty; `KeptDataGroup` shows it); and `note`, everything else -- what to know
  * before you continue, from a dependency Banager could not check to a
  * cask's extra uninstall steps and rustup deleting a folder for good.
  *

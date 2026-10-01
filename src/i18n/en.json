@@ -707,10 +707,6 @@
       "ToolData": "This tool's settings and data",
       "Models": "Downloaded models"
     },
-    "line": {
-      "ToolData": "This tool's settings and data: {{path}}",
-      "Models": "Downloaded models: {{path}}"
-    },
     "copyPath": "Copy Path",
     "copyPathLabel": "Copy path: {{path}}"
   },

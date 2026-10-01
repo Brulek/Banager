@@ -655,10 +655,6 @@
       "ToolData": "这个工具的设置和数据",
       "Models": "下载的模型"
     },
-    "line": {
-      "ToolData": "这个工具的设置和数据：{{path}}",
-      "Models": "下载的模型：{{path}}"
-    },
     "copyPath": "拷贝路径",
     "copyPathLabel": "拷贝路径：{{path}}"
   },
