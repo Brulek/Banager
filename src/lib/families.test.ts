@@ -160,3 +160,19 @@ describe("discoverCovered", () => {
     expect(discoverCovered(artifacts, [source("standalone-grok", [])])).toEqual({ notOnPath: 0, brewRetired: 0 });
   });
 });
+
+describe("the not-found notice's ⓘ", () => {
+  // `NotOnPath` says only that no `PATH` folder leads to this copy
+  // (`commands::judge`): another program with the name may still be the one
+  // Terminal runs. The ⓘ says what is true of both cases, in both languages.
+  it("says the command doesn't run this copy, not that typing it finds nothing", async () => {
+    const zh = (await import("../i18n/zh-CN.json")).default.families.notOnPathNoticeDetail;
+    const en = (await import("../i18n/en.json")).default.families.notOnPathNoticeDetail;
+    expect(zh).toContain("不会运行这一份");
+    expect(zh).toContain("同名程序");
+    expect(zh).not.toContain("会找不到");
+    expect(en).toContain("doesn't run that copy");
+    expect(en).toContain("another program with the same name");
+    expect(en).not.toContain("won't find it");
+  });
+});
