@@ -326,8 +326,9 @@ export function useOperationEvents(): void {
 
     // Under React StrictMode the effect mounts, unmounts and mounts again.
     // The first Channel is detached client-side but stays in the backend's
-    // ChannelSink registry as a ghost until a send to it fails; it receives
-    // events and drops them. There is no other side effect.
+    // ChannelSink registry as a ghost until a send to it fails or newer
+    // subscriptions push it out (`MAX_CHANNELS`); it receives events and
+    // drops them. There is no other side effect.
     return () => {
       cancelled = true;
       detach?.();

@@ -26,6 +26,11 @@ pub enum UiEvent {
     },
 }
 
+/// How many Channels `ChannelSink` sends to at most: the newest. Banager
+/// has one window, whose page subscribes once each time it loads
+/// (`subscribeEvents` in src/lib/api.ts).
+pub const MAX_CHANNELS: usize = 8;
+
 /// Fans every core event out to all registered Channels; a Channel whose
 /// send fails (window closed) is dropped from the registry.
 pub struct ChannelSink {
@@ -39,8 +44,16 @@ impl ChannelSink {
         })
     }
 
+    /// Adds `channel`, keeping only the newest `MAX_CHANNELS`. A page that
+    /// reloads subscribes again, and a send to the channel of the page it
+    /// replaced need not fail, so that one would be sent every event for
+    /// as long as Banager runs; nor can a page that subscribes over and
+    /// over make each event cost one send per call it made.
     pub fn register(&self, channel: Channel<UiEvent>) {
-        self.channels.lock().unwrap().push(channel);
+        let mut channels = self.channels.lock().unwrap();
+        channels.push(channel);
+        let extra = channels.len().saturating_sub(MAX_CHANNELS);
+        channels.drain(..extra);
     }
 
     pub fn broadcast(&self, event: UiEvent) {
@@ -103,6 +116,25 @@ mod tests {
             UiEvent::SnapshotChanged { generation } => assert_eq!(*generation, 7),
             other => panic!("expected SnapshotChanged, got {other:?}"),
         };
+    }
+
+    #[test]
+    fn test_only_the_newest_channels_are_kept_however_often_the_page_subscribes() {
+        let sink = ChannelSink::new();
+        let received: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        for n in 0..(MAX_CHANNELS * 4) {
+            let r = received.clone();
+            sink.register(Channel::new(move |_body| {
+                r.lock().unwrap().push(n);
+                Ok(())
+            }));
+        }
+        assert_eq!(sink.channels.lock().unwrap().len(), MAX_CHANNELS);
+        sink.broadcast(UiEvent::SnapshotChanged { generation: 1 });
+        let mut got = received.lock().unwrap().clone();
+        got.sort_unstable();
+        let newest: Vec<usize> = (MAX_CHANNELS * 3..MAX_CHANNELS * 4).collect();
+        assert_eq!(got, newest, "the newest subscriptions hear it, once each");
     }
 
     #[test]

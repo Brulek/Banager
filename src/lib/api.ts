@@ -78,8 +78,9 @@ export function setSettings(settings: Settings): Promise<void> {
 /**
  * Registers a fresh Channel with the backend and forwards every UiEvent it
  * receives to `onEvent`. There is no `unsubscribe_events` command — the
- * backend only drops a Channel from its broadcast registry once a send to it
- * fails (the window closed). The returned function is a client-side detach:
+ * backend drops a Channel from its broadcast registry once a send to it
+ * fails (the window closed), or once newer ones fill it (`MAX_CHANNELS` in
+ * src-tauri/src/events.rs). The returned function is a client-side detach:
  * it stops this callback from firing, it does not tell the backend anything.
  */
 export function subscribeEvents(onEvent: (e: UiEvent) => void): Promise<() => void> {
