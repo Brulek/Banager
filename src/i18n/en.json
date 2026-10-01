@@ -886,7 +886,19 @@
     "selectAgain_one": "Select It Again",
     "selectAgain_other": "Select Them Again",
     "setupAttention_one": "{{count}} item needs attention",
-    "setupAttention_other": "{{count}} items need attention"
+    "setupAttention_other": "{{count}} items need attention",
+    "protectedFoldersIn_one": "{{count}} folder in a protected location wasn't read: {{places}}.",
+    "protectedFoldersIn_other": "{{count}} folders in protected locations weren't read: {{places}}.",
+    "places": {
+      "documents": "Documents",
+      "desktop": "Desktop",
+      "downloads": "Downloads",
+      "pictures": "Pictures",
+      "movies": "Movies",
+      "music": "Music",
+      "icloud": "iCloud Drive",
+      "volumes": "other disks"
+    }
   },
   "keepsData": {
     "title": "Stays after uninstalling",

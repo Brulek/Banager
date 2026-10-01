@@ -880,7 +880,16 @@ describe("in a narrow window (R9)", () => {
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
   });
 
-  it("keeps a broken link's word where its size and date would be, every path at one x, and leaves the app to the tooltip", async () => {
+  it("keeps the app a link points into and its owner on the path's line at the narrowest window's 592", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { width: 592, height: 400, top: 0, left: 0, right: 592, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
+    });
+    const { findByText } = renderWithProviders(<UnknownPage />);
+    const helper = rowOf(await findByText("helper-cli"));
+    expect(within(helper).getByText("Points into Helper.app · Owned by the system or another account")).not.toHaveClass("sr-only");
+  });
+
+  it("keeps a broken link's word where its size and date would be, every path at one x, the app after the path", async () => {
     // The list as a window at its narrowest lays it out: 592 wide.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       return { width: 592, height: 400, top: 0, left: 0, right: 592, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
@@ -898,12 +907,10 @@ describe("in a narrow window (R9)", () => {
       const line = row.querySelector("[title^='~'], [title^='/']")?.parentElement as HTMLElement;
       expect(line.firstElementChild?.getAttribute("title")).toMatch(/^[~/]/);
     }
-    expect(queryByText("Points into Removed.app")).toBeNull();
-    expect(queryByText("Points into Helper.app")).toBeNull();
+    // The app a link points into stays on the path's line, the path giving way.
+    expect(queryByText("Points into Removed.app")).not.toBeNull();
     const helper = rowOf(await findByText("helper-cli"));
     expect(tooltipOf(helper)).toContain("Part of Helper");
-    // Its owner leaves the line too: the avatar says both to a screen reader.
-    expect(within(helper).getByText("Part of Helper, Owned by the system or another account")).toHaveClass("sr-only");
     // Said at more length behind the ⓘ, as before.
     fireEvent.click(word);
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
@@ -1063,7 +1070,8 @@ describe("protected places", () => {
   it("says how many folders it left unread in one quiet line, naming them behind an ⓘ only with technical details on", async () => {
     scan = { ...baseScan, protected_dirs: ["~/Documents/scripts", "~/Desktop/tools"] };
     const plain = renderWithProviders(<UnknownPage />);
-    const line = await plain.findByText("2 folders are in protected locations and weren't read.");
+    // Where they are in Finder's names, with technical details off too.
+    const line = await plain.findByText("2 folders in protected locations weren't read: Documents, Desktop.");
     expect(line.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
     expect(plain.queryByRole("button", { name: /^Details: 2 folders/ })).toBeNull();
     expect(plain.queryByText("~/Documents/scripts")).toBeNull();
@@ -1072,7 +1080,7 @@ describe("protected places", () => {
     settings = { ...settings, show_technical_details: true };
     const technical = renderWithProviders(<UnknownPage />);
     const info = await technical.findByRole("button", {
-      name: "Details: 2 folders are in protected locations and weren't read.",
+      name: "Details: 2 folders in protected locations weren't read: Documents, Desktop.",
     });
     fireEvent.click(info);
     expect(technical.getByText("~/Documents/scripts")).toBeInTheDocument();
@@ -1098,7 +1106,7 @@ describe("protected places", () => {
 
     expect(await findByText("No other programs in the places checked")).toBeInTheDocument();
     expect(queryByText("No other programs")).toBeNull();
-    expect(queryByText("1 folder is in a protected location and wasn't read.")).toBeInTheDocument();
+    expect(queryByText("1 folder in a protected location wasn't read: Documents.")).toBeInTheDocument();
   });
 
   it("says it in Chinese", async () => {
@@ -1111,7 +1119,7 @@ describe("protected places", () => {
       };
       const { findByText, getByText } = renderWithProviders(<UnknownPage />);
       expect(await findByText("指向受保护的位置")).toBeInTheDocument();
-      expect(getByText("有2个文件夹在受保护的位置，没有读取。")).toBeInTheDocument();
+      expect(getByText("有2个文件夹在受保护的位置，没有读取：文稿、桌面。")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

@@ -136,6 +136,47 @@ function ColumnHeads() {
 }
 
 /**
+ * The protected places a person knows by name, by the folder each is
+ * (crates/banager-core/src/protected.rs): Finder's own names for them.
+ */
+const PLACE_KEYS: ReadonlyArray<[prefix: string, key: string]> = [
+  ["~/Documents", "reviewFixes.places.documents"],
+  ["~/Desktop", "reviewFixes.places.desktop"],
+  ["~/Downloads", "reviewFixes.places.downloads"],
+  ["~/Pictures", "reviewFixes.places.pictures"],
+  ["~/Movies", "reviewFixes.places.movies"],
+  ["~/Music", "reviewFixes.places.music"],
+  ["~/Library/Mobile Documents", "reviewFixes.places.icloud"],
+  ["/Volumes", "reviewFixes.places.volumes"],
+];
+
+/** The place a protected folder is in, by its name in Finder, or null for one not named here. */
+export function placeOf(dir: string): string | null {
+  const lower = dir.toLowerCase();
+  for (const [prefix, key] of PLACE_KEYS) {
+    const p = prefix.toLowerCase();
+    if (lower === p || lower.startsWith(`${p}/`)) return key;
+  }
+  return null;
+}
+
+/**
+ * 「有2个文件夹在受保护的位置（文稿、桌面），没有读取。」: how many folders the scan
+ * left unread, and where, in Finder's names -- with technical details off
+ * too, the paths themselves being behind the ⓘ only with them on. Where a
+ * folder is in no place named here, the count alone.
+ */
+function protectedFoldersText(t: Translate, dirs: readonly string[]): string {
+  const keys = dirs.map(placeOf);
+  if (keys.some((key) => key === null)) return t("unknown.protectedFolders", { count: dirs.length });
+  const places = [...new Set(keys as string[])].map((key) => t(key));
+  return t("reviewFixes.protectedFoldersIn", {
+    count: dirs.length,
+    places: places.join(t("common.listSeparator")),
+  });
+}
+
+/**
  * What there is to say about a program, a line each: what a broken link
  * pointed at, why a link into a protected place was not followed (never
  * where it leads), the app it runs inside, that another account owns it, and
@@ -333,20 +374,22 @@ export function UnknownPage() {
   const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
   const listWidth = useElementWidth(listBox);
   // Too narrow for a path and the app a link points into on one line, the
-  // app gives way: the row's tooltip says it at more length.
+  // path gives way to it (`ToolRow`'s `descriptionNote`), down to the
+  // narrowest window's list; only beside the inspector does the app give
+  // way, the row's tooltip saying it at more length.
   const fit = rowFitFor(listWidth);
-  const roomForNote = fit === "full" || fit === "compact";
+  const roomForNote = fit === "full" || fit === "compact" || fit === "narrow";
   // The headings over the size and the date where the rows draw those
   // columns (`ToolRow`'s version column, down to its `narrow` fit) and a
   // row has either: over broken links alone they would head nothing.
   const headed =
-    (roomForNote || fit === "narrow") &&
+    roomForNote &&
     (result?.entries.some((entry) => entry.size_bytes !== null || entry.modified_at !== null) ?? false);
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
   // The folders it did not read, being in protected places: a quiet line
   // under the list, naming them behind an ⓘ only with technical details on.
   const unread = result?.protected_dirs ?? [];
-  const unreadText = unread.length === 0 ? null : t("unknown.protectedFolders", { count: unread.length });
+  const unreadText = unread.length === 0 ? null : protectedFoldersText(t, unread);
 
   // A row's Copy path and Show in Finder, and a word about how the last
   // one went: "Copied" or "Couldn't copy" as the other pages say it
