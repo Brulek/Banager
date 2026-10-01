@@ -2017,6 +2017,7 @@
   "brew:yj": "YAML、TOML、JSON、HCL互转命令行工具",
   "brew:ykman": "YubiKey配置管理工具",
   "brew:yosys": "Verilog RTL综合框架",
+  "brew:youtube-dl": "命令行YouTube视频下载工具",
   "brew:youtubedr": "Go编写的YouTube视频下载工具",
   "brew:yq": "命令行处理YAML/JSON等文件",
   "brew:yt-dlp": "命令行音视频下载工具",
