@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import { useTranslation } from "react-i18next";
-import { useCopyCommand } from "../lib/clipboard";
+import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { BUTTON } from "./ui/controls";
 
 /**
@@ -44,7 +44,7 @@ export function CopyButton({
   return (
     <span className="flex shrink-0 items-center justify-end gap-2">
       <span role="status" data-copy-status="" className="text-small text-muted empty:hidden">
-        {status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null}
+        {copyStatusText(t, status)}
       </span>
       <button
         ref={buttonRef}

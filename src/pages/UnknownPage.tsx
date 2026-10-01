@@ -9,7 +9,7 @@ import { TextWithInfo } from "../components/InfoDetail";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
 import { SpinnerIcon, TerminalIcon } from "../components/icons";
-import { SHOWN_FOR_MS, useCopyCommand } from "../lib/clipboard";
+import { SHOWN_FOR_MS, copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { elapsedSince, formatBytes } from "../lib/format";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
@@ -405,13 +405,7 @@ export function UnknownPage() {
     const timer = window.setTimeout(resetReveal, SHOWN_FOR_MS);
     return () => window.clearTimeout(timer);
   }, [revealFailed, revealedAt, resetReveal]);
-  const notice = revealFailed
-    ? t("unknown.showInFinderFailed")
-    : copyStatus === "copied"
-      ? t("common.copied")
-      : copyStatus === "failed"
-        ? t("common.copyFailed")
-        : null;
+  const notice = revealFailed ? t("unknown.showInFinderFailed") : copyStatusText(t, copyStatus);
 
   // The ⋯ menu. Show in Finder hands the plugin where the program is,
   // every link followed (`resolved`): what the plugin would make of the

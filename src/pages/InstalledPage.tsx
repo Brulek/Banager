@@ -28,7 +28,7 @@ import {
   upToDateIsKnown,
 } from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
-import { useCopyCommand } from "../lib/clipboard";
+import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
@@ -1764,7 +1764,7 @@ export function InstalledPage() {
           buttons; and the search field, 200 wide. */}
       <ToolbarItems>
         <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
-          {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
+          {copyStatusText(t, copyStatus)}
         </p>
         <ToolShowButton twins value={show} onChange={setShow} counts={discover} twinsCount={twinsInView} />
         <ToolbarPopupButton

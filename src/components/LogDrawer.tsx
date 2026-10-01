@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import type { LogNote, OpSummary } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
-import { useCopyCommand } from "../lib/clipboard";
+import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { outcomeDetailKey } from "../lib/format";
 import {
@@ -163,8 +163,7 @@ export function LogDrawer() {
 
   const parts = operation === undefined ? null : partsOf(operation);
   const nextId = useId();
-  const copyWords =
-    copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null;
+  const copyWords = copyStatusText(t, copyStatus);
 
   return (
     <Dialog

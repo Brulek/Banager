@@ -40,3 +40,8 @@ export function useCopyCommand(): { status: CopyStatus; copy: (command: string) 
 
   return { status, copy };
 }
+
+/** What `status` says beside the button or in the toolbar: 「已拷贝」, 「无法拷贝」, or nothing. */
+export function copyStatusText(t: (key: string) => string, status: CopyStatus): string | null {
+  return status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;
+}

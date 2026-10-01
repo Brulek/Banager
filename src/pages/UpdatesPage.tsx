@@ -14,7 +14,7 @@ import {
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import { warningMessage } from "../lib/warnings";
-import { useCopyCommand } from "../lib/clipboard";
+import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
@@ -1210,7 +1210,7 @@ export function UpdatesPage() {
           </span>
         </label>
         <p role="status" className="ml-auto truncate text-small text-muted">
-          {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
+          {copyStatusText(t, copyStatus)}
         </p>
       </div>
       {/* Virtualized, like the Installed page. A source that cannot reach

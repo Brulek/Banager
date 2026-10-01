@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useCopyCommand } from "../lib/clipboard";
+import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { outcomeCause } from "../lib/failureCause";
 import type { OpSummary } from "../lib/types";
 import { commandText } from "./CommandPreview";
@@ -96,7 +96,7 @@ export function PasswordCommand({ op }: { op: OpSummary }) {
   const command = terminalCommand(op);
   const parts = terminalCommandParts(op);
   if (command === null || parts === null) return null;
-  const copyWords = status === "copied" ? t("common.copied") : status === "failed" ? t("common.copyFailed") : null;
+  const copyWords = copyStatusText(t, status);
   return (
     <div className="mb-3 flex flex-col gap-2">
       <p className="break-words text-body text-foreground">{t("needsPassword.intro")}</p>
