@@ -311,6 +311,8 @@ pub struct Session {
     #[cfg(not(any(test, feature = "test-support")))]
     issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     now_fn: Option<fn() -> i64>,
+    /// Turns among the plans being worked out (`plans::PLANS_AT_ONCE`).
+    planning: tokio::sync::Semaphore,
     /// See `background_change`. Handed to the adapters that can change
     /// state on their own (Homebrew's background `brew update`) by
     /// `Session::new`.
@@ -474,6 +476,7 @@ impl Session {
             refreshes_under_way: AtomicUsize::new(0),
             issued_plans: Mutex::new(HashMap::new()),
             now_fn,
+            planning: tokio::sync::Semaphore::new(plans::PLANS_AT_ONCE),
             background_change,
             login_path: std::sync::atomic::AtomicBool::new(true),
             commands_in_flight: Arc::new(std::sync::atomic::AtomicBool::new(false)),

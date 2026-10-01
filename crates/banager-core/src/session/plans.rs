@@ -17,6 +17,20 @@ use std::time::{Duration, Instant};
 /// this cannot.
 pub(crate) const PLAN_LIFETIME: Duration = Duration::from_secs(600);
 
+/// How many plans are held for `submit` at most. A batch uninstall plans
+/// twenty at most (`MAX_BATCH_UNINSTALL` in src/lib/batchUninstall.ts);
+/// past this, issuing one forgets the oldest held, which `submit` then
+/// refuses as `Unknown`, so a page that previews over and over cannot make
+/// the map grow for the ten minutes each plan is kept.
+pub(crate) const MAX_ISSUED_PLANS: usize = 64;
+
+/// How many plans are being worked out at once at most
+/// (`Session::planning`); the rest wait their turn. Planning can run a
+/// command -- Homebrew's uninstall preview runs `brew uses --installed` --
+/// and a batch uninstall plans three at a time (`PLAN_CONCURRENCY` in
+/// src/lib/batchUninstall.ts).
+pub(crate) const PLANS_AT_ONCE: usize = 4;
+
 /// Whether a plan issued `elapsed` ago is too old to submit. Exactly
 /// `PLAN_LIFETIME` is still submittable; the boundary is inclusive, as it
 /// has been since the lifetime was introduced.
@@ -235,6 +249,13 @@ impl Session {
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
         })?;
+        // Its turn among the plans being worked out (`PLANS_AT_ONCE`). The
+        // semaphore is never closed, so the wait ends with a permit.
+        let _turn = self
+            .planning
+            .acquire()
+            .await
+            .expect("the planning semaphore is never closed");
         let plan = adapter.plan(&instance, req).await?;
         // What the uninstall leaves behind, named (`kept.rs`).
         let plan = self.with_kept_data(plan, family).await;
@@ -248,6 +269,16 @@ impl Session {
         };
         let mut plans = self.issued_plans.lock().unwrap();
         plans.retain(|_, p| !has_expired(p.issued_monotonic.elapsed()));
+        while plans.len() >= MAX_ISSUED_PLANS {
+            let oldest = plans
+                .iter()
+                .min_by_key(|(_, p)| p.issued_monotonic)
+                .map(|(id, _)| id.clone());
+            match oldest {
+                Some(id) => plans.remove(&id),
+                None => break,
+            };
+        }
         plans.insert(
             id,
             StoredPlan {
@@ -412,6 +443,11 @@ mod tests {
         updates: std::sync::Mutex<Vec<UpdateCandidate>>,
         artifacts: std::sync::Mutex<Vec<InstalledArtifact>>,
         plan_gate: std::sync::Mutex<Option<PlanGate>>,
+        /// How long each `plan()` takes, and how many were under way at
+        /// once at most: for the test of `PLANS_AT_ONCE` alone.
+        plan_delay: std::sync::Mutex<Duration>,
+        in_flight: std::sync::atomic::AtomicUsize,
+        most_in_flight: std::sync::atomic::AtomicUsize,
     }
 
     impl FakeAdapter {
@@ -422,6 +458,9 @@ mod tests {
                 updates: std::sync::Mutex::new(Vec::new()),
                 artifacts: std::sync::Mutex::new(Vec::new()),
                 plan_gate: std::sync::Mutex::new(None),
+                plan_delay: std::sync::Mutex::new(Duration::ZERO),
+                in_flight: std::sync::atomic::AtomicUsize::new(0),
+                most_in_flight: std::sync::atomic::AtomicUsize::new(0),
             })
         }
 
@@ -528,6 +567,13 @@ mod tests {
                 let _ = gate.entered.send(());
                 let _ = gate.resume.await;
             }
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most_in_flight.fetch_max(now, Ordering::SeqCst);
+            let delay = *self.plan_delay.lock().unwrap();
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
             Ok(test_support::fake_plan(inst, req))
         }
 
@@ -1450,6 +1496,59 @@ mod tests {
             .issued_monotonic
             .checked_sub(by)
             .expect("the monotonic clock is at least `by` past its origin");
+    }
+
+    #[tokio::test]
+    async fn test_no_more_than_max_issued_plans_are_held_and_the_oldest_goes_first() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let mut ids = Vec::new();
+        for _ in 0..(super::MAX_ISSUED_PLANS + 3) {
+            ids.push(session.issue_plan(&req).await.expect("issue_plan").id);
+        }
+        assert_eq!(
+            session.issued_plans.lock().unwrap().len(),
+            super::MAX_ISSUED_PLANS
+        );
+        // The three oldest are forgotten; the newest is still submittable.
+        for id in &ids[..3] {
+            assert_eq!(session.submit(id.clone()), Err(SubmitError::Unknown));
+        }
+        session
+            .submit(ids.last().unwrap().clone())
+            .expect("the newest plan is held");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_no_more_than_plans_at_once_are_worked_out_together() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        *adapter.plan_delay.lock().unwrap() = Duration::from_millis(40);
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![adapter.clone() as Arc<dyn Adapter>],
+            None,
+        );
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let asked: Vec<_> = (0..(super::PLANS_AT_ONCE * 3))
+            .map(|_| {
+                let session = session.clone();
+                tokio::spawn(async move { session.issue_plan(&install_request("fake:1")).await })
+            })
+            .collect();
+        for task in asked {
+            task.await.unwrap().expect("each is planned in its turn");
+        }
+        let most = adapter.most_in_flight.load(Ordering::SeqCst);
+        assert!(
+            (1..=super::PLANS_AT_ONCE).contains(&most),
+            "{most} plans were worked out at once"
+        );
     }
 
     #[test]
