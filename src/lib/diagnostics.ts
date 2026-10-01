@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
 import { twinsByArtifact } from "./commands";
+import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeText } from "./sizes";
 import { failedSourceNames, instanceLabels, namesInSentence } from "./sources";
@@ -197,7 +198,17 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
           : t("diagnostics.text.incomplete", { sources: namesInSentence(t, names) }),
       );
     } else {
-      lines.push(t("diagnostics.text.complete"));
+      // Complete, but for the sources whose updates are never checked
+      // (Codex's own install, `updatesUnchecked`): said, not passed over.
+      const labels = instanceLabels(t, instances);
+      const unchecked = instances
+        .filter(updatesUnchecked)
+        .map((instance) => labels.get(instance.id) ?? instance.adapter_id);
+      lines.push(
+        unchecked.length === 0
+          ? t("diagnostics.text.complete")
+          : t("clarity.completeExcept", { sources: namesInSentence(t, unchecked) }),
+      );
     }
   }
   lines.push(t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length }));

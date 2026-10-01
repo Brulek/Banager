@@ -321,6 +321,20 @@ describe("diagnosticsText", () => {
     expect(never).toContain("\n上次检查：从未\n");
     expect(never).not.toContain("检查结果");
     expect(never).not.toContain("占用空间");
+    // Codex's own install is listed, and its updates never checked: the
+    // check is complete but for it, and the text says so.
+    const codex = {
+      ...SNAPSHOT.instances[0],
+      id: "standalone-codex",
+      adapter_id: "standalone-codex",
+      exe_path: "/Users/you/.local/bin/codex",
+      prefix: "/Users/you/.codex/packages/standalone",
+    };
+    const withCodex = { ...SNAPSHOT, stale: false, errors: [], instances: [...SNAPSHOT.instances, codex] };
+    expect(diagnosticsText(en, input({ snapshot: withCodex }))).toContain(
+      "\nCheck: complete, except for updates to Codex\n",
+    );
+    expect(diagnosticsText(zh, input({ snapshot: withCodex }))).toContain("\n检查结果：完整，不含Codex的更新\n");
     const empty = diagnosticsText(en, input({ snapshot: null, sizes: null }));
     expect(empty).toContain("\nSources: 0\n\nCommand search folders: 4\n");
     expect(empty).toContain("\nNot found in Terminal: 0\nTools installed more than once: 0\n");

@@ -877,7 +877,8 @@
     "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. They can't be cleaned up here yet.",
     "listedOnly": "Listed only",
     "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
-    "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here."
+    "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
+    "completeExcept": "Check: complete, except for updates to {{sources}}"
   },
   "unknown": {
     "columns": {

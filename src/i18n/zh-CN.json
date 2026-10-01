@@ -820,7 +820,8 @@
     "otherVersionsDetail": "Homebrew还留着的其他版本，不是上面列出的这一版。目前不能在这里清理它们。",
     "listedOnly": "只列出",
     "notUsedUpdate": "更新这一份不会改变终端里运行的那一份。",
-    "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。"
+    "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。",
+    "completeExcept": "检查结果：完整，不含{{sources}}的更新"
   },
   "unknown": {
     "columns": {
