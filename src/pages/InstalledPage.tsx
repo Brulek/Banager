@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSaveSettings, useSettings, useSnapshot } from "../lib/queries";
+import { useInstalledSnapshot } from "../lib/inventoryPreview";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
@@ -388,7 +389,9 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
  */
 export function InstalledPage() {
   const { t, i18n } = useTranslation();
-  const { data: snapshot, isLoading } = useSnapshot();
+  // While the first check is still checking for updates, its list
+  // (`preview`): no update in it, and nothing to do on it yet.
+  const { data: snapshot, isLoading, preview } = useInstalledSnapshot();
   const { data: settings } = useSettings();
   const saveSettings = useSaveSettings();
   const query = useUiStore((s) => s.query);
@@ -797,10 +800,12 @@ export function InstalledPage() {
     const holdKey = uninstallHoldKey(instance);
     return holdKey === null ? null : detailLines([t(holdKey)]);
   };
-  // Held as above, or while an uninstall of this one is under way.
+  // Held as above, or while an uninstall of this one is under way -- or,
+  // on the first check's list, until that check is done (the toolbar says
+  // it is checking).
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
     canUninstall(artifact, instance) &&
-    (!isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
+    (preview || !isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
   const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined => {
@@ -1082,6 +1087,8 @@ export function InstalledPage() {
     } else if (hidden !== undefined) {
       chips.push(hiddenChip(hidden));
     } else if (
+      // The first check's list knows nothing of updates yet.
+      !preview &&
       upToDateIsKnown(instance, snapshot.errors) &&
       !leftOutOfUpdateCheck(artifact, settings?.include_self_updating ?? false) &&
       // Disabled: no update will come, which 「已是最新」 would blur.

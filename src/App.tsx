@@ -14,6 +14,7 @@ import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
+import { useInventoryPreview } from "./lib/inventoryPreview";
 import { useSnapshot, useUnknownScan } from "./lib/queries";
 import { instanceLabels } from "./lib/sources";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
@@ -48,7 +49,10 @@ function headerActions(page: Page): ReactNode {
  * (`useUpdatesHeadline`); 「51个工具」, everything installed, as the
  * sidebar counts it; 「5个程序」, what the last scan found; nothing for
  * nothing, which the page says in a sentence of its own -- or, on the
- * pages about the sources, 「正在检查…」 while a check runs and, as an
+ * pages about the sources, 「正在检查…」 while a check runs -- on the
+ * Installed page, while the first check lists what it found before its
+ * update checks are done (`useInventoryPreview`), 「已找到51个工具 · 正在
+ * 检查更新…」 -- and, as an
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
  * bring up to date. On one source alone, the Installed page counts that
@@ -66,6 +70,8 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   const { data: snapshot } = useSnapshot();
   const updatesHeadline = useUpdatesHeadline();
   const scan = useUnknownScan();
+  // The first check's list, while that check is still checking for updates.
+  const preview = useInventoryPreview();
   const said = (text: string | null): PageSubtitle | null => (text === null ? null : { text, failed: false });
   // None for none, as the sidebar shows no 0: the page says it has
   // nothing in a sentence of its own.
@@ -77,6 +83,10 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       return null;
     case "updates":
     case "installed":
+      // 「已找到51个工具 · 正在检查更新…」 over the first check's list.
+      if (checking && page === "installed" && preview !== null) {
+        return said(t("inventoryPreview.subtitle", { count: preview.artifacts.length }));
+      }
       if (checking) return said(t("common.checking"));
       if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
       if (page === "updates") return said(updatesHeadline);
@@ -225,7 +235,7 @@ function App() {
                   <OverviewPage />
                 </SnapshotStatus>
               ) : (
-                <SnapshotStatus>
+                <SnapshotStatus showsInventoryPreview={page === "installed"}>
                   {page === "installed" ? <InstalledPage /> : <UpdatesPage />}
                 </SnapshotStatus>
               )}

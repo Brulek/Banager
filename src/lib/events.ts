@@ -3,7 +3,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
 import { queryKeys } from "./queryKeys";
 import { useUiStore } from "../store/ui";
-import type { Snapshot, UiEvent } from "./types";
+import type { InventoryPreview, Snapshot, UiEvent } from "./types";
 
 /**
  * Whether `incoming` is at least as recent as what is already cached, and
@@ -88,6 +88,30 @@ export function isStartupSnapshot(snapshot: Snapshot): boolean {
 export function writeSnapshotIfNewer(queryClient: QueryClient, snapshot: Snapshot): void {
   queryClient.setQueryData<Snapshot>(queryKeys.snapshot, (cached) =>
     isNewerSnapshot(snapshot, cached) ? snapshot : cached,
+  );
+}
+
+/**
+ * Keeps `preview`, the first refresh's list before its update checks are
+ * done (`UiEvent.InventoryPreview`), for the Installed page to show
+ * meanwhile (`useInventoryPreview` in src/lib/inventoryPreview.ts) -- only
+ * while the snapshot cache has nothing but the startup placeholder
+ * (`isStartupSnapshot`), or nothing at all yet. The event and the
+ * refresh's own reply travel apart, so the reply can come first: a
+ * preview arriving after a real snapshot is dropped, never shown over
+ * it. A later round's preview (one after a round that never committed)
+ * replaces an earlier one; an earlier one never comes back.
+ *
+ * Held under its own key, never the snapshot's: what reads the snapshot
+ * -- the Updates page, the Overview's verdict, the Dock's badge, the
+ * update notification -- must not take a list with no updates in it for
+ * an answer that there are none.
+ */
+export function writeInventoryPreview(queryClient: QueryClient, preview: InventoryPreview): void {
+  const snapshot = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
+  if (snapshot !== undefined && !isStartupSnapshot(snapshot)) return;
+  queryClient.setQueryData<InventoryPreview | null>(queryKeys.inventoryPreview, (held) =>
+    held && held.round > preview.round ? held : preview,
   );
 }
 
@@ -225,7 +249,8 @@ export function useStartupRefresh(): void {
  * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
  * React state: `Operation.Log` and `Operation.Note` events are appended to
  * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
- * invalidate the operations query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
+ * invalidate the operations query, `SnapshotChanged` invalidates the snapshot query,
+ * and `InventoryPreview` is kept apart from it (`writeInventoryPreview`). A `Finished`
  * event is also when the operation finished (`rememberOpFinished`), and
  * triggers a `refresh`: that is the only way the
  * installed/updates lists learn that an uninstall or update changed
@@ -268,6 +293,9 @@ export function useOperationEvents(): void {
             refreshIntoCache(queryClient, "post-operation").catch(() => {});
           }
         }
+      } else if ("InventoryPreview" in event) {
+        // No snapshot changed: nothing to fetch.
+        writeInventoryPreview(queryClient, event.InventoryPreview);
       } else {
         queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }

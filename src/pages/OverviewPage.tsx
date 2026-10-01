@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
+import { useInventoryPreview } from "../lib/inventoryPreview";
 import { elapsedSince } from "../lib/format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import {
@@ -329,7 +330,9 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * the first check has answered, the same row, turning, says 「正在检查…」
  * and why that takes a while -- the startup placeholder is not an answer
  * (`isStartupSnapshot`) -- so that nothing on the page moves when the
- * answer comes.
+ * answer comes. Once that check has listed what is installed, while it
+ * still checks for updates (`useInventoryPreview`), its line says how many
+ * tools it found, and a grey See Tools opens the Installed page on them.
  *
  * Second, the daily check, on or off (`AutoCheckRow`).
  *
@@ -355,11 +358,25 @@ export function OverviewPage() {
   const operationFor = useUpdateOperationFor();
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
+  // What the first check has found installed, while it still checks for
+  // updates: how many, and the way to them -- never a word on updates.
+  const preview = useInventoryPreview();
+  const openPage = useUiStore((s) => s.openPage);
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
+    const seeTools =
+      preview === null ? null : (
+        <button type="button" onClick={() => openPage("installed")} className={BUTTON.regular.grey}>
+          {t("inventoryPreview.seeTools")}
+        </button>
+      );
+    const line =
+      preview === null
+        ? t("common.firstCheckDetail")
+        : t("inventoryPreview.overviewLine", { count: preview.artifacts.length });
     return (
       <div className={FORM_COLUMN}>
-        <StatusRow symbol="busy" title={t("common.checking")} line={t("common.firstCheckDetail")} button={null} />
+        <StatusRow symbol="busy" title={t("common.checking")} line={line} button={seeTools} />
         {settings ? <AutoCheckRow settings={settings} /> : null}
       </div>
     );

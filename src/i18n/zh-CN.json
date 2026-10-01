@@ -4,6 +4,11 @@
     "failed": "无法显示此页面。",
     "reload": "重新载入"
   },
+  "inventoryPreview": {
+    "subtitle_other": "已找到{{count}}个工具 · 正在检查更新…",
+    "overviewLine_other": "已找到{{count}}个工具。首次检查需要联网查询每个工具的新版本，有时要一两分钟。",
+    "seeTools": "查看工具"
+  },
   "nav": {
     "label": "导航",
     "overview": "概览",

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
+import { useInventoryPreview } from "../lib/inventoryPreview";
 import { NOTHING_FOUND_KEYS, nothingFound } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
@@ -24,11 +25,24 @@ export interface SnapshotStatusProps {
    * the empty state a list's area gets.
    */
   showsNothingFound?: boolean;
+  /**
+   * The page lists what the first check found installed while that check
+   * is still checking for updates (`useInventoryPreview`) -- the Installed
+   * page -- so `children` are rendered then, not `FirstCheck`, once that
+   * list is in. Every other page waits for the check's own answer.
+   */
+  showsInventoryPreview?: boolean;
 }
 
-export function SnapshotStatus({ children, showsFirstCheck = false, showsNothingFound = false }: SnapshotStatusProps) {
+export function SnapshotStatus({
+  children,
+  showsFirstCheck = false,
+  showsNothingFound = false,
+  showsInventoryPreview = false,
+}: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
+  const inventoryPreview = useInventoryPreview();
   // Both load-failed states' button is the header's Check again, and off
   // when it is: pressed while a check runs, it would queue a second one.
   const { checkAgain, checking, error: checkError } = useCheckAgain();
@@ -110,7 +124,9 @@ export function SnapshotStatus({ children, showsFirstCheck = false, showsNothing
     // The first check's spinner and why it takes a while (`FirstCheck`) are
     // shown instead, by the page itself where it draws them. The Updates
     // and Installed pages said a small grey "Loading…" in a corner here,
-    // for as long as the first check took.
+    // for as long as the first check took. Once the check's list is in,
+    // the Installed page lists it meanwhile.
+    if (showsInventoryPreview && inventoryPreview !== null) return <>{children}</>;
     return showsFirstCheck ? <>{children}</> : <FirstCheck />;
   }
 

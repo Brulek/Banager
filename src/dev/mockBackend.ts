@@ -63,6 +63,12 @@ export interface MockBackend {
 /** How long things take, in milliseconds. */
 export const TIMING = {
   refresh: 900,
+  /**
+   * The first refresh's list (`InventoryPreview`), before that refresh
+   * answers at `refresh`: every source has listed what it has, and the
+   * update checks run on.
+   */
+  inventory: 300,
   plan: 400,
   /** A Homebrew uninstall preview runs `brew uses --installed` first. */
   brewUninstallPlan: 1200,
@@ -213,6 +219,26 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       });
     }
     return inst;
+  }
+
+  /**
+   * The first round's list, before its update checks are done
+   * (`refresh_recording`'s `preview` in
+   * crates/banager-core/src/session/refresh.rs): sent at `TIMING.inventory`
+   * while nothing has committed, with every source detected and the rows of
+   * every one that answered -- not one that is not running, which is never
+   * asked for its list. Nothing listed, nothing sent; a round that has
+   * committed by then sends nothing either.
+   */
+  function previewFirstRound(): void {
+    const previewRound = round + 1;
+    setTimeout(() => {
+      if (committed !== null) return;
+      const answering = new Set(world.instances.filter((i) => i.status.unavailable === null).map((i) => i.id));
+      const artifacts = world.artifacts.filter((a) => answering.has(a.key.instance_id));
+      if (artifacts.length === 0) return;
+      emit({ InventoryPreview: { round: previewRound, instances: world.instances, artifacts } });
+    }, TIMING.inventory);
   }
 
   /** The update rows the next refresh reports, the greedy ones included when switched on. */
@@ -412,6 +438,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     },
     async refresh() {
       if (scenario.state === "loading") return never();
+      const failing = scenario.state === "error" || scenario.state === "refresh-error";
+      if (committed === null && !failing) previewFirstRound();
+      // Its list on screen, and the update checks never done.
+      if (scenario.state === "preview") return never();
       await wait(TIMING.refresh);
       if (scenario.state === "error" || scenario.state === "refresh-error") {
         throw BROKEN("refresh");

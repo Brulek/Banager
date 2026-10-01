@@ -821,6 +821,7 @@ function scenarioWorld(state: ScenarioState): World {
     case "loading":
     case "error":
     case "refresh-error":
+    case "preview":
       return world;
     case "empty":
       return {

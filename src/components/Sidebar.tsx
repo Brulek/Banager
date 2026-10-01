@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useUiStore, type Page } from "../store/ui";
 import { useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
+import { useInventoryPreview } from "../lib/inventoryPreview";
 import { instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
@@ -82,12 +83,15 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<ListedPage, string>> = {
 function useCounts(): Partial<Record<ListedPage, number>> {
   const updates = useUpdateCount();
   const { data: snapshot } = useSnapshot();
+  // While the first check still checks for updates, what it has found
+  // installed: the list the Installed page shows meanwhile.
+  const preview = useInventoryPreview();
   return useMemo(
     () => ({
       updates,
-      installed: snapshot?.artifacts.length,
+      installed: preview?.artifacts.length ?? snapshot?.artifacts.length,
     }),
-    [updates, snapshot],
+    [updates, snapshot, preview],
   );
 }
 

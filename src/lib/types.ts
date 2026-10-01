@@ -568,4 +568,25 @@ export type OperationEvent =
   | { Log: { op_id: number; stream: Stream; line: string } }
   | { Note: { op_id: number; note: LogNote } }
   | { Finished: { op_id: number; outcome: Outcome } };
-export type UiEvent = { Operation: OperationEvent } | { SnapshotChanged: { generation: number } };
+/**
+ * Rust `InventoryPreview` (crates/banager-core/src/session/mod.rs): what
+ * the first refresh round since launch found installed, sent before its
+ * update checks are done (`UiEvent.InventoryPreview`). Never a snapshot:
+ * nothing was committed, and it says nothing about updates, errors or
+ * staleness. Held apart from the snapshot cache, for the Installed page
+ * alone, while the cache has only the startup placeholder
+ * (`writeInventoryPreview` in src/lib/events.ts, `useInventoryPreview` in
+ * src/lib/inventoryPreview.ts).
+ */
+export interface InventoryPreview {
+  /** The round still running, whose snapshot will carry this number. */
+  round: number;
+  /** Every source the round detected, before any check added a note. */
+  instances: ManagerInstance[];
+  /** What each source that read its list listed; one whose read failed is absent. */
+  artifacts: InstalledArtifact[];
+}
+export type UiEvent =
+  | { Operation: OperationEvent }
+  | { SnapshotChanged: { generation: number } }
+  | { InventoryPreview: InventoryPreview };
