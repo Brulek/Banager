@@ -503,11 +503,18 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 走查确认、今天没改的几条。【大改动】要动较多代码；【待作者定】要作者先拍板；【可先做】前半是小改动，后半要等打包后的
 app 或更多工作。
-- 【大改动】**别的来源要靠它运行的程序也给「卸载」**（node、npm 本身、pipx、ollama、python）：在 Rust 的卸载预览里
+- ~~【大改动】**别的来源要靠它运行的程序也给「卸载」**（node、npm 本身、pipx、ollama、python）：在 Rust 的卸载预览里
   判断这个包是不是列表里另一个来源运行所靠的——解析每个来源的 `exe_path`（npm → node，pip → python，pipx / uv 环境背后的
   解释器，ollama），看它是否落在这个 formula 的 keg / opt 路径下；是就把那个来源和它的工具数列在「这些软件还要用它」下
   （如「npm 和它的 4 个工具」），「卸载」保持不可点，与 Homebrew 的依赖者一样。npm 适配器拒绝卸载 `npm` 自己，行上用
-  标签代替按钮。
+  标签代替按钮。~~ —— **已于 2026-10-02 做了**（`crates/banager-core/src/needed_by.rs`、
+  `crates/banager-core/src/session/needed_by.rs`、`src/lib/neededBy.ts`；分支 `r5/b1-runtime-guard`）。预览只顺着链接
+  读取（`protected::resolve`），不运行命令，最多 2,000 条路径、1 秒；列在「依赖此工具的软件」下，写作「npm及其4个工具」
+  「pipx装的2个工具」，下面一句写明先卸载哪些工具；`Session::submit` 也拒绝这样的预览（`UninstallBlocked::NeededBySource`），
+  批量卸载把它放进「不会卸载」，用同样的话。与上面的设想有三处不同：(1) cask 也查（它的 Caskroom 文件夹和 App：Ollama.app
+  的 `ollama`）；(2) 只在那个来源还有自己的工具时才拦——不算 npm 的 `npm`、`corepack`，Homebrew Python 自带的 `pip`、
+  `setuptools`、`wheel`，以及 pip 的依赖；只剩 npm 自己时 node 可以卸载；(3) 原来按命令名猜的提醒（`hostedLines`）删掉了，
+  批量的 X5 规则（按命令名）保留，排在新的规则之后。
 - 【待作者定】**每次更新都留下旧版本，之后的卸载会"又回来"**：`HOMEBREW_NO_INSTALL_CLEANUP=1`
   （`crates/banager-core/src/adapters/brew/mod.rs:225`）让更新不删旧版本，不带 `--force` 的 `brew uninstall` 只删当前
   那一版（Homebrew `cmd/uninstall.rb:45`、`uninstall.rb:63-69`），剩下的旧版本又出现在已安装里。定一条规则：(a) 更新时
