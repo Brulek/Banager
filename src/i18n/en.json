@@ -835,7 +835,7 @@
       "noCancel": "This uninstall can't be cancelled once it starts. Uninstall it on its own, from its row.",
       "permanent": "This uninstall permanently deletes files. Uninstall it on its own, from its row.",
       "unseen": "Its uninstall runs steps of its own, and what they delete can't be known in advance. Uninstall it on its own, from its row.",
-      "host": "The {{source}} tools you selected need it. Uninstall those first, then this one on its own.",
+      "host": "The {{source}} tools you selected need it. Uninstalls from different sources run at the same time, so it can't be put after them. Uninstall those first, then this one on its own.",
       "stillNeeded": "Still used by {{names}}. To uninstall it, select those too, or uninstall them first.",
       "neededByExcluded_one": "{{names}} still uses it and won't be uninstalled, so it won't be either.",
       "neededByExcluded_other": "{{names}} still use it and won't be uninstalled, so it won't be either.",

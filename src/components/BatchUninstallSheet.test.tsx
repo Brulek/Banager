@@ -437,7 +437,7 @@ describe("the batch uninstall's sheet", () => {
       "Its uninstall runs steps of its own, and what they delete can't be known in advance. Uninstall it on its own, from its row.",
     );
     expect(reason("ollama")).toHaveTextContent(
-      "The Ollama tools you selected need it. Uninstall those first, then this one on its own.",
+      "The Ollama tools you selected need it. Uninstalls from different sources run at the same time, so it can't be put after them. Uninstall those first, then this one on its own.",
     );
     // postgresql@17 is ticked, and left out itself: it keeps openssl@3.
     expect(reason("openssl@3")).toHaveTextContent(
