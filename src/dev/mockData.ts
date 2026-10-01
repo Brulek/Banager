@@ -862,9 +862,24 @@ function addMany(world: World): void {
  */
 export function buildWorld(state: ScenarioState): World {
   const world = scenarioWorld(state);
+  onlyHomebrewDates(world);
   addCommands(world);
   addCodexCommands(world);
   return world;
+}
+
+/**
+ * Only Homebrew says when a tool was installed (`brew/parse.rs`); npm,
+ * pipx, uv, Cargo, pip, Ollama and the standalone installers say nothing,
+ * so their rows have no `installed_at`, whatever day a helper above gave
+ * them -- 「按安装日期」 then lists Homebrew's first and the rest by name
+ * with 「—」, as the app does.
+ */
+function onlyHomebrewDates(world: World): void {
+  const homebrew = new Set(world.instances.filter((i) => i.adapter_id === "brew").map((i) => i.id));
+  world.artifacts = world.artifacts.map((a) =>
+    homebrew.has(a.key.instance_id) || a.installed_at === null ? a : { ...a, installed_at: null },
+  );
 }
 
 /** The world `?state=` describes, before its commands. */
