@@ -161,7 +161,7 @@ describe("api", () => {
   });
 
   it("getSizes invokes get_sizes with no args and returns the sizes", async () => {
-    const sizes: Sizes = { round: 2, done: true, artifacts: [], models: [], total: null };
+    const sizes: Sizes = { round: 2, done: true, artifacts: [], models: [], total: null, sources: [] };
     mockInvoke.mockResolvedValueOnce(sizes as never);
     expect(await getSizes()).toEqual(sizes);
     expect(mockInvoke.mock.calls).toEqual([["get_sizes"]]);

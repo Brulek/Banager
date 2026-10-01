@@ -56,7 +56,7 @@
 use crate::model::{ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance};
 use crate::protected;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::ffi::OsString;
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
@@ -159,6 +159,20 @@ pub struct Sizes {
     /// when the budget ran out before something was reached; `None` until
     /// `done`, and when nothing was measured.
     pub total: Option<Measured>,
+    /// The same, one source at a time (`SourceSize`), for the Installed
+    /// page's headings; empty until `done`.
+    #[serde(default)]
+    pub sources: Vec<SourceSize>,
+}
+
+/// Everything measured of one source -- its tools, a formula's old
+/// versions, an Ollama's models folder -- together, a file with several
+/// hard links counted once; `at_least` when the budget ran out before
+/// something of it was reached. A source with nothing measured has none.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceSize {
+    pub instance_id: InstanceId,
+    pub measured: Measured,
 }
 
 /// The places a measurement never enters, for one home folder: each of
@@ -1095,9 +1109,18 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
     let mut models = Vec::new();
     let mut counted: Vec<&Walked> = Vec::new();
     let mut not_reached = false;
+    // By source: what it counted, and whether the budget missed some of it.
+    let mut by_source: BTreeMap<&str, (Vec<&Walked>, bool)> = BTreeMap::new();
     for unit in units {
         let finished = unit.finished();
         not_reached |= unit.not_reached();
+        let instance_id = match &unit.target {
+            Target::Artifact { index } => artifacts[*index].key.instance_id.as_str(),
+            Target::Models { instance_id, .. } => instance_id.as_str(),
+        };
+        if unit.not_reached() {
+            by_source.entry(instance_id).or_default().1 = true;
+        }
         if finished && unit.main.walked().is_none() {
             continue;
         }
@@ -1106,8 +1129,16 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
             Target::Artifact { index } => {
                 let artifact = &artifacts[*index];
                 if finished {
-                    counted.extend(unit.main.walked());
-                    counted.extend(unit.old.as_ref().and_then(Job::walked));
+                    let walks = unit
+                        .main
+                        .walked()
+                        .into_iter()
+                        .chain(unit.old.as_ref().and_then(Job::walked));
+                    let source = &mut by_source.entry(instance_id).or_default().0;
+                    for walked in walks {
+                        counted.push(walked);
+                        source.push(walked);
+                    }
                 }
                 let (measured, old_versions) = if showable {
                     (
@@ -1134,6 +1165,11 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
                 }
                 if finished {
                     counted.extend(unit.main.walked());
+                    by_source
+                        .entry(instance_id)
+                        .or_default()
+                        .0
+                        .extend(unit.main.walked());
                 }
                 models.push(ModelsSize {
                     instance_id: instance_id.clone(),
@@ -1149,22 +1185,40 @@ fn sizes_of(round: u64, artifacts: &[InstalledArtifact], units: &[Unit], done: b
         artifacts: listed.into_iter().map(|(_, size)| size).collect(),
         models,
         total: if done {
-            // What the budget did not reach takes something too, by an
-            // amount not known.
-            match total(counted) {
-                Some(sum) => Some(Measured {
-                    at_least: sum.at_least || not_reached,
-                    ..sum
-                }),
-                None if not_reached => Some(Measured {
-                    at_least: true,
-                    ..Measured::default()
-                }),
-                None => None,
-            }
+            reached_total(counted, not_reached)
         } else {
             None
         },
+        sources: if done {
+            by_source
+                .into_iter()
+                .filter_map(|(instance_id, (walks, not_reached))| {
+                    reached_total(walks, not_reached).map(|measured| SourceSize {
+                        instance_id: instance_id.to_string(),
+                        measured,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+/// `total` of `walks`, `at_least` when the budget did not reach something
+/// that belongs with them: that takes something too, by an amount not
+/// known. `None` when there is nothing to say.
+fn reached_total(walks: Vec<&Walked>, not_reached: bool) -> Option<Measured> {
+    match total(walks) {
+        Some(sum) => Some(Measured {
+            at_least: sum.at_least || not_reached,
+            ..sum
+        }),
+        None if not_reached => Some(Measured {
+            at_least: true,
+            ..Measured::default()
+        }),
+        None => None,
     }
 }
 
@@ -1699,6 +1753,14 @@ mod tests {
             measured.bytes <= 700_000 + 600_000,
             "never more than the models' own sizes added up"
         );
+        assert_eq!(
+            sizes.sources,
+            vec![SourceSize {
+                instance_id: id.to_string(),
+                measured,
+            }],
+            "Ollama's total is its models' folder, as its own line says"
+        );
     }
 
     #[test]
@@ -1802,6 +1864,153 @@ mod tests {
                 + du(&scratch.path("Applications/iTerm.app"))
                 + du(&prefix.join("Caskroom/iterm2"))
         );
+    }
+
+    #[test]
+    fn test_each_source_has_its_own_total_with_a_shared_file_once() {
+        let scratch = Scratch::new("per-source");
+        let home = scratch.dir("home");
+        let prefix = scratch.dir("homebrew");
+        scratch.file("homebrew/Cellar/jq/1.8.2/bin/jq", 5_000);
+        scratch.file("homebrew/Cellar/jq/1.7.1/bin/jq", 4_000);
+        // Two uv tools sharing one file through a hard link: in each tool's
+        // size, once in uv's total.
+        let shared = scratch.file("home/tools/aa/lib/shared.so", 64_000);
+        scratch.file("home/tools/bb/bin/bb", 8_000);
+        std::fs::hard_link(&shared, scratch.path("home/tools/bb/lib-shared.so")).unwrap();
+        let instances = [
+            instance("brew", "brew:homebrew", &prefix),
+            instance("uv", "uv", &home),
+            // A source with nothing measured has no total.
+            instance("pip", "pip", &home),
+        ];
+        let tool = |name: &str| {
+            artifact(
+                "uv",
+                ArtifactKind::Tool,
+                name,
+                "1.0.0",
+                Some(home.join("tools").join(name)),
+            )
+        };
+        let artifacts = [
+            artifact("brew:homebrew", ArtifactKind::Formula, "jq", "1.8.2", None),
+            tool("aa"),
+            tool("bb"),
+            artifact("pip", ArtifactKind::Package, "requests", "2.32.5", None),
+        ];
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let sizes = run(&meter, 1, &instances, &artifacts, &home);
+        let aa = size_of(&sizes, "aa").unwrap().measured.unwrap().bytes;
+        let bb = size_of(&sizes, "bb").unwrap().measured.unwrap().bytes;
+        assert_eq!(
+            (aa, bb),
+            (du(&home.join("tools/aa")), du(&home.join("tools/bb"))),
+            "each tool counts it"
+        );
+        let uv_total = aa + bb - blocks_of(&shared);
+        let exact = |bytes| Measured {
+            bytes,
+            partial: false,
+            at_least: false,
+        };
+        assert_eq!(
+            sizes.sources,
+            vec![
+                SourceSize {
+                    instance_id: "brew:homebrew".to_string(),
+                    // Its old versions too, as the grand total has them.
+                    measured: exact(du(&prefix.join("Cellar/jq"))),
+                },
+                SourceSize {
+                    instance_id: "uv".to_string(),
+                    measured: exact(uv_total),
+                },
+            ]
+        );
+        assert_eq!(
+            sizes.total.unwrap().bytes,
+            du(&prefix.join("Cellar/jq")) + uv_total,
+            "the sources' totals add up to the grand total when they share nothing"
+        );
+    }
+
+    #[test]
+    fn test_a_source_the_budget_did_not_reach_says_at_least_and_no_other_does() {
+        let scratch = Scratch::new("per-source-unreached");
+        let home = scratch.dir("home");
+        scratch.file("home/one/aa/bin/aa", 8_000);
+        for index in 0..30 {
+            scratch.file(&format!("home/one/big/lib/{index}.so"), 4_000);
+        }
+        scratch.file("home/two/cc/bin/cc", 8_000);
+        let instances = [
+            instance("uv", "uv-one", &home),
+            instance("uv", "uv-two", &home),
+        ];
+        let tool = |id: &str, folder: &str, name: &str| {
+            artifact(
+                id,
+                ArtifactKind::Tool,
+                name,
+                "1.0.0",
+                Some(home.join(folder).join(name)),
+            )
+        };
+        let artifacts = [
+            tool("uv-one", "one", "aa"),
+            tool("uv-one", "one", "big"),
+            tool("uv-two", "two", "cc"),
+        ];
+        // Enough for "aa" whole and part of "big"; "cc" is never reached.
+        let (meter, _) = recording_meter(SizeBudget {
+            max_entries: 20,
+            max_duration: Duration::from_secs(30),
+        });
+        let sizes = run(&meter, 1, &instances, &artifacts, &home);
+        assert!(sizes.done);
+        let one = &sizes.sources[0];
+        assert_eq!(one.instance_id, "uv-one");
+        assert!(one.measured.at_least && one.measured.bytes > 0);
+        assert_eq!(
+            sizes.sources[1],
+            SourceSize {
+                instance_id: "uv-two".to_string(),
+                measured: Measured {
+                    bytes: 0,
+                    partial: false,
+                    at_least: true,
+                },
+            },
+            "nothing of it reached: at least, by an amount not known"
+        );
+        // A complete round says each source's exactly.
+        let (meter, _) = recording_meter(SizeBudget::default());
+        let sizes = run(&meter, 1, &instances, &artifacts, &home);
+        assert!(sizes.sources.iter().all(|source| !source.measured.at_least));
+    }
+
+    #[test]
+    fn test_sources_are_empty_until_the_round_is_done() {
+        let scratch = Scratch::new("per-source-pending");
+        let home = scratch.dir("home");
+        scratch.file("home/tools/aa/bin/aa", 8_000);
+        let instances = [instance("uv", "uv", &home)];
+        let artifacts = [artifact(
+            "uv",
+            ArtifactKind::Tool,
+            "aa",
+            "1.0.0",
+            Some(home.join("tools/aa")),
+        )];
+        let (meter, seen) = recording_meter(SizeBudget::default());
+        run(&meter, 1, &instances, &artifacts, &home);
+        let seen = seen.lock().unwrap().clone();
+        assert!(seen
+            .iter()
+            .filter(|sizes| !sizes.done)
+            .all(|sizes| sizes.sources.is_empty()));
+        assert_eq!(seen.last().unwrap().sources.len(), 1);
     }
 
     #[test]
@@ -2181,16 +2390,24 @@ mod tests {
                 measured: None,
             }],
             total: None,
+            sources: vec![SourceSize {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                measured: Measured {
+                    bytes: 1_512_000_000,
+                    partial: true,
+                    at_least: false,
+                },
+            }],
         };
         let json = serde_json::to_string(&sizes).unwrap();
         assert_eq!(
             json,
-            r#"{"round":3,"done":true,"artifacts":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3","measured":{"bytes":312000000,"partial":false,"at_least":false},"old_versions":{"bytes":1200000000,"partial":true,"at_least":false}}],"models":[{"instance_id":"ollama:http://127.0.0.1:11434","measured":null}],"total":null}"#
+            r#"{"round":3,"done":true,"artifacts":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3","measured":{"bytes":312000000,"partial":false,"at_least":false},"old_versions":{"bytes":1200000000,"partial":true,"at_least":false}}],"models":[{"instance_id":"ollama:http://127.0.0.1:11434","measured":null}],"total":null,"sources":[{"instance_id":"brew:/opt/homebrew","measured":{"bytes":1512000000,"partial":true,"at_least":false}}]}"#
         );
         assert_eq!(serde_json::from_str::<Sizes>(&json).unwrap(), sizes);
         assert_eq!(
             serde_json::to_string(&Sizes::default()).unwrap(),
-            r#"{"round":0,"done":false,"artifacts":[],"models":[],"total":null}"#
+            r#"{"round":0,"done":false,"artifacts":[],"models":[],"total":null,"sources":[]}"#
         );
     }
 }

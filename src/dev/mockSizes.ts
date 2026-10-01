@@ -159,21 +159,39 @@ export function mockSizes(
         : null,
     }));
   const done = sizes.every((size) => size.measured !== null);
-  const all = [
-    ...sizes.flatMap((size) => [size.measured, size.old_versions]),
-    ...models.map((m) => m.measured),
-  ].filter((m): m is Measured => m !== null);
+  // Each source's, then everything: the pretend Mac shares no file
+  // between two tools, so a plain sum is what size.rs would count.
+  const bySource = new Map<string, Measured[]>();
+  const add = (instanceId: string, measured: Measured | null) => {
+    if (measured === null) return;
+    bySource.set(instanceId, [...(bySource.get(instanceId) ?? []), measured]);
+  };
+  for (const size of sizes) {
+    add(size.key.instance_id, size.measured);
+    add(size.key.instance_id, size.old_versions);
+  }
+  for (const m of models) add(m.instance_id, m.measured);
   return {
     round,
     done,
     artifacts: sizes,
     models,
-    total: done
-      ? {
-          bytes: all.reduce((sum, m) => sum + m.bytes, 0),
-          partial: all.some((m) => m.partial),
-          at_least: all.some((m) => m.at_least),
-        }
-      : null,
+    total: done ? together([...bySource.values()].flat()) : null,
+    sources: done
+      ? instances.flatMap((instance) => {
+          const measured = together(bySource.get(instance.id) ?? []);
+          return measured === null ? [] : [{ instance_id: instance.id, measured }];
+        })
+      : [],
+  };
+}
+
+/** Several measurements as one: their bytes added up, partial or at least if any of them is. */
+function together(all: Measured[]): Measured | null {
+  if (all.length === 0) return null;
+  return {
+    bytes: all.reduce((sum, m) => sum + m.bytes, 0),
+    partial: all.some((m) => m.partial),
+    at_least: all.some((m) => m.at_least),
   };
 }

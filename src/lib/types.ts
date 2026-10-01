@@ -628,6 +628,15 @@ export interface ArtifactSize {
   /** A Homebrew formula's other kegs, together; null when it has none. */
   old_versions: Measured | null;
 }
+/**
+ * Rust `SourceSize`: everything measured of one source together -- its
+ * tools, a formula's old versions, an Ollama's models folder -- a file
+ * with several hard links once.
+ */
+export interface SourceSize {
+  instance_id: string;
+  measured: Measured;
+}
 /** Rust `ModelsSize`: one Ollama's models, as the folder they are in. */
 export interface ModelsSize {
   instance_id: string;
@@ -644,9 +653,11 @@ export interface Sizes {
   artifacts: ArtifactSize[];
   models: ModelsSize[];
   total: Measured | null;
+  /** `total`, one source at a time; empty until `done`. */
+  sources: SourceSize[];
 }
 /** `Sizes::default()`: before any round, and nothing to show. */
-export const NO_SIZES: Sizes = { round: 0, done: false, artifacts: [], models: [], total: null };
+export const NO_SIZES: Sizes = { round: 0, done: false, artifacts: [], models: [], total: null, sources: [] };
 export type UiEvent =
   | { Operation: OperationEvent }
   | { SnapshotChanged: { generation: number } }

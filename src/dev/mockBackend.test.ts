@@ -172,6 +172,7 @@ describe("the browser preview's mock backend", () => {
       artifacts: [],
       models: [],
       total: null,
+      sources: [],
     });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
     const measuring = (await backend.invoke("get_sizes")) as Sizes;
