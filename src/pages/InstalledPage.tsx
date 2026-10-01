@@ -478,7 +478,10 @@ export function InstalledPage() {
   );
   // Why 「装了不止一份」 or 「终端里找不到」 cannot say 「没有发现…」: the
   // commands are not judged yet, or were not this time (`commandsKnown`).
+  // Nor 「Homebrew已停用或弃用」 or 「保留了其他版本」 while the first
+  // check's list is all there is: its rows carry no Homebrew facts yet.
   const commandsUnknown = useMemo(() => {
+    if ((show === "brewRetired" || show === "otherVersions") && preview) return COMMANDS_UNKNOWN_KEYS.previewing;
     if (show !== "twins" && show !== "notOnPath") return null;
     const known = commandsKnown(snapshot?.artifacts ?? [], preview, show === "twins" ? "names" : "verdicts");
     return known === "known" ? null : COMMANDS_UNKNOWN_KEYS[known];

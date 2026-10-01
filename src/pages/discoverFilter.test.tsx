@@ -336,6 +336,12 @@ describe("the Installed page's discovery choices", () => {
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
     show("twins");
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
+    // Homebrew's two as well: the preview's rows carry no Homebrew facts.
+    show("brewRetired");
+    expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
+    expect(screen.queryByText(/No tools disabled or deprecated/)).toBeNull();
+    show("otherVersions");
+    expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
     await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("检查完成后会显示在这里")).toBeInTheDocument();
   });
