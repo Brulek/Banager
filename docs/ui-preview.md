@@ -305,6 +305,12 @@ Paths are under a generic home folder, `/Users/you`.
   the first check runs; `?path=unread&tech=1` adds an unread folder in
   Documents, by path; `?path=default` shows it with Terminal's login settings
   unread.
+- The Installed page's search finds a tool by a command it puts on the Mac
+  as well as by its name, the command by its start: 「rg」 lists ripgrep,
+  「pip3.13」 or 「pip」 python@3.13, 「tsc」 typescript, 「psql」
+  postgresql@17, 「adb」 android-platform-tools -- each row with
+  「命令：rg」 ("Command: rg") after its description, which a row found by
+  its name never has. The field's tooltip says 「按名称或命令搜索」.
 
 ## URL switches
 
