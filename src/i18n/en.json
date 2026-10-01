@@ -1311,13 +1311,9 @@
     },
     "log": {
       "generic": "The lines above are {{program}}'s own error. You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
-      "network": "The lines above are {{program}}'s own error. Once you're back online, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
-      "diskFull": "The lines above are {{program}}'s own error. After freeing up disk space, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
-      "permission": "The lines above are {{program}}'s own error. Its file permissions need fixing before you can {{again}}. You can click Copy Log and send the log to someone who can help.",
-      "busy": "The lines above are {{program}}'s own error. When the other operation is done, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
-      "homebrewUpdating": "The lines above are {{program}}'s own error. In a few minutes, you can {{again}}. If it still fails, click Copy Log and send the log to someone who can help.",
-      "needsPassword": "The lines above are {{program}}'s own error. If you {{again}} here, it stops at the same step. You can click Copy Log and send the log to someone who can help.",
-      "passwordNotAccepted": "The lines above are {{program}}'s own error. You can {{again}} and enter your Mac login password in the password window. If it still fails, click Copy Log and send the log to someone who can help."
+      "afterStep": "The lines above are {{program}}'s own error. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
+      "inTerminal": "The lines above are {{program}}'s own error. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
+      "copyOnly": "The lines above are {{program}}'s own error. You can click Copy Log and send the log to someone who can help."
     }
   },
   "needsPassword": {

@@ -72,6 +72,17 @@ function fromHomebrew(op: OpSummary): boolean {
 }
 
 /**
+ * Whether `PasswordCommand` shows a command for `op`: a Homebrew
+ * operation (`fromHomebrew`) that ran a command and ended because sudo
+ * wanted the Mac's password (`needsPassword`, `passwordNotAccepted`).
+ */
+export function showsPasswordCommand(op: OpSummary): boolean {
+  if (op.status !== "Done" || !fromHomebrew(op) || op.argv_preview.length === 0) return false;
+  const cause = outcomeCause(op.outcome);
+  return cause === "needsPassword" || cause === "passwordNotAccepted";
+}
+
+/**
  * Under a log's next step, where an operation failed because `sudo`
  * wanted the Mac's password and had no way to ask for it
  * (`needsPassword`, src/lib/failureCause.ts), or asked in a password
@@ -91,9 +102,7 @@ function fromHomebrew(op: OpSummary): boolean {
 export function PasswordCommand({ op }: { op: OpSummary }) {
   const { t } = useTranslation();
   const { status, copy } = useCopyCommand();
-  if (op.status !== "Done" || !fromHomebrew(op)) return null;
-  const cause = outcomeCause(op.outcome);
-  if (cause !== "needsPassword" && cause !== "passwordNotAccepted") return null;
+  if (!showsPasswordCommand(op)) return null;
   const command = terminalCommand(op);
   const parts = terminalCommandParts(op);
   if (command === null || parts === null) return null;

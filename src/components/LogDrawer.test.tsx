@@ -536,32 +536,60 @@ describe("LogDrawer, under a tool's own words", () => {
     expect(getByRole("dialog").getAttribute("aria-describedby")?.split(" ")).toContain(step.id);
   });
 
-  it("says it in Chinese, fitted to the cause the tool's words give", async () => {
-    await i18n.changeLanguage("zh-CN");
+  it("says it in both languages, and with a cause, leaves its step to the sentence over the log", async () => {
+    const generic = "Error: wget: something went wrong";
+    const afterStep = [
+      "curl: (6) Could not resolve host: ghcr.io",
+      "Error: No space left on device @ rb_sysopen",
+      "Error: Permission denied @ dir_s_mkdir - /opt/homebrew/Cellar",
+      "Error: Another active Homebrew process is already in progress.",
+      "sudo: 3 incorrect password attempts",
+    ];
+    const needsPassword =
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
+    const sentences = {
+      en: {
+        generic: "The lines above are Homebrew's own error. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
+        install: "The lines above are Homebrew's own error. You can install it again later. If it still fails, click Copy Log and send the log to someone who can help.",
+        afterStep: "The lines above are Homebrew's own error. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
+        inTerminal: "The lines above are Homebrew's own error. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
+        copyOnly: "The lines above are npm's own error. You can click Copy Log and send the log to someone who can help.",
+      },
+      "zh-CN": {
+        generic: "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。",
+        install: "上面是Homebrew自己的报错。可以稍后重新安装；还是失败，就点按“拷贝日志”，发给懂的人看。",
+        afterStep: "上面是Homebrew自己的报错。照上面说的做了还是失败，就点按“拷贝日志”，发给懂的人看。",
+        inTerminal: "上面是Homebrew自己的报错。在终端里运行上面那条命令还是失败，就点按“拷贝日志”，发给懂的人看。",
+        copyOnly: "上面是npm自己的报错。可以点按“拷贝日志”，发给懂的人看。",
+      },
+    };
+    const npmUpdate = {
+      instance_id: "npm:/opt/homebrew/bin/npm",
+      argv_preview: ["/opt/homebrew/bin/npm", "install", "-g", "prettier@latest"],
+    };
     try {
-      operations = [failedUpdate("Error: wget: something went wrong")];
-      const generic = renderWithProviders(<LogDrawer />);
-      said("Error: wget: something went wrong");
-      await generic.findByText(
-        "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。",
-      );
-      generic.unmount();
-
-      const cases: Array<[string, string]> = [
-        ["curl: (6) Could not resolve host: ghcr.io", "上面是Homebrew自己的报错。网络恢复后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
-        ["Error: No space left on device @ rb_sysopen", "上面是Homebrew自己的报错。腾出磁盘空间后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
-        ["Error: Permission denied @ dir_s_mkdir - /opt/homebrew/Cellar", "上面是Homebrew自己的报错。要先改好它的文件权限，才能点按“重试”；可以点按“拷贝日志”，发给懂的人看。"],
-        ["Error: Another active Homebrew process is already in progress.", "上面是Homebrew自己的报错。等另一个操作结束后可以点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。"],
-        ["sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper", "上面是Homebrew自己的报错。在这里点按“重试”还会停在同一步；可以点按“拷贝日志”，发给懂的人看。"],
-        ["sudo: 3 incorrect password attempts", "上面是Homebrew自己的报错。可以点按“重试”，在弹出的密码窗口中输入Mac的登录密码；还是失败，就点按“拷贝日志”，发给懂的人看。"],
-      ];
-      for (const [line, sentence] of cases) {
-        useUiStore.setState({ logs: [] });
-        operations = [failedUpdate(line)];
-        const view = renderWithProviders(<LogDrawer />);
-        said(line);
-        expect(await view.findByText(sentence)).toBeInTheDocument();
-        view.unmount();
+      for (const lang of ["en", "zh-CN"] as const) {
+        await i18n.changeLanguage(lang);
+        const want = sentences[lang];
+        const cases: Array<[OpSummary, string, string]> = [
+          [failedUpdate(generic), generic, want.generic],
+          // An install is done again; it has no Retry.
+          [{ ...failedUpdate(generic), kind: "Install" }, generic, want.install],
+          ...afterStep.map((line): [OpSummary, string, string] => [failedUpdate(line), line, want.afterStep]),
+          // No Retry (the row has none): the Terminal command over the log.
+          [failedUpdate(needsPassword), needsPassword, want.inTerminal],
+          // The same from a source with no command to hand over.
+          [failedUpdate(needsPassword, npmUpdate), needsPassword, want.copyOnly],
+        ];
+        for (const [failed, line, sentence] of cases) {
+          useUiStore.setState({ logs: [] });
+          operations = [failed];
+          const view = renderWithProviders(<LogDrawer />);
+          said(line);
+          const step = await view.findByText(sentence);
+          expect(step).toHaveAttribute("data-failure-next-step");
+          view.unmount();
+        }
       }
     } finally {
       await i18n.changeLanguage("en");
@@ -570,23 +598,23 @@ describe("LogDrawer, under a tool's own words", () => {
 
   it("names the source that wrote the lines and how to try again for an uninstall, in both languages", async () => {
     operations = [
-      failedUpdate("npm error code ETIMEDOUT", {
+      failedUpdate("npm error code EUNEXPECTED", {
         kind: "Uninstall",
         instance_id: "npm:/opt/homebrew/bin/npm",
         argv_preview: ["/opt/homebrew/bin/npm", "uninstall", "-g", "prettier"],
       }),
     ];
     const en = renderWithProviders(<LogDrawer />);
-    said("npm error code ETIMEDOUT");
+    said("npm error code EUNEXPECTED");
     await en.findByText(
-      "The lines above are npm's own error. Once you're back online, you can uninstall it again. If it still fails, click Copy Log and send the log to someone who can help.",
+      "The lines above are npm's own error. You can uninstall it again later. If it still fails, click Copy Log and send the log to someone who can help.",
     );
     en.unmount();
 
     await i18n.changeLanguage("zh-CN");
     try {
       const zh = renderWithProviders(<LogDrawer />);
-      await zh.findByText("上面是npm自己的报错。网络恢复后可以重新卸载；还是失败，就点按“拷贝日志”，发给懂的人看。");
+      await zh.findByText("上面是npm自己的报错。可以稍后重新卸载；还是失败，就点按“拷贝日志”，发给懂的人看。");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -620,7 +648,7 @@ describe("LogDrawer, under a tool's own words", () => {
     const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
     said("curl: (6) Could not resolve host: ghcr.io");
     const over = await findByText("Check your internet connection, then try again.");
-    const under = await findByText(/^The lines above are Homebrew's own error\. Once you're back online/);
+    const under = await findByText(/^The lines above are Homebrew's own error\. If it still fails after the step above/);
     const described = getByRole("dialog").getAttribute("aria-describedby")?.split(" ") ?? [];
     expect(described).toContain(over.id);
     expect(described).not.toContain(under.id);
