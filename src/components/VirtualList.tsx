@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RovingRowProvider, type RovingRow } from "./rovingRows";
+import { useRowTabStop } from "./rowTabStop";
 import { rowFitFor, type RowFit } from "./rowFit";
 
 /**
@@ -357,6 +358,11 @@ export function VirtualList<T>({
     },
     [items, itemKey, virtualizer],
   );
+  // One stop for Tab: the row in the Tab order and its controls, not
+  // every row's (`useRowTabStop`).
+  useRowTabStop(listRef, keyboardRows !== undefined, () => {
+    if (active !== null) focusKey(active);
+  });
   const focusFirst = useCallback(() => {
     if (keyboardRows === undefined) return;
     const first = items.find(keyboardRows);

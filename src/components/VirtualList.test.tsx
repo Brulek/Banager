@@ -543,3 +543,158 @@ describe("VirtualList's selection helpers", () => {
     expect(container.firstElementChild).toHaveAttribute("data-list");
   });
 });
+
+describe("VirtualList's Tab", () => {
+  /** A row as `ToolRow` draws one in a list with arrow keys: itself, then its checkbox and its button. */
+  function TabRow({ item }: { item: string }) {
+    const roving = useRovingRow();
+    return (
+      <div data-row-focus="" tabIndex={roving?.tabIndex} onFocus={roving?.onFocus} aria-label={item}>
+        <input type="checkbox" aria-label={`Select ${item}`} />
+        <button type="button">Update {item}</button>
+      </div>
+    );
+  }
+  // Every tenth slot is no row: a line with a button of its own, as the
+  // notices over a list and 最近更新 under it are.
+  const line = (item: string) => Number(item.split("-")[1]) % 10 === 0;
+  const renderItem = (item: string) =>
+    line(item) ? (
+      <p>
+        <button type="button">Show {item}</button>
+      </p>
+    ) : (
+      <TabRow item={item} />
+    );
+
+  function renderTabList() {
+    const result = render(
+      <div>
+        <button type="button">Before</button>
+        <VirtualList
+          items={TOOLS}
+          itemKey={keyOf}
+          estimateSize={estimate}
+          renderItem={renderItem}
+          keyboardRows={(item) => !line(item)}
+        />
+        <button type="button">After</button>
+      </div>,
+    );
+    const row = (item: string) => result.getByLabelText(item, { selector: "[data-row-focus]" });
+    const button = (name: string) => result.getByRole("button", { name });
+    /** Tab (or Shift-Tab) from what has the focus; whether the list took it over from the engine. */
+    const tab = (shift = false) => !fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab", shiftKey: shift });
+    return { ...result, row, button, tab };
+  }
+
+  it("goes on from the last control of the row in the Tab order past every other row's, and out of the list", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-3").focus());
+    act(() => button("Update tool-3").focus());
+
+    // tool-4 to tool-9 are passed over; tool-10, the last slot drawn, is a
+    // line of its own, and after it the list is left.
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-10"));
+    expect(tab()).toBe(false);
+  });
+
+  it("leaves the engine its own Tab inside the row: from the row to its checkbox", () => {
+    const { row, tab } = renderTabList();
+    act(() => row("tool-3").focus());
+    expect(tab()).toBe(false);
+  });
+
+  it("comes in on the row in the Tab order, and on its last control from below", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-7").focus());
+    // From before the list, the engine's own Tab: onto its first slot, a line.
+    act(() => button("Before").focus());
+    expect(tab()).toBe(false);
+    // From the line above the rows, past tool-1 to tool-6, onto tool-7.
+    act(() => button("Show tool-0").focus());
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(row("tool-7"));
+
+    // From below the rows (the line under them), on the last control of it.
+    act(() => button("Show tool-10").focus());
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Update tool-7"));
+  });
+
+  it("stops at a slot that is no row, the notices' and 最近更新's buttons", () => {
+    const { row, button, tab } = renderTabList();
+    act(() => row("tool-7").focus());
+    act(() => button("Update tool-7").focus());
+
+    // tool-8 and tool-9 are passed over; tool-10 is a line of its own.
+    expect(tab()).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-10"));
+    // Back again: past tool-9 and tool-8, onto the row it came from; and
+    // from the row itself, back past tool-6 to tool-1 onto the line above.
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Update tool-7"));
+    act(() => row("tool-7").focus());
+    expect(tab(true)).toBe(true);
+    expect(document.activeElement).toBe(button("Show tool-0"));
+  });
+
+  it("brings the row in the Tab order back into sight when Tab comes onto the rows with it scrolled away", async () => {
+    // jsdom scrolls nothing: a scroll to a row moves the box as a browser would.
+    const scroll = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scroll });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+    const { row, button, tab, container, queryByLabelText } = renderTabList();
+    act(() => row("tool-3").focus());
+    act(() => button("Before").focus());
+    // Scrolled by the wheel far below it: tool-3 is no longer drawn.
+    scrollTo(container.querySelector("[data-list]") as HTMLElement, 50 * ROW);
+    expect(queryByLabelText("tool-3", { selector: "[data-row-focus]" })).toBeNull();
+
+    expect(tab()).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(queryByLabelText("tool-3", { selector: "[data-row-focus]" })));
+  });
+
+  it("leaves Tab alone in an open dialog over the page, which keeps the focus to itself", () => {
+    const { getByRole } = render(
+      <div>
+        <VirtualList
+          items={TOOLS}
+          itemKey={keyOf}
+          estimateSize={estimate}
+          renderItem={(item) => <TabRow item={item} />}
+          keyboardRows={() => true}
+        />
+        <div role="dialog" aria-label="Sheet">
+          <button type="button">Cancel</button>
+        </div>
+      </div>,
+    );
+    const cancel = getByRole("button", { name: "Cancel" });
+    act(() => cancel.focus());
+    // Round from the dialog's last button, the page's next stop would be
+    // the first row's checkbox: the dialog's own trap sees to it.
+    expect(fireEvent.keyDown(cancel, { key: "Tab" })).toBe(true);
+  });
+
+  it("does nothing with Tab in a list that has not asked for arrow keys", () => {
+    const { getByRole } = render(
+      <div>
+        <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <TabRow item={item} />} />
+        <button type="button">After</button>
+      </div>,
+    );
+    const update = getByRole("button", { name: "Update tool-1" });
+    act(() => update.focus());
+    expect(fireEvent.keyDown(update, { key: "Tab" })).toBe(true);
+  });
+});
