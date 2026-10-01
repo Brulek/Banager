@@ -9,8 +9,8 @@
 //! - Promise 1: a walk that must never look inside a protected place takes
 //!   every step through `protected::resolve` and `dirfd`, never a path
 //!   lookup of its own (`std::fs::metadata`, `canonicalize`, `exists`,
-//!   `Path::is_dir`...),
-//!   which would follow a link into `~/Documents` or onto `/Volumes`.
+//!   `Path::is_dir`...), which would follow a link into `~/Documents` or
+//!   onto `/Volumes`.
 //! - Promise 3: nothing starts a process but `RealRunner`, which runs a
 //!   confirmed plan or a read-only refresh command, and the Open Ollama
 //!   button's `open -a Ollama`.
@@ -432,28 +432,62 @@ fn test_nothing_writes_a_file_but_banagers_own_two_and_the_move_to_the_trash() {
     }
 }
 
+/// The statement `lines[index]` is in: from the line after the last one
+/// before it in its file that ends a statement or opens or closes a
+/// block, to the first one from it that holds a `;`. When it passes a
+/// `flags` it built just before, that `let flags` statement too.
+fn statement(lines: &[Line], index: usize) -> String {
+    let file = &lines[index].file;
+    let ends = |line: &Line| {
+        let text = line.text.trim_end();
+        text.ends_with(';') || text.ends_with('{') || text.ends_with('}')
+    };
+    let mut first = index;
+    while first > 0 && lines[first - 1].file == *file && !ends(&lines[first - 1]) {
+        first -= 1;
+    }
+    let mut last = index;
+    while !lines[last].text.contains(';') && last + 1 < lines.len() && lines[last + 1].file == *file
+    {
+        last += 1;
+    }
+    let mut text: Vec<&str> = lines[first..=last]
+        .iter()
+        .map(|line| line.text.as_str())
+        .collect();
+    if text.iter().any(|line| line.contains(", flags)")) {
+        let built = (0..first)
+            .rev()
+            .take_while(|at| lines[*at].file == *file)
+            .find(|at| lines[*at].text.trim_start().starts_with("let flags ="));
+        if let Some(at) = built {
+            let end = (at..first)
+                .find(|end| lines[*end].text.contains(';'))
+                .unwrap_or(at);
+            text.extend(lines[at..=end].iter().map(|line| line.text.as_str()));
+        }
+    }
+    text.join("\n")
+}
+
 #[test]
 fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
     let lines = production_lines();
-    // Each open call, and the flags within the few lines around it.
+    // Each open call, and the flags in its own statement: a second, plain
+    // open beside a guarded one is not covered by the other's flags.
     let mut unguarded = Vec::new();
+    let mut opens = 0;
     for (index, line) in lines.iter().enumerate() {
-        let opens = ["OpenOptions::new()", "libc::open(", "libc::openat("]
+        let open = ["OpenOptions::new()", "libc::open(", "libc::openat("]
             .iter()
             .any(|call| line.text.contains(call));
-        if !opens {
+        if !open {
             continue;
         }
-        // The flags may be set just before the call, or passed just after.
-        let window: String = lines[index.saturating_sub(16)..(index + 8).min(lines.len())]
-            .iter()
-            .filter(|next| next.file == line.file)
-            .map(|next| next.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        opens += 1;
         let flagged = ["O_NONBLOCK", "O_DIRECTORY", "SEARCH"]
             .iter()
-            .any(|flag| window.contains(flag));
+            .any(|flag| statement(&lines, index).contains(flag));
         if !flagged {
             unguarded.push(format!(
                 "{}:{}: {}",
@@ -467,24 +501,78 @@ fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
         unguarded.is_empty(),
         "an open that would wait on a named pipe: {unguarded:#?}"
     );
+    assert!(opens >= 6, "the opens were found: {opens}");
 
-    // The plain reads that remain, each with why it cannot wait.
+    // The plain reads that remain, each by its text, with why it cannot
+    // wait: Banager's own settings.json and history.json, in its own
+    // Application Support folder, read as it starts, never in a refresh.
     let plain = holding(
         lines.iter(),
         &["File::open(", "fs::read(", "fs::read_to_string("],
     );
     let allowed = [
-        // Banager's own settings.json and history.json, in its own
-        // Application Support folder, read as it starts: never a refresh.
-        "crates/banager-core/src/settings.rs:",
-        "crates/banager-core/src/history/mod.rs:",
+        (
+            "crates/banager-core/src/settings.rs:",
+            "match std::fs::read(path) {",
+        ),
+        (
+            "crates/banager-core/src/history/mod.rs:",
+            "let Ok(bytes) = std::fs::read(path) else {",
+        ),
     ];
     let others: Vec<&String> = plain
         .iter()
-        .filter(|entry| !allowed.iter().any(|file| entry.starts_with(file)))
+        .filter(|entry| {
+            !allowed
+                .iter()
+                .any(|(file, read)| entry.starts_with(file) && entry.ends_with(read))
+        })
         .collect();
     assert!(
         others.is_empty(),
         "a read that can wait on a named pipe: {others:#?}"
     );
+    for (file, read) in allowed {
+        let count = plain
+            .iter()
+            .filter(|entry| entry.starts_with(file) && entry.ends_with(read))
+            .count();
+        assert_eq!(count, 1, "{file} reads `{read}` once: drop or fix it here");
+    }
+}
+
+#[test]
+fn test_an_opens_flags_are_read_from_its_own_statement() {
+    let line = |number: usize, text: &str| Line {
+        file: "f.rs".to_string(),
+        number,
+        text: text.to_string(),
+    };
+    // A plain open just after a guarded one.
+    let lines = [
+        line(1, "fn f() {"),
+        line(2, "    let a = std::fs::OpenOptions::new()"),
+        line(3, "        .custom_flags(libc::O_NONBLOCK)"),
+        line(4, "        .open(p)?;"),
+        line(
+            5,
+            "    let b = std::fs::OpenOptions::new().read(true).open(q)?;",
+        ),
+        line(6, "}"),
+    ];
+    assert!(statement(&lines, 1).contains("O_NONBLOCK"));
+    assert!(!statement(&lines, 4).contains("O_NONBLOCK"));
+    // Flags built before the call that passes them.
+    let lines = [
+        line(1, "    let flags = if list {"),
+        line(2, "        libc::O_RDONLY | libc::O_DIRECTORY"),
+        line(3, "    } else {"),
+        line(4, "        SEARCH"),
+        line(5, "    } | libc::O_NOFOLLOW;"),
+        line(
+            6,
+            "    let fd = unsafe { libc::openat(dir, c.as_ptr(), flags) };",
+        ),
+    ];
+    assert!(statement(&lines, 5).contains("O_DIRECTORY"));
 }
