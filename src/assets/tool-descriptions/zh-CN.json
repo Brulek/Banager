@@ -2967,7 +2967,7 @@
   "npm:@formatjs/cli": "FormatJS命令行工具",
   "npm:@github/copilot": "GitHub Copilot终端命令行工具",
   "npm:@githubnext/github-copilot-cli": "GitHub Copilot命令行工具",
-  "npm:@google/gemini-cli": "Gemini命令行工具",
+  "npm:@google/gemini-cli": "命令行调用Google Gemini模型",
   "npm:@graphql-inspector/ci": "GraphQL模式对比与检测工具",
   "npm:@graphql-inspector/cli": "GraphQL模式对比与检测工具",
   "npm:@hasna/events": "Hasna应用事件传输库",

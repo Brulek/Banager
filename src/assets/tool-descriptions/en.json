@@ -224,7 +224,7 @@
   "npm:@formatjs/cli": "CLI for FormatJS",
   "npm:@github/copilot": "GitHub Copilot's AI coding agent for the terminal",
   "npm:@githubnext/github-copilot-cli": "CLI for GitHub Copilot",
-  "npm:@google/gemini-cli": "Gemini CLI",
+  "npm:@google/gemini-cli": "Use Google's Gemini AI models from the command line",
   "npm:@graphql-inspector/ci": "Compares GraphQL schemas and finds breaking changes",
   "npm:@graphql-inspector/cli": "Compares GraphQL schemas and finds breaking changes",
   "npm:@hasna/events": "Event envelopes and transports for Hasna apps",
