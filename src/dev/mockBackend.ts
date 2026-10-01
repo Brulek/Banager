@@ -25,6 +25,7 @@ import type {
 } from "../lib/types";
 import { NO_SIZES } from "../lib/types";
 import { checkEvery } from "../lib/checkFrequency";
+import { adapterIdOf } from "../lib/sources";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
@@ -439,7 +440,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       outcome,
       started: op.started,
       displayName: before?.name ?? target.name,
-      adapterId: world.instances.find((i) => i.id === target.instance_id)?.adapter_id ?? target.instance_id.split(":")[0],
+      adapterId: world.instances.find((i) => i.id === target.instance_id)?.adapter_id ?? adapterIdOf(target.instance_id),
       before: before?.version ?? null,
       after: world.artifacts.find((a) => sameKey(a.key, target))?.version ?? null,
       now: Date.now(),
