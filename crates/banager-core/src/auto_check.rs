@@ -176,6 +176,34 @@ pub fn tick(
     }
 }
 
+/// When the daily check is next due, in Unix seconds on the wall clock:
+/// the first `now` at or after which [`tick`] -- handed the same
+/// `last_check_ended` and `failed`, nothing under way and the setting on --
+/// answers [`Tick::Check`], for a clock that moves forward. That is a day
+/// after the last round that counts as a check ended ([`counts_as_check`]:
+/// one of the window's -- the check at launch, Check again, ⌘R -- resets
+/// it as a daily one does), and, after daily checks in which every source
+/// failed, no sooner than the wait after the last of them
+/// ([`retry_after_secs`], less [`RETRY_SLACK_SECS`]). `None` when no round
+/// has counted and none has failed: due at the next look.
+///
+/// The check itself starts at the first look at or after this time --
+/// looks come every [`TICK`] of the Mac being awake -- and only while
+/// Banager runs and nothing else is under way, so Settings says it as
+/// "about" ("约").
+pub fn next_check_due(last_check_ended: Option<i64>, failed: Option<FailedChecks>) -> Option<i64> {
+    let by_day = last_check_ended.map(|ended| ended.saturating_add(DUE_AFTER_SECS));
+    let by_retry = failed.map(|failed| {
+        failed
+            .looked_at
+            .saturating_add(retry_after_secs(failed.in_a_row) - RETRY_SLACK_SECS)
+    });
+    match (by_day, by_retry) {
+        (Some(day), Some(retry)) => Some(day.max(retry)),
+        (day, retry) => day.or(retry),
+    }
+}
+
 /// Whether `wait` seconds have passed on the wall clock from `then` to
 /// `now`. A `now` [`SET_BACK_SLACK_SECS`] or more before `then` has them:
 /// the clock was set back past `then` ([`tick`]). One less than that
@@ -386,6 +414,14 @@ impl RoundLog {
     /// shell hands [`tick`]. `None` until one has been recorded.
     pub fn last_check_ended(&self) -> Option<i64> {
         self.last_check_ended
+    }
+
+    /// When the daily check is next due ([`next_check_due`] over
+    /// [`RoundLog::last_check_ended`] and [`RoundLog::failed_checks`]):
+    /// what Settings shows under its switch, by way of
+    /// `Snapshot::next_auto_check_at`, which the shell fills in.
+    pub fn next_check_due(&self) -> Option<i64> {
+        next_check_due(self.last_check_ended, self.failed)
     }
 
     /// The daily checks in which every source failed that have run in a
@@ -1343,5 +1379,100 @@ mod tests {
         log.record(4, RoundTrigger::Window, &snapshot(true));
         assert!(!log.awaits_follow_up(4));
         assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Window);
+    }
+
+    /// Whether `next_check_due` names the first `now` at which `tick`
+    /// checks, for every `now` from `from` on, a minute apart, over two
+    /// days: the line Settings shows and the task's decision agree.
+    fn agrees_with_tick(last: Option<i64>, failed: Option<FailedChecks>, from: i64) {
+        let due = next_check_due(last, failed);
+        for step in 0..(2 * DAY / MINUTE) {
+            let now = from + step * MINUTE;
+            let checks = tick(now, last, failed, false, true) == Tick::Check;
+            assert_eq!(
+                checks,
+                due.is_none_or(|due| now >= due),
+                "now {now}, due {due:?}, last {last:?}, failed {failed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_next_check_is_due_when_tick_first_checks() {
+        agrees_with_tick(None, None, NINE_AM);
+        agrees_with_tick(Some(NINE_AM), None, NINE_AM);
+        for in_a_row in 1..=8 {
+            // Failed daily checks since a check a day ago: the retry's wait
+            // decides.
+            let failed = Some(FailedChecks {
+                looked_at: NINE_AM,
+                in_a_row,
+            });
+            agrees_with_tick(Some(NINE_AM - DAY), failed, NINE_AM);
+            // Failed daily checks long ago, a check since: the day decides
+            // whichever is later.
+            agrees_with_tick(
+                Some(NINE_AM + 3 * 60 * MINUTE),
+                failed,
+                NINE_AM + 3 * 60 * MINUTE,
+            );
+            // None counted since launch, only failures.
+            agrees_with_tick(None, failed, NINE_AM);
+        }
+    }
+
+    #[test]
+    fn test_the_next_check_is_a_day_after_the_last_check_or_the_retry_after_failed_ones() {
+        assert_eq!(next_check_due(None, None), None, "due at the next look");
+        assert_eq!(next_check_due(Some(NINE_AM), None), Some(NINE_AM + DAY));
+        let failed = FailedChecks {
+            looked_at: NINE_AM,
+            in_a_row: 2,
+        };
+        assert_eq!(
+            next_check_due(Some(NINE_AM - DAY), Some(failed)),
+            Some(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS)
+        );
+        assert_eq!(
+            next_check_due(None, Some(failed)),
+            Some(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS)
+        );
+    }
+
+    #[test]
+    fn test_a_check_the_user_runs_moves_the_next_daily_check_a_day_on() {
+        let mut log = RoundLog::default();
+        assert_eq!(log.next_check_due(), None);
+        // The window's check at launch.
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM, &[("fake:1", false)]),
+        );
+        assert_eq!(log.next_check_due(), Some(NINE_AM + DAY));
+        // Check again, an hour on, however it went: the day starts again.
+        let later = NINE_AM + 60 * MINUTE;
+        log.record(
+            2,
+            RoundTrigger::Window,
+            &round_at(later, &[("fake:1", true)]),
+        );
+        assert_eq!(log.next_check_due(), Some(later + DAY));
+        // The daily check, a day on, offline: the retry 15 minutes after
+        // its look.
+        let look = later + DAY;
+        log.record_daily(3, look, &round_at(look + TOOK, &[("fake:1", true)]));
+        assert_eq!(
+            log.next_check_due(),
+            Some(look + RETRY_FIRST_SECS - RETRY_SLACK_SECS)
+        );
+        // A round of the window's clears the failures and starts the day.
+        let mine = look + 5 * MINUTE;
+        log.record(
+            4,
+            RoundTrigger::Window,
+            &round_at(mine, &[("fake:1", false)]),
+        );
+        assert_eq!(log.next_check_due(), Some(mine + DAY));
     }
 }
