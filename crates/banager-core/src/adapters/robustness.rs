@@ -9,7 +9,10 @@
 //! with numbers out of range, unexpected types and unknown keys in its
 //! JSON, plus inputs of its own: empty, a 10 MB line, 100,000 nested
 //! brackets, localised error messages. Every call runs under
-//! `catch_unwind` and against a time bound, and what comes back must be a
+//! `catch_unwind` and against a time bound (`CALL_LIMIT` for one that
+//! returns; a watchdog ends the test process on one still running after
+//! `HANG_LIMIT`, so an endless loop fails the suite rather than hanging
+//! it), and what comes back must be a
 //! typed error or a sane value: no artifact, update or search hit with an
 //! empty name, no name or version with a control character (a newline
 //! among them).
@@ -49,6 +52,12 @@ impl Rng {
 /// a quadratic parser over a large input blows through it by orders of
 /// magnitude.
 const CALL_LIMIT: Duration = Duration::from_secs(3);
+
+/// How long one call may take before the suite stops waiting for it. A
+/// call over `CALL_LIMIT` that returns is reported with the rest; one
+/// that never returns would hang `cargo test`, so a watchdog ends the
+/// test process instead, naming the parser and the input it was on.
+const HANG_LIMIT: Duration = Duration::from_secs(60);
 
 const TEN_MB: usize = 10 * 1024 * 1024;
 const ONE_MB: usize = 1024 * 1024;
@@ -333,19 +342,63 @@ fn replace_keys(value: &mut Value, with: &str) {
 /// Every input one parser is fed: its fixtures' mutations, then the
 /// generic inputs.
 fn inputs_for(seed: u64, fixtures: &[&str]) -> Vec<(String, String)> {
+    let bases: Vec<(String, String)> = fixtures
+        .iter()
+        .map(|path| (path.to_string(), fixture(path)))
+        .collect();
+    inputs_from(seed, &bases)
+}
+
+/// `inputs_for` over bodies given inline, as `(name, text)`: for an
+/// answer no fixture records, such as a registry's JSON.
+fn inputs_from(seed: u64, bases: &[(String, String)]) -> Vec<(String, String)> {
     let mut rng = Rng::new(seed);
     let mut out = Vec::new();
     let mut sample = String::new();
-    for path in fixtures {
-        let base = fixture(path);
+    for (name, base) in bases {
         let budget = if base.len() > 100_000 { 6 } else { 40 };
-        out.extend(mutations(path, &base, &mut rng, budget));
+        out.extend(mutations(name, base, &mut rng, budget));
         if sample.is_empty() {
             sample = base.chars().take(4096).collect();
         }
     }
     out.extend(generic_inputs(&sample));
     out
+}
+
+/// Ends the test process when one call runs past `HANG_LIMIT`: the
+/// call is on this thread and cannot be stopped from another, and the
+/// process ending fails `cargo test` where waiting would hang it.
+struct Watchdog {
+    state: std::sync::Arc<std::sync::Mutex<Option<(String, Instant)>>>,
+}
+
+impl Watchdog {
+    fn start(parser: &'static str) -> Watchdog {
+        let state: std::sync::Arc<std::sync::Mutex<Option<(String, Instant)>>> = Default::default();
+        let watched = std::sync::Arc::downgrade(&state);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(200));
+            let Some(state) = watched.upgrade() else {
+                return;
+            };
+            let current = state.lock().map(|s| s.clone()).unwrap_or_default();
+            if let Some((label, since)) = current {
+                if since.elapsed() > HANG_LIMIT {
+                    eprintln!("{parser} <- {label}\n    still running after {HANG_LIMIT:?}");
+                    std::process::exit(101);
+                }
+            }
+        });
+        Watchdog { state }
+    }
+
+    /// The call about to start.
+    fn on(&self, label: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = Some((label.to_string(), Instant::now()));
+        }
+    }
 }
 
 /// What a check found wrong with one input.
@@ -365,7 +418,9 @@ fn run<T>(
     sane: impl Fn(&T) -> Result<(), String>,
 ) -> Vec<Problem> {
     let mut problems = Vec::new();
+    let watchdog = Watchdog::start(parser);
     for (label, input) in inputs {
+        watchdog.on(label);
         let started = Instant::now();
         let result = catch_unwind(AssertUnwindSafe(|| parse(input)));
         let took = started.elapsed();
@@ -722,6 +777,21 @@ fn pipx_parsers_survive_any_input() {
         |s| pipx::parse_outdated(s, INSTANCE),
         |c| candidates_ok(c),
     ));
+    // PyPI's answer about one package: no fixture records it, so the
+    // shape `latest_pypi_version` reads, inline.
+    let pypi = inputs_from(
+        33,
+        &[(
+            "PyPI package body".into(),
+            r#"{"info":{"name":"cowsay","version":"6.1","summary":"The famous cowsay for GNU/Linux is now available for python","requires_python":">=3.8","yanked":false},"last_serial":1,"releases":{"5.0":[],"6.1":[]},"urls":[],"vulnerabilities":[]}"#.into(),
+        )],
+    );
+    problems.extend(run(
+        "pipx parse_pypi_body",
+        &pypi,
+        pipx::parse_pypi_body,
+        string_result_ok,
+    ));
     assert_none(problems);
 }
 
@@ -764,6 +834,21 @@ fn cargo_parsers_survive_any_input() {
                     .try_for_each(|(name, _)| name_ok("crate", name))
             })
         },
+    ));
+    // crates.io's answer about one crate: no fixture records it, so the
+    // shape `latest_stable_version` reads, inline.
+    let crates_io = inputs_from(
+        42,
+        &[(
+            "crates.io crate body".into(),
+            r#"{"crate":{"id":"hexyl","name":"hexyl","max_version":"0.18.0","max_stable_version":"0.18.0","newest_version":"0.18.0"},"versions":[{"num":"0.18.0","yanked":false}]}"#.into(),
+        )],
+    );
+    problems.extend(run(
+        "cargo parse_crates_io_body",
+        &crates_io,
+        cargo::parse_crates_io_body,
+        string_result_ok,
     ));
     let version = inputs_for(41, &["cargo/1.98.1/version.txt", "uv/0.12.17/version.txt"]);
     problems.extend(run(
