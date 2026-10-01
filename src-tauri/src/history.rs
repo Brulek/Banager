@@ -1,4 +1,4 @@
-//! The history the Updates page's 「最近更新」 lists after a restart
+//! The history the Updates page's 「最近的更新记录」 lists after a restart
 //! (`banager_core::history`): kept in `history.json` beside `settings.json`
 //! in Banager's application data directory, attached to the session as
 //! Banager starts (`attach`), and given to the window by two commands.

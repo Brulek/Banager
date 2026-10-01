@@ -1,7 +1,7 @@
 //! What Banager did, kept across launches: one record per finished update
 //! or uninstall, in `history.json` beside `settings.json` in Banager's
 //! application data directory (docs/what-we-run.md, "Files Banager
-//! writes"). The Updates page's 「最近更新」 reads it, so an update that
+//! writes"). The Updates page's 「最近的更新记录」 reads it, so an update that
 //! worked -- and that Banager checked by reading the version again -- is
 //! still listed after Banager is quit and opened again.
 //!
@@ -582,7 +582,7 @@ impl HistoryStore {
     /// older than `MAX_AGE_MS` by the clock. The file can keep older ones
     /// (`age_anchor`: after more than 180 days with no update, up to 180
     /// days before its newest record); they are not listed, so an idle
-    /// Mac's 「最近更新」 shows nothing older than 180 days either. A
+    /// Mac's 「最近的更新记录」 shows nothing older than 180 days either. A
     /// clock set far ahead lists little until it is put right, and loses
     /// nothing.
     pub fn view(&self) -> HistoryView {

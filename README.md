@@ -77,8 +77,9 @@ a protected place**, and the link is not followed.
   already says the tool updates itself or that Terminal runs another copy (**Not used in Terminal**).
   **Update History**, under the updates still to install (at the top when there are none), lists the
   updates of the last 30 days: those that succeeded, and those that failed (with the cause where one is known,
-  such as **Couldn't update: Connection failed**) or ended with an **Unexpected result**. A failed one or one with
-  an unexpected result is listed only while the last check still offers that tool an update. Cancelled updates
+  such as **Couldn't update: Connection failed**) or whose result didn't add up, each saying what happened in its own
+  words (for example, that the update reported success but the version didn't change). A failed one or one whose
+  result didn't add up is listed only while the last check still offers that tool an update. Cancelled updates
   and uninstalls are not listed. The list is kept across restarts in `history.json`, until you press Clear.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
@@ -465,7 +466,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 - 打开 Banager 后的第一次检查还在查更新时，“已安装”页就先列出已找到的工具；要等这次检查完成才能卸载。
 - 在“更新”页，跨大版本的更新会标“大版本更新”，除非这一行已经写着它会自行更新，或者终端运行的是另一份
   （“终端用另一份”）。待更新的工具下面的“最近的更新记录”（没有待更新时在最上面）列出 30 天内的更新：成功的，以及未能更新的
-  （知道原因时写出原因，例如“未能更新：网络连接失败”）和“结果不符”的；后两种只在上次检查仍为这个工具提供更新时列出。
+  （知道原因时写出原因，例如“未能更新：网络连接失败”）和结果对不上的（写明是怎么回事，例如“显示已更新，但版本没有变化”）；
+  后两种只在上次检查仍为这个工具提供更新时列出。
   取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除”。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
   写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。

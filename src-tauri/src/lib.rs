@@ -76,7 +76,7 @@ pub fn run() {
             let settings_path = data_dir.join("settings.json");
             let channel_sink = events::ChannelSink::new();
             app.manage(AppState::new(settings_path, channel_sink));
-            // 「最近更新」 after a restart: `history.json` beside
+            // 「最近的更新记录」 after a restart: `history.json` beside
             // `settings.json` (history.rs; docs/what-we-run.md, "Files
             // Banager writes").
             history::attach(&app.state::<AppState>(), &data_dir);
