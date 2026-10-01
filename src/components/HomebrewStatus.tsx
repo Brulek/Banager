@@ -14,7 +14,7 @@ import { SMALL_WRAPPING } from "./ui/group";
  * reason not listed here is the maintainers' own words, said verbatim in
  * quotes (`brewStatus.reasonQuoted`), never translated or dropped.
  */
-const REASON_KEYS: Record<string, string> = {
+export const REASON_KEYS: Record<string, string> = {
   does_not_build: "brewStatus.reason.does_not_build",
   no_license: "brewStatus.reason.no_license",
   repo_archived: "brewStatus.reason.repo_archived",
@@ -33,9 +33,9 @@ const REASON_KEYS: Record<string, string> = {
 };
 
 /** Which of Homebrew's two marks a package carries: disabled wins, as it is the later stage. */
-type Mark = { kind: "disabled" | "deprecated"; lifecycle: HomebrewLifecycle };
+export type HomebrewMark = { kind: "disabled" | "deprecated"; lifecycle: HomebrewLifecycle };
 
-function markOf(artifact: InstalledArtifact): Mark | null {
+function markOf(artifact: InstalledArtifact): HomebrewMark | null {
   const homebrew = artifact.facts.homebrew;
   if (homebrew === null) return null;
   if (homebrew.disabled !== null) return { kind: "disabled", lifecycle: homebrew.disabled };
@@ -52,7 +52,7 @@ function markOf(artifact: InstalledArtifact): Mark | null {
  * deprecated one may be disabled later; nothing is said about when, which
  * Banager does not know. The date is Homebrew's, as it writes it.
  */
-export function lifecycleSentence(t: TFunction, mark: Mark): string {
+export function lifecycleSentence(t: TFunction, mark: HomebrewMark): string {
   const { date, reason } = mark.lifecycle;
   const why =
     reason === null
