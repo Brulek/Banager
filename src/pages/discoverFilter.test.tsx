@@ -339,18 +339,26 @@ describe("the Installed page's discovery choices", () => {
     // Homebrew's two as well: the preview's rows carry no Homebrew facts.
     show("brewRetired");
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
-    expect(screen.queryByText(/disabled or deprecated any of/)).toBeNull();
+    expect(screen.queryByText(/disabled or deprecated/)).toBeNull();
     show("otherVersions");
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
     await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("检查完成后会显示在这里")).toBeInTheDocument();
   });
 
-  it("names the source when the page shows one source that has none", async () => {
+  it("names the source when the page shows one source that has none, subject first, true of a source that isn't Homebrew", async () => {
+    // Not "Homebrew keeps no other versions of the tools in pipx", which
+    // says Homebrew has tools in pipx (walk-3 review 3.1).
     useUiStore.getState().openInstalled(PIPX);
     useUiStore.getState().setInstalledShow("brewRetired");
     renderInstalled();
-    expect(await screen.findByText(/^Homebrew hasn't disabled or deprecated any of the tools in pipx/)).toBeInTheDocument();
+    expect(await screen.findByText("Nothing in pipx is disabled or deprecated by Homebrew")).toBeInTheDocument();
+    show("otherVersions");
+    expect(await screen.findByText("Nothing in pipx has other versions kept by Homebrew")).toBeInTheDocument();
+    // pipx has a tool Terminal can't find here, so this one is the words alone.
+    expect(i18n.t("families.notOnPathNoneInSource", { source: "pipx" })).toBe(
+      "Terminal finds the commands of every tool in pipx",
+    );
   });
 
   it("shows every tool again wherever the choice is reset", () => {

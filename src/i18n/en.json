@@ -106,9 +106,9 @@
     "showBrewRetired": "Disabled or Deprecated by Homebrew",
     "showBrewRetiredCount": "Disabled or Deprecated by Homebrew ({{number}})",
     "notOnPathNone": "Terminal finds the commands of all your tools",
-    "notOnPathNoneInSource": "Terminal finds the commands of all your tools in {{source}}",
+    "notOnPathNoneInSource": "Terminal finds the commands of every tool in {{source}}",
     "brewRetiredNone": "Homebrew hasn't disabled or deprecated any of your tools",
-    "brewRetiredNoneInSource": "Homebrew hasn't disabled or deprecated any of the tools in {{source}}",
+    "brewRetiredNoneInSource": "Nothing in {{source}} is disabled or deprecated by Homebrew",
     "notOnPathNotice_one": "{{count}} tool can't be found in Terminal",
     "notOnPathNotice_other": "{{count}} tools can't be found in Terminal",
     "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
@@ -132,7 +132,7 @@
     "show": "Other Versions Kept",
     "showCount": "Other Versions Kept ({{number}})",
     "none": "Homebrew keeps no other versions of your tools",
-    "noneInSource": "Homebrew keeps no other versions of the tools in {{source}}"
+    "noneInSource": "Nothing in {{source}} has other versions kept by Homebrew"
   },
   "twinsFilter": {
     "show": "Installed More Than Once",
