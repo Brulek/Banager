@@ -217,11 +217,14 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // With `?path=default` the login shell's `PATH` was never read: no
       // command has a verdict (`commands::judge`), only its name.
       artifacts: unjudgedUnless(scenario.path !== "default", withFamilies(from.instances, from.artifacts)),
-      updates: current.include_self_updating
-        ? [...from.updates, ...from.greedyUpdates]
-        : from.updates,
+      updates: updatesOf(from, current),
       errors: from.errors,
     };
+  }
+
+  /** The update rows a snapshot of `from` lists, the greedy ones included when switched on. */
+  function updatesOf(from: World, current: Settings) {
+    return current.include_self_updating ? [...from.updates, ...from.greedyUpdates] : from.updates;
   }
 
   /** Events reach the page asynchronously, in order, as over Tauri's IPC. */
@@ -363,7 +366,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
 
   /** The update rows the next refresh reports, the greedy ones included when switched on. */
   function currentUpdates() {
-    return snapshotContent(world, settings).updates;
+    // Not `snapshotContent(...).updates`, which would set every row's family
+    // too: once per plan, a few thousand plans deep with `?state=huge`.
+    return updatesOf(world, settings);
   }
 
   // ------------------------------------------------------------ operations
