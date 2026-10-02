@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import { listOperations } from "./api";
-import { OPERATIONS_REFETCH_EVERY_MS, OPERATIONS_REFETCH_WAIT_MS, refetchOperations } from "./operationsRefetch";
+import {
+  OPERATIONS_FETCH_GIVE_UP_MS,
+  OPERATIONS_REFETCH_EVERY_MS,
+  OPERATIONS_REFETCH_WAIT_MS,
+  refetchOperations,
+} from "./operationsRefetch";
 import { queryKeys, useOperations, useSubmitOperation } from "./queries";
 import { useOperationEvents } from "./events";
 import type { OpStatus, OpSummary } from "./types";
@@ -32,14 +37,22 @@ let listed: OpSummary[] = [];
 let fetches: Array<{ at: number; release: () => void }> = [];
 /** Whether a fetch waits for `release` before it answers. */
 let holdFetches = false;
+/** How many fetches from now fail, as a dropped IPC call would. */
+let failFetches = 0;
 
 beforeEach(() => {
   listed = [];
   fetches = [];
   holdFetches = false;
+  failFetches = 0;
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "list_operations") {
+      if (failFetches > 0) {
+        failFetches -= 1;
+        fetches.push({ at: Date.now(), release: () => {} });
+        return Promise.reject("ipc dropped");
+      }
       // What the backend lists when the call reaches it, not when it answers.
       const answer = [...listed];
       if (!holdFetches) {
@@ -54,12 +67,17 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  focusManager.setFocused(undefined);
 });
 
 describe("refetchOperations", () => {
-  /** A query cache with the operations watched, as the app always has them, and its first fetch done. */
-  async function watched(): Promise<QueryClient> {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  /**
+   * A query cache with the operations watched, as the app always has them,
+   * and its first fetch done; React Query's own retries off unless asked
+   * for (`src/main.tsx` leaves them on).
+   */
+  async function watched(retry = false): Promise<QueryClient> {
+    const queryClient = new QueryClient(retry ? {} : { defaultOptions: { queries: { retry: false } } });
     new QueryObserver(queryClient, { queryKey: queryKeys.operations, queryFn: listOperations }).subscribe(() => {});
     await vi.advanceTimersByTimeAsync(0);
     expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]);
@@ -157,6 +175,65 @@ describe("refetchOperations", () => {
     await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 4);
     expect(fetches).toHaveLength(3);
     expect(queryClient.getQueryData(queryKeys.operations)).toEqual([summary(3), summary(2), summary(1)]);
+  });
+
+  it("keeps to its waits when the clock is set back", async () => {
+    const queryClient = await watched();
+    listed = [summary(1)];
+    refetchOperations(queryClient);
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(2);
+
+    // Ten minutes back, by hand or by a time sync.
+    vi.setSystemTime(Date.now() - 10 * 60 * 1000);
+    listed = [summary(1, "Running")];
+    refetchOperations(queryClient);
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS);
+    expect(fetches).toHaveLength(3);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+  });
+
+  it("stops waiting for a fetch that does not answer, and fetches what was asked since", async () => {
+    const queryClient = await watched();
+    holdFetches = true;
+    listed = [summary(1)];
+    refetchOperations(queryClient);
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(2);
+
+    // Asked again while that one hangs: no fetch until it is given up on.
+    holdFetches = false;
+    listed = [summary(2), ...listed];
+    refetchOperations(queryClient);
+    // Given up on as long after it started, then a frame's wait.
+    await vi.advanceTimersByTimeAsync(OPERATIONS_FETCH_GIVE_UP_MS - 1);
+    expect(fetches).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1 + OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(3);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+
+    // The hung one answering late changes nothing: it was cancelled.
+    fetches[1].release();
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 4);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+    expect(fetches).toHaveLength(3);
+  });
+
+  it("fetches again after a failed fetch that React Query waits to retry while the window is hidden", async () => {
+    const queryClient = await watched(true);
+    focusManager.setFocused(false);
+    failFetches = 1;
+    listed = [summary(1)];
+    refetchOperations(queryClient);
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(2);
+
+    listed = [summary(2), ...listed];
+    refetchOperations(queryClient);
+    // Its retry waits for the window to come back; the ask does not.
+    await vi.advanceTimersByTimeAsync(OPERATIONS_FETCH_GIVE_UP_MS + OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(3);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
   });
 
   it("keeps each query cache's asks apart", async () => {
