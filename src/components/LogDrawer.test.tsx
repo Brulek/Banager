@@ -320,6 +320,39 @@ describe("LogDrawer", () => {
     expect(within(drawer).getByRole("log", { name: "Operation log" })).toBeInTheDocument();
   });
 
+  it("closes with Close while the operation runs, and with Done once it has ended (walk-3 W3-4)", async () => {
+    const running = renderWithProviders(<LogDrawer />);
+    const dialog = await running.findByRole("dialog", { name: "jq" });
+    // Beside Cancel Install, a Done would read as the install being done.
+    expect(within(dialog).getByRole("button", { name: "Cancel Install" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Done" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(useUiStore.getState().drawerOpen).toBe(false);
+    running.unmount();
+
+    act(() => useUiStore.getState().setDrawerOpen(true));
+    operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
+    const done = renderWithProviders(<LogDrawer />);
+    const ended = await done.findByRole("dialog", { name: "jq" });
+    await done.findByText("Installed");
+    expect(within(ended).queryByRole("button", { name: "Close" })).toBeNull();
+    expect(within(ended).getByRole("button", { name: "Done" })).toBeInTheDocument();
+    done.unmount();
+
+    // In Chinese: 关闭 while it runs, never 完成.
+    act(() => useUiStore.getState().setDrawerOpen(true));
+    operations = [runningOp];
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const zh = renderWithProviders(<LogDrawer />);
+      const sheet = await zh.findByRole("dialog", { name: "jq" });
+      expect(within(sheet).getByRole("button", { name: "关闭" })).toBeInTheDocument();
+      expect(within(sheet).queryByRole("button", { name: "完成" })).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("is simply the operation log until the list of operations has it", async () => {
     operations = [];
     const { findByRole } = renderWithProviders(<LogDrawer />);
@@ -410,7 +443,7 @@ describe("LogDrawer", () => {
     expect(getByRole("log").querySelector("p")).not.toHaveClass("text-danger-text");
   });
 
-  it("has Copy Log on the left of its foot and Done, the default button, on the right", async () => {
+  it("has Copy Log on the left of its foot and Close, the default button while it runs, on the right", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     try {
@@ -424,8 +457,8 @@ describe("LogDrawer", () => {
 
       const footer = getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
       const buttons = within(footer).getAllByRole("button");
-      // Copy Log, then Cancel Install while it can still be stopped, then Done.
-      expect(buttons.map((button) => button.textContent)).toEqual(["Copy Log", "Cancel Install", "Done"]);
+      // Copy Log, then Cancel Install while it can still be stopped, then Close.
+      expect(buttons.map((button) => button.textContent)).toEqual(["Copy Log", "Cancel Install", "Close"]);
       expect(buttons[0].closest(".mr-auto")).not.toBeNull();
       expect(buttons[0].className).toBe(BUTTON.large.grey);
       expect(buttons[2].className).toBe(BUTTON.large.default);

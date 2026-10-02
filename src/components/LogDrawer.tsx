@@ -10,6 +10,7 @@ import { outcomeDetailKey } from "../lib/format";
 import {
   OP_CANCEL_KEYS,
   cancelState,
+  isActive,
   outcomeTone,
   outcomeWords,
   statusKey,
@@ -194,6 +195,11 @@ export function LogDrawer() {
   const overStep = operation === undefined ? null : subtitleStep(operation, logs, technical);
   const overStepId = useId();
   const copyWords = copyStatusText(t, copyStatus);
+  // Done once the operation has ended; until then Close, which is all the
+  // button does: beside 「取消卸载」 and over 「正在卸载…」, a 「完成」
+  // read as the operation being finished (walk-3 W3-4). Close too before
+  // the list has it, a moment after it started.
+  const ended = operation !== undefined && !isActive(operation);
 
   return (
     <Dialog
@@ -230,7 +236,7 @@ export function LogDrawer() {
         <>
           {parts?.stop}
           <button type="button" onClick={() => setDrawerOpen(false)} className={BUTTON.large.default}>
-            {t("common.done")}
+            {ended ? t("common.done") : t("common.close")}
           </button>
         </>
       }
