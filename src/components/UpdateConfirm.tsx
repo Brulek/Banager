@@ -6,7 +6,7 @@ import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
 import { artifactKeyId, useUiStore } from "../store/ui";
-import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
+import type { ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
 import { useTwins } from "./CommandFacts";
 import { twinAdviceLines, twinVerdict } from "./TwinAdvice";
@@ -585,9 +585,17 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // The row's 「终端用另一份」, said again where the update is confirmed:
   // updating a copy Terminal does not run leaves the command as it was.
   const twins = useTwins(snapshot?.artifacts);
+  // Each tool by its key: looked up once per tool of the list at every
+  // drawing -- as each plan comes back, and as Update all starts each of
+  // hundreds -- not found by going through every installed tool each time.
+  const artifactsById = useMemo(() => {
+    const byId = new Map<string, InstalledArtifact>();
+    for (const artifact of snapshot?.artifacts ?? []) byId.set(artifactKeyId(artifact.key), artifact);
+    return byId;
+  }, [snapshot]);
   const notUsedNote = (item: BatchItem): WarningLine[] => {
     const id = artifactKeyId(item.candidate.key);
-    const artifact = snapshot?.artifacts.find((a) => artifactKeyId(a.key) === id);
+    const artifact = artifactsById.get(id);
     if (artifact === undefined) return [];
     const verdict = twinVerdict(artifact, twins.get(id));
     if (verdict?.kind !== "unused") return [];
@@ -642,8 +650,12 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // The first few drawn with the dialog, the rest just after (`useToolsInTurn`).
   const drawn = useToolsInTurn(ordered.length, batch?.id ?? null);
   // A name the list has from two sources says which is which (spec R3).
-  const names = items.map((item) => item.name);
-  const twice = new Set(names.filter((name, index) => names.indexOf(name) !== index));
+  const seenNames = new Set<string>();
+  const twice = new Set<string>();
+  for (const { name } of items) {
+    if (seenNames.has(name)) twice.add(name);
+    seenNames.add(name);
+  }
 
   const only = items.length === 1 ? items[0] : null;
   const onlyAdapter = only === null ? null : adapterFor(only.candidate.key.instance_id);

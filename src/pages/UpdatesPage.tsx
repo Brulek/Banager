@@ -489,9 +489,12 @@ export function UpdatesPage() {
   // An update taking a row since it was ticked leaves it out the same way.
   const selectedVisible = useMemo(() => {
     const startableIds = new Set(startableUpdates.map((u) => artifactKeyId(u.key)));
+    // A set: with every one of hundreds of rows ticked, `includes` would go
+    // through all of them for each row.
+    const selected = new Set(selectedUpdates);
     return actionableRows.filter((u) => {
       const id = artifactKeyId(u.key);
-      return startableIds.has(id) && selectedUpdates.includes(id);
+      return startableIds.has(id) && selected.has(id);
     });
   }, [actionableRows, startableUpdates, selectedUpdates]);
 
