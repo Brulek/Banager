@@ -72,28 +72,69 @@ describe("LogDrawer", () => {
     const { findByRole, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
 
     const dialog = await findByRole("dialog", { name: "Update git" });
-    expect(within(dialog).getByText("1 of 3")).toBeInTheDocument();
-    const previous = getByRole("button", { name: "Previous" });
-    const next = getByRole("button", { name: "Next" });
+    // Where it is and which log, in one announcement: the dialog's title
+    // changes with no announcement of its own (walk-2 review 2.1).
+    const status = within(dialog).getByText("1 of 3");
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toHaveTextContent("1 of 3, Update git");
+    expect(status.querySelector(".sr-only")).toHaveTextContent(", Update git");
+    const previous = getByRole("button", { name: "Previous Log" });
+    const next = getByRole("button", { name: "Next Log" });
+    expect(previous).toHaveTextContent("Previous");
     expect(previous).toBeDisabled();
     expect(previous.className).toBe(BUTTON.small.grey);
 
     act(() => next.focus());
     fireEvent.click(next);
     expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
-    expect(getByRole("button", { name: "Previous" })).toBeEnabled();
-    fireEvent.click(getByRole("button", { name: "Next" }));
+    expect(within(await findByRole("dialog")).getByText("2 of 3")).toHaveTextContent("2 of 3, Update jq");
+    expect(getByRole("button", { name: "Previous Log" })).toBeEnabled();
+    fireEvent.click(getByRole("button", { name: "Next Log" }));
     expect(await findByRole("dialog", { name: "Update wget" })).toBeInTheDocument();
     expect(queryByText("3 of 3")).toBeInTheDocument();
     // At the end, Next is off, and the focus is on Previous, not lost.
-    expect(getByRole("button", { name: "Next" })).toBeDisabled();
-    await waitFor(() => expect(document.activeElement).toBe(getByRole("button", { name: "Previous" })));
+    expect(getByRole("button", { name: "Next Log" })).toBeDisabled();
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("button", { name: "Previous Log" })));
 
     // Opened on one operation, it has nothing to step through.
     act(() => useUiStore.getState().setFocusedOpId(2));
     expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
     expect(queryByText(/ of 3$/)).toBeNull();
     expect(document.querySelector("[data-log-run]")).toBeNull();
+  });
+
+  it("starts each log of a run at its end, however far up the last one was scrolled", async () => {
+    // Walk-2 review 2.2: the tool's error is at the end of its log.
+    const failed = (id: number, name: string): OpSummary => ({
+      ...runningOp,
+      id,
+      kind: "Upgrade",
+      name,
+      status: "Done",
+      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong" } },
+    });
+    operations = [failed(2, "jq"), failed(1, "git")];
+    act(() => useUiStore.getState().openLogRun([1, 2], 1));
+    const { findByRole, getByRole } = renderWithProviders(<LogDrawer />);
+    await findByRole("dialog", { name: "Update git" });
+    const viewport = document.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+    if (viewport === null) throw new Error("no viewport");
+    let top = 0;
+    Object.defineProperty(viewport, "scrollHeight", { configurable: true, get: () => 900 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, get: () => 300 });
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    });
+    // Scrolled up, away from the end.
+    top = 0;
+    fireEvent.scroll(viewport);
+    fireEvent.click(getByRole("button", { name: "Next Log" }));
+    await findByRole("dialog", { name: "Update jq" });
+    await waitFor(() => expect(top).toBe(900));
   });
 
   it("says where it is in the run in Chinese", async () => {
@@ -105,9 +146,10 @@ describe("LogDrawer", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
-      expect(await findByText("第2个，共2个")).toBeInTheDocument();
-      expect(getByRole("button", { name: "上一个" })).toBeEnabled();
-      expect(getByRole("button", { name: "下一个" })).toBeDisabled();
+      const status = await findByText("第2个，共2个");
+      await waitFor(() => expect(status).toHaveTextContent("第2个，共2个，安装jq"));
+      expect(getByRole("button", { name: "上一个日志" })).toBeEnabled();
+      expect(getByRole("button", { name: "下一个日志" })).toBeDisabled();
     } finally {
       await i18n.changeLanguage("en");
     }

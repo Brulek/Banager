@@ -1369,6 +1369,8 @@
     "position": "{{current}} of {{total}}",
     "previous": "Previous",
     "next": "Next",
+    "previousLabel": "Previous Log",
+    "nextLabel": "Next Log",
     "bar": {
       "updatesFailed_one": "{{count}} update failed",
       "updatesFailed_other": "{{count}} updates failed",

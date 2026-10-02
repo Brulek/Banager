@@ -116,13 +116,20 @@ export function LogDrawer() {
   const visibleLogs = logs.filter((l) => l.opId === focusedOpId);
   const operation = (operations ?? []).find((op) => op.id === focusedOpId);
 
+  // Another operation's log -- a step through a run, or another row's --
+  // starts at its end, where the tool's error is, however far up the last
+  // one was scrolled.
+  useEffect(() => {
+    setStickToBottom(true);
+  }, [focusedOpId]);
+
   // Opening counts too: the log may already be long when the dialog opens.
   useEffect(() => {
     const viewport = viewportRef.current;
     if (drawerOpen && viewport && stickToBottom) {
       viewport.scrollTop = viewport.scrollHeight;
     }
-  }, [drawerOpen, visibleLogs.length, stickToBottom]);
+  }, [drawerOpen, visibleLogs.length, stickToBottom, focusedOpId]);
 
   function handleScroll(event: UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
@@ -223,7 +230,9 @@ export function LogDrawer() {
         </>
       }
     >
-      {focusedOpId !== null ? <LogRunStepper run={logRun} at={focusedOpId} onStep={stepLogRun} /> : null}
+      {focusedOpId !== null ? (
+        <LogRunStepper run={logRun} at={focusedOpId} title={parts?.title ?? null} onStep={stepLogRun} />
+      ) : null}
       {parts?.next ? (
         <p id={nextId} className="mb-3 break-words text-body text-foreground">
           {parts.next}
@@ -280,8 +289,23 @@ export function LogDrawer() {
  * at its right, each off at its end of the run. Nothing for a log of one
  * operation, or one the run does not hold. The focus stays on a button:
  * where the one pressed turns off at an end, it moves to the other.
+ *
+ * A screen reader hears each step whole, in one polite announcement --
+ * where it is and which log, 「第2个，共6个，更新git」 (`title`, the
+ * dialog's own, which changes with no announcement of its own) -- and the
+ * buttons by what they move between, 「上一个日志」 (walk-2 review 2.1).
  */
-function LogRunStepper({ run, at, onStep }: { run: number[]; at: number; onStep: (id: number) => void }) {
+function LogRunStepper({
+  run,
+  at,
+  title,
+  onStep,
+}: {
+  run: number[];
+  at: number;
+  title: string | null;
+  onStep: (id: number) => void;
+}) {
   const { t } = useTranslation();
   const previousRef = useRef<HTMLButtonElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -305,10 +329,17 @@ function LogRunStepper({ run, at, onStep }: { run: number[]; at: number; onStep:
     <div data-log-run="" className="mb-3 flex items-center gap-2">
       <span role="status" className="min-w-0 flex-1 text-small text-muted">
         {t("failureSteps.position", { current: index + 1, total: run.length })}
+        {title === null ? null : (
+          <span className="sr-only">
+            {t("overview.listSeparator")}
+            {title}
+          </span>
+        )}
       </span>
       <button
         ref={previousRef}
         type="button"
+        aria-label={t("failureSteps.previousLabel")}
         disabled={index === 0}
         onClick={() => step(index - 1)}
         className={BUTTON.small.grey}
@@ -318,6 +349,7 @@ function LogRunStepper({ run, at, onStep }: { run: number[]; at: number; onStep:
       <button
         ref={nextRef}
         type="button"
+        aria-label={t("failureSteps.nextLabel")}
         disabled={index === run.length - 1}
         onClick={() => step(index + 1)}
         className={BUTTON.small.grey}

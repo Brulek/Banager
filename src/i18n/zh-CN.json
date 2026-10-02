@@ -1264,6 +1264,8 @@
     "position": "第{{current}}个，共{{total}}个",
     "previous": "上一个",
     "next": "下一个",
+    "previousLabel": "上一个日志",
+    "nextLabel": "下一个日志",
     "bar": {
       "updatesFailed_other": "{{count}}个更新失败",
       "failed_other": "{{count}}个失败",
