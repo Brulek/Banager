@@ -47,6 +47,7 @@ import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHea
 import {
   holdsRow,
   isRetryable,
+  passwordStepsOpId,
   isUnderway,
   progressOf,
   progressWord,
@@ -1054,8 +1055,7 @@ export function UpdatesPage() {
     // as a button of its own, 「查看步骤」, in the button's place, the word
     // standing where Retry's word would (walk-2 W2-5): a red word alone
     // read as a dead end, and the steps as a log for programmers.
-    const passwordSteps =
-      progress !== null && progress.kind === "failed" && progress.cause === "needsPassword" ? progress.opId : null;
+    const passwordSteps = passwordStepsOpId(progress);
     const outcome =
       progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
     // How it ended has the status word's column to itself: it comes back
@@ -1142,7 +1142,7 @@ export function UpdatesPage() {
     const op = operationFor(candidate);
     const progress = op !== null ? progressOf(op) : null;
     if (progress !== null && state.kind === "actionable" && isRetryable(progress)) return true;
-    if (progress !== null && progress.kind === "failed" && progress.cause === "needsPassword") return true;
+    if (passwordStepsOpId(progress) !== null) return true;
     return statusOf(candidate, state, instancesById.get(candidate.key.instance_id)) !== undefined;
   };
   const statusColumn = items.some((item) => item.type === "update" && hasStatusWord(item.candidate));

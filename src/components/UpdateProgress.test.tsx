@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "../lib/queryKeys";
 import { actionableUpdatesOf } from "../lib/updateState";
 import type { OpStatus, OpSummary, Settings, Snapshot, UpdateCandidate } from "../lib/types";
-import { useStartableUpdates } from "./UpdateProgress";
+import { isRetryable, passwordStepsOpId, useStartableUpdates, type RowProgress } from "./UpdateProgress";
 
 // The real rule, watched: how often the hook works out what the page offers.
 vi.mock("../lib/updateState", async (importOriginal) => {
@@ -109,5 +109,27 @@ describe("useStartableUpdates", () => {
     });
     await waitFor(() => expect(names()).toEqual([]));
     expect(vi.mocked(actionableUpdatesOf).mock.calls.length).toBe(workedOut + 1);
+  });
+});
+
+describe("passwordStepsOpId", () => {
+  it("names the operation only of a failure that stopped at sudo's password, and that one alone is not retried", () => {
+    const every: RowProgress[] = [
+      { kind: "queued" },
+      { kind: "running" },
+      { kind: "cancelling" },
+      { kind: "succeeded" },
+      { kind: "cancelled" },
+      { kind: "check", opId: 3 },
+      { kind: "failed", opId: 4, cause: null },
+      { kind: "failed", opId: 5, cause: "network" },
+      { kind: "failed", opId: 6, cause: "passwordNotAccepted" },
+      { kind: "failed", opId: 7, cause: "needsPassword" },
+    ];
+    expect(every.map(passwordStepsOpId)).toEqual([null, null, null, null, null, null, null, null, null, 7]);
+    expect(passwordStepsOpId(null)).toBeNull();
+    for (const progress of every.filter((each) => each.kind === "failed")) {
+      expect(isRetryable(progress), JSON.stringify(progress)).toBe(passwordStepsOpId(progress) === null);
+    }
   });
 });

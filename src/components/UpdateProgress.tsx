@@ -68,8 +68,19 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
  * (`passwordNotAccepted`) can ask again, and keeps Retry.
  */
 export function isRetryable(progress: RowProgress): boolean {
-  if (progress.kind === "failed") return progress.cause !== "needsPassword";
+  if (progress.kind === "failed") return passwordStepsOpId(progress) === null;
   return progress.kind === "cancelled" || progress.kind === "check";
+}
+
+/**
+ * The operation of an update that stopped where sudo wanted the Mac's
+ * password with no way to ask (`needsPassword`), whose log has the steps
+ * for Terminal; null for any other progress. The one test of it for a row:
+ * no Retry (`isRetryable`), 「查看步骤」 in Retry's place, and the status
+ * column that word stands in.
+ */
+export function passwordStepsOpId(progress: RowProgress | null): number | null {
+  return progress !== null && progress.kind === "failed" && progress.cause === "needsPassword" ? progress.opId : null;
 }
 
 /**
