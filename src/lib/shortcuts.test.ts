@@ -46,8 +46,8 @@ describe("the shortcuts sheet's rows of the menu bar", () => {
   const ids = arms("id", /"([a-z-]+)"/);
   const accelerators = arms("shortcut", /Some\("([^"]+)"\)/);
 
-  it("read menu.rs: eleven items, seven with a shortcut", () => {
-    expect(ids.size).toBe(11);
+  it("read menu.rs: twelve items, seven with a shortcut", () => {
+    expect(ids.size).toBe(12);
     expect(accelerators.size).toBe(7);
   });
 

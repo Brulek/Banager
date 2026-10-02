@@ -1209,6 +1209,52 @@
       "escape": "Escape"
     }
   },
+  "faq": {
+    "title": "Common Questions",
+    "viewLabel": "Show: {{question}}",
+    "questions": {
+      "notFound": {
+        "question": "Terminal says a command isn't found. What can I do?",
+        "answer": "Some tools put their commands in a folder Terminal doesn't search, so typing one finds nothing, or runs another program with the same name. Open a new Terminal window and try again; if it still isn't found, follow the tool's installation instructions. A command's name isn't always the tool's name, and you can search Installed by command. This is judged from the Terminal settings read when this app opened."
+      },
+      "cantUpdate": {
+        "question": "Why can't some tools be updated here?",
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; an app that updates itself checks for a new version when you open it once."
+      },
+      "twins": {
+        "question": "What does “Installed twice” mean, and what should I do?",
+        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” shows which one. Updating the copy Terminal doesn't use doesn't change the one it runs. Uninstalling one copy leaves the other as it is."
+      },
+      "password": {
+        "question": "Why is my Mac password needed? Can it be typed for me here?",
+        "answer": "Some apps installed with Homebrew ask for your Mac's login password when they're updated or uninstalled, and the confirmation says so beforehand. The password can't be typed here, and it isn't saved. If that stops one, its View Log gives a command to copy into Terminal, where you type the password when asked; nothing appears on screen as you type, and that's normal. When it's done, come back here and press ⌘R to check again."
+      },
+      "leftBehind": {
+        "question": "What stays behind after uninstalling, and where?",
+        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path, so you can delete it yourself if you don't need it. For the copies Claude Code, Antigravity CLI and Grok Build installed themselves, the files are moved to the Trash, and you can drag them back. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
+      },
+      "changesMac": {
+        "question": "Does this app change my Mac?",
+        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files: checking for updates, for example, Homebrew updates itself and its list of software."
+      },
+      "otherPrograms": {
+        "question": "What's in Other Programs?",
+        "answer": "Programs found in folders where commands are usually kept, such as ~/.local/bin and /usr/local/bin, that couldn't be traced to any source here. They're only listed, never changed; to find out what one is, show it in Finder or copy its path. Under the list it says which folders were looked in; protected places aren't read."
+      },
+      "sizes": {
+        "question": "How accurate are the sizes?",
+        "answer": "They're worked out from the files on disk and rounded, hence “About”. Where some files couldn't be read, it says so, and the real total is larger; protected places aren't measured. In a total, a file shared by several tools counts once, and caches aren't included. uv lets a tool share some files with its cache, so the tool alone may take less."
+      },
+      "majorUpdate": {
+        "question": "Why are some updates marked “Major update”?",
+        "answer": "It means the first number of the version goes up, say from 3.x to 4.0, and how the tool is used or set up may change. Tools whose version starts with 0, Ollama models and tools versioned by date aren't marked. If you're not sure, choose “Skip This Version”; you'll be reminded when the next version comes out."
+      },
+      "autoCheck": {
+        "question": "When does the automatic check stop?",
+        "answer": "It's off unless you choose Daily or Weekly for “Check for updates” in Settings; choosing Manually stops it. Checks stop when you quit the app or restart your Mac, until you open it again; closing the window doesn't stop them. While an update or uninstall is under way, no check starts, and it looks again 15 minutes later. When every source fails, it waits longer before each try, up to six hours."
+      }
+    }
+  },
   "clarity": {
     "diagnosticsDetail": "It lists the macOS version, the location and status of each source, and the folders searched for commands. Your home folder is written as “~”, and apart from those folders it includes no environment variable values.",
     "keptLeftOut": "Not counting {{path}}, which holds another copy installed on its own.",

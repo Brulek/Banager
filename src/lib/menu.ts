@@ -2,8 +2,8 @@
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
  * Settings… (⌘,); the View menu's Overview, Updates, Installed and Other
  * Programs (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F); Help's Welcome
- * to Banager, Keyboard Shortcuts, Check Tool Setup and Copy Diagnostic
- * Info. Each does what
+ * to Banager, Common Questions, Keyboard Shortcuts, Check Tool Setup and
+ * Copy Diagnostic Info. Each does what
  * the page's own
  * control for it does,
  * through the same code, so the two cannot drift apart. The menu bar's other items are macOS's own and never
@@ -12,6 +12,7 @@
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
 import { useDiagnosticsReveal } from "./diagnostics";
+import { openFaqSheet } from "./faq";
 import { openShortcutsSheet } from "./shortcuts";
 import { openToolSetupSheet } from "./toolSetupCheck";
 import { openWelcomeSheet } from "./welcome";
@@ -32,6 +33,9 @@ import { useUiStore } from "../store/ui";
  *   on whatever had the focus.
  * - Welcome to Banager shows the sheet the first launch showed
  *   (`WelcomeSheet`) again, over whatever page is showing.
+ * - Common Questions opens the sheet that answers them (`FaqSheet`),
+ *   over whatever page is showing: it only shows, and a question's 查看
+ *   closes it and opens the page it points to.
  * - Keyboard Shortcuts opens the sheet that lists them
  *   (`ShortcutsSheet`), over whatever page is showing: it only shows.
  * - Check Tool Setup… opens the sheet Settings' 「检查…」 opens
@@ -61,6 +65,7 @@ export function useMenuCommands(): void {
       checkAgain,
       search: searchInstalled,
       welcome: openWelcomeSheet,
+      commonQuestions: openFaqSheet,
       keyboardShortcuts: openShortcutsSheet,
       checkToolSetup: openToolSetupSheet,
       copyDiagnostics: () => {

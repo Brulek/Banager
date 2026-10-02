@@ -13,6 +13,7 @@ import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { ShortcutsSheet } from "./components/ShortcutsSheet";
+import { FaqSheet } from "./components/FaqSheet";
 import { ToolSetupSheet } from "./components/ToolSetupSheet";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { WelcomeSheet } from "./components/WelcomeSheet";
@@ -317,6 +318,8 @@ function App() {
       <ToolSetupSheet />
       {/* Help's Keyboard Shortcuts opens it, over any page. */}
       <ShortcutsSheet />
+      {/* Help's Common Questions opens it, over any page. */}
+      <FaqSheet />
       {/* The first time Banager opens, and never again; the first check
           runs behind it. */}
       <WelcomeSheet />

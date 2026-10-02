@@ -191,8 +191,9 @@ export function setMenuLanguage(language: MenuLanguage): Promise<void> {
  * the page is chosen, by what the page does for it: Settings… (⌘,); the
  * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Other
  * Programs (⌘4); Check Again (⌘R); Search (⌘F); and Help's Welcome to
- * Banager, Keyboard Shortcuts, Check Tool Setup and Copy Diagnostic Info.
- * `PageCommand` in src-tauri/src/menu.rs sends these eleven.
+ * Banager, Common Questions, Keyboard Shortcuts, Check Tool Setup and Copy
+ * Diagnostic Info. `PageCommand` in src-tauri/src/menu.rs sends these
+ * twelve.
  */
 export const MENU_EVENTS = {
   settings: "menu://settings",
@@ -203,6 +204,7 @@ export const MENU_EVENTS = {
   checkAgain: "menu://check-again",
   search: "menu://search",
   welcome: "menu://welcome",
+  commonQuestions: "menu://common-questions",
   keyboardShortcuts: "menu://keyboard-shortcuts",
   checkToolSetup: "menu://check-tool-setup",
   copyDiagnostics: "menu://copy-diagnostics",
