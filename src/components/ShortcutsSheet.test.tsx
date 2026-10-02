@@ -32,7 +32,9 @@ describe("ShortcutsSheet", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      "Window",
+      // "General", not "Window": it holds the pages and the app's
+      // commands, of which only ⌘W is the window's (walk-3 W3-23).
+      "General",
       "Lists",
       "Dialogs",
     ]);
@@ -45,8 +47,8 @@ describe("ShortcutsSheet", () => {
         "Go to Other Programs | ⌘4",
         "Check installed tools and updates again | ⌘R",
         "Search Installed | ⌘F",
-        "Close the window. Operations in progress continue; click the Dock icon to open it again. | ⌘W",
-        "Quit. If an operation hasn't finished, you're asked first. | ⌘Q",
+        "Close the window; operations keep running | ⌘W",
+        "Quit, asking first if an operation hasn't finished | ⌘Q",
       ],
       [
         "Move to the previous or next item in a list, the sidebar or a menu | ↑ ↓",
@@ -111,7 +113,7 @@ describe("ShortcutsSheet", () => {
       act(() => openShortcutsSheet());
       const dialog = await screen.findByRole("dialog", { name: "键盘快捷键" });
       expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
-        "窗口",
+        "通用",
         "列表",
         "对话框",
       ]);

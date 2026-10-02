@@ -1084,7 +1084,7 @@
   "shortcuts": {
     "title": "键盘快捷键",
     "groups": {
-      "window": "窗口",
+      "window": "通用",
       "list": "列表",
       "dialog": "对话框"
     },
