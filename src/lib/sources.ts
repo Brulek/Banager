@@ -325,6 +325,42 @@ function searchCommand(instance: ManagerInstance): SourceNoticeAction {
 }
 
 /**
+ * What a source that did not answer has put in the list, which is what its
+ * notice says it is to someone who has never heard of it (W2-10): the
+ * program that installed some of the listed tools -- Homebrew, npm, pipx,
+ * uv, pip, Cargo; Ollama, whose rows are models; or a tool with its own
+ * installer, whose one row is the tool itself (`standalone-*`,
+ * `ADAPTER_LABEL_KEYS`).
+ */
+type SilentSourceKind = "tools" | "models" | "itself";
+
+function silentSourceKind(instance: ManagerInstance): SilentSourceKind {
+  if (instance.adapter_id === "ollama") return "models";
+  if (instance.adapter_id.startsWith("standalone-")) return "itself";
+  return "tools";
+}
+
+/**
+ * A silent source's sentence, by what it lists: over its rows, how many
+ * there are and that they are its last answer (`count` picks the plural);
+ * with none on screen, that this time they cannot be listed.
+ */
+const UNREACHABLE_KEYS: Record<SilentSourceKind, { withRows: string; withoutRows: string }> = {
+  tools: {
+    withRows: "sourceNotice.unreachable.descriptionWithRows",
+    withoutRows: "sourceNotice.unreachable.detail",
+  },
+  models: {
+    withRows: "sourceNotice.unreachable.descriptionWithModels",
+    withoutRows: "sourceNotice.unreachable.detailModels",
+  },
+  itself: {
+    withRows: "sourceNotice.unreachable.descriptionWithOwnRow",
+    withoutRows: "sourceNotice.unreachable.detailOwn",
+  },
+};
+
+/**
  * Every notice `instance` needs, in the order they should be rendered:
  * whether it answered, then what it said about itself. `sourceLabel` is
  * the source's name as the user reads it -- resolved by the caller
@@ -384,14 +420,23 @@ export function sourceNoticesFor(
       // fixes this") is simply wrong for a source that will fail the same
       // way on the next launch, and promising a recovery that may not
       // happen is the pattern this phase exists to remove.
-      descriptionKey:
-        rowsOnScreen > 0
-          ? "sourceNotice.unreachable.descriptionWithRows"
-          : // Under its title, which already names the source; the
+      //
+      // Each also says what the source is to the person reading it, who
+      // may never have heard of uv (W2-10): what it put in the list, and
+      // how many of the rows on screen are its -- the rows are last time's
+      // (`silentSourceKind`).
+      ...(rowsOnScreen > 0
+        ? {
+            descriptionKey: UNREACHABLE_KEYS[silentSourceKind(instance)].withRows,
+            values: { source: sourceLabel, count: rowsOnScreen },
+          }
+        : {
+            // Under its title, which already names the source; the
             // self-contained sentence is the refusal's
             // (`notActionableMessage`).
-            "sourceNotice.unreachable.detail",
-      values: { source: sourceLabel },
+            descriptionKey: UNREACHABLE_KEYS[silentSourceKind(instance)].withoutRows,
+            values: { source: sourceLabel },
+          }),
       action: { id: "checkAgain", labelKey: "header.checkAgain" },
     });
   } else if (unavailable === "RefusesAsRoot") {

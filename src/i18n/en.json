@@ -274,7 +274,7 @@
     "sourceEmpty": {
       "title": "Nothing installed with {{source}}",
       "description": "Tools you install with {{source}} show up here.",
-      "unreachable": "Couldn't list what it has installed. Check again later."
+      "unreachable": "The tools installed with it can't be listed this time. Check again later."
     },
     "installedOn": "Date installed",
     "sortByDate": "By Date Installed",
@@ -585,8 +585,14 @@
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
-      "detail": "Couldn't list what it has installed. Check again later.",
-      "descriptionWithRows": "Showing what {{source}} reported last time. Newer changes aren't shown. Check again later."
+      "detail": "The tools installed with it can't be listed this time. Check again later.",
+      "descriptionWithRows_one": "Of the tools listed, 1 was installed with {{source}}. It didn't respond this time, so that one shows its last answer. Check again later.",
+      "descriptionWithRows_other": "Of the tools listed, {{count}} were installed with {{source}}. It didn't respond this time, so they show its last answer. Check again later.",
+      "descriptionWithModels_one": "Of the models listed, 1 is from {{source}}. It didn't respond this time, so that one shows its last answer. Check again later.",
+      "descriptionWithModels_other": "Of the models listed, {{count}} are from {{source}}. It didn't respond this time, so they show its last answer. Check again later.",
+      "descriptionWithOwnRow": "{{source}} didn't respond this time, so what's shown is its last answer. Check again later.",
+      "detailModels": "Its models can't be listed this time. Check again later.",
+      "detailOwn": "It can't be listed this time. Check again later."
     },
     "refusesAsRoot": {
       "title": "{{source}} doesn't run as administrator",

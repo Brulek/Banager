@@ -4050,7 +4050,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Showing what Ollama reported last time. Newer changes aren't shown. Check again later.",
+        "Of the models listed, 2 are from Ollama. It didn't respond this time, so they show its last answer. Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -4119,7 +4119,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
+        "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
       );
       // The next step it names, as its line's own button, which checks again.
       const line = details.closest("[data-notice-line]") as HTMLElement;
@@ -4152,7 +4152,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(coldDetails);
       const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
       expect(text).toHaveTextContent(
-        "Couldn't list what it has installed.",
+        "The tools installed with it can't be listed this time.",
       );
       expect(text?.textContent).not.toMatch(/What's listed/);
     });

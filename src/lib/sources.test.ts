@@ -224,10 +224,55 @@ describe("sourceNoticesFor", () => {
     );
     expect(notice.titleKey).toBe("sourceNotice.unreachable.title");
     expect(notice.descriptionKey).toBe("sourceNotice.unreachable.descriptionWithRows");
-    expect(notice.values).toEqual({ source: "Homebrew" });
+    expect(notice.values).toEqual({ source: "Homebrew", count: 4 });
     // Its next step is to check again: the button that does it, beside it,
     // in the header's words -- not a sentence sending the user to find it.
     expect(notice.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
+  });
+
+  it("says what a silent source is and how many listed rows are its last answer, by what it lists (W2-10)", () => {
+    // 「uv没有响应」 on every page left the person asking what uv is and
+    // which of their tools it touches. The sentence says: the program that
+    // installed this many of the tools listed; Ollama, whose rows are
+    // models; a tool with its own installer, whose one row is itself.
+    const silent = (adapter_id: string) =>
+      instance({ id: adapter_id, adapter_id, status: { unavailable: "NotResponding", notes: [] } });
+    const say = (adapterId: string, label: string, rows: number, language: "en" | "zh-CN") => {
+      const [notice] = sourceNoticesFor(silent(adapterId), label, rows);
+      return i18n.getFixedT(language)(notice.descriptionKey, notice.values);
+    };
+    expect(say("uv", "uv", 1, "zh-CN")).toBe(
+      "列出的工具中有1个是用uv安装的。uv这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+    );
+    expect(say("uv", "uv", 1, "en")).toBe(
+      "Of the tools listed, 1 was installed with uv. It didn't respond this time, so that one shows its last answer. Check again later.",
+    );
+    expect(say("brew", "Homebrew", 12, "en")).toBe(
+      "Of the tools listed, 12 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+    );
+    expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
+      "列出的模型中有3个来自Ollama。Ollama这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+    );
+    expect(say("ollama", "Ollama", 3, "en")).toBe(
+      "Of the models listed, 3 are from Ollama. It didn't respond this time, so they show its last answer. Check again later.",
+    );
+    expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
+      "Claude Code这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+    );
+    expect(say("standalone-claude", "Claude Code", 1, "en")).toBe(
+      "Claude Code didn't respond this time, so what's shown is its last answer. Check again later.",
+    );
+    // With nothing of theirs on screen: that it cannot be listed this
+    // time, in the same three ways.
+    expect(say("uv", "uv", 0, "zh-CN")).toBe("这次无法列出用它安装的工具。请稍后重新检查。");
+    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。请稍后重新检查。");
+    expect(say("standalone-claude", "Claude Code", 0, "zh-CN")).toBe("这次无法列出它。请稍后重新检查。");
+    // Nothing that soothes: whether it needs anything is not known.
+    for (const language of ["en", "zh-CN"] as const) {
+      for (const [id, rows] of [["uv", 2], ["ollama", 2], ["standalone-claude", 1], ["uv", 0]] as const) {
+        expect(say(id, id, rows, language)).not.toMatch(/通常|不用管|usually|nothing to worry/i);
+      }
+    }
   });
 
   it("does not promise carried-forward rows when the page has none to show", () => {
@@ -1733,14 +1778,26 @@ describe("the Updates page's chip details", () => {
     // one on screen is the toolbar's ⟳, which has no words.
     for (const copy of [
       zhCN.sourceNotice.unreachable.description,
-      zhCN.sourceNotice.unreachable.descriptionWithRows,
+      zhCN.sourceNotice.unreachable.detail,
+      zhCN.sourceNotice.unreachable.detailModels,
+      zhCN.sourceNotice.unreachable.detailOwn,
+      zhCN.sourceNotice.unreachable.descriptionWithRows_other,
+      zhCN.sourceNotice.unreachable.descriptionWithModels_other,
+      zhCN.sourceNotice.unreachable.descriptionWithOwnRow,
       zhCN.installed.sourceEmpty.unreachable,
     ]) {
       expect(copy.endsWith("请稍后重新检查。"), copy).toBe(true);
     }
     for (const copy of [
       en.sourceNotice.unreachable.description,
-      en.sourceNotice.unreachable.descriptionWithRows,
+      en.sourceNotice.unreachable.detail,
+      en.sourceNotice.unreachable.detailModels,
+      en.sourceNotice.unreachable.detailOwn,
+      en.sourceNotice.unreachable.descriptionWithRows_one,
+      en.sourceNotice.unreachable.descriptionWithRows_other,
+      en.sourceNotice.unreachable.descriptionWithModels_one,
+      en.sourceNotice.unreachable.descriptionWithModels_other,
+      en.sourceNotice.unreachable.descriptionWithOwnRow,
       en.installed.sourceEmpty.unreachable,
     ]) {
       expect(copy.endsWith("Check again later."), copy).toBe(true);

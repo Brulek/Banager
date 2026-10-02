@@ -36,7 +36,7 @@ const uvSilent: SourceNoticeSpec = {
   variant: "warning",
   titleKey: "sourceNotice.unreachable.title",
   descriptionKey: "sourceNotice.unreachable.descriptionWithRows",
-  values: { source: "uv" },
+  values: { source: "uv", count: 1 },
 };
 const ollamaStopped: SourceNoticeSpec = {
   id: "ollama:not-running",

@@ -1759,7 +1759,7 @@ describe("InstalledPage", () => {
     // first refresh after a launch, because the snapshot is in memory
     // only (`Session::new` starts from `Snapshot::empty()`).
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Couldn't list what it has installed.",
+      "The tools installed with it can't be listed this time.",
     );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
@@ -1783,8 +1783,10 @@ describe("InstalledPage", () => {
     });
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
+    // How many of the tools are Homebrew's, the search aside, and that
+    // they are its last answer (W2-10).
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
+      "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
     );
     // Its next step's button on its own line, after its ⓘ, which checks again.
     const line = details.closest("[data-notice-line]") as HTMLElement;
@@ -2186,7 +2188,7 @@ describe("InstalledPage", () => {
       const { findByText, getByRole } = renderInstalled();
 
       const title = await findByText("Homebrew (Intel) isn't responding");
-      const sentence = screen.getByText("Couldn't list what it has installed. Check again later.");
+      const sentence = screen.getByText("The tools installed with it can't be listed this time. Check again later.");
       expect(sentence).not.toHaveTextContent(/isn't responding|didn't respond/);
       expect(title.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
@@ -2197,7 +2199,7 @@ describe("InstalledPage", () => {
       });
       try {
         expect(await findByText("Homebrew（Intel）没有响应")).toBeInTheDocument();
-        const zh = screen.getByText("无法列出它安装的内容。请稍后重新检查。");
+        const zh = screen.getByText("这次无法列出用它安装的工具。请稍后重新检查。");
         expect(zh).not.toHaveTextContent("没有响应");
       } finally {
         await act(async () => {
@@ -2942,7 +2944,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
+          "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
         ),
       ).toBeInTheDocument();
       // And the button its next step needs, under its sentence.
