@@ -26,6 +26,7 @@ function instance(id: string, exe: string, more: Partial<ManagerInstance> = {}):
     prefix: "/opt/homebrew",
     scope: "User",
     version: null,
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
     status: { unavailable: null, notes: [] },

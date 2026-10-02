@@ -21,6 +21,7 @@ const brew: ManagerInstance = {
   scope: "User",
   version: "7.0.3",
   status: { unavailable: null, notes: [] },
+  answered_at: null,
   unverified_version: null,
   read_only_reason: null,
 };

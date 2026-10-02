@@ -24,6 +24,7 @@ function instance(id: string, more: Partial<ManagerInstance> = {}): ManagerInsta
     prefix: id.includes("/usr/local") ? "/usr/local" : "/opt/homebrew",
     scope: "User",
     version: "1.0",
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
     status: { unavailable: null, notes: [] },

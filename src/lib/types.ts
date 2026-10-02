@@ -424,9 +424,8 @@ export type InstanceNote =
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent
- * when there are none. There is deliberately no per-instance
- * `refreshed_at` -- see the note in the spec's §2.4 for why one would
- * rebroadcast the snapshot on every refresh.
+ * when there are none. When the source last answered is not here but on
+ * the instance (`ManagerInstance.answered_at`).
  */
 export interface InstanceStatus {
   unavailable: Unavailable | null;
@@ -439,6 +438,17 @@ export interface ManagerInstance {
   prefix: string;
   scope: "User" | "System";
   version: string | null;
+  /**
+   * Mirrors `ManagerInstance::answered_at`: when this source last answered
+   * this session, Unix seconds -- the start of the last round in which
+   * both its list and its update check answered, so its rows are from
+   * then or later. `null` until it has: the first check after launch, a
+   * source that has not answered since, one Banager has just found. Not
+   * written anywhere; a round in which only this moved keeps its
+   * `generation`. Said only where a source did not answer
+   * (`sourceNoticesFor` in src/lib/sources.ts).
+   */
+  answered_at: number | null;
   unverified_version: string | null;
   /** `null` means writable; see `canWrite()` in src/lib/sources.ts. */
   read_only_reason: ReadOnlyReason | null;

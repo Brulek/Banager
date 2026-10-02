@@ -24,6 +24,7 @@ function ollamaInstance(running: boolean): ManagerInstance {
     prefix: "/usr/local",
     scope: "User",
     version: null,
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
     status: { unavailable: running ? null : "NotRunning", notes: [] },

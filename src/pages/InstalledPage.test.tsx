@@ -49,6 +49,7 @@ const brew: ManagerInstance = {
   scope: "User",
   version: "7.0.3",
   status: { unavailable: null, notes: [] },
+  answered_at: null,
   unverified_version: null,
   read_only_reason: null,
 };
@@ -122,6 +123,7 @@ const pip: ManagerInstance = {
   scope: "User",
   version: "26.2.1",
   status: { unavailable: null, notes: [] },
+  answered_at: null,
   unverified_version: null,
   read_only_reason: "ByDesign",
 };
@@ -166,6 +168,7 @@ const claudeInstance: ManagerInstance = {
   scope: "User",
   version: "2.1.281",
   status: { unavailable: null, notes: [] },
+  answered_at: null,
   unverified_version: null,
   read_only_reason: null,
 };
@@ -194,6 +197,7 @@ const ollama: ManagerInstance = {
   scope: "User",
   version: "0.34.1",
   status: { unavailable: null, notes: [] },
+  answered_at: null,
   unverified_version: null,
   read_only_reason: null,
 };
@@ -812,6 +816,7 @@ describe("InstalledPage", () => {
         {
           ...claudeInstance,
           version: "2.1.290",
+          answered_at: null,
           unverified_version: "2.1.290",
           status: { unavailable: null, notes: ["ShadowedByNpm"] },
         },

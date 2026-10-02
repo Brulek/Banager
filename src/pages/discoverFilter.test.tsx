@@ -35,6 +35,7 @@ function instance(adapterId: string, id: string): Snapshot["instances"][number] 
     scope: "User",
     version: "1.0.0",
     status: { unavailable: null, notes: id === GROK ? grokNotes : [] },
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
   };

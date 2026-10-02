@@ -316,6 +316,7 @@ describe("the uninstall dialog's notes on what else stays", () => {
     prefix: "/x",
     scope: "User",
     version: "1",
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
     status: { unavailable: null, notes: [] },

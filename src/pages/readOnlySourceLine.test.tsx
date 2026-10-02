@@ -30,6 +30,7 @@ function instance(adapterId: string, id: string): Snapshot["instances"][number] 
     scope: "User",
     version: "1.0.0",
     status: { unavailable: null, notes: [] },
+    answered_at: null,
     unverified_version: null,
     read_only_reason: id === PIP ? "ByDesign" : id === NPM ? "PrefixNotWritable" : null,
   };

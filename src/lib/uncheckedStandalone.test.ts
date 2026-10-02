@@ -15,6 +15,7 @@ function instance(adapterId: string): ManagerInstance {
     scope: "User",
     version: "1.0",
     status: { unavailable: null, notes: [] },
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
   };

@@ -127,6 +127,7 @@ describe("UpdateConfirmDialog on a copy Terminal does not run", () => {
     scope: "User",
     version: "11.0.0",
     status: { unavailable: null, notes: [] },
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
   });

@@ -124,6 +124,7 @@ function instance(
     prefix,
     scope: "User",
     version,
+    answered_at: null,
     unverified_version: unverifiedVersion(adapterId, version),
     read_only_reason: null,
     status: { unavailable: null, notes: [] },

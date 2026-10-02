@@ -39,6 +39,7 @@ const brew: ManagerInstance = {
   prefix: "/opt/homebrew",
   scope: "User",
   version: "7.0.3",
+  answered_at: null,
   unverified_version: null,
   read_only_reason: null,
   status: { unavailable: null, notes: [] },

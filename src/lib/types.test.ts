@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ManagerInstance,
   ArtifactFacts,
   CommandState,
   Snapshot,
@@ -44,6 +45,27 @@ function roundTrip<T>(value: T): T {
 }
 
 describe("types", () => {
+  it("round-trips when a source last answered as Rust's seconds-or-null answered_at", () => {
+    for (const stamp of [null, 1_791_000_000]) {
+      // As serde_json writes `ManagerInstance` (model.rs), field for field.
+      const wire = JSON.stringify({
+        id: "uv",
+        adapter_id: "uv",
+        exe_path: "/Users/you/.local/bin/uv",
+        prefix: "/Users/you/.local/share/uv/tools",
+        scope: "User",
+        version: "0.9.2",
+        answered_at: stamp,
+        unverified_version: null,
+        read_only_reason: null,
+        status: { unavailable: "NotResponding", notes: [] },
+      });
+      const instance = JSON.parse(wire) as ManagerInstance;
+      expect(instance.answered_at).toBe(stamp);
+      expect(JSON.stringify(roundTrip<ManagerInstance>(instance))).toBe(wire);
+    }
+  });
+
   it("round-trips a realistic Snapshot (shape copied from banager-core's brew fixtures)", () => {
     const snapshot = {
       generation: 3,
@@ -58,6 +80,7 @@ describe("types", () => {
           scope: "User",
           version: "7.0.3",
           status: { unavailable: null, notes: [] },
+          answered_at: null,
           unverified_version: null,
           read_only_reason: null,
         },
@@ -821,6 +844,7 @@ describe("types", () => {
           scope: "User",
           version: "7.0.3",
           status: { unavailable: null, notes: [] },
+          answered_at: null,
           unverified_version: null,
           read_only_reason: null,
         },

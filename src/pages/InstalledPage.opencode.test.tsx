@@ -24,6 +24,7 @@ function standalone(id: string, exe: string, prefix: string, version: string): M
     scope: "User",
     version,
     status: { unavailable: null, notes: [] },
+    answered_at: null,
     unverified_version: null,
     read_only_reason: null,
   };
