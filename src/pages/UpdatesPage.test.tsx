@@ -1897,6 +1897,99 @@ describe("UpdatesPage", () => {
     }
   });
 
+  it("says the most a model's update downloads on its row, alone and in Update All, and the plain sentence where it is not known, in either language", async () => {
+    // `UpdateCandidate.download_bytes` (crates/banager-core/src/adapters/
+    // ollama/parse.rs `changed_blob_bytes`): an upper bound, worded as one
+    // (src/lib/modelDownload.ts). `qwen3:8b`'s is not known.
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+        download_bytes: 4_683_087_520,
+      },
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:7a3e5c1b9d0f2e4a6c8b0d1f3e5a7c9b2d4f6e8a0c1b3d5f7e9a2c4b6d8f0e1a",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+        download_bytes: null,
+      },
+    ];
+    planWarnings[MODELS.coder] = [{ ThirdPartyRegistry: { host: "modelscope.cn" } }, "DownloadsModelChanges"];
+    planWarnings["qwen3:8b"] = ["DownloadsModelChanges"];
+
+    // Looked up while no sheet is open: a sheet names the model too.
+    const modelRow = async (key: string) => (await screen.findByTitle(key)).closest("[data-tool-row]") as HTMLElement;
+    const versionColumn = async (key: string) => (await modelRow(key)).querySelector("[data-version]")?.textContent;
+    const linesUnderOne = async (update: RegExp) => {
+      fireEvent.click(within(await modelRow(MODELS.coder)).getByRole("button", { name: update }));
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
+      return [...dialog.querySelectorAll("li")].map((item) => item.textContent?.trim());
+    };
+    const notesInUpdateAll = async (updateAll: string) => {
+      await modelRow(MODELS.coder);
+      fireEvent.click(screen.getByRole("button", { name: updateAll }));
+      const dialog = await screen.findByRole("dialog");
+      const notesOf = (key: string) => {
+        const tool = within(dialog).getByTitle(key).closest("[data-sheet-tool]") as HTMLElement;
+        return [...tool.querySelectorAll("li")].map((item) => item.textContent?.trim());
+      };
+      await waitFor(() => expect(notesOf("qwen3:8b")).toHaveLength(1));
+      return { coder: notesOf(MODELS.coder), qwen: notesOf("qwen3:8b") };
+    };
+
+    let page = renderPage();
+    expect(await versionColumn(MODELS.coder)).toBe("New version · up to about 4.7 GB");
+    expect(await versionColumn("qwen3:8b")).toBe("New version");
+    expect(await linesUnderOne(ROW_UPDATE)).toEqual([
+      "This model comes from modelscope.cn, not Ollama's own library.",
+      "Downloads the model files that changed, up to about 4.7 GB.",
+    ]);
+    page.unmount();
+    page = renderPage();
+    expect(await notesInUpdateAll("Update All")).toEqual({
+      coder: [
+        "This model comes from modelscope.cn, not Ollama's own library.",
+        "Downloads the model files that changed, up to about 4.7 GB.",
+      ],
+      qwen: ["Downloads the model files that changed."],
+    });
+    page.unmount();
+    // Update All ticked every row while its sheet asked; that sheet was
+    // never answered.
+    useUiStore.setState({ selectedUpdates: [] });
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      page = renderPage();
+      expect(await versionColumn(MODELS.coder)).toBe("有新版本 · 最多约4.7 GB");
+      expect(await versionColumn("qwen3:8b")).toBe("有新版本");
+      expect(await linesUnderOne(/^更新(?!所选|全部)/)).toEqual([
+        "此模型来自modelscope.cn，不是Ollama官方模型库。",
+        "需要下载已更改的模型文件，最多约4.7 GB。",
+      ]);
+      page.unmount();
+      renderPage();
+      expect(await notesInUpdateAll("全部更新")).toEqual({
+        coder: ["此模型来自modelscope.cn，不是Ollama官方模型库。", "需要下载已更改的模型文件，最多约4.7 GB。"],
+        qwen: ["需要下载已更改的模型文件。"],
+      });
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("shows no version and no digest for an Ollama model Banager could not check", async () => {
     // Its `target` is the digest it has, not a newer one: "New version"
     // would be false, and the digest is never shown.

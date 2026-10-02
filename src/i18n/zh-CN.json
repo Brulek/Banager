@@ -471,6 +471,10 @@
       "systemNames_other": "在macOS中的名称：{{items}}"
     }
   },
+  "modelDownload": {
+    "note": "需要下载已更改的模型文件，最多约{{size}}。",
+    "rowVersion": "有新版本 · 最多约{{size}}"
+  },
   "commands": {
     "title": "在终端里输入时",
     "titleDetail": "按打开此App时读到的终端设置判断。别名、新开的终端窗口或编辑器里的终端可能不同。",

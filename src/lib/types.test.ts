@@ -16,6 +16,7 @@ import type {
   SkippedVersion,
   UninstallBlocked,
   UpdateBlocked,
+  UpdateCandidate,
   Warning,
   RemoveCheck,
   RemovedWhat,
@@ -195,6 +196,27 @@ describe("types", () => {
     expect(JSON.parse('{"blocked":"Disabled"}')).toEqual({ blocked: "Disabled" satisfies UpdateBlocked });
     const updatable: UpdateBlocked | null = null;
     expect(roundTrip(updatable)).toBeNull();
+  });
+
+  it("reads an update's download_bytes as a number, null, or left out", () => {
+    // `Option<u64>` on `UpdateCandidate.download_bytes` in
+    // crates/banager-core/src/model.rs, whose
+    // `test_download_bytes_is_a_number_or_null_on_the_wire_and_optional_when_read`
+    // asserts the same spellings from the Rust side.
+    const wire =
+      '{"key":{"instance_id":"ollama:http://127.0.0.1:11434","kind":"Model","name":"llama3.2:3b"},' +
+      '"current":"8e4c","target":"sha256:25a9","channel":"Digest","checkable":true,"warnings":[],' +
+      '"blocked":null,"download_bytes":4683087520}';
+    const model = JSON.parse(wire) as UpdateCandidate;
+    expect(model.download_bytes).toBe(4_683_087_520);
+    expect(roundTrip(model)).toEqual(model);
+    expect(JSON.stringify(model)).toBe(wire);
+    const unknown: UpdateCandidate = { ...model, download_bytes: null };
+    expect(roundTrip(unknown).download_bytes).toBeNull();
+    // Written before the field existed: reads as not known.
+    const older: UpdateCandidate = { ...model };
+    delete older.download_bytes;
+    expect(roundTrip(older).download_bytes).toBeUndefined();
   });
 
   it("spells UninstallBlocked as a bare string, and a removable artifact as null", () => {

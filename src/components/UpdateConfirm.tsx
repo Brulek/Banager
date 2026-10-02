@@ -631,7 +631,9 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   };
   const notesFor = (item: BatchItem, issued: IssuedPlan): WarningLine[] => {
     const { plan } = issued;
-    const lines = warningLines(t, plan.warnings);
+    // A model's note says the most its update downloads, where its
+    // candidate knows it (src/lib/modelDownload.ts).
+    const lines = warningLines(t, plan.warnings, [], undefined, item.candidate.download_bytes);
     return [
       // The row's 「大版本更新」, said again where the update is confirmed.
       ...(majorJump(item.candidate) !== null ? [{ text: t("clarity.majorNote"), detail: null, caution: false }] : []),

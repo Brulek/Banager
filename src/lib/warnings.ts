@@ -6,6 +6,7 @@
  * one rule and it is testable without rendering anything.
  */
 import type { CaskStep, KeptData, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
+import { modelDownloadNote } from "./modelDownload";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -380,12 +381,24 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * (`null`) rather than a line with an empty name in it. A `KeepsData` has
  * no line either: `KeptDataGroup` renders it. Otherwise, with
  * `warningKey` exhaustive, a fixed warning always has a key and a
- * `Message` always has its text.
+ * `Message` always has its text. `downloadBytes` is the most a model's
+ * update downloads, which only its candidate knows
+ * (`UpdateCandidate.download_bytes`): a `DownloadsModelChanges` says it
+ * where it is known (`modelDownloadNote`), and its plain sentence where not.
  */
-export function warningText(t: Translate, warning: Warning, subject?: string): string | null {
+export function warningText(
+  t: Translate,
+  warning: Warning,
+  subject?: string,
+  downloadBytes?: number | null,
+): string | null {
   const key = warningKey(warning);
   if (typeof warning !== "string" && "UninstallScope" in warning) {
     return key === null || subject === undefined ? null : t(key, { name: subject });
+  }
+  if (warning === "DownloadsModelChanges") {
+    const sized = modelDownloadNote(t, downloadBytes);
+    if (sized !== null) return sized;
   }
   return key ? t(key, warningArgs(warning, t("common.listSeparator"))) : warningMessage(warning);
 }
@@ -733,8 +746,13 @@ export interface WarningLine {
 }
 
 /** `warning`'s line, or null only for what `warningText` gives none. */
-export function warningLine(t: Translate, warning: Warning, subject?: string): WarningLine | null {
-  const text = warningText(t, warning, subject);
+export function warningLine(
+  t: Translate,
+  warning: Warning,
+  subject?: string,
+  downloadBytes?: number | null,
+): WarningLine | null {
+  const text = warningText(t, warning, subject, downloadBytes);
   if (text === null) return null;
   const detailKey = warningDetailKey(warning);
   // With the line's own values: the ids a counted line did not name.
@@ -756,13 +774,16 @@ export type WarningLines = Record<WarningGroup, WarningLine[]>;
  * Homebrew's preview fills both from one `brew uses`
  * (crates/banager-core/src/adapters/brew/mod.rs). With `subject`, the
  * tool's name as its row shows it, an uninstall's scope sentence says it;
- * without, there is no scope line (`warningText`).
+ * without, there is no scope line (`warningText`). With `downloadBytes`,
+ * an update's candidate's `download_bytes`, a model's note says the most
+ * it downloads (`warningText`).
  */
 export function warningLines(
   t: Translate,
   warnings: Warning[],
   affected: string[] = [],
   subject?: string,
+  downloadBytes?: number | null,
 ): WarningLines {
   const lines: WarningLines = { scope: [], trash: [], keep: [], data: [], note: [] };
   // Where the plan names what stays (`KeepsData`, the 「卸载后会保留」
@@ -775,7 +796,7 @@ export function warningLines(
       keptNamed && subject !== undefined && typeof warning !== "string" && "UninstallScope" in warning
         ? SCOPE_WITH_KEPT_KEYS[warning.UninstallScope.what]
         : undefined;
-    const line = warningLine(t, warning, subject);
+    const line = warningLine(t, warning, subject, downloadBytes);
     if (line === null) continue;
     lines[warningGroup(warning)].push(short === undefined ? line : { ...line, text: t(short, { name: subject ?? "" }) });
   }

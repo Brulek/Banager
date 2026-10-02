@@ -514,6 +514,10 @@
       "systemNames_other": "As macOS names them: {{items}}"
     }
   },
+  "modelDownload": {
+    "note": "Downloads the model files that changed, up to about {{size}}.",
+    "rowVersion": "New version · up to about {{size}}"
+  },
   "commands": {
     "title": "In Terminal",
     "titleDetail": "Based on the Terminal settings read when this app opened. An alias, a new Terminal window or an editor's terminal may differ.",

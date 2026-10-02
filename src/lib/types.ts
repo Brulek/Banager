@@ -379,6 +379,16 @@ export interface UpdateCandidate {
   checkable: boolean;
   warnings: Warning[];
   blocked: UpdateBlocked | null;
+  /**
+   * The most this update can download, in bytes (Rust
+   * `UpdateCandidate::download_bytes`): an Ollama model's changed files as
+   * the registry sizes them -- an upper bound, since a file another model
+   * shares is already on this Mac. `null` for every other source, and for
+   * a model whose number Banager could not be sure of. Rust always sends
+   * it; optional here only so a test's or the mock's candidate may leave
+   * it out, which reads as `null`. Read by src/lib/modelDownload.ts.
+   */
+  download_bytes?: number | null;
 }
 /**
  * Why a source can be listed but never changed from Banager. Mirrors
