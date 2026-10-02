@@ -2043,8 +2043,8 @@ connects to, so its updates are not checked at all: the Updates page lists
 nothing for it, and the Installed page does not call it up to date.
 
 **Write commands**: none. No Update button (Banager must not re-run the
-installer's `curl | sh`), and no uninstall: the row says "Manual
-uninstall". Moving `~/.local/bin/codex`,
+installer's `curl | sh`), and no uninstall: the row says "Listed only"
+(「只列出」). Moving `~/.local/bin/codex`,
 `~/.local/bin/codex-code-mode-host` and `~/.codex/packages/standalone` to
 the Trash, keeping the rest of `~/.codex`, is a decision for the author
 (D5) and is not built.
