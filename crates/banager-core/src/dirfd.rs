@@ -12,7 +12,9 @@
 //! everything in it is looked at from that descriptor (`fstatat`,
 //! `readlinkat`, `openat`, all without following a link at the end): a
 //! name replaced in the meantime is either the link itself, never
-//! followed, or a different folder, which is refused.
+//! followed, or a different folder, which is refused. Several names below
+//! a folder can be looked at in one call that follows no link anywhere
+//! (`stat_beneath`): a link on the way is an error, never followed.
 //!
 //! Folders on the way are opened for search only (`O_SEARCH`: nothing in
 //! them is listed), a folder to list for reading (`O_RDONLY`, as
@@ -122,6 +124,14 @@ const SEARCH: libc::c_int = libc::O_SEARCH;
 #[cfg(not(target_os = "macos"))]
 const SEARCH: libc::c_int = libc::O_RDONLY | libc::O_DIRECTORY;
 
+/// `fstatat`'s `AT_SYMLINK_NOFOLLOW_ANY` (`<sys/fcntl.h>`, macOS 11 and
+/// later), which the `libc` crate does not name: a symbolic link met
+/// anywhere on the way is an error (`ELOOP`), never followed; one at the
+/// end is looked at itself. A kernel that does not know the flag refuses
+/// the call (`EINVAL`) rather than ignore it.
+#[cfg(target_os = "macos")]
+const NOFOLLOW_ANY: libc::c_int = 0x0800;
+
 fn c_name(name: &OsStr) -> io::Result<CString> {
     if name.is_empty() || name.as_bytes().contains(&b'/') || name == "." || name == ".." {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -138,6 +148,8 @@ pub struct Dir {
 impl Dir {
     /// `/`, open for search.
     pub fn root() -> io::Result<Dir> {
+        #[cfg(test)]
+        calls::note(calls::Call::Root, None, &[]);
         // SAFETY: a NUL-terminated literal path; the result is checked.
         let fd = unsafe { libc::open(c"/".as_ptr(), SEARCH | libc::O_CLOEXEC) };
         Dir::owned(fd)
@@ -204,6 +216,8 @@ impl Dir {
     /// What is at `name` in this folder, a link itself rather than what it
     /// leads to (`fstatat` with `AT_SYMLINK_NOFOLLOW`).
     pub fn stat_at(&self, name: &OsStr) -> io::Result<Stat> {
+        #[cfg(test)]
+        calls::note(calls::Call::StatAt, Some(self), &[name]);
         let name = c_name(name)?;
         let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
         // SAFETY: `name` is NUL-terminated and `st` has room for a stat;
@@ -223,8 +237,70 @@ impl Dir {
         Ok(Stat::from_raw(unsafe { &st.assume_init() }))
     }
 
+    /// What is at `names` below this folder, each one inside the one
+    /// before it, with no symbolic link followed anywhere: a link among
+    /// the folders on the way is an error (`ELOOP`), and one at the end is
+    /// looked at itself (`fstatat` with `AT_SYMLINK_NOFOLLOW_ANY`). The
+    /// kernel's one lookup does what a `stat_at` of each name and an
+    /// `open_dir_at` of each folder on the way would, with no moment
+    /// between a look and the next step for a name to be swapped: it
+    /// takes no folder by a name it has not just looked at, and no link
+    /// at all. Each name is checked as `stat_at` checks its one (no `/`,
+    /// `.` or `..`). Not where the flag is not known (`Unsupported`, or
+    /// `EINVAL` from an older kernel): the caller then takes one step at a
+    /// time.
+    pub fn stat_beneath(&self, names: &[OsString]) -> io::Result<Stat> {
+        #[cfg(test)]
+        calls::note(
+            calls::Call::StatBeneath,
+            Some(self),
+            &names.iter().map(OsString::as_os_str).collect::<Vec<_>>(),
+        );
+        if names.is_empty() {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        }
+        let mut joined: Vec<u8> = Vec::new();
+        for name in names {
+            c_name(name)?;
+            if !joined.is_empty() {
+                joined.push(b'/');
+            }
+            joined.extend_from_slice(name.as_bytes());
+        }
+        let joined =
+            CString::new(joined).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+        self.stat_no_link_anywhere(&joined)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn stat_no_link_anywhere(&self, path: &CStr) -> io::Result<Stat> {
+        let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: `path` is NUL-terminated and `st` has room for a stat;
+        // it is read only when the call succeeded.
+        let rc = unsafe {
+            libc::fstatat(
+                self.fd.as_raw_fd(),
+                path.as_ptr(),
+                st.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW | NOFOLLOW_ANY,
+            )
+        };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: filled in by the successful call above.
+        Ok(Stat::from_raw(unsafe { &st.assume_init() }))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn stat_no_link_anywhere(&self, _path: &CStr) -> io::Result<Stat> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+
     /// What this folder is (`fstat`).
     pub fn stat(&self) -> io::Result<Stat> {
+        #[cfg(test)]
+        calls::note(calls::Call::Stat, Some(self), &[]);
         let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
         // SAFETY: `st` has room for a stat; read only on success.
         let rc = unsafe { libc::fstat(self.fd.as_raw_fd(), st.as_mut_ptr()) };
@@ -237,6 +313,8 @@ impl Dir {
 
     /// The text of the link `name` in this folder (`readlinkat`).
     pub fn read_link_at(&self, name: &OsStr) -> io::Result<PathBuf> {
+        #[cfg(test)]
+        calls::note(calls::Call::ReadLinkAt, Some(self), &[name]);
         let name = c_name(name)?;
         let mut buf = vec![0u8; libc::PATH_MAX as usize + 1];
         // SAFETY: `name` is NUL-terminated and `buf` is writable for its
@@ -271,6 +349,8 @@ impl Dir {
         expected: Option<&Stat>,
         list: bool,
     ) -> io::Result<(Dir, Stat)> {
+        #[cfg(test)]
+        calls::note(calls::Call::OpenDirAt, Some(self), &[name]);
         let c = c_name(name)?;
         let flags = if list {
             libc::O_RDONLY | libc::O_DIRECTORY
@@ -317,6 +397,8 @@ impl Dir {
     /// that is not a file (`O_NONBLOCK`), and read only when `fstat` says
     /// it is a regular file -- `expected`, when given, the very one.
     pub fn read_file_at(&self, name: &OsStr, expected: Option<&Stat>) -> io::Result<Vec<u8>> {
+        #[cfg(test)]
+        calls::note(calls::Call::ReadFileAt, Some(self), &[name]);
         let c = c_name(name)?;
         // SAFETY: `c` is NUL-terminated; the result is checked.
         let fd = unsafe {
@@ -427,6 +509,127 @@ impl Drop for Entries {
     }
 }
 
+/// What a test sees of the calls made here: how many of each, and the
+/// path each one looked at -- the folder's own path as the kernel names
+/// it (`fcntl(F_GETPATH)`), joined with the name or names asked of it.
+/// Kept per thread and only while a test asks for it (`measure`), so
+/// tests running beside one another never see each other's calls. Each
+/// counted call is one system call: `open_dir_at` counts as itself and,
+/// for the `fstat` it makes of what it opened, as a `stat`; the `close`
+/// of a dropped `Dir` is not counted.
+#[cfg(test)]
+pub(crate) mod calls {
+    use super::Dir;
+    use std::cell::RefCell;
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum Call {
+        Root,
+        StatAt,
+        StatBeneath,
+        Stat,
+        ReadLinkAt,
+        OpenDirAt,
+        ReadFileAt,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub(crate) struct Calls {
+        pub root: usize,
+        pub stat_at: usize,
+        pub stat_beneath: usize,
+        pub stat: usize,
+        pub read_link_at: usize,
+        pub open_dir_at: usize,
+        pub read_file_at: usize,
+        /// Each call and the path it looked at, in the order made.
+        pub paths: Vec<(Call, PathBuf)>,
+    }
+
+    impl Calls {
+        pub fn total(&self) -> usize {
+            self.root
+                + self.stat_at
+                + self.stat_beneath
+                + self.stat
+                + self.read_link_at
+                + self.open_dir_at
+                + self.read_file_at
+        }
+    }
+
+    thread_local! {
+        static ACTIVE: RefCell<Option<Calls>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn note(call: Call, dir: Option<&Dir>, names: &[&OsStr]) {
+        ACTIVE.with(|active| {
+            let mut active = active.borrow_mut();
+            let Some(calls) = active.as_mut() else {
+                return;
+            };
+            *match call {
+                Call::Root => &mut calls.root,
+                Call::StatAt => &mut calls.stat_at,
+                Call::StatBeneath => &mut calls.stat_beneath,
+                Call::Stat => &mut calls.stat,
+                Call::ReadLinkAt => &mut calls.read_link_at,
+                Call::OpenDirAt => &mut calls.open_dir_at,
+                Call::ReadFileAt => &mut calls.read_file_at,
+            } += 1;
+            let mut path = dir.map_or_else(|| PathBuf::from("/"), path_of);
+            for name in names {
+                path.push(name);
+            }
+            calls.paths.push((call, path));
+        });
+    }
+
+    /// Where the kernel says `dir` is.
+    #[cfg(target_os = "macos")]
+    fn path_of(dir: &Dir) -> PathBuf {
+        use std::ffi::OsString;
+        use std::os::fd::AsRawFd;
+        use std::os::unix::ffi::OsStringExt;
+        let mut buf = vec![0u8; libc::PATH_MAX as usize];
+        // SAFETY: `buf` has room for `MAXPATHLEN` bytes, as `F_GETPATH`
+        // requires; the result is checked.
+        let rc = unsafe { libc::fcntl(dir.fd.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) };
+        assert!(rc >= 0, "F_GETPATH: {}", std::io::Error::last_os_error());
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        buf.truncate(len);
+        PathBuf::from(OsString::from_vec(buf))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn path_of(dir: &Dir) -> PathBuf {
+        use std::os::fd::AsRawFd;
+        std::fs::read_link(format!("/proc/self/fd/{}", dir.fd.as_raw_fd())).unwrap()
+    }
+
+    /// `run`'s answer and the calls it made here, on this thread.
+    pub(crate) fn measure<T>(run: impl FnOnce() -> T) -> (T, Calls) {
+        struct Off;
+        impl Drop for Off {
+            fn drop(&mut self) {
+                ACTIVE.with(|active| *active.borrow_mut() = None);
+            }
+        }
+        ACTIVE.with(|active| {
+            let mut active = active.borrow_mut();
+            assert!(active.is_none(), "one measure at a time");
+            *active = Some(Calls::default());
+        });
+        let off = Off;
+        let out = run();
+        let calls = ACTIVE.with(|active| active.borrow_mut().take().unwrap_or_default());
+        drop(off);
+        (out, calls)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,5 +717,79 @@ mod tests {
         assert!(parent
             .open_dir_at(OsStr::new("tool"), Some(&checked), true)
             .is_err());
+    }
+
+    fn names(path: &str) -> Vec<OsString> {
+        path.split('/').map(OsString::from).collect()
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_several_names_are_looked_at_with_no_link_followed_anywhere() {
+        let temp = Temp::new("beneath");
+        std::fs::create_dir_all(temp.0.join("a/b")).unwrap();
+        std::fs::create_dir_all(temp.0.join("real")).unwrap();
+        std::fs::write(temp.0.join("a/b/f"), b"x").unwrap();
+        std::fs::write(temp.0.join("real/g"), b"y").unwrap();
+        symlink("../real", temp.0.join("a/lnk")).unwrap();
+        symlink("f", temp.0.join("a/b/flink")).unwrap();
+        let (dir, _) = Dir::open_path(&temp.0, false).unwrap();
+        // Through real folders: what `stat_at` says from the last one.
+        let (b, _) = Dir::open_path(&temp.0.join("a/b"), false).unwrap();
+        assert_eq!(
+            dir.stat_beneath(&names("a/b/f")).unwrap(),
+            b.stat_at(OsStr::new("f")).unwrap()
+        );
+        assert!(dir.stat_beneath(&names("a/b")).unwrap().is_dir());
+        // A link at the end is the link itself.
+        assert!(dir.stat_beneath(&names("a/b/flink")).unwrap().is_symlink());
+        assert!(dir.stat_beneath(&names("a/lnk")).unwrap().is_symlink());
+        // A link on the way is never followed, whatever lies beyond it.
+        for path in ["a/lnk/g", "a/lnk/missing", "a/b/flink/x"] {
+            let error = dir.stat_beneath(&names(path)).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::ELOOP), "{path}");
+        }
+        let missing = dir.stat_beneath(&names("a/missing/x")).unwrap_err();
+        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
+        let through_a_file = dir.stat_beneath(&names("a/b/f/x")).unwrap_err();
+        assert_eq!(through_a_file.raw_os_error(), Some(libc::ENOTDIR));
+        // A name `stat_at` would refuse is refused before any lookup.
+        for bad in [
+            names("a/.."),
+            names("a/."),
+            vec![OsString::from("a/b")],
+            names(""),
+        ] {
+            let error = dir.stat_beneath(&bad).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{bad:?}");
+        }
+        assert_eq!(
+            dir.stat_beneath(&[]).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn test_calls_are_counted_with_the_path_each_one_looked_at() {
+        let temp = Temp::new("calls");
+        std::fs::create_dir_all(temp.0.join("a")).unwrap();
+        std::fs::write(temp.0.join("a/f"), b"x").unwrap();
+        let (dir, _) = Dir::open_path(&temp.0, false).unwrap();
+        let (_, calls) = calls::measure(|| {
+            let (a, _) = dir.open_dir_at(OsStr::new("a"), None, false).unwrap();
+            a.stat_at(OsStr::new("f")).unwrap();
+        });
+        assert_eq!(calls.open_dir_at, 1);
+        assert_eq!(calls.stat, 1, "the fstat open_dir_at makes");
+        assert_eq!(calls.stat_at, 1);
+        assert_eq!(calls.total(), 3);
+        let paths: Vec<&Path> = calls.paths.iter().map(|(_, p)| p.as_path()).collect();
+        let a = temp.0.join("a");
+        let f = temp.0.join("a/f");
+        assert_eq!(paths, vec![a.as_path(), a.as_path(), f.as_path()]);
+        // Nothing is kept once the test stops asking.
+        let (_, none) = calls::measure(|| ());
+        assert_eq!(none.total(), 0);
+        dir.stat_at(OsStr::new("a")).unwrap();
     }
 }
