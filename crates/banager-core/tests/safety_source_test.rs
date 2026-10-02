@@ -32,7 +32,7 @@ fn root() -> PathBuf {
 
 /// Files compiled only for tests (each declared under `#[cfg(test)]` or
 /// the `test-support` feature in its parent; checked below).
-const TEST_ONLY: [(&str, &str, &str); 5] = [
+const TEST_ONLY: [(&str, &str, &str); 6] = [
     (
         "crates/banager-core/src/adapters/robustness.rs",
         "crates/banager-core/src/adapters/mod.rs",
@@ -57,6 +57,11 @@ const TEST_ONLY: [(&str, &str, &str); 5] = [
         "crates/banager-core/src/commands/round_tests.rs",
         "crates/banager-core/src/commands.rs",
         "mod round_tests;",
+    ),
+    (
+        "crates/banager-core/src/adapters/lookup_cases.rs",
+        "crates/banager-core/src/adapters/mod.rs",
+        "pub(crate) mod lookup_cases;",
     ),
 ];
 

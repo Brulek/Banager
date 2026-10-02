@@ -42,8 +42,9 @@ for (let i = 0; i < argv.length; i += 1) {
   args[argv[i].slice(2)] = next === undefined || next.startsWith("--") ? "1" : next;
 }
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// Outside the 9400-9799 the screenshot helper picks at random
-// (.superpowers/polish3/tools/cdp.mjs, kept beside the repository, not in it).
+// Outside the 9400-9799 the screenshot helper picks at random: cdp.mjs, in
+// the main checkout's git-ignored .superpowers/polish3/tools/ (absent from
+// other worktrees and from a fresh clone).
 const PORT = Number(args.port ?? 9861);
 const DEVTOOLS = `http://127.0.0.1:${PORT}`;
 const BASES = (args.bases ?? "polish3=http://localhost:1460/").split(",").map((s) => {

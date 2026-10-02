@@ -149,18 +149,24 @@ describe("countsAsTool", () => {
 });
 
 describe("the per-source tables", () => {
-  it("are the ones Rust's needed_by has, as the shared file says", () => {
+  it("hold the window's mirrors to Rust's needed_by tables, and its own manages-only list to the shared file", () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
     const tables: {
       hosted: string[];
       comes_with_program: Record<string, string[]>;
       interpreter: Record<string, string>;
       manages_only: string[];
+      manages_only_leaves_out: Record<string, string>;
       batch_hosted_leaves_out: Record<string, string>;
     } = JSON.parse(readFileSync(path.join(root, "crates/banager-core/src/needed_by_tables.json"), "utf-8"));
     expect(COMES_WITH_PROGRAM).toEqual(tables.comes_with_program);
     expect(RUNS_ON).toEqual(tables.interpreter);
+    // No Rust table behind this one: Rust holds the file's list to its
+    // tables for consistency, and to every hosted source in or out.
     expect([...MANAGES_ONLY].sort()).toEqual([...tables.manages_only].sort());
+    expect(tables.hosted.filter((id) => !(id in tables.manages_only_leaves_out)).sort()).toEqual(
+      [...MANAGES_ONLY].sort(),
+    );
     expect([...HOSTED_SOURCES].sort()).toEqual(
       tables.hosted.filter((id) => !(id in tables.batch_hosted_leaves_out)).sort(),
     );

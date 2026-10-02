@@ -497,13 +497,17 @@ impl Look {
 mod tests {
     use super::*;
     use crate::model::{InstanceStatus, Scope};
+    use std::os::unix::fs::{symlink, PermissionsExt};
 
     #[test]
     fn test_the_per_source_tables_are_the_ones_the_window_mirrors() {
         // `needed_by_tables.json` is read here and by
         // src/lib/neededBy.test.ts, which holds `COMES_WITH_PROGRAM`,
         // `MANAGES_ONLY` (src/lib/neededBy.ts), `HOSTED_SOURCES` and
-        // `RUNS_ON` (src/lib/batchUninstall.ts) to it.
+        // `RUNS_ON` (src/lib/batchUninstall.ts) to it. `manages_only` is
+        // the window's own list, with no table here: it is held to these
+        // tables for consistency, and each hosted source outside it says
+        // why (`manages_only_leaves_out`).
         #[derive(serde::Deserialize)]
         struct Tables {
             hosted: Vec<String>,
@@ -511,6 +515,7 @@ mod tests {
             interpreter: std::collections::BTreeMap<String, String>,
             has_environments: Vec<String>,
             manages_only: Vec<String>,
+            manages_only_leaves_out: std::collections::BTreeMap<String, String>,
             batch_hosted_leaves_out: std::collections::BTreeMap<String, String>,
         }
         let tables: Tables =
@@ -545,11 +550,21 @@ mod tests {
         for id in &tables.has_environments {
             assert!(tables.manages_only.contains(id), "{id}");
         }
+        // Every hosted source is either in it or left out with why, never
+        // both: Ollama moved in by mistake fails here as well as in the
+        // window's test.
+        for id in HOSTED {
+            let listed = tables.manages_only.iter().any(|each| each == id);
+            let left_out = tables.manages_only_leaves_out.contains_key(id);
+            assert!(
+                listed != left_out,
+                "{id}: in manages_only or left out with why"
+            );
+        }
         for id in tables.batch_hosted_leaves_out.keys() {
             assert!(HOSTED.contains(&id.as_str()), "{id}");
         }
     }
-    use std::os::unix::fs::{symlink, PermissionsExt};
 
     /// A folder of a test's own, standing in for `/`: a Homebrew prefix at
     /// `opt/homebrew`, a home folder at `home`, an app folder at
