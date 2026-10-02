@@ -324,8 +324,10 @@ Paths are under a generic home folder, `/Users/you`.
   查看 to its 「显示」 choice), and the disk.
   `?state=notices` names the Intel Homebrew; `?state=preview` shows it while
   the first check runs; `?path=unread&tech=1` adds an unread folder in
-  Documents, by path; `?path=default` shows it with Terminal's login settings
-  unread.
+  Documents, by path -- and, as that folder might hold a link to them, the
+  tool Terminal can't find becomes one it couldn't check: 「终端都能找到检查过的工具」
+  over 「1个工具无法确认终端能否找到」; `?path=default` shows it with
+  Terminal's login settings unread.
 - The Installed page's search finds a tool by a command it puts on the Mac
   as well as by its name, the command by its start: 「rg」 lists ripgrep,
   「pip3.13」 or 「pip」 python@3.13, 「tsc」 typescript, 「psql」
@@ -365,7 +367,7 @@ value falls back to the default and logs a warning in the console.
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `banager`, `password`, `mixed` | How every operation ends. Only `succeeded` changes anything. `password`: the command stops where `sudo` wanted the Mac's password, as a cask's own step does under Banager; its log shows the command to run in Terminal. `mixed`: the 2nd, 4th, … operation of the session fails and the others succeed -- a batch uninstall with some of it to look at (the Installed page's result block, 「N个未能卸载」 on the operation bar). Whatever this says, Homebrew refuses to uninstall a formula something installed still needs, in its own words (`homebrewRefusal` in `src/dev/mockPlans.ts`), unless nothing ran (`banager`). |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
-| `path` | `read` (default), `unread`, `default` | What the last refresh made of the login shell's folders, which Check Tool Setup says: every one read; one in `~/Documents` that couldn't be; or the login shell's settings never read -- the system's four folders, and no command judged. |
+| `path` | `read` (default), `unread`, `default` | What the last refresh made of the login shell's folders, which Check Tool Setup says: every one read; one in `~/Documents` that couldn't be; or the login shell's settings never read -- the system's four folders, and no command judged. With `unread`, a command no folder read leads to has no verdict either, as `commands::judge` leaves it (the unread folder might hold its link): Check Tool Setup says how many tools it couldn't check, the copied diagnostics add 「终端里无法确认」, and the Installed page's 「终端里找不到」 lists none, saying none was found. |
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
 
 ## Uninstalling several tools at once

@@ -233,7 +233,15 @@ the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
 minutes (`PLAN_LIFETIME` in `crates/banager-core/src/session/plans.rs`),
-after which it has to be previewed again. The window can ask for the
+after which it has to be previewed again. Rust holds at most 1,024 plans
+(`MAX_ISSUED_PLANS` there), letting the oldest go past that, so Update
+all of more updates than that has lost its first plans by the time it is
+confirmed. Each of those is then planned again at its turn, through the
+same `plan_operation` and every refusal below, and started only if the
+new plan is field for field the one that was shown, and only while the
+batch is no more than ten minutes old; otherwise it is refused and
+nothing runs (`startShown` in `src/lib/heldPlans.ts`). Only an upgrade's
+command is planned again this way. The window can ask for the
 preview of an upgrade or an uninstall, never of an install: no page
 offers one, and `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses
 an install before any source is asked. Before a plan is built,
