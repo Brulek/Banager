@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
-import { OPERATIONS_REFETCH_WAIT_MS, refetchOperations } from "./operationsRefetch";
+import { listOperations } from "./api";
+import { OPERATIONS_REFETCH_EVERY_MS, OPERATIONS_REFETCH_WAIT_MS, refetchOperations } from "./operationsRefetch";
 import { queryKeys, useOperations, useSubmitOperation } from "./queries";
 import { useOperationEvents } from "./events";
 import type { OpStatus, OpSummary } from "./types";
@@ -27,29 +28,10 @@ function summary(id: number, status: OpStatus = "Queued"): OpSummary {
 
 /** The backend's list as it is now: newest first, as `list_operations` answers. */
 let listed: OpSummary[] = [];
-/** Every `list_operations` asked for, in order: what it answered, once it has. */
-let fetches: Array<{ release: () => void }> = [];
+/** Every `list_operations` asked for, in order: when, and how to let it answer if held. */
+let fetches: Array<{ at: number; release: () => void }> = [];
 /** Whether a fetch waits for `release` before it answers. */
 let holdFetches = false;
-
-function wrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children);
-  };
-}
-
-/** A query cache with the operations on screen, as the app always has them. */
-async function watching(): Promise<QueryClient> {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const { result } = renderHook(() => useOperations(), { wrapper: wrapper(queryClient) });
-  await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  return queryClient;
-}
-
-/** Long enough for any wait and fetch still to come to have shown itself. */
-async function settle() {
-  await act(() => new Promise((resolve) => setTimeout(resolve, OPERATIONS_REFETCH_WAIT_MS * 4)));
-}
 
 beforeEach(() => {
   listed = [];
@@ -61,18 +43,35 @@ beforeEach(() => {
       // What the backend lists when the call reaches it, not when it answers.
       const answer = [...listed];
       if (!holdFetches) {
-        fetches.push({ release: () => {} });
+        fetches.push({ at: Date.now(), release: () => {} });
         return Promise.resolve(answer);
       }
-      return new Promise((resolve) => fetches.push({ release: () => resolve(answer) }));
+      return new Promise((resolve) => fetches.push({ at: Date.now(), release: () => resolve(answer) }));
     }
     return Promise.resolve(undefined);
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("refetchOperations", () => {
+  /** A query cache with the operations watched, as the app always has them, and its first fetch done. */
+  async function watched(): Promise<QueryClient> {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    new QueryObserver(queryClient, { queryKey: queryKeys.operations, queryFn: listOperations }).subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]);
+    return queryClient;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  });
+
   it("fetches the operations once for every ask within a frame, and keeps the list the backend has after the last", async () => {
-    const queryClient = await watching();
+    const queryClient = await watched();
     expect(fetches).toHaveLength(1);
 
     for (let id = 1; id <= 100; id += 1) {
@@ -80,22 +79,64 @@ describe("refetchOperations", () => {
       refetchOperations(queryClient);
     }
     // Nothing yet: the asks wait a frame for one another.
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS - 1);
     expect(fetches).toHaveLength(1);
 
-    await waitFor(() => expect(fetches).toHaveLength(2));
-    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed));
-    await settle();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetches).toHaveLength(2);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 4);
     expect(fetches).toHaveLength(2);
     expect(queryClient.getQueryData<OpSummary[]>(queryKeys.operations)).toHaveLength(100);
   });
 
-  it("asks once more after a fetch in flight answers, since that answer may predate what was asked about", async () => {
-    const queryClient = await watching();
+  it("fetches a status change on its own within a frame, however many came before", async () => {
+    const queryClient = await watched();
+
+    for (const status of ["Queued", "Running", "Verifying", "Done"] as const) {
+      listed = [summary(1, status)];
+      refetchOperations(queryClient);
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+      expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+      // The next one comes later than a fetch's turn.
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS);
+    }
+    expect(fetches).toHaveLength(5);
+  });
+
+  it("fetches operations started one after another a few times a second as they go, and once more after the last", async () => {
+    const queryClient = await watched();
+
+    // An ask every 10 ms for two seconds: two hundred operations started.
+    const shown: number[] = [];
+    for (let id = 1; id <= 200; id += 1) {
+      listed = [summary(id), ...listed];
+      refetchOperations(queryClient);
+      await vi.advanceTimersByTimeAsync(10);
+      shown.push(queryClient.getQueryData<OpSummary[]>(queryKeys.operations)?.length ?? 0);
+    }
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS);
+
+    const during = fetches.slice(1);
+    // Never two fetches closer than a turn; one every turn while the asks go on.
+    for (let i = 1; i < during.length; i += 1) {
+      expect(during[i].at - during[i - 1].at).toBeGreaterThanOrEqual(OPERATIONS_REFETCH_EVERY_MS);
+    }
+    expect(during.length).toBeGreaterThanOrEqual(Math.floor(2000 / OPERATIONS_REFETCH_EVERY_MS));
+    expect(during.length).toBeLessThanOrEqual(Math.ceil(2000 / OPERATIONS_REFETCH_EVERY_MS) + 1);
+    // What was shown kept up as they went, not only at the end.
+    expect(shown[Math.floor(shown.length / 2)]).toBeGreaterThan(50);
+    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
+  });
+
+  it("asks once more after a fetch on its way answers, since that answer may predate what was asked about", async () => {
+    const queryClient = await watched();
     holdFetches = true;
 
     listed = [summary(1)];
     refetchOperations(queryClient);
-    await waitFor(() => expect(fetches).toHaveLength(2));
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(2);
 
     // Operation 2 starts, and 3, while the list asked for above is on its
     // way without them.
@@ -103,46 +144,46 @@ describe("refetchOperations", () => {
     refetchOperations(queryClient);
     listed = [summary(3), ...listed];
     refetchOperations(queryClient);
-    await settle();
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 4);
     expect(fetches).toHaveLength(2);
 
-    await act(async () => fetches[1].release());
+    fetches[1].release();
+    await vi.advanceTimersByTimeAsync(0);
     expect(queryClient.getQueryData(queryKeys.operations)).toEqual([summary(1)]);
     // One more fetch for both, after the answer.
-    await waitFor(() => expect(fetches).toHaveLength(3));
-    await act(async () => fetches[2].release());
-    await settle();
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(3);
+    fetches[2].release();
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 4);
     expect(fetches).toHaveLength(3);
     expect(queryClient.getQueryData(queryKeys.operations)).toEqual([summary(3), summary(2), summary(1)]);
   });
 
-  it("fetches again for an ask made after the last fetch answered: no ask is lost", async () => {
-    const queryClient = await watching();
-
-    for (const status of ["Queued", "Running", "Verifying", "Done"] as const) {
-      listed = [summary(1, status)];
-      refetchOperations(queryClient);
-      await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed));
-    }
-    expect(fetches).toHaveLength(5);
-  });
-
-  it("keeps one wait for each query cache", async () => {
-    const one = await watching();
-    const two = await watching();
+  it("keeps each query cache's asks apart", async () => {
+    const one = await watched();
+    const two = await watched();
     expect(fetches).toHaveLength(2);
 
     listed = [summary(1)];
     refetchOperations(one);
     refetchOperations(two);
-    await waitFor(() => expect(fetches).toHaveLength(4));
+    await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+    expect(fetches).toHaveLength(4);
     expect(one.getQueryData(queryKeys.operations)).toEqual(listed);
     expect(two.getQueryData(queryKeys.operations)).toEqual(listed);
   });
+});
 
-  it("starting a burst of updates, each answered and announced, fetches a few lists, not two per update, and ends on the backend's", async () => {
-    // Update all, as `confirmAndSubmit` runs it: one submit after the
-    // other, each awaited, the backend announcing each as Queued.
+describe("starting many operations, as Update all does", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: React.ReactNode }) {
+      return React.createElement(QueryClientProvider, { client: queryClient }, children);
+    };
+  }
+
+  it("fetches a few lists, not two per update, and ends on the backend's", async () => {
+    // As `confirmAndSubmit` runs it: one submit after the other, each
+    // awaited, the backend announcing each as Queued.
     let channel = null as InstanceType<typeof Channel> | null;
     const answer = mockInvoke.getMockImplementation()!;
     let nextId = 1;
@@ -175,18 +216,21 @@ describe("refetchOperations", () => {
     const before = fetches.length;
 
     const N = 200;
+    const started = Date.now();
     await act(async () => {
       for (let i = 0; i < N; i += 1) {
         await result.current.submit.mutateAsync(`plan-${i}`);
       }
     });
-    await settle();
+    const took = Date.now() - started;
+    await waitFor(() => expect(result.current.operations).toEqual(listed), {
+      timeout: OPERATIONS_REFETCH_EVERY_MS * 4,
+    });
 
     // Two asks per update -- the submit's answer and its Queued -- were
-    // two fetches each, 400 here.
-    expect(fetches.length - before).toBeLessThanOrEqual(3);
+    // two fetches each: 400 here.
     expect(listed).toHaveLength(N);
-    expect(queryClient.getQueryData(queryKeys.operations)).toEqual(listed);
-    await waitFor(() => expect(result.current.operations).toEqual(listed));
+    expect(fetches.length - before).toBeLessThanOrEqual(2 + Math.ceil(took / OPERATIONS_REFETCH_EVERY_MS));
+    expect(fetches.length - before).toBeLessThan(N / 10);
   });
 });
