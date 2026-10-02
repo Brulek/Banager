@@ -690,6 +690,11 @@ function withNotices(world: World): void {
       status: { unavailable: "NotResponding", notes: [] },
     }),
   );
+  // uv, which does not answer either, did 47 minutes ago, earlier this
+  // session: its notice says when, 「显示的是它今天08:25响应时的结果」
+  // (`ManagerInstance.answered_at`). The Intel Homebrew never has, and says
+  // no time.
+  findInstance(world, IDS.uv).answered_at = Math.floor(Date.now() / 1000) - 47 * 60;
 }
 
 /** What each lookup said when nothing could be reached (`?state=offline`). */

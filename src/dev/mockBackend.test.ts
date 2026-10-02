@@ -314,6 +314,19 @@ describe("the browser preview's mock backend", () => {
     expect(snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/usr/local")).toEqual([]);
   });
 
+  it("says when uv last answered with ?state=notices, and no time for the Intel Homebrew it never heard (R12)", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const snapshot = await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
+    const answeredAt = (id: string) => snapshot.instances.find((i) => i.id === id)?.answered_at;
+    // Earlier this session, 47 minutes before the mock started.
+    expect(before - answeredAt("uv")!).toBeGreaterThanOrEqual(47 * 60);
+    expect(before - answeredAt("uv")!).toBeLessThan(48 * 60);
+    expect(answeredAt("brew:/usr/local")).toBeNull();
+    // Without ?state=notices, no source says a time.
+    const plain = await answer<Snapshot>(backendFor({}).backend.invoke("refresh"));
+    expect(plain.instances.every((i) => i.answered_at === null)).toBe(true);
+  });
+
   it("has an Ollama at an https address and a Python with no pip with ?state=refused, neither listing anything", async () => {
     const { backend } = backendFor({ state: "refused" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
