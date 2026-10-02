@@ -140,6 +140,14 @@ CI 时再升，升了没法在本地验证）；~~8pt 网格（约 51 处，需�
 照 spec §6 的形状做了，原话只在「显示技术细节」打开时出现，关着时认得出原因就说原因、否则只说没做成什么
 （`planErrorMessage`，`src/lib/sources.ts:1274-1293`；设置保存、扫描、载入失败几处同样分开）。仍开着两项：每实例
 `refreshed_at`（`ManagerInstance` 没有这个字段，`crates/banager-core/src/model.rs:202-225`）与全新 Mac 的安装引导（阶段 5 提案待拍板）。
+—— 每实例那项**已于 2026-10-02 做完**（分支 `r5/k4-last-answered`，backlog-triage R12；草稿出自 Codex，改写后合入）：字段叫
+`ManagerInstance.answered_at`（`crates/banager-core/src/model.rs:222`，不叫 `refreshed_at`——`Snapshot.refreshed_at` 的意思是
+「这次刷新跑过」，这个是「这个来源回答过」），只在内存里，不写文件。`refresh` 在扇出前按 ID 从上一轮接续
+（`session/refresh.rs:407`），这一轮清单和更新检查**都**回答了才盖新章，章是开始问它的时间（`:521`、`:707`）；失败、
+`IndexUpdating`、崩溃、没响应、被操作占着、`detect` 崩溃一律沿用，找不到为空，首轮为空。`same_content` 改投影比较
+（`model.rs:247`、`session/mod.rs:174`），只差时间的一轮不升代。只在「没有响应」的提示里说：
+「显示的是它今天09:12响应时的结果」（`src/lib/sources.ts:380`、`:464`），空页面与「工具环境」那一行同一说法
+（`src/lib/toolSetupCheck.ts:191`），概览的提示行也是这一句；没运行、root、https、没有pip 与软件清单提示不带时间。
 
 **二～四、已于 2026-09-22 全部清掉**（`829ae63`..`7940893`，300 个 Rust 测试 / 193 个前端测试全绿）
 

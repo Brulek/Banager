@@ -12,8 +12,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1516 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2300
+> **Status: pre-release.** The core and the UI work and are covered by 1522 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2314
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -324,7 +324,9 @@ Three kinds of text are shown as-is:
   header says only "Couldn't check"). Short of that, Banager itself never fails a refresh as a whole, but not
   every source with trouble gets a notice of its own. A source that has gone unavailable to Banager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
-  notice. A source that Banager could still reach, but whose software list or update check failed,
+  notice. One that isn't responding also says when it last answered, if Banager has noted that since
+  it opened ("…shown as they were when it last responded at 9:12 AM today"), and gives no time otherwise.
+  A source that Banager could still reach, but whose software list or update check failed,
   gets no notice of its own: the "Some checks didn't finish" banner names it, and says it didn't
   finish checking this time.
 - **A number of technical details that are still Banager's own**, which appear in English inside an
@@ -411,8 +413,8 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1516 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2300 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1522 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2314 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -436,7 +438,8 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   Banager 的其余部分——这时它自己的文字会原样显示在“重新检查”按钮旁边（有了检查结果之后，页头只说
   “无法完成检查”）。除此之外，Banager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Banager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
-  运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
+  运行而被拒绝），会用你的语言、通过它自己的提示告诉你；没有响应的来源，如果 Banager 打开后记下了它上次响应的
+  时间，提示还会说是什么时候（「显示的是它今天09:12响应时的结果」），否则不说时间；一个来源如果本身能联系上，只是软件列表或更新
   检查失败了，就没有自己的提示——只会由“部分检查未完成”横幅点名，说它这次没检查完。
 - **还有几处技术细节仍属于 Banager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Banager 自己给出的
