@@ -746,7 +746,7 @@ describe("UpdatesPage", () => {
     );
     await within(dialog).findByText(
       noteLine(
-        "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+        "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
       ),
     );
   });

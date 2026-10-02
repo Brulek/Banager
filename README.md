@@ -209,11 +209,11 @@ This app runs package managers on your behalf, so the boundary matters more than
   with it, and stray old downloads, and, whenever
   its periodic clean-up is due, those of all Homebrew software — and, when the file turns its
   autoremove back on too, that periodic clean-up also uninstalls the packages that were installed
-  only as dependencies and that nothing needs any more.
+  only as dependencies and that nothing needs anymore.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language. Banager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
-  needs any more; when a `brew.env` file turns autoremove back on, the preview says Homebrew will.
+  needs anymore; when a `brew.env` file turns autoremove back on, the preview says Homebrew will.
 - **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
   its removal as a list of paths. Banager moves those paths, plus its installer's download cache,
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them

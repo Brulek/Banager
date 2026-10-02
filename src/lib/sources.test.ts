@@ -593,7 +593,7 @@ describe("sourceNoticesFor", () => {
     // Overview and the Updates page, where its one button is Show, which
     // opens that page on the tool.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "{{command}} can't run any more: reinstall {{source}}, or put its files back from the Trash if they're there and check again. If you no longer need {{source}}, uninstall it in Installed.",
+      "The {{command}} command can't run anymore, so reinstall {{source}} or put its files back from the Trash if they're there, then check again. If you no longer need {{source}}, uninstall it from the Installed page.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
       "“{{command}}”已无法运行，请重新安装{{source}}；如果程序文件在废纸篓中，也可以拖回原处后重新检查。不再需要时，可在“已安装”中卸载{{source}}。",

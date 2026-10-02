@@ -461,11 +461,11 @@
     "leavesShellConfigLineDetail": "Delete that line to fix it.",
     "leavesShellConfigLineMaybe": "{{path}} has a line that mentions Cargo, which rustup won't remove.",
     "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
-    "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+    "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
     "homebrewAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "homebrewPeriodicCleanup": "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
     "homebrewPeriodicCleanupDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.",
-    "homebrewCleanupAutoremoves": "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+    "homebrewCleanupAutoremoves": "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
     "homebrewCleanupAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "uninstallScope": {
       "HomebrewFormulaOnly": "Removes only the Homebrew version of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
@@ -657,7 +657,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{command}} can't run any more: reinstall {{source}}, or put its files back from the Trash if they're there and check again. If you no longer need {{source}}, uninstall it in Installed."
+      "description": "The {{command}} command can't run anymore, so reinstall {{source}} or put its files back from the Trash if they're there, then check again. If you no longer need {{source}}, uninstall it from the Installed page."
     },
     "checksUnfinished": {
       "title": "Some checks didn't finish",

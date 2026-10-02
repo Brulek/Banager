@@ -1359,7 +1359,7 @@ describe("UninstallDialog", () => {
 
     await screen.findByRole("region", { name: "Notes" });
     const line =
-      "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.";
+      "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.";
     expect(linesOf("Notes")).toEqual([line]);
     const why =
       "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.";
