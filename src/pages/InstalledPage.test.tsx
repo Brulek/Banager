@@ -1641,7 +1641,7 @@ describe("InstalledPage", () => {
       [false, []],
       [true, ["Up to date"]],
     ] as const)(
-      "with Show apps that update themselves %s, says it over a self-updating or always-latest cask only when Homebrew checked it",
+      "with Show Homebrew apps that have their own updater %s, says it over a self-updating or always-latest cask only when Homebrew checked it",
       async (includeSelfUpdating, leftOut) => {
         const cask = (name: string, over: Partial<InstalledArtifact> = {}) =>
           formula(name, { key: { instance_id: brew.id, kind: "Cask", name }, ...over });
@@ -3297,6 +3297,29 @@ describe("InstalledPage", () => {
         await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
         fireEvent.change(field, { target: { value: "" } });
       });
+    });
+
+    it("keeps finding by either language's line when the language changes during a search", async () => {
+      renderInstalled({ toolDescriptions: { en: english(), "zh-CN": chinese() } });
+      await within(await findRow("prettier")).findByText(PRETTIER);
+
+      await inChinese(async () => {
+        const field = screen.getByRole("searchbox", { name: "搜索已安装的工具" });
+        fireEvent.change(field, { target: { value: "格式化" } });
+        await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+        // Left as it is when the window turns English below.
+      });
+
+      // In English, the field still says 「格式化」: prettier's Chinese line, now the other language's, finds it.
+      const search = screen.getByRole("searchbox", { name: "Search installed tools" });
+      expect(search).toHaveValue("格式化");
+      await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+      // And the English lines, now the row's own.
+      fireEvent.change(search, { target: { value: "formatter" } });
+      await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+      fireEvent.change(search, { target: { value: "JSON" } });
+      await waitFor(() => expect(rowNames()).toEqual(["jq"]));
+      fireEvent.change(search, { target: { value: "" } });
     });
 
     it("shows a package's line in English alone in its details: its source said nothing", async () => {

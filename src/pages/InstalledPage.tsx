@@ -1224,8 +1224,9 @@ export function InstalledPage() {
    * failed, a Homebrew still updating its list or one that could not,
    * leave last round's rows and updates, which no one checked this time.
    * Such a row says nothing about updates; its source's notice says why.
-   * Nor on a cask Homebrew's check left out because Settings' "Show apps
-   * that update themselves" is off (`leftOutOfUpdateCheck`).
+   * Nor on a cask Homebrew's check left out because Settings' "Show
+   * Homebrew apps that have their own updater" is off
+   * (`leftOutOfUpdateCheck`).
    */
   const chipsOf = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): RowChip[] => {
     const chips: RowChip[] = [];
