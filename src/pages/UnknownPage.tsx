@@ -12,6 +12,7 @@ import { SpinnerIcon, TerminalIcon } from "../components/icons";
 import { SHOWN_FOR_MS, copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { revealFailureKey } from "../lib/revealFailure";
 import { elapsedSince, formatBytes } from "../lib/format";
+import { mediumDateText } from "../lib/shortDate";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
@@ -65,13 +66,6 @@ function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** An absolute date in the user's language: when the file last changed, which "3 days ago" would blur. */
-function formatDate(seconds: number, language: string): string {
-  return new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(
-    new Date(seconds * 1000),
-  );
-}
-
 /**
  * The size and the date, two columns of one line each, 72 and 104 wide
  * and 16 apart, in the place of a tool's version: what a program has in
@@ -93,7 +87,7 @@ function SizeAndDate({ entry, language, status }: { entry: UnknownEntry; languag
     );
   }
   const size = entry.size_bytes === null ? null : formatBytes(entry.size_bytes);
-  const date = entry.modified_at === null ? null : formatDate(entry.modified_at, language);
+  const date = entry.modified_at === null ? null : mediumDateText(new Date(entry.modified_at * 1000), language);
   return (
     <span className="flex">
       <span data-size="" className="w-18 truncate">

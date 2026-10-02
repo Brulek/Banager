@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { shortDateText } from "../lib/shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 
 /**
  * The line under Settings' 「检查更新」 popup, while it is set to 「每天」 or
@@ -50,19 +50,12 @@ export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, langu
   // a minute's precision with 左右. Within half an hour, 「很快」.
   if (at * 1000 - nowMs < HALF_HOUR_MS) return t("nextAutoCheck.soon");
   const due = new Date(Math.round((at * 1000) / HALF_HOUR_MS) * HALF_HOUR_MS);
-  const time = new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(due);
+  const time = shortTimeText(due, language);
   const days = calendarDaysBetween(new Date(nowMs), due);
   if (days === 0) return t("nextAutoCheck.today", { time });
   if (days === 1) return t("nextAutoCheck.tomorrow", { time });
   const date = shortDateText(due, language);
   return t("nextAutoCheck.date", { date, time });
-}
-
-/** How many calendar days, in the Mac's time zone, `to` is after `from`. */
-function calendarDaysBetween(from: Date, to: Date): number {
-  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
 }
 
 /** The time now, moved on once a minute, so 「今天」 turns to 「很快」 on time. */

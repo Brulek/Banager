@@ -1,16 +1,9 @@
 import type { Translate } from "./diagnostics";
-import { shortDateText } from "./shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText } from "./shortDate";
 import type { SourceNoticeSpec } from "./sources";
 
 /** How far ahead of a caller's clock a stamp may be and still count as now. */
 const MINUTE_MS = 60_000;
-
-/** How many calendar days, in the Mac's time zone, `later` is after `earlier`. */
-function calendarDaysBetween(earlier: Date, later: Date): number {
-  const start = new Date(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
-  const end = new Date(later.getFullYear(), later.getMonth(), later.getDate());
-  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
-}
 
 /**
  * When a source last answered (`ManagerInstance.answered_at`, Unix
@@ -29,7 +22,7 @@ function calendarDaysBetween(earlier: Date, later: Date): number {
 export function answeredWhen(t: Translate, at: number, nowMs: number, language: string): string {
   const atMs = at * 1000;
   const then = new Date(atMs);
-  const time = new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(then);
+  const time = shortTimeText(then, language);
   const date = () => t("sourceNotice.answered.date", { date: shortDateText(then, language), time });
   if (atMs - nowMs > MINUTE_MS) return date();
   const days = calendarDaysBetween(then, new Date(Math.max(atMs, nowMs)));

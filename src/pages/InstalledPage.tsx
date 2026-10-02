@@ -86,6 +86,7 @@ import { sizeFact } from "../components/SizeFact";
 import { compareSizes, sizeCellOf, sizeOrderOf } from "../lib/sizes";
 import { cachedRankedComparator } from "../lib/sortRank";
 import { compareByInstalledAt, installedDateCellOf } from "../lib/installedDates";
+import { mediumDateText } from "../lib/shortDate";
 import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
 import {
@@ -280,11 +281,6 @@ function FoldLine({
       {source !== null ? <span className="ml-1.5 shrink-0 text-small text-muted">{source}</span> : null}
     </button>
   );
-}
-
-/** An absolute date in the user's language: the day a tool was installed, which "3 days ago" would blur. */
-function formatDate(seconds: number, language: string): string {
-  return new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(seconds * 1000));
 }
 
 /**
@@ -1616,7 +1612,7 @@ export function InstalledPage() {
     if (artifact.installed_at !== null) {
       facts.push({
         term: t("installed.installedOn"),
-        value: formatDate(artifact.installed_at, i18n.language),
+        value: mediumDateText(new Date(artifact.installed_at * 1000), i18n.language),
         selectable: true,
       });
     }

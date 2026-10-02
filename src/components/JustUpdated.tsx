@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
 import { outcomeSentence, outcomeTone } from "../lib/operations";
-import { shortDateText } from "../lib/shortDate";
+import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
@@ -154,14 +154,8 @@ export function finishedText(
   language: string,
 ): { text: string; title: string; today: boolean } {
   const then = new Date(finishedAt);
-  const today = new Date(now);
-  const sameDay =
-    then.getFullYear() === today.getFullYear() &&
-    then.getMonth() === today.getMonth() &&
-    then.getDate() === today.getDate();
-  const text = sameDay
-    ? new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(then)
-    : shortDateText(then, language);
+  const sameDay = calendarDaysBetween(then, new Date(now)) === 0;
+  const text = sameDay ? shortTimeText(then, language) : shortDateText(then, language);
   const title = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(then);
   return { text, title, today: sameDay };
 }
