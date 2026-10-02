@@ -21,10 +21,12 @@
  * Their keys are the ones the logos are listed under (`toolIconKey`,
  * src/lib/toolIcons.ts): `brew:`, `cask:`, `npm:`, `pypi:` and `cargo:`.
  *
- * A table is read only once the window is in its language, and then from
- * a file of its own: a dynamic `import`, which Vite builds into a chunk
- * apart from the app's script, so a window never in Chinese never loads
- * the Chinese one, nor a window never in English the English one. Until
+ * A table is read only once the window is in its language, or once the
+ * Installed page is searched in the other one (`useOtherLanguageDescription`),
+ * and then from a file of its own: a dynamic `import`, which Vite builds
+ * into a chunk apart from the app's script, so a window never in Chinese
+ * and never searched never loads the Chinese one, nor one never in English
+ * and never searched the English one. Until
  * it has arrived, a row says what it would without it: its source's
  * words, or what its source says it is (`toolDescription`,
  * src/lib/sources.ts).
@@ -125,14 +127,35 @@ export type TranslatedDescription = (key: ArtifactKey, adapterId: string) => str
  * and gets `autospace`'s narrow gaps where the web view cannot draw them.
  */
 export function useTranslatedDescription(): TranslatedDescription {
+  return useDescriptionIn(useTranslation().i18n.resolvedLanguage, true);
+}
+
+/** The language a window in `language` is not in, or `null` for none: the one whose lines a search looks through too. */
+export function otherLanguage(language: string | undefined): DescriptionLanguage | null {
+  return language === "en" ? "zh-CN" : language === "zh-CN" ? "en" : null;
+}
+
+/**
+ * A tool's line in the language the window is not in (`otherLanguage`),
+ * as `useTranslatedDescription` gives the window's: what the Installed
+ * page's search looks through too, so that "video" finds ffmpeg in a
+ * window in Chinese. Its table is read only once `load` is true -- while
+ * there is a search -- and not before: a window never searched in never
+ * reads the other language's table.
+ */
+export function useOtherLanguageDescription(load: boolean): TranslatedDescription {
+  return useDescriptionIn(otherLanguage(useTranslation().i18n.resolvedLanguage) ?? undefined, load);
+}
+
+/** `language`'s lines, its table read once `load` is true. */
+function useDescriptionIn(language: string | undefined, load: boolean): TranslatedDescription {
   const tables = useContext(DescriptionTablesContext);
   const { toolIconKey } = useToolIcons();
-  const language = useTranslation().i18n.resolvedLanguage;
   const table = language === "en" || language === "zh-CN" ? tables[language] : NO_TABLE;
   const lines = useSyncExternalStore(table.subscribe, table.lines);
   useEffect(() => {
-    table.load();
-  }, [table]);
+    if (load) table.load();
+  }, [table, load]);
   return useCallback(
     (key: ArtifactKey, adapterId: string): string | null => {
       if (lines === null) return null;
