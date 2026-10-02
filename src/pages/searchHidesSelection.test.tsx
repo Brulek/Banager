@@ -185,7 +185,7 @@ describe("a search that hides the selected tool", () => {
 
   it("closes the details of a selected component a search hides, as a tool's", async () => {
     // A component (Homebrew's libidn2, reason Dependency) sits in the
-    // source's "N more components" fold; unfolded and selected, a search
+    // source's "N more packages" fold; unfolded and selected, a search
     // that hides it closes its details like any tool's.
     const libidn2: InstalledArtifact = {
       ...artifact({ instance_id: BREW, kind: "Formula", name: "libidn2" }),
@@ -199,7 +199,7 @@ describe("a search that hides the selected tool", () => {
       return { ...snapshot, artifacts: [...snapshot.artifacts, libidn2] };
     });
     renderInstalled();
-    fireEvent.click(await screen.findByRole("button", { name: /^1 more component/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^1 more package/ }));
     await openDetails("libidn2");
     type("jq");
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull(), {

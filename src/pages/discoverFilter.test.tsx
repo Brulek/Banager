@@ -216,7 +216,7 @@ describe("the Installed page's discovery choices", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     // Over 所有工具 it stays behind its source's fold, as every component does.
     expect(rowNames()).toEqual(["wget"]);
-    expect(screen.getByText("1 more component came with other software")).toBeInTheDocument();
+    expect(screen.getByText("1 more package was installed for other software to use")).toBeInTheDocument();
     expect(screen.getByText("1 tool was disabled or deprecated by Homebrew")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show Tool" }));
     await waitFor(() => expect(rowNames()).toEqual(["libfoo"]));

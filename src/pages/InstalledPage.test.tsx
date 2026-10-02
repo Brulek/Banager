@@ -406,7 +406,7 @@ describe("InstalledPage", () => {
 
     await findByText("jq");
     expect(queryByText("glib")).not.toBeInTheDocument();
-    expect(getByRole("button", { name: /^1 more component came with other software/ })).toHaveAttribute(
+    expect(getByRole("button", { name: /^1 more package was installed for other software to use/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -416,10 +416,10 @@ describe("InstalledPage", () => {
     const { findByText, getByRole, queryByText } = renderInstalled();
 
     await findByText("jq");
-    fireEvent.click(getByRole("button", { name: /^1 more component came with other software/ }));
+    fireEvent.click(getByRole("button", { name: /^1 more package was installed for other software to use/ }));
     await findByText("glib");
     // Under its line, which stays to fold it back up.
-    const fold = getByRole("button", { name: /^Hide 1 component/ });
+    const fold = getByRole("button", { name: /^Hide 1 package/ });
     expect(fold).toHaveAttribute("aria-expanded", "true");
     expect(rowNames()).toEqual(["jq", "glib"]);
     expect(
@@ -440,7 +440,7 @@ describe("InstalledPage", () => {
     const runEnds = () =>
       ["jq", "wget", "zlib"].map((name) => rowOf(name).closest("[data-list-slot]")?.hasAttribute("data-run-end"));
     expect(runEnds()).toEqual([false, false, true]);
-    const fold = getByRole("button", { name: /^1 more component came with other software/ });
+    const fold = getByRole("button", { name: /^1 more package was installed for other software to use/ });
     expect(fold.closest("[data-list-slot]")).toHaveAttribute("data-run-end");
 
     // None over the selection: the row before's is hidden, its own by index.css.
@@ -606,7 +606,7 @@ describe("InstalledPage", () => {
     renderInstalled();
 
     await findRow("jq");
-    const fold = screen.getByRole("button", { name: /^1 more component came with other software/ });
+    const fold = screen.getByRole("button", { name: /^1 more package was installed for other software to use/ });
     expect(fold.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-5", "text-body", "text-muted"]));
     expect(fold.className).not.toMatch(/rounded|bg-|border/);
     // On the rows' grid, as the Updates page's 「另有N个无法在这里更新」:
@@ -620,7 +620,7 @@ describe("InstalledPage", () => {
       expect.arrayContaining(["ml-2", "w-4", "flex", "justify-center", "shrink-0"]),
     );
     expect(words.className.split(" ")).toContain("ml-5");
-    expect(words.textContent).toBe("1 more component came with other software");
+    expect(words.textContent).toBe("1 more package was installed for other software to use");
     const avatar = rowOf("jq").querySelector("[aria-hidden='true']") as HTMLElement;
     expect(avatar.className).toMatch(/\bh-8 w-8\b/);
     expect(avatar.parentElement?.nextElementSibling?.className.split(" ")).toContain("ml-3");
@@ -634,7 +634,7 @@ describe("InstalledPage", () => {
 
     fireEvent.click(fold);
     await findRow("glib");
-    const open = screen.getByRole("button", { name: /^Hide 1 component/ });
+    const open = screen.getByRole("button", { name: /^Hide 1 package/ });
     expect(open.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
   });
 
@@ -710,7 +710,7 @@ describe("InstalledPage", () => {
     expect(rowUninstall.className).toBe(BUTTON.regular.grey);
     expect(rowUninstall.className).not.toMatch(/danger|accent/);
 
-    fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
     // The inspector is a pane, not a dialog: a pane's regular buttons,
     // Uninstall at the left of its foot and Update at the right.
     const inspector = await openDetails("glib");
@@ -2124,14 +2124,14 @@ describe("InstalledPage", () => {
     expect(queryByText("glib")).not.toBeInTheDocument();
     expect(queryByText("charset-normalizer")).not.toBeInTheDocument();
 
-    const pipFold = getByRole("button", { name: "1 more component came with other software pip" });
-    expect(getByRole("button", { name: "1 more component came with other software Homebrew" })).toBeInTheDocument();
+    const pipFold = getByRole("button", { name: "1 more package was installed for other software to use pip" });
+    expect(getByRole("button", { name: "1 more package was installed for other software to use Homebrew" })).toBeInTheDocument();
     fireEvent.click(pipFold);
 
     await findRow("charset-normalizer");
     expect(queryByText("glib")).not.toBeInTheDocument();
 
-    fireEvent.click(await findByRole("button", { name: "Hide 1 component pip" }));
+    fireEvent.click(await findByRole("button", { name: "Hide 1 package pip" }));
     await waitFor(() => expect(queryByText("charset-normalizer")).not.toBeInTheDocument());
   });
 
@@ -2689,7 +2689,7 @@ describe("InstalledPage", () => {
       // The line under the rows unfolds, and selects nothing: the inspector
       // stays on the last row.
       fireEvent.keyDown(rowOf("zlib"), { key: "ArrowDown" });
-      const fold = screen.getByRole("button", { name: /^1 more component came with other software/ });
+      const fold = screen.getByRole("button", { name: /^1 more package was installed for other software to use/ });
       await waitFor(() => expect(document.activeElement).toBe(fold));
       expect(screen.getByRole("complementary", { name: "zlib" })).toBeInTheDocument();
 
@@ -2812,7 +2812,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const drawer = await openDetails("glib");
       expect(within(drawer).getByText("Update available")).toBeInTheDocument();
       expect(within(drawer).getByText("New version").nextElementSibling).toHaveTextContent("2.90.0");
@@ -2867,7 +2867,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const drawer = await openDetails("glib");
       expect(await within(drawer).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(drawer).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
@@ -2888,7 +2888,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const glib = await openDetails("glib");
       fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
       // Without the backend's words: "Show technical details" is off.
@@ -2910,7 +2910,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const glib = await openDetails("glib");
       fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
       expect(await within(glib).findByText("Couldn't prepare the update: brew is busy")).toBeInTheDocument();
@@ -2953,7 +2953,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const drawer = await openDetails("glib");
       expect(within(drawer).getByText("Can't update now")).toBeInTheDocument();
       expect(within(drawer).getByText("Can't uninstall now")).toBeInTheDocument();
@@ -3005,7 +3005,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       await findRow("jq");
-      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const drawer = await openDetails("glib");
       const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
       const update = within(drawer).getByRole("button", { name: "Update" });
@@ -3376,7 +3376,7 @@ describe("InstalledPage", () => {
       };
       renderInstalled({ toolIcons });
 
-      fireEvent.click(await screen.findByRole("button", { name: /^1 more component came with other software/ }));
+      fireEvent.click(await screen.findByRole("button", { name: /^1 more package was installed for other software to use/ }));
       const glib = await findRow("glib");
       expect(glib.querySelector(glyph(HOMEBREW))).not.toBeNull();
       expect(glib.querySelector("[data-source-badge]")).toBeNull();
