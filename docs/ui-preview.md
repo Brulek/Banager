@@ -417,3 +417,47 @@ at every step. With the CPU slowed 4×, opening Installed takes 150 ms
 and a key or a filter 64–72 ms, most of it React's development checks:
 a production build of this preview (`vite build --mode mock`) does them
 in 72 ms and 24–32 ms, and scrolls with no task over 8 ms.
+
+### About 5,000 tools (`?state=huge`)
+
+The same questions on `?state=huge` (4,892 installed, 753 to update), with
+more steps, timed by `.superpowers/r5/tracks/p3-perf/bench-huge.mjs` in
+headless Chrome against a production build of the preview (`vite build
+--mode mock`, served by `vite preview`) in a 1280×800 window on an M5 Pro:
+the median of three runs, and one run with the CPU slowed 4×. Before is
+8798a5c; after, the commits of the track p3-perf-at-scale. A step set by a
+popup (the 「显示」 and 排序方式 choices) is timed from the change to the
+next frame; the others are interactions as above.
+
+| | Before | After | 4× slower CPU, before → after |
+|---|---|---|---|
+| Opening Installed from the sidebar: interaction, longest task | 64 ms, 46 ms | 48 ms, 31 ms | 160 → 144 ms, 138 → 122 ms |
+| A key of a search for "py" (the first): longest task | 17 ms | 11 ms | 42 → 29 ms |
+| 「显示」 back to every tool, to the next frame | 25 ms | 19 ms | 92 → 79 ms |
+| 排序方式 By Size, to the next frame | 29 ms | 18 ms | 100 → 60 ms |
+| By Date, By Name, to the next frame | 13, 14 ms | 11, 8 ms | 64 → 39, 48 → 31 ms |
+| Ticking 20 rows: main thread busy | 265 ms | 179 ms | 521 → 300 ms |
+| 「卸载所选」's sheet for them: longest task | 11 ms | 9 ms | 55 → 37 ms |
+| Update All's sheet for 753: longest task, ready after | 56 ms, 0.80 s | 37 ms, 0.47 s | 252 → 132 ms, 1.99 → 0.60 s |
+| Update All, starting all 753: main thread busy | 25 s | 3.3–5.9 s (median 4.1), no task over 50 ms | over 120 s (timed out) → 33 s, 24 tasks over 50 ms |
+| Scrolling either list to its end: longest frame | 17 ms | 17 ms | 33 → 17–33 ms |
+
+What took the time: Update All's sheet looked each tool up in the whole
+installed list at every drawing -- once per plan and once per update
+started, 753 × 4,892 each time -- and worded every plan's notes again at
+each; and the preview's own backend set every row's AI family once per
+plan. The Installed page compared names through `Intl.Collator` at every
+sort, search key and 「显示」 choice, built two key ids per comparison
+when sorting by size, and went through every row to see which could be
+ticked at every drawing. Now each tool is looked up by key, notes are
+worded once per plan, the name order is worked out once per check
+(`rankedComparator`, src/lib/sortRank.ts) and the tickable rows once per
+change of the list.
+
+Still there with this many tools: each page shown fetches the snapshot
+again (TanStack Query's refetch on mount, as does a 「显示」 choice that
+brings back the line over the list), and taking in about 5,000 tools --
+the reply copied, and compared with the one held -- is a task of its own
+after the page is drawn: at least 45 ms of it with the CPU slowed 4×, in
+a profile. Every interaction stays under 100 ms at full speed; with the
+CPU slowed 4×, opening Installed takes 144 ms and the Updates page 80 ms.
