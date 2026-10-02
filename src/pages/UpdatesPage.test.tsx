@@ -5308,9 +5308,9 @@ describe("UpdatesPage", () => {
   // puts at the top of the page.
   const pathNotes: [InstanceNote, string][] = [
     ["NotOnPath", "Claude Code is installed, but typing claude in Terminal doesn't run it"],
-    ["ShadowedByHomebrew", "Typing claude runs a same-named program from Homebrew first"],
-    ["ShadowedByNpm", "Typing claude runs a same-named program from npm first"],
-    ["ShadowedByOther", "Typing claude runs another program with the same name first"],
+    ["ShadowedByHomebrew", "Typing claude in Terminal runs a program with that name from Homebrew"],
+    ["ShadowedByNpm", "Typing claude in Terminal runs a program with that name from npm"],
+    ["ShadowedByOther", "Typing claude in Terminal runs another program with that name"],
   ];
 
   it.each(pathNotes)(

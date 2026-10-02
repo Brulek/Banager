@@ -815,7 +815,7 @@ describe("InstalledPage", () => {
 
     await findRow("Claude Code");
     expect(screen.getByText("uv isn't responding")).toBeInTheDocument();
-    expect(screen.queryByText("Typing claude runs a same-named program from npm first")).toBeNull();
+    expect(screen.queryByText("Typing claude in Terminal runs a program with that name from npm")).toBeNull();
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "2 more notes" }));
@@ -828,7 +828,7 @@ describe("InstalledPage", () => {
         .getAllByRole("button", { name: /^Details: / })
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual([
-      "Details: Typing claude runs a same-named program from npm first",
+      "Details: Typing claude in Terminal runs a program with that name from npm",
       "Details: uv isn't responding",
       "Details: Claude Code 2.1.290 not tested",
     ]);
@@ -3402,6 +3402,29 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     expect(chipsOf(await findRow("@anthropic-ai/claude-code"))).toEqual(["Installed twice"]);
   });
 
+  it("lists the two rows a command's notice is about when its Show is pressed, and only those", async () => {
+    // W2-9: the program npm put on the Mac under the name `claude` is found
+    // by the command its facts name, not only by its package's name: here
+    // a wrapper whose name says nothing of Claude.
+    const wrapper: InstalledArtifact = {
+      ...npmClaude,
+      display_name: "cc-wrapper",
+      key: { ...npmClaude.key, name: "cc-wrapper" },
+      facts: { ...NO_FACTS, family: null, commands: [{ name: "claude", state: "Runs" }] },
+    };
+    const shadowed = { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm" as const] } };
+    serveBoth(nativeClaude, wrapper);
+    served = { ...served, instances: [brew, npm, shadowed] };
+    renderInstalled();
+
+    await findRow("Claude Code");
+    expect(rowNames().length).toBeGreaterThan(2);
+    fireEvent.click(await screen.findByRole("button", { name: "Show" }));
+
+    expect(useUiStore.getState().query).toBe("claude");
+    await waitFor(() => expect(rowNames().sort()).toEqual(["Claude Code", "cc-wrapper"]));
+  });
+
   it("leaves out the source's own PATH notice where the group says which copy runs", async () => {
     const shadowed = { ...claudeInstance, status: { unavailable: null, notes: ["ShadowedByNpm" as const] } };
     serveBoth(nativeClaude, npmClaude);
@@ -3409,7 +3432,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     const { unmount } = renderInstalled();
     let inspector = await openDetails("Claude Code");
     expect(inspector.querySelector("[data-commands]")).toHaveTextContent("Runs the copy from npm");
-    expect(inspector).not.toHaveTextContent("Typing claude runs a same-named program from npm first");
+    expect(inspector).not.toHaveTextContent("Typing claude in Terminal runs a program with that name from npm");
     unmount();
 
     // Nothing said about `claude`: the notice is all there is, and stays.
@@ -3420,7 +3443,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
     served = { ...served, instances: [brew, npm, shadowed] };
     renderInstalled();
     inspector = await openDetails("Claude Code");
-    expect(inspector).toHaveTextContent("Typing claude runs a same-named program from npm first");
+    expect(inspector).toHaveTextContent("Typing claude in Terminal runs a program with that name from npm");
   });
 
   it("names the folder of a copy Terminal cannot find, and marks no tool with only one copy", async () => {

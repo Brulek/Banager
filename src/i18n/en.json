@@ -617,16 +617,16 @@
       "description": "It isn't in any of the places Terminal looks for commands. Open a new Terminal window and try again; if it still doesn't work, follow its installation instructions."
     },
     "shadowedByHomebrew": {
-      "title": "Typing {{command}} runs a same-named program from Homebrew first",
-      "description": "Couldn't confirm whether that one is {{source}}. Look under Homebrew on the Installed page."
+      "title": "Typing {{command}} in Terminal runs a program with that name from Homebrew",
+      "description": "Terminal finds the one from Homebrew first, not the one {{source}}'s own installer installed. Couldn't confirm whether it's another copy of {{source}}."
     },
     "shadowedByNpm": {
-      "title": "Typing {{command}} runs a same-named program from npm first",
-      "description": "Couldn't confirm whether that one is {{source}}. Look under npm on the Installed page."
+      "title": "Typing {{command}} in Terminal runs a program with that name from npm",
+      "description": "Terminal finds the one from npm first, not the one {{source}}'s own installer installed. Couldn't confirm whether it's another copy of {{source}}."
     },
     "shadowedByOther": {
-      "title": "Typing {{command}} runs another program with the same name first",
-      "description": "Couldn't identify that program. If it's in Other Programs, you can see where it is there."
+      "title": "Typing {{command}} in Terminal runs another program with that name",
+      "description": "Terminal first finds a program that couldn't be identified, not the one {{source}}'s own installer installed. If it's in Other Programs, you can see where it is there."
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",

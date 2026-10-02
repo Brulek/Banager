@@ -576,16 +576,16 @@
       "description": "终端查找命令的位置里没有它。请新开一个终端窗口再试；如果仍然不行，请按照它的安装说明操作。"
     },
     "shadowedByHomebrew": {
-      "title": "输入“{{command}}”会先运行Homebrew中的同名程序",
-      "description": "无法确认它是否就是{{source}}。可在“已安装”的Homebrew中查看。"
+      "title": "在终端输入“{{command}}”，运行的是Homebrew装的同名程序",
+      "description": "终端先找到的是Homebrew装的程序，而不是用{{source}}自带的安装程序装的那个。无法确认它是不是另一份{{source}}。"
     },
     "shadowedByNpm": {
-      "title": "输入“{{command}}”会先运行npm中的同名程序",
-      "description": "无法确认它是否就是{{source}}。可在“已安装”的npm中查看。"
+      "title": "在终端输入“{{command}}”，运行的是npm装的同名程序",
+      "description": "终端先找到的是npm装的程序，而不是用{{source}}自带的安装程序装的那个。无法确认它是不是另一份{{source}}。"
     },
     "shadowedByOther": {
-      "title": "输入“{{command}}”会先运行另一个同名程序",
-      "description": "无法识别那个程序。如果它在“其他程序”中，可以在那里看到它的位置。"
+      "title": "在终端输入“{{command}}”，运行的是另一个同名程序",
+      "description": "终端先找到的是另一个无法识别的程序，而不是用{{source}}自带的安装程序装的那个。如果它在“其他程序”中，可以在那里看到它的位置。"
     },
     "launcherOnly": {
       "title": "找不到{{source}}的程序文件",

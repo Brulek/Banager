@@ -6,6 +6,7 @@ import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import type { SourceNoticeSpec } from "../lib/sources";
 import type { Snapshot } from "../lib/types";
+import { useUiStore } from "../store/ui";
 import { CheckAgain } from "./PageHeader";
 import { SourceNotices, useNoticeFold } from "./SourceNotices";
 
@@ -51,6 +52,15 @@ const claudeUntested: SourceNoticeSpec = {
   titleKey: "installed.unverifiedVersion",
   descriptionKey: "installed.unverifiedVersionDetail",
   values: { source: "Claude Code", version: "2.1.290" },
+};
+// Typing `claude` runs npm's program first (`ShadowedByNpm`).
+const claudeShadowed: SourceNoticeSpec = {
+  id: "standalone-claude:shadowed-by-npm",
+  variant: "info",
+  titleKey: "sourceNotice.shadowedByNpm.title",
+  descriptionKey: "sourceNotice.shadowedByNpm.description",
+  values: { source: "Claude Code", command: "claude" },
+  action: { id: "searchCommand", labelKey: "sourceNotice.showTool", command: "claude" },
 };
 const npmUntested: SourceNoticeSpec = {
   ...claudeUntested,
@@ -265,6 +275,23 @@ describe("SourceNotices, folded", () => {
     mockInvoke.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Open Ollama" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+  });
+
+  it("shows the rows a command that runs another program is about: the Installed page on every source, searching for it", () => {
+    // W2-9: 「输入“claude”……」 had no button while its neighbours had
+    // Show. Its Show searches the Installed page for the command, which
+    // lists the tool and the program that runs first, by the command its
+    // facts name -- from any page, whatever the Installed page last showed.
+    useUiStore.setState({ page: "updates", installedFilter: "npm", installedShow: "twins", query: "ruff" });
+    renderWithProviders(<SourceNotices notices={[claudeShadowed]} layout="line" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+
+    const state = useUiStore.getState();
+    expect(state.page).toBe("installed");
+    expect(state.installedFilter).toBeNull();
+    expect(state.installedShow).toBe("all");
+    expect(state.query).toBe("claude");
   });
 
   it("says a failed Open Ollama under the title, its why behind a muted ⓘ, not a link", async () => {

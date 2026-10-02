@@ -44,6 +44,25 @@ export function useShowSourceTool(): (instanceId: string) => void {
   };
 }
 
+/**
+ * A notice's Show for a command that runs another program first
+ * (`searchCommand`): the Installed page on every source, its search set to
+ * the command, which lists the tool and, where it is one Banager lists,
+ * the program that runs in its place (`searchMatch`) -- the rows the
+ * notice is about. The search field shows the word, so it is plain what
+ * the list is narrowed to, and clearing it brings back every tool.
+ */
+export function useSearchCommand(): (command: string) => void {
+  const openInstalled = useUiStore((s) => s.openInstalled);
+  const setQuery = useUiStore((s) => s.setQuery);
+  return (command) => {
+    // Every source, every tool shown, and only then the search: what
+    // `openInstalled` starts from, so no old filter hides one of the two.
+    openInstalled(null);
+    setQuery(command);
+  };
+}
+
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */
 export interface NoticeFold {
   expanded: boolean;
@@ -95,8 +114,9 @@ export interface SourceNoticesProps {
  * Renders the notices `sourceNoticesFor` decided a source needs, and wires
  * each one's action to what carries it out: Open Ollama to its mutation,
  * Check again to the header's (`useCheckAgain`), off while a check runs,
- * Show to the Installed page's inspector (`useShowSourceTool`), and the
- * Installed page's own 查看 to its 「显示」 popup's choice.
+ * Show to the Installed page's inspector (`useShowSourceTool`) or, for a
+ * command another program answers to, its search (`useSearchCommand`),
+ * and the Installed page's own 查看 to its 「显示」 popup's choice.
  *
  * The split is deliberate: `sourceNoticesFor` (src/lib/sources.ts) decides
  * *what* to say from the instance alone and is pure, this decides how to
@@ -123,6 +143,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   // check runs, it would queue a second one after it.
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
+  const searchCommand = useSearchCommand();
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const setQuery = useUiStore((s) => s.setQuery);
   const linesId = useId();
@@ -167,6 +188,8 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
         return { label, onClick: () => openOllamaApp.mutate() };
       case "showTool":
         return { label, onClick: () => showTool(action.instanceId) };
+      case "searchCommand":
+        return { label, onClick: () => searchCommand(action.command) };
       case "checkAgain":
         return { label, onClick: checkAgain, disabled: checking };
       case "showList":

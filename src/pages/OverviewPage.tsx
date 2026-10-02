@@ -24,7 +24,7 @@ import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
-import { useShowSourceTool } from "../components/SourceNotices";
+import { useSearchCommand, useShowSourceTool } from "../components/SourceNotices";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { ToolSetupRow } from "../components/ToolSetupRow";
@@ -105,7 +105,8 @@ function nothingToUpdateLine(
  * the Updates and Installed pages give it (`sourceNoticesFor`, in their
  * words) -- a filled orange ⚠︎ for a warning, a muted ⓘ for news -- its
  * title, its description under it, and on the right its own button where
- * it has one: Open Ollama, Check again, Show, wired as the lists wire
+ * it has one: Open Ollama, Check again, Show (a tool, or the tools that
+ * answer to one command), wired as the lists wire
  * theirs (`SourceNotices`), Check again off while a check runs. A press of
  * Open Ollama that failed says so under the description, with its Details.
  */
@@ -115,6 +116,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const { data: settings } = useSettings();
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
+  const searchCommand = useSearchCommand();
   const openInstalled = useUiStore((s) => s.openInstalled);
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const action = notice.action;
@@ -130,6 +132,8 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
         return () => openOllamaApp.mutate();
       case "showTool":
         return () => showTool(pressed.instanceId);
+      case "searchCommand":
+        return () => searchCommand(pressed.command);
       case "checkAgain":
         return checkAgain;
       case "showList":

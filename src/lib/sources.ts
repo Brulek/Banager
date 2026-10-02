@@ -252,11 +252,22 @@ export function uninstallHoldKey(instance: ManagerInstance): string | null {
  * the id to what carries it out -- `checkAgain` to the header's Check
  * again (`useCheckAgain`), `showTool` to the Installed page with the
  * source's tool selected (`useShowSourceTool`), `showList` to the
- * Installed page's 「显示」 popup.
+ * Installed page's 「显示」 popup, `searchCommand` to the Installed page's
+ * search.
  */
 export type SourceNoticeAction =
   | { id: "openOllama" | "checkAgain"; labelKey: string }
   | { id: "showTool"; labelKey: string; instanceId: string }
+  /**
+   * A standalone tool's `ShadowedBy*` note: the Installed page on every
+   * source, searching for the command its notice names. The search finds
+   * a tool by its name or by a command it puts on the Mac (`searchMatch`,
+   * src/lib/searchMatch.ts), so it lists this tool beside the program
+   * that runs first when that one is a tool Banager lists -- npm's or
+   * Homebrew's, by the command their facts name -- the two rows the
+   * notice is about.
+   */
+  | { id: "searchCommand"; labelKey: string; command: string }
   /**
    * The Installed page's own lines over 所有工具 (`discoverNotices`,
    * src/lib/families.ts), never a source's: the list under the 「显示」
@@ -301,6 +312,16 @@ export interface SourceNoticeSpec {
 function commandNameOf(instance: ManagerInstance): string {
   const name = instance.exe_path.split("/").pop();
   return name !== undefined && name.length > 0 ? name : instance.exe_path;
+}
+
+/**
+ * A `ShadowedBy*` notice's Show: the Installed page searching for the
+ * command the notice names, which lists the rows it is about
+ * (`SourceNoticeAction`'s `searchCommand`) -- what its neighbours' Show
+ * does for one tool, done for the two that answer to one name.
+ */
+function searchCommand(instance: ManagerInstance): SourceNoticeAction {
+  return { id: "searchCommand", labelKey: "sourceNotice.showTool", command: commandNameOf(instance) };
 }
 
 /**
@@ -460,6 +481,7 @@ export function sourceNoticesFor(
         titleKey: "sourceNotice.shadowedByHomebrew.title",
         descriptionKey: "sourceNotice.shadowedByHomebrew.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
+        action: searchCommand(instance),
       });
     } else if (note === "ShadowedByNpm") {
       notices.push({
@@ -468,6 +490,7 @@ export function sourceNoticesFor(
         titleKey: "sourceNotice.shadowedByNpm.title",
         descriptionKey: "sourceNotice.shadowedByNpm.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
+        action: searchCommand(instance),
       });
     } else if (note === "ShadowedByOther") {
       notices.push({
@@ -476,6 +499,7 @@ export function sourceNoticesFor(
         titleKey: "sourceNotice.shadowedByOther.title",
         descriptionKey: "sourceNotice.shadowedByOther.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
+        action: searchCommand(instance),
       });
     } else if (note === "LauncherOnly") {
       // The half-uninstalled state: this launcher cannot run, so a

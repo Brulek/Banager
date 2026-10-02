@@ -353,6 +353,12 @@ describe("sourceNoticesFor", () => {
           titleKey: `${key}.title`,
           descriptionKey: `${key}.description`,
           values: { source: "Claude Code", command: "claude" },
+          // Another program answers to the name: Show searches the
+          // Installed page for it, which lists both (W2-9). Not found at
+          // all, there is nothing to show beside the tool.
+          ...(note === "NotOnPath"
+            ? {}
+            : { action: { id: "searchCommand", labelKey: "sourceNotice.showTool", command: "claude" } }),
         },
       ]);
     }
@@ -476,17 +482,26 @@ describe("sourceNoticesFor", () => {
     // So each title names a program with the same name, its detail says
     // Banager can't tell whether it is the tool, and none says "probably".
     expect(en.sourceNotice.shadowedByHomebrew.title).toBe(
-      "Typing {{command}} runs a same-named program from Homebrew first",
+      "Typing {{command}} in Terminal runs a program with that name from Homebrew",
     );
-    expect(zhCN.sourceNotice.shadowedByHomebrew.title).toBe("输入“{{command}}”会先运行Homebrew中的同名程序");
-    expect(zhCN.sourceNotice.shadowedByNpm.title).toBe("输入“{{command}}”会先运行npm中的同名程序");
-    expect(zhCN.sourceNotice.shadowedByOther.title).toBe("输入“{{command}}”会先运行另一个同名程序");
+    expect(zhCN.sourceNotice.shadowedByHomebrew.title).toBe("在终端输入“{{command}}”，运行的是Homebrew装的同名程序");
+    expect(zhCN.sourceNotice.shadowedByNpm.title).toBe("在终端输入“{{command}}”，运行的是npm装的同名程序");
+    expect(zhCN.sourceNotice.shadowedByOther.title).toBe("在终端输入“{{command}}”，运行的是另一个同名程序");
     for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
-      expect(en.sourceNotice[key].description).toContain("Couldn't confirm whether that one is {{source}}.");
-      expect(zhCN.sourceNotice[key].description).toContain("无法确认它是否就是{{source}}。");
+      expect(en.sourceNotice[key].description).toContain("Couldn't confirm whether it's another copy of {{source}}.");
+      expect(zhCN.sourceNotice[key].description).toContain("无法确认它是不是另一份{{source}}。");
     }
-    expect(en.sourceNotice.shadowedByOther.description).toContain("Couldn't identify that program.");
-    expect(zhCN.sourceNotice.shadowedByOther.description).toContain("无法识别那个程序。");
+    expect(en.sourceNotice.shadowedByOther.description).toContain("a program that couldn't be identified");
+    expect(zhCN.sourceNotice.shadowedByOther.description).toContain("另一个无法识别的程序");
+    // What it means for the person (W2-9): the copy the tool's own
+    // installer put there is not the one that runs -- said of that
+    // installer, the words the details' 「装了两份」 use for it
+    // (`commands.twinOtherStandalone`), never of 「这一份」.
+    for (const key of ["shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
+      expect(en.sourceNotice[key].description).toMatch(/^Terminal (finds|first finds) .*, not the one \{\{source\}\}'s own installer installed\./);
+      expect(zhCN.sourceNotice[key].description).toMatch(/^终端先找到的是.*，而不是用\{\{source\}\}自带的安装程序装的那个。/);
+      expect(zhCN.sourceNotice[key].description).not.toContain("这一份");
+    }
     // Where to look is the page by the name its row in the sidebar has.
     expect(en.sourceNotice.shadowedByOther.description).toContain(`If it's in ${en.nav.unknown},`);
     expect(zhCN.sourceNotice.shadowedByOther.description).toContain(`如果它在“${zhCN.nav.unknown}”中`);

@@ -1049,7 +1049,7 @@ describe("OverviewPage", () => {
     expect(hide).toHaveAttribute("aria-expanded", "true");
     expect(hide.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
     expect(within(lines[2]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
-    expect(within(lines[3]).getByText("Typing claude runs a same-named program from npm first")).toBeInTheDocument();
+    expect(within(lines[3]).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
     for (const line of lines.slice(2)) {
       expect(line.className).toContain("min-h-11.5");
       expect(line.querySelector("svg")?.getAttribute("class")).toContain("text-muted");
@@ -1059,6 +1059,37 @@ describe("OverviewPage", () => {
     fireEvent.click(hide);
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
     expect(within(list).getByRole("button", { name: "2 more notes" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("gives the note that another program answers to a tool's command a Show, which searches the Installed page for it", async () => {
+    // W2-9: the note said 「可在“已安装”的npm中查看」 with no button, while
+    // the warnings beside it had one. Its Show lists the rows it is about.
+    const claude = instance("standalone-claude", "standalone-claude", {
+      exe_path: "/Users/someone/.local/bin/claude",
+      prefix: "/Users/someone/.local/share/claude",
+      status: { unavailable: null, notes: ["ShadowedByNpm"] },
+    });
+    served = snapshotWith({ instances: [brew, claude] });
+    useUiStore.setState({ page: "overview" });
+    const { findByRole } = renderOverview();
+
+    // A note alone is folded into the group's one row: unfolded, it shows.
+    const list = await findByRole("list", { name: "Needs attention" });
+    fireEvent.click(within(list).getByRole("button", { name: "1 more note" }));
+    const line = within(list).getAllByRole("listitem").at(-1);
+    if (line === undefined) throw new Error("no line");
+    expect(within(line).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
+    expect(
+      within(line).getByText(
+        "Terminal finds the one from npm first, not the one Claude Code's own installer installed. Couldn't confirm whether it's another copy of Claude Code.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(within(line).getByRole("button", { name: "Show" }));
+
+    const state = useUiStore.getState();
+    expect(state.page).toBe("installed");
+    expect(state.installedFilter).toBeNull();
+    expect(state.query).toBe("claude");
   });
 
   it("makes the group that one folded row when every problem is a note, in Chinese too", async () => {
