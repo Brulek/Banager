@@ -12,6 +12,7 @@ use super::{
     CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunLine, RunnerError,
 };
 use crate::events::{LogNote, Stream};
+use crate::protected::{look, Protected};
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -644,7 +645,11 @@ impl CommandRunner for RealRunner {
         on_line: Option<LineCallback>,
         cancel: CancellationToken,
     ) -> Result<CommandOutput, RunnerError> {
-        if !spec.program.exists() {
+        // Whether it is there, looked up one step at a time and never into
+        // or through a protected place (`protected::look`): a program
+        // there is not found, as `resolve_exe` passes over a `PATH` folder
+        // there, and never run -- running it would read it there.
+        if look::target(&spec.program, &Protected::of_this_process()).is_err() {
             return Err(RunnerError::NotFound(spec.program.clone()));
         }
 
@@ -965,6 +970,57 @@ mod tests {
                 (Stream::Stdout, "b".to_string())
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_a_program_in_a_protected_place_is_not_found_and_never_run() {
+        // A program in `~/Documents`, or reached through a link into it:
+        // not found, and never started -- it would leave `ran` behind. The
+        // same program where nothing is protected runs.
+        use std::os::unix::fs::PermissionsExt;
+        let raw = std::env::temp_dir().join(format!(
+            "banager-runner-protected-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(raw.join("Documents")).unwrap();
+        let home = std::fs::canonicalize(&raw).unwrap();
+        let program = home.join("Documents/tool");
+        let ran = home.join("ran");
+        std::fs::write(&program, format!("#!/bin/sh\ntouch '{}'\n", ran.display())).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let linked = home.join("tool-link");
+        std::os::unix::fs::symlink(&program, &linked).unwrap();
+        let spec = |program: &std::path::Path| CommandSpec {
+            program: program.to_path_buf(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Parsed,
+        };
+        let runner = RealRunner::new();
+        {
+            let _home = crate::protected::as_if_home(&home);
+            for path in [&program, &linked] {
+                let refused = runner.run(spec(path), None, CancellationToken::new()).await;
+                assert!(
+                    matches!(&refused, Err(RunnerError::NotFound(at)) if at == path),
+                    "{path:?}: {refused:?}"
+                );
+            }
+        }
+        assert!(!ran.exists(), "never started");
+        let output = runner
+            .run(spec(&linked), None, CancellationToken::new())
+            .await
+            .expect("runs where nothing is protected");
+        assert_eq!(output.exit_code, Some(0));
+        assert!(ran.exists());
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[tokio::test]

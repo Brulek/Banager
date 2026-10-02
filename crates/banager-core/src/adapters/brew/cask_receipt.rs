@@ -87,7 +87,8 @@ pub(crate) fn read_recorded(prefix: &Path, token: &str) -> Option<Recorded> {
     let token = caskroom_token(token)?;
     let caskroom = prefix.join("Caskroom").join(token);
     // Homebrew skips a Caskroom folder that is a link (`cask/caskroom.rb:51`).
-    if !look::lstat(&caskroom, &protected).ok()?.is_dir() {
+    let meta = look::lstat(&caskroom, &protected).ok()?;
+    if !meta.is_dir() {
         return None;
     }
     let metadata = caskroom.join(".metadata");

@@ -114,7 +114,8 @@ fn no_link_at_the_top(root: &Path, protected: &Protected) -> Result<(), PathBuf>
     let listing = look::list(root, protected).map_err(unlistable)?;
     let mut links = Vec::new();
     for name in listing.names().map_err(unlistable)? {
-        if listing.lstat(&name).map_err(unlistable)?.is_symlink() {
+        let meta = listing.lstat(&name).map_err(unlistable)?;
+        if meta.is_symlink() {
             links.push(root.join(name));
         }
     }

@@ -6,11 +6,12 @@
 //! fails a test here and names the file and line, so the promise is kept
 //! or the change is argued for and the list below changed with it.
 //!
-//! - Promise 1: a walk that must never look inside a protected place takes
-//!   every step through `protected::resolve` and `dirfd`, never a path
-//!   lookup of its own (`std::fs::metadata`, `canonicalize`, `exists`,
+//! - Promise 1: nothing looks inside a protected place: every path lookup
+//!   goes through `protected::resolve`, `protected::look` and `dirfd`,
+//!   never one of its own (`std::fs::metadata`, `canonicalize`, `exists`,
 //!   `Path::is_dir`...), which would follow a link into `~/Documents` or
-//!   onto `/Volumes`.
+//!   onto `/Volumes` -- in the walks, and in every other file but for the
+//!   few lookups `PATH_LOOKUPS_ALLOWED` lists with why.
 //! - Promise 3: nothing starts a process but `RealRunner`, which runs a
 //!   confirmed plan or a read-only refresh command, and the Open Ollama
 //!   button's `open -a Ollama`.
@@ -83,8 +84,11 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The production lines of every file: up to the first top-level
-/// `#[cfg(test)]` that is followed by a `mod` line, comments left out.
+/// The production lines of every file: every line but those of a module
+/// compiled for tests only -- a `#[cfg(test)]` followed by a `mod` line
+/// with a body, to the `}` that closes it at the `mod` line's own indent
+/// -- comments left out. Production code after such a module (the
+/// runner's `run`, after its test-only `probe`) is checked too.
 fn production_lines() -> Vec<Line> {
     let root = root();
     let mut files = Vec::new();
@@ -103,14 +107,30 @@ fn production_lines() -> Vec<Line> {
         }
         let text = std::fs::read_to_string(&path).unwrap();
         let all: Vec<&str> = text.lines().collect();
+        // The `}` that closes the test module being skipped, if any.
+        let mut skipping: Option<String> = None;
         for (index, line) in all.iter().enumerate() {
-            // A test module with a body ends the file's production part.
-            if *line == "#[cfg(test)]"
-                && all
-                    .get(index + 1)
-                    .is_some_and(|next| next.contains("mod ") && next.trim_end().ends_with('{'))
-            {
-                break;
+            if let Some(end) = &skipping {
+                if line.trim_end() == end {
+                    skipping = None;
+                }
+                continue;
+            }
+            // A test module with a body: skipped to its closing brace.
+            if line.trim() == "#[cfg(test)]" {
+                if let Some(next) = all.get(index + 1) {
+                    let opens = next.trim_start();
+                    let is_mod = (opens.starts_with("mod ")
+                        || opens.starts_with("pub mod ")
+                        || opens.starts_with("pub(crate) mod ")
+                        || opens.starts_with("pub(super) mod "))
+                        && opens.trim_end().ends_with('{');
+                    if is_mod {
+                        let indent = &next[..next.len() - opens.len()];
+                        skipping = Some(format!("{indent}}}"));
+                        continue;
+                    }
+                }
             }
             let trimmed = line.trim_start();
             if trimmed.starts_with("//") {
@@ -581,4 +601,105 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
         ),
     ];
     assert!(statement(&lines, 5).contains("O_DIRECTORY"));
+}
+
+/// The path lookups production code may still make by a path of its own,
+/// each by its file and its text, with why it cannot look into or through
+/// a protected place. Every other lookup of a path -- in any file, walk or
+/// not -- goes through `protected::resolve`, `protected::look` or `dirfd`
+/// (`docs/what-we-run.md`, "Where the program comes from"): N1 of the
+/// round 5 review found the Codex version read and the standalone launcher
+/// check following `~/.codex` and `~/.local/bin/claude` with plain
+/// `read_link`/`realpath`, which this list now rules out.
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 7] = [
+    (
+        "crates/banager-core/src/settings.rs:",
+        "match std::fs::read(path) {",
+        "Banager's own settings.json, in its application data folder",
+    ),
+    (
+        "crates/banager-core/src/history/mod.rs:",
+        "let Ok(bytes) = std::fs::read(path) else {",
+        "Banager's own history.json, beside settings.json",
+    ),
+    (
+        "crates/banager-core/src/dirfd.rs:",
+        "let file = unsafe { std::fs::File::from_raw_fd(fd) };",
+        "a file made from a descriptor `openat` gave, from a folder held open: no path",
+    ),
+    (
+        "crates/banager-core/src/dirfd.rs:",
+        "pub fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {",
+        "a return type",
+    ),
+    (
+        "crates/banager-core/src/protected/look.rs:",
+        "pub fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {",
+        "a return type",
+    ),
+    (
+        "crates/banager-core/src/trash/real.rs:",
+        "match std::fs::read_dir(trash) {",
+        "debug builds only (`report_trash_access`): whether this process may list the Trash",
+    ),
+    (
+        "crates/banager-core/src/trash/real.rs:",
+        "debug: read_dir(",
+        "the two lines that print that answer",
+    ),
+];
+
+#[test]
+fn test_every_path_lookup_left_in_production_is_listed_with_why() {
+    let found = path_lookups(production_lines().iter());
+    let allowed = |entry: &String| {
+        PATH_LOOKUPS_ALLOWED
+            .iter()
+            .any(|(file, text, _)| entry.starts_with(file) && entry.contains(text))
+    };
+    let others: Vec<&String> = found.iter().filter(|entry| !allowed(entry)).collect();
+    assert!(
+        others.is_empty(),
+        "a path looked up by its name, not through protected::look: {others:#?}"
+    );
+    for (file, text, why) in PATH_LOOKUPS_ALLOWED {
+        assert!(
+            found
+                .iter()
+                .any(|entry| entry.starts_with(file) && entry.contains(text)),
+            "{file} no longer has `{text}` ({why}): drop it from the list"
+        );
+    }
+}
+
+#[test]
+fn test_the_files_that_look_at_a_tools_fixed_paths_go_through_protected_look() {
+    // N1 of the round 5 review, file by file: each of these looks at paths
+    // a person can link elsewhere (`~/.codex`, `~/.local`, `~/.claude`,
+    // `~/.cargo`, npm's prefix, a developer folder, an app folder), and
+    // each takes its looks through `protected::look` -- so a change that
+    // drops it, leaving the file with no look of its own, fails here
+    // before the list above would say why.
+    let lines = production_lines();
+    for file in [
+        "crates/banager-core/src/adapters/standalone/release_link.rs",
+        "crates/banager-core/src/adapters/standalone/route.rs",
+        "crates/banager-core/src/adapters/standalone/removal.rs",
+        "crates/banager-core/src/adapters/standalone/rustup.rs",
+        "crates/banager-core/src/adapters/read_file.rs",
+        "crates/banager-core/src/adapters/npm.rs",
+        "crates/banager-core/src/adapters/pip.rs",
+        "crates/banager-core/src/adapters/ollama/mod.rs",
+        "crates/banager-core/src/adapters/brew/mod.rs",
+        "crates/banager-core/src/adapters/brew/cask_receipt.rs",
+        "crates/banager-core/src/icon/mod.rs",
+        "crates/banager-core/src/runner/real.rs",
+    ] {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.file == file && line.text.contains("look::")),
+            "{file} takes no look through protected::look"
+        );
+    }
 }
