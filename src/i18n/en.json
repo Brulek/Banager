@@ -1219,7 +1219,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; an app that updates itself checks for a new version when you open it once."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; a tool that updates itself checks for a new version when you open it once."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",
@@ -1235,7 +1235,7 @@
       },
       "changesMac": {
         "question": "Does this app change my Mac?",
-        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files: checking for updates, for example, Homebrew updates itself and its list of software."
+        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files: checking for updates, for example, Homebrew may first update itself and its list of software."
       },
       "otherPrograms": {
         "question": "What's in Other Programs?",
