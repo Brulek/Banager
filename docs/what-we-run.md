@@ -2275,6 +2275,16 @@ folder opened from it with `O_NOFOLLOW` and checked to be the one seen, so
 a folder replaced by a link meanwhile is never followed (a folder is
 listed the same way, from `/`, with no link followed) -- each step checked against the places below before it is taken
 (`protected::resolve`, the same walk the disk-use measurement uses).
+Within one refresh, each folder and name on the way is looked up once,
+not once for every path that passes it (`protected::Round`): a folder
+opened a second time is kept open until the answer is made (64 at most),
+and what each name and link was is remembered as long, never into the
+next refresh. What is left of a path, when it is plain names -- no `..`,
+none of them in a protected place -- can be asked of the folder held open
+in one `fstatat` that follows no link anywhere on the way
+(`AT_SYMLINK_NOFOLLOW_ANY`); a link there, on the way or at the end, or a
+folder that may not be searched, is then taken one step at a time, as
+above.
 Unlike `realpath`, it keeps each name as `PATH` or the link's text spells
 it, so two paths are compared without regard to ASCII case, as a Mac's
 disk names them: `~/.CARGO/bin` on `PATH` is `~/.cargo/bin`
@@ -2849,9 +2859,10 @@ All read-only, none saved anywhere else, none uploaded:
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads
-  and whether it can run (`lstat` and `readlink`, one step at a time,
-  never into a protected place) — never a file's contents (Which copy a
-  command runs, above).
+  and whether it can run (`lstat` and `readlink`, one step at a time, or
+  one lookup that follows no link for the plain names at the end of a
+  path; never into a protected place) — never a file's contents (Which
+  copy a command runs, above).
 - Banager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 - Banager's own `history.json` beside it, once, as Banager starts
