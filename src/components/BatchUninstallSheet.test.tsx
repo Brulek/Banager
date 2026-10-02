@@ -547,6 +547,10 @@ describe("the batch uninstall's sheet", () => {
     // Its own files, not 「这3项」, which read as three of the tools ticked.
     expect(within(claudeItem).getByText("Removed files go to the Trash, where you can drag them back out.")).toBeInTheDocument();
     expect(within(dialog).queryByText(/These \d+ items/)).toBeNull();
+    // Only under the one that moves its files to the Trash.
+    for (const name of ["wget", "llama3.2:3b", "git"]) {
+      expect(within(toolItem(dialog, name)).queryByText(/go to the Trash, where/)).toBeNull();
+    }
     expect(within(claudeItem).getByText(/~\/\.claude\/local/)).toBeInTheDocument();
     expect(within(toolItem(dialog, "llama3.2:3b")).getByText("Frees about 2 GB, less any part other models share.")).toBeInTheDocument();
     expect(within(toolItem(dialog, "llama3.2:3b")).getByText("About 2 GB")).toBeInTheDocument();
@@ -593,7 +597,7 @@ describe("the batch uninstall's sheet", () => {
     const dialog = await openSheet([claudeCode, npmClaude, codex, vscode]);
     // Every tool the group names after "From", whether its own data or
     // what its installer's uninstall keeps (Claude Code's ~/.claude): 3.
-    expect(within(dialog).getByText("3 of them leave some files where they are, listed below.")).toBeInTheDocument();
+    expect(within(dialog).getByText("3 of them leave some files behind, listed below.")).toBeInTheDocument();
     // The app that may ask, by name: not 「some of these」.
     expect(within(dialog).getByText("Microsoft Visual Studio Code may ask for your Mac password.")).toBeInTheDocument();
     const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
@@ -604,6 +608,58 @@ describe("the batch uninstall's sheet", () => {
     for (const button of within(dialog).getAllByRole("button")) {
       expect(button.textContent ?? "").not.toMatch(/delete|remove|trash/i);
     }
+  });
+
+  describe("says how many of them leave files behind", () => {
+    const line = (dialog: HTMLElement) =>
+      within(dialog).queryByText(/leaves? some files behind/)?.textContent ?? null;
+
+    it("not when none does", async () => {
+      expect(line(await openSheet([wget, git]))).toBeNull();
+    });
+
+    it("by number, one of several", async () => {
+      expect(line(await openSheet([wget, codex, git]))).toBe("1 of them leaves some files behind, listed below.");
+    });
+
+    it("as all of them, where it is", async () => {
+      expect(line(await openSheet([codex, npmClaude]))).toBe("Each of them leaves some files behind, listed below.");
+      await i18n.changeLanguage("zh-CN");
+      expect(await screen.findByText("这些工具都会留下一些文件，列在下方。")).toBeInTheDocument();
+    });
+
+    it("not for one tool alone, which the group below says", async () => {
+      const dialog = await openSheet([claudeCode]);
+      expect(line(dialog)).toBeNull();
+      expect(within(dialog).getByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+    });
+
+    it("counting no tool left out, nor listing what it keeps", async () => {
+      // python@3.13 would keep a folder, but pipx still uses it and is not ticked: it stays.
+      neededByOf["python@3.13"] = [
+        { KeepsData: { path: "~/.python_history", what: "ToolData", size: null, left_out: [] } },
+      ];
+      const dialog = await openSheet([python, wget, codex]);
+      expect(listOf(dialog, "Won't be uninstalled")).toEqual(["python@3.13"]);
+      expect(line(dialog)).toBe("1 of them leaves some files behind, listed below.");
+      const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
+      expect([...kept.querySelectorAll("[data-kept-path]")].map((path) => path.textContent)).toEqual(["~/.codex"]);
+    });
+
+    it("naming each copy where two of the same name both keep files", async () => {
+      // npm's copy, called Claude Code too: two tools keep ~/.claude, and the line says which.
+      const npmNamedLikeIt = { ...npmClaude, display_name: "Claude Code" };
+      const dialog = await openSheet([claudeCode, npmNamedLikeIt]);
+      expect(line(dialog)).toBe("Each of them leaves some files behind, listed below.");
+      const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
+      expect(within(kept).getByText(/^From /).textContent).toBe(
+        "From Claude Code installed with Claude Code's own installer and Claude Code installed with npm",
+      );
+      await i18n.changeLanguage("zh-CN");
+      expect(await within(kept).findByText(/^来自/)).toHaveTextContent(
+        "来自Claude Code自带的安装程序装的Claude Code和npm装的Claude Code",
+      );
+    });
   });
 
   it("shows the exact commands and paths in the order they run, open with technical details on", async () => {

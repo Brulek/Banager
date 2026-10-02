@@ -470,8 +470,20 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           },
         ]
       : []),
-    ...(keepsFiles > 0
-      ? [{ text: t("batchUninstall.keepsFiles", { count: keepsFiles }), detail: null, caution: false }]
+    // Of several, how many: 「其中2个…」, or 「这些工具都…」 where it is all of
+    // them. One alone has nothing for 「其中」 to be of, and the group
+    // below says it.
+    ...(keepsFiles > 0 && included.length > 1
+      ? [
+          {
+            text:
+              keepsFiles === included.length
+                ? t("batchUninstall.keepsFilesAll")
+                : t("batchUninstall.keepsFiles", { count: keepsFiles }),
+            detail: null,
+            caution: false,
+          },
+        ]
       : []),
     // Which of them may ask, by name: every cask uninstall may, not every app does.
     ...(asksPassword.length > 0
@@ -484,7 +496,17 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         ]
       : []),
   ];
-  const kept = mergeKept(included.map(({ entry }) => ({ name: entry.name, warnings: entry.plan!.warnings })));
+  // Whose each path is, by name -- and, for a name ticked from two
+  // sources (`twice`), by which copy, so the 「来自」 line names as many
+  // tools as the count above counts: 「Homebrew装的Claude Code」.
+  const ownerName = (entry: BatchEntry): string =>
+    twice.has(entry.name)
+      ? t("batchUninstall.keptByCopy", {
+          name: entry.name,
+          by: installedBy(t, entry.instance.id, () => sourceLabelOf(entry.instance)),
+        })
+      : entry.name;
+  const kept = mergeKept(included.map(({ entry }) => ({ name: ownerName(entry), warnings: entry.plan!.warnings })));
 
   /** What one included tool says under its name (spec §5.5, item 4). */
   const linesOf = (entry: BatchEntry, after: string[]): WarningLine[] => {
