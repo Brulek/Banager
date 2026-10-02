@@ -20,7 +20,7 @@ export function useSearchTexts(
   searching: boolean,
 ): ReadonlyMap<string, SearchText> | null {
   const { t, i18n } = useTranslation();
-  const line = useTranslatedDescription();
+  const line = useTranslatedDescription(searching);
   const otherLine = useOtherLanguageDescription(searching);
   const other = otherLanguage(i18n.resolvedLanguage);
   return useMemo(() => {

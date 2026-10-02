@@ -125,9 +125,12 @@ export type TranslatedDescription = (key: ArtifactKey, adapterId: string) => str
  * `@<version>`, a Python package's name PEP 503-normalized. A Chinese line
  * is written with no space before or after a Latin word, as the copy is,
  * and gets `autospace`'s narrow gaps where the web view cannot draw them.
+ * Its table is read once `load` is true, as it is for a page of rows; the
+ * search's words read it only once there is a search (`useSearchTexts`),
+ * so a window opened on Overview or Settings reads no table.
  */
-export function useTranslatedDescription(): TranslatedDescription {
-  return useDescriptionIn(useTranslation().i18n.resolvedLanguage, true);
+export function useTranslatedDescription(load = true): TranslatedDescription {
+  return useDescriptionIn(useTranslation().i18n.resolvedLanguage, load);
 }
 
 /** The language a window in `language` is not in, or `null` for none: the one whose lines a search looks through too. */
