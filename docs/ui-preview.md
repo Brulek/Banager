@@ -445,8 +445,8 @@ medians a few milliseconds apart.
 | By Date, By Name, to the next frame | 13, 14 ms | 11, 8 ms | 64 → 39, 48 → 31 ms |
 | Ticking 20 rows: main thread busy | about 70–280 ms | the same, within run-to-run noise | one run each, not compared |
 | 「卸载所选」's sheet for them: longest task | 11 ms | 9 ms | 55 → 37 ms |
-| Update All's sheet for 753: longest task, ready after | 56 ms, 0.80 s | 37 ms, 0.47 s | 252 → 132 ms, 1.99 → 0.60 s |
-| Update All, starting all 753: main thread busy | 25 s | 3.3–5.9 s (median 4.1), no task over 50 ms | over 120 s (timed out) → 33 s, 24 tasks over 50 ms |
+| Update All's sheet for 753: longest task, ready after (since then: below) | 56 ms, 0.80 s | 37 ms, 0.47 s | 252 → 132 ms, 1.99 → 0.60 s |
+| Update All, starting all 753: main thread busy (since then: below) | 25 s | 3.3–5.9 s (median 4.1), no task over 50 ms | over 120 s (timed out) → 33 s, 24 tasks over 50 ms |
 | Scrolling either list to its end: longest frame | 17 ms | 17 ms | 33 → 17–33 ms |
 
 What took the time: Update All's sheet looked each tool up in the whole
@@ -477,3 +477,55 @@ after the page is drawn: at least 45 ms of it with the CPU slowed 4×, in
 a profile. Every interaction stays under 100 ms at full speed; with the
 CPU slowed 4×, opening Installed takes about 135–160 ms and the Updates
 page 80 ms.
+
+#### Update All with 754 updates (track p5)
+
+Two more steps for Update All on `?state=huge`, which has 754 updates
+now, timed by `.superpowers/r5/tracks/p5-perf/bench-huge.mjs` -- the
+script above, finding the sheet's Update by its new name 「更新这754个」 and
+counting the `list_operations` the preview answers -- against production
+builds of the preview, as above. Before is 7d1d2724; after, the commits of
+the track p5. Eight runs of each build, taken in turn: the median, and in
+brackets the range.
+
+| | Before | After | 4× slower CPU, before → after |
+|---|---|---|---|
+| Update All's sheet: longest task | 34 ms [30–37] | 18 ms [12–20] | 124 ms [121–128] → 47 ms [43–50]; tasks over 50 ms 2 → 0 |
+| The same: main thread busy in all | 130 ms [116–144] | 178 ms [165–199] | 0.50 s [0.48–0.52] → 0.99 s [0.94–1.11] |
+| The same: Update on after | 0.46 s [0.44–0.47] | 0.44 s [0.42–0.45], within noise | 0.57 s [0.57–0.58] → 0.55 s [0.54–0.57], within noise |
+| The same: every tool drawn after | 0.46 s [0.45–0.48] | 0.46 s [0.43–0.47] | 0.60 s [0.59–0.61] → 0.85 s [0.61–1.20] |
+| Starting all 754: `list_operations` fetched | 1,514 times [1,511–1,520] | 12 [12–13] | 1,550 [1,547–1,556] → 76 [72–91] |
+| The same: main thread busy | 3.18 s [3.08–4.15] | 2.73 s [2.59–3.01] | 23.2 s [22.5–27.4] → 20.1 s [18.6–23.9]; 7 of 8 runs under the fastest before |
+| The same: longest task | 11 ms [10–14] | 10 ms [9–12], within noise | 73 ms [70–76] → 74 ms [69–86], within noise; tasks over 50 ms 12 [10–16] → 9.5 [9–13] |
+
+What changed. The operations are fetched once a frame (16 ms) after a
+status change or a start asks for them, and no sooner than 250 ms after
+the last fetch while asks keep coming (`refetchOperations`,
+src/lib/operationsRefetch.ts); each started update used to ask twice --
+its submit's answer and its Queued event -- for a list of every
+operation so far. Fetching once a frame without the 250 ms was tried
+first: about 110 fetches at full speed, but every answer was then taken
+in and drawn -- before, each ask cancelled the fetch still on its way
+(React Query's `invalidateQueries`) -- and with the CPU slowed 4× the
+main thread was busier than before (21.7 s against 20.2 s, three runs
+each). The sheet draws its tools in turns
+(`useToolsInTurn` in src/components/SheetParts.tsx): 9 with the dialog
+and 60 more per transition, and once the plans are back its first 9 in
+their final order with their notes at once, the others a turn at a time.
+Profiled, the long task as the plans came back was less the drawing than
+the layout of all 754 tools, moved and with their notes, which putting
+the focus on Update forced at once (80 of 135 ms at 4×). And the sheet's
+tools draw their own hairlines (`SheetToolList`'s `rowsSeparate`): with
+the list's `> * + *` rule, a tool put in or taken out anywhere but at
+the end had Chrome work out the style of every tool after it again --
+about 10,000 elements, 35–40 ms at 4× -- at every turn.
+
+What it costs: every turn draws the dialog again, so the sheet keeps the
+main thread busy longer in all, in tasks under 50 ms, and at 4× its last
+tools come up to 0.6 s later; Update comes on as before. Still there:
+each update Update All starts draws the Updates page and the dialog
+again -- the batch, the selection and the update's target all change --
+which is most of the 2.7 s and the 20 s; in a profile at full speed (of
+this track's first build), about a tenth of it is `useStartableUpdates` (src/components/UpdateProgress.tsx)
+going through all 754 updates again in each of its callers, as the new
+target changes `useUpdateOperationFor`'s lookup at every start.
