@@ -276,7 +276,7 @@ describe("the Installed page's discovery choices", () => {
     show("otherVersions");
     expect(await screen.findByText("Homebrew keeps no other versions of your tools")).toBeInTheDocument();
     show("notOnPath");
-    expect(await screen.findByText("Terminal finds the commands of all your tools")).toBeInTheDocument();
+    expect(await screen.findByText("No tools were found that Terminal can't find")).toBeInTheDocument();
     show("brewRetired");
     expect(await screen.findByText("Homebrew hasn't disabled or deprecated any of your tools")).toBeInTheDocument();
     expect(screen.queryByText("Nothing installed")).not.toBeInTheDocument();
@@ -284,6 +284,20 @@ describe("the Installed page's discovery choices", () => {
     await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("没有发现Homebrew已停用或弃用的工具")).toBeInTheDocument();
     show("notOnPath");
+    expect(await screen.findByText("没有发现终端里找不到的工具")).toBeInTheDocument();
+  });
+
+  it("says only that none was found, never that Terminal finds them all, when some tools weren't checked", async () => {
+    // httpie's command has no verdict -- a folder Terminal looks in could
+    // not be read -- so nothing can be said of every tool (Astra round 5,
+    // #5, on the Installed page).
+    artifacts = [artifact(wget, [{ name: "wget", state: "Runs" }]), artifact(httpie, [{ name: "http", state: null }])];
+    renderInstalled();
+    await screen.findByText("wget", { selector: "[data-tool-row] p" });
+    show("notOnPath");
+    expect(await screen.findByText("No tools were found that Terminal can't find")).toBeInTheDocument();
+    expect(screen.queryByText(/Terminal finds/)).not.toBeInTheDocument();
+    await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("没有发现终端里找不到的工具")).toBeInTheDocument();
   });
 
@@ -296,7 +310,7 @@ describe("the Installed page's discovery choices", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     show("notOnPath");
     expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
-    expect(screen.queryByText("Terminal finds the commands of all your tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("No tools were found that Terminal can't find")).not.toBeInTheDocument();
     await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("这次检查没有判断终端里的命令")).toBeInTheDocument();
     // Homebrew's own choice goes by Homebrew's facts, which are there.
@@ -358,7 +372,7 @@ describe("the Installed page's discovery choices", () => {
     expect(await screen.findByText("Nothing in pipx has other versions kept by Homebrew")).toBeInTheDocument();
     // pipx has a tool Terminal can't find here, so this one is the words alone.
     expect(i18n.t("families.notOnPathNoneInSource", { source: "pipx" })).toBe(
-      "Terminal finds the commands of every tool in pipx",
+      "No tools in pipx were found that Terminal can't find",
     );
   });
 
