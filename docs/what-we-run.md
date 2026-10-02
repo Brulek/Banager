@@ -1279,6 +1279,16 @@ each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
 manifest is always fetched from `registry.ollama.ai`, whatever registry
 the model was pulled from. Ollama has no search command Banager uses.
+From the same two manifests, and nothing else, a model with an update
+also gets the most its pull can download: the sum of the `size`s the
+registry manifest gives its layers and config whose digests the local
+manifest does not name (`changed_blob_bytes`, the candidate's
+`download_bytes`). No other request is made and no other file is read —
+Banager does not look in `~/.ollama/models/blobs` — so a file another
+model shares, which `ollama pull` skips, still counts: the number is an
+upper bound, and the window words it as one ("up to about 4.7 GB"). A
+blob to download with no size, or one that is not a whole number of
+bytes, leaves it unknown, and the window says what it said before.
 
 **Write commands:**
 
@@ -1296,7 +1306,8 @@ with a warning naming that host; it is never blocked, since `ollama pull`
 is what will contact it, under Ollama's own configuration. An upgrade's
 preview also says, after that warning, that it downloads the model files
 that changed and can take a while (`Warning::DownloadsModelChanges`, from
-`OllamaAdapter::plan`); an install's and an uninstall's do not.
+`OllamaAdapter::plan`) — with the most it can download where the check
+above worked it out; an install's and an uninstall's do not.
 
 **The Open Ollama button** runs `/usr/bin/open -a Ollama`
 (`open_ollama_app_argv` in `src-tauri/src/ipc.rs`), with its stdin,
