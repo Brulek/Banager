@@ -159,7 +159,11 @@ page with its search box focused, and Settings… (⌘,) is in the Banager menu.
 or minimized, each of these brings it back first. **Keyboard Shortcuts** in the Help menu lists the
 keys Banager answers to, in three groups: the window's (these, Close Window and Quit), the lists' (↑ ↓
 and the keys that page or jump to an end, Space to tick a row, Return and Escape for Installed's
-details, Tab) and the dialogs' (Return, Escape).
+details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers ten questions
+in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
+"Installed twice", the Mac password, what an uninstall leaves, what Banager itself changes, Other
+Programs, sizes, major updates and the automatic check — with a *Show* button to the page or Installed
+choice where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
 tools you use in Terminal, such as Claude Code, Codex and Gemini CLI, in one place, with Sources in the
@@ -548,7 +552,9 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 “搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Banager”菜单里。窗口关着或最小化时，
 选这些项会先把窗口叫回来。菜单栏“帮助”里的“键盘快捷键”列出 Banager 里能用的按键，分三组：窗口（上面这些，再加
 “关闭窗口”和“退出”）、列表（↑ ↓、翻页和跳到两头的键、用空格键勾选一行、在“已安装”里用回车和 Esc 打开和关闭详细信息、Tab）
-和对话框（回车、Esc）。
+和对话框（回车、Esc）。它上面的“常见问题”用几句大白话回答十个常见问题：终端里找不到命令、为什么有的工具不能在这里更新、
+“装了两份”、Mac 密码、卸载后留下什么、Banager 自己会改动什么、“其他程序”、占用空间、大版本更新和自动检查；
+能动手处理的，旁边有“查看”按钮，直接打开对应的页面或“已安装”里的显示选项。
 
 第一次打开 Banager 时，会出现一个欢迎页，用三条短句说明它做什么：Claude Code、Codex、Gemini CLI 这类在终端里用的
 工具都列在一处，第一次检查完成后，侧栏会出现“来源”，按安装方式列出，比如 Homebrew、npm 或工具自带的安装程序；更新或卸载前先写明要做什么，确认后才开始；Banager 自己不改终端的配置文件，不收集使用情况，也不需要
