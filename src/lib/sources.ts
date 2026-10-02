@@ -1588,11 +1588,12 @@ function isExpired(message: string): boolean {
 
 /**
  * Whether `raw` is `SubmitError::Unknown`: `plan_id` was never issued, or
- * was already consumed by an earlier submit of the same preview. Same
- * unlocalised-`Display` history as `isExpired` above; `planRefused.unknown`
- * is what tells the person to start the action again.
+ * was already consumed by an earlier submit of the same preview, or was
+ * let go to stay under the number held (`PLANS_HELD`, ./heldPlans.ts).
+ * Same unlocalised-`Display` history as `isExpired` above;
+ * `planRefused.unknown` is what tells the person to start the action again.
  */
-function isUnknownPlan(message: string): boolean {
+export function isUnknownPlan(message: string): boolean {
   return submitErrorKind(message) === "unknown";
 }
 

@@ -5,6 +5,7 @@ import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSent
 import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
+import { CHANGED_SINCE_SHOWN, mayPlanAgain, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
@@ -62,7 +63,11 @@ export interface BatchItem {
   /** `planError`'s longer why, for its ⓘ (`planErrorDetail`), or null. */
   planErrorDetail: string | null;
   submittedOpId: number | null;
-  /** Why its submit was refused, in the backend's words (`refusalSentence`). */
+  /**
+   * Why its submit was refused, in the backend's words (`refusalSentence`),
+   * or `CHANGED_SINCE_SHOWN`: its plan, worked out again, was not the one
+   * shown (src/lib/heldPlans.ts).
+   */
   submitError: string | null;
   /** `submitError`'s longer why, for its ⓘ, or null. */
   submitErrorDetail: string | null;
@@ -197,6 +202,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   const onStartedRef = useRef<VoidFunction | null>(null);
   const onCancelledRef = useRef<VoidFunction | null>(null);
   const afterCloseRef = useRef<VoidFunction | null>(null);
+  // When the newest batch asked for its plans (`performance.now()`): how
+  // old its plans are at most, for `mayPlanAgain`.
+  const askedAtRef = useRef(0);
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -250,6 +258,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     // it is drawn (`refusalOf`). The notes and the commands arrive
     // together, once every plan has settled, and so does Update: nothing of
     // a batch can be confirmed before all of it is on the sheet.
+    askedAtRef.current = performance.now();
     const results = await Promise.allSettled(
       candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
     );
@@ -271,6 +280,14 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     const { id } = batch;
     const items = [...batch.items];
     setBatch({ id, phase: "submitting", items });
+    // More plans than the backend holds: the first of them are no longer
+    // held, and each is worked out again at its turn, and started only if
+    // it is the plan shown (`startShown`, src/lib/heldPlans.ts).
+    const planned = items.filter((item) => item.issued !== null).length;
+    const through = {
+      plan: (request: OpRequest) => planMutation.mutateAsync(request),
+      submit: (planId: string) => submitMutation.mutateAsync(planId),
+    };
 
     // Sequential, not concurrent: each item's result is recorded before the
     // next is sent, so a failure part-way leaves an exact record of what did
@@ -282,7 +299,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       const item = items[i];
       if (!item.issued) continue;
       try {
-        const opId = await submitMutation.mutateAsync(item.issued.id);
+        const planAgain = mayPlanAgain(planned, askedAtRef.current, performance.now());
+        const opId = await startShown(item.issued, toRequest(item.candidate), planAgain, through);
         items[i] = { ...item, submittedOpId: opId };
         // Which version this operation is for, so its row can tell its
         // outcome from a later version's (`useUpdateOperationFor`).
@@ -348,6 +366,12 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       return {
         text: refusalSentence(t, "updates.planFailed", item.planError, source, technical),
         detail: item.planErrorDetail,
+      };
+    }
+    if (item.submitError === CHANGED_SINCE_SHOWN) {
+      return {
+        text: t("updates.submitFailed", { message: t("planAgain.changed") }),
+        detail: t("planAgain.changedDetail"),
       };
     }
     if (item.submitError !== null) {

@@ -1,0 +1,174 @@
+import type { ReactNode } from "react";
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { I18nextProvider } from "react-i18next";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import i18n from "../i18n";
+import { PLANS_HELD } from "../lib/heldPlans";
+import type { IssuedPlan, OpRequest, Plan, Settings, UpdateCandidate } from "../lib/types";
+import { useUpdateConfirm } from "./UpdateConfirm";
+
+// Update all of more tools than the backend holds plans for
+// (src/lib/heldPlans.ts): the whole flow of the confirmation -- every plan
+// asked for at once, then Update -- against a backend that holds at most
+// `PLANS_HELD` and lets the oldest go, as `Session::issue` does.
+
+const mockInvoke = vi.mocked(invoke);
+
+const SETTINGS: Settings = {
+  language: "System",
+  show_technical_details: false,
+  ignored_updates: [],
+  skipped_versions: [],
+  include_self_updating: false,
+  auto_check: false,
+  notify_updates: false,
+};
+
+const candidate = (name: string): UpdateCandidate => ({
+  key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+  current: "1.0.0",
+  target: "1.1.0",
+  channel: "Native",
+  checkable: true,
+  warnings: [],
+  blocked: null,
+});
+
+function brewPlan(request: OpRequest, program = "/opt/homebrew/bin/brew"): Plan {
+  return {
+    request,
+    action: { Command: { program, args: ["upgrade", "--formula", request.name], env: [] } },
+    needs_password: false,
+    locks: ["brew:/opt/homebrew"],
+    cancel_policy: "KillThenReconcile",
+    warnings: [],
+    affected: [],
+    timeout_secs: 1800,
+  };
+}
+
+let held: Map<string, IssuedPlan>;
+let submitted: IssuedPlan[];
+let planned: string[];
+/** A name whose plan comes out different the second time it is worked out. */
+let changesWhenPlannedAgain: string | null;
+
+beforeEach(() => {
+  held = new Map();
+  submitted = [];
+  planned = [];
+  changesWhenPlannedAgain = null;
+  let next = 0;
+  mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+    if (cmd === "get_settings") return Promise.resolve(SETTINGS);
+    if (cmd === "plan_operation") {
+      const { request } = args as { request: OpRequest };
+      const again = planned.includes(request.name);
+      planned.push(request.name);
+      while (held.size >= PLANS_HELD) held.delete(held.keys().next().value!);
+      next += 1;
+      const plan =
+        again && request.name === changesWhenPlannedAgain
+          ? brewPlan(request, "/usr/local/bin/brew")
+          : brewPlan(request);
+      const issued: IssuedPlan = { id: next.toString(16).padStart(32, "0"), plan, issued_at: 1_790_000_000 };
+      held.set(issued.id, issued);
+      return Promise.resolve(issued);
+    }
+    if (cmd === "submit_operation") {
+      const { planId } = args as { planId: string };
+      const issued = held.get(planId);
+      // A bare string, as a `Result<_, String>` command rejects.
+      if (issued === undefined) return Promise.reject(JSON.stringify({ kind: "unknown" }));
+      held.delete(planId);
+      submitted.push(issued);
+      return Promise.resolve(submitted.length);
+    }
+    return Promise.resolve(undefined);
+  });
+});
+
+afterEach(() => {
+  mockInvoke.mockReset();
+});
+
+function renderConfirm() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    React.createElement(
+      QueryClientProvider,
+      { client },
+      React.createElement(I18nextProvider, { i18n }, children),
+    );
+  return renderHook(
+    () =>
+      useUpdateConfirm({
+        nameOf: (c) => c.key.name,
+        compare: (a, b) => a.key.name.localeCompare(b.key.name),
+        sourceLabelFor: () => "Homebrew",
+      }),
+    { wrapper },
+  );
+}
+
+const tools = (count: number) => Array.from({ length: count }, (_, i) => `tool-${String(i).padStart(4, "0")}`);
+
+describe("Update all of more tools than the backend holds plans for", () => {
+  it("starts every one of 1,100, each with the plan shown on the sheet", async () => {
+    const names = tools(1100);
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(names.map(candidate)));
+    const batch = result.current.batch!;
+    expect(batch.phase).toBe("ready");
+    expect(batch.items.every((item) => item.issued !== null)).toBe(true);
+    // The first plans are no longer held as Update is pressed.
+    expect(held.size).toBe(PLANS_HELD);
+    const shown = new Map(batch.items.map((item) => [item.name, item.issued!.plan]));
+
+    await act(() => result.current.confirmAndSubmit());
+    // Every one started: the sheet closes, as on a batch that all started.
+    expect(result.current.batch).toBeNull();
+    expect(submitted.map((issued) => issued.plan.request.name)).toEqual(names);
+    for (const issued of submitted) expect(issued.plan).toEqual(shown.get(issued.plan.request.name));
+    expect(new Set(submitted.map((issued) => issued.id)).size).toBe(1100);
+  });
+
+  it("does not start one whose plan came out different, and says why under it, in either language", async () => {
+    changesWhenPlannedAgain = "tool-0005";
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    await act(() => result.current.confirmAndSubmit());
+
+    const batch = result.current.batch!;
+    expect(batch.phase).toBe("done");
+    const changed = batch.items.find((item) => item.name === "tool-0005")!;
+    expect(changed.submittedOpId).toBeNull();
+    expect(submitted.some((issued) => issued.plan.request.name === "tool-0005")).toBe(false);
+    expect(batch.items.filter((item) => item.submittedOpId !== null)).toHaveLength(1099);
+    expect(result.current.refusalOf(changed)).toEqual({
+      text: "Couldn't start the update: This update changed after it was shown, so it didn't run. Open it again and confirm.",
+      detail:
+        "With this many updates at once, some are prepared again just before they start. This one came out different from what was shown here.",
+    });
+    await act(() => i18n.changeLanguage("zh-CN"));
+    try {
+      expect(result.current.refusalOf(changed)?.text).toBe(
+        "无法开始更新：这项更新在显示之后有了变化，因此未执行。请重新打开并确认。",
+      );
+    } finally {
+      await act(() => i18n.changeLanguage("en"));
+    }
+  });
+
+  it("plans nothing again in a batch the backend holds all of", async () => {
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(PLANS_HELD).map(candidate)));
+    await act(() => result.current.confirmAndSubmit());
+    expect(result.current.batch).toBeNull();
+    expect(planned).toHaveLength(PLANS_HELD);
+    expect(submitted).toHaveLength(PLANS_HELD);
+  });
+});

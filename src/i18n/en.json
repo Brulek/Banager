@@ -725,6 +725,10 @@
       "overlapsKept": "Couldn't uninstall because there's no way to confirm that removing the files leaves {{path}}, which is kept, untouched."
     }
   },
+  "planAgain": {
+    "changed": "This update changed after it was shown, so it didn't run. Open it again and confirm.",
+    "changedDetail": "With this many updates at once, some are prepared again just before they start. This one came out different from what was shown here."
+  },
   "operations": {
     "current": "{{name}}: {{status}}",
     "kindStatus": "{{kind}} · {{status}}",

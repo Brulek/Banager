@@ -22,11 +22,14 @@ pub(crate) const PLAN_LIFETIME: Duration = Duration::from_secs(600);
 /// src/components/UpdateConfirm.tsx plans them together and caps nothing),
 /// so a Mac with a hundred outdated tools holds a hundred plans at once,
 /// and a bound below that forgets the first before it is submitted. A plan
-/// is small (a command line and its preview), so this leaves room for
-/// every update a snapshot can offer and is still a bound. Past it,
-/// issuing one forgets the oldest held, which `submit` then refuses as
-/// `Unknown`, so a page that previews over and over cannot make the map
-/// grow for the ten minutes each plan is kept.
+/// is small (a command line and its preview), so this leaves room for the
+/// updates of nearly any Mac and is still a bound. Past it, issuing one
+/// forgets the oldest held, which `submit` then refuses as `Unknown`, so a
+/// page that previews over and over cannot make the map grow for the ten
+/// minutes each plan is kept. Update all of more than this works out each
+/// plan it forgot again at its turn, and starts it only if it is the plan
+/// shown (`startShown` in src/lib/heldPlans.ts, whose `PLANS_HELD` is this
+/// number).
 pub(crate) const MAX_ISSUED_PLANS: usize = 1024;
 
 /// How many plans are being worked out at once at most
@@ -1588,6 +1591,45 @@ mod tests {
                 .submit(id)
                 .expect("a plan of a batch of 300 is still held when its turn comes");
         }
+    }
+
+    #[tokio::test]
+    async fn test_update_all_past_the_cap_can_issue_a_forgotten_plan_again_as_the_same_plan() {
+        // Update all of more than `MAX_ISSUED_PLANS` (`startShown` in
+        // src/lib/heldPlans.ts): its first plans are forgotten before Update
+        // is pressed; each is issued again at its turn, compared with the
+        // one shown, and submitted -- the map never past its bound.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let over = 76;
+        let mut shown = Vec::new();
+        for _ in 0..(super::MAX_ISSUED_PLANS + over) {
+            shown.push(session.issue_plan(&req).await.expect("issue_plan"));
+        }
+        let mut issued_again = 0;
+        for plan in shown {
+            match session.submit(plan.id.clone()) {
+                Ok(_) => {}
+                Err(SubmitError::Unknown) => {
+                    let again = session.issue_plan(&req).await.expect("issue_plan");
+                    assert_eq!(again.plan, plan.plan, "the same request plans the same");
+                    issued_again += 1;
+                    session
+                        .submit(again.id)
+                        .expect("the plan issued again is held");
+                }
+                Err(other) => panic!("refused: {other:?}"),
+            }
+            assert!(session.issued_plans.lock().unwrap().len() <= super::MAX_ISSUED_PLANS);
+        }
+        // The `over` forgotten while shown, and the one the first of them,
+        // issued again with the map full, made it forget in its turn.
+        assert_eq!(issued_again, over + 1);
+        assert!(session.issued_plans.lock().unwrap().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
