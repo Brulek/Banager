@@ -544,6 +544,17 @@ fn test_judge_through_a_round_and_through_resolve_agree_on_random_macs() {
                 assert!(old.is_some());
                 assert_eq!(old, new, "seed {seed}, scenario {scenario}, known {known}");
                 assert_nothing_protected_looked_at(&made, &protected);
+                // `contains` itself, against the places as listed and
+                // spelled from `/` at every call, for every `PATH` entry
+                // and every path a call looked at.
+                let raw = protected::places(std::slice::from_ref(&tree.root));
+                for at in path.iter().chain(made.paths.iter().map(|(_, at)| at)) {
+                    assert_eq!(
+                        protected.contains(at),
+                        protected::is_within(at, &raw),
+                        "{at:?}"
+                    );
+                }
                 for fact in new.unwrap().iter().flatten() {
                     states.insert(match &fact.state {
                         None => "none",

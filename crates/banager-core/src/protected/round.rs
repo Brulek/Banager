@@ -56,6 +56,33 @@ struct Held {
     was_at: RefCell<Option<PathBuf>>,
 }
 
+impl Held {
+    fn new(path: PathBuf, dir: Dir, parent: Option<Rc<Held>>) -> Held {
+        #[cfg(test)]
+        OPEN.with(|open| open.set(open.get() + 1));
+        Held {
+            path,
+            dir,
+            parent,
+            was_at: RefCell::new(None),
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many `Held` folders are open on this thread: what a test holds
+    /// the descriptors a round keeps to.
+    static OPEN: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+impl Drop for Held {
+    fn drop(&mut self) {
+        OPEN.with(|open| open.set(open.get() - 1));
+    }
+}
+
 /// What asking for the rest of a path in one lookup came to.
 enum Beneath {
     Answer(Resolution),
@@ -126,12 +153,11 @@ impl Round {
 
     fn root(&mut self) -> Option<Rc<Held>> {
         if self.root.is_none() {
-            self.root = Some(Rc::new(Held {
-                path: PathBuf::from("/"),
-                dir: Dir::root().ok()?,
-                parent: None,
-                was_at: RefCell::new(None),
-            }));
+            self.root = Some(Rc::new(Held::new(
+                PathBuf::from("/"),
+                Dir::root().ok()?,
+                None,
+            )));
         }
         self.root.clone()
     }
@@ -443,12 +469,7 @@ impl Round {
         stat: &Stat,
     ) -> Option<Rc<Held>> {
         let (dir, _) = here.dir.open_dir_at(name, Some(stat), false).ok()?;
-        let next = Rc::new(Held {
-            path: candidate.to_path_buf(),
-            dir,
-            parent: Some(here.clone()),
-            was_at: RefCell::new(None),
-        });
+        let next = Rc::new(Held::new(candidate.to_path_buf(), dir, Some(here.clone())));
         let again = !self.opened.insert(candidate.to_path_buf());
         if again && self.held.len() < MAX_HELD {
             self.held.insert(candidate.to_path_buf(), next.clone());
@@ -459,7 +480,7 @@ impl Round {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{resolve, DATA_VOLUME, PROTECTED_IN_HOME, STEP};
+    use super::super::{is_within, places, resolve, DATA_VOLUME, PROTECTED_IN_HOME, STEP};
     use super::*;
     use crate::dirfd::calls;
     use std::fs;
@@ -900,6 +921,69 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_a_round_holds_64_folders_at_most_and_answers_alike_past_them() {
+        // 80 folders, each opened twice: once 64 are held (the tree's own
+        // folders above them among them), the rest are opened again each
+        // time, as `resolve` opens them. Never more open than `/`, the held
+        // ones, and the folders of the one walk under way.
+        let tree = Tree::new("cap");
+        let count = 80;
+        for i in 0..count {
+            tree.file(&format!("d{i:02}/f"), 0o755);
+        }
+        let protected = Protected::new(&tree.root);
+        // `..` is taken one step at a time, so `dNN` is opened each time.
+        let paths: Vec<PathBuf> = (0..count)
+            .map(|i| tree.at(&format!("d{i:02}/../d{i:02}/f")))
+            .collect();
+        let depth = tree.root.components().count() + 3;
+        let open_before = OPEN.with(|open| open.get());
+        let most = std::rc::Rc::new(std::cell::Cell::new(0));
+        let seen = most.clone();
+        STEP.with(|step| {
+            *step.borrow_mut() = Some(Box::new(move |_: &Path| {
+                seen.set(seen.get().max(OPEN.with(|open| open.get())));
+            }))
+        });
+        let expected: Vec<Resolution> = paths
+            .iter()
+            .map(|path| resolve(path, &protected, true))
+            .collect();
+        let mut round = Round::new(protected.clone());
+        for pass in 0..3 {
+            let (_, made) = calls::measure(|| {
+                for (path, expected) in paths.iter().zip(&expected) {
+                    assert_same(expected, &round.resolve(path), path);
+                    // At rest: `/` and the held ones.
+                    assert_eq!(
+                        OPEN.with(|open| open.get()) - open_before,
+                        1 + round.held.len(),
+                        "{path:?}"
+                    );
+                }
+            });
+            assert!(round.held.len() <= MAX_HELD);
+            if pass == 2 {
+                assert_eq!(round.held.len(), MAX_HELD);
+                let held = (0..count)
+                    .filter(|i| round.held.contains_key(&tree.at(&format!("d{i:02}"))))
+                    .count();
+                assert!(held > 0 && held < count, "{held} of the folders held");
+                // The ones past the limit are opened again; the held not.
+                assert_eq!(made.open_dir_at, count - held, "{made:?}");
+            }
+        }
+        STEP.with(|step| *step.borrow_mut() = None);
+        assert!(
+            most.get() - open_before <= 1 + MAX_HELD + depth,
+            "{} open at most",
+            most.get() - open_before
+        );
+        drop(round);
+        assert_eq!(OPEN.with(|open| open.get()), open_before, "all closed");
+    }
+
     /// Reproducible numbers, with no new dependency.
     struct Rng(u64);
 
@@ -1079,6 +1163,13 @@ mod tests {
             let mut stepping = Round::one_step_at_a_time(protected.clone());
             for pass in 0..2 {
                 for path in &asked {
+                    // `contains` itself, against the places as listed
+                    // and spelled from `/` at every call (`is_within`).
+                    assert_eq!(
+                        protected.contains(path),
+                        is_within(path, &places(std::slice::from_ref(&tree.root))),
+                        "{path:?}"
+                    );
                     let old = resolve(path, &protected, true);
                     let (new, made) = calls::measure(|| round.resolve(path));
                     assert_same(&old, &new, path);
