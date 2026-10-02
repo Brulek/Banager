@@ -619,17 +619,25 @@ describe("OverviewPage", () => {
     // Walk-2 W2-1: offline, the line under 「3个工具可以更新」 said
     // 「上次检查：刚才」 while 21 tools could not be checked, as if the
     // check had worked, and why was folded away on the Updates page. The
-    // headline's number, what can be updated, is what it was.
+    // headline's number, what can be updated, is what it was. The count is
+    // said once, in the line; the row says what it means, why and what to
+    // do (walk-2 review 1.4).
     clockJustAfterTheCheck();
-    const offline = { Message: "pip list --outdated: Failed to establish a new connection: [Errno 8] nodename nor servname provided" };
+    const offline: UpdateCandidate["warnings"] = [
+      { Message: "pip list --outdated: Failed to establish a new connection: [Errno 8] nodename nor servname provided" },
+      "TransientLookupFailure",
+    ];
     const certifi: ArtifactKey = { instance_id: pip.id, kind: "Package", name: "certifi" };
+    const idna: ArtifactKey = { instance_id: pip.id, kind: "Package", name: "idna" };
     served = snapshotWith({
       updates: [
         candidate(formula("glib")),
-        candidate(urllib3, { checkable: false, target: "1.0.0", warnings: [offline] }),
-        candidate(certifi, { checkable: false, target: "1.0.0", warnings: [offline] }),
-        // No check will find a crate not from crates.io: not counted.
+        candidate(urllib3, { checkable: false, target: "1.0.0", warnings: offline }),
+        candidate(certifi, { checkable: false, target: "1.0.0", warnings: offline }),
+        // No check will find a crate not from crates.io, nor mend a 404:
+        // not counted (walk-2 review 1.1).
         candidate(formula("jq"), { checkable: false, target: "1.0.0", warnings: ["NonRegistrySource"] }),
+        candidate(idna, { checkable: false, target: "1.0.0", warnings: [{ Message: "PyPI returned status 404" }] }),
       ],
     });
     const { findByRole, getByRole, container } = renderOverview();
@@ -640,13 +648,32 @@ describe("OverviewPage", () => {
     expect(getByRole("button", { name: "Review Updates" }).className).toContain("bg-accent");
 
     const rows = within(getByRole("list", { name: "Needs attention" })).getAllByRole("listitem");
-    expect(within(rows[0]).getByText("2 tools couldn't be checked: Connection failed")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Some updates may not be listed")).toBeInTheDocument();
     expect(
-      within(rows[0]).getByText("Some updates may not be listed. Check your internet connection, then try again."),
+      within(rows[0]).getByText("The connection failed. Check your internet connection, then try again."),
     ).toBeInTheDocument();
+    expect(rows[0].textContent).not.toMatch(/couldn't be checked/);
     expect(rows[0].querySelector("svg")?.getAttribute("class")).toContain("text-warning");
     fireEvent.click(within(rows[0]).getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+  });
+
+  it("says nothing of a check that failed in a way no later check will mend", async () => {
+    // A model Ollama's registry answers 404 for, Antigravity CLI on an
+    // Intel Mac: without `TransientLookupFailure` the warning and its
+    // Check Again would stay for good (walk-2 review 1.1).
+    clockJustAfterTheCheck();
+    served = snapshotWith({
+      updates: [
+        candidate(formula("glib")),
+        candidate(urllib3, { checkable: false, target: "1.0.0", warnings: [{ Message: "PyPI returned status 404" }] }),
+      ],
+    });
+    const { findByRole, queryByRole } = renderOverview();
+
+    const headline = await findByRole("heading", { level: 2, name: "1 tool can be updated" });
+    expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
+    expect(queryByRole("list", { name: "Needs attention" })).toBeNull();
   });
 
   it("says nothing to update only of what was checked where tools could not be, and counts them, in Chinese", async () => {
@@ -657,7 +684,10 @@ describe("OverviewPage", () => {
           candidate(urllib3, {
             checkable: false,
             target: "1.0.0",
-            warnings: [{ Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" }],
+            warnings: [
+              { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
+              "TransientLookupFailure",
+            ],
           }),
         ],
       });
@@ -667,8 +697,32 @@ describe("OverviewPage", () => {
       expect(headline.nextElementSibling?.textContent).toBe("1个无法在这里更新，其中1个没有检查成功");
       const rows = within(getByRole("list", { name: "需要查看" })).getAllByRole("listitem");
       // pip's words name no cause a person knows: none is claimed.
-      expect(within(rows[0]).getByText("1个工具没有检查成功")).toBeInTheDocument();
-      expect(within(rows[0]).getByText("可能还有更新没有列出。可以稍后点按“重新检查”再试。")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("可能还有更新没有列出")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("可以稍后点按“重新检查”再试。")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("claims no source was checked when every installed tool could not be", async () => {
+    // Walk-2 review 1.2: "No updates in the sources checked" over a check
+    // in which nothing was checked.
+    const offline: UpdateCandidate["warnings"] = [{ Message: "npm error code ENOTFOUND" }, "TransientLookupFailure"];
+    const certifi: ArtifactKey = { instance_id: pip.id, kind: "Package", name: "certifi" };
+    served = snapshotWith({
+      artifacts: [artifact(urllib3), artifact(certifi)],
+      updates: [
+        candidate(urllib3, { checkable: false, target: "1.0.0", warnings: offline }),
+        candidate(certifi, { checkable: false, target: "1.0.0", warnings: [{ Message: "PyPI returned status 404" }] }),
+      ],
+    });
+    const { findByRole, queryByRole } = renderOverview();
+
+    expect(await findByRole("heading", { level: 2, name: "No tools could be checked" })).toBeInTheDocument();
+    expect(queryByRole("heading", { level: 2, name: "No updates in the sources checked" })).toBeNull();
+    await i18n.changeLanguage("zh-CN");
+    try {
+      expect(await findByRole("heading", { level: 2, name: "所有工具都没有检查成功" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

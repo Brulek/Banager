@@ -1,7 +1,7 @@
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, second_token, uncheckable_candidate,
     url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
-    CheckOutcome,
+    CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -406,7 +406,7 @@ impl CargoAdapter {
         parse_crates2(&json, &inst.id, &inst.prefix)
     }
 
-    async fn latest_stable_version(&self, name: &str) -> Result<String, String> {
+    async fn latest_stable_version(&self, name: &str) -> Result<String, LookupFailure> {
         let resp = self
             .http
             .send(HttpRequest {
@@ -422,11 +422,14 @@ impl CargoAdapter {
                 timeout: Duration::from_secs(30),
             })
             .await
-            .map_err(|e| format!("crates.io request failed: {e}"))?;
+            .map_err(|e| LookupFailure::request("crates.io request failed", &e))?;
         if resp.status != 200 {
-            return Err(format!("crates.io returned status {}", resp.status));
+            return Err(LookupFailure::status(
+                format!("crates.io returned status {}", resp.status),
+                resp.status,
+            ));
         }
-        parse_crates_io_body(&resp.body)
+        Ok(parse_crates_io_body(&resp.body)?)
     }
 
     /// Registry-sourced crates are checked one at a time against crates.io.

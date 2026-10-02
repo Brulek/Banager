@@ -300,6 +300,15 @@ export type Warning =
   | { NeededBySource: { instance_id: string; program: boolean; tools: number } }
   | "CompilesLocally"
   | "NonRegistrySource"
+  /**
+   * On a `checkable: false` candidate, after the `Message` that says why:
+   * its lookup failed in a way a later check can get past -- no answer,
+   * a 408, 429 or 5xx, or the tool's words name the network. A failed
+   * lookup without it is not known to mend itself (a 404, an answer that
+   * would not parse, a tool not looked up on this Mac). Only these are
+   * counted as "couldn't be checked" (`isFailedLookup`).
+   */
+  | "TransientLookupFailure"
   | { ThirdPartyRegistry: { host: string } }
   | "DownloadsModelChanges"
   | { WillTrash: { path: string; what: RemovedWhat } }

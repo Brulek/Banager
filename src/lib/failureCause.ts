@@ -203,6 +203,19 @@ export function failureCause(text: string): FailureCause | null {
 }
 
 /**
+ * The cause a failed lookup's words give (`failureCause`), where the
+ * words for it hold for a lookup too: only `network`. The others are said
+ * of a change -- 「没有权限修改它的文件」, a lock another operation holds, a
+ * password -- and a lookup changes nothing: a lookup refused a file it
+ * reads, or one a full disk stopped, says no cause rather than the wrong
+ * one, and its row keeps the tool's own words behind "Show technical
+ * details" (walk-2 review 1.3).
+ */
+export function lookupFailureCause(text: string): FailureCause | null {
+  return failureCause(text) === "network" ? "network" : null;
+}
+
+/**
  * The cause of an operation's failure, from its outcome: a tool's own
  * words (`Failed.summary`), classified; Banager's own `HomebrewStillUpdating`,
  * which is the Homebrew list by definition. Every other outcome -- one

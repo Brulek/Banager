@@ -297,21 +297,132 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
 /// `target` is the installed version, not a guess. `UpdateCandidate` has no
 /// "unknown" target, and any other value would be a version Banager is
 /// claiming exists.
+///
+/// Its warnings: the reason (`Warning::Message`), then
+/// `Warning::TransientLookupFailure` where the failure is one checking
+/// again can get past (`LookupFailure::transient`).
 pub(crate) fn uncheckable_candidate(
     key: ArtifactKey,
     current: String,
     channel: UpdateChannel,
-    reason: String,
+    failure: impl Into<LookupFailure>,
 ) -> UpdateCandidate {
+    let failure = failure.into();
+    let mut warnings = vec![Warning::Message(failure.reason)];
+    if failure.transient {
+        warnings.push(Warning::TransientLookupFailure);
+    }
     UpdateCandidate {
         key,
         target: current.clone(),
         current,
         channel,
         checkable: false,
-        warnings: vec![Warning::Message(reason)],
+        warnings,
         blocked: None,
     }
+}
+
+/// Why a lookup could not be made: the words for its row (`reason`, the
+/// row's `Warning::Message`), and whether checking again can get past it
+/// (`transient`, the row's `Warning::TransientLookupFailure`).
+///
+/// `transient` is claimed only where it is known: the request got no
+/// answer at all, the registry answered with a status that says "not
+/// now" (408, 429, 5xx), or the tool's own words say the network failed.
+/// Anything else -- a 404, an answer that would not parse, a version that
+/// could not be read, a tool not looked up on this Mac, a command that did
+/// not finish -- is not known to mend itself, and a warning that asks the
+/// person to check again would then never go away. A plain `String` is
+/// such a failure (`From<String>`), so `?` on a helper that fails with
+/// words alone says nothing it does not know.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LookupFailure {
+    pub(crate) reason: String,
+    pub(crate) transient: bool,
+}
+
+impl From<String> for LookupFailure {
+    fn from(reason: String) -> Self {
+        LookupFailure {
+            reason,
+            transient: false,
+        }
+    }
+}
+
+impl LookupFailure {
+    /// A request that got no answer: `"{what}: {error}"`, transient when
+    /// the network failed or the time ran out, and not for a body over the
+    /// size limit (the same next time) or a test's missing canned answer.
+    pub(crate) fn request(what: &str, error: &crate::http::HttpError) -> Self {
+        use crate::http::HttpError;
+        LookupFailure {
+            reason: format!("{what}: {error}"),
+            transient: matches!(error, HttpError::Network(_) | HttpError::Timeout(_)),
+        }
+    }
+
+    /// An answer other than 200: `reason` as the caller words it,
+    /// transient for 408 (Request Timeout), 429 (Too Many Requests) and
+    /// any server error (5xx). A 404 is the registry saying it has no such
+    /// thing, which the next check will say again.
+    pub(crate) fn status(reason: String, status: u16) -> Self {
+        LookupFailure {
+            reason,
+            transient: status == 408 || status == 429 || (500..=599).contains(&status),
+        }
+    }
+
+    /// A failure a tool put into `words` -- its stderr, or the error its
+    /// update check reported -- worded as `reason`: transient where those
+    /// words say the network failed (`says_network_failed`).
+    pub(crate) fn words(reason: String, words: &str) -> Self {
+        LookupFailure {
+            reason,
+            transient: says_network_failed(words),
+        }
+    }
+}
+
+/// Whether `words` say the network failed: a name that would not resolve,
+/// a connection refused, reset or never made, a network or host out of
+/// reach, a request that timed out -- in the words curl, Node and npm,
+/// Python's urllib3 (pip, pipx), and Rust's HTTP clients (cargo, uv, the
+/// standalone tools) use for it. Several words each, or an error code with
+/// its boundaries, so a package named `timeout` is never taken for one. Not
+/// a certificate or TLS error, which a proxy can make permanent, nor a
+/// status the registry answered with: those say something else.
+pub(crate) fn says_network_failed(words: &str) -> bool {
+    const PHRASES: [&str; 14] = [
+        "could not resolve host",
+        "couldn't resolve host",
+        "timed out",
+        "connection refused",
+        "connection reset",
+        "network is unreachable",
+        "no route to host",
+        "temporary failure in name resolution",
+        "nodename nor servname provided",
+        "failed to establish a new connection",
+        "failed to lookup address",
+        "dns error",
+        "error sending request",
+        "network error",
+    ];
+    const CODES: [&str; 6] = [
+        "ENOTFOUND",
+        "EAI_AGAIN",
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "ENETUNREACH",
+    ];
+    let lower = words.to_lowercase();
+    PHRASES.iter().any(|phrase| lower.contains(phrase))
+        || words
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|token| CODES.contains(&token))
 }
 
 /// One `uncheckable_candidate` per installed item, for the adapters whose
@@ -323,18 +434,11 @@ pub(crate) fn uncheckable_candidate(
 pub(crate) fn uncheckable_from_inventory(
     installed: &[InstalledArtifact],
     channel: UpdateChannel,
-    reason: &str,
+    failure: &LookupFailure,
 ) -> Vec<UpdateCandidate> {
     installed
         .iter()
-        .map(|a| {
-            uncheckable_candidate(
-                a.key.clone(),
-                a.version.clone(),
-                channel,
-                reason.to_string(),
-            )
-        })
+        .map(|a| uncheckable_candidate(a.key.clone(), a.version.clone(), channel, failure.clone()))
         .collect()
 }
 
@@ -618,6 +722,123 @@ pub fn second_token(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_uncheckable_candidate_marks_only_a_transient_failure_so() {
+        let npm_key = |name: &str| ArtifactKey {
+            instance_id: "npm:/usr/local".to_string(),
+            kind: crate::model::ArtifactKind::Package,
+            name: name.to_string(),
+        };
+        let transient = uncheckable_candidate(
+            npm_key("a"),
+            "1.0.0".to_string(),
+            UpdateChannel::Native,
+            LookupFailure::words(
+                "npm outdated -g: npm error code ENOTFOUND".to_string(),
+                "npm error code ENOTFOUND\nnpm error syscall getaddrinfo",
+            ),
+        );
+        assert_eq!(
+            transient.warnings,
+            vec![
+                Warning::Message("npm outdated -g: npm error code ENOTFOUND".to_string()),
+                Warning::TransientLookupFailure
+            ]
+        );
+        assert!(!transient.checkable);
+        // Words alone are a failure not known to mend itself.
+        let lasting = uncheckable_candidate(
+            npm_key("b"),
+            "1.0.0".to_string(),
+            UpdateChannel::Native,
+            "cannot read the installed version now".to_string(),
+        );
+        assert_eq!(
+            lasting.warnings,
+            vec![Warning::Message(
+                "cannot read the installed version now".to_string()
+            )]
+        );
+        let shared = LookupFailure::words("x".to_string(), "connection refused");
+        let rows = uncheckable_from_inventory(&[], UpdateChannel::Native, &shared);
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_lookup_failure_is_transient_only_for_no_answer_or_a_not_now_status() {
+        use crate::http::HttpError;
+        let network = LookupFailure::request(
+            "crates.io request failed",
+            &HttpError::Network("dns error".to_string()),
+        );
+        assert_eq!(
+            network.reason,
+            "crates.io request failed: network error: dns error"
+        );
+        assert!(network.transient);
+        assert!(
+            LookupFailure::request("x", &HttpError::Timeout(Duration::from_secs(30))).transient
+        );
+        assert!(!LookupFailure::request("x", &HttpError::BodyTooLarge { limit: 1 }).transient);
+        assert!(!LookupFailure::request("x", &HttpError::NoMock("u".to_string())).transient);
+        for status in [408, 429, 500, 502, 503, 599] {
+            assert!(
+                LookupFailure::status(String::new(), status).transient,
+                "{status}"
+            );
+        }
+        // 404: a model made with `ollama create`, a crate removed from
+        // crates.io -- the next check gets the same answer.
+        for status in [301, 400, 401, 403, 404, 410, 418] {
+            assert!(
+                !LookupFailure::status(String::new(), status).transient,
+                "{status}"
+            );
+        }
+        assert_eq!(
+            LookupFailure::from("could not parse registry manifest".to_string()),
+            LookupFailure {
+                reason: "could not parse registry manifest".to_string(),
+                transient: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_says_network_failed_reads_the_network_in_each_tools_words_and_nothing_else() {
+        // As the tools put it offline (the preview's `OFFLINE_REASONS` are
+        // these): npm, pip (urllib3), pipx, uv, cargo, grok's own check.
+        for words in [
+            "npm error code ENOTFOUND",
+            "npm ERR! code EAI_AGAIN",
+            "npm error errno ECONNRESET",
+            "WARNING: Retrying (Retry(total=4)) after connection broken by 'NewConnectionError('<HTTPSConnection>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known')'",
+            "ReadTimeoutError: HTTPSConnectionPool(host='pypi.org', port=443): Read timed out. (read timeout=15)",
+            "error: could not reach https://pypi.org/simple/ (network is unreachable)",
+            "error: Request failed after 3 retries\n  Caused by: error sending request for url (https://pypi.org/simple/ruff/)\n  Caused by: dns error: failed to lookup address information",
+            "the update check reported: could not reach the update server: error sending request: dns error",
+            "curl: (6) Could not resolve host: formulae.brew.sh",
+            "Connection refused (os error 61)",
+            "No route to host",
+        ] {
+            assert!(says_network_failed(words), "{words}");
+        }
+        for words in [
+            "",
+            "registry returned status 404",
+            "npm error code E401",
+            "npm error code E404 Not Found - GET https://registry.npmjs.org/left-pad",
+            "could not read local manifest /Users/me/.ollama/x: Permission denied (os error 13)",
+            "SSL: CERTIFICATE_VERIFY_FAILED",
+            "Antigravity CLI's update manifest is not yet verified on Intel Macs (x86_64)",
+            "cannot read the installed version now",
+            "npm ERR! 404 'timeout@9.9.9' is not in this registry",
+            "ENOTFOUNDISH",
+        ] {
+            assert!(!says_network_failed(words), "{words}");
+        }
+    }
 
     #[test]
     fn regression_second_token_refuses_a_version_with_a_control_character() {

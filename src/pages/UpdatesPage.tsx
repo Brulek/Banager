@@ -14,7 +14,6 @@ import {
   unfinishedChecksNotice,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import { warningMessage } from "../lib/warnings";
 import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
@@ -63,7 +62,7 @@ import {
   updateVersionColumn,
 } from "../components/updateDetails";
 import { FAILURE_CAUSE_KEYS, type FailureCause } from "../lib/failureCause";
-import { failedLookupsNotice, isFailedLookup } from "../lib/failedLookups";
+import { failedLookupsNotice, isFailedLookup, saysWhyInToolWords } from "../lib/failedLookups";
 import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
@@ -181,7 +180,7 @@ type ListItem =
   | { type: "showEmpty" }
   | { type: "justUpdated"; count: number }
   | { type: "update"; candidate: UpdateCandidate; updatable: boolean }
-  | { type: "section"; count: number; unchecked: number; expanded: boolean }
+  | { type: "section"; count: number; expanded: boolean }
   | { type: "summary"; count: number; cause: FailureCause | null };
 
 /**
@@ -240,22 +239,9 @@ function hairlineBefore(next: ListItem): boolean {
  * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png),
  * on the rows' grid, as the notices over them are: the triangle centred in
  * the avatars' column, the words where the names start. One of the rows
- * ↑ and ↓ move between, Space or Enter opening it. Where some of them are
- * tools the check could not look up (`unchecked`, `isFailedLookup`), it
- * says how many, folded or not: folded, they read as tools Banager can't
- * manage, not as a check that failed (walk-2 W2-1).
+ * ↑ and ↓ move between, Space or Enter opening it.
  */
-function CantUpdateHere({
-  count,
-  unchecked,
-  expanded,
-  onToggle,
-}: {
-  count: number;
-  unchecked: number;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
+function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
   const roving = useRovingRow();
   return (
@@ -275,9 +261,7 @@ function CantUpdateHere({
         />
       </span>
       <span className={`min-w-0 truncate ${NOTICE_GRID.checkbox.gap}`}>
-        {unchecked > 0
-          ? t("updates.cantUpdateHereUnchecked", { number: count, unchecked })
-          : t("updates.cantUpdateHere", { number: count })}
+        {t("updates.cantUpdateHere", { number: count })}
       </span>
     </button>
   );
@@ -653,7 +637,8 @@ export function UpdatesPage() {
 
   // How many rows can only say that Banager could not check them, the
   // tool's own words being hidden while "Show technical details" is off:
-  // an uncheckable row with a `Message`. The page says once, over those
+  // an uncheckable row with a `Message` (`saysWhyInToolWords`, which the
+  // count of tools that could not be checked starts from too). The page says once, over those
   // rows, where to see why, counting these rows and no others -- a
   // `NonRegistrySource` row already says its own reason. It claims a
   // diagnosis only where the tool's own words give one a person knows, the
@@ -662,13 +647,7 @@ export function UpdatesPage() {
   // "this Mac is offline" from "that index is refusing you"
   // (`lookup_failure_reason`, crates/banager-core/src/adapters/mod.rs),
   // and they are precisely what is hidden.
-  const hiddenReasonRows = settings?.show_technical_details
-    ? []
-    : otherRows.filter(
-        (candidate) =>
-          !candidate.checkable &&
-          candidate.warnings.some((warning) => warningMessage(warning) !== null),
-      );
+  const hiddenReasonRows = settings?.show_technical_details ? [] : otherRows.filter(saysWhyInToolWords);
   const hiddenReasonCount = hiddenReasonRows.length;
   const hiddenReasonCause = sharedCannotCheckCause(hiddenReasonRows);
 
@@ -692,14 +671,7 @@ export function UpdatesPage() {
         ? [{ type: "showEmpty" } as const]
         : []),
       ...(otherRows.length > 0
-        ? [
-            {
-              type: "section",
-              count: otherRows.length,
-              unchecked: otherRows.filter(isFailedLookup).length,
-              expanded: showCantUpdate,
-            } as const,
-          ]
+        ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
         : []),
       ...(showCantUpdate && hiddenReasonCount > 0
         ? [{ type: "summary", count: hiddenReasonCount, cause: hiddenReasonCause } as const]
@@ -1302,7 +1274,6 @@ export function UpdatesPage() {
           ) : item.type === "section" ? (
             <CantUpdateHere
               count={item.count}
-              unchecked={item.unchecked}
               expanded={item.expanded}
               onToggle={() => setShowCantUpdate((shown) => !shown)}
             />

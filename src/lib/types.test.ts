@@ -354,6 +354,7 @@ describe("types", () => {
     const compilesLocally: Warning = "CompilesLocally";
     const downloadsModelChanges: Warning = "DownloadsModelChanges";
     const nonRegistrySource: Warning = "NonRegistrySource";
+    const transientLookupFailure: Warning = "TransientLookupFailure";
     const wouldBreak: Warning = { WouldBreak: { names: ["python@3.13"] } };
     const thirdPartyRegistry: Warning = { ThirdPartyRegistry: { host: "modelscope.cn" } };
     const message: Warning = { Message: "boom" };
@@ -362,6 +363,13 @@ describe("types", () => {
     expect(roundTrip(compilesLocally)).toBe("CompilesLocally");
     expect(roundTrip(downloadsModelChanges)).toBe("DownloadsModelChanges");
     expect(roundTrip(nonRegistrySource)).toBe("NonRegistrySource");
+    expect(roundTrip(transientLookupFailure)).toBe("TransientLookupFailure");
+    // A failed lookup a later check can get past, as Rust sends it: the
+    // reason, then the mark (`uncheckable_candidate`).
+    expect(roundTrip<Warning[]>([{ Message: "npm error code ENOTFOUND" }, "TransientLookupFailure"])).toEqual([
+      { Message: "npm error code ENOTFOUND" },
+      "TransientLookupFailure",
+    ]);
     expect(JSON.stringify(wouldBreak)).toBe('{"WouldBreak":{"names":["python@3.13"]}}');
     expect(roundTrip(wouldBreak)).toEqual({ WouldBreak: { names: ["python@3.13"] } });
     expect(JSON.stringify(thirdPartyRegistry)).toBe(

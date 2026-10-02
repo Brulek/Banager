@@ -1334,7 +1334,7 @@ describe("InstalledPage", () => {
       await updates.findByText("offered");
       // Every row it lists on the page, the ones folded under "Can't update
       // here" too.
-      fireEvent.click(updates.getByRole("button", { name: /^\d+ more can't be updated here(, including \d+ that couldn't be checked)?$/ }));
+      fireEvent.click(updates.getByRole("button", { name: /^\d+ more can't be updated here$/ }));
       await updates.findByText("stopped-model", { selector: "[data-tool-row] p" });
       const rowNamed = (name: string) =>
         updates.queryByText(name, { selector: "[data-tool-row] p" })?.closest("[data-tool-row]") ?? null;

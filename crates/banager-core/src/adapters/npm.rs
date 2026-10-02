@@ -1,7 +1,7 @@
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan,
     uncheckable_from_inventory, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -353,9 +353,12 @@ impl NpmAdapter {
         // "exit 1 and found nothing" is a contradiction, not good news.
         // Returning the empty list here is what used to tell a user whose
         // registry was unreachable that everything was up to date.
-        let reason = lookup_failure_reason("npm outdated -g", output.exit_code, &output.stderr);
+        let failure = LookupFailure::words(
+            lookup_failure_reason("npm outdated -g", output.exit_code, &output.stderr),
+            &output.stderr,
+        );
         let installed = self.inventory(inst).await?;
-        Ok(uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into())
+        Ok(uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into())
     }
 
     pub async fn search(
@@ -1188,6 +1191,11 @@ mod tests {
             reason.contains("ENOTFOUND"),
             "the reason the user reads has to be npm's own: {reason}"
         );
+        // npm's words name the network: every row says a later check can
+        // get past it, so the lists count them as not checked this time.
+        assert!(candidates
+            .iter()
+            .all(|c| c.warnings.contains(&Warning::TransientLookupFailure)));
     }
 
     #[tokio::test]

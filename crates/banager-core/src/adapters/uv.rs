@@ -1,7 +1,7 @@
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, second_token,
     uncheckable_from_inventory, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -326,11 +326,13 @@ impl UvAdapter {
         // answer cargo, pip, pipx and npm give. See
         // `uncheckable_from_inventory`.
         if output.exit_code != Some(0) {
-            let reason =
-                lookup_failure_reason("uv tool list --outdated", output.exit_code, &output.stderr);
+            let failure = LookupFailure::words(
+                lookup_failure_reason("uv tool list --outdated", output.exit_code, &output.stderr),
+                &output.stderr,
+            );
             let installed = self.inventory(inst).await?;
             return Ok(
-                uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into(),
+                uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into(),
             );
         }
         Ok(parse_tool_list_outdated(&output.stdout, &inst.id).into())

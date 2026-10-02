@@ -8,7 +8,7 @@
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { READ_ONLY_DETAIL_KEYS, UNAVAILABLE_DETAIL_KEYS, UPDATE_BLOCKED_KEYS } from "../lib/sources";
-import { FAILURE_CAUSE_KEYS, failureCause, type FailureCause } from "../lib/failureCause";
+import { FAILURE_CAUSE_KEYS, lookupFailureCause, type FailureCause } from "../lib/failureCause";
 import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
@@ -35,12 +35,14 @@ export function detailLines(lines: ReactNode[]): ReactNode {
  * error -- kept verbatim on purpose, and it is behind "Show technical
  * details", which is exactly what spec §6 says the right shape is. Where
  * its words say why in a way a person knows (`failureCause`: no network,
- * a full disk, a lock), that is said in a person's words whether or not
- * technical details are on (`failure.line.*`), before the words
- * themselves. Distinct, so a row carrying the same reason twice says it
- * once. Where a tool's words name no such cause, what a person can do is
- * check again later (`updates.cannotCheckTryLater`), said once: a
- * `NonRegistrySource` row gets no such line, as no check will find it.
+ * `lookupFailureCause`: no network), that is said in a person's words
+ * whether or not technical details are on (`failure.line.*`), before the
+ * words themselves. Distinct, so a row carrying the same reason twice says
+ * it once. A lookup a later check can get past
+ * (`TransientLookupFailure`) says to check again later -- but not after a
+ * cause whose own line already says what to do. A row no check will mend
+ * (a 404, a tool not looked up on this Mac, `NonRegistrySource`) says no
+ * such thing.
  */
 export function cannotCheckDetail(
   t: TFunction,
@@ -48,28 +50,32 @@ export function cannotCheckDetail(
   showTechnicalDetails: boolean,
 ): ReactNode {
   const reasons = new Set<string>();
-  let tryLater = false;
+  let causeSaid = false;
   for (const warning of candidate.warnings) {
+    if (warning === "TransientLookupFailure") continue;
     const raw = warningMessage(warning);
     if (raw === null) {
       const text = warningText(t, warning);
       if (text !== null && text !== "") reasons.add(text);
       continue;
     }
-    const cause = failureCause(raw);
-    if (cause !== null) reasons.add(t(FAILURE_CAUSE_KEYS[cause].line));
-    else tryLater = true;
+    const cause = lookupFailureCause(raw);
+    if (cause !== null) {
+      reasons.add(t(FAILURE_CAUSE_KEYS[cause].line));
+      causeSaid = true;
+    }
     if (showTechnicalDetails && raw !== "") reasons.add(raw);
   }
+  const tryLater = candidate.warnings.includes("TransientLookupFailure") && !causeSaid;
   return detailLines([
     t("updates.cannotCheckShort"),
     ...reasons,
-    ...(tryLater ? [t("updates.cannotCheckTryLater")] : []),
+    ...(tryLater ? [t("warnings.transientLookupFailure")] : []),
   ]);
 }
 
 /**
- * The one cause a person knows (`failureCause`) that every row of
+ * The one cause a person knows (`lookupFailureCause`) that every row of
  * `candidates` with a tool's own words (`Message`) gives -- 「网络连接失败」
  * when nothing could be reached -- for the line over the rows Banager
  * could not check. Null when there is no such row, when one of them says
@@ -82,7 +88,7 @@ export function sharedCannotCheckCause(candidates: UpdateCandidate[]): FailureCa
     for (const warning of candidate.warnings) {
       const raw = warningMessage(warning);
       if (raw === null) continue;
-      const cause = failureCause(raw);
+      const cause = lookupFailureCause(raw);
       if (cause === null || (shared !== null && cause !== shared)) return null;
       shared = cause;
     }

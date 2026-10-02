@@ -1,6 +1,6 @@
 use crate::adapters::{
     lookup_failure_reason, reconcile_from, second_token, uncheckable_candidate, Adapter,
-    AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    AdapterError, AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -422,8 +422,10 @@ impl PipAdapter {
         // and hold the whole snapshot stale; cargo already answers this
         // question the way it is answered here.
         if output.exit_code != Some(0) {
-            let reason =
-                lookup_failure_reason("pip list --outdated", output.exit_code, &output.stderr);
+            let failure = LookupFailure::words(
+                lookup_failure_reason("pip list --outdated", output.exit_code, &output.stderr),
+                &output.stderr,
+            );
             // The plain list, not `inventory()`: all this needs is what is
             // installed and at what version, and `inventory()` would run a
             // second `--not-required` pass to work out install reasons
@@ -440,7 +442,7 @@ impl PipAdapter {
                         },
                         p.version,
                         UpdateChannel::Native,
-                        reason.clone(),
+                        failure.clone(),
                     )
                 })
                 .collect::<Vec<_>>()

@@ -1,7 +1,7 @@
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
     uncheckable_from_inventory, url_path_segment, validate_package_name, Adapter, AdapterError,
-    AdapterMeta, CheckOptions, CheckOutcome,
+    AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -364,7 +364,7 @@ impl PipxAdapter {
         parse_list(&output.stdout, &inst.id)
     }
 
-    async fn latest_pypi_version(&self, name: &str) -> Result<String, String> {
+    async fn latest_pypi_version(&self, name: &str) -> Result<String, LookupFailure> {
         let resp = self
             .http
             .send(HttpRequest {
@@ -377,11 +377,14 @@ impl PipxAdapter {
                 timeout: Duration::from_secs(30),
             })
             .await
-            .map_err(|e| format!("PyPI request failed: {e}"))?;
+            .map_err(|e| LookupFailure::request("PyPI request failed", &e))?;
         if resp.status != 200 {
-            return Err(format!("PyPI returned status {}", resp.status));
+            return Err(LookupFailure::status(
+                format!("PyPI returned status {}", resp.status),
+                resp.status,
+            ));
         }
-        parse_pypi_body(&resp.body)
+        Ok(parse_pypi_body(&resp.body)?)
     }
 
     /// Below pipx 1.16 there is no `pipx list --outdated`, so each installed
@@ -439,11 +442,13 @@ impl PipxAdapter {
             // question with `Err`, so which of the two a user got depended
             // only on which pipx they happened to have installed.
             if output.exit_code != Some(0) {
-                let reason =
-                    lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr);
+                let failure = LookupFailure::words(
+                    lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr),
+                    &output.stderr,
+                );
                 let installed = self.inventory(inst).await?;
                 return Ok(
-                    uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into(),
+                    uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into(),
                 );
             }
             Ok(parse_outdated(&output.stdout, &inst.id).into())

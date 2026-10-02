@@ -722,7 +722,11 @@ function offline(world: World): void {
     const adapterId = adapterOf.get(a.key.instance_id) ?? "";
     const reason = OFFLINE_REASONS[adapterId];
     if (reason === undefined || kept.some((u) => sameKey(u.key, a.key))) return [];
-    return [uncheckable(a.key, a.version, OFFLINE_CHANNELS[adapterId] ?? "Registry", { Message: reason })];
+    // Every one of these is the network, which Rust marks as a failure a
+    // later check can get past (`LookupFailure` in
+    // crates/banager-core/src/adapters/mod.rs).
+    const row = uncheckable(a.key, a.version, OFFLINE_CHANNELS[adapterId] ?? "Registry", { Message: reason });
+    return [{ ...row, warnings: [...row.warnings, "TransientLookupFailure"] }];
   });
   world.updates = [...kept, ...failed];
 }

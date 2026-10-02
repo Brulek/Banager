@@ -29,6 +29,7 @@ use self::route::Probe;
 use crate::adapters::{
     ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
     validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -693,7 +694,7 @@ impl StandaloneAdapter {
             )]
             .into());
         };
-        let decided: Result<Option<(String, UpdateChannel)>, String> =
+        let decided: Result<Option<(String, UpdateChannel)>, LookupFailure> =
             match self.published(&inst.exe_path).await {
                 Err(reason) => Err(reason),
                 // The tool's own verdict, as answered (spec §4.3).
@@ -703,9 +704,9 @@ impl StandaloneAdapter {
                 Ok(Published::Version(remote)) => match latest::compare_dotted(&current, &remote) {
                     Some(Ordering::Less) => Ok(Some((remote, UpdateChannel::Registry))),
                     Some(Ordering::Equal | Ordering::Greater) => Ok(None),
-                    None => Err(format!(
+                    None => Err(LookupFailure::from(format!(
                         "cannot compare the installed version {current:?} with the published {remote:?}"
-                    )),
+                    ))),
                 },
             };
         Ok(match decided {
@@ -739,8 +740,11 @@ impl StandaloneAdapter {
     /// recipe's `Latest`: a version to compare with the installed one
     /// (`Published::Version`), or the tool's own verdict
     /// (`Published::ToolSays`, grok). `Err` is the one-line reason of an
-    /// uncheckable row.
-    async fn published(&self, launcher: &Path) -> Result<Published, String> {
+    /// uncheckable row, and whether checking again can get past it
+    /// (`LookupFailure`): a request with no answer, a 408, 429 or 5xx, or
+    /// the tool's own words naming the network; never Intel, a version
+    /// that would not parse, or a check that did not finish.
+    async fn published(&self, launcher: &Path) -> Result<Published, LookupFailure> {
         match self.recipe.latest {
             Latest::ClaudeChannel { base } => {
                 // `home` from detect's seat; before any detect (which
@@ -766,14 +770,16 @@ impl StandaloneAdapter {
                         timeout: Duration::from_secs(30),
                     })
                     .await
-                    .map_err(|e| format!("downloads.claude.ai request failed: {e}"))?;
+                    .map_err(|e| {
+                        LookupFailure::request("downloads.claude.ai request failed", &e)
+                    })?;
                 if resp.status != 200 {
-                    return Err(format!(
-                        "downloads.claude.ai returned status {}",
-                        resp.status
+                    return Err(LookupFailure::status(
+                        format!("downloads.claude.ai returned status {}", resp.status),
+                        resp.status,
                     ));
                 }
-                latest::parse_channel_body(&resp.body).map(Published::Version)
+                Ok(latest::parse_channel_body(&resp.body).map(Published::Version)?)
             }
             Latest::HttpTomlVersion { url } => {
                 let resp = self
@@ -785,11 +791,14 @@ impl StandaloneAdapter {
                         timeout: Duration::from_secs(30),
                     })
                     .await
-                    .map_err(|e| format!("request to {url} failed: {e}"))?;
+                    .map_err(|e| LookupFailure::request(&format!("request to {url} failed"), &e))?;
                 if resp.status != 200 {
-                    return Err(format!("{url} returned status {}", resp.status));
+                    return Err(LookupFailure::status(
+                        format!("{url} returned status {}", resp.status),
+                        resp.status,
+                    ));
                 }
-                latest::parse_release_stable_toml(&resp.body).map(Published::Version)
+                Ok(latest::parse_release_stable_toml(&resp.body).map(Published::Version)?)
             }
             Latest::HttpJsonField { url, field } => {
                 // Only where the manifest URL was verified (Apple silicon);
@@ -804,11 +813,14 @@ impl StandaloneAdapter {
                         timeout: Duration::from_secs(30),
                     })
                     .await
-                    .map_err(|e| format!("request to {url} failed: {e}"))?;
+                    .map_err(|e| LookupFailure::request(&format!("request to {url} failed"), &e))?;
                 if resp.status != 200 {
-                    return Err(format!("{url} returned status {}", resp.status));
+                    return Err(LookupFailure::status(
+                        format!("{url} returned status {}", resp.status),
+                        resp.status,
+                    ));
                 }
-                latest::parse_json_field(&resp.body, field).map(Published::Version)
+                Ok(latest::parse_json_field(&resp.body, field).map(Published::Version)?)
             }
             Latest::Command {
                 args,
@@ -839,18 +851,23 @@ impl StandaloneAdapter {
                     .await
                     .map_err(|e| format!("could not run `{shown}`: {e}"))?;
                 if output.timed_out || output.cancelled {
-                    return Err(format!("`{shown}` did not finish within {timeout_secs} s"));
+                    // Not known to be the network: a check that hangs
+                    // would hang again.
+                    return Err(LookupFailure::from(format!(
+                        "`{shown}` did not finish within {timeout_secs} s"
+                    )));
                 }
                 if output.exit_code != Some(0) {
                     // Worded as every other lookup that runs a command: the
                     // tool's own first line of stderr, or, when it said
                     // nothing, its exit code (or that it did not finish).
-                    return Err(lookup_failure_reason(
-                        &shown,
-                        output.exit_code,
+                    return Err(LookupFailure::words(
+                        lookup_failure_reason(&shown, output.exit_code, &output.stderr),
                         &output.stderr,
                     ));
                 }
+                // The error its check reported is the tool's own words too:
+                // transient where they name the network.
                 latest::parse_update_check(
                     &output.stdout,
                     latest_field,
@@ -858,13 +875,17 @@ impl StandaloneAdapter {
                     error_field,
                 )
                 .map(Published::ToolSays)
+                .map_err(|reason| {
+                    let words = reason.clone();
+                    LookupFailure::words(reason, &words)
+                })
             }
             // `check_updates` returns before asking (above); a published
             // version is not something this source has.
-            Latest::Unchecked => Err(format!(
+            Latest::Unchecked => Err(LookupFailure::from(format!(
                 "Banager does not check {} for updates",
                 self.meta.name
-            )),
+            ))),
         }
     }
 
@@ -2536,9 +2557,11 @@ mod tests {
         assert_eq!(c.current, "2.1.281");
         assert_eq!(c.target, "2.1.281");
         assert_eq!(c.channel, UpdateChannel::Registry);
-        assert!(
-            matches!(&c.warnings[..], [Warning::Message(m)] if m.contains("connection refused"))
-        );
+        // A request with no answer: one a later check can get past.
+        assert!(matches!(
+            &c.warnings[..],
+            [Warning::Message(m), Warning::TransientLookupFailure] if m.contains("connection refused")
+        ));
     }
 
     #[tokio::test]
@@ -2560,9 +2583,11 @@ mod tests {
             .expect("check_updates");
         assert_eq!(out.candidates.len(), 1);
         assert!(!out.candidates[0].checkable);
-        assert!(
-            matches!(&out.candidates[0].warnings[..], [Warning::Message(m)] if m.contains("503"))
-        );
+        // A server error is a "not now".
+        assert!(matches!(
+            &out.candidates[0].warnings[..],
+            [Warning::Message(m), Warning::TransientLookupFailure] if m.contains("503")
+        ));
     }
 
     #[tokio::test]
@@ -4154,11 +4179,22 @@ mod tests {
             assert!(!c.checkable);
             assert_eq!(c.current, "1.29.1");
             assert_eq!(c.target, "1.29.1");
-            assert!(
-                matches!(&c.warnings[..], [Warning::Message(m)] if m.contains(reason) && m.len() < 200),
-                "{reason}: {:?}",
-                c.warnings
-            );
+            // The request with no answer and the 503 can be got past by a
+            // later check; a release file that says no version cannot.
+            let transient = reason == "request to" || reason == "returned status 503";
+            match &c.warnings[..] {
+                [Warning::Message(m)] => assert!(
+                    !transient && m.contains(reason) && m.len() < 200,
+                    "{reason}: {m}"
+                ),
+                [Warning::Message(m), Warning::TransientLookupFailure] => {
+                    assert!(
+                        transient && m.contains(reason) && m.len() < 200,
+                        "{reason}: {m}"
+                    )
+                }
+                other => panic!("{reason}: {other:?}"),
+            }
         }
     }
 
@@ -5212,9 +5248,10 @@ mod tests {
             .await
             .unwrap();
         assert!(!out.candidates[0].checkable);
-        assert!(
-            matches!(&out.candidates[0].warnings[..], [Warning::Message(m)] if m.contains("503"))
-        );
+        assert!(matches!(
+            &out.candidates[0].warnings[..],
+            [Warning::Message(m), Warning::TransientLookupFailure] if m.contains("503")
+        ));
     }
 
     #[tokio::test]

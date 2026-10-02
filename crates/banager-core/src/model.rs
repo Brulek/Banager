@@ -721,6 +721,22 @@ pub enum Warning {
     /// Installed from a git repository or a local path, not the crates.io
     /// registry Banager checks for updates against.
     NonRegistrySource,
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: its lookup failed in a way checking again can get past. The
+    /// request got no answer (`HttpError::Network`, `HttpError::Timeout`),
+    /// the registry answered 408, 429 or a server error (5xx), or the
+    /// words of the tool that looked it up say the network failed
+    /// (`adapters::says_network_failed`). Without it a failed lookup is not
+    /// known to be one a later check can mend, and is taken as one it
+    /// cannot: a model or package the registry does not have (404), an
+    /// answer that would not parse, a tool Banager does not look up on this
+    /// Mac (Antigravity CLI on Intel), an installed version it could not
+    /// read, a command that did not finish. Set only by
+    /// `adapters::uncheckable_candidate` from a `LookupFailure`. Read by
+    /// `isFailedLookup` in src/lib/failedLookups.ts: only such rows are
+    /// counted by the lists' and the Overview's "N tools couldn't be
+    /// checked", whose Check Again can clear it.
+    TransientLookupFailure,
     /// Installing or upgrading this model downloads it from `host`, a
     /// registry other than Ollama's own library. Carried only on
     /// Install/Upgrade plans: where a model came from is a reason to look
@@ -2157,6 +2173,14 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Warning::NonRegistrySource).unwrap(),
             r#""NonRegistrySource""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::TransientLookupFailure).unwrap(),
+            r#""TransientLookupFailure""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#""TransientLookupFailure""#).unwrap(),
+            Warning::TransientLookupFailure
         );
         assert_eq!(
             serde_json::to_string(&Warning::WouldBreak {

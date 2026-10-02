@@ -305,7 +305,7 @@ async function findRow(name: string): Promise<HTMLElement> {
 
 // Unfolds "N more can't be updated here".
 async function showCantUpdate() {
-  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here(, including \d+ that couldn't be checked)?$/ });
+  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here$/ });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(toggle);
 }
@@ -787,30 +787,32 @@ describe("UpdatesPage", () => {
     expect(detail).not.toHaveTextContent(/Check Again/);
   });
 
-  it("says what to do on a row that could not be checked: check again later, or the cause's own step", async () => {
-    // Walk-2 W2-13: a row's why should end on what the person can do.
-    // The tool's words name a cause a person knows -- the network -- and
-    // its line says what to do; words that name none get "check again
-    // later", said once however many of them there are.
+  it("says what to do on a row that could not be checked: check again later, the cause's own step, or nothing", async () => {
+    // Walk-2 W2-13: a row's why should end on what the person can do. A
+    // lookup a later check can get past (`TransientLookupFailure`) says to
+    // check again later -- once, however many words it has -- unless the
+    // words name the network, whose own line says what to do. One no check
+    // will mend (a 404) says no such thing (walk-2 review 1.1).
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
     updates = [
-      {
-        key: myForkKey,
-        current: "0.1.0",
-        target: "0.1.0",
-        channel: "Registry",
-        checkable: false,
-        warnings: [{ Message: "crates.io request failed: status 500" }, { Message: "crates.io: status 503" }],
-        blocked: null,
-      },
-      {
-        key: { ...myForkKey, name: "other" },
-        current: "1.0.0",
-        target: "1.0.0",
-        channel: "Registry",
-        checkable: false,
-        warnings: [{ Message: "crates.io request failed: network error: dns error: failed to lookup address information" }],
-        blocked: null,
-      },
+      row("my-fork", [
+        { Message: "crates.io returned status 500" },
+        { Message: "crates.io: status 503" },
+        "TransientLookupFailure",
+      ]),
+      row("other", [
+        { Message: "crates.io request failed: network error: dns error: failed to lookup address information" },
+        "TransientLookupFailure",
+      ]),
+      row("gone", [{ Message: "crates.io returned status 404" }]),
     ];
     renderPage();
 
@@ -818,11 +820,17 @@ describe("UpdatesPage", () => {
     const unknown = chipDetail(await findRow("my-fork"), "Can't check");
     expect([...unknown.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can click “Check Again” later to try again.",
+      "You can click “Check Again” later.",
     ]);
     const offline = chipDetail(rowOf("other"), "Can't check");
-    expect(offline).toHaveTextContent("Check your internet connection, then try again.");
-    expect(offline).not.toHaveTextContent(/later to try again/);
+    expect([...offline.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "The connection failed. Check your internet connection, then try again.",
+    ]);
+    const gone = chipDetail(rowOf("gone"), "Can't check");
+    expect([...gone.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+    ]);
   });
 
   it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
@@ -1412,9 +1420,6 @@ describe("UpdatesPage", () => {
     const reason = chipDetail(urllib3, "Can't check");
     expect([...reason.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      // pip's words name no cause a person knows: what to do is check
-      // again later (walk-2 W2-13).
-      "You can click “Check Again” later to try again.",
       "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
   });
@@ -1446,7 +1451,6 @@ describe("UpdatesPage", () => {
     // not be checked, in one short sentence -- then pip's way out.
     expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can click “Check Again” later to try again.",
       "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
@@ -1475,7 +1479,7 @@ describe("UpdatesPage", () => {
     }));
     const { findByText, queryAllByText } = renderPage();
 
-    await findByText("70 more can't be updated here, including 70 that couldn't be checked");
+    await findByText("70 more can't be updated here");
     await showCantUpdate();
     const summary = queryAllByText(/70 tools couldn't be checked for updates/);
     expect(summary).toHaveLength(1);
@@ -1500,7 +1504,7 @@ describe("UpdatesPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderPage();
-      fireEvent.click(await findByText("另有2个无法在这里更新，其中2个没有检查成功"));
+      fireEvent.click(await findByText("另有2个无法在这里更新"));
       expect((await findByText(/^2个工具无法检查更新。/)).textContent).toBe(
         "2个工具无法检查更新。网络连接失败，请检查网络连接后重试。",
       );
@@ -1644,7 +1648,6 @@ describe("UpdatesPage", () => {
     expect(lines).toEqual([
       "Couldn't find its latest version.",
       "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
-      "You can click “Check Again” later to try again.",
       "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
     // The rows already carry the tools' words, so the page's line --
@@ -2442,7 +2445,7 @@ describe("UpdatesPage", () => {
       const { queryByRole } = renderPage();
 
       await findRow("glib");
-      expect(queryByRole("button", { name: /^\d+ more can't be updated here(, including \d+ that couldn't be checked)?$/ })).toBeNull();
+      expect(queryByRole("button", { name: /^\d+ more can't be updated here$/ })).toBeNull();
     });
   });
 
@@ -4066,19 +4069,23 @@ describe("UpdatesPage", () => {
       expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
     });
 
-    it("says up front how many tools could not be checked and why, with Check Again, and counts them in the fold", async () => {
+    it("says up front how many tools could not be checked and why, with Check Again, as the list's first line", async () => {
       // Walk-2 W2-1: offline, the rows that could not be checked sat under
       // the folded 「另有N个无法在这里更新」, read as tools Banager can't
       // manage, while the page looked like a check that had worked. A git
-      // crate no check will find is not one of them, nor one the user hid;
-      // and nothing changes what can be updated.
-      const offline = (name: string) => ({
+      // crate no check will find is not one of them, nor one the user hid,
+      // nor a 404 no later check will mend (walk-2 review 1.1); and nothing
+      // changes what can be updated.
+      const offline = (name: string, warnings: Warning[] = [
+        { Message: "npm outdated -g: npm error code ENOTFOUND" },
+        "TransientLookupFailure",
+      ]): Snapshot["updates"][number] => ({
         key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
         current: "1.0.0",
         target: "1.0.0",
         channel: "Native" as const,
         checkable: false,
-        warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+        warnings,
         blocked: null,
       });
       settings.ignored_updates = [offline("hidden").key];
@@ -4087,6 +4094,7 @@ describe("UpdatesPage", () => {
         offline("typescript"),
         offline("prettier"),
         offline("hidden"),
+        offline("left-pad", [{ Message: "npm error code E404 Not Found" }]),
         { key: myForkKey, current: "0.1.0", target: "0.1.0", channel: "Registry", checkable: false, warnings: ["NonRegistrySource"], blocked: null },
       ];
       const { getByRole, findByText } = renderPage();
@@ -4107,10 +4115,12 @@ describe("UpdatesPage", () => {
       fireEvent.click(within(line).getByRole("button", { name: "Check Again" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
 
-      // The fold says how many of its rows are these.
-      expect(
-        getByRole("button", { name: "3 more can't be updated here, including 2 that couldn't be checked" }),
-      ).toHaveAttribute("aria-expanded", "false");
+      // Said once: the fold over the rows says only how many it holds
+      // (walk-2 review 1.4).
+      expect(getByRole("button", { name: "4 more can't be updated here" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
       // What can be updated is what it was.
       expect(await findByText("1 update available")).toBeInTheDocument();
       expect(getByRole("button", { name: "Update All" })).toBeEnabled();
@@ -4124,7 +4134,7 @@ describe("UpdatesPage", () => {
           target: "0.1.0",
           channel: "Registry",
           checkable: false,
-          warnings: [{ Message: "crates.io request failed: status 500" }],
+          warnings: [{ Message: "crates.io returned status 500" }, "TransientLookupFailure"],
           blocked: null,
         },
       ];
@@ -4138,7 +4148,7 @@ describe("UpdatesPage", () => {
         expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
           "可能还有更新没有列出。可以稍后点按“重新检查”再试。",
         );
-        expect(getByRole("button", { name: "另有1个无法在这里更新，其中1个没有检查成功" })).toBeInTheDocument();
+        expect(getByRole("button", { name: "另有1个无法在这里更新" })).toBeInTheDocument();
       } finally {
         await i18n.changeLanguage("en");
       }
@@ -4407,7 +4417,7 @@ describe("UpdatesPage", () => {
     const { findByText, container } = renderPage();
 
     // The list still knows how long it is.
-    expect(await findByText("400 more can't be updated here, including 400 that couldn't be checked")).toBeInTheDocument();
+    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
     await showCantUpdate();
     await findRow("pkg-000");
     const drawn = container.querySelectorAll("[data-index]").length;
@@ -5390,9 +5400,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(chipDetail(claude, "Can't check").textContent).toBe(
-      "Couldn't find its latest version.You can click “Check Again” later to try again.",
-    );
+    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
     expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });

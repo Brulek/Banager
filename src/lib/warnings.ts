@@ -244,6 +244,8 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.downloadsModelChanges";
       case "NonRegistrySource":
         return "warnings.nonRegistrySource";
+      case "TransientLookupFailure":
+        return "warnings.transientLookupFailure";
       case "HomebrewRustupLosesToolchains":
         return "warnings.homebrewRustupLosesToolchains";
       case "EditsShellConfig":
@@ -417,6 +419,7 @@ export function warningDetailKey(warning: Warning): string | null {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "TransientLookupFailure":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
         return null;
@@ -535,6 +538,7 @@ export function deletesForGood(warning: Warning): boolean {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "TransientLookupFailure":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
       case "HomebrewAutoremoves":
@@ -679,6 +683,7 @@ export function isCaution(warning: Warning): boolean {
       case "CompilesLocally":
       case "DownloadsModelChanges":
       case "NonRegistrySource":
+      case "TransientLookupFailure":
       case "EditsShellConfig":
         return false;
       default: {

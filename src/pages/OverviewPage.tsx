@@ -18,10 +18,10 @@ import {
 } from "../lib/sources";
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
-import { failedLookupsNotice, failedLookupsOf } from "../lib/failedLookups";
+import { failedLookupsOf, failedLookupsProblem } from "../lib/failedLookups";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings } from "../lib/types";
-import { useUiStore } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
@@ -41,8 +41,16 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * words here fails `tsc`. Nothing to update says "in the sources checked"
  * where a source was not checked in full, and where tools could not be
  * looked up (`lookupsFailed`): either way, no update listed is no news.
+ * Where no tool was checked at all (`nothingChecked`: every one installed
+ * is a row that could not be), it claims nothing was: 「所有工具都没有检查
+ * 成功」, not "in the sources checked" (walk-2 review 1.2).
  */
-function headlineText(t: Translate, summary: UpdatesSummary, lookupsFailed: number): string {
+function headlineText(
+  t: Translate,
+  summary: UpdatesSummary,
+  lookupsFailed: number,
+  nothingChecked: boolean,
+): string {
   switch (summary.kind) {
     case "updates":
       return t("overview.updatesAvailable", { count: summary.actionable.length });
@@ -51,6 +59,7 @@ function headlineText(t: Translate, summary: UpdatesSummary, lookupsFailed: numb
     case "updating":
       return t("overview.updating", { count: summary.count });
     case "nothingToUpdate":
+      if (lookupsFailed > 0 && nothingChecked) return t("overview.nothingChecked");
       return summary.everyChecked && lookupsFailed === 0
         ? t("overview.nothingToUpdate")
         : t("overview.nothingToUpdateChecked");
@@ -393,10 +402,10 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * warnings first, the notes folded into one row after them
  * (`ProblemsGroup`). The checks that did not finish this round are its
  * first row (`unfinishedChecksNotice`), as they are the lists' first line;
- * then the tools the check could not look up (`failedLookupsNotice`), how
- * many and why, with Check Again -- and the status's line says how many in
- * place of when the check was, which alone read as a check that had
- * worked (walk-2 W2-1). What a source lets Banager do at all,
+ * then the tools the check could not look up (`failedLookupsProblem`):
+ * that updates may be missing, why and what to do, with Check Again --
+ * and the status's line says how many, in place of when the check was,
+ * which alone read as a check that had worked (walk-2 W2-1). What a source lets Banager do at all,
  * pip being read-only, is not news here; both lists say it on each of its
  * rows. The sources themselves are in the sidebar.
  */
@@ -463,7 +472,14 @@ export function OverviewPage() {
   // The tools this check could not look up, as the Updates page counts
   // them: never in the headline's number, which is what can be updated.
   const lookupsFailed = failedLookupsOf(snapshot.updates, settings);
-  const lookups = failedLookupsNotice(t, lookupsFailed);
+  const lookups = failedLookupsProblem(t, lookupsFailed);
+  // Whether no installed tool was checked at all: each is a row that could
+  // not be (`checkable: false`), whatever the reason.
+  const unchecked = new Set(
+    snapshot.updates.filter((candidate) => !candidate.checkable).map((candidate) => artifactKeyId(candidate.key)),
+  );
+  const nothingChecked =
+    snapshot.artifacts.length > 0 && snapshot.artifacts.every((artifact) => unchecked.has(artifactKeyId(artifact.key)));
   const problems: SourceNoticeSpec[] = [
     ...(unfinished === null ? [] : [unfinished]),
     ...(lookups === null ? [] : [lookups]),
@@ -579,7 +595,7 @@ export function OverviewPage() {
             ? t("header.checkFailed")
             : found !== null
               ? t(NOTHING_FOUND_KEYS[found].title)
-              : headlineText(t, summary, lookupsFailed.length)
+              : headlineText(t, summary, lookupsFailed.length, nothingChecked)
         }
         line={line}
         button={button}

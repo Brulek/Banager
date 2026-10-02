@@ -30,6 +30,7 @@ describe("warningKey", () => {
     expect(warningKey("CompilesLocally")).toBe("warnings.compilesLocally");
     expect(warningKey("DownloadsModelChanges")).toBe("warnings.downloadsModelChanges");
     expect(warningKey("NonRegistrySource")).toBe("warnings.nonRegistrySource");
+    expect(warningKey("TransientLookupFailure")).toBe("warnings.transientLookupFailure");
     expect(warningKey({ WouldBreak: { names: ["python@3.13"] } })).toBe("warnings.wouldBreak");
     expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
       "warnings.thirdPartyRegistry",
@@ -258,7 +259,7 @@ describe("warningKey", () => {
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these twenty-one, and the only one
+    // variant of `Warning` is one of these twenty-two, and the only one
     // without a `warnings.*` key is the raw-text catch-all. A variant this
     // list does not name is a `never` in `warningKey`'s default branches
     // and does not compile, so there is no "unrecognised variant" to test.
@@ -267,6 +268,7 @@ describe("warningKey", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "TransientLookupFailure",
       { WouldBreak: { names: ["a"] } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
@@ -455,6 +457,7 @@ const EVERY_VARIANT: Warning[] = [
   "CompilesLocally",
   "DownloadsModelChanges",
   "NonRegistrySource",
+  "TransientLookupFailure",
   "HomebrewRustupLosesToolchains",
   "EditsShellConfig",
   { WouldBreak: { names: ["a"] } },
@@ -585,7 +588,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(19);
+    expect(notes).toHaveLength(20);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -665,6 +668,7 @@ describe("warningDetailKey", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "TransientLookupFailure",
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { WouldBreak: { names: ["a"] } },

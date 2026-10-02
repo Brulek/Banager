@@ -2,7 +2,7 @@ pub mod parse;
 
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, url_path_segment,
-    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -395,14 +395,18 @@ impl OllamaAdapter {
     /// `check_updates` call, so the caller turns that into a single
     /// `checkable: false` candidate for just this model. A reference whose
     /// parts would escape `manifests_root` is refused the same way, by
-    /// `contained_manifest_path`, before anything is read.
+    /// `contained_manifest_path`, before anything is read. Only a request
+    /// with no answer, or a 408, 429 or 5xx, is one checking again can get
+    /// past (`LookupFailure`): a 404 -- a model made with `ollama create`,
+    /// one removed upstream, one from another registry looked up here --
+    /// and a local manifest that cannot be read are said again next time.
     async fn compare_digests(
         &self,
         manifests_root: &Path,
         namespace: &str,
         name: &str,
         tag: &str,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<String>, LookupFailure> {
         let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
         let local_json = crate::adapters::read_file::read_text(&local_path).map_err(|e| {
             format!(
@@ -437,9 +441,12 @@ impl OllamaAdapter {
                 timeout: Duration::from_secs(30),
             })
             .await
-            .map_err(|e| format!("registry request failed: {e}"))?;
+            .map_err(|e| LookupFailure::request("registry request failed", &e))?;
         if response.status != 200 {
-            return Err(format!("registry returned status {}", response.status));
+            return Err(LookupFailure::status(
+                format!("registry returned status {}", response.status),
+                response.status,
+            ));
         }
         let registry_digests = layer_digests(&response.body)
             .map_err(|e| format!("could not parse registry manifest: {e}"))?;
@@ -954,6 +961,71 @@ mod tests {
         assert_ne!(candidate.current, candidate.target);
 
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_tells_a_registry_404_from_a_request_with_no_answer() {
+        // A model made with `ollama create`, or one gone from the library,
+        // gets a 404 at every check: a failure no later check gets past,
+        // so no `TransientLookupFailure`. A request that got no answer has
+        // one (walk-2 review 1.1).
+        let tags_json =
+            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+                .expect("read ollama api-tags.json fixture");
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        let registry = "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx";
+        for (status, transient) in [(Some(404), false), (None, true)] {
+            let home = std::env::temp_dir().join(format!(
+                "banager-ollama-lookup-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
+            std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
+            std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "http://127.0.0.1:11434/api/tags",
+                HttpResponse {
+                    status: 200,
+                    body: tags_json.clone(),
+                },
+            );
+            match status {
+                Some(status) => http.respond(
+                    registry,
+                    HttpResponse {
+                        status,
+                        body: r#"{"errors":[{"code":"MANIFEST_UNKNOWN"}]}"#.to_string(),
+                    },
+                ),
+                None => http.fail(registry, "dns error: failed to lookup address information"),
+            }
+            let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
+            let inst = test_instance("http://127.0.0.1:11434", home.clone());
+            let candidates = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .candidates;
+            assert_eq!(candidates.len(), 1);
+            assert!(!candidates[0].checkable);
+            assert_eq!(
+                candidates[0]
+                    .warnings
+                    .contains(&Warning::TransientLookupFailure),
+                transient,
+                "{status:?}: {:?}",
+                candidates[0].warnings
+            );
+            let _ = std::fs::remove_dir_all(&home);
+        }
     }
 
     #[tokio::test]
