@@ -1203,7 +1203,7 @@ export function UpdatesPage() {
                 them already updating -- the plain word, greyed. */}
             {show === "all" || startableCount === 0
               ? t("updates.updateAll")
-              : t("families.updateTheseCount", { number: startableCount })}
+              : t("families.updateTheseCount", { count: startableCount })}
           </button>
         )}
       </ToolbarItems>

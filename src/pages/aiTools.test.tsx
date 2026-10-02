@@ -269,7 +269,7 @@ describe("the Updates page with AI Tools shown", () => {
 
     showAiTools();
     await waitFor(() => expect(rowNames()).toEqual(["@openai/codex", "Claude Code"]));
-    expect(screen.getByRole("button", { name: "Update These 2" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Update 2 Tools" })).toBeEnabled();
     expect(useUiStore.getState().updatesShow).toBe("ai");
   });
 
@@ -306,7 +306,7 @@ describe("the Updates page with AI Tools shown", () => {
 
     showAiTools();
     // glib is out of sight: nothing in sight is ticked.
-    expect(await screen.findByRole("button", { name: "Update These 2" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Update 2 Tools" })).toBeInTheDocument();
     const selectAll = screen.getByRole("checkbox", { name: "Select all items that can be updated here" });
     expect(selectAll).not.toBeChecked();
 
@@ -326,7 +326,7 @@ describe("the Updates page with AI Tools shown", () => {
     renderUpdates();
     await screen.findByText("glib", { selector: "[data-tool-row] p" });
     showAiTools();
-    fireEvent.click(await screen.findByRole("button", { name: "Update These 2" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update 2 Tools" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Update 2 tools?" });
     await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(2));
@@ -338,6 +338,14 @@ describe("the Updates page with AI Tools shown", () => {
     expect(planned().sort()).toEqual(["@openai/codex", "claude"]);
   });
 
+  it("names the tools it updates, one or several: Update 1 Tool, never Update These 1 (walk-3 W3-1)", async () => {
+    updates = [candidate(glib), candidate(wget), candidate(claude)];
+    renderUpdates();
+    await screen.findByText("glib", { selector: "[data-tool-row] p" });
+    showAiTools();
+    expect(await screen.findByRole("button", { name: "Update 1 Tool" })).toBeEnabled();
+  });
+
   it("says that no AI coding tool has an update here when some are installed and none is listed", async () => {
     updates = [candidate(glib), candidate(wget)];
     renderUpdates();
@@ -345,9 +353,9 @@ describe("the Updates page with AI Tools shown", () => {
     showAiTools();
     expect(await screen.findByText("No AI coding tool updates here")).toBeInTheDocument();
     expect(rowNames()).toEqual([]);
-    // Never "Update These 0".
+    // Never "Update 0 Tools".
     expect(screen.getByRole("button", { name: "Update All" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: /Update These/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Update \d+ Tool/ })).toBeNull();
   });
 
   it("says no common AI coding tools were found on this Mac when none is installed", async () => {

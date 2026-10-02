@@ -90,7 +90,7 @@
     "none": "这台Mac上没有找到常见的AI编程工具",
     "noneInSource": "{{source}}中没有找到常见的AI编程工具",
     "noUpdates": "这里没有AI编程工具的更新",
-    "updateTheseCount": "更新这{{number}}个",
+    "updateTheseCount_other": "更新这{{count}}个",
     "showNotOnPath": "终端里找不到",
     "showNotOnPathCount": "终端里找不到（{{number}}）",
     "showBrewRetired": "Homebrew已停用或弃用",
