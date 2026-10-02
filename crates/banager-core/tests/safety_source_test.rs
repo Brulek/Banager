@@ -31,7 +31,7 @@ fn root() -> PathBuf {
 
 /// Files compiled only for tests (each declared under `#[cfg(test)]` or
 /// the `test-support` feature in its parent; checked below).
-const TEST_ONLY: [(&str, &str, &str); 4] = [
+const TEST_ONLY: [(&str, &str, &str); 5] = [
     (
         "crates/banager-core/src/adapters/robustness.rs",
         "crates/banager-core/src/adapters/mod.rs",
@@ -51,6 +51,11 @@ const TEST_ONLY: [(&str, &str, &str); 4] = [
         "crates/banager-core/src/session/test_support.rs",
         "crates/banager-core/src/session/mod.rs",
         "mod test_support;",
+    ),
+    (
+        "crates/banager-core/src/commands/round_tests.rs",
+        "crates/banager-core/src/commands.rs",
+        "mod round_tests;",
     ),
 ];
 
@@ -259,6 +264,7 @@ fn test_no_protected_walk_looks_a_path_up_by_its_name() {
     // each step would not have been asked.
     let walks = [
         "crates/banager-core/src/protected.rs",
+        "crates/banager-core/src/protected/round.rs",
         "crates/banager-core/src/commands.rs",
         "crates/banager-core/src/size.rs",
         "crates/banager-core/src/kept_data.rs",
