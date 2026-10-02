@@ -1293,7 +1293,7 @@ describe("OverviewPage", () => {
     ]);
     // Reason and next step, the button beside them doing it.
     expect(lines[0]).toHaveTextContent(
-      "3 tools were installed with Homebrew (Apple silicon). It didn't respond this time, so they show its last answer. Check again later.",
+      "3 tools were installed with Homebrew (Apple silicon). It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
     expect(lines[1]).toHaveTextContent("This check used the old list. Check your internet connection, then try again.");
     for (const line of lines.slice(0, 2)) {

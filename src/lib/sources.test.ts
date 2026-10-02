@@ -248,25 +248,25 @@ describe("sourceNoticesFor", () => {
       "有1个工具是用uv安装的。uv这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
     );
     expect(say("uv", "uv", 1, "en")).toBe(
-      "One tool was installed with uv. It didn't respond this time, so that tool shows its last answer. Check again later.",
+      "One tool was installed with uv. It didn't respond this time, so that tool is shown as it was when uv last responded. Check again later.",
     );
     expect(say("brew", "Homebrew", 12, "en")).toBe(
-      "12 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+      "12 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
     expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
       "Ollama中有3个模型。Ollama这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
     );
     expect(say("ollama", "Ollama", 3, "en")).toBe(
-      "Ollama has 3 models. It didn't respond this time, so they show its last answer. Check again later.",
+      "Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
     expect(say("ollama", "Ollama", 1, "en")).toBe(
-      "Ollama has one model. It didn't respond this time, so that model shows its last answer. Check again later.",
+      "Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded. Check again later.",
     );
     expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
       "Claude Code这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
     );
     expect(say("standalone-claude", "Claude Code", 1, "en")).toBe(
-      "Claude Code didn't respond this time, so what's shown is its last answer. Check again later.",
+      "Claude Code didn't respond this time, so what's shown is from when it last responded. Check again later.",
     );
     // With nothing of theirs on screen: that it cannot be listed this
     // time, in the same three ways.

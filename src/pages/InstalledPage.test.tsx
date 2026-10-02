@@ -1799,7 +1799,7 @@ describe("InstalledPage", () => {
     // answer (W2-10): the same number whatever the search leaves listed --
     // here none -- so the sentence claims nothing about what is on screen.
     const sentence =
-      "2 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.";
+      "2 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded. Check again later.";
     expect(rowNames()).toEqual([]);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(sentence);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")?.textContent).not.toMatch(/listed/);
@@ -2968,7 +2968,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "2 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+          "2 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
         ),
       ).toBeInTheDocument();
       // And the button its next step needs, under its sentence.
