@@ -372,7 +372,7 @@
         "refused": "Couldn't update it because it's pinned in {{source}}."
       },
       "SelfUpdatesOnly": {
-        "badge": "Open to update",
+        "badge": "Updates when run",
         "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
         "refused": "{{source}} updates itself and can't be updated here."
       }
@@ -1233,7 +1233,7 @@
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; one marked “Open to update” updates itself, and opening it once checks for a new version."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Updates when run”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; one marked “Updates when run” updates itself, and opening it once checks for a new version."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",

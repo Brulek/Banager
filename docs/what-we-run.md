@@ -1609,7 +1609,7 @@ this Mac's own log), unless `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the
 switch Google documents for turning that off, is set where it runs; and
 its `agy update` subcommand is undocumented, has no options and has never
 been run — so Banager offers no Update button: a newer version is listed
-with the badge "Open to update" and a sentence that says to open the tool
+with the badge "Updates when run" and a sentence that says to open the tool
 once and quit it, after which it installs the new version unless its
 automatic updates have been turned off. Where typing `agy` in Terminal
 runs this copy (Which copy a command runs, below — judged from the folders

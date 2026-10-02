@@ -5545,7 +5545,7 @@ describe("UpdatesPage", () => {
     const claude = await findRow("Claude Code");
     // Under "can't be updated here": no version to move to here.
     expect(within(claude).queryByText("2.1.281 → 2.1.290")).toBeNull();
-    const detail = chipDetail(claude, "Open to update");
+    const detail = chipDetail(claude, "Updates when run");
     expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
     expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
     // Not the updatable row's chip: this row has no button to point at.
@@ -5562,7 +5562,7 @@ describe("UpdatesPage", () => {
     renderPage();
 
     await showCantUpdate();
-    const detail = chipDetail(await findRow("Claude Code"), "Open to update");
+    const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
     expect(detail.textContent).toBe(
       "It updates itself and can't be updated here. Type claude in Terminal to open it once, and it checks for a new version.",
     );
@@ -5581,7 +5581,7 @@ describe("UpdatesPage", () => {
     renderPage();
 
     await showCantUpdate();
-    const detail = chipDetail(await findRow("Claude Code"), "Open to update");
+    const detail = chipDetail(await findRow("Claude Code"), "Updates when run");
     expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
   });
 
@@ -5594,7 +5594,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    const detail = chipDetail(claude, "Open to update");
+    const detail = chipDetail(claude, "Updates when run");
     expect(
       within(detail).getByText(wholeSentence("In Terminal: /Users/someone/.local/bin/claude")),
     ).toBeInTheDocument();
@@ -5690,7 +5690,7 @@ describe("UpdatesPage", () => {
     expect(zhCN.codexStandalone.updatesItself).toBe(zhCN.updates.selfUpdating);
     expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("打开它来更新");
     expect(en.updates.selfUpdating).toBe("Updates itself");
-    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Open to update");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Updates when run");
     // Status words: six characters at most, and neither one the other's
     // echo -- no shared tail for the eye to take them as one word by.
     for (const word of [zhCN.updates.selfUpdating, zhCN.updates.blocked.SelfUpdatesOnly.badge]) {
