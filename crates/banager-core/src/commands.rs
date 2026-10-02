@@ -36,8 +36,10 @@
 //! Homebrew's and npm's prefixes -- then where the entries a command could
 //! be lead, followed one step at a time (`lstat` and `readlink` of each
 //! step, from the folder before it held open, `protected::resolve`; each
-//! folder listed from `/` with no link followed, `dirfd`), never a file's
-//! contents, never a command
+//! folder listed from `/` with no link followed, `dirfd`) -- each folder
+//! and name on the way looked up once per judgement, and a link-free rest
+//! of a path in one lookup that follows no link (`protected::Round`) --
+//! never a file's contents, never a command
 //! run (docs/what-we-run.md, "Which copy a command runs"). No step is ever
 //! taken into a protected place (`protected`): a folder, an entry or a
 //! link that leads there counts as unread, and no verdict it could change
@@ -343,11 +345,18 @@ fn read_one(
     }))
 }
 
-/// Where each path leads, each looked up once (`protected::resolve`: one
-/// step at a time, never into a protected place), and the clock.
+/// Where each path leads, each looked up once, and the clock. Paths are
+/// followed as `protected::resolve` follows them -- one step at a time,
+/// never into a protected place -- by one `protected::Round` for the
+/// whole judgement, which looks each folder and name on the way up once
+/// rather than once per path, and is dropped with it.
 struct Look {
     resolved: HashMap<PathBuf, Resolution>,
-    protected: Protected,
+    round: protected::Round,
+    /// A test's switch to `protected::resolve` itself, to hold the round's
+    /// verdicts to it.
+    #[cfg(test)]
+    reference: bool,
     started: Instant,
     budget: CommandBudget,
 }
@@ -356,7 +365,9 @@ impl Look {
     fn new(home: &Path, budget: CommandBudget) -> Look {
         Look {
             resolved: HashMap::new(),
-            protected: Protected::new(home),
+            round: protected::Round::new(Protected::new(home)),
+            #[cfg(test)]
+            reference: false,
             started: Instant::now(),
             budget,
         }
@@ -367,7 +378,14 @@ impl Look {
         if let Some(known) = self.resolved.get(path) {
             return known.clone();
         }
-        let found = protected::resolve(path, &self.protected, true);
+        #[cfg(test)]
+        let found = if self.reference {
+            protected::resolve(path, self.round.protected(), true)
+        } else {
+            self.round.resolve(path)
+        };
+        #[cfg(not(test))]
+        let found = self.round.resolve(path);
         self.resolved.insert(path.to_path_buf(), found.clone());
         found
     }
@@ -451,7 +469,25 @@ pub fn judge(
     if !folders.complete {
         return None;
     }
-    let mut look = Look::new(home, budget);
+    judge_with(
+        folders,
+        instances,
+        artifacts,
+        home,
+        path_known,
+        Look::new(home, budget),
+    )
+}
+
+/// `judge`, with where each path leads looked up by `look`.
+fn judge_with(
+    folders: &Folders,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    home: &Path,
+    path_known: bool,
+    mut look: Look,
+) -> Option<Vec<Vec<CommandFact>>> {
     let claims = claims(folders, instances, artifacts, home, &mut look)?;
     // The artifact each file is, for `ShadowedBy`: the first claim wins.
     let mut owner: HashMap<Vec<u8>, usize> = HashMap::new();

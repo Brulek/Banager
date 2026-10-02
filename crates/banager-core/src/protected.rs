@@ -17,6 +17,9 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
+mod round;
+pub(crate) use round::Round;
+
 /// The folders under the home folder macOS asks the user about before an
 /// app reads them (System Settings > Privacy & Security): Files and
 /// Folders' Desktop, Documents and Downloads; the media libraries in
@@ -228,6 +231,10 @@ thread_local! {
 /// path, so one replaced by a link in the meantime is never followed:
 /// the step is refused instead. Reads nothing but those, of the folders
 /// and links on the way.
+///
+/// Judging which copy a command runs asks this of thousands of paths in
+/// one round; `Round` answers the same for each, looking each folder and
+/// name up once in the round.
 pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
     if !path.is_absolute() {
         return Resolution::Refused;
