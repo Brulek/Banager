@@ -2845,7 +2845,16 @@ most for a step that does not answer at all (a folder on a disk that
 stopped answering), then goes on without it; a look that did not finish
 says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what
 else needs this. Check yourself before you uninstall.",
-`Warning::DependentsUnknown`), never that nothing runs on it.
+`Warning::DependentsUnknown`), never that nothing runs on it. A look that
+met a path it may not or cannot follow did not finish either
+(`needed_by::Look::unknown`): a source's program, a pipx or uv tool's
+environment (a venv kept in `~/Documents`, say, whose `bin/python` may be
+a Homebrew Python's) or a `PATH` folder passed over on the way to `node`
+that is, or leads into, one of those places; one on the way to which a
+folder could not be searched; and a pipx or uv tool with no environment
+Banager knows of. What is there may run on the package, so the preview
+says it could not check, and still names whatever it did find running on
+it. A path that is not there at all is known not to run on it.
 
 ## Diagnostic info: read-only, no command runs
 

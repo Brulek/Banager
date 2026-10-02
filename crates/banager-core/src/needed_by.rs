@@ -53,12 +53,19 @@
 //! contents are read, nothing is written and no command runs.
 //! Bounded (`BUDGET`): a look it stopped short of is reported as one that
 //! did not finish (`NeededBy::complete`), never as "nothing runs on it".
+//! So is one that met a path it may not or cannot follow (`Look::unknown`):
+//! a source's program, a tool's environment or a `PATH` folder that is, or
+//! leads into, a protected place, one on the way to which a folder could
+//! not be searched, and a pipx or uv tool with no environment Banager
+//! knows of. What is there is not known, so neither is whether it runs on
+//! the package; a path that is known not to be there (`Missing`) is known
+//! not to.
 //! Run on the blocking pool by `Session::issue_plan`
 //! (`session/needed_by.rs`).
 
 use crate::model::{ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, Warning};
 use crate::protected::{self, Protected, Resolution};
-use crate::runner::{resolve_exe, HostEnv};
+use crate::runner::HostEnv;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -132,8 +139,9 @@ pub const BUDGET: Budget = Budget {
 
 /// What `needed_by` found: a `Warning::NeededBySource` for each source that
 /// runs on the package, and whether the look finished. One that did not --
-/// the budget ran out, or the package's own folder could not be read -- is
-/// no proof that nothing else does.
+/// the budget ran out, the package's own folder could not be read, or a
+/// path that could have led into it was not followed (`Look::unknown`) --
+/// is no proof that nothing else does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NeededBy {
     pub warnings: Vec<Warning>,
@@ -197,10 +205,16 @@ pub fn needed_by(
         if has_environments(&source.adapter_id) {
             let on_it = tools
                 .iter()
-                .filter(|tool| {
-                    tool.path.as_deref().is_some_and(|environment| {
+                .filter(|tool| match tool.path.as_deref() {
+                    Some(environment) => {
                         look.leads_into(&environment.join("bin").join("python"), &roots)
-                    })
+                    }
+                    // No environment to look at: whether its Python is
+                    // the package's is not known.
+                    None => {
+                        look.unknown = true;
+                        false
+                    }
                 })
                 .count();
             if on_it > 0 {
@@ -214,7 +228,7 @@ pub fn needed_by(
     }
     NeededBy {
         warnings,
-        complete: !look.over,
+        complete: !look.over && !look.unknown,
     }
 }
 
@@ -275,6 +289,14 @@ struct Look {
     looks: usize,
     budget: Budget,
     over: bool,
+    /// Whether a path was met whose end is not known: one that is, or
+    /// leads into, a protected place, which is never looked into; one on
+    /// the way to which a folder could not be searched, or was replaced
+    /// while it was looked at (`Resolution::Refused`); or a tool with no
+    /// environment path. It may lead into the package, so the look did not
+    /// finish. A path that is not there (`Resolution::Missing`) is known
+    /// to lead nowhere, and is not this.
+    unknown: bool,
 }
 
 impl Look {
@@ -285,6 +307,7 @@ impl Look {
             looks: 0,
             budget,
             over: false,
+            unknown: false,
         }
     }
 
@@ -302,14 +325,19 @@ impl Look {
 
     /// Where `path` leads, every link followed and never into a protected
     /// place (`protected::resolve`); `None` for one that leads nowhere or
-    /// into such a place, or that the budget did not reach.
+    /// into such a place, or that the budget did not reach. One that leads
+    /// into such a place, or that could not be followed, is `unknown`.
     fn resolve(&mut self, path: &Path) -> Option<PathBuf> {
         if !self.one_more() {
             return None;
         }
         match protected::resolve(path, &self.protected, true) {
             Resolution::Found(real, _) => Some(real),
-            _ => None,
+            Resolution::Missing => None,
+            Resolution::Protected(_) | Resolution::Refused => {
+                self.unknown = true;
+                None
+            }
         }
     }
 
@@ -323,13 +351,27 @@ impl Look {
         })
     }
 
-    /// The first `name` on `env`'s `PATH`, as `env` would find it
-    /// (`resolve_exe`, which never looks into a protected place either).
+    /// The first `name` on `env`'s `PATH`, as `env` would find it: what
+    /// `resolve_exe` answers, each `PATH` folder looked at the same way
+    /// (`protected::resolve`) and one look each. A folder passed over that
+    /// is, or leads into, a protected place, or could not be searched, may
+    /// hold the `name` `env` would run: the answer is `unknown` then, and
+    /// the one after it is still the one returned, as `resolve_exe`'s. A
+    /// relative folder is passed over as `resolve_exe` passes it over: it
+    /// names a folder only from wherever the program is run.
     fn on_path(&mut self, name: &str, env: &HostEnv) -> Option<PathBuf> {
-        if !self.one_more() {
-            return None;
+        for dir in env.path_dirs.iter().filter(|dir| dir.is_absolute()) {
+            let candidate = dir.join(name);
+            if !self.one_more() {
+                return None;
+            }
+            match protected::resolve(&candidate, &self.protected, true) {
+                Resolution::Found(_, meta) if meta.is_file() => return Some(candidate),
+                Resolution::Found(..) | Resolution::Missing => {}
+                Resolution::Protected(_) | Resolution::Refused => self.unknown = true,
+            }
         }
-        resolve_exe(name, env)
+        None
     }
 }
 
@@ -766,11 +808,23 @@ mod tests {
             &env,
             BUDGET,
         );
-        assert!(found.complete);
         assert_eq!(
             needed(&found.warnings),
             vec![("pipx".to_string(), false, 2)]
         );
+        // `no-app`'s environment may run on it too, for all Banager knows:
+        // the look did not finish. Without it, it did.
+        assert!(!found.complete);
+        let known = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &tools[..4],
+            &env,
+            BUDGET,
+        );
+        assert_eq!(known.warnings, found.warnings);
+        assert!(known.complete);
         // Homebrew's `pipx` is what the pipx source runs: all five need it.
         let pipx_formula = needed_by(
             &formula("pipx"),
@@ -959,7 +1013,8 @@ mod tests {
     #[test]
     fn test_a_tool_environment_in_a_protected_place_is_not_looked_into() {
         // `~/Documents` is a place macOS asks about before an app reads it:
-        // its environment is not looked into, and so not counted.
+        // its environment is not looked into, and so not counted -- nor
+        // taken for one that does not run on it: the look did not finish.
         let root = Root::new("protected");
         root.python_313();
         let opt = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
@@ -990,7 +1045,7 @@ mod tests {
             found,
             NeededBy {
                 warnings: Vec::new(),
-                complete: true
+                complete: false
             }
         );
     }
@@ -1098,6 +1153,181 @@ mod tests {
                 &env,
                 BUDGET
             ),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_a_tool_environment_banager_may_not_or_cannot_look_into_leaves_the_look_unfinished() {
+        // A pipx whose own Python is not python@3.13, with tools whose
+        // environments may run on it: one kept in `~/Documents` -- its
+        // `bin/python` a link to Homebrew's python@3.13, which Banager
+        // never sees -- one whose `bin` cannot be searched, and one with
+        // no environment Banager knows of. Neither "needs it" nor
+        // "nothing needs it" is known of any of them: the look did not
+        // finish (`Warning::DependentsUnknown` in the preview).
+        let root = Root::new("unknown-env");
+        root.python_313();
+        let opt = root.path("opt/homebrew/opt/python@3.13/bin/python3.13");
+        root.program("opt/homebrew/Cellar/pipx/1.17.3/libexec/bin/pipx");
+        root.link(
+            "opt/homebrew/bin/pipx",
+            "../Cellar/pipx/1.17.3/libexec/bin/pipx",
+        );
+        let pipx = instance(
+            "pipx",
+            "pipx",
+            root.path("opt/homebrew/bin/pipx"),
+            root.path("opt/homebrew/bin"),
+        );
+        root.link(
+            "home/Documents/pipx/venvs/httpie/bin/python",
+            opt.to_str().unwrap(),
+        );
+        root.link(
+            "home/.local/pipx/venvs/poetry/bin/python",
+            opt.to_str().unwrap(),
+        );
+        // A venv whose Python is known to be gone: known not to need it.
+        root.link(
+            "home/.local/pipx/venvs/gone/bin/python",
+            "/nonexistent/python3.13",
+        );
+        let instances = vec![brew(&root), pipx];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let tool = |name: &str, environment: Option<&str>| match environment {
+            Some(environment) => with_path(
+                row("pipx", ArtifactKind::Tool, name),
+                root.path(environment),
+            ),
+            None => row("pipx", ArtifactKind::Tool, name),
+        };
+        let look = |tools: &[InstalledArtifact]| {
+            needed_by(
+                &formula("python@3.13"),
+                &instances[0],
+                &instances,
+                tools,
+                &env,
+                BUDGET,
+            )
+        };
+        // What is known either way finishes the look.
+        assert_eq!(
+            look(&[tool("gone", Some("home/.local/pipx/venvs/gone"))]),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: true
+            }
+        );
+        // In `~/Documents`: not looked into, and not finished.
+        assert_eq!(
+            look(&[
+                tool("gone", Some("home/.local/pipx/venvs/gone")),
+                tool("httpie", Some("home/Documents/pipx/venvs/httpie")),
+            ]),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false
+            }
+        );
+        // No environment path at all: nothing to look at, not finished.
+        assert_eq!(
+            look(&[tool("no-app", None)]),
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false
+            }
+        );
+        // One that needs it is still named beside one that may.
+        let found = look(&[
+            tool("poetry", Some("home/.local/pipx/venvs/poetry")),
+            tool("httpie", Some("home/Documents/pipx/venvs/httpie")),
+        ]);
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(!found.complete);
+        // A `bin` this account may not search: not finished either.
+        let bin = root.path("home/.local/pipx/venvs/poetry/bin");
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable = look(&[tool("poetry", Some("home/.local/pipx/venvs/poetry"))]);
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            unreadable,
+            NeededBy {
+                warnings: Vec::new(),
+                complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_a_source_program_or_path_folder_in_a_protected_place_leaves_the_look_unfinished() {
+        let root = Root::new("unknown-program");
+        root.node_22();
+        root.node_linked();
+        // npm's `npm` is a copy outside the `node` keg; the `node` it is run
+        // with is the first on `PATH`. A `PATH` folder in `~/Documents`
+        // comes first: whether a `node` there would be the one is not
+        // known, so the look does not finish -- and Homebrew's, found after
+        // it, is still named.
+        let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let found = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &root.env(&["home/Documents/bin", "opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(needed(&found.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(!found.complete);
+        // A `PATH` folder that is not there is known to hold no `node`.
+        let missing = needed_by(
+            &formula("node"),
+            &instances[0],
+            &instances,
+            &npm_rows(),
+            &root.env(&["home/bin", "opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(needed(&missing.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(missing.complete);
+        // A source whose program leads into `~/Documents`: whether it runs
+        // on the package is not known. Its one tool's environment is known
+        // to hold no Python, so only the program is in doubt.
+        root.python_313();
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("home/.local/bin/uv"),
+            root.path("home/.local/bin"),
+        );
+        let tools = vec![with_path(
+            row("uv", ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        )];
+        let instances = vec![brew(&root), uv];
+        let found = needed_by(
+            &formula("python@3.13"),
+            &instances[0],
+            &instances,
+            &tools,
+            &root.env(&["opt/homebrew/bin"]),
+            BUDGET,
+        );
+        assert_eq!(
+            found,
             NeededBy {
                 warnings: Vec::new(),
                 complete: false
