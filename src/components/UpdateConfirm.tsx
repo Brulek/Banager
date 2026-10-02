@@ -381,6 +381,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   };
 }
 
+/** Each plan's notes, with the candidate they were worded for (`notesOf` in the dialog). */
+type NotesCache = WeakMap<IssuedPlan, { candidate: UpdateCandidate; notes: WarningLine[] }>;
+
 export interface UpdateConfirmDialogProps {
   confirm: UpdateConfirm;
 }
@@ -614,7 +617,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // change while what they are worded from -- the window's words, the
   // snapshot, its sources' names -- stays the same.
   const notesCache = useMemo(
-    () => new WeakMap<IssuedPlan, { candidate: UpdateCandidate; notes: WarningLine[] }>(),
+    (): NotesCache => new WeakMap(),
     // What `notesFor` reads: a change to any starts the cache over.
     [t, snapshot, twins, artifactsById, labels],
   );
