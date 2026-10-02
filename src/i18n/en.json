@@ -382,7 +382,7 @@
     "showHidden": "Show Hidden Updates",
     "snooze": "Remind Me in 30 Days",
     "snoozeHint": "This tool's updates will be listed again in 30 days. Undo it in Settings.",
-    "snoozedUntil": "Hidden until {{date}}",
+    "snoozedUntil": "No reminders until {{date}}",
     "selfUpdatesTyped": "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
     "disabledBlocked": {
       "detail": "{{source}} has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
@@ -1063,7 +1063,7 @@
       "label": "Notify me when operations finish"
     },
     "snoozedUpdates": {
-      "title": "Tools put off for 30 days",
+      "title": "Tools with reminders paused",
       "until": "Until {{date}}"
     }
   },

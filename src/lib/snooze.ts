@@ -23,7 +23,7 @@ export function snoozeDate(until: number, language: string): string {
   return shortDateText(new Date(until * 1000), language);
 }
 
-/** 「11月1日起恢复提醒」, "Hidden until Nov 1". */
+/** 「11月1日起恢复提醒」, "No reminders until Nov 1", in the words of "Remind Me in 30 Days" (walk-3 W3-11). */
 export function snoozedUntilText(t: TFunction, until: number, language: string): string {
   return t("updates.snoozedUntil", { date: snoozeDate(until, language) });
 }

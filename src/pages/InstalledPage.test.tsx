@@ -1427,7 +1427,7 @@ describe("InstalledPage", () => {
       const date = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(until * 1000));
       renderInstalled();
       await findRow("offered");
-      expect(chipsOf(rowOf("offered"))).toEqual([`Hidden until ${date}`]);
+      expect(chipsOf(rowOf("offered"))).toEqual([`No reminders until ${date}`]);
       expect(versionShown(rowOf("offered"))).toBe("1.8.2");
 
       const drawer = await openDetails("offered");
