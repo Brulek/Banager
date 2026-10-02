@@ -25,6 +25,8 @@ import type {
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
 
+/** The confirm sheet's Update for several tools, counted: "Update 2 Tools" (walk-3 W3-18). */
+const UPDATE_SEVERAL = /^Update \d+ Tools$/;
 const mockInvoke = vi.mocked(invoke);
 
 /**
@@ -645,7 +647,7 @@ describe("UpdatesPage", () => {
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     expect(submittedPlanIds()).toEqual([]);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
@@ -2179,7 +2181,7 @@ describe("UpdatesPage", () => {
     let dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     // glib started, onyx did not, and the dialog says which is which.
     await within(dialog).findByText("Started");
@@ -2210,6 +2212,7 @@ describe("UpdatesPage", () => {
       },
     });
 
+    // One tool: the plain Update.
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     await waitFor(() =>
@@ -2394,7 +2397,7 @@ describe("UpdatesPage", () => {
       );
       expect(submittedPlanIds()).toEqual([]);
 
-      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(3));
       await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
@@ -4659,7 +4662,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       const dialog = await findByRole("dialog");
-      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
 
       const tools = [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => ({
         tool: tool.querySelector("[data-sheet-name]")?.textContent,
@@ -4708,7 +4711,7 @@ describe("UpdatesPage", () => {
 
       // (Before the plans are back, the list's own order: see "while its
       // plans are on their way" below.)
-      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
       expect(names()).toEqual(["onyx", "glib"]);
       const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
       expect(within(first).getByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeInTheDocument();
@@ -4721,7 +4724,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
 
-      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
       expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
       expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
     });
@@ -4836,7 +4839,7 @@ describe("UpdatesPage", () => {
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
-      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(2));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
@@ -4879,7 +4882,7 @@ describe("UpdatesPage", () => {
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
-      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
       const close = await within(dialog).findByRole("button", { name: "Close" });
       await waitFor(() => expect(document.activeElement).toBe(close));
@@ -4936,7 +4939,8 @@ describe("UpdatesPage", () => {
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       expect(within(dialog).queryByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeNull();
       expect(within(dialog).queryByRole("button", { name: /^Show Command/ })).toBeNull();
-      const update = within(dialog).getByRole("button", { name: "Update" });
+      // Counted, as the batch uninstall's "Uninstall 3 Tools" is (walk-3 W3-18).
+      const update = within(dialog).getByRole("button", { name: "Update 2 Tools" });
       expect(update).toBeDisabled();
       expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
 

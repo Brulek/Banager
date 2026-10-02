@@ -332,6 +332,7 @@
     },
     "confirmTitleNamed": "要更新“{{name}}”吗？",
     "confirmTitle_other": "要更新{{count}}个工具吗？",
+    "confirmCount_other": "更新这{{count}}个",
     "preparing": "正在准备…",
     "started": "已开始",
     "planFailed": "无法准备此次更新：{{message}}",

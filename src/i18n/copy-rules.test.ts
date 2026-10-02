@@ -186,6 +186,8 @@ describe("the polish-3 copy rules, in English", () => {
       "sourceNotice.showTool",
       "sourceNotice.showCommand",
       "updates.update",
+      "updates.confirmCount_one",
+      "updates.confirmCount_other",
       "updates.retry",
       "updates.skipVersion",
       "updates.snooze",

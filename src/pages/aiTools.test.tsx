@@ -334,7 +334,8 @@ describe("the Updates page with AI Tools shown", () => {
       "@openai/codex",
       "Claude Code",
     ]);
-    expect(within(dialog).getByRole("button", { name: "Update" })).toBeInTheDocument();
+    // Counted, as the batch uninstall's button is (walk-3 W3-18).
+    expect(within(dialog).getByRole("button", { name: "Update 2 Tools" })).toBeInTheDocument();
     expect(planned().sort()).toEqual(["@openai/codex", "claude"]);
   });
 

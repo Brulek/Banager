@@ -737,7 +737,9 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               disabled={batch?.phase !== "ready"}
               className={BUTTON.large.default}
             >
-              {t("updates.update")}
+              {/* Counted where it updates several, as the batch uninstall's
+                  「卸载这3个」 is: what it confirms, said on it (walk-3 W3-18). */}
+              {asked.length === 1 ? t("updates.update") : t("updates.confirmCount", { count: asked.length })}
             </button>
           </>
         )
