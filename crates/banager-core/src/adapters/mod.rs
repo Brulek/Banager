@@ -25,6 +25,8 @@ pub(crate) mod read_file;
 pub(crate) mod sanity;
 
 #[cfg(test)]
+pub(crate) mod lookup_cases;
+#[cfg(test)]
 mod robustness;
 
 /// Options a caller passes down to `check_updates`. Adapters ignore fields

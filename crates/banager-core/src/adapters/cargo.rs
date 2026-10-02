@@ -1732,4 +1732,19 @@ mod tests {
             vec!["https://crates.io/api/v1/crates/evil%2F..%2Fsummary%3Fx=1".to_string()]
         );
     }
+
+    #[tokio::test]
+    async fn test_latest_stable_version_holds_to_the_shared_lookup_failure_table() {
+        crate::adapters::lookup_cases::hold_to_the_table(
+            "https://crates.io/api/v1/crates/hexyl",
+            "crates.io request failed",
+            "crates.io",
+            |http| async move {
+                CargoAdapter::new(Arc::new(MockRunner::new()), http)
+                    .latest_stable_version("hexyl")
+                    .await
+            },
+        )
+        .await;
+    }
 }

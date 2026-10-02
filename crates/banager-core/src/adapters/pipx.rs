@@ -1506,4 +1506,19 @@ mod tests {
             .expect("an unpinned tool plans");
         assert_eq!(command_args(&issued.plan), vec!["upgrade", "cowsay"]);
     }
+
+    #[tokio::test]
+    async fn test_latest_pypi_version_holds_to_the_shared_lookup_failure_table() {
+        crate::adapters::lookup_cases::hold_to_the_table(
+            "https://pypi.org/pypi/black/json",
+            "PyPI request failed",
+            "PyPI",
+            |http| async move {
+                PipxAdapter::new(Arc::new(MockRunner::new()), http)
+                    .latest_pypi_version("black")
+                    .await
+            },
+        )
+        .await;
+    }
 }

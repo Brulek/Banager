@@ -6615,4 +6615,62 @@ mod tests {
             assert!(out.candidates.is_empty(), "{said:?}");
         }
     }
+
+    #[tokio::test]
+    async fn test_each_published_version_lookup_holds_to_the_shared_lookup_failure_table() {
+        // Before any detect, Claude Code's channel is `latest`.
+        crate::adapters::lookup_cases::hold_to_the_table(
+            LATEST_URL,
+            "downloads.claude.ai request failed",
+            "downloads.claude.ai",
+            |http| async move {
+                StandaloneAdapter::new(
+                    &CLAUDE,
+                    Arc::new(MockRunner::new()),
+                    http,
+                    Arc::new(MockTrasher::new()),
+                )
+                .published(Path::new("/nowhere/claude"))
+                .await
+            },
+        )
+        .await;
+        let rustup = "https://static.rust-lang.org/rustup/release-stable.toml";
+        crate::adapters::lookup_cases::hold_to_the_table(
+            rustup,
+            &format!("request to {rustup} failed"),
+            rustup,
+            |http| async move {
+                StandaloneAdapter::new(
+                    &RUSTUP,
+                    Arc::new(MockRunner::new()),
+                    http,
+                    Arc::new(MockTrasher::new()),
+                )
+                .published(Path::new("/nowhere/rustup"))
+                .await
+            },
+        )
+        .await;
+        let Latest::HttpJsonField { url: agy, .. } = AGY.latest else {
+            panic!("agy reads a manifest field");
+        };
+        crate::adapters::lookup_cases::hold_to_the_table(
+            agy,
+            &format!("request to {agy} failed"),
+            agy,
+            |http| async move {
+                StandaloneAdapter::new(
+                    &AGY,
+                    Arc::new(MockRunner::new()),
+                    http,
+                    Arc::new(MockTrasher::new()),
+                )
+                .with_arch("aarch64")
+                .published(Path::new("/nowhere/agy"))
+                .await
+            },
+        )
+        .await;
+    }
 }

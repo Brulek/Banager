@@ -2183,4 +2183,36 @@ mod tests {
             .warnings
             .is_empty());
     }
+
+    #[tokio::test]
+    async fn test_compare_digests_holds_to_the_shared_lookup_failure_table() {
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        let root = std::env::temp_dir().join(format!(
+            "banager-ollama-table-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let model_dir = root.join("library").join("qwen3.8");
+        std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
+        std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
+        let at = &root;
+        crate::adapters::lookup_cases::hold_to_the_table(
+            "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
+            "registry request failed",
+            "registry",
+            |http| async move {
+                OllamaAdapter::new(Arc::new(MockRunner::new()), http)
+                    .compare_digests(at, "library", "qwen3.8", "27b-mlx")
+                    .await
+            },
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
