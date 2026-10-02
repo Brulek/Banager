@@ -1418,6 +1418,9 @@
     "protectedFolders_one": "{{count}} folder is in a protected location and wasn't read.",
     "protectedFolders_other": "{{count}} folders are in protected locations and weren't read."
   },
+  "unknownReveal": {
+    "changedSinceScan": "It changed after the last scan. Scan again."
+  },
   "emptyStates": {
     "loadFailed": {
       "title": "Couldn't load installed tools",

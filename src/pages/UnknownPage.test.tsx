@@ -802,6 +802,20 @@ describe("a row's ⋯ menu", () => {
       await waitFor(() => expect(notice()).toHaveTextContent(/^Copied$/));
     });
 
+    it("says to scan again when the program changed after the scan", async () => {
+      // `reveal_in_finder`'s refusal of a program gone, replaced or led
+      // elsewhere since the scan (src-tauri/src/reveal.rs).
+      mockReveal.mockRejectedValueOnce(JSON.stringify({ kind: "changed_since_scan" }));
+      const { findByText } = renderWithProviders(<UnknownPage />);
+      const tool = rowOf(await findByText("standalone-tool"));
+      chooseFromMenu(tool, "Show in Finder");
+      await waitFor(() => expect(notice()).toHaveTextContent(/^It changed after the last scan\. Scan again\.$/));
+      // Any other refusal says only that it could not.
+      mockReveal.mockRejectedValueOnce(JSON.stringify({ kind: "not_revealable" }));
+      chooseFromMenu(tool, "Show in Finder");
+      await waitFor(() => expect(notice()).toHaveTextContent(/^Couldn't show it in Finder$/));
+    });
+
     it("takes the word back as a copy's is, after the same while", async () => {
       mockReveal.mockRejectedValueOnce("No such file or directory (os error 2)");
       const { findByText } = renderWithProviders(<UnknownPage />);

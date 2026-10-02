@@ -2395,8 +2395,10 @@ and never into or through a protected place (`protected::resolve`:
 open), and goes on only when it still leads, with no link anywhere on its
 way, to the very file the scan found there (its device and inode, which
 the scan kept in memory, `UnknownEntry.seen`, never sent to the window;
-`still_found`). Otherwise it refuses, and the page says it could not show
-it; scanning again finds what is there now. It then makes one call,
+`still_found`). Otherwise it refuses (`changed_since_scan`), and the page
+says it changed after the last scan and to scan again (「它在上次扫描后有变动。请重新扫描。」,
+"It changed after the last scan. Scan again."): a new scan finds what is
+there now. It then makes one call,
 `NSWorkspace activateFileViewerSelectingURLs:`, through AppKit directly
 (`show_in_finder`), with a file URL of that path as it is
 (`NSURL fileURLWithPath:isDirectory:`, told it is a file), with which

@@ -57,20 +57,38 @@ impl Revealable {
     }
 }
 
-/// The refusal of a path Finder may not be asked about, in the
+/// The refusal of a path the newest scan did not resolve, in the
 /// `{"kind": ...}` envelope every command's refusals use.
 fn not_revealable_json() -> String {
     serde_json::json!({ "kind": "not_revealable" }).to_string()
+}
+
+/// The refusal of a path the newest scan resolved that is not, now, what
+/// the scan found there: gone; replaced -- by its installer, as an app that
+/// updates itself replaces its files, or by a link, on the way or at the
+/// end -- or leading into a protected place since. Only a new scan can say
+/// what is there now, and the page says to scan again
+/// (`unknownReveal.changedSinceScan`).
+fn changed_since_scan_json() -> String {
+    serde_json::json!({ "kind": "changed_since_scan" }).to_string()
 }
 
 /// `path`, as Finder may be asked to show it now: one the newest scan
 /// resolved (`Revealable`), looked up again one step at a time and never
 /// into a place `protected` keeps out (`protected::resolve`), and still
 /// leading, with no link anywhere on its way, to the very file the scan
-/// found there. Refused as `not_revealable` otherwise: a path the scan did
-/// not resolve, before anything is read; one that is gone, that is or
-/// leads into or through a protected place, that has a link on its way
-/// now, or that names another file than the scan found.
+/// found there. A path the scan did not resolve is refused as
+/// `not_revealable`, before anything is read; one it did that is gone,
+/// that is or leads into or through a protected place, that has a link on
+/// its way now, or that names another file than the scan found, as
+/// `changed_since_scan`.
+///
+/// The file is told by its device and inode (`UnknownEntry::seen`), from
+/// the `fstatat` the look takes anyway. The other checks alone keep Finder
+/// out of every protected place; this one keeps the page from showing,
+/// under a row's size and date, a file that is not the one they describe
+/// -- a program its installer replaced in place since -- and tells the
+/// page the list is out of date.
 pub(crate) fn still_found(
     revealable: &Revealable,
     path: &Path,
@@ -84,7 +102,7 @@ pub(crate) fn still_found(
         // link would have been followed elsewhere), and the file at the
         // end the one the scan found.
         Resolution::Found(now, stat) if now == path && stat.same_as(&seen) => Ok(now),
-        _ => Err(not_revealable_json()),
+        _ => Err(changed_since_scan_json()),
     }
 }
 
@@ -140,8 +158,9 @@ fn show_in_finder(_path: &Path) -> Result<(), String> {
 /// when it is still the file the newest scan found there (`still_found`,
 /// against the places kept out for the home folder the scan is given,
 /// `HostEnv::discover`'s), through AppKit (`show_in_finder`), and runs
-/// nothing. Any other path is refused as `not_revealable`; one the newest
-/// scan did not resolve before anything is read.
+/// nothing. Any other path is refused: as `not_revealable` when the newest
+/// scan did not resolve it, before anything is read, and as
+/// `changed_since_scan` when what it names has changed since.
 #[tauri::command]
 pub async fn reveal_in_finder(
     revealable: State<'_, Revealable>,
@@ -157,6 +176,7 @@ mod tests {
     use std::cell::RefCell;
 
     const REFUSED: &str = r#"{"kind":"not_revealable"}"#;
+    const CHANGED: &str = r#"{"kind":"changed_since_scan"}"#;
 
     /// A folder of a test's own, standing in for `/`: a home folder at
     /// `home`. Removed when dropped. Canonical, as a scan's paths are
@@ -324,7 +344,7 @@ mod tests {
         temp.link("home/bin/tool", &temp.path("home/Documents/private/tool"));
         assert_eq!(
             reveal_impl(&revealable, &tool, &protected, reveal),
-            Err(REFUSED.to_string())
+            Err(CHANGED.to_string())
         );
         // The folder it is in, replaced by a link into `~/Documents`.
         std::fs::remove_file(&tool).unwrap();
@@ -332,7 +352,7 @@ mod tests {
         temp.link("home/bin", &temp.path("home/Documents/private"));
         assert_eq!(
             reveal_impl(&revealable, &tool, &protected, reveal),
-            Err(REFUSED.to_string())
+            Err(CHANGED.to_string())
         );
         assert_eq!(*shown.borrow(), [tool]);
     }
@@ -356,7 +376,7 @@ mod tests {
         temp.link("home/bin", &temp.path("home/moved"));
         assert_eq!(
             reveal_impl(&revealable, &tool, &protected, reveal),
-            Err(REFUSED.to_string())
+            Err(CHANGED.to_string())
         );
         // Moved back: the path and the file the scan found, so shown.
         std::fs::remove_file(temp.path("home/bin")).unwrap();
@@ -368,13 +388,13 @@ mod tests {
         temp.program("home/bin/tool");
         assert_eq!(
             reveal_impl(&revealable, &tool, &protected, reveal),
-            Err(REFUSED.to_string())
+            Err(CHANGED.to_string())
         );
         // Gone: refused.
         std::fs::remove_file(&tool).unwrap();
         assert_eq!(
             reveal_impl(&revealable, &tool, &protected, reveal),
-            Err(REFUSED.to_string())
+            Err(CHANGED.to_string())
         );
         assert_eq!(*shown.borrow(), [tool]);
     }

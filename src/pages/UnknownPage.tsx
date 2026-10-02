@@ -10,6 +10,7 @@ import { Menu, type MenuItem } from "../components/ui/Menu";
 import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
 import { SpinnerIcon, TerminalIcon } from "../components/icons";
 import { SHOWN_FOR_MS, copyStatusText, useCopyCommand } from "../lib/clipboard";
+import { revealFailureKey } from "../lib/revealFailure";
 import { elapsedSince, formatBytes } from "../lib/format";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
@@ -394,8 +395,9 @@ export function UnknownPage() {
 
   // A row's Copy path and Show in Finder, and a word about how the last
   // one went: "Copied" or "Couldn't copy" as the other pages say it
-  // (`useCopyCommand`), or "Couldn't show it in Finder" -- for as long,
-  // and started over by each new failure. Nothing needs saying when
+  // (`useCopyCommand`), or "Couldn't show it in Finder" -- or, for a
+  // program that changed since the scan, to scan again (`revealFailureKey`)
+  // -- for as long, and started over by each new failure. Nothing needs saying when
   // Finder comes forward with the file. The newest word wins: a copy
   // takes a failure to show away.
   const { status: copyStatus, copy } = useCopyCommand();
@@ -406,7 +408,7 @@ export function UnknownPage() {
     const timer = window.setTimeout(resetReveal, SHOWN_FOR_MS);
     return () => window.clearTimeout(timer);
   }, [revealFailed, revealedAt, resetReveal]);
-  const notice = revealFailed ? t("unknown.showInFinderFailed") : copyStatusText(t, copyStatus);
+  const notice = revealFailed ? t(revealFailureKey(reveal.error)) : copyStatusText(t, copyStatus);
 
   // The ⋯ menu. Show in Finder hands the plugin where the program is,
   // every link followed (`resolved`): what the plugin would make of the

@@ -1308,6 +1308,9 @@
     "protectedLinkHint": "此链接指向受保护的位置，没有读取那里。",
     "protectedFolders_other": "有{{count}}个文件夹在受保护的位置，没有读取。"
   },
+  "unknownReveal": {
+    "changedSinceScan": "它在上次扫描后有变动。请重新扫描。"
+  },
   "emptyStates": {
     "loadFailed": {
       "title": "无法读取已安装的工具",
