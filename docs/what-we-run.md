@@ -265,8 +265,8 @@ way. So on a Mac, while an operation is not done —
 queued, running, being cancelled or checking its result — every way of
 quitting (Quit Banager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:
-*N operations haven't finished* (「还有N个操作未完成」), with *Cancel*
-(「取消」, which has the focus, and which Escape does) and
+*N operations haven't finished* (「还有N个操作未完成」), with *Keep Waiting*
+(「继续等待」, which has the focus, and which Escape does) and
 *Quit* (「退出」), and it names an operation that has started
 and cannot be cancelled, such as rustup's self update. Every one of those
 quits ends in AppKit's `terminate:`, which asks the application
