@@ -7,6 +7,7 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   canWrite,
+  installedCountByInstance,
   instanceLabels,
   isAvailable,
   settingsSaveSentence,
@@ -690,14 +691,7 @@ export function InstalledPage() {
 
   // How much each source has installed: the number its row in the
   // sidebar shows.
-  const countByInstance = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const artifact of snapshot?.artifacts ?? []) {
-      const id = artifact.key.instance_id;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    return counts;
-  }, [snapshot]);
+  const countByInstance = useMemo(() => installedCountByInstance(snapshot?.artifacts ?? []), [snapshot]);
 
   // The source the sidebar's row for it opened the page on. It stays,
   // with nothing installed or with nothing its source could list, and

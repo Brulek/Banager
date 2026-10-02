@@ -286,13 +286,25 @@ describe("sourceNoticesFor", () => {
   });
 
   it("counts what each source has installed, every row of the snapshot, for every page alike", () => {
-    const row = (instance_id: string, name: string) => ({ key: { instance_id, kind: "Formula" as const, name } });
+    const row = (instance_id: string, name: string, reason = "Requested") => ({
+      key: { instance_id, kind: "Formula" as const, name },
+      reason,
+    });
     const counts = installedCountByInstance(
-      [row("uv", "ruff"), row("brew", "jq"), row("uv", "llm"), row("brew", "openssl@3")] as InstalledArtifact[],
+      [
+        row("uv", "ruff"),
+        row("brew", "jq"),
+        row("uv", "llm"),
+        row("brew", "openssl@3", "Dependency"),
+        row("brew", "oniguruma", "Unknown"),
+      ] as InstalledArtifact[],
     );
+    // Components other software brought in count too: the Sidebar,
+    // Overview, Installed and Updates pages all read this one number.
     expect(counts.get("uv")).toBe(2);
-    expect(counts.get("brew")).toBe(2);
+    expect(counts.get("brew")).toBe(3);
     expect(counts.get("npm")).toBeUndefined();
+    expect(installedCountByInstance([]).size).toBe(0);
   });
 
   it("does not promise carried-forward rows when the page has none to show", () => {

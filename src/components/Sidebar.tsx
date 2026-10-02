@@ -5,7 +5,7 @@ import { useUiStore, type Page } from "../store/ui";
 import { useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { useInventoryPreview } from "../lib/inventoryPreview";
-import { instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
+import { installedCountByInstance, instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
 import { InstalledIcon, OverviewIcon, SettingsIcon, TerminalIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
@@ -128,11 +128,7 @@ function useSourceRows(): SourceRow[] {
     if (snapshot === undefined) return [];
     const labels = instanceLabels(t, snapshot.instances);
     const names = instanceNames(t, snapshot.instances);
-    const counts = new Map<string, number>();
-    for (const artifact of snapshot.artifacts) {
-      const id = artifact.key.instance_id;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
+    const counts = installedCountByInstance(snapshot.artifacts);
     return snapshot.instances.map((instance) => {
       const label = labels.get(instance.id) ?? instance.id;
       // How many it has installed (`installedCount`), though

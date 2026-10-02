@@ -8,6 +8,7 @@ import { useInventoryPreview } from "../lib/inventoryPreview";
 import { elapsedSince } from "../lib/format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import {
+  installedCountByInstance,
   instanceLabels,
   NOTHING_FOUND_KEYS,
   nothingFound,
@@ -457,11 +458,7 @@ export function OverviewPage() {
   const labels = instanceLabels(t, snapshot.instances);
   const labelOf = (instance: ManagerInstance): string => labels.get(instance.id) ?? instance.adapter_id;
 
-  const installedByInstance = new Map<string, number>();
-  for (const artifact of snapshot.artifacts) {
-    const id = artifact.key.instance_id;
-    installedByInstance.set(id, (installedByInstance.get(id) ?? 0) + 1);
-  }
+  const installedByInstance = installedCountByInstance(snapshot.artifacts);
 
   const summary = updatesSummary(
     snapshot,
