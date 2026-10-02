@@ -293,6 +293,7 @@
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "无法查到它的最新版本。",
+    "cannotCheckTryLater": "可以稍后点按“重新检查”再试。",
     "cannotCheckSummary_other": "{{count}}个工具无法检查更新。",
     "showReasons": "显示原因",
     "showReasonsHint": "在设置中打开“{{setting}}”",
@@ -329,7 +330,7 @@
     "blocked": {
       "Pinned": {
         "badge": "已固定",
-        "detail": "它在{{source}}中固定了版本。要更新，请先在终端运行{{command}}。",
+        "detail": "它在{{source}}中被固定在当前版本。要更新它，请先在终端运行{{command}}解除固定，再点按“重新检查”。",
         "refused": "无法更新，因为它在{{source}}中被固定了。"
       },
       "SelfUpdatesOnly": {
@@ -346,10 +347,10 @@
     "snoozedUntil": "{{date}}起恢复提醒",
     "selfUpdatesTyped": "它会自行更新，无法在这里更新。在终端里输入{{command}}打开它一次，就会检查新版本。",
     "disabledBlocked": {
-      "detail": "{{source}}已停用它，以后不再提供更新。",
+      "detail": "{{source}}已停用它，以后不再提供更新。已安装的这一份不会被删除；不再需要时可以卸载它。",
       "refused": "无法更新，因为{{source}}已停用它。"
     },
-    "pinnedPipxInjected": "这条命令也会解除注入到它环境里的包的固定。"
+    "pinnedPipxInjected": "这条命令也会让和它装在一起的其他包不再固定版本。"
   },
   "history": {
     "today": "今天{{time}}",
@@ -537,7 +538,7 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。"
+      "description": "pip安装的内容只能在这里查看。如果其中有你在终端里使用的命令行工具，可以用pipx或uv重新安装它，之后就能在这里更新和卸载。"
     },
     "prefixNotWritable": {
       "description": "npm把它们安装在当前账户无法修改的文件夹中，因此只能查看。用Homebrew安装Node后，再用它安装的npm包就能在这里管理。"

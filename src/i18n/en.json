@@ -314,6 +314,7 @@
     "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Couldn't find its latest version.",
+    "cannotCheckTryLater": "You can click “Check Again” later to try again.",
     "cannotCheckSummary_one": "{{count}} tool couldn't be checked for updates.",
     "cannotCheckSummary_other": "{{count}} tools couldn't be checked for updates.",
     "showReasons": "Show Reasons",
@@ -352,7 +353,7 @@
     "blocked": {
       "Pinned": {
         "badge": "Pinned",
-        "detail": "It's pinned in {{source}}. To update it, first run {{command}} in Terminal.",
+        "detail": "It's pinned to its current version in {{source}}. To update it, first run {{command}} in Terminal to unpin it, then click “Check Again”.",
         "refused": "Couldn't update it because it's pinned in {{source}}."
       },
       "SelfUpdatesOnly": {
@@ -369,10 +370,10 @@
     "snoozedUntil": "Hidden until {{date}}",
     "selfUpdatesTyped": "It updates itself and can't be updated here. Type {{command}} in Terminal to open it once, and it checks for a new version.",
     "disabledBlocked": {
-      "detail": "{{source}} has disabled it and won't provide more updates.",
+      "detail": "{{source}} has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
       "refused": "Couldn't update it because {{source}} has disabled it."
     },
-    "pinnedPipxInjected": "This command also unpins any packages injected into its environment."
+    "pinnedPipxInjected": "This command also unpins the other packages installed alongside it."
   },
   "history": {
     "today": "Today {{time}}",
@@ -578,7 +579,7 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here."
+      "description": "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here."
     },
     "prefixNotWritable": {
       "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."

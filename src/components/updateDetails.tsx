@@ -12,6 +12,7 @@ import { FAILURE_CAUSE_KEYS, failureCause, type FailureCause } from "../lib/fail
 import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
+import { CopyButton } from "./CopyButton";
 
 /**
  * A chip's detail, a sentence to a line; the lines after the first are the
@@ -37,7 +38,9 @@ export function detailLines(lines: ReactNode[]): ReactNode {
  * a full disk, a lock), that is said in a person's words whether or not
  * technical details are on (`failure.line.*`), before the words
  * themselves. Distinct, so a row carrying the same reason twice says it
- * once.
+ * once. Where a tool's words name no such cause, what a person can do is
+ * check again later (`updates.cannotCheckTryLater`), said once: a
+ * `NonRegistrySource` row gets no such line, as no check will find it.
  */
 export function cannotCheckDetail(
   t: TFunction,
@@ -45,6 +48,7 @@ export function cannotCheckDetail(
   showTechnicalDetails: boolean,
 ): ReactNode {
   const reasons = new Set<string>();
+  let tryLater = false;
   for (const warning of candidate.warnings) {
     const raw = warningMessage(warning);
     if (raw === null) {
@@ -54,9 +58,14 @@ export function cannotCheckDetail(
     }
     const cause = failureCause(raw);
     if (cause !== null) reasons.add(t(FAILURE_CAUSE_KEYS[cause].line));
+    else tryLater = true;
     if (showTechnicalDetails && raw !== "") reasons.add(raw);
   }
-  return detailLines([t("updates.cannotCheckShort"), ...reasons]);
+  return detailLines([
+    t("updates.cannotCheckShort"),
+    ...reasons,
+    ...(tryLater ? [t("updates.cannotCheckTryLater")] : []),
+  ]);
 }
 
 /**
@@ -91,6 +100,10 @@ export function sharedCannotCheckCause(candidates: UpdateCandidate[]): FailureCa
  * note (`copy.note`): what pipx's unpin also does, Homebrew's suggested
  * replacement. `artifact` is the row's inventory entry, which the typed
  * name and the replacement are read from; without it neither is said.
+ * A command set into the sentence -- the unpin -- has Copy Command under
+ * it (`CopyButton`), whatever "Show technical details" says: it is the
+ * one thing the sentence asks the person to do, and selecting it by hand
+ * from a popover is no way to ask that (walk-2 W2-13).
  */
 export function blockedDetail(
   t: TFunction,
@@ -106,7 +119,17 @@ export function blockedDetail(
   const note = copy.note(candidate.key, instance, artifact);
   const noteLines = note === null ? [] : [t(note.key, note.options)];
   if (copy.commandInDetail) {
-    return detailLines([withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command), ...noteLines]);
+    return detailLines([
+      withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command),
+      ...noteLines,
+      ...(command === ""
+        ? []
+        : [
+            <span data-detail-copy="" className="flex justify-start">
+              <CopyButton text={command} label={t("common.copyCommand")} />
+            </span>,
+          ]),
+    ]);
   }
   const typed = copy.typed === null ? null : copy.typed.name(artifact, instance);
   if (copy.typed !== null && typed !== null) {

@@ -105,7 +105,7 @@ function renderInstalled() {
   );
 }
 
-const PIP_WHY = "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.";
+const PIP_WHY = "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.";
 const selectAll = () => screen.queryByRole("checkbox", { name: "Select all items that can be uninstalled here" });
 
 describe("the Installed page on a read-only source", () => {
@@ -159,7 +159,7 @@ describe("the Installed page on a read-only source", () => {
     renderInstalled();
     await waitFor(() =>
       expect(document.querySelector("[data-read-only-line]")).toHaveTextContent(
-        "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
+        "pip安装的内容只能在这里查看。如果其中有你在终端里使用的命令行工具，可以用pipx或uv重新安装它，之后就能在这里更新和卸载。",
       ),
     );
   });

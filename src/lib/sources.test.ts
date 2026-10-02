@@ -1541,7 +1541,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       expect(copy).not.toMatch(/把[^，。]*固定/);
       expect(copy).not.toMatch(/\{\{source\}\}\s*固定/);
     }
-    expect(zhCN.updates.blocked.Pinned.detail).toContain("在{{source}}中固定");
+    expect(zhCN.updates.blocked.Pinned.detail).toContain("在{{source}}中被固定");
     expect(zhCN.updates.blocked.Pinned.refused).toMatch(/被固定/);
   });
 
@@ -1622,9 +1622,15 @@ describe("UPDATE_BLOCKED_KEYS.Disabled", () => {
     expect(zhCN.brewStatus.disabledWord).toBe("已停用");
   });
 
-  it("says why there is no button, in both locales, and promises nothing about the copy installed", () => {
-    expect(en.updates.disabledBlocked.detail).toBe("{{source}} has disabled it and won't provide more updates.");
-    expect(zhCN.updates.disabledBlocked.detail).toBe("{{source}}已停用它，以后不再提供更新。");
+  it("says why there is no button, in both locales, and that the copy installed stays, not whether it works", () => {
+    // And what the person may do about it, as the Installed page's
+    // Homebrew line says it (`brewStatus.disabled`; walk-2 W2-13).
+    expect(en.updates.disabledBlocked.detail).toBe(
+      "{{source}} has disabled it and won't provide more updates. The installed copy isn't removed; uninstall it when you no longer need it.",
+    );
+    expect(zhCN.updates.disabledBlocked.detail).toBe(
+      "{{source}}已停用它，以后不再提供更新。已安装的这一份不会被删除；不再需要时可以卸载它。",
+    );
     expect(en.updates.disabledBlocked.refused).toBe("Couldn't update it because {{source}} has disabled it.");
     expect(zhCN.updates.disabledBlocked.refused).toBe("无法更新，因为{{source}}已停用它。");
     for (const copy of [en.updates.disabledBlocked.detail, zhCN.updates.disabledBlocked.detail]) {
@@ -1662,8 +1668,12 @@ describe("UPDATE_BLOCKED_KEYS.Pinned's note", () => {
     expect(UPDATE_BLOCKED_KEYS.Pinned.note(brewKey, instance(), undefined)).toBeNull();
     // What the command does, not how many: Banager does not list injected
     // packages.
-    expect(en.updates.pinnedPipxInjected).toBe("This command also unpins any packages injected into its environment.");
-    expect(zhCN.updates.pinnedPipxInjected).toBe("这条命令也会解除注入到它环境里的包的固定。");
+    // Without pipx's own word for them, 「注入」, which says nothing to a
+    // person who never ran `pipx inject` (walk-2 W2-13).
+    expect(en.updates.pinnedPipxInjected).toBe("This command also unpins the other packages installed alongside it.");
+    expect(zhCN.updates.pinnedPipxInjected).toBe("这条命令也会让和它装在一起的其他包不再固定版本。");
+    expect(zhCN.updates.pinnedPipxInjected).not.toContain("注入");
+    expect(en.updates.pinnedPipxInjected).not.toMatch(/inject/i);
     expect(zhCN.updates.pinnedPipxInjected).not.toMatch(/\d|{{count}}/);
   });
 });
@@ -1775,11 +1785,13 @@ describe("the Updates page's chip details", () => {
       expect(locale.sourceNotice.prefixNotWritable.description).toContain("Homebrew");
       expect(locale.sourceNotice.prefixNotWritable.description).not.toMatch(/pipx|uv/);
     }
+    // What to do, and of which: reinstall, and only a tool the person uses
+    // in Terminal (walk-2 W2-13).
     expect(zhCN.sourceNotice.pipReadOnly.description).toBe(
-      "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
+      "pip安装的内容只能在这里查看。如果其中有你在终端里使用的命令行工具，可以用pipx或uv重新安装它，之后就能在这里更新和卸载。",
     );
     expect(en.sourceNotice.pipReadOnly.description).toBe(
-      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     );
   });
 

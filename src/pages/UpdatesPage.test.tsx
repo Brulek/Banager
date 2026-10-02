@@ -783,6 +783,46 @@ describe("UpdatesPage", () => {
     const detail = chipDetail(myFork, "Can't check");
     expect(within(detail).getByText("Couldn't find its latest version.")).toBeInTheDocument();
     expect(within(detail).getByText("It wasn't installed from crates.io.")).toBeInTheDocument();
+    // No check will find it, so no "check again later" (walk-2 W2-13).
+    expect(detail).not.toHaveTextContent(/Check Again/);
+  });
+
+  it("says what to do on a row that could not be checked: check again later, or the cause's own step", async () => {
+    // Walk-2 W2-13: a row's why should end on what the person can do.
+    // The tool's words name a cause a person knows -- the network -- and
+    // its line says what to do; words that name none get "check again
+    // later", said once however many of them there are.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: [{ Message: "crates.io request failed: status 500" }, { Message: "crates.io: status 503" }],
+        blocked: null,
+      },
+      {
+        key: { ...myForkKey, name: "other" },
+        current: "1.0.0",
+        target: "1.0.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: [{ Message: "crates.io request failed: network error: dns error: failed to lookup address information" }],
+        blocked: null,
+      },
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const unknown = chipDetail(await findRow("my-fork"), "Can't check");
+    expect([...unknown.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "You can click “Check Again” later to try again.",
+    ]);
+    const offline = chipDetail(rowOf("other"), "Can't check");
+    expect(offline).toHaveTextContent("Check your internet connection, then try again.");
+    expect(offline).not.toHaveTextContent(/later to try again/);
   });
 
   it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
@@ -912,7 +952,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal.",
+          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then click “Check Again”.",
         ),
       ),
     ).toBeInTheDocument();
@@ -963,7 +1003,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin --cask onyx in Terminal.",
+          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin --cask onyx in Terminal to unpin it, then click “Check Again”.",
         ),
       ),
     ).toBeInTheDocument();
@@ -991,7 +1031,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal.",
+          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then click “Check Again”.",
         ),
       ),
     ).toBeInTheDocument();
@@ -1143,7 +1183,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned in pipx. To update it, first run /opt/homebrew/bin/pipx unpin cowsay in Terminal.",
+          "It's pinned to its current version in pipx. To update it, first run /opt/homebrew/bin/pipx unpin cowsay in Terminal to unpin it, then click “Check Again”.",
         ),
       ),
     ).toBeInTheDocument();
@@ -1153,7 +1193,7 @@ describe("UpdatesPage", () => {
     // pipx's unpin releases what was injected into the environment too
     // (pipx 1.17.3 `commands/pin.py`), which Banager cannot list: said on
     // every pinned pipx row, as what the command does.
-    expect(detail).toHaveTextContent("This command also unpins any packages injected into its environment.");
+    expect(detail).toHaveTextContent("This command also unpins the other packages installed alongside it.");
   });
 
   it("says nothing of injected packages on a row pinned in Homebrew", async () => {
@@ -1263,7 +1303,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "View only");
     expect(detail).toHaveTextContent(
-      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     );
   });
 
@@ -1372,7 +1412,10 @@ describe("UpdatesPage", () => {
     const reason = chipDetail(urllib3, "Can't check");
     expect([...reason.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
+      // pip's words name no cause a person knows: what to do is check
+      // again later (walk-2 W2-13).
+      "You can click “Check Again” later to try again.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
   });
 
@@ -1403,7 +1446,8 @@ describe("UpdatesPage", () => {
     // not be checked, in one short sentence -- then pip's way out.
     expect([...detail.querySelectorAll("p, [data-detail-line]")].map((line) => line.textContent)).toEqual([
       "Couldn't find its latest version.",
-      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
+      "You can click “Check Again” later to try again.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
     expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
@@ -1600,7 +1644,8 @@ describe("UpdatesPage", () => {
     expect(lines).toEqual([
       "Couldn't find its latest version.",
       "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
-      "You can only view pip installs here. Install command-line tools with pipx or uv instead to update and uninstall them here.",
+      "You can click “Check Again” later to try again.",
+      "You can only view pip installs here. If one of them is a command-line tool you use in Terminal, reinstall it with pipx or uv to update and uninstall it here.",
     ]);
     // The rows already carry the tools' words, so the page's line --
     // which exists to point at this switch -- has nothing to add.
@@ -2460,11 +2505,11 @@ describe("UpdatesPage", () => {
         fireEvent.click(await findByRole("button", { name: "另有2个无法在这里更新" }));
         expect(
           within(chipDetail(await findRow("glib"), "已固定")).getByText(
-            wholeSentence("它在Homebrew中固定了版本。要更新，请先在终端运行/opt/homebrew/bin/brew unpin glib。"),
+            wholeSentence("它在Homebrew中被固定在当前版本。要更新它，请先在终端运行/opt/homebrew/bin/brew unpin glib解除固定，再点按“重新检查”。"),
           ),
         ).toBeInTheDocument();
         expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(
-          "pip安装的内容只能在这里查看。其中的命令行工具改用pipx或uv安装，就能在这里更新和卸载。",
+          "pip安装的内容只能在这里查看。如果其中有你在终端里使用的命令行工具，可以用pipx或uv重新安装它，之后就能在这里更新和卸载。",
         );
       } finally {
         await i18n.changeLanguage("en");
@@ -2832,6 +2877,22 @@ describe("UpdatesPage", () => {
 
       expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin glib");
       expect(await findByRole("status")).toHaveTextContent("Copied");
+    });
+
+    it("copies a pinned row's unpin command from the button under its why, technical details or not", async () => {
+      // Walk-2 W2-13: the why asks the person to run a command in
+      // Terminal; selecting it by hand out of a popover is no way to ask.
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      renderPage();
+
+      await showCantUpdate();
+      const detail = chipDetail(await findRow("glib"), "Pinned");
+      fireEvent.click(within(detail).getByRole("button", { name: "Copy Command" }));
+
+      expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin glib");
+      expect(await within(detail).findByText("Copied")).toBeInTheDocument();
+      // Still open: the click was inside it.
+      expect(detail).toBeInTheDocument();
     });
 
     it("stands in a group of its own, under a hairline, apart from the choices about the update", async () => {
@@ -5235,7 +5296,9 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
+    expect(chipDetail(claude, "Can't check").textContent).toBe(
+      "Couldn't find its latest version.You can click “Check Again” later to try again.",
+    );
     expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
