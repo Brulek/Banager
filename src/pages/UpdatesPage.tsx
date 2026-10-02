@@ -58,12 +58,11 @@ import {
   blockedDetail,
   cannotCheckDetail,
   readOnlyDetail,
-  sharedCannotCheckCause,
   unavailableDetail,
   updateVersionColumn,
 } from "../components/updateDetails";
 import { FAILURE_CAUSE_KEYS, type FailureCause } from "../lib/failureCause";
-import { failedLookupsNotice, isFailedLookup, saysWhyInToolWords } from "../lib/failedLookups";
+import { failedLookupsNotice, isFailedLookup, saysWhyInToolWords, sharedCannotCheckCause } from "../lib/failedLookups";
 import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";

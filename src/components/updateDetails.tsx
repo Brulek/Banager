@@ -8,7 +8,7 @@
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { READ_ONLY_DETAIL_KEYS, UNAVAILABLE_DETAIL_KEYS, UPDATE_BLOCKED_KEYS } from "../lib/sources";
-import { FAILURE_CAUSE_KEYS, lookupFailureCause, type FailureCause } from "../lib/failureCause";
+import { FAILURE_CAUSE_KEYS, lookupFailureCause } from "../lib/failureCause";
 import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
@@ -81,28 +81,6 @@ export function cannotCheckDetail(
     ...reasons,
     ...(tryLater ? [t("warnings.transientLookupFailure")] : []),
   ]);
-}
-
-/**
- * The one cause a person knows (`lookupFailureCause`) that every row of
- * `candidates` with a tool's own words (`Message`) gives -- 「网络连接失败」
- * when nothing could be reached -- for the line over the rows Banager
- * could not check. Null when there is no such row, when one of them says
- * nothing `failureCause` reads, or when they disagree: then the line does
- * not claim a cause for all of them, and each row's chip says its own.
- */
-export function sharedCannotCheckCause(candidates: UpdateCandidate[]): FailureCause | null {
-  let shared: FailureCause | null = null;
-  for (const candidate of candidates) {
-    for (const warning of candidate.warnings) {
-      const raw = warningMessage(warning);
-      if (raw === null) continue;
-      const cause = lookupFailureCause(raw);
-      if (cause === null || (shared !== null && cause !== shared)) return null;
-      shared = cause;
-    }
-  }
-  return shared;
 }
 
 /**

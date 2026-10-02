@@ -19,12 +19,33 @@
 import type { UpdateCandidate } from "./types";
 import { notHidden, type HidingSettings } from "./updateState";
 import { warningMessage } from "./warnings";
-import { FAILURE_CAUSE_KEYS } from "./failureCause";
+import { FAILURE_CAUSE_KEYS, lookupFailureCause, type FailureCause } from "./failureCause";
 import type { SourceNoticeSpec } from "./sources";
-import { sharedCannotCheckCause } from "../components/updateDetails";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
+
+/**
+ * The one cause a person knows (`lookupFailureCause`) that every row of
+ * `candidates` with a tool's own words (`Message`) gives -- 「网络连接失败」
+ * when nothing could be reached -- for the line over the rows Banager
+ * could not check. Null when there is no such row, when one of them says
+ * nothing `failureCause` reads, or when they disagree: then the line does
+ * not claim a cause for all of them, and each row's chip says its own.
+ */
+export function sharedCannotCheckCause(candidates: UpdateCandidate[]): FailureCause | null {
+  let shared: FailureCause | null = null;
+  for (const candidate of candidates) {
+    for (const warning of candidate.warnings) {
+      const raw = warningMessage(warning);
+      if (raw === null) continue;
+      const cause = lookupFailureCause(raw);
+      if (cause === null || (shared !== null && cause !== shared)) return null;
+      shared = cause;
+    }
+  }
+  return shared;
+}
 
 /**
  * Whether Banager could not establish `candidate`'s remote version
