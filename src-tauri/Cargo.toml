@@ -55,8 +55,9 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c
 # declares its own. macOS only, as the calls are.
 # `reveal::show_in_finder` makes the file URL it hands Finder
 # (`NSURL fileURLWithPath:isDirectory:`) in an `NSArray`: `NSURL` is
-# already on in Cargo.lock's build, switched on by tauri-plugin-opener
-# (with `NSArray` and `NSString`), so no new feature enters the build.
+# already on in this build -- banager-core switches it on (the Trash call,
+# `trash::real`), and so do tao, wry and tauri-plugin-opener -- so no new
+# feature enters the build.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
@@ -81,8 +82,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # `reveal::show_in_finder` asks Finder to show a file
 # (`NSWorkspace activateFileViewerSelectingURLs:`), the one call the opener
 # plugin's `reveal_item_in_dir` made, without the plugin resolving the path
-# again first; `NSWorkspace` is already on, switched on by
-# tauri-plugin-opener, so no new feature enters the build either.
+# again first; `NSWorkspace` is already on in this build -- banager-core
+# switches it on (the app icons, `icon::real`), and so does
+# tauri-plugin-opener -- so no new feature enters the build either.
 # macOS only, as the calls are.
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
