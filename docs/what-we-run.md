@@ -2824,8 +2824,13 @@ What it looks at, during the uninstall preview of a formula or cask only:
   followed: npm's `bin/npm-cli.js` begins `#!/usr/bin/env node`, so that
   `node` is what npm and its packages run on;
 - for pipx and uv, `bin/python` in the environment each tool has of its
-  own (the folder pipx's `app_paths` and uv's `--show-paths` name), every
-  link followed.
+  own (the folder pipx's `app_paths` -- or, for a package whose only apps
+  are its dependencies', `app_paths_of_dependencies` -- and uv's
+  `--show-paths` name), every link followed;
+- only when one of those could not be followed (below), whether the
+  package has a program of the name it would have to end at: for a
+  formula `<prefix>/opt/<name>/bin/<program>`, for a cask
+  `<prefix>/bin/<program>`, every link followed.
 
 A source runs on the package when its program, or npm's `node`, leads
 into the package's folder: then every tool it lists needs the package,
@@ -2861,16 +2866,25 @@ most for a step that does not answer at all (a folder on a disk that
 stopped answering), then goes on without it; a look that did not finish
 says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what
 else needs this. Check yourself before you uninstall.",
-`Warning::DependentsUnknown`), never that nothing runs on it. A look that
-met a path it may not or cannot follow did not finish either
-(`needed_by::Look::unknown`): a source's program, a pipx or uv tool's
-environment (a venv kept in `~/Documents`, say, whose `bin/python` may be
-a Homebrew Python's) or a `PATH` folder passed over on the way to `node`
-that is, or leads into, one of those places; one on the way to which a
-folder could not be searched; and a pipx or uv tool with no environment
-Banager knows of. What is there may run on the package, so the preview
-says it could not check, and still names whatever it did find running on
-it. A path that is not there at all is known not to run on it.
+`Warning::DependentsUnknown`), never that nothing runs on it. Nor did a
+look that met a path it may not or cannot follow (`needed_by::Doubt`) --
+a source's program, a pipx or uv tool's environment (a venv kept in
+`~/Documents`, say, whose `bin/python` may be a Homebrew Python's) or a
+`PATH` folder passed over on the way to `node` that is, or leads into,
+one of those places; one on the way to which a folder could not be
+searched; and a pipx tool with no environment Banager knows of -- when
+the package could be what that path leads to (`Look::could_be`): when it
+has, of its own, a program of the name the path would have to end at --
+`node` for the `PATH` folder; for an environment a Python, `python3` or,
+for `python@3.N`, whose keg has no `python3` unless it is Homebrew's
+default Python, `python3.N`; the source's own program's name for its
+program -- in its `opt/<name>/bin` for a formula, linked or keg-only, or
+in `<prefix>/bin`, where its `binary` links go, for a cask. What is there
+may run on such a package, so its preview says it could not check, and
+still names whatever it did find running on it. jq, a font, or any other
+package with no such program cannot be what it leads to, and its preview
+says nothing of it. A path that is not there at all is known not to run
+on any package.
 
 ## Diagnostic info: read-only, no command runs
 
