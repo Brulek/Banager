@@ -149,7 +149,7 @@ describe("toolSetupCheck, on a Mac with nothing wrong", () => {
       "Finding Commands in Terminal": ["fine Terminal's settings were read normally, and so were all 3 folders it looks in for commands"],
       Sources: [
         "fine Every source answered normally · Homebrew, npm",
-        "note Command-line programs from other sources are in Other Programs → unknown",
+        "note Command-line programs from other sources are listed separately → unknown",
       ],
       Commands: ["fine Terminal finds every installed tool, and none is installed more than once"],
       Homebrew: ["fine Homebrew hasn't disabled or deprecated any tool, and keeps no other versions"],
@@ -286,7 +286,7 @@ describe("toolSetupCheck's source lines", () => {
     };
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Sources"]).toEqual([
       `warning Homebrew: Not responding → source:${BREW}`,
-      "note Command-line programs from other sources are in Other Programs → unknown",
+      "note Command-line programs from other sources are listed separately → unknown",
     ]);
   });
 

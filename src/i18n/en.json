@@ -1153,7 +1153,7 @@
       "state": "{{source}}: {{state}}",
       "checkUnfinished": "Check didn't finish",
       "none": "No sources to manage were found",
-      "otherPrograms": "Command-line programs from other sources are in Other Programs"
+      "otherPrograms": "Command-line programs from other sources are listed separately"
     },
     "commands": {
       "allFine": "Terminal finds every installed tool, and none is installed more than once",
