@@ -19,15 +19,36 @@ export function isActive(op: OpSummary): boolean {
 }
 
 /**
- * What an operation does, as a noun -- 「更新」, "Update" -- before the
- * name it acts on (the copy table's C2: 「更新 ffmpeg：进行中」). A
- * `Record` over `OpKind`, so a kind added to the mirror without a word
- * here fails `tsc`.
+ * What an operation is doing while it runs, said of the tool it acts on
+ * -- 「ffmpeg：正在更新…」, "htop: Uninstalling…" -- never a bare verb in
+ * front of the name, which in English reads as a command ("Update
+ * ffmpeg: Running"; walk-3 W3-3). An update's are the Updates row's own
+ * words (`updates.progress.*`), so the row and the bar say one thing
+ * (W3-19). A `Record` over `OpKind`, so a kind added to the mirror
+ * without a word here fails `tsc`.
  */
-export const OP_KIND_KEYS: Record<OpKind, string> = {
-  Install: "operations.kind.Install",
-  Uninstall: "operations.kind.Uninstall",
-  Upgrade: "operations.kind.Upgrade",
+export const OP_RUNNING_KEYS: Record<OpKind, string> = {
+  Install: "operations.running.Install",
+  Uninstall: "operations.running.Uninstall",
+  Upgrade: "updates.progress.running",
+};
+
+/** How an operation that worked ended, in the same words: 「已更新」, "Uninstalled". */
+export const OP_SUCCEEDED_KEYS: Record<OpKind, string> = {
+  Install: "operations.succeeded.Install",
+  Uninstall: "operations.succeeded.Uninstall",
+  Upgrade: "updates.progress.succeeded",
+};
+
+/**
+ * How one that failed ended, where the tool's words give no cause: 「未能
+ * 更新」 -- what the row says -- not a 「未能完成」 that names no kind
+ * (walk-3 W3-10).
+ */
+export const OP_FAILED_KEYS: Record<OpKind, string> = {
+  Install: "operations.failedShort.Install",
+  Uninstall: "operations.failedShort.Uninstall",
+  Upgrade: "updates.progress.failed",
 };
 
 /**
@@ -43,11 +64,11 @@ export const OP_CANCEL_KEYS: Record<OpKind, string> = {
 /**
  * Where an operation under way stands. `Done` has no word of its own: once
  * an operation is done, its outcome takes the status's place (C2), so the
- * bar never says 「更新 ffmpeg：已完成」 and then how it went.
+ * bar never says 「ffmpeg：已完成」 and then how it went. `Running` says
+ * what it does (`OP_RUNNING_KEYS`).
  */
-export const OP_STATUS_KEYS: Record<Exclude<OpStatus, "Done">, string> = {
+export const OP_STATUS_KEYS: Record<Exclude<OpStatus, "Done" | "Running">, string> = {
   Queued: "operations.status.Queued",
-  Running: "operations.status.Running",
   CancelRequested: "operations.status.CancelRequested",
   Cancelling: "operations.status.Cancelling",
   Verifying: "operations.status.Verifying",
@@ -124,7 +145,10 @@ export function isWaitingForBrewUpdate(op: OpSummary, logs: LogLine[]): boolean 
  */
 export function statusKey(op: OpSummary, logs: LogLine[]): string | null {
   if (op.status === "Done") return null;
-  return isWaitingForBrewUpdate(op, logs) ? "operations.status.waitingForBrewUpdate" : OP_STATUS_KEYS[op.status];
+  if (op.status === "Running") {
+    return isWaitingForBrewUpdate(op, logs) ? "operations.status.waitingForBrewUpdate" : OP_RUNNING_KEYS[op.kind];
+  }
+  return OP_STATUS_KEYS[op.status];
 }
 
 /**
@@ -138,12 +162,13 @@ export function statusKey(op: OpSummary, logs: LogLine[]): string | null {
 export type OutcomeTone = "success" | "cancelled" | "attention" | "failure";
 
 /**
- * How an operation ended, in a few words: 「已成功」, 「失败：…」 with the
- * tool's own words. A finished operation with no outcome says the result
- * is unconfirmed, which is all that can be said of it.
+ * How an operation of `kind` ended, in a few words: 「已更新」, 「未能完
+ * 成：…」 with the tool's own words. A finished operation with no outcome
+ * says the result is unconfirmed, which is all that can be said of it.
  */
-export function outcomeSentence(t: Translate, outcome: Outcome | null): string {
+export function outcomeSentence(t: Translate, outcome: Outcome | null, kind: OpKind): string {
   const shown: Outcome = outcome ?? "Unconfirmed";
+  if (shown === "Succeeded") return t(OP_SUCCEEDED_KEYS[kind]);
   return t(`operations.outcome.${outcomeKey(shown)}`, outcomeArgs(shown));
 }
 
@@ -152,17 +177,17 @@ export function outcomeSentence(t: Translate, outcome: Outcome | null): string {
  * (spec §3.10, R10): where it failed for a reason the tool's own words
  * give (`outcomeCause`), that reason -- 「网络连接失败」 -- and otherwise,
  * with "Show technical details" off, nothing another program wrote: a
- * failure is 「未能完成」, and a program that would not start says so
+ * failure is 「未能更新」 (`OP_FAILED_KEYS`), and a program that would not start says so
  * without macOS's own words for why. Those, and the tool's, are in the
  * log, and here too with the setting on (`outcomeSentence`).
  */
-export function outcomeWords(t: Translate, outcome: Outcome | null, technical: boolean): string {
+export function outcomeWords(t: Translate, outcome: Outcome | null, kind: OpKind, technical: boolean): string {
   if (outcome !== null && typeof outcome !== "string") {
     const cause = outcomeCause(outcome);
     if ("Failed" in outcome) {
-      if (technical) return outcomeSentence(t, outcome);
+      if (technical) return outcomeSentence(t, outcome, kind);
       if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].word);
-      return outcome.Failed.summary.trim() ? t("operations.outcome.FailedShort") : outcomeSentence(t, outcome);
+      return outcome.Failed.summary.trim() ? t(OP_FAILED_KEYS[kind]) : outcomeSentence(t, outcome, kind);
     }
     if ("BanagerFailed" in outcome && !technical) {
       const fault = outcome.BanagerFailed;
@@ -171,7 +196,7 @@ export function outcomeWords(t: Translate, outcome: Outcome | null, technical: b
       }
     }
   }
-  return outcomeSentence(t, outcome);
+  return outcomeSentence(t, outcome, kind);
 }
 
 export function outcomeTone(outcome: Outcome | null): OutcomeTone {

@@ -14,7 +14,7 @@ import { SMALL_WRAPPING } from "./ui/group";
  * What the last batch uninstall did not uninstall (spec §6.6), at the top
  * of the Installed list once every operation it started has finished: 「2
  * 个没有卸载」, then each of them with how it ended, in the operation bar's
- * words (`outcomeWords`: 「未能完成」, 「已取消」, a failure's cause), and its
+ * words (`outcomeWords`: 「未能卸载」, 「已取消」, a failure's cause), and its
  * 查看日志 -- and, with technical details on, where that is the tool's own
  * words, whose they are and what to do next (`ResultRowStep`). Under a
  * Homebrew formula whose dependent in the batch did not
@@ -86,7 +86,7 @@ export function BatchUninstallResult() {
                 <li key={op.id} data-batch-result-item="">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className={`text-foreground ${SMALL_WRAPPING}`}>{item.name}</span>
-                    <span className={`text-muted ${SMALL_WRAPPING}`}>{causeLine(op.outcome) ?? outcomeWords(t, op.outcome, technical)}</span>
+                    <span className={`text-muted ${SMALL_WRAPPING}`}>{causeLine(op.outcome) ?? outcomeWords(t, op.outcome, op.kind, technical)}</span>
                     <button
                       type="button"
                       aria-label={t("batchUninstall.viewLogOf", { name: item.name })}

@@ -99,7 +99,7 @@ describe("OperationBar", () => {
 
     await listNow(queryClient, [op(1, "wget", "Running")]);
 
-    await findByText("Update wget: Running");
+    await findByText("wget: Updating…");
     const bar = getByRole("contentinfo", { name: "Operation status" });
     expect(within(bar).getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(within(bar).getByRole("button", { name: "View Log" })).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("OperationBar", () => {
     operations = [op(5, "onyx", "Running", null, { artifact_kind: "Cask" })];
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("Update onyx: Running");
+    await findByText("onyx: Updating…");
     fireEvent.click(await findByRole("button", { name: "Cancel" }));
 
     // This is the only proof in the plan that Cancel really reaches
@@ -140,7 +140,7 @@ describe("OperationBar", () => {
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("Update onyx: Waiting for Homebrew's software list…");
+    await findByText("onyx: Waiting for Homebrew's software list…");
     // Cancel must still work: the wait is still part of an active op.
     expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
@@ -151,9 +151,38 @@ describe("OperationBar", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderWithProviders(<OperationBar />);
-      await findByText("更新ffmpeg：正在等待Homebrew更新软件清单…");
+      await findByText("ffmpeg：正在等待Homebrew更新软件清单…");
     } finally {
       await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says what it acts on, then what it does, never a bare verb in front: htop: Uninstalling…, then Uninstalled (walk-3 W3-3)", async () => {
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong" } };
+    const cases: [OpSummary, string, string][] = [
+      [op(1, "htop", "Running", null, { kind: "Uninstall" }), "htop: Uninstalling…", "htop：正在卸载…"],
+      [op(1, "htop", "Done", "Succeeded", { kind: "Uninstall" }), "htop: Uninstalled", "htop：已卸载"],
+      [op(1, "htop", "Done", failed, { kind: "Uninstall" }), "htop: Couldn't uninstall", "htop：未能卸载"],
+      [op(1, "jq", "Running", null, { kind: "Install" }), "jq: Installing…", "jq：正在安装…"],
+      [op(1, "jq", "Done", "Succeeded", { kind: "Install" }), "jq: Installed", "jq：已安装"],
+      [op(1, "jq", "Done", failed, { kind: "Install" }), "jq: Couldn't install", "jq：未能安装"],
+      [op(1, "git", "Running"), "git: Updating…", "git：正在更新…"],
+      [op(1, "git", "Done", "Succeeded"), "git: Updated", "git：已更新"],
+      [op(1, "git", "Done", failed), "git: Couldn't update", "git：未能更新"],
+    ];
+    for (const [operation, english, chinese] of cases) {
+      operations = [operation];
+      const en = renderWithProviders(<OperationBar />);
+      expect(await en.findByText(english)).toBeInTheDocument();
+      en.unmount();
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const zh = renderWithProviders(<OperationBar />);
+        expect(await zh.findByText(chinese)).toBeInTheDocument();
+        zh.unmount();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
     }
   });
 
@@ -168,8 +197,8 @@ describe("OperationBar", () => {
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
-    await findByText("Update onyx: Cancelling…");
-    expect(queryByText("Update onyx: Waiting for Homebrew's software list…")).not.toBeInTheDocument();
+    await findByText("onyx: Cancelling…");
+    expect(queryByText("onyx: Waiting for Homebrew's software list…")).not.toBeInTheDocument();
     // A cancel already on its way: the button stays, and cannot be pressed twice.
     expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
@@ -185,7 +214,7 @@ describe("OperationBar", () => {
 
     // The tool's own words only with Show technical details on (see
     // below); its log has them.
-    await findByText("Install jqq: Couldn't finish");
+    await findByText("jqq: Couldn't install");
     expect(queryByText(/No available formula/)).toBeNull();
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     // Never the old "Installing jqq — done" beside how it went.
@@ -231,7 +260,7 @@ describe("OperationBar", () => {
     operations = [failed];
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Update git: Connection failed");
+    await findByText("git: Connection failed");
     expect(queryByText(/ghcr\.io|Failed to download/)).toBeNull();
     expect(getByRole("button", { name: "View Log" })).toBeInTheDocument();
   });
@@ -242,7 +271,7 @@ describe("OperationBar", () => {
       op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: 'No available formula with the name "jqq"' } }, { kind: "Install" }),
     ];
     const tech = renderWithProviders(<OperationBar />);
-    await tech.findByText('Install jqq: Couldn\'t finish: No available formula with the name "jqq"');
+    await tech.findByText('jqq: Couldn\'t finish: No available formula with the name "jqq"');
     tech.unmount();
 
     // macOS's own reason a program would not start, likewise.
@@ -253,7 +282,7 @@ describe("OperationBar", () => {
 
     technical = false;
     const off = renderWithProviders(<OperationBar />);
-    await off.findByText("Update wget: Couldn't start the program. Nothing changed");
+    await off.findByText("wget: Couldn't start the program. Nothing changed");
     expect(off.queryByText(/os error 13/)).toBeNull();
   });
 
@@ -334,7 +363,7 @@ describe("OperationBar", () => {
 
     const { findByText, queryByRole, getByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Update git: Completed");
+    await findByText("git: Updated");
     expect(queryByRole("button", { name: "View Log" })).toBeNull();
     expect(queryByRole("img", { name: "Needs attention" })).toBeNull();
     expect(getByRole("button", { name: "Close" })).toBeInTheDocument();
@@ -345,7 +374,7 @@ describe("OperationBar", () => {
 
     const { findByText, getByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Update git: Update reported success, but the version didn't change");
+    await findByText("git: Update reported success, but the version didn't change");
     expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
     expect(getByRole("button", { name: "View Log" })).toBeInTheDocument();
   });
@@ -353,7 +382,7 @@ describe("OperationBar", () => {
   it("closes with × once everything is done, and comes back for the next operation", async () => {
     operations = [op(7, "git", "Done", "Succeeded")];
     const { container, findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);
-    await findByText("Update git: Completed");
+    await findByText("git: Updated");
 
     fireEvent.click(getByRole("button", { name: "Close" }));
     expect(container).toBeEmptyDOMElement();
@@ -364,7 +393,7 @@ describe("OperationBar", () => {
 
     // A new operation brings it back, about the new one alone.
     await listNow(queryClient, [op(8, "wget", "Running"), op(7, "git", "Done", "Succeeded")]);
-    await findByText("Update wget: Running");
+    await findByText("wget: Updating…");
     expect(container.textContent).not.toContain("git");
   });
 
@@ -374,7 +403,7 @@ describe("OperationBar", () => {
     // still be View Log: an unkeyed one became the finished bar's Close.
     operations = [op(9, "git", "Running")];
     const { findByText, findByRole, getByRole, queryClient } = renderWithProviders(<OperationBar />);
-    await findByText("Update git: Running");
+    await findByText("git: Updating…");
     const viewLog = getByRole("button", { name: "View Log" });
 
     await listNow(queryClient, [op(9, "git", "Done", { Failed: { exit_code: 1, summary: "" } })]);
@@ -389,12 +418,12 @@ describe("OperationBar", () => {
   it("shows a new run's first operation in place of the last run's result", async () => {
     operations = [op(7, "git", "Done", "Succeeded")];
     const { findByText, queryClient, queryByText } = renderWithProviders(<OperationBar />);
-    await findByText("Update git: Completed");
+    await findByText("git: Updated");
 
     await listNow(queryClient, [op(8, "wget", "Running"), op(7, "git", "Done", "Succeeded")]);
 
-    await findByText("Update wget: Running");
-    expect(queryByText("Update git: Completed")).toBeNull();
+    await findByText("wget: Updating…");
+    expect(queryByText("git: Updated")).toBeNull();
     // One operation in this run, so no count.
     expect(queryByText(/Working on/)).toBeNull();
   });
@@ -437,7 +466,7 @@ describe("OperationBar", () => {
     await listNow(queryClient, [op(13, "wget", "Queued"), op(12, "jq", "Queued"), op(11, "git", "Running")]);
     await findByText("Working on 1 of 3");
     // The one doing something; Cancel is for the whole run.
-    expect(getByText("Update git: Running")).toBeInTheDocument();
+    expect(getByText("git: Updating…")).toBeInTheDocument();
     expect(getByRole("button", { name: "Cancel All" })).toBeEnabled();
 
     await listNow(queryClient, [
@@ -446,7 +475,7 @@ describe("OperationBar", () => {
       op(11, "git", "Done", "Succeeded"),
     ]);
     await findByText("Working on 2 of 3");
-    expect(getByText("Update jq: Running")).toBeInTheDocument();
+    expect(getByText("jq: Updating…")).toBeInTheDocument();
 
     await listNow(queryClient, [
       op(13, "wget", "Done", "Succeeded"),
@@ -474,7 +503,7 @@ describe("OperationBar", () => {
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
 
     await listNow(queryClient, [op(12, "jq", "Queued"), op(11, "git", "Running")]);
-    await findByText("Update git: Running");
+    await findByText("git: Updating…");
     const lines = () => container.querySelectorAll("[aria-live]");
     expect(lines()).toHaveLength(1);
     const line = lines()[0];
@@ -482,7 +511,7 @@ describe("OperationBar", () => {
     expect(line).toHaveTextContent("Working on 1 of 2");
 
     await listNow(queryClient, [op(12, "jq", "Running"), op(11, "git", "Done", "Succeeded")]);
-    await findByText("Update jq: Running");
+    await findByText("jq: Updating…");
     expect(lines()[0]).toBe(line);
 
     // How it went, where it stood: the same node, not a new one.
@@ -527,7 +556,7 @@ describe("OperationBar", () => {
       await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
       await listNow(queryClient, [rustup(12, "Queued"), op(11, "git", "Running")]);
 
-      await findByText("Update git: Running");
+      await findByText("git: Updating…");
       fireEvent.click(await findByRole("button", { name: "Cancel All" }));
       await waitFor(() => expect(calledToCancel()).toEqual([12, 11]));
     });
@@ -538,7 +567,7 @@ describe("OperationBar", () => {
       await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
       await listNow(queryClient, [op(11, "wget", "Queued"), op(10, "jq", "Queued"), rustup(9, "Running")]);
 
-      await findByText("Update rustup: Running");
+      await findByText("rustup: Updating…");
       expect(queryByRole("button", { name: "Cancel All" })).toBeNull();
       fireEvent.click(await findByRole("button", { name: "Cancel the Rest" }));
       await waitFor(() => expect(calledToCancel()).toEqual([10, 11]));
@@ -550,7 +579,7 @@ describe("OperationBar", () => {
         rustup(9, "Running"),
       ]);
       expect(await findByRole("button", { name: "Cancel the Rest" })).toBeDisabled();
-      expect(getByText("Update rustup: Running")).toBeInTheDocument();
+      expect(getByText("rustup: Updating…")).toBeInTheDocument();
 
       // Only rustup left, which nothing can stop: no button, and the bar
       // goes on naming it until it has finished.
@@ -560,7 +589,7 @@ describe("OperationBar", () => {
         rustup(9, "Running"),
       ]);
       await waitFor(() => expect(queryByRole("button", { name: /^Stop/ })).toBeNull());
-      expect(getByText("Update rustup: Running")).toBeInTheDocument();
+      expect(getByText("rustup: Updating…")).toBeInTheDocument();
       expect(calledToCancel()).toEqual([10, 11]);
     });
 
@@ -574,8 +603,8 @@ describe("OperationBar", () => {
       await listNow(queryClient, [op(13, "wget", "Queued"), rustup(12, "Running"), op(11, "git", "Running")]);
 
       // "The rest" is everything but the one on the bar.
-      await findByText("Update rustup: Running");
-      expect(queryByText("Update git: Running")).toBeNull();
+      await findByText("rustup: Updating…");
+      expect(queryByText("git: Updating…")).toBeNull();
       fireEvent.click(getByRole("button", { name: "View Log" }));
       expect(useUiStore.getState().focusedOpId).toBe(12);
       fireEvent.click(getByRole("button", { name: "Cancel the Rest" }));
@@ -584,7 +613,7 @@ describe("OperationBar", () => {
       // git stopping, wget dropped: rustup still on the bar.
       await listNow(queryClient, [op(13, "wget", "CancelRequested"), rustup(12, "Running"), op(11, "git", "Cancelling")]);
       expect(await findByRole("button", { name: "Cancel the Rest" })).toBeDisabled();
-      expect(getByText("Update rustup: Running")).toBeInTheDocument();
+      expect(getByText("rustup: Updating…")).toBeInTheDocument();
 
       await listNow(queryClient, [
         op(13, "wget", "Done", "Cancelled"),
@@ -628,7 +657,7 @@ describe("OperationBar", () => {
       Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password\nsudo: a password is required" },
     };
     await listNow(queryClient, [op(21, "android-platform-tools", "Done", password)]);
-    await findByText("Update android-platform-tools: Needs your password");
+    await findByText("android-platform-tools: Needs your password");
     expect(queryByRole("button", { name: "View Log" })).toBeNull();
     fireEvent.click(getByRole("button", { name: "View Steps" }));
     expect(useUiStore.getState()).toMatchObject({ focusedOpId: 21, logRun: [], drawerOpen: true });
@@ -720,14 +749,14 @@ describe("OperationBar", () => {
     const uninstall = { kind: "Uninstall" as const, instance_id: "standalone-claude", artifact_kind: "Binary" as const };
     operations = [op(3, "claude", "Running", null, uninstall)];
     const { findByText, queryClient } = renderWithProviders(<OperationBar />);
-    await findByText("Uninstall Claude Code: Running");
+    await findByText("Claude Code: Uninstalling…");
 
     act(() => {
       queryClient.setQueryData<Snapshot>(queryKeys.snapshot, { ...listed, generation: 2, artifacts: [] });
     });
     await listNow(queryClient, [op(3, "claude", "Done", "Succeeded", uninstall)]);
 
-    await findByText("Uninstall Claude Code: Completed");
+    await findByText("Claude Code: Uninstalled");
   });
 
   it("disables Cancel while the finished command's result is being verified", async () => {
@@ -738,7 +767,7 @@ describe("OperationBar", () => {
 
     const { findByRole, getByText } = renderWithProviders(<OperationBar />);
     expect(await findByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(getByText("Update jq: Checking the result…")).toBeInTheDocument();
+    expect(getByText("jq: Checking the result…")).toBeInTheDocument();
   });
 
   it("offers no Cancel button for a running rustup self update, whose plan says NoCancel", async () => {
@@ -760,7 +789,7 @@ describe("OperationBar", () => {
 
     const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Update rustup: Running");
+    await findByText("rustup: Updating…");
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
@@ -782,7 +811,7 @@ describe("OperationBar", () => {
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
 
-    await findByText("Update rustup: Queued");
+    await findByText("rustup: Queued");
     const cancel = await findByRole("button", { name: "Cancel" });
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);

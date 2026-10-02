@@ -76,8 +76,8 @@ export interface JustUpdatedEntry {
   finishedAt: number | null;
   /**
    * Whether Banager read the installed version before the update and after
-   * it and the two differ (`HistoryRecord.verified`): 「已确认更新」 then, and
-   * otherwise the row's 「已更新」.
+   * it and the two differ (`HistoryRecord.verified`): said in the tooltip
+   * of the row's own 「已更新」, which every update that worked says.
    */
   verified: boolean;
   /** How it ended (`JustUpdatedEnding`). */
@@ -187,7 +187,9 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   switch (ending.kind) {
     case "succeeded":
       tone = "success";
-      words = entry.verified ? t("history.verified") : t("updates.progress.succeeded");
+      // 「已更新」, as the row and the operation bar say it (walk-3 W3-19);
+      // that the version was read before and after is the tooltip's.
+      words = t("updates.progress.succeeded");
       title = entry.verified
         ? t(entry.key.kind === "Model" ? "history.verifiedModelTitle" : "history.verifiedTitle")
         : undefined;
@@ -210,7 +212,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
         words = t("history.unchanged");
         title = t("history.unchangedTitle");
       } else {
-        words = outcomeSentence(t, ending.outcome);
+        words = outcomeSentence(t, ending.outcome, "Upgrade");
         title = undefined;
       }
       break;

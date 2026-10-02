@@ -186,7 +186,7 @@ describe("JustUpdated", () => {
     expect(within(lines[1]).getByText("npm")).toHaveClass("sr-only");
   });
 
-  it("says Today and the time for one that finished today, and Update confirmed where Banager read the change", () => {
+  it("says Today and the time for one that finished today, and Updated, as the row says it, with what Banager read in its tooltip (walk-3 W3-19)", () => {
     renderWithProviders(<JustUpdated entries={[{ ...entry, verified: true }]} onClear={() => {}} />);
 
     const line = screen.getByRole("listitem");
@@ -194,13 +194,14 @@ describe("JustUpdated", () => {
     expect(time?.textContent).toBe(
       `Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(entry.finishedAt)}`,
     );
-    const done = within(line).getByText("Update confirmed");
+    const done = within(line).getByText("Updated");
     expect(done).toHaveAttribute(
       "title",
       "The installed version was read before and after the update, and it had changed.",
     );
     expect(done.querySelector("svg")).toHaveAttribute("width", "12");
-    expect(within(line).queryByText("Updated")).toBeNull();
+    // One word for an update that worked, read or not: no "Update confirmed".
+    expect(within(line).queryByText("Update confirmed")).toBeNull();
   });
 
   it("says for a model that the model, not a version, was read and had changed", () => {
@@ -213,7 +214,7 @@ describe("JustUpdated", () => {
       verified: true,
     };
     renderWithProviders(<JustUpdated entries={[model]} onClear={() => {}} />);
-    expect(screen.getByText("Update confirmed")).toHaveAttribute(
+    expect(screen.getByText("Updated")).toHaveAttribute(
       "title",
       "The model was read before and after the update, and it had changed.",
     );
@@ -266,7 +267,7 @@ describe("JustUpdated", () => {
     expect(plain.querySelector("svg")).toHaveClass("text-danger");
     // Neither says it updated, nor shows a version it might be read as updated to.
     for (const line of [withCause, without]) {
-      expect(within(line).queryByText(/^(Updated|Update confirmed)$/)).toBeNull();
+      expect(within(line).queryByText(/^Updated$/)).toBeNull();
       expect(within(line).queryByText("2.55.1")).toBeNull();
     }
   });
@@ -299,7 +300,7 @@ describe("JustUpdated", () => {
     expect(within(unconfirmed).getByText("Result unconfirmed")).toBeInTheDocument();
   });
 
-  it("says them in Chinese: 未能更新：需要输入密码, 结果未确认, 没有更新成功, 已确认更新, 再显示N条", async () => {
+  it("says them in Chinese: 未能更新：需要输入密码, 结果未确认, 没有更新成功, 已更新, 再显示N条", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const lines: JustUpdatedEntry[] = [
@@ -318,7 +319,10 @@ describe("JustUpdated", () => {
       renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
 
       const [verified, password, plain, unconfirmed, unchanged] = screen.getAllByRole("listitem");
-      expect(within(verified).getByText("已确认更新")).toBeInTheDocument();
+      expect(within(verified).getByText("已更新")).toHaveAttribute(
+        "title",
+        "更新前后各读了一次已安装的版本，版本已经变了。",
+      );
       expect(within(unchanged).getByText("没有更新成功：版本没有变")).toHaveAttribute(
         "title",
         "命令显示已完成，但更新前后读到的版本相同。",

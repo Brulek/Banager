@@ -253,8 +253,9 @@ Paths are under a generic home folder, `/Users/you`.
   seven of the ten records the pretend history holds from earlier
   launches (`src/dev/mockHistory.ts`) -- htop and ripgrep today, then
   prettier, httpie with 「未能更新：网络连接失败」, typescript with
-  「没有更新成功：版本没有变」, wget, and, behind 「再显示1条」, gh, which says 「已更新」
-  where the successes before it say 「已确认更新」. httpie and typescript are also rows above:
+  「没有更新成功：版本没有变」, wget, and, behind 「再显示1条」, gh. Every success says
+  「已更新」; where the version was read before and after, its tooltip says so,
+  and gh's has none. httpie and typescript are also rows above:
   after a restart a row does not know the last try did not work. jq's
   failed update is not listed, as no update is offered for jq any more
   (as if updated in Terminal since); nor are an uninstall (yt-dlp) and

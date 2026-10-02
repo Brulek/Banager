@@ -359,7 +359,6 @@
   },
   "history": {
     "today": "今天{{time}}",
-    "verified": "已确认更新",
     "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。",
     "verifiedModelTitle": "更新前后各读了一次这个模型，模型已经变了。",
     "more_other": "再显示{{count}}条",
@@ -646,8 +645,7 @@
     }
   },
   "operations": {
-    "current": "{{kind}}{{name}}：{{status}}",
-    "title": "{{kind}}{{name}}",
+    "current": "{{name}}：{{status}}",
     "noCancelHint": "开始后无法取消。完成前请勿退出Banager或关机。",
     "noCancelHintDetail": "等窗口底部显示结果后，再退出或关机。",
     "stop": "取消",
@@ -675,21 +673,26 @@
       "outOfTime": "超过{{seconds}}秒，已在移动{{path}}之前停止。已移走的在废纸篓中，再卸载一次可移走其余的。",
       "backAfterUninstall": "最后检查时发现{{path}}，未移动它。"
     },
-    "kind": {
-      "Install": "安装",
-      "Uninstall": "卸载",
-      "Upgrade": "更新"
+    "running": {
+      "Install": "正在安装…",
+      "Uninstall": "正在卸载…"
+    },
+    "succeeded": {
+      "Install": "已安装",
+      "Uninstall": "已卸载"
+    },
+    "failedShort": {
+      "Install": "未能安装",
+      "Uninstall": "未能卸载"
     },
     "status": {
       "Queued": "排队中",
-      "Running": "正在处理…",
       "CancelRequested": "正在取消…",
       "Cancelling": "正在取消…",
       "Verifying": "正在核对结果…",
       "waitingForBrewUpdate": "正在等待Homebrew更新软件清单…"
     },
     "outcome": {
-      "Succeeded": "已完成",
       "Cancelled": "已取消",
       "Unconfirmed": "结果未确认",
       "UnconfirmedDetail": "请查看列表，确认是否有变化。",
@@ -703,7 +706,6 @@
         "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。"
       },
       "Failed": "未能完成：{{summary}}",
-      "FailedShort": "未能完成",
       "FailedSilent": "未能完成，程序没有给出原因",
       "FailedSilentDetail": "可以在操作日志中查看它的输出。",
       "BanagerFailed": {

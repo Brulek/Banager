@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
 import {
-  OP_KIND_KEYS,
   cancelState,
   currentOf,
   isActive,
@@ -43,13 +42,14 @@ function needsALook(tone: OutcomeTone): boolean {
  * the manner of a Mac window's status bar (spec §3.10): 28 high, the
  * window's own background, a hairline over it, its words 11/14 in the
  * muted grey. Nothing at all until something has run: the window has that
- * height back. While something runs, 「更新ffmpeg：正在处理…」 -- what it
- * does, what it does it to, where it stands -- with Cancel where cancelling
+ * height back. While something runs, 「ffmpeg：正在更新…」 -- what it acts
+ * on, then what it does and where it stands, never a bare verb in front,
+ * which in English reads as a command (walk-3 W3-3) -- with Cancel where cancelling
  * can still do something, and the way to its log; with several, how far
  * along the run is: 「正在处理第2个，共3个」 and a 4 by 60 bar, and 「全部取消」
  * for all of it that can still be stopped -- 「取消其余」 while one of it
  * runs that nothing can stop. Once everything is done, how it went in
- * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「更新git：
+ * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「git：
  * 网络连接失败」 -- with its log where it needs a look, and a close ×.
  * What a program wrote -- a tool's error, macOS's reason a program would
  * not start -- is said here only with "Show technical details" on
@@ -95,7 +95,6 @@ export function OperationBar() {
   const inRun = operations.filter((op) => op.id > tracked.floor);
   const total = inRun.length;
   const active = inRun.filter(isActive);
-  const titleOf = (op: OpSummary) => ({ kind: t(OP_KIND_KEYS[op.kind]), name: nameOf(op) });
   const openLog = (op: OpSummary) => {
     setFocusedOpId(op.id);
     setDrawerOpen(true);
@@ -143,7 +142,7 @@ export function OperationBar() {
   if (current !== undefined) {
     const done = total - active.length;
     const status = statusKey(current, logs);
-    const line = t("operations.current", { ...titleOf(current), status: status === null ? "" : t(status) });
+    const line = t("operations.current", { name: nameOf(current), status: status === null ? "" : t(status) });
     // With several, one Cancel for the run: every operation of it that can
     // still be cancelled -- each one queued, whatever its plan, and each
     // one running whose plan allows it, the current one among them when it
@@ -235,7 +234,7 @@ export function OperationBar() {
     if (total === 1) {
       const [op] = inRun;
       tone = tones[0];
-      words = t("operations.current", { ...titleOf(op), status: outcomeWords(t, op.outcome, technical) });
+      words = t("operations.current", { name: nameOf(op), status: outcomeWords(t, op.outcome, op.kind, technical) });
       // The log of anything but a plain success: to see what went wrong,
       // or -- after a cancel -- what had already happened.
       logOf = tone === "success" ? undefined : op;

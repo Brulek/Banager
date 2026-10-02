@@ -71,13 +71,13 @@ describe("LogDrawer", () => {
     act(() => useUiStore.getState().openLogRun([1, 2, 3], 1));
     const { findByRole, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
 
-    const dialog = await findByRole("dialog", { name: "Update git" });
+    const dialog = await findByRole("dialog", { name: "git" });
     // Where it is and which log, in one announcement: the dialog's title
     // changes with no announcement of its own (walk-2 review 2.1).
     const status = within(dialog).getByText("1 of 3");
     expect(status).toHaveAttribute("role", "status");
-    expect(status).toHaveTextContent("1 of 3, Update git");
-    expect(status.querySelector(".sr-only")).toHaveTextContent(", Update git");
+    expect(status).toHaveTextContent("1 of 3, git: Couldn't update");
+    expect(status.querySelector(".sr-only")).toHaveTextContent(", git: Couldn't update");
     const previous = getByRole("button", { name: "Previous Log" });
     const next = getByRole("button", { name: "Next Log" });
     expect(previous).toHaveTextContent("Previous");
@@ -86,11 +86,11 @@ describe("LogDrawer", () => {
 
     act(() => next.focus());
     fireEvent.click(next);
-    expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
-    expect(within(await findByRole("dialog")).getByText("2 of 3")).toHaveTextContent("2 of 3, Update jq");
+    expect(await findByRole("dialog", { name: "jq" })).toBeInTheDocument();
+    expect(within(await findByRole("dialog")).getByText("2 of 3")).toHaveTextContent("2 of 3, jq: Couldn't update");
     expect(getByRole("button", { name: "Previous Log" })).toBeEnabled();
     fireEvent.click(getByRole("button", { name: "Next Log" }));
-    expect(await findByRole("dialog", { name: "Update wget" })).toBeInTheDocument();
+    expect(await findByRole("dialog", { name: "wget" })).toBeInTheDocument();
     expect(queryByText("3 of 3")).toBeInTheDocument();
     // At the end, Next is off, and the focus is on Previous, not lost.
     expect(getByRole("button", { name: "Next Log" })).toBeDisabled();
@@ -98,7 +98,7 @@ describe("LogDrawer", () => {
 
     // Opened on one operation, it has nothing to step through.
     act(() => useUiStore.getState().setFocusedOpId(2));
-    expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
+    expect(await findByRole("dialog", { name: "jq" })).toBeInTheDocument();
     expect(queryByText(/ of 3$/)).toBeNull();
     expect(document.querySelector("[data-log-run]")).toBeNull();
   });
@@ -116,7 +116,7 @@ describe("LogDrawer", () => {
     operations = [failed(2, "jq"), failed(1, "git")];
     act(() => useUiStore.getState().openLogRun([1, 2], 1));
     const { findByRole, getByRole } = renderWithProviders(<LogDrawer />);
-    await findByRole("dialog", { name: "Update git" });
+    await findByRole("dialog", { name: "git" });
     const viewport = document.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
     if (viewport === null) throw new Error("no viewport");
     let top = 0;
@@ -133,7 +133,7 @@ describe("LogDrawer", () => {
     top = 0;
     fireEvent.scroll(viewport);
     fireEvent.click(getByRole("button", { name: "Next Log" }));
-    await findByRole("dialog", { name: "Update jq" });
+    await findByRole("dialog", { name: "jq" });
     await waitFor(() => expect(top).toBe(900));
   });
 
@@ -147,7 +147,7 @@ describe("LogDrawer", () => {
     try {
       const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
       const status = await findByText("第2个，共2个");
-      await waitFor(() => expect(status).toHaveTextContent("第2个，共2个，安装jq"));
+      await waitFor(() => expect(status).toHaveTextContent("第2个，共2个，jq：结果未确认"));
       expect(getByRole("button", { name: "上一个日志" })).toBeEnabled();
       expect(getByRole("button", { name: "下一个日志" })).toBeDisabled();
     } finally {
@@ -310,11 +310,12 @@ describe("LogDrawer", () => {
     expect(queryByText("for op 2")).not.toBeInTheDocument();
   });
 
-  it("titles itself with what the operation does and to what, and says where it stands", async () => {
+  it("titles itself with the tool it acts on, and says what it does under it: Installing… (walk-3 W3-3)", async () => {
     const { findByRole, getByText } = renderWithProviders(<LogDrawer />);
 
-    const drawer = await findByRole("dialog", { name: "Install jq" });
-    expect(getByText("Running")).toBeInTheDocument();
+    // Not "Install jq", which in English reads as a command.
+    const drawer = await findByRole("dialog", { name: "jq" });
+    expect(getByText("Installing…")).toBeInTheDocument();
     // The log itself keeps the drawer's old name.
     expect(within(drawer).getByRole("log", { name: "Operation log" })).toBeInTheDocument();
   });
@@ -331,8 +332,8 @@ describe("LogDrawer", () => {
 
     const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Completed");
-    expect(queryByText("Running")).toBeNull();
+    await findByText("Installed");
+    expect(queryByText("Installing…")).toBeNull();
   });
 
   it("offers Cancel while the operation runs, named for what it stops, and it reaches cancel_operation", async () => {
@@ -348,13 +349,13 @@ describe("LogDrawer", () => {
   it("offers no Cancel once the operation is done, nor for a running one that cannot be stopped", async () => {
     operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
     const done = renderWithProviders(<LogDrawer />);
-    await done.findByText("Completed");
+    await done.findByText("Installed");
     expect(done.queryByRole("button", { name: "Cancel Install" })).toBeNull();
     done.unmount();
 
     operations = [{ ...runningOp, kind: "Upgrade", name: "rustup", cancel_policy: "NoCancel" }];
     const noCancel = renderWithProviders(<LogDrawer />);
-    await noCancel.findByRole("dialog", { name: "Update rustup" });
+    await noCancel.findByRole("dialog", { name: "rustup" });
     expect(noCancel.queryByRole("button", { name: "Cancel Update" })).toBeNull();
   });
 
@@ -383,7 +384,7 @@ describe("LogDrawer", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, queryByText, findByRole } = renderWithProviders(<LogDrawer />);
-      await findByRole("dialog", { name: "安装jq" });
+      await findByRole("dialog", { name: "jq" });
       await findByText("未能开始：找不到/opt/homebrew/bin/brew，没有改动");
       expect(queryByText(/program not found/)).not.toBeInTheDocument();
     } finally {
@@ -471,10 +472,10 @@ describe("LogDrawer", () => {
       expect(element.textContent).not.toContain("Failed to download");
     }
     expect(within(log).getByText('Error: jq: Failed to download resource "jq (1.8.1)"')).toBeInTheDocument();
-    expect(cause.textContent).not.toContain("Couldn't finish");
+    expect(cause.textContent).not.toContain("Couldn't install");
   });
 
-  it("says 未能完成 of a failure whose cause it cannot tell, and 网络连接失败 of one it can, in Chinese", async () => {
+  it("says 未能更新 of a failure whose cause it cannot tell, as the row does, and 网络连接失败 of one it can, in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       operations = [
@@ -487,7 +488,7 @@ describe("LogDrawer", () => {
         },
       ];
       const network = renderWithProviders(<LogDrawer />);
-      await network.findByRole("dialog", { name: "更新git" });
+      await network.findByRole("dialog", { name: "git" });
       expect(await network.findByText("网络连接失败")).toBeInTheDocument();
       expect(network.queryByText(/^未能完成：Error/)).toBeNull();
       expect(network.getByRole("button", { name: "拷贝日志" })).toBeInTheDocument();
@@ -503,7 +504,7 @@ describe("LogDrawer", () => {
         },
       ];
       const unknown = renderWithProviders(<LogDrawer />);
-      expect(await unknown.findByText("未能完成")).toBeInTheDocument();
+      expect(await unknown.findByText("未能更新")).toBeInTheDocument();
       expect(unknown.queryByText(/something went wrong/)).toBeNull();
     } finally {
       await i18n.changeLanguage("en");
@@ -730,7 +731,7 @@ describe("LogDrawer, under a tool's own words", () => {
     // A failure whose log this window does not have: nothing is above.
     operations = [failedUpdate("Error: wget: something went wrong")];
     const empty = renderWithProviders(<LogDrawer />);
-    await empty.findByText("Couldn't finish");
+    await empty.findByText("Couldn't update");
     expect(empty.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
     empty.unmount();
 
@@ -836,7 +837,7 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
   it("says nothing over the log with technical details off", async () => {
     operations = [failed("Error: wget: something went wrong")];
     const view = renderWithProviders(<LogDrawer />);
-    await view.findByText("Couldn't finish");
+    await view.findByText("Couldn't update");
     expect(view.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
   });
 });

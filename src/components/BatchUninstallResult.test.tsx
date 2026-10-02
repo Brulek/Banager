@@ -99,7 +99,7 @@ describe("what a batch uninstall did not uninstall", () => {
     const items = [...block.querySelectorAll("[data-batch-result-item]")] as HTMLElement[];
     expect(items.map((item) => item.textContent)).toEqual([
       "pipxCancelledView Log",
-      "python@3.13Couldn't finishView Logpipx wasn't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
+      "python@3.13Couldn't uninstallView Logpipx wasn't uninstalled, and Homebrew doesn't uninstall software that's still needed.",
     ]);
     // Neither wget, which succeeded, nor htop, which never started.
     expect(within(block).queryByText("wget")).toBeNull();
@@ -248,7 +248,7 @@ describe("what a batch uninstall did not uninstall", () => {
     }
   });
 
-  it("says no such sentence with technical details off: the row says the cause, or 「未能完成」", async () => {
+  it("says no such sentence with technical details off: the row says the cause, or 「未能卸载」", async () => {
     useUiStore.getState().setUninstallBatch(record);
     const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong" } };
     operations = [op(13, "wget", "Done", unknown), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];

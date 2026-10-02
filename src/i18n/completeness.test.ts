@@ -183,8 +183,9 @@ function occursAsToken(
  * which static analysis of this file cannot enumerate on its own. (The
  * sidebar's `t(\`nav.${p}\`)` over its list of pages used to be one; it
  * spells each page's key out now, in `PAGE_LABEL_KEYS`. So do the
- * operation's kind and status, which the operation bar used to compose:
- * `OP_KIND_KEYS` and `OP_STATUS_KEYS` in src/lib/operations.ts.)
+ * operation's words for each kind and status, which the operation bar used
+ * to compose: `OP_RUNNING_KEYS`, `OP_STATUS_KEYS` and the rest in
+ * src/lib/operations.ts.)
  */
 const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
   // `outcomeSentence` in src/lib/operations.ts, for the operation bar and
@@ -193,8 +194,8 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
   // `Outcome`'s variant names, `Attention`'s and `Fault`'s
   // (src/lib/types.ts), plus `FailedSilent` for a tool that failed without
   // a word on stderr.
+  // A success is said by kind, 「已更新」 (`OP_SUCCEEDED_KEYS`), not here.
   "operations.outcome": [
-    "Succeeded",
     "Cancelled",
     "Unconfirmed",
     "NeedsAttention.NotInstalledAfterInstall",
@@ -284,13 +285,13 @@ describe("the reachability guard itself", () => {
    * it counts only because `outcomeDetailKey` spells it out.)
    */
   it("does not let an interpolated head claim tails the code cannot produce", () => {
-    expect(isReferenced("operations.outcome.Succeeded")).toBe(true); // a real Outcome variant
+    expect(isReferenced("operations.outcome.Cancelled")).toBe(true); // a real Outcome variant
     expect(isReferenced("operations.outcome.Bogus")).toBe(false); // not an Outcome variant
     expect(isReferenced("operations.outcome.UnconfirmedDetail")).toBe(true); // spelled out
-    expect(isReferenced("operations.outcome.SucceededDetail")).toBe(false); // spelled nowhere
+    expect(isReferenced("operations.outcome.CancelledDetail")).toBe(false); // spelled nowhere
     // The kind is spelled out now, and only real kinds are.
-    expect(isReferenced("operations.kind.Install")).toBe(true);
-    expect(isReferenced("operations.kind.Bogus")).toBe(false);
+    expect(isReferenced("operations.running.Install")).toBe(true);
+    expect(isReferenced("operations.running.Bogus")).toBe(false);
   });
 
   /**

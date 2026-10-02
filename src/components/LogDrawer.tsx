@@ -9,7 +9,6 @@ import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { outcomeDetailKey } from "../lib/format";
 import {
   OP_CANCEL_KEYS,
-  OP_KIND_KEYS,
   cancelState,
   outcomeTone,
   outcomeWords,
@@ -65,10 +64,12 @@ function noteText(t: TFunction, note: LogNote): string {
 
 /**
  * One operation's log, as a dialog 560 wide (spec §3.10, R11: the log
- * answers an operation, so it stays a dialog): what it is (「更新ffmpeg」) as
- * its title, and where it stands or how it ended under that -- in the
- * words the operation bar uses (`outcomeWords`): 「网络连接失败」 where the
- * tool's words give the cause, 「未能完成」 where they do not, and what the
+ * answers an operation, so it stays a dialog): the tool it acts on
+ * (「ffmpeg」) as its title -- not 「更新ffmpeg」, whose English "Update
+ * ffmpeg" reads as a command (walk-3 W3-3) -- and what it does, where it
+ * stands or how it ended under that, in the words the operation bar uses
+ * (`statusKey`, `outcomeWords`): 「正在更新…」, 「网络连接失败」 where the
+ * tool's words give the cause, 「未能更新」 where they do not, and what the
  * tool or macOS wrote only with "Show technical details" on, since it is
  * right below, in the log; what to do next about an outcome that needs it
  * -- the next step for a failure whose cause the tool's own words give
@@ -83,11 +84,11 @@ function noteText(t: TFunction, note: LogNote): string {
  * has its words (`SubtitleStep`). That text selects, as nothing else in the
  * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
- * operation can still be stopped, a button beside Done stops it: the page
+ * operation can still be stopped, a button beside Close stops it: the page
  * under the dialog is out of reach while it is open, the operation bar's
  * Cancel with it.
  *
- * A modal dialog: Escape, Done or a click beside it closes it, Tab stays
+ * A modal dialog: Escape, its default button or a click beside it closes it, Tab stays
  * inside, and the focus goes back to what opened it. It opens by itself
  * when an uninstall starts, so the focus lands on the dialog, not on Done.
  *
@@ -148,19 +149,23 @@ export function LogDrawer() {
     const cause = done ? outcomeCause(op.outcome) : null;
     const detailKey = done && op.outcome !== null ? outcomeDetailKey(op.outcome) : null;
     const cancel = cancelState(op);
+    const words = status !== null ? t(status) : outcomeWords(t, op.outcome, op.kind, technical);
     return {
-      title: t("operations.title", { kind: t(OP_KIND_KEYS[op.kind]), name: nameOf(op) }),
+      title: nameOf(op),
+      // The title and the subtitle as one line, as the operation bar says
+      // them -- 「git：未能更新」 -- for a screen reader stepping through a run.
+      line: t("operations.current", { name: nameOf(op), status: words }),
       // Where it stands while under way; once done, how it ended.
       subtitle:
         status !== null ? (
           <span className="inline-flex items-center gap-1.5">
             <SpinnerIcon size={12} className="shrink-0" />
-            {t(status)}
+            {words}
           </span>
         ) : (
           <span className="inline-flex items-start gap-1">
             <OutcomeIcon tone={outcomeTone(op.outcome)} size={12} className="mt-px" />
-            <span className="min-w-0 break-words">{outcomeWords(t, op.outcome, technical)}</span>
+            <span className="min-w-0 break-words">{words}</span>
           </span>
         ),
       // What to do now, in one sentence: the cause's next step where the
@@ -231,7 +236,7 @@ export function LogDrawer() {
       }
     >
       {focusedOpId !== null ? (
-        <LogRunStepper run={logRun} at={focusedOpId} title={parts?.title ?? null} onStep={stepLogRun} />
+        <LogRunStepper run={logRun} at={focusedOpId} title={parts?.line ?? null} onStep={stepLogRun} />
       ) : null}
       {parts?.next ? (
         <p id={nextId} className="mb-3 break-words text-body text-foreground">
@@ -291,8 +296,8 @@ export function LogDrawer() {
  * where the one pressed turns off at an end, it moves to the other.
  *
  * A screen reader hears each step whole, in one polite announcement --
- * where it is and which log, 「第2个，共6个，更新git」 (`title`, the
- * dialog's own, which changes with no announcement of its own) -- and the
+ * where it is and which log, 「第2个，共6个，git：未能更新」 (`title`, the
+ * dialog's title and subtitle, which change with no announcement of their own) -- and the
  * buttons by what they move between, 「上一个日志」 (walk-2 review 2.1).
  */
 function LogRunStepper({
