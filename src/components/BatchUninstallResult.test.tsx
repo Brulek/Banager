@@ -111,6 +111,37 @@ describe("what a batch uninstall did not uninstall", () => {
     expect(useUiStore.getState().drawerOpen).toBe(true);
   });
 
+  it("says nothing until the list has every operation it started, even when those listed have all failed", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    // pipx and python@3.13 failed at once; wget started after, and the list
+    // was fetched before it was.
+    operations = [op(12, "python@3.13", "Done", refused), op(11, "pipx", "Done", "Cancelled")];
+    const { container, queryClient } = renderWithProviders(<BatchUninstallResult />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual(operations));
+    expect(container).toBeEmptyDOMElement();
+
+    await listNow(queryClient, [
+      op(13, "wget", "Done", "Succeeded"),
+      op(12, "python@3.13", "Done", refused),
+      op(11, "pipx", "Done", "Cancelled"),
+    ]);
+    expect(await screen.findByRole("region", { name: "Uninstalled 1; 2 weren't uninstalled" })).toBeInTheDocument();
+  });
+
+  it("leaves out an operation the backend no longer lists, older than those it does", async () => {
+    useUiStore.getState().setUninstallBatch(record);
+    // pipx's (11) was let go of: the backend keeps the newest 200, and 20 is newer.
+    operations = [
+      op(20, "jq", "Done", "Succeeded"),
+      op(13, "wget", "Done", refused),
+      op(12, "python@3.13", "Done", "Succeeded"),
+    ];
+    renderWithProviders(<BatchUninstallResult />);
+    const block = await screen.findByRole("region", { name: "Uninstalled 1; 1 wasn't uninstalled" });
+    expect(within(block).getByText("wget")).toBeInTheDocument();
+    expect(within(block).queryByText("pipx")).toBeNull();
+  });
+
   it("says nothing when everything it started succeeded", async () => {
     useUiStore.getState().setUninstallBatch(record);
     operations = [op(13, "wget", "Done", "Succeeded"), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];

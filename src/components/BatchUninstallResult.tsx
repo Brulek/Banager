@@ -37,6 +37,11 @@ export function BatchUninstallResult() {
   const technical = settings?.show_technical_details ?? false;
   if (record === null || operations === undefined) return null;
   const byOp = new Map(operations.map((op) => [op.id, op]));
+  // One newer than every operation listed is not evicted but not listed
+  // yet: the list is fetched a moment after a start (`refetchOperations`),
+  // and until then the batch is still under way as far as this block knows.
+  const newestListed = Math.max(0, ...operations.map((op) => op.id));
+  if (record.items.some((item) => item.opId !== null && item.opId > newestListed)) return null;
   const started = record.items.flatMap((item) => {
     const op = item.opId === null ? undefined : byOp.get(item.opId);
     // An operation the backend no longer lists (it keeps the newest 200)
