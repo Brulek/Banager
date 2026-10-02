@@ -153,15 +153,34 @@ export function isWaitingForBrewUpdate(op: OpSummary, logs: LogLine[]): boolean 
 }
 
 /**
+ * Words, and whether they say what the operation does themselves:
+ * running (「正在卸载…」), a success (「已卸载」), a plain failure
+ * (「未能卸载」), and what did not add up after it ("Reported removed",
+ * "Update reported success"). The branch that picks the words says so,
+ * so `operationWords` never works out again which branch it was.
+ */
+interface Kinded {
+  words: string;
+  namesKind: boolean;
+}
+
+/** `statusKey`, and whether its words name the kind: only running does. */
+function statusChoice(op: OpSummary, logs: LogLine[]): Kinded | null {
+  if (op.status === "Done") return null;
+  if (op.status === "Running") {
+    return isWaitingForBrewUpdate(op, logs)
+      ? { words: "operations.status.waitingForBrewUpdate", namesKind: false }
+      : { words: OP_RUNNING_KEYS[op.kind], namesKind: true };
+  }
+  return { words: OP_STATUS_KEYS[op.status], namesKind: false };
+}
+
+/**
  * The key for where an operation under way stands, the wait for Homebrew
  * included; null once it is done, when its outcome says how it went.
  */
 export function statusKey(op: OpSummary, logs: LogLine[]): string | null {
-  if (op.status === "Done") return null;
-  if (op.status === "Running") {
-    return isWaitingForBrewUpdate(op, logs) ? "operations.status.waitingForBrewUpdate" : OP_RUNNING_KEYS[op.kind];
-  }
-  return OP_STATUS_KEYS[op.status];
+  return statusChoice(op, logs)?.words ?? null;
 }
 
 /**
@@ -180,9 +199,16 @@ export type OutcomeTone = "success" | "cancelled" | "attention" | "failure";
  * says the result is unconfirmed, which is all that can be said of it.
  */
 export function outcomeSentence(t: Translate, outcome: Outcome | null, kind: OpKind): string {
+  return sentenceChoice(t, outcome, kind).words;
+}
+
+function sentenceChoice(t: Translate, outcome: Outcome | null, kind: OpKind): Kinded {
   const shown: Outcome = outcome ?? "Unconfirmed";
-  if (shown === "Succeeded") return t(OP_SUCCEEDED_KEYS[kind]);
-  return t(`operations.outcome.${outcomeKey(shown)}`, outcomeArgs(shown));
+  if (shown === "Succeeded") return { words: t(OP_SUCCEEDED_KEYS[kind]), namesKind: true };
+  return {
+    words: t(`operations.outcome.${outcomeKey(shown)}`, outcomeArgs(shown)),
+    namesKind: typeof shown !== "string" && "NeedsAttention" in shown,
+  };
 }
 
 /**
@@ -195,43 +221,31 @@ export function outcomeSentence(t: Translate, outcome: Outcome | null, kind: OpK
  * log, and here too with the setting on (`outcomeSentence`).
  */
 export function outcomeWords(t: Translate, outcome: Outcome | null, kind: OpKind, technical: boolean): string {
+  return outcomeChoice(t, outcome, kind, technical).words;
+}
+
+/**
+ * `outcomeWords`, and whether they name the kind: a failure's cause,
+ * cancelled, unconfirmed, a program's own words or Banager's do not.
+ */
+function outcomeChoice(t: Translate, outcome: Outcome | null, kind: OpKind, technical: boolean): Kinded {
   if (outcome !== null && typeof outcome !== "string") {
     const cause = outcomeCause(outcome);
     if ("Failed" in outcome) {
-      if (technical) return outcomeSentence(t, outcome, kind);
-      if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].word);
-      return outcome.Failed.summary.trim() ? t(OP_FAILED_KEYS[kind]) : outcomeSentence(t, outcome, kind);
+      if (technical) return sentenceChoice(t, outcome, kind);
+      if (cause !== null) return { words: t(FAILURE_CAUSE_KEYS[cause].word), namesKind: false };
+      return outcome.Failed.summary.trim()
+        ? { words: t(OP_FAILED_KEYS[kind]), namesKind: true }
+        : sentenceChoice(t, outcome, kind);
     }
     if ("BanagerFailed" in outcome && !technical) {
       const fault = outcome.BanagerFailed;
       if (typeof fault !== "string" && "SpawnFailed" in fault) {
-        return t("operations.outcome.BanagerFailed.SpawnFailedShort");
+        return { words: t("operations.outcome.BanagerFailed.SpawnFailedShort"), namesKind: false };
       }
     }
   }
-  return outcomeSentence(t, outcome, kind);
-}
-
-/**
- * Whether the words `operationWords` says of `op` name its kind already:
- * running (「正在卸载…」), a success (「已卸载」), a plain failure
- * (「未能卸载」), and what did not add up after it, whose sentences say
- * "Reported removed" or "Update reported success". Anything else --
- * queued, cancelling, checking the result, the wait for Homebrew, a
- * failure's cause, cancelled, unconfirmed, a program's own words or
- * Banager's -- does not.
- */
-function wordsNameKind(op: OpSummary, logs: LogLine[], technical: boolean): boolean {
-  if (op.status === "Running") return !isWaitingForBrewUpdate(op, logs);
-  if (op.status !== "Done") return false;
-  const outcome = op.outcome;
-  if (outcome === "Succeeded") return true;
-  if (outcome === null || typeof outcome === "string") return false;
-  if ("NeedsAttention" in outcome) return true;
-  if ("Failed" in outcome) {
-    return !technical && outcomeCause(outcome) === null && outcome.Failed.summary.trim() !== "";
-  }
-  return false;
+  return sentenceChoice(t, outcome, kind);
 }
 
 /**
@@ -244,11 +258,10 @@ function wordsNameKind(op: OpSummary, logs: LogLine[], technical: boolean): bool
  * anything but its plain words (review 1.1).
  */
 export function operationWords(t: Translate, op: OpSummary, logs: LogLine[], technical: boolean): string {
-  const status = statusKey(op, logs);
-  const words = status !== null ? t(status) : outcomeWords(t, op.outcome, op.kind, technical);
-  return wordsNameKind(op, logs, technical)
-    ? words
-    : t("operations.kindStatus", { kind: t(OP_KIND_KEYS[op.kind]), status: words });
+  const status = statusChoice(op, logs);
+  const { words, namesKind } =
+    status !== null ? { ...status, words: t(status.words) } : outcomeChoice(t, op.outcome, op.kind, technical);
+  return namesKind ? words : t("operations.kindStatus", { kind: t(OP_KIND_KEYS[op.kind]), status: words });
 }
 
 export function outcomeTone(outcome: Outcome | null): OutcomeTone {
