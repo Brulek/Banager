@@ -162,9 +162,18 @@ impl Protected {
         }
     }
 
-    /// Whether `path` is one of the places or inside one.
+    /// Whether `path` is one of the places or inside one: `is_within`,
+    /// with the places spelled from `/` once, when they were made, rather
+    /// than at every call (`without_data_volume` of a path already
+    /// spelled from `/` is that path).
+    ///
+    /// If a path is not inside a place, neither is any folder on its way:
+    /// a place a folder is in, the path below that folder is in too.
     pub fn contains(&self, path: &Path) -> bool {
-        is_within(path, &self.places)
+        let path = without_data_volume(path);
+        self.places
+            .iter()
+            .any(|place| starts_with_folded(&path, place))
     }
 
     /// Whether one of the places is inside `path` (or is it): walking
@@ -406,6 +415,67 @@ mod tests {
                 1,
                 "{place}"
             );
+        }
+    }
+
+    #[test]
+    fn test_contains_answers_as_is_within_and_never_for_a_folder_alone() {
+        // `contains` compares with the places as `Protected::new` spelled
+        // them, from `/`; `is_within` spells them again at every call.
+        // And no folder on the way to a path outside the places is inside
+        // one: what lets one check stand for every step of a lookup.
+        let homes = [
+            "/Users/you",
+            "/System/Volumes/Data/Users/you",
+            "/system/volumes/data/System/Volumes/Data/Users/you",
+            "/",
+            "/System",
+        ];
+        let mut paths: Vec<PathBuf> = Vec::new();
+        for start in [
+            "/",
+            "/System/Volumes/Data/",
+            "/system/VOLUMES/data/System/Volumes/Data/",
+        ] {
+            for rest in [
+                "",
+                "System",
+                "System/Volumes",
+                "System/Volumes/Data",
+                "Users/you",
+                "users/YOU/documents/bin/tool",
+                "Users/you/Library",
+                "Users/you/Library/Mobile Documents/x",
+                "Users/you/LibraryX/Containers",
+                "Users/you/.cargo/bin/rg",
+                "Volumes",
+                "volumes/Backup/bin",
+                "VolumesX",
+                "Desktop",
+                "System/Desktop",
+                "System/Volumes/Desktop",
+                "opt/homebrew/Cellar/x/1.0/bin/x",
+            ] {
+                paths.push(PathBuf::from(format!("{start}{rest}")));
+            }
+        }
+        for home in homes {
+            let raw = places(&[PathBuf::from(home)]);
+            let protected = Protected {
+                places: raw.iter().map(|place| without_data_volume(place)).collect(),
+            };
+            for path in &paths {
+                assert_eq!(
+                    protected.contains(path),
+                    is_within(path, &raw),
+                    "{home}: {path:?}"
+                );
+                if !protected.contains(path) {
+                    for folder in path.ancestors() {
+                        assert!(!protected.contains(folder), "{home}: {path:?} {folder:?}");
+                    }
+                }
+            }
         }
     }
 
