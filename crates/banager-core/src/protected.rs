@@ -333,8 +333,8 @@ thread_local! {
 /// and links on the way.
 ///
 /// Judging which copy a command runs asks this of thousands of paths in
-/// one round; `Round` answers the same for each, looking each folder and
-/// name up once in the round.
+/// one round; `Round` answers the same for each, from what the round has
+/// already looked at where it can.
 pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
     if !path.is_absolute() {
         return Resolution::Refused;

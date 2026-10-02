@@ -2273,23 +2273,25 @@ It reads:
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit |
 | in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
-"Where it leads" is found one step at a time, as `realpath` would, but
-with only `lstat` of each folder and link on the way and `readlink` of
-each link -- each asked of the folder before it, held open, and the next
-folder opened from it with `O_NOFOLLOW` and checked to be the one seen, so
-a folder replaced by a link meanwhile is never followed (a folder is
-listed the same way, from `/`, with no link followed) -- each step checked against the places below before it is taken
-(`protected::resolve`, the same walk the disk-use measurement uses).
-Within one refresh, each folder and name on the way is looked up once,
-not once for every path that passes it (`protected::Round`): a folder
-opened a second time is kept open until the answer is made (64 at most),
-and what each name and link was is remembered as long, never into the
-next refresh. What is left of a path, when it is plain names -- no `..`,
-none of them in a protected place -- can be asked of the folder held open
-in one `fstatat` that follows no link anywhere on the way
-(`AT_SYMLINK_NOFOLLOW_ANY`); a link there, on the way or at the end, or a
-folder that may not be searched, is then taken one step at a time, as
-above. A folder kept open follows its folder if another program renames
+"Where it leads" is found as `realpath` would find it, but with only
+`lstat` of each folder and link on the way and `readlink` of each link --
+each asked of the folder before it, held open, and the next folder opened
+from it with `O_NOFOLLOW` and checked to be the one seen, so a folder
+replaced by a link meanwhile is never followed (a folder is listed the
+same way, from `/`, with no link followed) -- each step checked against the places below before it is taken
+(the rules of `protected::resolve`, the walk the disk-use measurement
+uses, which judging follows through `protected::Round`).
+Within one refresh, each name on the way is `lstat`ed, and each link
+read, at most once as it is spelled (`protected::Round`), and a folder
+opened a second time is kept open until the answers are made (64 at
+most), so that a later path below it starts there rather than at `/`;
+all of it is let go once the answers are made, never kept into the next
+refresh. The plain names at the end of a path -- no `..`, none of them in
+a protected place -- can be asked of the folder the walk has reached in
+one `fstatat` that follows no link anywhere on the way
+(`AT_SYMLINK_NOFOLLOW_ANY`; the kernel looks each folder among them up
+again); a link there, on the way or at the end, or a folder that may not
+be searched, is then taken one step at a time, as above. A folder kept open follows its folder if another program renames
 it, so each time one opened earlier is used again it is first asked
 where it now is (`fcntl` with `F_GETPATH`, which looks up no name and
 reads nothing in it); one that is now inside a protected place is not

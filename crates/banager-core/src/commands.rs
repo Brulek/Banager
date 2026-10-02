@@ -36,10 +36,11 @@
 //! Homebrew's and npm's prefixes -- then where the entries a command could
 //! be lead, followed one step at a time (`lstat` and `readlink` of each
 //! step, from the folder before it held open, `protected::resolve`; each
-//! folder listed from `/` with no link followed, `dirfd`) -- each folder
-//! and name on the way looked up once per judgement, and a link-free rest
-//! of a path in one lookup that follows no link (`protected::Round`) --
-//! never a file's contents, never a command
+//! folder listed from `/` with no link followed, `dirfd`) -- each name
+//! `lstat`ed and each link read at most once per judgement as spelled, a
+//! folder used again kept open, and the plain names at the end of a path
+//! asked in one lookup that follows no link (`protected::Round`) -- never
+//! a file's contents, never a command
 //! run (docs/what-we-run.md, "Which copy a command runs"). No step is ever
 //! taken into a protected place (`protected`): a folder, an entry or a
 //! link that leads there counts as unread, and no verdict it could change

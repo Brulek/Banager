@@ -1,9 +1,9 @@
 //! `resolve` for one round of judging which copy a command runs
-//! (`commands::judge`): the same answer for every path, but each folder
-//! and name on the way looked up once in the round instead of once per
-//! path. A round asks where a few thousand paths lead that share a few
-//! dozen folders (`<prefix>/bin`, `Cellar`, `~/.local/bin`, ...); walking
-//! each from `/` reopened those folders every time.
+//! (`commands::judge`): the same answer for every path, from what the
+//! round has already looked at where it can, instead of a walk from `/`
+//! for each path. A round asks where a few thousand paths lead that share
+//! a few dozen folders (`<prefix>/bin`, `Cellar`, `~/.local/bin`, ...);
+//! walking each from `/` reopened those folders every time.
 //!
 //! What it keeps, for one round only (a `Round` is made per judgement
 //! and dropped with it, never shared between rounds or threads):
@@ -15,17 +15,24 @@
 //!   from `/` would have reached it through the same folders;
 //! - what each name it looked at is (`fstatat` without following), and
 //!   each link's text, by the path it was looked at as -- exact case, as a
-//!   disk that tells case apart may hold both spellings.
+//!   disk that tells case apart may hold both spellings: each name
+//!   `lstat`ed and each link read at most once per spelling.
 //!
 //! Every name is checked against the protected places before it is first
 //! looked at, as in `resolve`; a cached answer is only ever for a name
-//! that was checked. Where several names are left, none of them `..`,
-//! none looked at yet and none in a protected place, the kernel is asked
-//! for the last of them in one lookup that follows no link anywhere
-//! (`Dir::stat_beneath`): a file or folder at the end is what `resolve`
-//! would find through those folders; anything else -- a link at the end
-//! or on the way, an unreadable folder -- is taken one step at a time,
-//! as `resolve` takes it.
+//! that was checked. Where several names are left, none of them `..` and
+//! none in a protected place, and the first is no folder held open, the
+//! kernel is asked for the last of them in one lookup that follows no
+//! link anywhere (`Dir::stat_beneath`), looking each folder on the way up
+//! again: a file or folder at the end is what `resolve` would find
+//! through those folders; anything else -- a link at the end or on the
+//! way, an unreadable folder -- is taken one step at a time, as `resolve`
+//! takes it.
+//!
+//! A folder opened before follows its folder if another program renames
+//! it: before each time one is used again, it is asked where it now is
+//! (`still_outside`), and one now inside a protected place is not used --
+//! the round lets go of everything it kept and walks from `/`.
 //!
 //! Always follows the last link (`resolve`'s `follow_last`), as judging
 //! does.
