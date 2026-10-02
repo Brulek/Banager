@@ -982,7 +982,7 @@ describe("SettingsPage", () => {
     expect(popup.tagName).toBe("SELECT");
     expect(popup).toHaveValue("En");
     expect(within(popup).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "System",
+      "System Default",
       "English",
       "简体中文",
     ]);
