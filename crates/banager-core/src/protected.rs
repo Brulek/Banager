@@ -160,8 +160,12 @@ fn fold(bytes: &[u8]) -> Fold<'_> {
 /// Whether `a` and `b` are one name, or one path, as APFS compares names
 /// (`Fold`): `~/documents` is `~/Documents`, and `~/Documentſ` is too.
 pub fn same_name(a: &[u8], b: &[u8]) -> bool {
+    // Equal but for ASCII case: folded alike. Otherwise, all ASCII: not.
+    if a.eq_ignore_ascii_case(b) {
+        return true;
+    }
     if a.is_ascii() && b.is_ascii() {
-        return a.eq_ignore_ascii_case(b);
+        return false;
     }
     fold(a).eq(fold(b))
 }
