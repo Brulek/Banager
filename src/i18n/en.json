@@ -545,7 +545,7 @@
     "summary": "OpenAI's AI coding assistant",
     "updatesItself": "Updates itself",
     "updatesItselfAria": "Updates itself: {{name}}",
-    "updatesItselfDetail": "{{source}} was installed by its own script at its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
+    "updatesItselfDetail": "{{source}} was installed by its own script as the latest release, not a pinned one, so it can install new versions itself. Its updates aren't checked or installed here.",
     "notChecked": "Updates not checked",
     "notCheckedAria": "Not checked for updates: {{name}}",
     "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
@@ -984,7 +984,7 @@
     },
     "includeSelfUpdating": {
       "label": "Show Homebrew apps that have their own updater",
-      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates. Tools from other sources aren't affected."
+      "description": "Also list apps installed with Homebrew that have their own updater or are marked “latest”, like Chrome, under Updates. Tools from other sources aren't affected."
     },
     "autoCheck": {
       "label": "Check for updates",

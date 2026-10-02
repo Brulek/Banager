@@ -149,7 +149,7 @@ describe("InstalledPage, Codex's own install", () => {
     fireEvent.click(within(status).getByRole("button", { name: "Details: Updates itself" }));
     expect(
       await screen.findByText(
-        "Codex was installed by its own script at its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
+        "Codex was installed by its own script as the latest release, not a pinned one, so it can install new versions itself. Its updates aren't checked or installed here.",
       ),
     ).toBeInTheDocument();
     fireEvent.click(within(status).getByRole("button", { name: "Details: Listed only" }));
