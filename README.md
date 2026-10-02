@@ -182,7 +182,7 @@ Banager (⌘Q) quits it. While an update or uninstall is still queued or running
 ⌘Q, Quit in the Dock icon's menu, or logging out, restarting or shutting down — first brings the
 window back and asks: *2 operations haven't finished*, since quitting now stops them and a tool that
 is being updated can be left half-updated, and it says so of one that has started and can't be
-cancelled, such as rustup's self update. *Cancel* leaves Banager running, and *Quit*
+cancelled, such as rustup's self update. *Keep Waiting* leaves Banager running, and *Quit*
 quits. Banager answers macOS at once, so a logout, restart or shutdown is called off rather than
 kept waiting, and after *Quit* you start it again (`src-tauri/src/quit.rs`). Should the window
 be unable to ask — it stopped working, or doesn't show the question within 2 seconds — Banager quits

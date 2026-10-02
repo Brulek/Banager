@@ -811,7 +811,7 @@
       "Uninstall": "{{name}}'s uninstall has started and can't be cancelled. Wait for it to finish before you quit.",
       "Upgrade": "{{name}}'s update has started and can't be cancelled. Wait for it to finish before you quit."
     },
-    "keepWaiting": "Cancel",
+    "keepWaiting": "Keep Waiting",
     "quitAnyway": "Quit"
   },
   "uninstall": {

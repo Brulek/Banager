@@ -20,8 +20,10 @@ import { BUTTON } from "./ui/controls";
  * done (`quitBodyKey`) -- a line for each one that has started and that
  * nothing can stop, such as rustup's self update, which quitting does not
  * stop, and two buttons, one over the other: on top, the default
- * 「取消」, which leaves Banager running, has the focus as the sheet opens,
- * and is what Escape does; under it 「退出」, which cancels what can be
+ * 「继续等待」, "Keep Waiting", which leaves Banager running, has the focus
+ * as the sheet opens, and is what Escape does -- not 「取消」, "Cancel",
+ * which beside 「全部取消」 and 「取消卸载」 read as cancelling the
+ * operations (walk-3 W3-22); under it 「退出」, which cancels what can be
  * cancelled, waits for it to stop and quits (`quitAnyway`; the buttons
  * stay held meanwhile).
  *
@@ -35,7 +37,7 @@ import { BUTTON } from "./ui/controls";
  * question it answers (`quitQuestionShown`): Rust waits 2 seconds for
  * that, then quits, since a page that never showed the question is not
  * there for the user to answer. When it goes without quitting --
- * 「取消」, Escape, or everything having finished -- it tells Rust that
+ * 「继续等待」, Escape, or everything having finished -- it tells Rust that
  * too (`quitKeptWaiting`), which stops that wait from quitting should the
  * first word not have got through. Each word is sent once more should it
  * fail (`tellRustTwice`).

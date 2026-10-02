@@ -140,13 +140,13 @@ describe("the question before a quit", () => {
     // One over the other, as wide as the dialog, the default on top: as
     // NSAlert stacks answers too long to stand side by side (spec §3.6).
     expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Cancel",
+      "Keep Waiting",
       "Quit",
     ]);
     const footer = dialog.querySelector("[data-dialog-footer]") as HTMLElement;
     expect(footer.className).toMatch(/\bflex-col\b/);
     expect(footer.className).toMatch(/\[&>button\]:w-full/);
-    const keepWaiting = within(dialog).getByRole("button", { name: "Cancel" });
+    const keepWaiting = within(dialog).getByRole("button", { name: "Keep Waiting" });
     expect(keepWaiting.className).toBe(BUTTON.large.default);
     expect(within(dialog).getByRole("button", { name: "Quit" }).className).toBe(BUTTON.large.grey);
     await waitFor(() => expect(document.activeElement).toBe(keepWaiting));
@@ -154,12 +154,12 @@ describe("the question before a quit", () => {
   });
 
   it.each([
-    ["Cancel", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) =>
-      user.click(within(dialog).getByRole("button", { name: "Cancel" }))],
+    ["Keep Waiting", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) =>
+      user.click(within(dialog).getByRole("button", { name: "Keep Waiting" }))],
     ["Escape", async (user: ReturnType<typeof userEvent.setup>) => user.keyboard("{Escape}")],
     ["Return on the button in focus", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => {
       await waitFor(() =>
-        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" })),
+        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep Waiting" })),
       );
       await user.keyboard("{Enter}");
     }],
@@ -184,7 +184,7 @@ describe("the question before a quit", () => {
     operations = [op(1, "wget", "Running")];
     const { rust } = await mounted();
     const first = await asked(rust, "1 operation hasn't finished");
-    await user.click(within(first).getByRole("button", { name: "Cancel" }));
+    await user.click(within(first).getByRole("button", { name: "Keep Waiting" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await asked(rust, "1 operation hasn't finished");
@@ -209,7 +209,7 @@ describe("the question before a quit", () => {
 
     expect(sent("quit_anyway")).toBe(1);
     expect(within(dialog).getByRole("button", { name: "Quit" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Keep Waiting" })).toBeDisabled();
     // In the app, Banager is gone by now.
     await act(async () => quit());
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -357,7 +357,7 @@ describe("the question before a quit", () => {
     expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(sent("quit_anyway")).toBe(0);
 
-    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(within(dialog).getByRole("button", { name: "Keep Waiting" }));
     await waitFor(() => expect(sent("quit_kept_waiting")).toBe(1));
     error.mockRestore();
   });
@@ -487,11 +487,11 @@ describe("the question before a quit", () => {
       expect(within(dialog).getByText("现在退出会中断其余操作，正在处理的工具有只完成一半的风险。")).toBeInTheDocument();
       expect(within(dialog).getByText("“rustup”的更新已开始，无法取消。请等它完成后再退出。")).toBeInTheDocument();
       expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-        "取消",
+        "继续等待",
         "退出",
       ]);
       await waitFor(() =>
-        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "取消" })),
+        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "继续等待" })),
       );
     } finally {
       await i18n.changeLanguage("en");

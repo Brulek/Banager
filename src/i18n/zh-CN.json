@@ -751,7 +751,7 @@
       "Uninstall": "“{{name}}”的卸载已开始，无法取消。请等它完成后再退出。",
       "Upgrade": "“{{name}}”的更新已开始，无法取消。请等它完成后再退出。"
     },
-    "keepWaiting": "取消",
+    "keepWaiting": "继续等待",
     "quitAnyway": "退出"
   },
   "uninstall": {
