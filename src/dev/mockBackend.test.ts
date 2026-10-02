@@ -373,6 +373,37 @@ describe("the browser preview's mock backend", () => {
     expect(withLogo.length / artifacts.length).toBeGreaterThan(0.9);
   });
 
+  it("installs about 5,000 tools with ?state=huge: many's, and more made from their names, the same on every run", async () => {
+    const snapshot = await answer<Snapshot>(backendFor({ state: "huge" }).backend.invoke("refresh"));
+    const again = await answer<Snapshot>(backendFor({ state: "huge" }).backend.invoke("refresh"));
+    expect(again.artifacts).toEqual(snapshot.artifacts);
+    expect(again.updates).toEqual(snapshot.updates);
+    const many = await answer<Snapshot>(backendFor({ state: "many" }).backend.invoke("refresh"));
+
+    const { artifacts, updates } = snapshot;
+    const ids = artifacts.map((a) => artifactKeyId(a.key));
+    expect(new Set(ids).size).toBe(ids.length);
+    // Every row of ?state=many is here as it is there.
+    const byId = new Map(artifacts.map((a) => [artifactKeyId(a.key), a]));
+    for (const row of many.artifacts) expect(byId.get(artifactKeyId(row.key))).toEqual(row);
+    const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
+    expect(artifacts.length).toBe(4892);
+    expect(count("brew:/opt/homebrew")).toBe(3893);
+    expect(artifacts.filter((a) => a.key.kind === "Cask")).toHaveLength(335);
+    for (const id of ["npm:/opt/homebrew", "pipx", "uv", "cargo:/Users/you/.cargo"]) expect(count(id)).toBeGreaterThan(100);
+    // About one in seven has an update, as with ?state=many.
+    expect(updates.length / artifacts.length).toBeGreaterThan(0.12);
+    expect(updates.length / artifacts.length).toBeLessThan(0.18);
+    // The new rows put a command on the Mac; about one in forty is not found.
+    const before = new Set(many.artifacts.map((m) => artifactKeyId(m.key)));
+    const added = artifacts.filter((a) => !before.has(artifactKeyId(a.key)));
+    const notFound = added.filter((a) =>
+      a.facts.commands.some((c) => typeof c.state === "object" && c.state !== null && "NotOnPath" in c.state),
+    );
+    expect(notFound.length).toBeGreaterThan(50);
+    expect(added.filter((a) => a.reason === "Requested").every((a) => a.facts.commands.length === 1)).toBe(true);
+  });
+
   it("runs an upgrade the way the real backend reports one, and the next refresh shows it done", async () => {
     const { backend, events } = backendFor();
     await answer(backend.invoke("refresh"));

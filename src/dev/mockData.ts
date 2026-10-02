@@ -36,6 +36,7 @@ import {
   MANY_PIPX,
   MANY_UV,
 } from "./mockManyNames";
+import { hugeNames } from "./mockHugeNames";
 import type { Scenario, ScenarioScan, ScenarioState } from "./scenario";
 
 /** The home folder every path in the preview is under. */
@@ -813,6 +814,44 @@ const MANY_UPDATE_SHARE = 0.15;
  * its source says it is ("Homebrew package").
  */
 function addMany(world: World): void {
+  world.artifacts.push(...manyRows(world, MANY_NAMES));
+  // Claude Code from npm as well, beside the native install, as many Macs
+  // have it: its uninstall preview names the `~/.claude` and
+  // `~/.claude.json` it leaves behind (./mockKeptData.ts).
+  world.artifacts.push(...manyRows(world, { ...NO_NAMES, npm: [NPM_CLAUDE] }));
+}
+
+/** The tools `manyRows` lists, by source. */
+interface ManyNames {
+  formulae: readonly string[];
+  dependencies: readonly string[];
+  casks: ReadonlyArray<{ token: string; name: string; app?: string; autoUpdates?: true }>;
+  npm: readonly string[];
+  pipx: readonly string[];
+  uv: readonly string[];
+  cargo: readonly string[];
+  models: ReadonlyArray<{ name: string; sizeBytes: number }>;
+}
+
+const MANY_NAMES: ManyNames = {
+  formulae: MANY_FORMULAE,
+  dependencies: MANY_DEPENDENCIES,
+  casks: MANY_CASKS,
+  npm: MANY_NPM,
+  pipx: MANY_PIPX,
+  uv: MANY_UV,
+  cargo: MANY_CARGO,
+  models: MANY_MODELS,
+};
+
+const NO_NAMES: ManyNames = { formulae: [], dependencies: [], casks: [], npm: [], pipx: [], uv: [], cargo: [], models: [] };
+
+/**
+ * A row for each of `names`, as `addMany` describes them; offered updates
+ * go into `world.updates` (or `greedyUpdates`, for an app that updates
+ * itself).
+ */
+function manyRows(world: World, names: ManyNames): InstalledArtifact[] {
   const installedDay = (next: () => number) => daysAgo(1 + upTo(next, 900));
   // One in seven gets an update, in `updates` -- Homebrew's check -- or,
   // for an app that updates itself, in `greedyUpdates`, which only
@@ -835,7 +874,7 @@ function addMany(world: World): void {
     const row = artifact(IDS.brew, "Formula", name, version, { reason, installed_at: installedDay(next) });
     return offerUpdate(row, next, "Native");
   };
-  const cask = ({ token, name, app, autoUpdates }: (typeof MANY_CASKS)[number]) => {
+  const cask = ({ token, name, app, autoUpdates }: ManyNames["casks"][number]) => {
     const next = seededStream(`cask:${token}`);
     const major = /@(\d+)$/.exec(token)?.[1];
     const version = plausibleVersion(next, false, major === undefined ? undefined : Number(major));
@@ -853,26 +892,53 @@ function addMany(world: World): void {
     const row = artifact(instanceId, kind, name, version, { installed_at: installedDay(next), path });
     return offerUpdate(row, next, instanceId === IDS.cargo ? "Registry" : "Native");
   };
-  const model = ({ name, sizeBytes }: (typeof MANY_MODELS)[number]) => {
+  const model = ({ name, sizeBytes }: ManyNames["models"][number]) => {
     const next = seededStream(`ollama|${name}`);
     const row = artifact(IDS.ollama, "Model", name, digestFrom(next), { size_bytes: sizeBytes });
     return offerUpdate(row, next, "Digest");
   };
 
-  world.artifacts.push(
-    ...MANY_FORMULAE.map((name) => formula(name, "Requested")),
-    ...MANY_DEPENDENCIES.map((name) => formula(name, "Dependency")),
-    ...MANY_CASKS.map(cask),
-    ...MANY_NPM.map((name) => tool(IDS.npm, "Package", name, null)),
-    ...MANY_PIPX.map((name) => tool(IDS.pipx, "Tool", name, inHome(`.local/pipx/venvs/${name}`))),
-    ...MANY_UV.map((name) => tool(IDS.uv, "Tool", name, inHome(`.local/share/uv/tools/${name}`))),
-    ...MANY_CARGO.map((name) => tool(IDS.cargo, "Binary", name, inHome(`.cargo/bin/${name}`))),
-    ...MANY_MODELS.map(model),
-  );
-  // Claude Code from npm as well, beside the native install, as many Macs
-  // have it: its uninstall preview names the `~/.claude` and
-  // `~/.claude.json` it leaves behind (./mockKeptData.ts).
-  world.artifacts.push(tool(IDS.npm, "Package", NPM_CLAUDE, null));
+  return [
+    ...names.formulae.map((name) => formula(name, "Requested")),
+    ...names.dependencies.map((name) => formula(name, "Dependency")),
+    ...names.casks.map(cask),
+    ...names.npm.map((name) => tool(IDS.npm, "Package", name, null)),
+    ...names.pipx.map((name) => tool(IDS.pipx, "Tool", name, inHome(`.local/pipx/venvs/${name}`))),
+    ...names.uv.map((name) => tool(IDS.uv, "Tool", name, inHome(`.local/share/uv/tools/${name}`))),
+    ...names.cargo.map((name) => tool(IDS.cargo, "Binary", name, inHome(`.cargo/bin/${name}`))),
+    ...names.models.map(model),
+  ];
+}
+
+/** About one command in forty is in a folder Terminal does not search (`?state=huge`). */
+const HUGE_NOT_ON_PATH_SHARE = 0.025;
+
+/**
+ * `?state=huge`: `?state=many`'s Mac, and about 4,200 more tools
+ * (./mockHugeNames.ts) -- about 5,000 in all, as on a Mac whose owner has
+ * several thousand formulae and casks -- for how the pages fare at that
+ * size (docs/ui-preview.md, "Large list"). Made like `addMany`'s, one in
+ * seven with an update; unlike them, each of the new tools also puts a
+ * command on the Mac (its name, without an npm scope), which Terminal runs
+ * -- a library's says nothing -- or, about one in forty, does not find,
+ * so that 「终端里找不到」 has rows to show at this size too.
+ */
+function addHuge(world: World): void {
+  addMany(world);
+  const names = hugeNames(seededStream, new Set(world.artifacts.map((a) => a.key.name)));
+  const rows = manyRows(world, { ...names, models: [] });
+  for (const row of rows) {
+    const next = seededStream(`huge|command|${row.key.instance_id}|${row.key.name}`);
+    const name = row.key.name.replace(/^@[^/]+\//, "").replace(/@\d+$/, "");
+    const state: CommandFact["state"] =
+      row.reason === "Dependency"
+        ? null
+        : next() < HUGE_NOT_ON_PATH_SHARE
+          ? { NotOnPath: { dir: row.key.instance_id === IDS.brew ? `/opt/homebrew/opt/${row.key.name}/bin` : "~/.local/bin" } }
+          : "Runs";
+    row.facts = { ...row.facts, commands: [{ name, state }] };
+  }
+  world.artifacts.push(...rows);
 }
 
 /**
@@ -965,6 +1031,10 @@ function scenarioWorld(state: ScenarioState): World {
     case "many":
       allAnswering(world);
       addMany(world);
+      return world;
+    case "huge":
+      allAnswering(world);
+      addHuge(world);
       return world;
     case "refused":
       withRefusedSources(world);

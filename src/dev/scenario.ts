@@ -26,6 +26,9 @@ import type { Page } from "../store/ui";
  * - `offline`: no registry answered; every lookup is "could not check".
  * - `many`: about 800 things installed, about one in seven with an
  *   update, for how the long lists feel (`addMany` in ./mockData.ts).
+ * - `huge`: about 5,000 things installed -- `many`'s, and about 4,200
+ *   more made from their names -- as on a Mac with several thousand
+ *   formulae and casks (`addHuge` in ./mockData.ts).
  * - `preview`: the first refresh lists what is installed
  *   (`InventoryPreview`) and then never finishes checking for updates, as
  *   a real launch looks while `brew update` runs: the Installed page lists
@@ -47,6 +50,7 @@ export const SCENARIO_STATES = [
   "notices",
   "offline",
   "many",
+  "huge",
   "preview",
   "refused",
 ] as const;
