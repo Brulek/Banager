@@ -1214,7 +1214,8 @@
     "notOnPathFine": "Terminal finds every tool that was checked",
     "notChecked_one": "Couldn't check whether Terminal finds {{count}} tool",
     "notChecked_other": "Couldn't check whether Terminal finds {{count}} tools",
-    "notCheckedDetail": "For these, Banager couldn't tell which copy Terminal runs, for example because a folder Terminal looks in for commands couldn't be read."
+    "notCheckedDetail": "Couldn't tell which copy of these tools Terminal runs, for example because a folder Terminal looks in for commands couldn't be read.",
+    "diagnosticsNotChecked": "Not checked in Terminal: {{number}}"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

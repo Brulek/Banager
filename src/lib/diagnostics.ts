@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { getSystemFacts } from "./api";
 import { twinsByArtifact } from "./commands";
-import { commandsKnown } from "./commandsKnown";
+import { commandsKnown, toolsNotJudged } from "./commandsKnown";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
@@ -263,12 +263,17 @@ export function diagnosticsText(t: Translate, input: DiagnosticsInput): string {
     }
   }
   // 0 only when the check looked (`commandsKnown`): a round with no
-  // verdicts, or no commands at all, says it did not.
+  // verdicts, or no commands at all, says it did not. Where it looked at
+  // some tools and not at others (`toolsNotJudged`), how many it could not
+  // check, on a line of its own, so that a pasted 0 is not read as all.
+  const judged = commandsKnown(artifacts, false, "verdicts") === "known";
   lines.push(
-    commandsKnown(artifacts, false, "verdicts") === "known"
+    judged
       ? t("diagnostics.text.notFound", { number: artifacts.filter(notFoundInTerminal).length })
       : t("commandsKnown.notFoundUnknown"),
   );
+  const notJudged = judged ? toolsNotJudged(artifacts) : 0;
+  if (notJudged > 0) lines.push(t("setupCheckCoverage.diagnosticsNotChecked", { number: notJudged }));
   lines.push(
     commandsKnown(artifacts, false, "names") === "known"
       ? t("diagnostics.text.twins", { number: toolsInstalledTwice(artifacts) })

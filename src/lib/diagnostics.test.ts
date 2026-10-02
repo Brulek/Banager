@@ -456,6 +456,24 @@ describe("the command counts", () => {
       "\nNot found in Terminal: not looked at this time\nTools installed more than once: not looked at this time\n",
     );
   });
+
+  it("says how many tools couldn't be checked when only some were, so a 0 is not read as all", () => {
+    // Every tool but the first keeps its verdicts; the first has a command
+    // with none (a folder Terminal looks in could not be read).
+    const partly = {
+      ...SNAPSHOT,
+      artifacts: SNAPSHOT.artifacts.map((a, index) =>
+        index === 0 ? { ...a, facts: { ...a.facts, commands: [{ name: "unread", state: null }] } } : a,
+      ),
+    };
+    const zhText = diagnosticsText(zh, input({ snapshot: partly }));
+    expect(zhText).toMatch(/\n终端找不到：\d+个\n终端里无法确认：1个\n装了不止一份的工具：/);
+    expect(diagnosticsText(en, input({ snapshot: partly }))).toMatch(
+      /\nNot found in Terminal: \d+\nNot checked in Terminal: 1\nTools installed more than once: /,
+    );
+    // Every tool checked: no such line.
+    expect(diagnosticsText(en, input())).not.toContain("Not checked in Terminal");
+  });
 });
 
 describe("the home folder, wherever a path can carry it", () => {

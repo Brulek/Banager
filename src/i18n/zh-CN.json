@@ -1115,7 +1115,8 @@
   "setupCheckCoverage": {
     "notOnPathFine": "终端都能找到检查过的工具",
     "notChecked_other": "{{count}}个工具无法确认终端能否找到",
-    "notCheckedDetail": "无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。"
+    "notCheckedDetail": "无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
+    "diagnosticsNotChecked": "终端里无法确认：{{number}}个"
   },
   "shortcuts": {
     "title": "键盘快捷键",
