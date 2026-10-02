@@ -17,7 +17,7 @@ const BREW = "brew:/opt/homebrew";
 
 beforeEach(() => {
   useFaqSheet.setState({ open: false });
-  // Somewhere else, with a source, a 「显示」 choice, a search and a sort
+  // Somewhere else, with a source, a 「显示」 choice on each page, a search and a sort
   // picked, so each 查看 is seen to set what it promises.
   useUiStore.setState({
     page: "overview",
@@ -25,6 +25,7 @@ beforeEach(() => {
     installedShow: "ai",
     installedSort: "name",
     query: "jq",
+    updatesShow: "ai",
   });
 });
 
