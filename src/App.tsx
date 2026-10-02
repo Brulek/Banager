@@ -31,7 +31,7 @@ import { useUpdateNotification } from "./lib/updateNotification";
 import { useOperationsNotification } from "./lib/operationsNotification";
 import { useSnoozeExpiry } from "./lib/snoozeExpiry";
 import { useFocusOnPageChange } from "./lib/pageFocus";
-import { searchMatch } from "./lib/searchMatch";
+import { searchMatch, searchNeedle } from "./lib/searchMatch";
 import { useSearchTexts } from "./lib/useSearchTexts";
 import { artifactKeyId, useUiStore, type Page } from "./store/ui";
 
@@ -101,7 +101,7 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   // some (`shownBy`), which the count then says of how many.
   const show = useUiStore((s) => s.installedShow);
   // And the search's text: a search shows only some too.
-  const needle = useUiStore((s) => s.query).trim().toLowerCase();
+  const needle = searchNeedle(useUiStore((s) => s.query));
   // Matched as the page matches it, through the same words (`useSearchTexts`).
   const searchTexts = useSearchTexts(snapshot, needle !== "" && page === "installed");
   const twins = useMemo(() => (show === "all" ? undefined : twinsByArtifact(snapshot?.artifacts ?? [])), [show, snapshot]);

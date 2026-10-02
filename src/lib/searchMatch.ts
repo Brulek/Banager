@@ -1,4 +1,3 @@
-import { AUTOSPACE } from "../i18n/autospace";
 import type { CommandFact, InstalledArtifact } from "./types";
 
 /**
@@ -36,12 +35,26 @@ export interface SearchText {
 }
 
 /**
- * `text`, lowercased, without the narrow gap `autospace` puts between
- * Chinese and Latin where the web view cannot draw it, so that 「AI编程」
- * finds 「AI 编程」 there too.
+ * Space beside a Chinese character: the gap the row draws there
+ * (`text-autospace`), or `autospace`'s narrow one (U+2006, which `\s`
+ * matches) where the web view cannot draw it, or one a user types after
+ * reading the row -- 「AI 编程」. Neither the copy nor the tables write
+ * one there, so a search sees none either side.
  */
+const HAN_GAP = /\s+(?=\p{Script=Han})|(?<=\p{Script=Han})\s+/gu;
+
+/** `text`, lowercased, with no space beside a Chinese character (`HAN_GAP`). */
 function folded(text: string | null): string {
-  return (text ?? "").toLowerCase().split(AUTOSPACE).join("");
+  return (text ?? "").toLowerCase().replace(HAN_GAP, "");
+}
+
+/**
+ * The search field's `query` as the search reads it: trimmed and folded
+ * as the words it looks through are, so 「AI 编程」 finds what 「ai编程」 does.
+ * The Installed page and its subtitle's count both read it so.
+ */
+export function searchNeedle(query: string): string {
+  return folded(query.trim());
 }
 
 /**
@@ -82,19 +95,21 @@ function beginsAWord(text: string, needle: string): boolean {
 }
 
 /**
- * How `artifact` matches `needle` -- the search field's text, trimmed and
- * lowercased -- or null where it does not, through `text`, its words
- * (`searchTextOf`; its names alone where not given). An empty needle
- * matches every tool. A command is named only where nothing the row
- * shows matches: "agy" is Antigravity CLI's package name as well as its
- * command, and its row shows neither.
+ * How `artifact` matches `needle` -- the search field's text as
+ * `searchNeedle` reads it -- or null where it does not, through `text`,
+ * its words (`searchTextOf`; its names alone where not given, made only
+ * then). An empty needle matches every tool. A command is named only
+ * where nothing the row shows matches: "agy" is Antigravity CLI's package
+ * name as well as its command, and its row shows neither.
  */
 export function searchMatch(
   artifact: Pick<InstalledArtifact, "display_name" | "key" | "facts">,
   needle: string,
-  text: SearchText = searchTextOf(artifact, null, null),
+  given?: SearchText,
 ): SearchMatch | null {
-  if (needle === "" || text.name.includes(needle) || beginsAWord(text.line, needle)) return BY_TEXT;
+  if (needle === "") return BY_TEXT;
+  const text = given ?? searchTextOf(artifact, null, null);
+  if (text.name.includes(needle) || beginsAWord(text.line, needle)) return BY_TEXT;
   const command = commandMatching(artifact.facts?.commands ?? [], needle);
   if (command !== null) return { by: "command", command };
   return text.packageName.includes(needle) || beginsAWord(text.otherLine, needle) ? BY_TEXT : null;

@@ -32,7 +32,7 @@ import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
-import { searchMatch } from "../lib/searchMatch";
+import { searchMatch, searchNeedle } from "../lib/searchMatch";
 import { useSearchTexts } from "../lib/useSearchTexts";
 import { SEARCH_SETTLE_MS, useSettled } from "../lib/settled";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
@@ -716,7 +716,7 @@ export function InstalledPage() {
   // Studio Code"), by a word of its line in either language ("编程"), or
   // by a command it puts on the Mac ("rg" finds ripgrep; `searchMatch`),
   // through each tool's words, made once for the list (`useSearchTexts`).
-  const needle = query.trim().toLowerCase();
+  const needle = searchNeedle(query);
   const searchTexts = useSearchTexts(snapshot, needle !== "");
   const found = (artifact: InstalledArtifact, text: string) =>
     searchMatch(artifact, text, searchTexts?.get(artifactKeyId(artifact.key)));

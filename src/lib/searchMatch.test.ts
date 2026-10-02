@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUTOSPACE } from "../i18n/autospace";
-import { commandMatching, searchMatch, searchTextOf } from "./searchMatch";
+import { commandMatching, searchMatch, searchNeedle, searchTextOf } from "./searchMatch";
 import { NO_FACTS, type ArtifactKey, type CommandFact } from "./types";
 
 const tool = (name: string, commands: string[], displayName = name) => ({
@@ -92,6 +92,19 @@ describe("searchMatch over a tool's lines", () => {
   it("sees through the narrow gap autospace puts between Chinese and Latin", () => {
     const spaced = searchTextOf(jq, `命令行${AUTOSPACE}JSON${AUTOSPACE}处理工具`, null);
     expect(searchMatch(jq, "行json处", spaced)).toEqual({ by: "text" });
+  });
+
+  it("reads a typed space beside Chinese as the row draws it, a gap and not a space", () => {
+    // The row shows 「Google 的 AI 编程助手」; what is typed from it finds it.
+    const agy = tool("agy", ["agy"], "Antigravity CLI");
+    const agyText = searchTextOf(agy, "Google的AI编程助手", null);
+    expect(searchNeedle("  AI 编程 ")).toBe("ai编程");
+    expect(searchNeedle(`AI${AUTOSPACE}编程`)).toBe("ai编程");
+    expect(searchMatch(agy, searchNeedle("AI 编程"), agyText)).toEqual({ by: "text" });
+    expect(searchMatch(agy, searchNeedle("google 的"), agyText)).toEqual({ by: "text" });
+    // A space between two Latin words stays one.
+    expect(searchNeedle("Visual  Studio")).toBe("visual  studio");
+    expect(searchMatch(claude, searchNeedle("AI coding"), claudeText)).toEqual({ by: "text" });
   });
 
   it("names the command where only the package's name, which the row does not show, matches too", () => {
