@@ -782,7 +782,9 @@ mod tests {
             PathBuf::from("/etc")
         );
         assert_eq!(
-            dir.read_file_at_most(OsStr::new("file"), None, 1).unwrap().1,
+            dir.read_file_at_most(OsStr::new("file"), None, 1)
+                .unwrap()
+                .1,
             b"x"
         );
         assert!(dir.read_file_at_most(OsStr::new("file"), None, 0).is_err());
