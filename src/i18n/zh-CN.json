@@ -504,11 +504,11 @@
     "summary": "OpenAI的AI编程助手",
     "updatesItself": "会自行更新",
     "updatesItselfAria": "会自行更新：{{name}}",
-    "updatesItselfDetail": "{{source}}设为跟随最新版本，可以自己安装新版本。这里不检查也不安装它的更新。",
+    "updatesItselfDetail": "{{source}}是用它自己的安装脚本按最新版本装的，可以自己安装新版本。这里不检查也不安装它的更新。",
     "notChecked": "不检查更新",
     "notCheckedAria": "不检查更新：{{name}}",
     "notCheckedDetail": "这里不检查也不安装{{source}}的更新。",
-    "uninstallDescription": "目前这里只列出{{source}}，还不能在这里卸载它。"
+    "uninstallDescription": "这份{{source}}是用它自己的安装脚本装的。这里只列出它，不能在这里卸载。"
   },
   "opencodeUpdates": {
     "word": "默认会自行更新",

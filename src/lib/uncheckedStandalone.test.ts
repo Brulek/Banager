@@ -70,7 +70,24 @@ describe("tools whose updates Banager does not check", () => {
     // Nobody checked that Codex publishes uninstall instructions.
     expect(zhCN.codexStandalone.uninstallDescription).not.toMatch(/官方说明/);
     expect(en.codexStandalone.uninstallDescription).not.toMatch(/official/i);
+    // Nor a command to type: none was looked into either.
+    for (const text of [zhCN.codexStandalone.uninstallDescription, en.codexStandalone.uninstallDescription]) {
+      expect(text).not.toMatch(/终端|运行|rm |curl|Terminal|run /i);
+    }
+    // What it is and what this page does with it: its own script installed it, and it is only listed.
+    expect(zhCN.codexStandalone.uninstallDescription).toBe("这份{{source}}是用它自己的安装脚本装的。这里只列出它，不能在这里卸载。");
     expect(copy.command(artifact("standalone-codex", true).key, instance("standalone-codex"))).toBe("");
+  });
+
+  it("says Codex's own script installed it at its latest release, not that someone set it so, nor when it updates", () => {
+    // 「设为跟随最新版本」 read as a setting the user had made. The marker
+    // shows the script installed the latest release; whether its updater
+    // runs, and when, is not read, so the line says it *can* update itself.
+    expect(zhCN.codexStandalone.updatesItselfDetail).toBe(
+      "{{source}}是用它自己的安装脚本按最新版本装的，可以自己安装新版本。这里不检查也不安装它的更新。",
+    );
+    expect(zhCN.codexStandalone.updatesItselfDetail).not.toMatch(/设为|使用时|运行时/);
+    expect(en.codexStandalone.updatesItselfDetail).not.toMatch(/is set to|when (you )?(use|run)/i);
   });
 
   it("keeps the row's words short and plain in Chinese", () => {

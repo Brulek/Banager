@@ -545,11 +545,11 @@
     "summary": "OpenAI's AI coding assistant",
     "updatesItself": "Updates itself",
     "updatesItselfAria": "Updates itself: {{name}}",
-    "updatesItselfDetail": "{{source}} is set to follow its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
+    "updatesItselfDetail": "{{source}} was installed by its own script at its latest release, so it can install new versions itself. Its updates aren't checked or installed here.",
     "notChecked": "Updates not checked",
     "notCheckedAria": "Not checked for updates: {{name}}",
     "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
-    "uninstallDescription": "{{source}} is only listed here for now and can't be uninstalled here."
+    "uninstallDescription": "This copy of {{source}} was installed by its own script. It's only listed here and can't be uninstalled here."
   },
   "opencodeUpdates": {
     "word": "Updates itself by default",
