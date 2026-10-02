@@ -75,6 +75,14 @@ struct PipxMainPackage {
     /// write the key at all, which then simply gives rule 2 nothing.
     #[serde(default)]
     app_paths: Vec<PipxAppPath>,
+    /// `pipx install --include-deps`: the executables pipx exposed for
+    /// each dependency, by its name, in the same venv as the package's own
+    /// (`{"notebook": [{"__Path__": "<venv>/bin/jupyter-notebook", ...}]}`).
+    /// Read only for where the venv is, when the package exposes no app of
+    /// its own (`venv_dir`); read loosely, as `suffix` is, so a value of
+    /// another shape names no venv rather than failing the list.
+    #[serde(default)]
+    app_paths_of_dependencies: Option<serde_json::Value>,
     /// `pipx install --suffix`: what pipx adds to each app's name when it
     /// exposes it (`black@3.12` for the venv's `black`), so the name typed
     /// in Terminal. Empty without one; a value that is not a string is
@@ -109,6 +117,33 @@ fn pipx_commands(package: &PipxMainPackage) -> Vec<ProvidedCommand> {
         .collect()
 }
 
+/// The venv directory, two levels above any exposed app
+/// (`<venv>/bin/<app>`): what a `~/.local/bin` shim resolves under, so the
+/// unknown-source scan's rule 2 (scan/mod.rs) can claim the shim the way
+/// it claims a uv tool's -- uv.rs:65 fills the same thing from `uv tool
+/// list --show-paths` -- and whose `bin/python` the uninstall preview asks
+/// about (`needed_by`). The package's own first app's; for a package that
+/// exposes none of its own but its dependencies' (`--include-deps`), the
+/// first of those, by dependency name, that is absolute. No app, no path.
+fn venv_dir(package: &PipxMainPackage) -> Option<PathBuf> {
+    let above = |app: &str| Some(Path::new(app).parent()?.parent()?.to_path_buf());
+    if let Some(app) = package.app_paths.first() {
+        return above(&app.path);
+    }
+    let Some(serde_json::Value::Object(dependencies)) = &package.app_paths_of_dependencies else {
+        return None;
+    };
+    let mut names: Vec<&String> = dependencies.keys().collect();
+    names.sort();
+    names
+        .into_iter()
+        .filter_map(|name| dependencies[name].as_array())
+        .flatten()
+        .filter_map(|app| app.get("__Path__")?.as_str())
+        .find(|app| Path::new(app).is_absolute())
+        .and_then(above)
+}
+
 /// Parses `pipx list --json`. The venv name (the JSON object's key under
 /// `venvs`) is the tool's `ArtifactKey.name`; the installed version lives at
 /// `venvs.<name>.metadata.main_package.package_version` (this phase's other
@@ -124,19 +159,7 @@ pub(crate) fn parse_list(
         .venvs
         .into_iter()
         .map(|(tool_name, venv)| {
-            // The venv directory, two levels above any exposed app
-            // (`<venv>/bin/<app>`): what a `~/.local/bin` shim resolves
-            // under, so the unknown-source scan's rule 2 (scan/mod.rs)
-            // can claim the shim the way it claims a uv tool's -- uv.rs:65
-            // fills the same thing from `uv tool list --show-paths`. No
-            // app, no path.
-            let path = venv
-                .metadata
-                .main_package
-                .app_paths
-                .first()
-                .and_then(|app| Path::new(&app.path).parent()?.parent())
-                .map(Path::to_path_buf);
+            let path = venv_dir(&venv.metadata.main_package);
             let provided = pipx_commands(&venv.metadata.main_package);
             InstalledArtifact {
                 key: ArtifactKey {
@@ -753,6 +776,78 @@ mod tests {
         let artifacts = parse_list(json, "pipx").expect("parse inline pipx list");
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].path, None);
+    }
+
+    #[test]
+    fn test_parse_list_finds_the_venv_of_a_package_whose_apps_are_its_dependencies() {
+        // `pipx install --include-deps` of a package with no console script
+        // of its own: `app_paths` is empty, and the apps pipx exposed are
+        // its dependencies', in the same venv (`<venv>/bin/<app>`). The
+        // venv is still there to name -- for the uninstall preview to ask
+        // what its Python is, and for rule 2 to claim the shims -- though
+        // no command is the package's own. Inline, as above.
+        let json = r#"{
+            "pipx_spec_version": "0.1",
+            "venvs": {
+                "jupyter": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [],
+                            "app_paths_of_dependencies": {
+                                "notebook": [
+                                    {"__Path__": "/Users/someone/.local/pipx/venvs/jupyter/bin/jupyter-notebook", "__type__": "Path"}
+                                ],
+                                "jupyter-core": [
+                                    {"__Path__": "/Users/someone/.local/pipx/venvs/jupyter/bin/jupyter", "__type__": "Path"}
+                                ]
+                            },
+                            "package": "jupyter",
+                            "package_version": "1.1.1"
+                        }
+                    }
+                },
+                "odd": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [],
+                            "app_paths_of_dependencies": {"x": "not a list", "y": [{"__Path__": 7}], "z": [{"__Path__": "relative/bin/z"}]},
+                            "package": "odd",
+                            "package_version": "0.1"
+                        }
+                    }
+                },
+                "null-deps": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [],
+                            "app_paths_of_dependencies": null,
+                            "package": "null-deps",
+                            "package_version": "0.1"
+                        }
+                    }
+                }
+            }
+        }"#;
+        let artifacts = parse_list(json, "pipx").expect("parse inline pipx list");
+        let path_of = |name: &str| {
+            artifacts
+                .iter()
+                .find(|artifact| artifact.key.name == name)
+                .unwrap()
+                .path
+                .clone()
+        };
+        assert_eq!(
+            path_of("jupyter"),
+            Some(PathBuf::from("/Users/someone/.local/pipx/venvs/jupyter"))
+        );
+        // No command is the package's own: those are its dependencies'.
+        let jupyter = artifacts.iter().find(|a| a.key.name == "jupyter").unwrap();
+        assert!(jupyter.facts.command_inputs.provided.is_empty());
+        // What cannot be read as a path, or is not absolute, names none,
+        // and fails nothing.
+        assert_eq!(path_of("odd"), None);
+        assert_eq!(path_of("null-deps"), None);
     }
 
     #[test]
