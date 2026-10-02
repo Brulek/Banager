@@ -126,8 +126,8 @@ fn without_object_reprs(text: &str) -> String {
     out
 }
 
-/// One lookup pip gave up on, read off the warning urllib3 prints before
-/// its last try:
+/// One lookup pip all but gave up on, read off the warning urllib3 prints
+/// before its final try:
 ///
 /// ```text
 /// WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by '<error>': /simple/<project>/
@@ -138,14 +138,20 @@ fn without_object_reprs(text: &str) -> String {
 /// left of the `Retry` each time a request fails to connect or breaks off
 /// (`connectionpool.py`, `urlopen`), and pip shows it on stderr as
 /// `WARNING: ` (`utils/logging.py`; urllib3's logger stays at `WARNING`,
-/// one line, `soft_wrap`). `total=0` is the warning before the last try --
-/// pip retries 5 times unless told otherwise (`--retries`, `network/
-/// session.py`) -- after which urllib3 gives up and pip's collector drops
-/// the page with a debug message only ("Could not fetch URL ... -
-/// skipping", `index/collector.py`), finds no candidates, and `pip list
-/// --outdated` leaves the project out and exits 0 (`commands/list.py`).
-/// So stdout alone reads as "up to date". `project` is the last segment of
-/// the address it was fetching -- the project, for an index's
+/// one line, `soft_wrap`). `total=0` comes after the fifth failure in a
+/// row -- pip retries 5 times unless told otherwise (`--retries`,
+/// `network/session.py`) -- and before one final try. If that try fails
+/// too, urllib3 gives up with no further warning (`Retry.increment`
+/// raises once `total` goes below 0), pip's collector drops the page with
+/// a debug message only ("Could not fetch URL ... - skipping",
+/// `index/collector.py`), finds no candidates, and `pip list --outdated`
+/// leaves the project out and exits 0 (`commands/list.py`): stdout alone
+/// reads as "up to date". If that final try answers, nothing on stderr
+/// says so, and an up-to-date project is still taken as not checked --
+/// the cautious side, after five failures in a row: its row is transient
+/// (`TransientLookupFailure`, where the words name the network) and the
+/// next check that reaches the index clears it. `project` is the last
+/// segment of the address it was fetching -- the project, for an index's
 /// `/simple/<project>/` -- and `words` the error, without the connection's
 /// `<... object at 0x...>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,10 +160,11 @@ struct GaveUp {
     words: String,
 }
 
-/// Each lookup pip gave up on, in `stderr`'s order (`GaveUp`): the lines
-/// that are urllib3's retry warning with `total=0`. A retry warning with
-/// any other total is a try that may yet have worked -- the next one, if
-/// not, warns again -- and is not one.
+/// Each lookup pip gave up on, or came to its final try of, in `stderr`'s
+/// order (`GaveUp`): the lines that are urllib3's retry warning with
+/// `total=0`. A retry warning with any other total is followed by another
+/// warning if the next try fails too, so without one of `total=0` after it
+/// the lookup was answered, and it is not one.
 fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
     const RETRY: &str = "Retrying (Retry(total=";
     const BROKEN: &str = "after connection broken by '";

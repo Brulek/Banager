@@ -1244,14 +1244,19 @@ as "could not check", with the reason — one more process than the table
 shows, on that path only. It is run too when the command exits 0 but gave
 up on reaching the index for some package: pip then leaves that package
 out as if it were up to date, and says so only in its error output, as
-the warning urllib3 prints before its last try — `Retrying
-(Retry(total=0, …)) after connection broken by '…': /simple/<project>/`
-(`lookups_given_up` in `adapters/pip.rs`). Each such package that is not
-listed is "could not check", with the error from that warning; where the
-address names no installed package (a `--find-links` page, say), every
-package not listed is. What was listed is kept. At pip's usual level of
-detail nothing is printed for a server error (5xx) pip gave up on, nor for
-a lookup with `--retries 0`, so those still read as up to date.
+the warning urllib3 prints after the fifth failure in a row, before one
+final try — `Retrying (Retry(total=0, …)) after connection broken by
+'…': /simple/<project>/` (`lookups_given_up` in `adapters/pip.rs`). Each
+such package that is not listed is "could not check", with the error
+from that warning; where the address names no installed package (a
+`--find-links` page, say), every package not listed is. What was listed
+is kept. Nothing is printed when that final try answers, so a package
+whose sixth try worked and that is up to date is still shown as not
+checked — counted, where the words name the network, among the tools to
+check again, until the next check that reaches the index. At pip's usual
+level of detail nothing is printed for a server error (5xx) pip gave up
+on, nor for a lookup with `--retries 0`, so those still read as up to
+date.
 
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command
