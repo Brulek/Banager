@@ -469,11 +469,13 @@ fn push_steps(left: &mut Vec<Step>, path: &Path) {
 /// the way (`~/.local/share/claude/config -> ~/settings`). A relative
 /// `path` is read from the current folder, as the system reads one. A
 /// name that is not there ends the way where it is: a link to nothing
-/// leads that far. Anything else that stops the lookup -- a name on the
-/// way that is not a folder (a `..` after a file included, which macOS's
+/// leads that far. A step into a protected place ends it too, at the
+/// place's edge: the place is the way's last entry, and nothing in it is
+/// looked at (`protected::look`) -- where the way goes on from there is
+/// not known. Anything else that stops the lookup -- a name on the way
+/// that is not a folder (a `..` after a file included, which macOS's
 /// `realpath`, and so `canonicalize`, climbs past without looking), more
-/// links than `MOST_LINKS`, a folder Banager may not look into, a step
-/// into a protected place (never taken: `protected::look`) -- is an
+/// links than `MOST_LINKS`, a folder Banager may not look into -- is an
 /// error, as the system's own lookup (`stat`) gives one. Read by
 /// `kept_places` and `dead_after`.
 fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf>> {
@@ -499,6 +501,11 @@ fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf
         let meta = match look::lstat(&entry, protected) {
             Ok(meta) => meta,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) if look::is_protected(&error) => {
+                // The edge of a protected place: on the way, never entered.
+                way.push(look::real_path(&folder, protected)?.join(&name));
+                break;
+            }
             Err(error) => return Err(error),
         };
         way.push(look::real_path(&folder, protected)?.join(&name));
@@ -520,10 +527,24 @@ fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf
 /// The kept paths that exist -- a missing one is neither listed nor
 /// protected (ruling 6) -- each placed, with the way to what it leads to
 /// (`the_way_to`). One that is there but cannot be placed -- its folder,
-/// what it leads to or the way there cannot be looked up, or leads into a
-/// protected place, where Banager never looks (`protected::look`) --
-/// refuses the whole list: Banager could not confirm the moves leave it
-/// alone (`OverlapsKept`).
+/// what it leads to or the way there cannot be looked up -- refuses the
+/// whole list: Banager could not confirm the moves leave it alone
+/// (`OverlapsKept`).
+///
+/// One that is, or leads into, a protected place (a `~/.zshrc` that
+/// Mackup or a dotfiles folder keeps in iCloud Drive, Dropbox or
+/// `~/Documents`) is placed as far as the place's edge and no further:
+/// nothing in the place is looked at (`protected::look`), so what it leads
+/// to there is not known (`target` none) and the way ends at the edge. No
+/// path the list moves can be inside such a place, nor hold one: a listed
+/// path that is, or is reached through, a protected place is not what the
+/// list describes (`check_item`), and the home folder and the folders many
+/// tools share are never moved. So the moves cannot take what it leads to
+/// along -- unless something inside the place is itself a link back out to
+/// a path the list moves, which Banager cannot see
+/// (`docs/what-we-run.md`, Claude Code's uninstall). Its way up to the
+/// edge is checked as any other's. One whose own folder leads into a
+/// place cannot be told to be there and is kept all the same.
 fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
     let mut kept = Vec::new();
@@ -539,6 +560,22 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
         match look::lstat(&path, protected) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) if look::is_protected(&error) => {
+                // In a protected place through a folder on its way.
+                let Ok(on_the_way) = the_way_to(&path, protected) else {
+                    return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept));
+                };
+                let entry =
+                    look::protected_at(&error).map_or_else(|| path.clone(), Path::to_path_buf);
+                kept.push(Kept {
+                    spec,
+                    path,
+                    entry,
+                    target: None,
+                    on_the_way,
+                });
+                continue;
+            }
             Err(_) => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
         }
         let folder = path
@@ -551,8 +588,14 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
         let target = match look::real_path(&path, protected) {
             Ok(target) => Some(target),
             // A link to nothing: nothing at its end to keep -- the link
-            // itself, and the way as far as it goes (`on_the_way`).
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            // itself, and the way as far as it goes (`on_the_way`). A link
+            // into a protected place: what it leads to there is never
+            // looked at, and the way goes as far as the place's edge.
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound || look::is_protected(&error) =>
+            {
+                None
+            }
             Err(_) => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
         };
         let Ok(on_the_way) = the_way_to(&path, protected) else {
@@ -1595,57 +1638,157 @@ mod tests {
         assert!(layout.root.is_dir());
     }
 
-    #[test]
-    fn test_plan_removal_never_follows_a_kept_path_into_a_protected_place() {
-        // `~/.claude` or `~/.claude.json` kept in `~/Documents` or iCloud
-        // Drive (dotfiles synced that way): where it leads is never looked
-        // at, so nothing confirms the moves leave it alone -- refused as a
-        // kept path that cannot be looked up is, naming it. The same
-        // layout kept anywhere else is planned.
-        for (keep, protected_place) in [
-            ("elsewhere", false),
-            ("Documents", true),
-            ("Library/Mobile Documents/com~apple~CloudDocs", true),
-        ] {
-            let home = TempHome::new("removal-kept-in-a-protected-place");
-            let layout = claude_layout(&home, "2.1.281");
-            let settings = home.dir(&format!("{keep}/claude"));
-            home.dir(&format!("{keep}/claude/downloads"));
-            home.link(".claude", &settings);
-            let d = detected(home.path());
-            let protected = d.protected();
-            let (planned, made) = crate::dirfd::calls::measure(|| plan_removal(&claude_job(&d)));
+    /// Where Mackup (link mode) or a dotfiles folder keeps a home's
+    /// dotfiles: anywhere else in the home folder, then iCloud Drive,
+    /// Dropbox's folder under `~/Library/CloudStorage`, and `~/Documents`
+    /// -- the last three protected places.
+    const KEPT_IN: [&str; 4] = [
+        "dotfiles/Mackup",
+        "Library/Mobile Documents/com~apple~CloudDocs/Mackup",
+        "Library/CloudStorage/Dropbox/Mackup",
+        "Documents/Mackup",
+    ];
+
+    /// Each of `dotfiles` moved into `keep` (under the home folder) and
+    /// linked back by its name, as `mackup backup` leaves them; a dotfile
+    /// that is not there yet is made, a file, or a folder when its name
+    /// ends in `/`.
+    fn mackup(home: &TempHome, keep: &str, dotfiles: &[&str]) {
+        for dotfile in dotfiles {
+            let name = dotfile.trim_end_matches('/');
+            let at = home.path().join(name);
+            let kept = home.path().join(keep).join(name);
+            std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+            if std::fs::symlink_metadata(&at).is_ok() {
+                std::fs::rename(&at, &kept).unwrap();
+            } else if dotfile.ends_with('/') {
+                std::fs::create_dir_all(&kept).unwrap();
+            } else {
+                std::fs::write(&kept, "# kept by Mackup\n").unwrap();
+            }
+            std::os::unix::fs::symlink(&kept, &at).unwrap();
+        }
+    }
+
+    /// `job`'s preview for a home whose `dotfiles` are kept in each of
+    /// `KEPT_IN`: the same as when they are kept anywhere else, nothing in
+    /// a protected place looked at; then the uninstall itself, which moves
+    /// every path the preview listed and leaves each dotfile where it is.
+    async fn plans_alike_wherever_mackup_keeps(
+        recipe: &'static Recipe,
+        layout: fn(&TempHome),
+        dotfiles: &[&str],
+    ) {
+        let mut first: Option<Vec<Warning>> = None;
+        for keep in KEPT_IN {
+            let home = TempHome::new("removal-mackup");
+            layout(&home);
+            mackup(&home, keep, dotfiles);
+            let job = job_of(recipe, home.path());
+            let protected = job.detected.protected();
+            let (planned, made) = crate::dirfd::calls::measure(|| plan_removal(&job));
             for (call, path) in &made.paths {
                 assert!(!protected.contains(path), "{keep}: {call:?} {path:?}");
             }
-            if protected_place {
-                let (path, reason) = refused(planned);
-                assert_eq!(
-                    (path.as_str(), reason),
-                    ("~/.claude", UninstallUnsafeReason::OverlapsKept),
-                    "{keep}"
+            let preview = planned.unwrap_or_else(|e| panic!("{keep}: {e:?}"));
+            for dotfile in dotfiles {
+                let shown = format!("~/{}", dotfile.trim_end_matches('/'));
+                assert!(
+                    preview.warnings.iter().any(
+                        |warning| matches!(warning, Warning::WillKeep { path, .. } if *path == shown)
+                    ),
+                    "{keep}: {shown} kept: {:?}",
+                    preview.warnings
                 );
-            } else {
-                assert_eq!(planned.expect("a plan").paths.len(), 2, "{keep}");
             }
-            assert!(layout.root.is_dir());
-
-            let home = TempHome::new("removal-kept-file-in-a-protected-place");
-            let _layout = claude_layout(&home, "2.1.281");
-            let file = home.file(&format!("{keep}/claude.json"));
-            home.link(".claude.json", &file);
-            let planned = plan_removal(&claude_job(&detected(home.path())));
-            if protected_place {
-                let (path, reason) = refused(planned);
-                assert_eq!(
-                    (path.as_str(), reason),
-                    ("~/.claude.json", UninstallUnsafeReason::OverlapsKept),
-                    "{keep}"
-                );
-            } else {
-                assert!(planned.is_ok(), "{keep}");
+            match &first {
+                None => first = Some(preview.warnings.clone()),
+                Some(elsewhere) => assert_eq!(&preview.warnings, elsewhere, "{keep}"),
+            }
+            let trasher: Arc<dyn Trasher> = Arc::new(MockTrasher::new());
+            let (outcome, _) =
+                run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+            assert_eq!(outcome, Outcome::Succeeded, "{keep}");
+            for dotfile in dotfiles {
+                let kept = home.path().join(keep).join(dotfile.trim_end_matches('/'));
+                assert!(std::fs::symlink_metadata(&kept).is_ok(), "{keep}: {kept:?}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_claude_codes_uninstall_goes_ahead_with_its_settings_kept_by_mackup_in_a_protected_place(
+    ) {
+        // `~/.claude` and `~/.claude.json` linked into iCloud Drive,
+        // Dropbox or `~/Documents`: what they lead to is never looked at,
+        // and the uninstall plans as with them kept anywhere else -- the
+        // download cache inside `~/.claude` kept too, as not the tool's.
+        plans_alike_wherever_mackup_keeps(
+            &CLAUDE,
+            |home| {
+                claude_layout(home, "2.1.281");
+                home.dir(".claude/downloads");
+                home.file(".claude/settings.json");
+            },
+            &[".claude/", ".claude.json"],
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_antigravitys_uninstall_goes_ahead_with_a_zshrc_kept_by_mackup_in_a_protected_place(
+    ) {
+        plans_alike_wherever_mackup_keeps(
+            &AGY,
+            |home| {
+                agy_layout(home);
+            },
+            &[".zshrc", ".zprofile"],
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_grok_builds_uninstall_goes_ahead_with_a_zshrc_kept_by_mackup_in_a_protected_place(
+    ) {
+        plans_alike_wherever_mackup_keeps(
+            &GROK,
+            |home| {
+                grok_layout(home, "0.1.205");
+            },
+            &[".zshrc"],
+        )
+        .await;
+    }
+
+    #[test]
+    fn test_a_kept_path_whose_folder_leads_into_a_protected_place_is_kept_up_to_its_edge() {
+        // `~/.gemini` itself kept in iCloud Drive: Antigravity's kept
+        // folder under it is never looked at -- not known to be there --
+        // and is kept all the same, its way ending at the place's edge.
+        let home = TempHome::new("removal-kept-folder-in-icloud");
+        agy_layout(&home);
+        mackup(
+            &home,
+            "Library/Mobile Documents/com~apple~CloudDocs/Mackup",
+            &[".gemini/"],
+        );
+        let job = job_of(&AGY, home.path());
+        let look = Look::new(&job).expect("a look");
+        let kept = kept_places(&look).expect("placed");
+        let gemini = kept
+            .iter()
+            .find(|kept| kept.spec.path == "~/.gemini/antigravity-cli")
+            .expect("kept");
+        assert_eq!(gemini.target, None);
+        // `~/Library/Mobile Documents` is the place: the way stops there.
+        let edge = home.path().join("Library/Mobile Documents");
+        assert_eq!(gemini.on_the_way.last(), Some(&edge));
+        assert!(gemini
+            .on_the_way
+            .iter()
+            .all(|step| !look.protected.contains(step) || *step == edge));
+        assert!(plan_removal(&job).is_ok());
     }
 
     #[test]

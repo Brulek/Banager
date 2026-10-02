@@ -63,6 +63,16 @@ pub fn is_protected(error: &io::Error) -> bool {
         .is_some_and(|inner| inner.is::<InsideAProtectedPlace>())
 }
 
+/// Where a look refused as protected (`is_protected`) got to: the path as
+/// far as the walk went, the links outside the place followed, the rest
+/// as written.
+pub fn protected_at(error: &io::Error) -> Option<&Path> {
+    error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<InsideAProtectedPlace>())
+        .map(|inside| inside.at.as_path())
+}
+
 fn protected_error(at: PathBuf) -> io::Error {
     io::Error::new(
         io::ErrorKind::PermissionDenied,

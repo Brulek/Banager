@@ -197,6 +197,41 @@ async fn test_codex_is_listed_with_the_current_links_version_and_nothing_runs() 
 }
 
 #[tokio::test]
+async fn test_a_codex_kept_in_a_protected_place_is_not_listed_and_not_looked_into() {
+    // `~/.codex` (or only its `releases/`) moved into `~/Documents` or
+    // iCloud Drive and linked back: the launcher leads there through
+    // `current`, so it is one Banager cannot look at, and the row is not
+    // listed -- not listed with a version unknown (docs/what-we-run.md,
+    // Codex). Kept anywhere else, it is listed with its version.
+    for keep in [
+        "elsewhere",
+        "Documents",
+        "Library/Mobile Documents/com~apple~CloudDocs",
+    ] {
+        for moved in [".codex", ".codex/packages/standalone/releases"] {
+            let home = Home::new("kept");
+            install(&home, RELEASE, true);
+            let kept = home.at(keep).join(moved);
+            std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+            std::fs::rename(home.at(moved), &kept).unwrap();
+            std::os::unix::fs::symlink(&kept, home.at(moved)).unwrap();
+            let mocks = Mocks::new();
+            let instances = mocks.adapter().detect(&home.env(Vec::new())).await;
+            if keep == "elsewhere" && moved == ".codex" {
+                assert_eq!(instances.len(), 1, "{moved}");
+                assert_eq!(instances[0].version.as_deref(), Some("0.159.3"));
+            } else {
+                // `releases/` moved anywhere: the program then resolves
+                // outside the root, which is not the installer's layout
+                // whether or not the place is protected.
+                assert!(instances.is_empty(), "{keep} {moved}: {instances:?}");
+            }
+            mocks.assert_untouched();
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_a_pinned_install_is_not_said_to_update_itself() {
     // `CODEX_RELEASE=<version>`: the script deletes `auto-update-version`.
     let home = Home::new("pinned");

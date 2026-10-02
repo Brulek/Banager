@@ -130,12 +130,17 @@ icon is drawn from, and the program a command is about to run
 the places Banager never looks into (`~/Documents`, iCloud Drive,
 `/Volumes`, ...; Disk use, below): a step into one is not taken, and if
 a person has made one of these paths, or a folder above it, a link into
-one, Banager answers as it does for a path it may not read. A launcher
-there is not listed; Codex's version through such a link is not read (the
-row is listed with its version unknown); an uninstall preview refuses
-when a kept path leads there (`OverlapsKept`) and takes a listed path
-reached through one as not what the list describes; a file a tool wrote
-there is not read; npm's prefix there is treated as one this account
+one, Banager answers as it does for a path it may not read -- and where
+a program Banager runs may still read it, the preview says the most that
+program may do rather than the least. A launcher there is not listed, a
+Codex among them: when `~/.codex`, or its `releases/`, is kept in such a
+place, its launcher leads there, and the Codex row is not listed at all
+(Codex's section); an uninstall preview follows a kept path only as far
+as such a place's edge -- nothing it moves is ever inside one (Claude
+Code's section says what that leaves) -- and takes a listed path reached
+through one as not what the list describes; a `brew.env` file there is
+taken as one that may undo Banager's settings (Homebrew's section); a
+file a tool wrote there is not read; npm's prefix there is treated as one this account
 cannot write to (read-only); a Homebrew or a program there is not found
 and never run. `crates/banager-core/tests/safety_source_test.rs` holds
 every production file to this: a path looked up any other way fails it,
@@ -1549,11 +1554,22 @@ what either leads to, or any link or folder on the way there: a
 `~/.local/share/claude`, which leads on to settings kept elsewhere,
 refuses the uninstall. Each of these looks is taken one step at a time
 and never into or through a place Banager never looks into
-(`protected::look`; How Banager runs anything, above): a `~/.claude` or
-`~/.claude.json` that leads into one -- kept in iCloud Drive or
-`~/Documents` -- refuses the uninstall, since what it leads to is never
-looked at and nothing confirms the moves leave it alone, and a listed
-path reached through one is not what the list describes. If a
+(`protected::look`; How Banager runs anything, above). A listed path
+that is, or is reached through, one is not what the list describes, so
+nothing the uninstall moves is ever inside one. A kept path that leads
+into one -- a `~/.claude` or `~/.claude.json` that Mackup or a dotfiles
+folder keeps in iCloud Drive, Dropbox (`~/Library/CloudStorage`) or
+`~/Documents` -- is followed only as far as the place's edge
+(`removal::kept_places`): the links and folders on its way there are
+checked as any kept path's are, and what it leads to inside the place is
+never looked at; the uninstall goes ahead, and the preview lists it among
+what stays. What this leaves unchecked, precisely: a link inside the
+place that leads back out of it. If the file Mackup keeps were itself a
+link to a file inside a folder the uninstall moves -- `~/.local/share/claude`,
+say -- the move would take that file to the Trash with its folder, and
+the kept path would lead nowhere afterwards until the folder is put back
+from the Trash. A link that stays inside the place, or leads anywhere
+the uninstall does not move, is unaffected. If a
 check fails on a path the list requires, the whole uninstall is refused,
 in the user's language, and nothing is moved; an optional path that is
 there but that Banager cannot confirm is the tool's — the wrong kind of
@@ -1691,7 +1707,10 @@ is never touched), `~/.cache/antigravity` (the installer's download staging
 folder, usually empty: it sits directly in `~/.cache`, one of the folders
 Banager never moves anything out of), and `~/.zshrc` and `~/.zprofile`,
 where the installer adds its `PATH` line (Banager never edits a startup
-file, and does not read these to find the line). The whole uninstall has
+file, and does not read these to find the line). A kept path that leads
+into one of the places Banager never looks into -- a `~/.zshrc` that
+Mackup keeps in iCloud Drive -- is followed only as far as the place's
+edge, and what that leaves unchecked is what Claude Code's section says. The whole uninstall has
 120 s, as Claude Code's does. There is no vendor uninstall document; the
 list is the installer script's own path plus the cask's `zap`, and the
 fixture README says so.
@@ -1828,7 +1847,9 @@ launcher-only row that a second Uninstall finishes, as for Claude Code.
 The whole uninstall has 120 s, as Claude Code's does. It keeps `~/.grok`
 itself — `config.toml`, `auth.json` (the login), `sessions/`, `memory/`,
 `skills/`, `plugins/` — and `~/.zshrc`, where the installer wrote its
-marked block. A `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside
+marked block; a kept path that leads into one of the places Banager never
+looks into is followed only as far as the place's edge, as for Claude
+Code's. A `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside
 your home folder, so Banager never touches it: when it is a link into
 `~/.grok` that leads nowhere once the paths above are in the Trash — the
 installer's fallback, to grok's download or through `~/.grok/bin/grok`,
@@ -2105,11 +2126,12 @@ when that folder is directly in `releases/` (the same folder, by device
 and inode, as `releases` leads to). Each look is taken one step at a time
 and never into or through a place Banager never looks into
 (`release_link::read`, `protected::look`). A missing, dangling or
-unexpected link gives no version, and so does one that leads into such a
-place -- `~/.codex`, or its `releases/`, kept in iCloud Drive or
-`~/Documents`: nothing there is looked at (the row is listed with its
-version unknown, and is not marked as not responding, since nothing was
-asked). Then one small file,
+unexpected link gives no version (the row is listed with its version
+unknown, and is not marked as not responding, since nothing was asked).
+A `~/.codex`, or its `releases/`, kept in iCloud Drive or `~/Documents`
+is not looked into at all: the launcher leads there through `current`,
+so the row is not listed (Detect, above), and no version is read. Then
+one small file,
 `~/.codex/packages/standalone/auto-update-version` (at most 256 bytes,
 only when it is a regular file; opened from the folder it is in, held
 open, without waiting and without following a link, then checked with
