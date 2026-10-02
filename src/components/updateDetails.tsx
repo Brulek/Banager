@@ -11,7 +11,6 @@ import { READ_ONLY_DETAIL_KEYS, UNAVAILABLE_DETAIL_KEYS, UPDATE_BLOCKED_KEYS } f
 import { FAILURE_CAUSE_KEYS, lookupFailureCause, type FailureCause } from "../lib/failureCause";
 import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
-import { modelDownloadVersion } from "../lib/modelDownload";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { CopyButton } from "./CopyButton";
 
@@ -192,8 +191,7 @@ export interface UpdateVersionColumn {
  * The adapter's own comment (crates/banager-core/src/adapters/ollama/
  * mod.rs) says never to render them as a version jump, and a 64-hex
  * string is not something to put in front of this audience either way:
- * such a row says "New version" -- only when it was checked -- with the
- * most its update downloads where that is known. A row
+ * such a row says "New version" -- only when it was checked. A row
  * Banager could not check has no version to move to (its `target` is its
  * installed version, `uncheckable_candidate` in crates/banager-core/src/
  * adapters/mod.rs), so it shows the version it has, and a model's
@@ -204,11 +202,7 @@ export function updateVersionColumn(t: TFunction, candidate: UpdateCandidate): U
   if (!candidate.checkable) {
     return { version: candidate.channel === "Digest" || current === "" ? null : current };
   }
-  // With the most its update downloads, where that is known
-  // (src/lib/modelDownload.ts): 「有新版本 · 最多约4.7 GB」.
-  if (candidate.channel === "Digest") {
-    return { version: modelDownloadVersion(t, candidate.download_bytes) ?? t("updates.newVersion") };
-  }
+  if (candidate.channel === "Digest") return { version: t("updates.newVersion") };
   if (current !== "" && target !== "") {
     return { version: t("updates.versionChange", { current, target }), newVersion: target };
   }

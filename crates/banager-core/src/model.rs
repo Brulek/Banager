@@ -1357,8 +1357,8 @@ pub struct UpdateCandidate {
     /// check already read -- an upper bound, since a blob another local
     /// model shares is already on this Mac. `None` for every other source,
     /// and for a model whenever the number could be wrong. Read by
-    /// src/lib/modelDownload.ts: 「最多约4.7 GB」 in the update
-    /// confirmation's note and the row's version column. Always sent
+    /// src/lib/modelDownload.ts: 「最多约4.7 GB」 in the model's note in the
+    /// update confirmation, one tool's or Update All's. Always sent
     /// (`null` when `None`); `serde(default)` so a candidate written
     /// before it existed still reads.
     #[serde(default)]

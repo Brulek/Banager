@@ -515,8 +515,7 @@
     }
   },
   "modelDownload": {
-    "note": "Downloads the model files that changed, up to about {{size}}.",
-    "rowVersion": "New version · up to about {{size}}"
+    "note": "Downloads the model files that changed, up to about\u00a0{{size}}."
   },
   "commands": {
     "title": "In Terminal",

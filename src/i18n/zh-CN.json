@@ -472,8 +472,7 @@
     }
   },
   "modelDownload": {
-    "note": "需要下载已更改的模型文件，最多约{{size}}。",
-    "rowVersion": "有新版本 · 最多约{{size}}"
+    "note": "需要下载已更改的模型文件，最多约{{size}}。"
   },
   "commands": {
     "title": "在终端里输入时",

@@ -1897,10 +1897,11 @@ describe("UpdatesPage", () => {
     }
   });
 
-  it("says the most a model's update downloads on its row, alone and in Update All, and the plain sentence where it is not known, in either language", async () => {
+  it("says the most a model's update downloads under it alone and in Update All, the plain sentence where it is not known, and not on its row, in either language", async () => {
     // `UpdateCandidate.download_bytes` (crates/banager-core/src/adapters/
     // ollama/parse.rs `changed_blob_bytes`): an upper bound, worded as one
-    // (src/lib/modelDownload.ts). `qwen3:8b`'s is not known.
+    // (src/lib/modelDownload.ts). `qwen3:8b`'s is not known. The row keeps
+    // 「有新版本」, which leaves a long model name its room.
     const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
     updates = [
@@ -1950,18 +1951,18 @@ describe("UpdatesPage", () => {
     };
 
     let page = renderPage();
-    expect(await versionColumn(MODELS.coder)).toBe("New version · up to about 4.7 GB");
+    expect(await versionColumn(MODELS.coder)).toBe("New version");
     expect(await versionColumn("qwen3:8b")).toBe("New version");
     expect(await linesUnderOne(ROW_UPDATE)).toEqual([
       "This model comes from modelscope.cn, not Ollama's own library.",
-      "Downloads the model files that changed, up to about 4.7 GB.",
+      "Downloads the model files that changed, up to about\u00a04.7 GB.",
     ]);
     page.unmount();
     page = renderPage();
     expect(await notesInUpdateAll("Update All")).toEqual({
       coder: [
         "This model comes from modelscope.cn, not Ollama's own library.",
-        "Downloads the model files that changed, up to about 4.7 GB.",
+        "Downloads the model files that changed, up to about\u00a04.7 GB.",
       ],
       qwen: ["Downloads the model files that changed."],
     });
@@ -1973,7 +1974,7 @@ describe("UpdatesPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       page = renderPage();
-      expect(await versionColumn(MODELS.coder)).toBe("有新版本 · 最多约4.7 GB");
+      expect(await versionColumn(MODELS.coder)).toBe("有新版本");
       expect(await versionColumn("qwen3:8b")).toBe("有新版本");
       expect(await linesUnderOne(/^更新(?!所选|全部)/)).toEqual([
         "此模型来自modelscope.cn，不是Ollama官方模型库。",
