@@ -118,7 +118,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
       });
 
       // The cause in the header, as the row and the bar say it; the next step under it.
-      expect(await findByText("Needs your password")).toBeInTheDocument();
+      expect(await findByText("Update · Needs your password")).toBeInTheDocument();
       expect(await findByText("This step needs your Mac login password, which can't be entered here.")).toBeInTheDocument();
       expect(
         await findByText(
@@ -161,7 +161,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, findByRole } = renderWithProviders(<LogDrawer />);
-      expect(await findByText("需要输入密码")).toBeInTheDocument();
+      expect(await findByText("更新 · 需要输入密码")).toBeInTheDocument();
       expect(await findByText("这一步需要输入Mac的登录密码，无法在这里输入。")).toBeInTheDocument();
       expect(
         await findByText("可以在终端里运行下面这条命令，按提示输入密码。输入时屏幕上不显示任何字符，这是正常的。"),
@@ -181,7 +181,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
       },
     ];
     const { findByText, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
-    expect(await findByText("Password not accepted")).toBeInTheDocument();
+    expect(await findByText("Update · Password not accepted")).toBeInTheDocument();
     expect(
       await findByText("Enter your Mac login password in the password window, then try again."),
     ).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
       { ...passwordOp, outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "example"' } } },
     ];
     const { findByText, getByRole, queryByRole } = renderWithProviders(<LogDrawer />);
-    await findByText("Connection failed");
+    await findByText("Update · Connection failed");
     expect(getByRole("dialog").querySelector("code")).toBeNull();
     expect(queryByRole("button", { name: "Copy Command" })).toBeNull();
   });

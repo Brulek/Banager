@@ -12,7 +12,7 @@ import {
   cancelState,
   isActive,
   outcomeTone,
-  outcomeWords,
+  operationWords,
   statusKey,
   useOperationName,
 } from "../lib/operations";
@@ -69,8 +69,9 @@ function noteText(t: TFunction, note: LogNote): string {
  * (「ffmpeg」) as its title -- not 「更新ffmpeg」, whose English "Update
  * ffmpeg" reads as a command (walk-3 W3-3) -- and what it does, where it
  * stands or how it ended under that, in the words the operation bar uses
- * (`statusKey`, `outcomeWords`): 「正在更新…」, 「网络连接失败」 where the
- * tool's words give the cause, 「未能更新」 where they do not, and what the
+ * (`operationWords`): 「正在更新…」, 「更新 · 网络连接失败」 where the
+ * tool's words give the cause -- what it does said in front wherever the
+ * words do not say it -- 「未能更新」 where they do not, and what the
  * tool or macOS wrote only with "Show technical details" on, since it is
  * right below, in the log; what to do next about an outcome that needs it
  * -- the next step for a failure whose cause the tool's own words give
@@ -150,11 +151,11 @@ export function LogDrawer() {
     const cause = done ? outcomeCause(op.outcome) : null;
     const detailKey = done && op.outcome !== null ? outcomeDetailKey(op.outcome) : null;
     const cancel = cancelState(op);
-    const words = status !== null ? t(status) : outcomeWords(t, op.outcome, op.kind, technical);
+    const words = operationWords(t, op, logs, technical);
     return {
       title: nameOf(op),
       // The title and the subtitle as one line, as the operation bar says
-      // them -- 「git：未能更新」 -- for a screen reader stepping through a run.
+      // them -- 「git：更新 · 网络连接失败」 -- for a screen reader stepping through a run.
       line: t("operations.current", { name: nameOf(op), status: words }),
       // Where it stands while under way; once done, how it ended.
       subtitle:

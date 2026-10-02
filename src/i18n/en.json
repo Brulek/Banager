@@ -704,6 +704,7 @@
   },
   "operations": {
     "current": "{{name}}: {{status}}",
+    "kindStatus": "{{kind}} · {{status}}",
     "noCancelHint": "This can't be cancelled once it starts. Don't quit Banager or shut down your Mac until it finishes.",
     "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
     "stop": "Cancel",
@@ -733,6 +734,11 @@
       "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped: {{error}}",
       "outOfTime": "Time ran out after {{seconds}} seconds, so the uninstall stopped before moving {{path}}. What was moved is in the Trash; uninstall again to move the rest.",
       "backAfterUninstall": "Found {{path}} at the final check and left it where it is."
+    },
+    "kind": {
+      "Install": "Install",
+      "Uninstall": "Uninstall",
+      "Upgrade": "Update"
     },
     "running": {
       "Install": "Installing…",

@@ -140,7 +140,7 @@ describe("OperationBar", () => {
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("onyx: Waiting for Homebrew's software list…");
+    await findByText("onyx: Update · Waiting for Homebrew's software list…");
     // Cancel must still work: the wait is still part of an active op.
     expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
@@ -151,7 +151,7 @@ describe("OperationBar", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderWithProviders(<OperationBar />);
-      await findByText("ffmpeg：正在等待Homebrew更新软件清单…");
+      await findByText("ffmpeg：更新 · 正在等待Homebrew更新软件清单…");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -186,6 +186,54 @@ describe("OperationBar", () => {
     }
   });
 
+  it("says what it does in front wherever the words don't, in every other state (walk-3 review 1.1)", async () => {
+    const network: Outcome = { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } };
+    const plain: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong" } };
+    const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
+    const cases: [OpSummary, boolean, string, string][] = [
+      [op(1, "htop", "Queued", null, { kind: "Uninstall" }), false, "htop: Uninstall · Queued", "htop：卸载 · 排队中"],
+      [op(1, "git", "Cancelling"), false, "git: Update · Cancelling…", "git：更新 · 正在取消…"],
+      [op(1, "git", "Verifying"), false, "git: Update · Checking the result…", "git：更新 · 正在核对结果…"],
+      [op(1, "git", "Done", network), false, "git: Update · Connection failed", "git：更新 · 网络连接失败"],
+      [op(1, "htop", "Done", "Cancelled", { kind: "Uninstall" }), false, "htop: Uninstall · Cancelled", "htop：卸载 · 已取消"],
+      [op(1, "jq", "Done", "Unconfirmed", { kind: "Install" }), false, "jq: Install · Result unconfirmed", "jq：安装 · 结果未确认"],
+      [
+        op(1, "git", "Done", plain),
+        true,
+        "git: Update · Couldn't finish: Error: something went wrong",
+        "git：更新 · 未能完成：Error: something went wrong",
+      ],
+      [
+        op(1, "htop", "Done", { BanagerFailed: "Panicked" }, { kind: "Uninstall" }),
+        false,
+        "htop: Uninstall · Couldn't finish because of an internal error",
+        "htop：卸载 · 未能完成：发生内部错误",
+      ],
+      // Words that say it already stand alone.
+      [op(1, "git", "Done", unchanged), false, "git: Update reported success, but the version didn't change", "git：显示已更新，但版本没有变化"],
+      [op(1, "git", "Done", plain), false, "git: Couldn't update", "git：未能更新"],
+    ];
+    try {
+      for (const [operation, tech, english, chinese] of cases) {
+        operations = [operation];
+        technical = tech;
+        const en = renderWithProviders(<OperationBar />);
+        expect(await en.findByText(english)).toBeInTheDocument();
+        en.unmount();
+        await i18n.changeLanguage("zh-CN");
+        try {
+          const zh = renderWithProviders(<OperationBar />);
+          expect(await zh.findByText(chinese)).toBeInTheDocument();
+          zh.unmount();
+        } finally {
+          await i18n.changeLanguage("en");
+        }
+      }
+    } finally {
+      technical = false;
+    }
+  });
+
   it("shows cancelling, not the brew-update wait, once Cancel is pressed during the wait", async () => {
     // F5 fix: `cancel()` (ops/mod.rs) moves the record straight to
     // CancelRequested when the user presses Cancel, without waiting for
@@ -197,8 +245,8 @@ describe("OperationBar", () => {
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
-    await findByText("onyx: Cancelling…");
-    expect(queryByText("onyx: Waiting for Homebrew's software list…")).not.toBeInTheDocument();
+    await findByText("onyx: Update · Cancelling…");
+    expect(queryByText("onyx: Update · Waiting for Homebrew's software list…")).not.toBeInTheDocument();
     // A cancel already on its way: the button stays, and cannot be pressed twice.
     expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
@@ -260,7 +308,7 @@ describe("OperationBar", () => {
     operations = [failed];
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("git: Connection failed");
+    await findByText("git: Update · Connection failed");
     expect(queryByText(/ghcr\.io|Failed to download/)).toBeNull();
     expect(getByRole("button", { name: "View Log" })).toBeInTheDocument();
   });
@@ -271,7 +319,7 @@ describe("OperationBar", () => {
       op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: 'No available formula with the name "jqq"' } }, { kind: "Install" }),
     ];
     const tech = renderWithProviders(<OperationBar />);
-    await tech.findByText('jqq: Couldn\'t finish: No available formula with the name "jqq"');
+    await tech.findByText('jqq: Install · Couldn\'t finish: No available formula with the name "jqq"');
     tech.unmount();
 
     // macOS's own reason a program would not start, likewise.
@@ -282,7 +330,7 @@ describe("OperationBar", () => {
 
     technical = false;
     const off = renderWithProviders(<OperationBar />);
-    await off.findByText("wget: Couldn't start the program. Nothing changed");
+    await off.findByText("wget: Update · Couldn't start the program. Nothing changed");
     expect(off.queryByText(/os error 13/)).toBeNull();
   });
 
@@ -657,7 +705,7 @@ describe("OperationBar", () => {
       Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password\nsudo: a password is required" },
     };
     await listNow(queryClient, [op(21, "android-platform-tools", "Done", password)]);
-    await findByText("android-platform-tools: Needs your password");
+    await findByText("android-platform-tools: Update · Needs your password");
     expect(queryByRole("button", { name: "View Log" })).toBeNull();
     fireEvent.click(getByRole("button", { name: "View Steps" }));
     expect(useUiStore.getState()).toMatchObject({ focusedOpId: 21, logRun: [], drawerOpen: true });
@@ -767,7 +815,7 @@ describe("OperationBar", () => {
 
     const { findByRole, getByText } = renderWithProviders(<OperationBar />);
     expect(await findByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(getByText("jq: Checking the result…")).toBeInTheDocument();
+    expect(getByText("jq: Update · Checking the result…")).toBeInTheDocument();
   });
 
   it("offers no Cancel button for a running rustup self update, whose plan says NoCancel", async () => {
@@ -811,7 +859,7 @@ describe("OperationBar", () => {
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
 
-    await findByText("rustup: Queued");
+    await findByText("rustup: Update · Queued");
     const cancel = await findByRole("button", { name: "Cancel" });
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);

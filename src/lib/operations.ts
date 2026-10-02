@@ -19,6 +19,19 @@ export function isActive(op: OpSummary): boolean {
 }
 
 /**
+ * What an operation does, as a noun -- 「更新」, "Update" -- said before
+ * where it stands wherever those words do not say it themselves:
+ * 「git：更新 · 排队中」, "git: Update · Connection failed"
+ * (`operationWords`; walk-3 review 1.1). A `Record` over `OpKind`, so a
+ * kind added to the mirror without a word here fails `tsc`.
+ */
+export const OP_KIND_KEYS: Record<OpKind, string> = {
+  Install: "operations.kind.Install",
+  Uninstall: "operations.kind.Uninstall",
+  Upgrade: "operations.kind.Upgrade",
+};
+
+/**
  * What an operation is doing while it runs, said of the tool it acts on
  * -- 「ffmpeg：正在更新…」, "htop: Uninstalling…" -- never a bare verb in
  * front of the name, which in English reads as a command ("Update
@@ -197,6 +210,45 @@ export function outcomeWords(t: Translate, outcome: Outcome | null, kind: OpKind
     }
   }
   return outcomeSentence(t, outcome, kind);
+}
+
+/**
+ * Whether the words `operationWords` says of `op` name its kind already:
+ * running (「正在卸载…」), a success (「已卸载」), a plain failure
+ * (「未能卸载」), and what did not add up after it, whose sentences say
+ * "Reported removed" or "Update reported success". Anything else --
+ * queued, cancelling, checking the result, the wait for Homebrew, a
+ * failure's cause, cancelled, unconfirmed, a program's own words or
+ * Banager's -- does not.
+ */
+function wordsNameKind(op: OpSummary, logs: LogLine[], technical: boolean): boolean {
+  if (op.status === "Running") return !isWaitingForBrewUpdate(op, logs);
+  if (op.status !== "Done") return false;
+  const outcome = op.outcome;
+  if (outcome === "Succeeded") return true;
+  if (outcome === null || typeof outcome === "string") return false;
+  if ("NeedsAttention" in outcome) return true;
+  if ("Failed" in outcome) {
+    return !technical && outcomeCause(outcome) === null && outcome.Failed.summary.trim() !== "";
+  }
+  return false;
+}
+
+/**
+ * Where `op` stands, or how it ended, in the words the operation bar and
+ * the log sheet say after its name -- with what it does in front where
+ * those words do not say it: 「正在卸载…」 and 「已更新」 as they are,
+ * 「更新 · 排队中」, "Uninstall · Cancelled", "Update · No permission".
+ * Without it the bar and the sheet, named for the tool alone (walk-3
+ * W3-3), could not tell an update from an uninstall once one ended in
+ * anything but its plain words (review 1.1).
+ */
+export function operationWords(t: Translate, op: OpSummary, logs: LogLine[], technical: boolean): string {
+  const status = statusKey(op, logs);
+  const words = status !== null ? t(status) : outcomeWords(t, op.outcome, op.kind, technical);
+  return wordsNameKind(op, logs, technical)
+    ? words
+    : t("operations.kindStatus", { kind: t(OP_KIND_KEYS[op.kind]), status: words });
 }
 
 export function outcomeTone(outcome: Outcome | null): OutcomeTone {

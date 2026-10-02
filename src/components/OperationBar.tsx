@@ -6,9 +6,8 @@ import {
   currentOf,
   isActive,
   outcomeTone,
-  outcomeWords,
+  operationWords,
   runsToItsEnd,
-  statusKey,
   trackRun,
   useOperationName,
   type OperationRun,
@@ -50,10 +49,11 @@ function needsALook(tone: OutcomeTone): boolean {
  * for all of it that can still be stopped -- 「取消其余」 while one of it
  * runs that nothing can stop. Once everything is done, how it went in
  * place of where it stood -- 「已更新3个工具」, 「1个更新失败，2个已成功」, 「git：
- * 网络连接失败」 -- with its log where it needs a look, and a close ×.
- * What a program wrote -- a tool's error, macOS's reason a program would
- * not start -- is said here only with "Show technical details" on
- * (`outcomeWords`); its log always has it. Closed, it stays away until the
+ * 更新 · 网络连接失败」 -- with its log where it needs a look, and a close ×.
+ * What it does is said in front wherever the words do not say it
+ * (`operationWords`). What a program wrote -- a tool's error, macOS's
+ * reason a program would not start -- is said here only with "Show
+ * technical details" on (`outcomeWords`); its log always has it. Closed, it stays away until the
  * next operation starts.
  *
  * Its operations are a run (`trackRun`): the ones started while others
@@ -141,8 +141,7 @@ export function OperationBar() {
   const current = (batch ? currentOf(unstoppable) : undefined) ?? currentOf(active);
   if (current !== undefined) {
     const done = total - active.length;
-    const status = statusKey(current, logs);
-    const line = t("operations.current", { name: nameOf(current), status: status === null ? "" : t(status) });
+    const line = t("operations.current", { name: nameOf(current), status: operationWords(t, current, logs, technical) });
     // With several, one Cancel for the run: every operation of it that can
     // still be cancelled -- each one queued, whatever its plan, and each
     // one running whose plan allows it, the current one among them when it
@@ -234,7 +233,7 @@ export function OperationBar() {
     if (total === 1) {
       const [op] = inRun;
       tone = tones[0];
-      words = t("operations.current", { name: nameOf(op), status: outcomeWords(t, op.outcome, op.kind, technical) });
+      words = t("operations.current", { name: nameOf(op), status: operationWords(t, op, logs, technical) });
       // The log of anything but a plain success: to see what went wrong,
       // or -- after a cancel -- what had already happened.
       logOf = tone === "success" ? undefined : op;

@@ -6,7 +6,7 @@ import { renderWithProviders } from "../test/setup";
 import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
-import type { OpSummary } from "../lib/types";
+import type { OpSummary, Outcome } from "../lib/types";
 import { BUTTON } from "./ui/controls";
 
 /// The drawer as it actually appears: something opened it, and there is
@@ -147,7 +147,7 @@ describe("LogDrawer", () => {
     try {
       const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
       const status = await findByText("第2个，共2个");
-      await waitFor(() => expect(status).toHaveTextContent("第2个，共2个，jq：结果未确认"));
+      await waitFor(() => expect(status).toHaveTextContent("第2个，共2个，jq：安装 · 结果未确认"));
       expect(getByRole("button", { name: "上一个日志" })).toBeEnabled();
       expect(getByRole("button", { name: "下一个日志" })).toBeDisabled();
     } finally {
@@ -353,6 +353,38 @@ describe("LogDrawer", () => {
     }
   });
 
+  it("says what the operation does under its name wherever the words don't, in both languages (walk-3 review 1.1)", async () => {
+    const network: Outcome = {
+      Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' },
+    };
+    const cases: [OpSummary, string, string][] = [
+      [{ ...runningOp, status: "Queued" }, "Install · Queued", "安装 · 排队中"],
+      [{ ...runningOp, kind: "Uninstall", status: "Done", outcome: "Cancelled" }, "Uninstall · Cancelled", "卸载 · 已取消"],
+      [{ ...runningOp, kind: "Upgrade", status: "Done", outcome: network }, "Update · Connection failed", "更新 · 网络连接失败"],
+      [{ ...runningOp, status: "Done", outcome: "Unconfirmed" }, "Install · Result unconfirmed", "安装 · 结果未确认"],
+      // Words that say it already stand alone.
+      [{ ...runningOp, kind: "Uninstall" }, "Uninstalling…", "正在卸载…"],
+    ];
+    for (const [operation, english, chinese] of cases) {
+      operations = [operation];
+      const en = renderWithProviders(<LogDrawer />);
+      const dialog = await en.findByRole("dialog", { name: "jq" });
+      expect(await within(dialog).findByText(english)).toBeInTheDocument();
+      en.unmount();
+      act(() => useUiStore.getState().setDrawerOpen(true));
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const zh = renderWithProviders(<LogDrawer />);
+        const sheet = await zh.findByRole("dialog", { name: "jq" });
+        expect(await within(sheet).findByText(chinese)).toBeInTheDocument();
+        zh.unmount();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+      act(() => useUiStore.getState().setDrawerOpen(true));
+    }
+  });
+
   it("is simply the operation log until the list of operations has it", async () => {
     operations = [];
     const { findByRole } = renderWithProviders(<LogDrawer />);
@@ -399,7 +431,7 @@ describe("LogDrawer", () => {
 
     const { findByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Couldn't finish because of an internal error");
+    await findByText("Install · Couldn't finish because of an internal error");
     await findByText("Check the list to see whether anything changed.");
   });
 
@@ -418,7 +450,7 @@ describe("LogDrawer", () => {
     try {
       const { findByText, queryByText, findByRole } = renderWithProviders(<LogDrawer />);
       await findByRole("dialog", { name: "jq" });
-      await findByText("未能开始：找不到/opt/homebrew/bin/brew，没有改动");
+      await findByText("安装 · 未能开始：找不到/opt/homebrew/bin/brew，没有改动");
       expect(queryByText(/program not found/)).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
@@ -494,7 +526,8 @@ describe("LogDrawer", () => {
     });
 
     // The cause, as the row and the bar say it, then what to do.
-    const cause = await findByText("Connection failed");
+    // What it does in front: the words don't say it (walk-3 review 1.1).
+    const cause = await findByText("Update · Connection failed");
     await findByText("Check your internet connection, then try again.");
     // The tool's own words only in the log, below: not in the header,
     // where Show technical details is off.
@@ -522,7 +555,7 @@ describe("LogDrawer", () => {
       ];
       const network = renderWithProviders(<LogDrawer />);
       await network.findByRole("dialog", { name: "git" });
-      expect(await network.findByText("网络连接失败")).toBeInTheDocument();
+      expect(await network.findByText("更新 · 网络连接失败")).toBeInTheDocument();
       expect(network.queryByText(/^未能完成：Error/)).toBeNull();
       expect(network.getByRole("button", { name: "拷贝日志" })).toBeInTheDocument();
       network.unmount();
@@ -571,7 +604,7 @@ describe("LogDrawer", () => {
     });
     const { findByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText('Couldn\'t finish: Error: jq: Failed to download resource "jq (1.8.1)"');
+    await findByText('Update · Couldn\'t finish: Error: jq: Failed to download resource "jq (1.8.1)"');
     await findByText("Check your internet connection, then try again.");
   });
 
@@ -757,7 +790,7 @@ describe("LogDrawer, under a tool's own words", () => {
     // Banager's own failure: its words, not a tool's.
     operations = [{ ...runningOp, status: "Done", outcome: { BanagerFailed: "Panicked" } }];
     const own = renderWithProviders(<LogDrawer />);
-    await own.findByText("Couldn't finish because of an internal error");
+    await own.findByText("Install · Couldn't finish because of an internal error");
     expect(own.container.ownerDocument.querySelector("[data-failure-next-step]")).toBeNull();
     own.unmount();
 
