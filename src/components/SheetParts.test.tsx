@@ -142,8 +142,8 @@ describe("useToolsInTurn", () => {
     });
 
     /** A list whose every drawing takes 12 ms, as 754 tools do on a slow Mac. */
-    function Slow({ stage, seen }: { stage: string; seen: ToolsInTurn[] }) {
-      const turn = useToolsInTurn(754, 1, stage);
+    function Slow({ stage, urgent = false, seen }: { stage: string; urgent?: boolean; tick?: number; seen: ToolsInTurn[] }) {
+      const turn = useToolsInTurn(754, 1, stage, urgent);
       seen.push(turn);
       const started = performance.now();
       while (performance.now() - started < 12) {
@@ -160,6 +160,22 @@ describe("useToolsInTurn", () => {
       await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 5000 });
       // It did come mid-way: tools held as the first stage drew them, not all 754.
       expect(seen.some((turn) => turn.held > 0 && turn.held < 754 && turn.drawn < 754)).toBe(true);
+    });
+
+    it("goes on drawing, `urgent`, while the dialog is drawn again every few milliseconds", async () => {
+      const seen: ToolsInTurn[] = [];
+      root.render(<Slow stage="planned" urgent seen={seen} />);
+      // Update all starting an update every 5 ms, each drawing the dialog again.
+      let tick = 0;
+      const starts = setInterval(() => {
+        tick += 1;
+        root.render(<Slow stage="planned" urgent tick={tick} seen={seen} />);
+      }, 5);
+      try {
+        await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 2000 });
+      } finally {
+        clearInterval(starts);
+      }
     });
   });
 });
@@ -243,6 +259,17 @@ describe("SheetToolList", () => {
       true,
       true,
     ]);
+  });
+
+  it("says it is busy only while asked to", () => {
+    const { container, rerender } = renderWithProviders(
+      <SheetToolList label="Tools" busy>
+        {tools(false)}
+      </SheetToolList>,
+    );
+    expect(container.querySelector("[data-sheet-tools]")).toHaveAttribute("aria-busy", "true");
+    rerender(<SheetToolList label="Tools">{tools(false)}</SheetToolList>);
+    expect(container.querySelector("[data-sheet-tools]")).not.toHaveAttribute("aria-busy");
   });
 });
 

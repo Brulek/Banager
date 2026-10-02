@@ -190,16 +190,23 @@ export function SheetTool({
  * again: about 10,000 elements for Update all over 754 tools, 35-40 ms
  * in Chrome with the CPU slowed 4x, at each of its turns
  * (`useToolsInTurn`); drawn by the tools, about 2-5 ms.
+ *
+ * `busy`: not all of its tools are drawn yet, or not as they are now
+ * (`useToolsInTurn`), said to a screen reader as the list being busy, so
+ * that one reading it then is not told it has fewer tools than the
+ * dialog's question and its Update count say.
  */
 export function SheetToolList({
   label,
   contained = true,
   rowsSeparate = false,
+  busy = false,
   children,
 }: {
   label?: string;
   contained?: boolean;
   rowsSeparate?: boolean;
+  busy?: boolean;
   children: ReactNode;
 }) {
   const separators = rowsSeparate
@@ -208,6 +215,7 @@ export function SheetToolList({
   return (
     <ul
       aria-label={label}
+      aria-busy={busy ? true : undefined}
       data-sheet-tools=""
       tabIndex={contained ? 0 : undefined}
       className={`${contained ? "max-h-80 overflow-y-auto " : ""}rounded-group bg-group py-1${separators}`}
@@ -268,8 +276,14 @@ interface Turn {
  * and keeps the others as the first stage drew them (`held`) until a turn
  * reaches them. Once every turn has run, the list is the same whatever
  * the turns were.
+ *
+ * `urgent`: the turns are not transitions but ordinary updates, for a
+ * dialog drawn again and again by what it is doing -- Update all
+ * starting its updates one after another. A transition gives way to each
+ * of those drawings and would wait for them all to end, the list staying
+ * as far as it had got until the last update started.
  */
-export function useToolsInTurn(count: number, batch: number | null, stage: string): ToolsInTurn {
+export function useToolsInTurn(count: number, batch: number | null, stage: string, urgent = false): ToolsInTurn {
   const key = batch === null ? null : `${batch} ${stage}`;
   const [turn, setTurn] = useState<Turn>({ key: null, batch: null, drawn: 0, held: 0 });
   // A new batch or stage, until its first turn is kept: worked out from the
@@ -292,8 +306,10 @@ export function useToolsInTurn(count: number, batch: number | null, stage: strin
     // The next turn as a value, from what this drawing showed: run twice,
     // it is the same turn; one for a batch or stage gone since is only
     // worked out from again, as above.
-    startTransition(() => setTurn({ key, batch, drawn: drawn + TOOLS_DRAWN_PER_TURN, held }));
-  }, [key, batch, drawn, held, count]);
+    const next = () => setTurn({ key, batch, drawn: drawn + TOOLS_DRAWN_PER_TURN, held });
+    if (urgent) next();
+    else startTransition(next);
+  }, [key, batch, drawn, held, count, urgent]);
   return { drawn, held: drawn >= count ? 0 : Math.min(count, held) };
 }
 

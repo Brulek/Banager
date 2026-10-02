@@ -686,7 +686,14 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // drawn anew as it does. A list that fits is drawn whole, in place, at
   // every stage.
   const firstStage = phase === "planning";
-  const turns = useToolsInTurn(ordered.length, batch?.id ?? null, firstStage ? "planning" : "planned");
+  // Once Update is pressed the dialog is drawn again at each update it
+  // starts: the turns go on between those drawings rather than after them.
+  const turns = useToolsInTurn(
+    ordered.length,
+    batch?.id ?? null,
+    firstStage ? "planning" : "planned",
+    phase === "submitting" || phase === "done",
+  );
   const apart = !firstStage && ordered.length > TOOLS_DRAWN_FIRST;
   const drawnNow = ordered.slice(0, turns.drawn);
   const nowKeys = new Set(drawnNow.map(({ item }) => artifactKeyId(item.candidate.key)));
@@ -803,7 +810,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>
       ) : (
-        <SheetToolList label={t("a11y.updateList")} rowsSeparate>
+        <SheetToolList label={t("a11y.updateList")} rowsSeparate busy={turns.drawn < ordered.length}>
           <Fragment key="now">
             {apart ? drawnNow.map(({ item, notes }, index) => tool(item, notes, confirm.refusalOf(item), index)) : null}
           </Fragment>

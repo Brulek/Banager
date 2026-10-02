@@ -83,11 +83,14 @@ const namesOf = (dialog: HTMLElement) => rowsOf(dialog).map((row) => row.querySe
 /** A tool with something to say under its name: its lines are a list of their own. */
 const sayingOf = (dialog: HTMLElement) => rowsOf(dialog).filter((row) => row.querySelector("li, [role='alert']") !== null);
 
-/** After each drawing the dialog commits: how many tools its list has, and how many say something. */
-let commits: Array<{ rows: number; saying: number }> = [];
+/** After each drawing the dialog commits: how many tools its list has, how many say something, and whether it is busy. */
+let commits: Array<{ rows: number; saying: number; busy: boolean }> = [];
 function recordCommit() {
   const dialog = document.querySelector<HTMLElement>("[role='dialog']");
-  if (dialog !== null) commits.push({ rows: rowsOf(dialog).length, saying: sayingOf(dialog).length });
+  const list = dialog?.querySelector("[data-sheet-tools]");
+  if (dialog && list) {
+    commits.push({ rows: rowsOf(dialog).length, saying: sayingOf(dialog).length, busy: list.getAttribute("aria-busy") === "true" });
+  }
 }
 /** The dialog, each of its drawings recorded (`commits`). */
 const watched = (batch: Batch) => (
@@ -208,6 +211,26 @@ describe("UpdateConfirmDialog over a long Update all", () => {
     check();
     await waitFor(() => expect(namesOf(dialog)).toEqual(finalOrder));
     check();
+  });
+
+  it("tells a screen reader its list is busy while any tool is still to be drawn, as it opens and once its plans are back", async () => {
+    const { getByRole, rerender } = renderWithProviders(watched(planning));
+    const dialog = getByRole("dialog");
+    await waitFor(() => expect(rowsOf(dialog)).toHaveLength(COUNT));
+    const list = dialog.querySelector("[data-sheet-tools]")!;
+    expect(list).not.toHaveAttribute("aria-busy");
+    // Busy from the first drawing until the last tool is drawn.
+    const drawings = commits.filter((commit) => commit.rows > 0);
+    expect(drawings[0]).toMatchObject({ rows: TOOLS_DRAWN_FIRST, busy: true });
+    for (const { rows, busy } of drawings) expect(busy).toBe(rows < COUNT);
+
+    commits = [];
+    rerender(watched(ready));
+    await waitFor(() => expect(namesOf(dialog)).toEqual(finalOrder));
+    await waitFor(() => expect(list).not.toHaveAttribute("aria-busy"));
+    // Busy while tools are held as first drawn, not once the last turn is.
+    expect(commits[0].busy).toBe(true);
+    expect(commits[commits.length - 1].busy).toBe(false);
   });
 
   it("draws a list that fits as before: whole, at once, as it opens and once its plans are back", async () => {
