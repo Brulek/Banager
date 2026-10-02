@@ -137,18 +137,11 @@ export function sizeOrderOf(sizes: Sizes | undefined, artifacts: InstalledArtifa
 }
 
 /**
- * "By Size": the larger first; a row with no size to show -- none, or still
- * measuring -- after every row with one, so that 0 means "same size, or
- * neither has one", for the caller to order by name.
- */
-export function compareBySize(order: Map<string, number>, a: InstalledArtifact, b: InstalledArtifact): number {
-  return compareSizes(order.get(artifactKeyId(a.key)), order.get(artifactKeyId(b.key)));
-}
-
-/**
- * `compareBySize` for two sizes already looked up in its order (`undefined`
- * for a row with none): for a long list, each row's looked up once rather
- * than at every comparison.
+ * "By Size", for two rows' sizes looked up in `sizeOrderOf`'s order
+ * (`undefined` for a row with none -- or still measuring): the larger
+ * first, a row with no size after every row with one, so that 0 means
+ * "same size, or neither has one", for the caller to order by name. For a
+ * long list, each row's looked up once rather than at every comparison.
  */
 export function compareSizes(left: number | undefined, right: number | undefined): number {
   if (left === right) return 0;

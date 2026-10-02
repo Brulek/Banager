@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import {
-  compareBySize,
   compareSizes,
   modelsTotalText,
   otherVersionsSizeText,
@@ -13,6 +12,7 @@ import {
   sizeViewOf,
 } from "./sizes";
 import { NO_FACTS, NO_SIZES, type InstalledArtifact, type Sizes } from "./types";
+import { artifactKeyId } from "../store/ui";
 
 const ruff: InstalledArtifact = {
   key: { instance_id: "uv", kind: "Tool", name: "ruff" },
@@ -37,6 +37,11 @@ function sizes(overrides: Partial<Sizes>): Sizes {
 
 const zh = i18n.getFixedT("zh-CN");
 const en = i18n.getFixedT("en");
+
+/** "By Size" over two rows, as the Installed page sorts them: each row's size looked up in `order`, then `compareSizes`. */
+function compareBySize(order: Map<string, number>, a: InstalledArtifact, b: InstalledArtifact): number {
+  return compareSizes(order.get(artifactKeyId(a.key)), order.get(artifactKeyId(b.key)));
+}
 
 describe("sizeViewOf", () => {
   it("has nothing to show for an artifact the sizes do not list, or before they are asked for", () => {
