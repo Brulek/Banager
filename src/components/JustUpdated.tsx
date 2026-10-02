@@ -76,7 +76,7 @@ export interface JustUpdatedEntry {
   finishedAt: number | null;
   /**
    * Whether Banager read the installed version before the update and after
-   * it and the two differ (`HistoryRecord.verified`): 「已核实」 then, and
+   * it and the two differ (`HistoryRecord.verified`): 「已确认更新」 then, and
    * otherwise the row's 「已更新」.
    */
   verified: boolean;
@@ -168,12 +168,15 @@ export function finishedText(
 
 /**
  * How a line says its update ended, in 11 after the outcome's 12 sign
- * (`OutcomeIcon`): the ✓ and 「已更新」 the row showed, or 「已核实」 where
+ * (`OutcomeIcon`): the ✓ and 「已更新」 the row showed, or 「已确认更新」 where
  * Banager read the version change for itself; the red ⚠︎ and 「未能更新」,
  * with the cause where the tool's words gave one --
  * 「未能更新：网络连接失败」 -- and what to do about it in the `title`; the
  * orange ⚠︎ and what did not add up, in the outcome's own words
- * (「显示已更新，但版本没有变化」). Words, not colour, tell them apart.
+ * (「结果未确认」) -- but an update whose version Banager read unchanged
+ * after it says what that means, 「没有更新成功：版本没有变」, and what it
+ * read in the `title`: 「显示已更新」 left a person asking whether it had
+ * (walk-2 W2-12). Words, not colour, tell them apart.
  */
 function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   const { t } = useTranslation();
@@ -199,11 +202,17 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
       break;
     case "attention":
       tone = "attention";
-      // What did not add up, in its own plain words -- 「显示已更新，但版本没有
-      // 变化」 -- rather than the row's short 「结果不符」, which says nothing
-      // here, where there is no log one click away.
-      words = outcomeSentence(t, ending.outcome);
-      title = undefined;
+      // What did not add up, in its own plain words, rather than the row's
+      // short 「结果不符」, which says nothing here, where there is no log
+      // one click away. A version read unchanged after the update is said
+      // as what it means: it did not update.
+      if (typeof ending.outcome !== "string" && ending.outcome.NeedsAttention === "UnchangedAfterUpgrade") {
+        words = t("history.unchanged");
+        title = t("history.unchangedTitle");
+      } else {
+        words = outcomeSentence(t, ending.outcome);
+        title = undefined;
+      }
       break;
   }
   return (
@@ -239,8 +248,8 @@ export interface JustUpdatedProps {
  * restart: one that worked, and one that did not or asks to be checked. A grouped container (spec §3.10) under its title -- 13 bold, with
  * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
  * 20 icon, the name in 13, the version it has now in 11 muted, how it
- * ended in 11 (`EndingWords`: 「已更新」 or 「已核实」, 「未能更新」 with
- * its cause, or what did not add up, 「显示已更新，但版本没有变化」), and
+ * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
+ * its cause, 「没有更新成功：版本没有变」, or what else did not add up), and
  * when it finished, 11 muted. Nothing to
  * select or press but Clear, which hides what it lists, after a restart
  * too, until the next update ends, and, past `JUST_UPDATED_SHOWN`

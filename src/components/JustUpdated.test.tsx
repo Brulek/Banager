@@ -186,7 +186,7 @@ describe("JustUpdated", () => {
     expect(within(lines[1]).getByText("npm")).toHaveClass("sr-only");
   });
 
-  it("says Today and the time for one that finished today, and Verified where Banager read the change", () => {
+  it("says Today and the time for one that finished today, and Update confirmed where Banager read the change", () => {
     renderWithProviders(<JustUpdated entries={[{ ...entry, verified: true }]} onClear={() => {}} />);
 
     const line = screen.getByRole("listitem");
@@ -194,7 +194,7 @@ describe("JustUpdated", () => {
     expect(time?.textContent).toBe(
       `Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(entry.finishedAt)}`,
     );
-    const done = within(line).getByText("Verified");
+    const done = within(line).getByText("Update confirmed");
     expect(done).toHaveAttribute(
       "title",
       "The installed version was read before and after the update, and it had changed.",
@@ -213,7 +213,7 @@ describe("JustUpdated", () => {
       verified: true,
     };
     renderWithProviders(<JustUpdated entries={[model]} onClear={() => {}} />);
-    expect(screen.getByText("Verified")).toHaveAttribute(
+    expect(screen.getByText("Update confirmed")).toHaveAttribute(
       "title",
       "The model was read before and after the update, and it had changed.",
     );
@@ -232,7 +232,8 @@ describe("JustUpdated", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
     expect(screen.getByText(`tool${JUST_UPDATED_SHOWN - 1}`)).toBeInTheDocument();
     expect(screen.queryByText(`tool${JUST_UPDATED_SHOWN}`)).toBeNull();
-    const more = screen.getByRole("button", { name: "3 More" });
+    // Says what pressing it does, and of what: walk-2 W2-12.
+    const more = screen.getByRole("button", { name: "Show 3 More" });
     expect(more).toHaveAttribute("aria-expanded", "false");
     expect(more).toHaveClass("text-small", "text-muted");
 
@@ -265,7 +266,7 @@ describe("JustUpdated", () => {
     expect(plain.querySelector("svg")).toHaveClass("text-danger");
     // Neither says it updated, nor shows a version it might be read as updated to.
     for (const line of [withCause, without]) {
-      expect(within(line).queryByText(/^(Updated|Verified)$/)).toBeNull();
+      expect(within(line).queryByText(/^(Updated|Update confirmed)$/)).toBeNull();
       expect(within(line).queryByText("2.55.1")).toBeNull();
     }
   });
@@ -283,15 +284,22 @@ describe("JustUpdated", () => {
     renderWithProviders(<JustUpdated entries={toCheck} onClear={() => {}} />);
 
     const [unchanged, unconfirmed] = screen.getAllByRole("listitem");
-    const words = within(unchanged).getByText("Update reported success, but the version didn't change");
+    // Said as what it means, that it did not update, and what was read in
+    // its title (walk-2 W2-12).
+    const words = within(unchanged).getByText("Didn't update: same version");
+    expect(words).toHaveAttribute(
+      "title",
+      "The command said it finished, but the version read before and after the update is the same.",
+    );
     expect(within(unchanged).queryByText("Unexpected result")).toBeNull();
+    expect(within(unchanged).queryByText(/reported success/)).toBeNull();
     expect(within(words).getByRole("img", { name: "Needs attention" }).querySelector("svg")).toHaveClass(
       "text-warning",
     );
     expect(within(unconfirmed).getByText("Result unconfirmed")).toBeInTheDocument();
   });
 
-  it("says them in Chinese: 未能更新：需要输入密码, 结果未确认, 已核实", async () => {
+  it("says them in Chinese: 未能更新：需要输入密码, 结果未确认, 没有更新成功, 已确认更新, 再显示N条", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const lines: JustUpdatedEntry[] = [
@@ -299,11 +307,24 @@ describe("JustUpdated", () => {
         { ...entry, id: "b", version: null, ending: { kind: "failed", cause: "needsPassword" } },
         { ...entry, id: "c", version: null, ending: { kind: "failed", cause: null } },
         { ...entry, id: "d", version: null, ending: { kind: "attention", outcome: "Unconfirmed" } },
+        {
+          ...entry,
+          id: "e",
+          version: null,
+          ending: { kind: "attention", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } },
+        },
+        ...Array.from({ length: JUST_UPDATED_SHOWN - 3 }, (_, i) => ({ ...entry, id: `more:${i}` })),
       ];
       renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
 
-      const [verified, password, plain, unconfirmed] = screen.getAllByRole("listitem");
-      expect(within(verified).getByText("已核实")).toBeInTheDocument();
+      const [verified, password, plain, unconfirmed, unchanged] = screen.getAllByRole("listitem");
+      expect(within(verified).getByText("已确认更新")).toBeInTheDocument();
+      expect(within(unchanged).getByText("没有更新成功：版本没有变")).toHaveAttribute(
+        "title",
+        "命令显示已完成，但更新前后读到的版本相同。",
+      );
+      expect(screen.getByText("清除记录")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "再显示2条" })).toBeInTheDocument();
       expect(within(password).getByText("未能更新：需要输入密码")).toHaveAttribute(
         "title",
         "需要输入Mac的登录密码，无法在这里输入。",

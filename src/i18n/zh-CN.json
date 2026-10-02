@@ -315,7 +315,7 @@
     },
     "justUpdated": {
       "title": "最近的更新记录",
-      "clear": "清除",
+      "clear": "清除记录",
       "clearLabel": "清除“最近的更新记录”列表"
     },
     "confirmTitleNamed": "要更新“{{name}}”吗？",
@@ -353,12 +353,14 @@
   },
   "history": {
     "today": "今天{{time}}",
-    "verified": "已核实",
+    "verified": "已确认更新",
     "verifiedTitle": "更新前后各读了一次已安装的版本，版本已经变了。",
     "verifiedModelTitle": "更新前后各读了一次这个模型，模型已经变了。",
-    "more_other": "还有{{count}}个",
+    "more_other": "再显示{{count}}条",
     "showFewer": "收起",
-    "failedBecause": "未能更新：{{cause}}"
+    "failedBecause": "未能更新：{{cause}}",
+    "unchanged": "没有更新成功：版本没有变",
+    "unchangedTitle": "命令显示已完成，但更新前后读到的版本相同。"
   },
   "commandPreview": {
     "show_other": "查看命令",

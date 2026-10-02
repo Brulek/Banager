@@ -337,7 +337,7 @@
     },
     "justUpdated": {
       "title": "Update History",
-      "clear": "Clear",
+      "clear": "Clear History",
       "clearLabel": "Clear the Update History list"
     },
     "confirmTitleNamed": "Update “{{name}}”?",
@@ -376,13 +376,15 @@
   },
   "history": {
     "today": "Today {{time}}",
-    "verified": "Verified",
+    "verified": "Update confirmed",
     "verifiedTitle": "The installed version was read before and after the update, and it had changed.",
     "verifiedModelTitle": "The model was read before and after the update, and it had changed.",
-    "more_one": "{{count}} More",
-    "more_other": "{{count}} More",
+    "more_one": "Show {{count}} More",
+    "more_other": "Show {{count}} More",
     "showFewer": "Show Fewer",
-    "failedBecause": "Couldn't update: {{cause}}"
+    "failedBecause": "Couldn't update: {{cause}}",
+    "unchanged": "Didn't update: same version",
+    "unchangedTitle": "The command said it finished, but the version read before and after the update is the same."
   },
   "commandPreview": {
     "show_one": "Show Command",
