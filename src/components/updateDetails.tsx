@@ -51,6 +51,10 @@ export function cannotCheckDetail(
 ): ReactNode {
   const reasons = new Set<string>();
   let causeSaid = false;
+  // A person's words first -- a warning's own sentence, the cause a
+  // tool's words give -- then, with technical details on, those words
+  // themselves: a secure connection's sentence comes after its `Message`
+  // on the wire, and would otherwise follow rustls's words (a2 review 5).
   for (const warning of candidate.warnings) {
     if (warning === "TransientLookupFailure") continue;
     const raw = warningMessage(warning);
@@ -64,7 +68,12 @@ export function cannotCheckDetail(
       reasons.add(t(FAILURE_CAUSE_KEYS[cause].line));
       causeSaid = true;
     }
-    if (showTechnicalDetails && raw !== "") reasons.add(raw);
+  }
+  if (showTechnicalDetails) {
+    for (const warning of candidate.warnings) {
+      const raw = warningMessage(warning);
+      if (raw !== null && raw !== "") reasons.add(raw);
+    }
   }
   const tryLater = candidate.warnings.includes("TransientLookupFailure") && !causeSaid;
   return detailLines([

@@ -889,6 +889,47 @@ describe("UpdatesPage", () => {
     expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
   });
 
+  it("puts a person's words before the tool's own on a row that could not be checked, with technical details on", async () => {
+    // a2 review 5: a secure connection's sentence follows its `Message` on
+    // the wire, and came after rustls's words; a network row already had
+    // its sentence first.
+    settings = { ...settings, show_technical_details: true };
+    const certificate =
+      "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer";
+    const offline = "crates.io request failed: network error: dns error: failed to lookup address information";
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
+    updates = [
+      row("proxied", [{ Message: certificate }, { SecureConnectionFailed: { host: "crates.io" } }]),
+      row("other", [{ Message: offline }, "TransientLookupFailure"]),
+    ];
+    renderPage();
+
+    await showCantUpdate();
+    const lines = (name: string) =>
+      [...chipDetail(rowOf(name), "Can't check").querySelectorAll("[data-detail-line]")].map(
+        (line) => line.textContent,
+      );
+    await findRow("proxied");
+    expect(lines("proxied")).toEqual([
+      "Couldn't find its latest version.",
+      "Couldn't establish a secure connection to crates.io.",
+      certificate,
+    ]);
+    expect(lines("other")).toEqual([
+      "Couldn't find its latest version.",
+      "The connection failed. Check your internet connection, then try again.",
+      offline,
+    ]);
+  });
+
   it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
     // Hiding the checkbox is not enough on its own. A selection lives in
     // the UI store and outlives the row that made it, so a candidate
