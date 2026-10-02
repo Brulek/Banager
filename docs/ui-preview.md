@@ -458,10 +458,10 @@ worded once per plan, the name order is worked out once per check
 change of the list. That last change, and the name order, did not make
 opening Installed or ticking rows measurably faster.
 
-Not timed at this size: the 「AI 工具」 and 「装了不止一份」 choices list few
+Not timed at this size: the 「AI工具」 and 「装了不止一份」 choices list few
 rows here (8–20 ms), because a tool belongs to a family only when it is
-one of the AI tools `data/ai-tools.json` names, in the preview as in the
-app. So `twinsByArtifact` (src/lib/commands.ts), which compares every pair
+one of the AI tools `crates/banager-core/data/ai-tools.json` names, in
+the preview as in the app. So `twinsByArtifact` (src/lib/commands.ts), which compares every pair
 of copies within a family, runs over a handful of copies per family and
 is not stressed by `?state=huge`. 「终端里找不到」 has about 100 rows.
 
