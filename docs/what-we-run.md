@@ -109,16 +109,52 @@ own installer: Claude Code at `~/.local/bin/claude`, Antigravity CLI at
 `$CARGO_HOME/bin/rustup`, Codex at `~/.local/bin/codex` and opencode at
 `~/.opencode/bin/opencode` (their sections). The path that was found is
 the one previewed and the one run; Codex's and opencode's are never run.
-Those fixed paths are followed with `lstat` and `realpath` as they are
-(`route::probe_strict`), not one step at a time: if a person has made one
-of them, or a folder above it, a link into a place Banager otherwise
-never looks into (`~/Documents`, iCloud Drive, `/Volumes`, ...), that
-link is followed. So are three folders that are not checked against
-that list either: npm's global prefix (what `npm prefix -g` printed),
-whose `lib/node_modules`, `lib` or prefix Banager checks with `stat` and
-`access(2)`; `$CARGO_HOME`, whose `.crates2.json` it reads; and
-`~/.ollama`, whose model manifests it reads (their sections). If one of
-them is, or leads into, such a place, Banager looks there.
+Those fixed paths are looked up the same way, one step at a time
+(`route::probe_strict`, through `protected::look`), and so is every other
+path Banager looks at by itself: the links around a tool's launcher and
+the program they lead to (`route::one_hop`, `route::leads_to_program`),
+Codex's release link and marker (`release_link::read`), every path a
+path-list uninstall checks and the kept paths and the way to what they
+lead to (`removal`), rustup's two folders, toolchains, Cargo's `bin` and
+the shell startup files its preview reads (`rustup`), each file a tool
+wrote that Banager reads -- `<CARGO_HOME>/.crates2.json`, Ollama's model
+manifests, `~/.claude/settings.json`, Homebrew's `brew.env` files and
+trust list, a cask's receipt and saved caskfile, an app's `Info.plist`
+(`read_file`) -- the folders of a cask's `Caskroom` record, npm's global
+prefix (what `npm prefix -g` printed, whose `lib/node_modules`, `lib` or
+prefix Banager asks `access(2)` of from the folder held open), pip's
+developer folder, `Ollama.app` in `/Applications` or `~/Applications`,
+Homebrew's three fixed paths and its update lock, the folder an app's
+icon is drawn from, and the program a command is about to run
+(`RealRunner::run`). None of them is ever looked at in or through one of
+the places Banager never looks into (`~/Documents`, iCloud Drive,
+`/Volumes`, ...; Disk use, below): a step into one is not taken, and if
+a person has made one of these paths, or a folder above it, a link into
+one, Banager answers as it does for a path it may not read. A launcher
+there is not listed; Codex's version through such a link is not read (the
+row is listed with its version unknown); an uninstall preview refuses
+when a kept path leads there (`OverlapsKept`) and takes a listed path
+reached through one as not what the list describes; a file a tool wrote
+there is not read; npm's prefix there is treated as one this account
+cannot write to (read-only); a Homebrew or a program there is not found
+and never run. `crates/banager-core/tests/safety_source_test.rs` holds
+every production file to this: a path looked up any other way fails it,
+but for the few its `PATH_LOOKUPS_ALLOWED` names with why -- Banager's
+own `settings.json` and `history.json`, `/` itself, the icon drawn for an
+app folder already looked at this way, and a debug build's look at the
+Trash.
+
+The places are those of the home folder `HOME` names -- as given and
+where its own links lead -- and of the account's own home folder, which
+Banager takes from the password database (`getpwuid_r` of the real user
+id, once; `protected::account_home`): a `HOME` set to another folder from
+a terminal keeps both out, and a `HOME` that is empty or relative names
+no home folder at all, so only the account's are kept out then
+(`Protected::new`). Where `HOME` is the account's folder, as it is when
+Banager is opened from the Finder, the list is the one folder's. What
+Banager does not look at, the programs it runs may: the login shell it
+runs at launch reads your startup files, and `brew`, `npm`, `pip` and
+`cargo` read their own folders, as they do when run from Terminal.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
@@ -1499,7 +1535,13 @@ not take `~/.claude` or `~/.claude.json` along (of `~/.claude`, only
 what either leads to, or any link or folder on the way there: a
 `~/.claude.json` that is a link to a link inside
 `~/.local/share/claude`, which leads on to settings kept elsewhere,
-refuses the uninstall. If a
+refuses the uninstall. Each of these looks is taken one step at a time
+and never into or through a place Banager never looks into
+(`protected::look`; How Banager runs anything, above): a `~/.claude` or
+`~/.claude.json` that leads into one -- kept in iCloud Drive or
+`~/Documents` -- refuses the uninstall, since what it leads to is never
+looked at and nothing confirms the moves leave it alone, and a listed
+path reached through one is not what the list describes. If a
 check fails on a path the list requires, the whole uninstall is refused,
 in the user's language, and nothing is moved; an optional path that is
 there but that Banager cannot confirm is the tool's — the wrong kind of
@@ -2022,9 +2064,14 @@ all three in one family.
 
 **Detect.** Banager looks at the fixed path the installer writes,
 `~/.local/bin/codex` — never a `codex` found through `PATH` — and checks
-with `lstat`, `readlink` and `realpath` that it is a symbolic link whose
-text and final target are both inside `~/.codex/packages/standalone` (the
-script links it to `…/packages/standalone/current/bin/codex`). A link into
+with `lstat`, `readlink` and `realpath`, each one step at a time and never
+into or through a place Banager never looks into (`protected::look`), that
+it is a symbolic link whose text and final target are both inside
+`~/.codex/packages/standalone` (the script links it to
+`…/packages/standalone/current/bin/codex`). A launcher, or a folder above
+it, that leads into one of those places -- `~/.local` or `~/.codex` kept
+in iCloud Drive or `~/Documents` -- is not followed there, and the row is
+not listed, as for a launcher Banager cannot look at. A link into
 `node_modules` or Homebrew's `Caskroom` is not this row. Only the default
 folders are looked at: `CODEX_HOME` and `CODEX_INSTALL_DIR` are not read,
 because a Mac app started from the Finder inherits no variable from your
@@ -2041,13 +2088,20 @@ behind, below).
 **Version, with no command.** `readlink` and `realpath` of
 `~/.codex/packages/standalone/current`, which the installer points at
 `~/.codex/packages/standalone/releases/<version>-<target>`: the version is
-that folder's name less `-aarch64-apple-darwin` or `-x86_64-apple-darwin`.
-A missing, dangling or unexpected link gives no version (the row is
-listed with its version unknown, and is not marked as not responding,
-since nothing was asked). Then one small file,
+that folder's name less `-aarch64-apple-darwin` or `-x86_64-apple-darwin`,
+when that folder is directly in `releases/` (the same folder, by device
+and inode, as `releases` leads to). Each look is taken one step at a time
+and never into or through a place Banager never looks into
+(`release_link::read`, `protected::look`). A missing, dangling or
+unexpected link gives no version, and so does one that leads into such a
+place -- `~/.codex`, or its `releases/`, kept in iCloud Drive or
+`~/Documents`: nothing there is looked at (the row is listed with its
+version unknown, and is not marked as not responding, since nothing was
+asked). Then one small file,
 `~/.codex/packages/standalone/auto-update-version` (at most 256 bytes,
-only when it is a regular file; opened without waiting and without
-following a link, then checked with `fstat`): the installer writes the release's name
+only when it is a regular file; opened from the folder it is in, held
+open, without waiting and without following a link, then checked with
+`fstat`; never in a protected place): the installer writes the release's name
 there when it installs the latest release, and its scheduled updates run
 only while that file names the release in use. When it does, the install
 follows Codex's latest release and the row says Codex can update itself
@@ -2477,7 +2531,10 @@ spelled -- and also as spelled from the
 volume that holds them, `/System/Volumes/Data` (`/System/Volumes/Data/Users/<you>/Documents`
 is `~/Documents`, through the firmlinks macOS keeps; `protected::DATA_VOLUME`).
 A tool kept in one of them shows no size (`Protected`). It is the same list the command check keeps out
-of (`crates/banager-core/src/protected.rs`).
+of (`crates/banager-core/src/protected.rs`). `~` there is both the home
+folder `HOME` names and the account's own home folder from the password
+database, whatever `HOME` says (How Banager runs anything, above;
+`Protected::new`).
 
 Nothing is written: the sizes stay in Banager's memory until it quits, and
 what was already measured in full at the same version, from the very
@@ -2743,7 +2800,10 @@ read, nothing runs, nothing is written, and no connection is made for it.
 
 ## Files Banager reads
 
-All read-only, none saved anywhere else, none uploaded:
+All read-only, none saved anywhere else, none uploaded, and each path
+looked up one step at a time, never in or through a place Banager never
+looks into -- a path that leads into one is answered as one Banager may
+not read (`protected::look`; How Banager runs anything, above):
 
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
@@ -2758,7 +2818,8 @@ All read-only, none saved anywhere else, none uploaded:
   through `NSWorkspace iconForFile:` — Banager opens no file in the app
   (App icons, above).
 - npm: whether `{prefix}/lib/node_modules`, `{prefix}/lib` or `{prefix}`
-  is writable, via `access(2)`.
+  is writable, via `access(2)` (`faccessat` of the folder held open; one
+  in a protected place is taken as not writable).
 - pip: the canonical path of each interpreter found, to count it once;
   for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
   directory `xcode-select -p` names leads, and whether that is an
