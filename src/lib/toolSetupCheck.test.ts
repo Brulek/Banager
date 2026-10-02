@@ -423,7 +423,7 @@ describe("toolSetupCheck's command lines", () => {
       "fine 没有装了不止一份的工具",
     ]);
     expect(lineOf(zhCheck, "commands", "notChecked").detail).toBe(
-      "Banager无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
+      "无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
     );
     // Never the green sentence about every installed tool, folders read or not.
     const enCheck = toolSetupCheck(en, input({ snapshot: partlyCheckedSnapshot() }));
