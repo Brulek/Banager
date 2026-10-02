@@ -5494,10 +5494,12 @@ describe("UpdatesPage", () => {
       expect(glib.querySelector("[data-status-column]")).toHaveTextContent("Major update");
       expect(glib).toHaveAccessibleName("glib, Major update, 2.88.3 → 3.0.0");
       const detail = chipDetail(glib, "Major update: glib");
+      // What may change, then where the way to wait is and what it does --
+      // and nothing about the tools it never marks (walk-2 W2-14).
       expect(detail).toHaveTextContent(
-        "From 2 to 3: how it's used or set up may change. If you're not sure, you can choose “Skip This Version” for now.",
+        "From 2 to 3: how it's used or set up may change. If you're not sure, choose “Skip This Version” from the “⋯” at the right of this row, and you'll be reminded when the next version comes out.",
       );
-      expect(detail).toHaveTextContent("Tools whose version starts with 0 aren't marked.");
+      expect(detail).not.toHaveTextContent(/starts with 0/);
       // The menu item it points at is the row's own.
       expect(within(openMenu(glib)).getByRole("menuitem", { name: /Skip This Version/ })).toBeInTheDocument();
 
@@ -5541,9 +5543,11 @@ describe("UpdatesPage", () => {
         renderPage();
         const glib = await findRow("glib");
         expect(glib).toHaveAccessibleName("glib, 大版本更新, 2.88.3 → 3.0.0");
-        expect(chipDetail(glib, "大版本更新：glib")).toHaveTextContent(
-          "从2升到3，用法或设置可能会变。不确定时可以先“跳过此版本”。",
+        const detail = chipDetail(glib, "大版本更新：glib");
+        expect(detail).toHaveTextContent(
+          "从2升到3，用法或设置可能会变。不确定的话，可以点按这一行右边的“⋯”，选择“跳过此版本”，下个版本发布时再提醒你。",
         );
+        expect(detail).not.toHaveTextContent(/版本号以0开头/);
       } finally {
         await i18n.changeLanguage("en");
       }

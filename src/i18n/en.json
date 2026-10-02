@@ -393,8 +393,7 @@
   "majorVersion": {
     "tag": "Major update",
     "tagLabel": "Major update: {{name}}",
-    "detail": "From {{from}} to {{to}}: how it's used or set up may change. If you're not sure, you can choose “{{skip}}” for now.",
-    "zeroNote": "Tools whose version starts with 0 aren't marked."
+    "detail": "From {{from}} to {{to}}: how it's used or set up may change. If you're not sure, choose “{{skip}}” from the “⋯” at the right of this row, and you'll be reminded when the next version comes out."
   },
   "nextAutoCheck": {
     "today": "Next automatic check: about {{time}} today",
