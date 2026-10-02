@@ -544,7 +544,9 @@ describe("the batch uninstall's sheet", () => {
     )).toBeInTheDocument();
     expect(within(toolItem(dialog, "wget")).getByText("About 5 MB")).toBeInTheDocument();
     const claudeItem = toolItem(dialog, "Claude Code");
-    expect(within(claudeItem).getByText("These 3 items go to the Trash, where you can drag them back out.")).toBeInTheDocument();
+    // Its own files, not 「这3项」, which read as three of the tools ticked.
+    expect(within(claudeItem).getByText("Removed files go to the Trash, where you can drag them back out.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/These \d+ items/)).toBeNull();
     expect(within(claudeItem).getByText(/~\/\.claude\/local/)).toBeInTheDocument();
     expect(within(toolItem(dialog, "llama3.2:3b")).getByText("Frees about 2 GB, less any part other models share.")).toBeInTheDocument();
     expect(within(toolItem(dialog, "llama3.2:3b")).getByText("About 2 GB")).toBeInTheDocument();
@@ -589,7 +591,9 @@ describe("the batch uninstall's sheet", () => {
 
   it("lists what stays once per path, whose it is, with Copy Path and no way to delete it", async () => {
     const dialog = await openSheet([claudeCode, npmClaude, codex, vscode]);
-    expect(within(dialog).getByText("The settings and data of 2 AI tools stay after uninstalling.")).toBeInTheDocument();
+    // Every tool the group names after "From", whether its own data or
+    // what its installer's uninstall keeps (Claude Code's ~/.claude): 3.
+    expect(within(dialog).getByText("3 of them leave some files where they are, listed below.")).toBeInTheDocument();
     // The app that may ask, by name: not 「some of these」.
     expect(within(dialog).getByText("Microsoft Visual Studio Code may ask for your Mac password.")).toBeInTheDocument();
     const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });

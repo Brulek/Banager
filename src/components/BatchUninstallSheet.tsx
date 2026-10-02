@@ -438,8 +438,13 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
     unknown,
   );
   const commands = terminalCommands(includedArtifacts, snapshot?.artifacts ?? []);
-  const keptAi = included.filter(({ entry }) =>
-    entry.plan!.warnings.some((warning) => typeof warning !== "string" && "KeepsData" in warning),
+  // How many of them leave something where it is: every tool the 「卸载后会
+  // 保留」 group below names after 「来自」, whether its own data
+  // (`KeepsData`) or what its installer's uninstall keeps (`WillKeep`).
+  const keepsFiles = included.filter(({ entry }) =>
+    entry.plan!.warnings.some(
+      (warning) => typeof warning !== "string" && ("KeepsData" in warning || "WillKeep" in warning),
+    ),
   ).length;
   const asksPassword = included.filter(({ entry }) => entry.plan!.needs_password).map(({ entry }) => entry.name);
   const batchNotes: WarningLine[] = [
@@ -465,7 +470,9 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           },
         ]
       : []),
-    ...(keptAi > 0 ? [{ text: t("batchUninstall.keptAi", { count: keptAi }), detail: null, caution: false }] : []),
+    ...(keepsFiles > 0
+      ? [{ text: t("batchUninstall.keepsFiles", { count: keepsFiles }), detail: null, caution: false }]
+      : []),
     // Which of them may ask, by name: every cask uninstall may, not every app does.
     ...(asksPassword.length > 0
       ? [
@@ -502,7 +509,9 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
     const trash =
       "TrashPaths" in plan.action
         ? [
-            plain(t("uninstall.trashPreview", { count: plan.action.TrashPaths.paths.length })),
+            // Its own paths, which the sheet does not list: not 「这3项」,
+            // which reads as three of the tools ticked.
+            plain(t("batchUninstall.trashGoes")),
             ...plan.warnings.flatMap((warning) => {
               if (typeof warning === "string" || !("AlreadyGone" in warning)) return [];
               const line = warningLine(t, warning);
