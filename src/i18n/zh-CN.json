@@ -894,8 +894,8 @@
       "description": "显示原始错误信息和文件位置，并在确认窗口中展开命令。"
     },
     "includeSelfUpdating": {
-      "label": "显示会自行更新的App",
-      "description": "在“更新”中也显示通过Homebrew安装、会自行更新的App，例如Chrome。"
+      "label": "显示自带更新的Homebrew App",
+      "description": "在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。其他来源的工具不受这项影响。"
     },
     "autoCheck": {
       "label": "检查更新",

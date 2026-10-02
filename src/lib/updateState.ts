@@ -319,7 +319,7 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
 
 /**
  * Whether Homebrew's update check leaves `artifact` out while Settings'
- * "Show apps that update themselves" (`include_self_updating`) is off: a
+ * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
  * `auto_updates: true`) or one declared `version :latest`, which Homebrew
  * installs as "latest". Banager passes `--greedy` to `brew outdated

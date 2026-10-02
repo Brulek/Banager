@@ -981,8 +981,8 @@
       "description": "Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations."
     },
     "includeSelfUpdating": {
-      "label": "Show apps that update themselves",
-      "description": "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates."
+      "label": "Show Homebrew apps that have their own updater",
+      "description": "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates. Tools from other sources aren't affected."
     },
     "autoCheck": {
       "label": "Check for updates",

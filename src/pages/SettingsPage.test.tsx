@@ -518,7 +518,7 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const toggle = await screen.findByRole("switch", { name: "Show apps that update themselves" });
+    const toggle = await screen.findByRole("switch", { name: "Show Homebrew apps that have their own updater" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);
 
@@ -1075,8 +1075,8 @@ describe("SettingsPage", () => {
     ]);
     expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
-    expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
-      "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates.",
+    expect(within(updates).getByRole("switch", { name: "Show Homebrew apps that have their own updater" })).toHaveAccessibleDescription(
+      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates. Tools from other sources aren't affected.",
     );
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toBeInTheDocument();
     expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
@@ -1177,7 +1177,7 @@ describe("SettingsPage", () => {
     expect(twoLines(screen.getByRole("region", { name: "General" }))).toHaveLength(1);
     expect(twoLines(screen.getByRole("region", { name: "Updates" }))).toEqual([]);
     expect(rowOf(screen.getByRole("combobox", { name: "Check for updates" })).className).toContain("min-h-11.5");
-    for (const name of ["Notify me when there are updates", "Show apps that update themselves"]) {
+    for (const name of ["Notify me when there are updates", "Show Homebrew apps that have their own updater"]) {
       expect(rowOf(screen.getByRole("switch", { name })).className).toContain("min-h-9");
     }
     // A second line is 11 with its lines 16 apart, should it wrap, and
@@ -1210,12 +1210,12 @@ describe("SettingsPage", () => {
     const group = screen.getByRole("heading", { level: 2, name: "Updates" }).nextElementSibling as HTMLElement;
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates.",
+      "Also list apps installed with Homebrew that have their own updater, like Chrome, under Updates. Tools from other sources aren't affected.",
     );
     expect(footnote.className.split(" ")).toEqual(
       expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "leading-4", "text-muted"]),
     );
-    expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
+    expect(within(updates).getByRole("switch", { name: "Show Homebrew apps that have their own updater" })).toHaveAccessibleDescription(
       footnote.textContent ?? "",
     );
   });
@@ -1239,13 +1239,21 @@ describe("SettingsPage", () => {
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
     expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", about: "关于" });
-    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自行更新的App");
+    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示自带更新的Homebrew App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
     // its line names Homebrew; it is the switch's description, so it
     // does not say the switch's name over again.
     expect(zhCN.settings.includeSelfUpdating.description).toBe(
-      "在“更新”中也显示通过Homebrew安装、会自行更新的App，例如Chrome。",
+      "在“更新”中也显示通过Homebrew安装、自带更新功能的App，例如Chrome。其他来源的工具不受这项影响。",
     );
+    // Not the Updates rows' 「会自行更新」 (Claude Code's own install, which
+    // this switch never hides): two words, so neither reads as the other.
+    for (const text of [zhCN.settings.includeSelfUpdating.label, zhCN.settings.includeSelfUpdating.description]) {
+      expect(text).not.toContain(zhCN.updates.selfUpdating);
+    }
+    for (const text of [enUS.settings.includeSelfUpdating.label, enUS.settings.includeSelfUpdating.description]) {
+      expect(text).not.toMatch(/update(s)? (it|them)sel(f|ves)/i);
+    }
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");
     expect(zhCN.settings.includeSelfUpdating.description).not.toContain(zhCN.settings.includeSelfUpdating.label);
     // An empty group of hidden updates says so in one word, as System
