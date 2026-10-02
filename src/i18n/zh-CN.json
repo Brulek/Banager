@@ -7,7 +7,7 @@
   "welcome": {
     "title": "欢迎使用{{name}}",
     "listTitle": "看清装了什么",
-    "listText": "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。左边的“来源”是装它们的方式，比如Homebrew、npm，或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
+    "listText": "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。第一次检查完成后，边栏会出现“来源”，按安装方式列出，比如Homebrew、npm或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
     "confirmTitle": "更新、卸载都由你确认",
     "confirmText": "更新或卸载前，先写明要做什么和要运行的命令，确认后才开始；完成后会再检查一遍。",
     "settingsTitle": "不改终端配置，不收集数据",

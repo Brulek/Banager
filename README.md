@@ -162,11 +162,11 @@ and the keys that page or jump to an end, Space to tick a row, Return and Escape
 details, Tab) and the dialogs' (Return, Escape).
 
 The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
-tools you use in Terminal, such as Claude Code, Codex and Gemini CLI, in one place, the sidebar's Sources
-being how each was installed (Homebrew, npm, a tool's own installer and so on); an update or
-uninstall shows what it will do and starts only when you confirm; and Banager itself doesn't edit your
-shell's startup files, collects no usage data and needs no account. (The one exception to the first is
-rustup's own uninstall, which removes the line it added to them; its preview says so.) The first check runs behind it. However
+tools you use in Terminal, such as Claude Code, Codex and Gemini CLI, in one place, with Sources in the
+sidebar showing how each was installed once the first check finishes (Homebrew, npm, a tool's own installer
+and so on); an update or uninstall shows what it will do and starts only when you confirm; and Banager itself
+doesn't edit your shell's startup files, collects no usage data and needs no account. (The one exception to
+not editing startup files is rustup's own uninstall, which removes the line it added to them; its preview says so.) The first check runs behind it. However
 you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
 it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
 again at any time.
@@ -551,7 +551,7 @@ Banager 开着时还会每天做一次同样的检查，查到的更新都不安
 和对话框（回车、Esc）。
 
 第一次打开 Banager 时，会出现一个欢迎页，用三条短句说明它做什么：Claude Code、Codex、Gemini CLI 这类在终端里用的
-工具都列在一处，侧栏的“来源”是装它们的方式，比如 Homebrew、npm 或工具自带的安装程序；更新或卸载前先写明要做什么，确认后才开始；Banager 自己不改终端的配置文件，不收集使用情况，也不需要
+工具都列在一处，第一次检查完成后，侧栏会出现“来源”，按安装方式列出，比如 Homebrew、npm 或工具自带的安装程序；更新或卸载前先写明要做什么，确认后才开始；Banager 自己不改终端的配置文件，不收集使用情况，也不需要
 账号。（唯一的例外是 rustup 自己的卸载，它会删掉当初加进这些文件的那一行，预览里会写明。）第一次检查在它背后照常进行。不管怎样关掉它——点“开始使用”、按回车或 Esc、点它外面——设置文件都会记下
 已经看过，以后不会自己再出现；随时可以从菜单栏“帮助”里的“欢迎使用Banager”再打开。
 

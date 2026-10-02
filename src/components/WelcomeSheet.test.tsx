@@ -93,7 +93,7 @@ describe("WelcomeSheet", () => {
     const sheet = await findSheet();
     const points = within(sheet).getAllByRole("listitem");
     expect(points.map((point) => point.textContent)).toEqual([
-      "See What's InstalledTools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Sources, on the left, are how they were installed, like Homebrew, npm or a tool's own installer; programs installed some other way are under Other Programs.",
+      "See What's InstalledTools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Once the first check finishes, Sources in the sidebar shows how each was installed, such as Homebrew, npm or the tool's own installer; programs installed some other way are under Other Programs.",
       "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
       "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; where a tool's own uninstall does, it says so first. Collects no usage data and needs no account.",
     ]);
@@ -122,7 +122,7 @@ describe("WelcomeSheet", () => {
     ).toBeInTheDocument();
     expect(
       within(sheet).getByText(
-        "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。左边的“来源”是装它们的方式，比如Homebrew、npm，或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
+        "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。第一次检查完成后，边栏会出现“来源”，按安装方式列出，比如Homebrew、npm或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
       ),
     ).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
@@ -135,12 +135,20 @@ describe("WelcomeSheet", () => {
     // and the third point's one exception (rustup's own uninstall edits
     // its startup line, and its preview says so: `EditsShellConfig`) is
     // said without naming a tool they may never have heard of.
+    //
+    // On a first launch the sheet is up while the first check runs, and
+    // the sidebar draws no 「来源」 and no 「其他程序」 until it ends
+    // (`useSourcesShown`, src/components/Sidebar.tsx): so the point says
+    // they appear once it has, and never points at them as if they were
+    // there already (W2-7 review).
     for (const language of ["en", "zh-CN"] as const) {
       await i18n.changeLanguage(language);
       const listText = i18n.t("welcome.listText");
       expect(listText, language).toContain(i18n.t("nav.sources"));
       expect(listText, language).toContain(i18n.t("nav.unknown"));
       expect(listText, language).toContain("Claude Code");
+      expect(listText, language).not.toMatch(/左边|on the left/);
+      expect(listText, language).toMatch(/第一次检查完成后|Once the first check finishes/);
       expect(i18n.t("welcome.settingsText"), language).not.toMatch(/rustup/i);
     }
   });

@@ -16,7 +16,9 @@ const APP_NAME = "Banager";
  * The sheet's three points, each a symbol, a bold title and one line. Every
  * line is a promise docs/what-we-run.md makes: everything in one list, by
  * the sidebar's 「来源」 -- how each tool was installed -- and the rest
- * under 「其他程序」; an update or uninstall previewed, run only once
+ * under 「其他程序」, both of which the sidebar draws only once the first
+ * check has answered (`useSourcesShown`), while this sheet may already be
+ * up, so the point says when they appear; an update or uninstall previewed, run only once
  * confirmed and checked again after it ("When commands run", "What Banager
  * never does"); no shell startup file edited, no host but the registries
  * it reads versions from, and no account ("Network", "What Banager never
