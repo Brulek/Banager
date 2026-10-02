@@ -142,8 +142,17 @@ struct SizedManifest {
 /// already read and fetched (`OllamaAdapter::compare_digests`): no other
 /// request, file or command. An upper bound, not the download: a blob
 /// another local model shares is already in `~/.ollama/models/blobs`, and
-/// `ollama pull` skips it, but Banager does not look in that folder. A
-/// blob listed twice is counted once.
+/// `ollama pull` skips it, but this number does not look in that folder.
+///
+/// Every entry counts, a digest listed twice -- or a config digest that is
+/// also a layer's -- twice: Ollama's pull for a model with tensor layers
+/// (`server/images.go` `pullWithTransfer`, `transfer/download.go`) starts
+/// one download per entry left, with no de-duplication, so counting each
+/// once could say less than it fetches. Its classic path de-duplicates;
+/// there the number only says more. The one thing assumed: that the files
+/// the local manifest names are on this Mac with their sizes -- the
+/// transfer path fetches again one that is missing or a different size,
+/// and only reading `blobs` could tell.
 ///
 /// `None` whenever the number could be wrong: either manifest does not
 /// parse, a blob to download has no size or one that is not a whole
@@ -159,7 +168,8 @@ pub fn changed_blob_bytes(local_json: &str, registry_json: &str) -> Option<u64> 
         .chain(local.config.iter())
         .map(|blob| blob.digest.as_str())
         .collect();
-    let mut counted: HashMap<&str, u64> = HashMap::new();
+    // Each digest's size as first given, to catch one given two.
+    let mut sizes: HashMap<&str, u64> = HashMap::new();
     let mut total: u64 = 0;
     for blob in registry.layers.iter().chain(registry.config.iter()) {
         let digest = blob.digest.as_str();
@@ -167,14 +177,10 @@ pub fn changed_blob_bytes(local_json: &str, registry_json: &str) -> Option<u64> 
             continue;
         }
         let size = blob.size.as_ref()?.as_u64()?;
-        match counted.get(digest) {
-            Some(&seen) if seen == size => {}
-            Some(_) => return None,
-            None => {
-                counted.insert(digest, size);
-                total = total.checked_add(size)?;
-            }
+        if *sizes.entry(digest).or_insert(size) != size {
+            return None;
         }
+        total = total.checked_add(size)?;
     }
     Some(total)
 }
@@ -347,13 +353,39 @@ mod tests {
     }
 
     #[test]
-    fn test_changed_blob_bytes_counts_a_blob_listed_twice_once() {
+    fn test_changed_blob_bytes_counts_a_blob_listed_twice_twice() {
+        // Ollama's transfer path downloads each entry it has left, with no
+        // de-duplication: counted once, the number could say less.
         let local = manifest(("sha256:c1", Some("251")), &[]);
         let registry = manifest(
             ("sha256:c1", Some("251")),
             &[("sha256:n", Some("7")), ("sha256:n", Some("7"))],
         );
-        assert_eq!(changed_blob_bytes(&local, &registry), Some(7));
+        assert_eq!(changed_blob_bytes(&local, &registry), Some(14));
+    }
+
+    #[test]
+    fn test_changed_blob_bytes_counts_a_config_that_is_also_a_layer_twice() {
+        // The case Ollama's own pull comments on (`server/images.go`): the
+        // config's digest is one of the layers'. Both entries count when
+        // new; neither when the local manifest names the digest, as a
+        // layer or as its config.
+        let registry = manifest(
+            ("sha256:x", Some("9")),
+            &[("sha256:x", Some("9")), ("sha256:n", Some("7"))],
+        );
+        let none_local = manifest(("sha256:c1", Some("251")), &[]);
+        assert_eq!(changed_blob_bytes(&none_local, &registry), Some(9 + 9 + 7));
+        let as_layer = manifest(("sha256:c1", Some("251")), &[("sha256:x", Some("9"))]);
+        assert_eq!(changed_blob_bytes(&as_layer, &registry), Some(7));
+        let as_config = manifest(("sha256:x", Some("9")), &[]);
+        assert_eq!(changed_blob_bytes(&as_config, &registry), Some(7));
+        // The two entries disagreeing on its size: unknown.
+        let disagreeing = manifest(
+            ("sha256:x", Some("10")),
+            &[("sha256:x", Some("9")), ("sha256:n", Some("7"))],
+        );
+        assert_eq!(changed_blob_bytes(&none_local, &disagreeing), None);
     }
 
     #[test]
