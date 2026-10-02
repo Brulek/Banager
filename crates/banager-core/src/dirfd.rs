@@ -311,6 +311,37 @@ impl Dir {
         Ok(Stat::from_raw(unsafe { &st.assume_init() }))
     }
 
+    /// Where this folder is now, as the kernel names it (`fcntl` with
+    /// `F_GETPATH`): nothing in the folder is looked at, and no name is
+    /// looked up -- a folder renamed since it was opened answers where it
+    /// was moved to. Not on other systems (`Unsupported`).
+    pub fn path(&self) -> io::Result<PathBuf> {
+        let path = self.path_now();
+        #[cfg(test)]
+        if let Ok(path) = &path {
+            calls::note_path(calls::Call::GetPath, path);
+        }
+        path
+    }
+
+    #[cfg(target_os = "macos")]
+    fn path_now(&self) -> io::Result<PathBuf> {
+        let mut buf = [0u8; libc::PATH_MAX as usize];
+        // SAFETY: `buf` has room for `MAXPATHLEN` bytes, as `F_GETPATH`
+        // requires; the result is checked.
+        let rc = unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) };
+        if rc < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        Ok(PathBuf::from(OsStr::from_bytes(&buf[..len])))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn path_now(&self) -> io::Result<PathBuf> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+
     /// The text of the link `name` in this folder (`readlinkat`).
     pub fn read_link_at(&self, name: &OsStr) -> io::Result<PathBuf> {
         #[cfg(test)]
@@ -533,6 +564,9 @@ pub(crate) mod calls {
         ReadLinkAt,
         OpenDirAt,
         ReadFileAt,
+        /// Where a folder held open now is (`F_GETPATH`): no name looked
+        /// up, nothing in it looked at. Its path is where the folder is.
+        GetPath,
     }
 
     #[derive(Clone, Debug, Default)]
@@ -544,6 +578,7 @@ pub(crate) mod calls {
         pub read_link_at: usize,
         pub open_dir_at: usize,
         pub read_file_at: usize,
+        pub get_path: usize,
         /// Each call and the path it looked at, in the order made.
         pub paths: Vec<(Call, PathBuf)>,
     }
@@ -557,6 +592,7 @@ pub(crate) mod calls {
                 + self.read_link_at
                 + self.open_dir_at
                 + self.read_file_at
+                + self.get_path
         }
     }
 
@@ -578,12 +614,23 @@ pub(crate) mod calls {
                 Call::ReadLinkAt => &mut calls.read_link_at,
                 Call::OpenDirAt => &mut calls.open_dir_at,
                 Call::ReadFileAt => &mut calls.read_file_at,
+                Call::GetPath => &mut calls.get_path,
             } += 1;
             let mut path = dir.map_or_else(|| PathBuf::from("/"), path_of);
             for name in names {
                 path.push(name);
             }
             calls.paths.push((call, path));
+        });
+    }
+
+    /// A call whose path is already known: `F_GETPATH`'s answer.
+    pub(super) fn note_path(call: Call, path: &std::path::Path) {
+        ACTIVE.with(|active| {
+            if let Some(calls) = active.borrow_mut().as_mut() {
+                calls.get_path += usize::from(call == Call::GetPath);
+                calls.paths.push((call, path.to_path_buf()));
+            }
         });
     }
 

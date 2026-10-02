@@ -32,6 +32,7 @@
 
 use super::{names, Protected, Resolution, MAX_LINKS};
 use crate::dirfd::{Dir, Stat};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,9 @@ struct Held {
     path: PathBuf,
     dir: Dir,
     parent: Option<Rc<Held>>,
+    /// Where the kernel last said it is, when that was outside every
+    /// protected place.
+    was_at: RefCell<Option<PathBuf>>,
 }
 
 /// What asking for the rest of a path in one lookup came to.
@@ -126,6 +130,7 @@ impl Round {
                 path: PathBuf::from("/"),
                 dir: Dir::root().ok()?,
                 parent: None,
+                was_at: RefCell::new(None),
             }));
         }
         self.root.clone()
@@ -134,8 +139,34 @@ impl Round {
     /// What `resolve(path, protected, true)` answers, from what this
     /// round has already looked at where it can.
     pub(crate) fn resolve(&mut self, path: &Path) -> Resolution {
+        match self.walk(path) {
+            Some(found) => found,
+            // A folder held open is now in a protected place, or cannot
+            // say where it is (`still_outside`): nothing this round kept
+            // is used again, and the path is walked from `/`, as
+            // `resolve` would walk it.
+            None => {
+                self.forget();
+                self.walk(path).unwrap_or(Resolution::Refused)
+            }
+        }
+    }
+
+    /// Everything this round kept, let go: the folders held open (`/`
+    /// aside), and what each name and link was.
+    fn forget(&mut self) {
+        self.held.clear();
+        self.opened.clear();
+        self.entries.clear();
+        self.links.clear();
+    }
+
+    /// `resolve`'s answer, or `None` when a folder this round opened
+    /// before, about to be used again, has been moved into a protected
+    /// place since (`still_outside`).
+    fn walk(&mut self, path: &Path) -> Option<Resolution> {
         if !path.is_absolute() {
-            return Resolution::Refused;
+            return Some(Resolution::Refused);
         }
         // A name already looked at, through folders only, that is no
         // link: where a path to a file ends, asked for again to see
@@ -143,7 +174,7 @@ impl Round {
         // is `/a/b`).
         if let Some((known, Entry::Is(stat))) = self.entries.get_key_value(path) {
             if !stat.is_symlink() {
-                return Resolution::Found(known.clone(), *stat);
+                return Some(Resolution::Found(known.clone(), *stat));
             }
         }
         // The deepest folder held open that the path names on its way:
@@ -153,11 +184,16 @@ impl Round {
             .into_iter()
             .flat_map(Path::ancestors)
             .find_map(|prefix| self.held.get(prefix).cloned());
+        if let Some(held) = &start {
+            if !self.still_outside(held) {
+                return None;
+            }
+        }
         let Some(mut here) = start.or_else(|| self.root()) else {
-            return Resolution::Refused;
+            return Some(Resolution::Refused);
         };
         let Ok(rest) = path.strip_prefix(&here.path) else {
-            return Resolution::Refused;
+            return Some(Resolution::Refused);
         };
         let mut pending: VecDeque<OsString> = names(rest).collect();
         let mut found: Option<(PathBuf, Stat)> = None;
@@ -174,8 +210,11 @@ impl Round {
                 }
             });
             if name == ".." {
-                if let Some(parent) = &here.parent {
-                    here = parent.clone();
+                if let Some(parent) = here.parent.clone() {
+                    if !self.still_outside(&parent) {
+                        return None;
+                    }
+                    here = parent;
                 }
                 found = None;
                 continue;
@@ -183,15 +222,15 @@ impl Round {
             let candidate = here.path.join(&name);
             if in_one {
                 match self.beneath(&here, &name, &candidate, &pending) {
-                    Beneath::Answer(answer) => return answer,
+                    Beneath::Answer(answer) => return Some(answer),
                     Beneath::NotAsked => {}
                     Beneath::Unanswered => in_one = false,
                 }
             }
             let stat = match self.look_at(&here, &name, &candidate) {
                 Entry::Is(stat) => stat,
-                Entry::Missing => return Resolution::Missing,
-                Entry::Refused => return Resolution::Refused,
+                Entry::Missing => return Some(Resolution::Missing),
+                Entry::Refused => return Some(Resolution::Refused),
                 Entry::Protected => {
                     let mut at = candidate;
                     for name in pending {
@@ -201,20 +240,20 @@ impl Round {
                             at.push(name);
                         }
                     }
-                    return Resolution::Protected(at);
+                    return Some(Resolution::Protected(at));
                 }
             };
             if stat.is_symlink() {
                 links += 1;
                 if links > MAX_LINKS {
-                    return Resolution::Refused;
+                    return Some(Resolution::Refused);
                 }
                 let Some(target) = self.link_text(&here, &name, &candidate) else {
-                    return Resolution::Refused;
+                    return Some(Resolution::Refused);
                 };
                 if target.is_absolute() {
                     let Some(root) = self.root() else {
-                        return Resolution::Refused;
+                        return Some(Resolution::Refused);
                     };
                     here = root;
                 }
@@ -230,16 +269,20 @@ impl Round {
                 // A folder on the way. Not a folder, or not one this may
                 // search, is where the kernel's own lookup stops too.
                 if !stat.is_dir() {
-                    return Resolution::Refused;
+                    return Some(Resolution::Refused);
                 }
-                match self.enter(&here, &name, &candidate, &stat) {
-                    Some(next) => here = next,
-                    None => return Resolution::Refused,
-                }
+                here = match self.held.get(&candidate).cloned() {
+                    Some(held) if self.still_outside(&held) => held,
+                    Some(_) => return None,
+                    None => match self.enter(&here, &name, &candidate, &stat) {
+                        Some(next) => next,
+                        None => return Some(Resolution::Refused),
+                    },
+                };
             }
             found = Some((candidate, stat));
         }
-        match found {
+        Some(match found {
             Some((at, stat)) => Resolution::Found(at, stat),
             // Ended on `..`, on a link to a folder already open, or is
             // the root: the folder reached, open.
@@ -247,6 +290,38 @@ impl Round {
                 Ok(stat) => Resolution::Found(here.path.clone(), stat),
                 Err(_) => Resolution::Refused,
             },
+        })
+    }
+
+    /// Whether `held`, a folder this round opened before and is about to
+    /// use again, is still outside every protected place: asked of the
+    /// folder itself (`Dir::path`, `F_GETPATH`), which looks nothing up
+    /// and reads nothing in it. A folder another program renamed into
+    /// `~/Documents` since it was opened is there now, whatever path this
+    /// round knows it by. Asked each time one is used again -- a held one
+    /// at the start of a path or stepped into, the one a `..` goes back
+    /// to -- as `resolve`, which asks nothing, keeps its folders for one
+    /// path only; `/` never moves.
+    fn still_outside(&self, held: &Held) -> bool {
+        if held.parent.is_none() {
+            return true;
+        }
+        match held.dir.path() {
+            Ok(at) => {
+                let mut was_at = held.was_at.borrow_mut();
+                // Where it was last time, and outside then: outside now.
+                if was_at
+                    .as_ref()
+                    .is_some_and(|was| was.as_os_str() == at.as_os_str())
+                {
+                    return true;
+                }
+                let outside = !self.protected.contains(&at);
+                *was_at = outside.then_some(at);
+                outside
+            }
+            // No such call off a Mac, where no place asks permission.
+            Err(e) => e.kind() == std::io::ErrorKind::Unsupported,
         }
     }
 
@@ -357,9 +432,9 @@ impl Round {
         text
     }
 
-    /// The folder `name` in `here`, just looked at (`stat`): the one held
-    /// open, or opened from `here` as `resolve` opens it -- and kept open
-    /// when it is opened for the second time this round.
+    /// The folder `name` in `here`, just looked at (`stat`), opened from
+    /// `here` as `resolve` opens it -- and kept open when it is opened for
+    /// the second time this round.
     fn enter(
         &mut self,
         here: &Rc<Held>,
@@ -367,14 +442,12 @@ impl Round {
         candidate: &Path,
         stat: &Stat,
     ) -> Option<Rc<Held>> {
-        if let Some(held) = self.held.get(candidate) {
-            return Some(held.clone());
-        }
         let (dir, _) = here.dir.open_dir_at(name, Some(stat), false).ok()?;
         let next = Rc::new(Held {
             path: candidate.to_path_buf(),
             dir,
             parent: Some(here.clone()),
+            was_at: RefCell::new(None),
         });
         let again = !self.opened.insert(candidate.to_path_buf());
         if again && self.held.len() < MAX_HELD {
@@ -644,6 +717,92 @@ mod tests {
         assert!(Protected::new(&tree.root).one_check_covers_the_way());
     }
 
+    /// No call `calls` saw, but asking a folder where it is, looked at a
+    /// name in a protected place or through one; and one did ask.
+    fn assert_moved_folder_not_used(calls: &calls::Calls, protected: &Protected) {
+        assert!(calls.get_path > 0, "{calls:?}");
+        for (call, path) in &calls.paths {
+            if *call == calls::Call::GetPath {
+                continue;
+            }
+            for at in path.ancestors() {
+                assert!(!protected.contains(at), "{call:?} looked at {at:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_a_held_folder_moved_into_a_protected_place_is_not_used_again() {
+        // Held, then renamed into `Documents` mid-judgement: a descriptor
+        // follows its folder, so using it would look inside `Documents`.
+        // Asked where it is (`F_GETPATH`) before it is used again, it is
+        // not; the round forgets what it kept and walks from `/`.
+        let tree = Tree::new("moved-start");
+        tree.file("a/sub/x", 0o644);
+        tree.file("a/tool", 0o755);
+        tree.dir("Documents");
+        let protected = Protected::new(&tree.root);
+        let mut round = Round::new(protected.clone());
+        // `..` is taken one step at a time: `a` and `a/sub` opened twice.
+        for _ in 0..2 {
+            round.resolve(&tree.at("a/sub/../sub/missing"));
+        }
+        assert!(round.held.contains_key(&tree.at("a/sub")));
+        fs::rename(tree.at("a"), tree.at("Documents/a")).unwrap();
+        // Starts at the held `a/sub`, now `Documents/a/sub`.
+        let path = tree.at("a/sub/../tool");
+        let (found, made) = calls::measure(|| round.resolve(&path));
+        assert_same(&resolve(&path, &protected, true), &found, &path);
+        assert!(matches!(found, Resolution::Missing), "{found:?}");
+        assert_moved_folder_not_used(&made, &protected);
+        assert!(round.held.is_empty(), "nothing kept is used again");
+    }
+
+    #[test]
+    fn test_a_folder_a_dotdot_goes_back_to_is_asked_where_it_is() {
+        // `p/q` held; `q` moved out of `p`, then `p` into `Documents`: the
+        // walk starts at `q` (outside, still), and `..` would go back to
+        // `p`'s descriptor -- inside `Documents` now.
+        let tree = Tree::new("moved-parent");
+        tree.dir("p/q");
+        tree.file("p/tool", 0o755);
+        tree.dir("Documents");
+        let protected = Protected::new(&tree.root);
+        let mut round = Round::new(protected.clone());
+        for _ in 0..2 {
+            round.resolve(&tree.at("p/q/../q/missing"));
+        }
+        assert!(round.held.contains_key(&tree.at("p/q")));
+        fs::rename(tree.at("p/q"), tree.at("elsewhere-q")).unwrap();
+        fs::rename(tree.at("p"), tree.at("Documents/p")).unwrap();
+        let path = tree.at("p/q/../tool");
+        let (found, made) = calls::measure(|| round.resolve(&path));
+        assert_same(&resolve(&path, &protected, true), &found, &path);
+        assert_moved_folder_not_used(&made, &protected);
+    }
+
+    #[test]
+    fn test_a_held_folder_stepped_into_again_is_asked_where_it_is() {
+        // `x` and `x/c` held; the walk reaches `x/c` again through a link
+        // in `x`, after `x/c` was moved into `Documents`.
+        let tree = Tree::new("moved-entered");
+        tree.file("x/c/f", 0o755);
+        tree.link("x/to-c", "c");
+        tree.dir("Documents");
+        let protected = Protected::new(&tree.root);
+        let mut round = Round::new(protected.clone());
+        for _ in 0..2 {
+            round.resolve(&tree.at("x/c/../c/missing"));
+        }
+        assert!(round.held.contains_key(&tree.at("x/c")));
+        fs::rename(tree.at("x/c"), tree.at("Documents/c")).unwrap();
+        let path = tree.at("x/to-c/f");
+        let (found, made) = calls::measure(|| round.resolve(&path));
+        assert_same(&resolve(&path, &protected, true), &found, &path);
+        assert!(matches!(found, Resolution::Missing), "{found:?}");
+        assert_moved_folder_not_used(&made, &protected);
+    }
+
     #[test]
     fn test_a_folder_held_open_is_used_after_it_is_replaced_by_a_link() {
         let tree = Tree::new("swap");
@@ -717,14 +876,17 @@ mod tests {
         tree.link("brew/bin/g", "../Cellar/h/1.0/bin/h");
         let (next, three) = calls::measure(|| round.resolve(&tree.at("brew/bin/g")));
         assert!(matches!(next, Resolution::Found(..)), "{next:?}");
+        // And each folder used again asked where it now is (`brew/bin`,
+        // then `brew`, which `..` goes back to): two `F_GETPATH`s.
         assert_eq!(
             (
                 three.stat_at,
                 three.read_link_at,
                 three.stat_beneath,
+                three.get_path,
                 three.total()
             ),
-            (1, 1, 1, 3),
+            (1, 1, 1, 2, 5),
             "{three:?}"
         );
         // A name already looked at through folders only is not asked for

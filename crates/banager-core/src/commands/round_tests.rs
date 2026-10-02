@@ -204,7 +204,11 @@ fn test_judge_through_a_round_makes_far_fewer_calls_for_the_same_verdicts() {
     // Each command: its link in `brew/bin` (held open), the link's text,
     // and the rest of the way in one lookup from `brew`; and, once, the
     // folders above them, looked up twice before they are held open.
-    assert!(new.total() <= 3 * 500 + 100, "{} calls", new.total());
+    // Besides, each folder used again is asked where it now is: `brew/bin`
+    // and `brew`, which `..` goes back to.
+    let walked = new.total() - new.get_path;
+    assert!(walked <= 3 * 500 + 100, "{walked} calls");
+    assert!(new.get_path <= 2 * 500 + 20, "{} asked", new.get_path);
     assert!(
         new.total() * 10 < old.total(),
         "before {} calls, after {}",

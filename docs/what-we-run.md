@@ -2289,7 +2289,12 @@ none of them in a protected place -- can be asked of the folder held open
 in one `fstatat` that follows no link anywhere on the way
 (`AT_SYMLINK_NOFOLLOW_ANY`); a link there, on the way or at the end, or a
 folder that may not be searched, is then taken one step at a time, as
-above.
+above. A folder kept open follows its folder if another program renames
+it, so each time one opened earlier is used again it is first asked
+where it now is (`fcntl` with `F_GETPATH`, which looks up no name and
+reads nothing in it); one that is now inside a protected place is not
+used, and everything that refresh kept is let go and the path walked
+from `/` again.
 Unlike `realpath`, it keeps each name as `PATH` or the link's text spells
 it, so two paths are compared as a Mac's disk compares names -- ASCII
 case aside, and the characters it takes for ASCII letters taken for them
