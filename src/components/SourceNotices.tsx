@@ -12,6 +12,7 @@ import { noticeValues } from "../lib/answeredWhen";
 import { useUiStore } from "../store/ui";
 import { NOTICE_GRID, SourceNotice, SourceNoticeLine, type NoticeGrid } from "./SourceNotice";
 import { DisclosureIcon } from "./icons";
+import { useMinuteClock } from "./PageHeader";
 import { InfoDetail } from "./InfoDetail";
 
 /**
@@ -78,24 +79,12 @@ export function useNoticeValues(
   notices: readonly SourceNoticeSpec[],
 ): (notice: SourceNoticeSpec) => SourceNoticeSpec["values"] {
   const { t, i18n } = useTranslation();
-  const now = useClockWhileTimed(notices.some((notice) => notice.answeredAt !== undefined));
+  // Rendered again once a minute while a notice says a time, whose 「今天」
+  // turns into 「昨天」 at midnight, with no timer while none does; read as
+  // it renders, so never behind a time just stamped.
+  const timed = notices.some((notice) => notice.answeredAt !== undefined);
+  const now = Math.max(useMinuteClock(timed, timed), Date.now());
   return (notice) => noticeValues(t, notice, now, i18n.language);
-}
-
-/**
- * The time now, for `useNoticeValues`: read as it renders, so never behind
- * a time just stamped, and rendered again once a minute while `timed` --
- * while a notice says a time, whose 「今天」 turns into 「昨天」 at midnight.
- * No timer at all while none does.
- */
-function useClockWhileTimed(timed: boolean): number {
-  const [tick, setTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (!timed) return;
-    const id = setInterval(() => setTick(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, [timed]);
-  return Math.max(tick, Date.now());
 }
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */

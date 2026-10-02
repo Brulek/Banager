@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
+import { useMinuteClock } from "./PageHeader";
 
 /**
  * The line under Settings' 「检查更新」 popup, while it is set to 「每天」 or
@@ -28,7 +28,8 @@ import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortD
  */
 export function NextAutoCheck({ at, className }: { at: number | null | undefined; className?: string }) {
   const { t, i18n } = useTranslation();
-  const now = useMinute();
+  // Once a minute, so 「今天」 turns to 「很快」 on time.
+  const now = useMinuteClock(null);
   if (at === null || at === undefined) return null;
   return (
     <p data-next-auto-check="" className={className}>
@@ -56,14 +57,4 @@ export function nextAutoCheckText(t: TFunction, at: number, nowMs: number, langu
   if (days === 1) return t("nextAutoCheck.tomorrow", { time });
   const date = shortDateText(due, language);
   return t("nextAutoCheck.date", { date, time });
-}
-
-/** The time now, moved on once a minute, so 「今天」 turns to 「很快」 on time. */
-function useMinute(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
 }

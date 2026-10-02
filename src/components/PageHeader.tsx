@@ -39,14 +39,17 @@ export function elapsedText(t: Translate, keys: ElapsedKeys, elapsed: Elapsed): 
  * turn from "just now" to "1 min ago" a minute after a check finishes,
  * not up to a minute late. Until the first tick after a check, the clock
  * is behind the check's own time, which `elapsedSince` reads as "just
- * now" -- as it is.
+ * now" -- as it is. With `enabled` false there is no timer at all, and
+ * the clock stays where it last was. The one once-a-minute clock: the
+ * next automatic check's line and a notice's 「今天」 tick by it too.
  */
-export function useMinuteClock(since: number | null): number {
+export function useMinuteClock(since: unknown, enabled = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!enabled) return;
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
-  }, [since]);
+  }, [since, enabled]);
   return now;
 }
 
