@@ -18,6 +18,7 @@ import { copyStatusText, useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
+import { rankedComparator } from "../lib/sortRank";
 import {
   JustUpdated,
   endingOfOutcome,
@@ -393,12 +394,17 @@ export function UpdatesPage() {
   // (`listedName`) -- case and accents aside, and "node@22" after
   // "node@9". The key breaks a tie between two sources' same-named
   // packages, so the order never depends on the snapshot's.
+  // Worked out once for every update of the check (`rankedComparator`), so
+  // that each sort of hundreds of rows compares numbers, not names.
   const compareRows = useMemo(() => {
     const collator = new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" });
-    return (a: UpdateCandidate, b: UpdateCandidate) =>
-      collator.compare(listedName(a.key, nameOf(a)), listedName(b.key, nameOf(b))) ||
-      collator.compare(artifactKeyId(a.key), artifactKeyId(b.key));
-  }, [i18n.language, nameOf]);
+    return rankedComparator(
+      snapshot?.updates ?? [],
+      (a: UpdateCandidate, b: UpdateCandidate) =>
+        collator.compare(listedName(a.key, nameOf(a)), listedName(b.key, nameOf(b))) ||
+        collator.compare(artifactKeyId(a.key), artifactKeyId(b.key)),
+    );
+  }, [i18n.language, nameOf, snapshot]);
 
   // The confirmation every Update on this page opens -- a row's own,
   // Update selected and Update all: one batch flow, shared with the
