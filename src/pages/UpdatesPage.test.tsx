@@ -952,7 +952,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then click “Check Again”.",
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then check again.",
         ),
       ),
     ).toBeInTheDocument();
@@ -1003,7 +1003,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin --cask onyx in Terminal to unpin it, then click “Check Again”.",
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin --cask onyx in Terminal to unpin it, then check again.",
         ),
       ),
     ).toBeInTheDocument();
@@ -1031,7 +1031,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned to its current version in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then click “Check Again”.",
+          "It's pinned in Homebrew. To update it, first run /opt/homebrew/bin/brew unpin glib in Terminal to unpin it, then check again.",
         ),
       ),
     ).toBeInTheDocument();
@@ -1183,7 +1183,7 @@ describe("UpdatesPage", () => {
     expect(
       within(detail).getByText(
         wholeSentence(
-          "It's pinned to its current version in pipx. To update it, first run /opt/homebrew/bin/pipx unpin cowsay in Terminal to unpin it, then click “Check Again”.",
+          "It's pinned in pipx. To update it, first run /opt/homebrew/bin/pipx unpin cowsay in Terminal to unpin it, then check again.",
         ),
       ),
     ).toBeInTheDocument();
@@ -2505,7 +2505,7 @@ describe("UpdatesPage", () => {
         fireEvent.click(await findByRole("button", { name: "另有2个无法在这里更新" }));
         expect(
           within(chipDetail(await findRow("glib"), "已固定")).getByText(
-            wholeSentence("它在Homebrew中被固定在当前版本。要更新它，请先在终端运行/opt/homebrew/bin/brew unpin glib解除固定，再点按“重新检查”。"),
+            wholeSentence("它在Homebrew中固定了版本。要更新它，请先在终端运行/opt/homebrew/bin/brew unpin glib解除固定，然后重新检查。"),
           ),
         ).toBeInTheDocument();
         expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(

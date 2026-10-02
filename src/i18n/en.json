@@ -360,7 +360,7 @@
     "blocked": {
       "Pinned": {
         "badge": "Pinned",
-        "detail": "It's pinned to its current version in {{source}}. To update it, first run {{command}} in Terminal to unpin it, then click “Check Again”.",
+        "detail": "It's pinned in {{source}}. To update it, first run {{command}} in Terminal to unpin it, then check again.",
         "refused": "Couldn't update it because it's pinned in {{source}}."
       },
       "SelfUpdatesOnly": {

@@ -800,12 +800,14 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   Pinned: {
     badge: "updates.blocked.Pinned.badge",
     // "It's pinned in {{source}}. To update it, first run {{command}} in
-    // Terminal." `{{source}}`, not Homebrew: pipx pins too. It says what
-    // stands in the way and what removes it, and nothing about when
-    // Banager will offer the update or whether the package stays where
-    // it is -- a pinned cask that updates itself may move anyway (`brew
-    // pin` warns of it, Homebrew's `cmd/pin.rb`), and a row whose source
-    // did not answer is offered nothing until it does.
+    // Terminal to unpin it, then check again." `{{source}}`, not
+    // Homebrew: pipx pins too. It says what stands in the way, what
+    // removes it and what to do after -- an instruction, not a promise --
+    // and nothing about when Banager will offer the update or whether the
+    // package stays where it is (no "current version"): a pinned cask that
+    // updates itself may move anyway (`brew pin` warns of it, Homebrew's
+    // `cmd/pin.rb`), and a row whose source did not answer is offered
+    // nothing until it does.
     detail: "updates.blocked.Pinned.detail",
     commandInDetail: true,
     command: unpinCommand,

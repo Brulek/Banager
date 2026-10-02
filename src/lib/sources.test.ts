@@ -1520,8 +1520,8 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // that updates itself, which `brew pin` warns may move anyway: "the
     // next time Banager checks" and "keeping it at the version it has"
     // would each be false of one of them.
-    expect(en.updates.blocked.Pinned.detail).not.toMatch(/next time|version it has now|keeping/);
-    expect(zhCN.updates.blocked.Pinned.detail).not.toMatch(/下次|现在的版本/);
+    expect(en.updates.blocked.Pinned.detail).not.toMatch(/next time|version it has now|keeping|current version/);
+    expect(zhCN.updates.blocked.Pinned.detail).not.toMatch(/下次|现在的版本|当前版本/);
   });
 
   it("does not promise, when refusing, that a pinned package stays at its version", () => {
@@ -1541,7 +1541,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       expect(copy).not.toMatch(/把[^，。]*固定/);
       expect(copy).not.toMatch(/\{\{source\}\}\s*固定/);
     }
-    expect(zhCN.updates.blocked.Pinned.detail).toContain("在{{source}}中被固定");
+    expect(zhCN.updates.blocked.Pinned.detail).toContain("在{{source}}中固定");
     expect(zhCN.updates.blocked.Pinned.refused).toMatch(/被固定/);
   });
 
