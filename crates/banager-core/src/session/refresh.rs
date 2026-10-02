@@ -6,11 +6,11 @@
 use super::{DetectOutcome, InventoryPreview, Session, Snapshot, SourceError};
 use crate::adapters::{AdapterError, CheckOptions};
 use crate::model::{
-    InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance, ResourceLock,
-    Unavailable,
+    ArtifactKey, InstalledArtifact, InstanceId, InstanceNote, InstanceStatus, ManagerInstance,
+    ResourceLock, Unavailable,
 };
 use crate::runner::HostEnv;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_util::task::AbortOnDropHandle;
 
@@ -634,6 +634,19 @@ impl Session {
                             // patience), the inventory was read before
                             // that update started, so it is fresh evidence
                             // and the filter applies as for any failure.
+                            //
+                            // The versions this round listed, by key, so
+                            // that each carried candidate is looked up, not
+                            // found by going through every row: a Homebrew
+                            // with thousands of formulae and hundreds of
+                            // updates would otherwise compare millions of
+                            // keys.
+                            let mut listed: HashMap<&ArtifactKey, Vec<&str>> = HashMap::new();
+                            if inventory_confirmed {
+                                for a in &artifacts {
+                                    listed.entry(&a.key).or_default().push(&a.version);
+                                }
+                            }
                             updates.extend(
                                 previous
                                     .updates
@@ -641,9 +654,10 @@ impl Session {
                                     .filter(|u| u.key.instance_id == inst.id)
                                     .filter(|u| {
                                         !inventory_confirmed
-                                            || artifacts.iter().any(|a| {
-                                                a.key == u.key
-                                                    && (!u.checkable || a.version != u.target)
+                                            || listed.get(&u.key).is_some_and(|versions| {
+                                                versions.iter().any(|version| {
+                                                    !u.checkable || *version != u.target
+                                                })
                                             })
                                     })
                                     .cloned(),
