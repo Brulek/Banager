@@ -428,6 +428,20 @@ impl Dir {
     /// that is not a file (`O_NONBLOCK`), and read only when `fstat` says
     /// it is a regular file -- `expected`, when given, the very one.
     pub fn read_file_at(&self, name: &OsStr, expected: Option<&Stat>) -> io::Result<Vec<u8>> {
+        self.read_file_at_most(name, expected, u64::MAX)
+            .map(|(_, bytes)| bytes)
+    }
+
+    /// `read_file_at`, of a file of at most `limit` bytes: a larger one is
+    /// refused (`InvalidData`) rather than read, by what `fstat` says on
+    /// the opened file and by what the read finds, should the file have
+    /// grown in between. With what `fstat` said of it.
+    pub fn read_file_at_most(
+        &self,
+        name: &OsStr,
+        expected: Option<&Stat>,
+        limit: u64,
+    ) -> io::Result<(Stat, Vec<u8>)> {
         #[cfg(test)]
         calls::note(calls::Call::ReadFileAt, Some(self), &[name]);
         let c = c_name(name)?;
@@ -443,7 +457,7 @@ impl Dir {
             return Err(io::Error::last_os_error());
         }
         // SAFETY: a fresh descriptor owned by nothing else.
-        let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
         let meta = file.metadata()?;
         let stat = Stat {
             dev: std::os::unix::fs::MetadataExt::dev(&meta),
@@ -458,9 +472,31 @@ impl Dir {
         if !stat.is_file() || expected.is_some_and(|expected| !expected.same_as(&stat)) {
             return Err(io::Error::other("not the file that was looked at"));
         }
+        let too_large = || {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("larger than {limit} bytes"),
+            )
+        };
+        if stat.size > limit {
+            return Err(too_large());
+        }
         let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
-        Ok(bytes)
+        // One byte past the limit, to tell a file that grew since `fstat`.
+        file.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > limit {
+            return Err(too_large());
+        }
+        Ok((stat, bytes))
+    }
+
+    /// Whether this account may `mode` (`libc::W_OK`, ...) this folder
+    /// itself, as `access(2)` answers for its path: `faccessat` of `.`
+    /// from the descriptor, which looks nothing else up.
+    pub fn access(&self, mode: libc::c_int) -> bool {
+        // SAFETY: a NUL-terminated literal name, looked up from a
+        // descriptor this `Dir` owns.
+        unsafe { libc::faccessat(self.fd.as_raw_fd(), c".".as_ptr(), mode, 0) == 0 }
     }
 }
 

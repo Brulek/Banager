@@ -17,6 +17,7 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
+pub mod look;
 mod round;
 pub(crate) use round::Round;
 
