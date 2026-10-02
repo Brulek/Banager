@@ -198,6 +198,21 @@ pub fn read_entry(path: &Path, protected: &Protected, limit: u64) -> io::Result<
     folder.read_file_at_most(&name, Some(&stat), limit)
 }
 
+/// The file `path` leads to, links followed, opened to read from the
+/// folder it is in, held open, without waiting on anything that is not a
+/// file (`Dir::open_file_at`), and what `fstat` says of what was opened:
+/// for a caller that asks the open file itself (`fcntl`), and decides
+/// what it may be. Only the very thing `resolve` found there is opened.
+pub fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {
+    let (real, stat) = target(path, protected)?;
+    let (folder, name) = Dir::open_parent(&real)?;
+    let (file, opened) = folder.open_file_at(&name)?;
+    if !opened.same_as(&stat) {
+        return Err(io::Error::other("replaced while it was looked at"));
+    }
+    Ok((file, opened))
+}
+
 /// Whether this account may write in the folder `path` leads to, as
 /// `access(path, W_OK)` answers: `false` for anything that is not a
 /// folder there, or cannot be looked at -- a protected place among them.

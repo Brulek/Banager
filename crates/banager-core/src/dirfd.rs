@@ -38,6 +38,8 @@ pub struct Stat {
     size: u64,
     mtime: i64,
     mtime_nsec: i64,
+    ctime: i64,
+    ctime_nsec: i64,
     uid: u32,
 }
 
@@ -56,6 +58,8 @@ impl Stat {
             size: st.st_size as u64,
             mtime: st.st_mtime as i64,
             mtime_nsec: st.st_mtime_nsec as i64,
+            ctime: st.st_ctime as i64,
+            ctime_nsec: st.st_ctime_nsec as i64,
             uid: st.st_uid as u32,
         }
     }
@@ -90,6 +94,12 @@ impl Stat {
     /// The nanoseconds past `mtime` (`st_mtime_nsec`).
     pub fn mtime_nsec(&self) -> i64 {
         self.mtime_nsec
+    }
+
+    /// When its own record last changed, unix seconds and the nanoseconds
+    /// past them (`st_ctime`, `st_ctime_nsec`).
+    pub fn ctime(&self) -> (i64, i64) {
+        (self.ctime, self.ctime_nsec)
     }
 
     /// The account that owns it (`st_uid`).
@@ -451,32 +461,7 @@ impl Dir {
     ) -> io::Result<(Stat, Vec<u8>)> {
         #[cfg(test)]
         calls::note(calls::Call::ReadFileAt, Some(self), &[name]);
-        let c = c_name(name)?;
-        // SAFETY: `c` is NUL-terminated; the result is checked.
-        let fd = unsafe {
-            libc::openat(
-                self.fd.as_raw_fd(),
-                c.as_ptr(),
-                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: a fresh descriptor owned by nothing else.
-        let file = unsafe { std::fs::File::from_raw_fd(fd) };
-        let meta = file.metadata()?;
-        let stat = Stat {
-            dev: std::os::unix::fs::MetadataExt::dev(&meta),
-            ino: std::os::unix::fs::MetadataExt::ino(&meta),
-            nlink: std::os::unix::fs::MetadataExt::nlink(&meta),
-            blocks: std::os::unix::fs::MetadataExt::blocks(&meta),
-            mode: std::os::unix::fs::MetadataExt::mode(&meta),
-            size: std::os::unix::fs::MetadataExt::size(&meta),
-            mtime: std::os::unix::fs::MetadataExt::mtime(&meta),
-            mtime_nsec: std::os::unix::fs::MetadataExt::mtime_nsec(&meta),
-            uid: std::os::unix::fs::MetadataExt::uid(&meta),
-        };
+        let (file, stat) = self.open_file_at(name)?;
         if !stat.is_file() || expected.is_some_and(|expected| !expected.same_as(&stat)) {
             return Err(io::Error::other("not the file that was looked at"));
         }
@@ -496,6 +481,36 @@ impl Dir {
             return Err(too_large());
         }
         Ok((stat, bytes))
+    }
+
+    /// Whatever is at `name` in this folder, opened to read without
+    /// following a link (`O_NOFOLLOW`) and without waiting on anything
+    /// that is not a file (`O_NONBLOCK`), with what `fstat` says of what
+    /// was opened: the caller decides what it may be.
+    pub fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {
+        let c = c_name(name)?;
+        // SAFETY: `c` is NUL-terminated; the result is checked.
+        let fd = unsafe {
+            libc::openat(
+                self.fd.as_raw_fd(),
+                c.as_ptr(),
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: a fresh descriptor owned by nothing else.
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: `st` has room for a stat; read only on success.
+        let rc = unsafe { libc::fstat(file.as_raw_fd(), st.as_mut_ptr()) };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: filled in by the successful call above.
+        let stat = Stat::from_raw(unsafe { &st.assume_init() });
+        Ok((file, stat))
     }
 
     /// Whether this account may `mode` (`libc::W_OK`, ...) this folder

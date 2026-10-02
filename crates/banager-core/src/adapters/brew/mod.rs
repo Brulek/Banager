@@ -7,6 +7,7 @@ use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, validate_package_name, Adapter, AdapterError,
     AdapterMeta, CheckOptions, CheckOutcome,
 };
+use crate::dirfd::Stat;
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
@@ -14,6 +15,7 @@ use crate::model::{
     Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateBlocked,
     Warning,
 };
+use crate::protected::{look, Protected};
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use brew_env::HomebrewSwitches;
@@ -116,7 +118,9 @@ pub struct BrewAdapter {
     /// Mac -- green on Apple Silicon with Homebrew in `/opt/homebrew`, red
     /// on an Intel Mac (`/usr/local`), red on a checkout with no Homebrew
     /// at all, and red again where both prefixes exist. Production always
-    /// gets `|path| path.exists()`; tests hand in a layout.
+    /// gets `brew_is_there` (whether the path leads to anything, looked up
+    /// one step at a time and never into a protected place); tests hand
+    /// in a layout.
     path_exists_fn: fn(&Path) -> bool,
     /// How to look at Homebrew's own `brew update` lock under a prefix,
     /// for `catalogue_stamp`. The same fn-pointer seam as
@@ -312,7 +316,7 @@ impl BrewAdapter {
             op_update_wait: Self::OP_UPDATE_WAIT,
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
-            path_exists_fn: |path| path.exists(),
+            path_exists_fn: brew_is_there,
             update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
@@ -1412,15 +1416,23 @@ struct FileId {
 }
 
 impl FileId {
-    fn of(meta: &std::fs::Metadata) -> FileId {
-        use std::os::unix::fs::MetadataExt;
+    fn of(meta: &Stat) -> FileId {
         FileId {
             dev: meta.dev(),
             ino: meta.ino(),
             mtime: (meta.mtime(), meta.mtime_nsec()),
-            ctime: (meta.ctime(), meta.ctime_nsec()),
+            ctime: meta.ctime(),
         }
     }
+}
+
+/// Whether a candidate `brew` path leads to anything, as `exists` answers
+/// but looked up one step at a time and never into or through a protected
+/// place (`protected::look`): a Homebrew reached through a link into
+/// `~/Documents` or onto `/Volumes` is passed over, as `resolve_exe`
+/// passes over a `PATH` folder there, and never run.
+fn brew_is_there(path: &Path) -> bool {
+    look::target(path, &Protected::of_this_process()).is_ok()
 }
 
 /// Looks at Homebrew's update lock under `prefix` without taking it.
@@ -1441,32 +1453,27 @@ impl FileId {
 /// waiting (`O_NONBLOCK`), as `read_file` opens a file a tool wrote: a
 /// named pipe there would otherwise block the open until something wrote
 /// to it, and the uninstall preview with it. Anything but a regular file
-/// is a lock this cannot look at.
+/// is a lock this cannot look at. Both are looked up one step at a time
+/// and never into or through a protected place (`protected::look`): a
+/// lock there is one this cannot look at either.
 ///
 /// On Linux `flock` and `fcntl` locks do not see each other (flock(2)),
 /// so there this never reports `Held`; the `LockStamp` still changes when
 /// a `brew update` begins.
 fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
-    use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::io::AsRawFd;
 
+    let protected = Protected::of_this_process();
     let dir_path = prefix.join("var/homebrew/locks");
-    let dir = std::fs::metadata(&dir_path)
+    let dir = look::target(&dir_path, &protected)
         .ok()
-        .map(|meta| FileId::of(&meta));
-    let opened = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(dir_path.join("update"));
-    let file = match opened {
-        Ok(file) => file,
+        .map(|(_, meta)| FileId::of(&meta));
+    let (file, meta) = match look::open(&dir_path.join("update"), &protected) {
+        Ok(opened) => opened,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return HomebrewUpdateLock::Free(LockStamp { dir, file: None })
         }
         Err(_) => return HomebrewUpdateLock::Unobservable(LockStamp { dir, file: None }),
-    };
-    let Ok(meta) = file.metadata() else {
-        return HomebrewUpdateLock::Unobservable(LockStamp { dir, file: None });
     };
     let seen = LockStamp {
         dir,
@@ -5891,6 +5898,41 @@ mod plan_execute_tests {
             "got {probed:?}"
         );
         let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn test_neither_brew_nor_its_lock_is_looked_at_in_a_protected_place() {
+        // A Homebrew reached through a link into `~/Documents` (the
+        // folder standing in for the home folder): not found, so never
+        // run, and its lock never opened -- each found where nothing is
+        // protected.
+        let home = std::fs::canonicalize(scratch_prefix("brew-in-documents")).unwrap();
+        let kept = home.join("Documents/homebrew");
+        std::fs::create_dir_all(kept.join("bin")).unwrap();
+        std::fs::write(kept.join("bin/brew"), b"#!/bin/sh\n").unwrap();
+        std::fs::create_dir_all(kept.join("var/homebrew/locks")).unwrap();
+        std::fs::write(kept.join("var/homebrew/locks/update"), b"").unwrap();
+        let linked = home.join("homebrew");
+        std::os::unix::fs::symlink(&kept, &linked).unwrap();
+        assert!(brew_is_there(&linked.join("bin/brew")));
+        assert!(matches!(
+            probe_homebrew_update_lock(&linked),
+            HomebrewUpdateLock::Free(LockStamp {
+                dir: Some(_),
+                file: Some(_)
+            })
+        ));
+        let _home = crate::protected::as_if_home(&home);
+        assert!(!brew_is_there(&linked.join("bin/brew")));
+        assert!(!brew_is_there(&kept.join("bin/brew")));
+        assert_eq!(
+            probe_homebrew_update_lock(&linked),
+            HomebrewUpdateLock::Unobservable(LockStamp {
+                dir: None,
+                file: None
+            })
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[cfg(target_os = "macos")]
