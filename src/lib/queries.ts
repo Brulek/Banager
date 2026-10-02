@@ -23,6 +23,7 @@ import {
 } from "./api";
 import { checkEvery } from "./checkFrequency";
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
+import { refetchOperations } from "./operationsRefetch";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
 import type {
@@ -202,9 +203,9 @@ export function useSubmitOperation(): UseMutationResult<number, Error, PlanId> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: submitOperation,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.operations });
-    },
+    // Within a frame, with every other start and status change of it
+    // (`refetchOperations`): Update all starts hundreds back to back.
+    onSuccess: () => refetchOperations(queryClient),
   });
 }
 
@@ -212,9 +213,7 @@ export function useCancelOperation(): UseMutationResult<void, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: cancelOperation,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.operations });
-    },
+    onSuccess: () => refetchOperations(queryClient),
   });
 }
 

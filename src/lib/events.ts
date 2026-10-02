@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
 import { queryKeys } from "./queryKeys";
+import { refetchOperations } from "./operationsRefetch";
 import { useUiStore } from "../store/ui";
 import type { InventoryPreview, Snapshot, UiEvent } from "./types";
 
@@ -249,7 +250,8 @@ export function useStartupRefresh(): void {
  * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
  * React state: `Operation.Log` and `Operation.Note` events are appended to
  * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
- * invalidate the operations query, `SnapshotChanged` invalidates the snapshot query,
+ * have the operations fetched again (within a frame, one fetch for all of
+ * them: `refetchOperations`), `SnapshotChanged` invalidates the snapshot query,
  * `InventoryPreview` is kept apart from it (`writeInventoryPreview`), and
  * `SizesChanged` invalidates the sizes query. A `Finished`
  * event is also when the operation finished (`rememberOpFinished`), and
@@ -286,7 +288,7 @@ export function useOperationEvents(): void {
             note: opEvent.Note.note,
           });
         } else {
-          queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+          refetchOperations(queryClient);
           if ("Finished" in opEvent) {
             // When it finished, which the operation itself does not carry:
             // the Updates page's "Just updated" says it.

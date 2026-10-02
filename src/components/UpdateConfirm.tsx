@@ -175,8 +175,9 @@ export interface UpdateConfirm {
 export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConfirmOptions): UpdateConfirm {
   const { t } = useTranslation();
   // Used only for their promise-returning `mutateAsync` — which keeps
-  // `useSubmitOperation`'s operations-query invalidation — never for their
-  // `isPending`/`isError`/`error`; every flag the UI needs comes from `batch`.
+  // `useSubmitOperation`'s ask for the operations (`refetchOperations`) —
+  // never for their `isPending`/`isError`/`error`; every flag the UI needs
+  // comes from `batch`.
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
   // Whether a refusal may quote the backend or another program, read as
