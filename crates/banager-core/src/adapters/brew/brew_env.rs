@@ -328,8 +328,10 @@ fn boolean_true(value: Option<&[u8]>) -> bool {
 /// is read -- a named pipe would wait for a writer -- and it is opened
 /// without waiting, at most `read_file::LIMIT` bytes of it, as rustup's
 /// startup files are (`read_startup_file` in adapters/standalone/rustup.rs).
+/// Never one in or through a protected place (`read_file`).
 pub(crate) fn read_brew_env_file(path: &Path) -> Option<Vec<u8>> {
-    crate::adapters::read_file::read_bytes(path).ok()
+    crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::of_this_process())
+        .ok()
 }
 
 #[cfg(test)]

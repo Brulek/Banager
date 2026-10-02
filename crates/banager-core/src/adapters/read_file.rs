@@ -1,70 +1,55 @@
 //! Reading a file a tool wrote -- `.crates2.json`, an Ollama manifest,
 //! `~/.claude/settings.json`, a cask's receipt, `brew.env`, a startup
-//! file -- before a parser reads it, bounded both ways.
+//! file -- before a parser reads it, bounded three ways.
 //!
 //! In time: a name that leads to a named pipe would block `open` until
 //! something writes to it, and a refresh would wait forever. The file is
 //! opened without waiting (`O_NONBLOCK`) and read only when `fstat` on
-//! the opened file says it is a regular file, so no swap between a check
-//! and the open can slip a pipe in (`dirfd::Dir::read_file_at` does the
-//! same inside a folder).
+//! the opened file says it is the regular file found there, so no swap
+//! between a check and the open can slip a pipe in
+//! (`dirfd::Dir::read_file_at_most`).
 //!
 //! In size: every one of these files is a few hundred kilobytes at most
 //! (the recorded Ollama manifest, the largest, is 250 KB), and a parser
 //! holds what it reads in memory more than once. A file past `LIMIT` is
 //! refused rather than read, as an HTTP body past
 //! `http::real::MAX_RESPONSE_BYTES` is.
+//!
+//! In place: the path is followed one step at a time and never into or
+//! through a protected place (`protected::look`): a `~/.claude` or
+//! `~/.ollama` kept in iCloud Drive or `~/Documents` through a link is not
+//! read there -- an error, as a file Banager may not open is.
 
-use std::io::{Error, ErrorKind, Read};
-use std::os::unix::fs::OpenOptionsExt;
+use crate::dirfd::Stat;
+use crate::protected::{look, Protected};
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 
 /// The most Banager reads of one such file: 16 MiB.
 pub(crate) const LIMIT: u64 = 16 * 1024 * 1024;
 
-/// `path`'s bytes and the opened file's metadata, links followed; an
-/// error -- `NotFound` kept as it is -- when it is not a regular file or
-/// is larger than `limit` bytes.
+/// `path`'s bytes and what `fstat` said of the opened file, links
+/// followed, never into a place `protected` keeps out; an error --
+/// `NotFound` kept as it is -- when it is not a regular file, is larger
+/// than `limit` bytes, or is, or leads into, a protected place
+/// (`look::is_protected`).
 pub(crate) fn read_regular(
     path: &Path,
     limit: u64,
-) -> std::io::Result<(std::fs::Metadata, Vec<u8>)> {
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(path)?;
-    let meta = file.metadata()?;
-    if !meta.is_file() {
-        return Err(Error::new(ErrorKind::InvalidInput, "not a regular file"));
-    }
-    if meta.len() > limit {
-        return Err(Error::new(
-            ErrorKind::InvalidData,
-            format!("larger than {limit} bytes"),
-        ));
-    }
-    let mut bytes = Vec::new();
-    // The file may grow between `fstat` and the read: read one byte past
-    // the limit to tell.
-    file.take(limit + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > limit {
-        return Err(Error::new(
-            ErrorKind::InvalidData,
-            format!("larger than {limit} bytes"),
-        ));
-    }
-    Ok((meta, bytes))
+    protected: &Protected,
+) -> std::io::Result<(Stat, Vec<u8>)> {
+    look::read_regular(path, protected, limit)
 }
 
 /// `read_regular` under `LIMIT`, the bytes alone.
-pub(crate) fn read_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
-    read_regular(path, LIMIT).map(|(_, bytes)| bytes)
+pub(crate) fn read_bytes(path: &Path, protected: &Protected) -> std::io::Result<Vec<u8>> {
+    read_regular(path, LIMIT, protected).map(|(_, bytes)| bytes)
 }
 
 /// `read_bytes` as UTF-8 text, `InvalidData` when it is not, as
 /// `std::fs::read_to_string` answers.
-pub(crate) fn read_text(path: &Path) -> std::io::Result<String> {
-    String::from_utf8(read_bytes(path)?)
+pub(crate) fn read_text(path: &Path, protected: &Protected) -> std::io::Result<String> {
+    String::from_utf8(read_bytes(path, protected)?)
         .map_err(|_| Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8"))
 }
 
@@ -107,15 +92,55 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn test_a_file_in_or_through_a_protected_place_is_not_read() {
+        // `dir` as the home folder: its `Documents` is kept out, and so is
+        // a file there reached through a link, or through a linked folder.
+        let dir = std::fs::canonicalize(temp_dir("protected")).unwrap();
+        std::fs::create_dir_all(dir.join("Documents/tool")).unwrap();
+        std::fs::write(dir.join("Documents/tool/settings.json"), "{}").unwrap();
+        std::os::unix::fs::symlink(
+            dir.join("Documents/tool/settings.json"),
+            dir.join("settings.json"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(dir.join("Documents/tool"), dir.join(".tool")).unwrap();
+        let protected = Protected::new(&dir);
+        for path in [
+            "Documents/tool/settings.json",
+            "settings.json",
+            ".tool/settings.json",
+        ] {
+            let error = read_text(&dir.join(path), &protected).unwrap_err();
+            assert!(look::is_protected(&error), "{path}: {error}");
+            assert_ne!(error.kind(), ErrorKind::NotFound, "{path}");
+        }
+        // Where nothing is protected, each is read.
+        let elsewhere = Protected::new(Path::new("/nonexistent-home"));
+        assert_eq!(
+            read_text(&dir.join(".tool/settings.json"), &elsewhere).unwrap(),
+            "{}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_reads_a_regular_file_and_keeps_not_found() {
         let dir = temp_dir("regular");
         std::fs::write(dir.join("a.json"), "{}").unwrap();
-        assert_eq!(read_text(&dir.join("a.json")).unwrap(), "{}");
         assert_eq!(
-            read_text(&dir.join("missing.json")).unwrap_err().kind(),
+            read_text(&dir.join("a.json"), &Protected::of_this_process()).unwrap(),
+            "{}"
+        );
+        assert_eq!(
+            read_text(&dir.join("missing.json"), &Protected::of_this_process())
+                .unwrap_err()
+                .kind(),
             ErrorKind::NotFound
         );
-        assert!(read_text(&dir).is_err(), "a folder is not read");
+        assert!(
+            read_text(&dir, &Protected::of_this_process()).is_err(),
+            "a folder is not read"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -124,7 +149,7 @@ pub(crate) mod tests {
         let dir = temp_dir("fifo");
         let fifo = dir.join("settings.json");
         make_fifo(&fifo);
-        let err = finishes(move || read_text(&fifo).unwrap_err());
+        let err = finishes(move || read_text(&fifo, &Protected::of_this_process()).unwrap_err());
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -135,10 +160,18 @@ pub(crate) mod tests {
         std::fs::write(dir.join("big"), vec![b'a'; 101]).unwrap();
         std::fs::write(dir.join("small"), vec![b'a'; 100]).unwrap();
         assert_eq!(
-            read_regular(&dir.join("big"), 100).unwrap_err().kind(),
+            read_regular(&dir.join("big"), 100, &Protected::of_this_process())
+                .unwrap_err()
+                .kind(),
             ErrorKind::InvalidData
         );
-        assert_eq!(read_regular(&dir.join("small"), 100).unwrap().1.len(), 100);
+        assert_eq!(
+            read_regular(&dir.join("small"), 100, &Protected::of_this_process())
+                .unwrap()
+                .1
+                .len(),
+            100
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -147,7 +180,9 @@ pub(crate) mod tests {
         let dir = temp_dir("utf8");
         std::fs::write(dir.join("x"), b"\xff\xfe").unwrap();
         assert_eq!(
-            read_text(&dir.join("x")).unwrap_err().kind(),
+            read_text(&dir.join("x"), &Protected::of_this_process())
+                .unwrap_err()
+                .kind(),
             ErrorKind::InvalidData
         );
         let _ = std::fs::remove_dir_all(&dir);

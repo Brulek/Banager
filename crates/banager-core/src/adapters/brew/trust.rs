@@ -54,7 +54,10 @@ pub(crate) enum Kind {
 /// `$HOME` is not that home, Banager reads another file than Homebrew
 /// does. That only makes the trust sentences wrong, never an action.
 pub(crate) fn read_trust_list(config_home: &Path) -> Option<TrustList> {
-    match crate::adapters::read_file::read_bytes(&config_home.join(TRUST_FILE)) {
+    // Never in or through a protected place (`read_file`): one there is a
+    // file Banager cannot read.
+    let protected = crate::protected::Protected::of_this_process();
+    match crate::adapters::read_file::read_bytes(&config_home.join(TRUST_FILE), &protected) {
         Ok(bytes) => Some(parse(&bytes)),
         Err(error) if error.kind() == ErrorKind::NotFound => Some(TrustList::default()),
         Err(_) => None,

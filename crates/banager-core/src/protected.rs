@@ -276,6 +276,18 @@ impl Protected {
         }
     }
 
+    /// The places for the home folder this process's `HOME` names --
+    /// what `HostEnv::discover` reads for every refresh -- and for the
+    /// account's own: for a look made where no `HostEnv` is at hand (a
+    /// file a tool wrote, read by an adapter that keeps none).
+    pub fn of_this_process() -> Protected {
+        Protected::new(
+            &std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default(),
+        )
+    }
+
     /// Whether `path` is one of the places or inside one: `is_within`,
     /// with the places spelled from `/` once, when they were made, rather
     /// than at every call (`without_data_volume` of a path already

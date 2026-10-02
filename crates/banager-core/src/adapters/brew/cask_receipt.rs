@@ -37,6 +37,7 @@
 //! read: nothing is written, nothing is run.
 
 use crate::model::{CaskStep, RemoveCheck};
+use crate::protected::{look, Protected};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -77,16 +78,21 @@ const RECEIPT: &str = "INSTALL_RECEIPT.json";
 /// definition. `token` is the cask's token or full name
 /// (`gautham-v/tap/claudebar`); the Caskroom folder is its last part, as
 /// `Caskroom.token_from_full_token` takes it (`cask/caskroom.rb`).
+///
+/// Every look is taken one step at a time and never into or through a
+/// protected place (`protected::look`): a Caskroom that is, or leads
+/// into, one is one Banager cannot tell anything of.
 pub(crate) fn read_recorded(prefix: &Path, token: &str) -> Option<Recorded> {
+    let protected = Protected::of_this_process();
     let token = caskroom_token(token)?;
     let caskroom = prefix.join("Caskroom").join(token);
     // Homebrew skips a Caskroom folder that is a link (`cask/caskroom.rb:51`).
-    if !std::fs::symlink_metadata(&caskroom).ok()?.is_dir() {
+    if !look::lstat(&caskroom, &protected).ok()?.is_dir() {
         return None;
     }
     let metadata = caskroom.join(".metadata");
-    let caskfile = saved_caskfile(&metadata, token)?;
-    let receipt = read_regular_file(&metadata.join(RECEIPT))
+    let caskfile = saved_caskfile(&metadata, token, &protected)?;
+    let receipt = read_regular_file(&metadata.join(RECEIPT), &protected)
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
     let receipt = receipt.as_ref().and_then(Value::as_object);
     let flight_blocks = receipt
@@ -114,7 +120,8 @@ pub(crate) fn read_recorded(prefix: &Path, token: &str) -> Option<Recorded> {
     let artifacts = if name.ends_with(".internal.json") {
         return None;
     } else if name.ends_with(".json") {
-        let saved: Value = serde_json::from_slice(&read_regular_file(&caskfile)?).ok()?;
+        let saved: Value =
+            serde_json::from_slice(&read_regular_file(&caskfile, &protected)?).ok()?;
         match saved.as_object()?.get("artifacts") {
             Some(Value::Array(list)) => list.clone(),
             None | Some(Value::Null) => from_receipt()?,
@@ -146,13 +153,13 @@ fn caskroom_token(name: &str) -> Option<&str> {
 /// skips them), the one with the greatest name -- the first of those, in
 /// sorted order, when two share it -- and in it the first of
 /// `Casks/<token>.json`, `.internal.json` and `.rb` that exists.
-fn saved_caskfile(metadata: &Path, token: &str) -> Option<PathBuf> {
+fn saved_caskfile(metadata: &Path, token: &str, protected: &Protected) -> Option<PathBuf> {
     let mut newest: Option<(Vec<u8>, PathBuf)> = None;
-    for version in sorted_entries(metadata) {
-        if !version.is_dir() {
+    for version in sorted_entries(metadata, protected) {
+        if !look::target(&version, protected).is_ok_and(|(_, meta)| meta.is_dir()) {
             continue;
         }
-        for entry in sorted_entries(&version) {
+        for entry in sorted_entries(&version, protected) {
             let name = entry.file_name()?.as_encoded_bytes().to_vec();
             if newest.as_ref().is_none_or(|(best, _)| name > *best) {
                 newest = Some((name, entry));
@@ -163,19 +170,19 @@ fn saved_caskfile(metadata: &Path, token: &str) -> Option<PathBuf> {
     ["json", "internal.json", "rb"]
         .iter()
         .map(|ext| timestamped.join("Casks").join(format!("{token}.{ext}")))
-        .find(|path| path.exists())
+        .find(|path| look::target(path, protected).is_ok())
 }
 
 /// The entries of `dir` whose names do not start with `.`, sorted by name;
-/// none when it cannot be listed.
-fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
-    let Ok(read) = std::fs::read_dir(dir) else {
+/// none when it cannot be listed (`look::list`).
+fn sorted_entries(dir: &Path, protected: &Protected) -> Vec<PathBuf> {
+    let Ok(names) = look::list(dir, protected).and_then(|listing| listing.names()) else {
         return Vec::new();
     };
-    let mut entries: Vec<PathBuf> = read
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| !entry.file_name().as_encoded_bytes().starts_with(b"."))
-        .map(|entry| entry.path())
+    let mut entries: Vec<PathBuf> = names
+        .into_iter()
+        .filter(|name| !name.as_encoded_bytes().starts_with(b"."))
+        .map(|name| dir.join(name))
         .collect();
     entries.sort();
     entries
@@ -185,8 +192,8 @@ fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
 /// regular file Banager can read, of at most `read_file::LIMIT` bytes.
 /// Nothing but a regular file is read -- a named pipe would wait for a
 /// writer -- and it is opened without waiting (`read_file`).
-fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
-    crate::adapters::read_file::read_bytes(path).ok()
+fn read_regular_file(path: &Path, protected: &Protected) -> Option<Vec<u8>> {
+    crate::adapters::read_file::read_bytes(path, protected).ok()
 }
 
 /// One line of the confirmation's notes: a kind of extra step; for `Deletes` and
@@ -811,8 +818,9 @@ pub(crate) fn app_targets(recorded: &Recorded) -> Vec<String> {
 pub(crate) fn app_bundle_id(app: &Path) -> Option<String> {
     let info = app.join("Contents").join("Info.plist");
     // A regular file only, links followed: a named pipe would wait for a
-    // writer (`read_regular_file`).
-    let bytes = read_regular_file(&info)?;
+    // writer (`read_regular_file`); and never one in or through a
+    // protected place -- an app kept in `~/Documents` is not read.
+    let bytes = read_regular_file(&info, &Protected::of_this_process())?;
     plist::Value::from_reader(std::io::Cursor::new(bytes))
         .ok()?
         .as_dictionary()?

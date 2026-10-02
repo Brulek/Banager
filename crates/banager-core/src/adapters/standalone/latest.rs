@@ -88,8 +88,12 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 /// file Banager reads for Claude Code (`docs/what-we-run.md`, "Files
 /// Banager reads"): read-only, and `latest` when it cannot be read.
 pub fn claude_channel(home: &Path) -> &'static str {
-    // Bounded (`read_file`): a named pipe there is not waited on.
-    match crate::adapters::read_file::read_text(&home.join(".claude").join("settings.json")) {
+    // Bounded (`read_file`): a named pipe there is not waited on, and a
+    // `~/.claude` kept in a protected place is not read.
+    match crate::adapters::read_file::read_text(
+        &home.join(".claude").join("settings.json"),
+        &crate::protected::Protected::new(home),
+    ) {
         Ok(json) => claude_channel_from_json(&json),
         Err(_) => CHANNEL_LATEST,
     }
@@ -470,6 +474,40 @@ mod tests {
         .expect("write settings.json");
         assert_eq!(claude_channel(&home), CHANNEL_STABLE);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn test_claude_channel_never_reads_a_settings_file_kept_in_a_protected_place() {
+        // `~/.claude` a link into `~/Documents` or iCloud Drive: its
+        // settings are not read there, and the channel is the default, as
+        // for a file Banager cannot read. Kept anywhere else, it is read.
+        for (keep, expected) in [
+            ("claude-settings", CHANNEL_STABLE),
+            ("Documents/claude-settings", CHANNEL_LATEST),
+            (
+                "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+                CHANNEL_LATEST,
+            ),
+        ] {
+            let raw = std::env::temp_dir().join(format!(
+                "banager-standalone-channel-kept-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(raw.join(keep)).expect("create the kept folder");
+            let home = std::fs::canonicalize(&raw).unwrap();
+            std::fs::write(
+                home.join(keep).join("settings.json"),
+                r#"{"autoUpdatesChannel":"stable"}"#,
+            )
+            .expect("write settings.json");
+            std::os::unix::fs::symlink(home.join(keep), home.join(".claude")).unwrap();
+            assert_eq!(claude_channel(&home), expected, "{keep}");
+            let _ = std::fs::remove_dir_all(&home);
+        }
     }
 
     #[test]

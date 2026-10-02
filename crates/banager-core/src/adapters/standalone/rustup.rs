@@ -38,6 +38,7 @@ use super::recipe::GateRefusal;
 use super::Detected;
 use crate::adapters::cargo::{instance_id_for, parse_crates2_bins};
 use crate::model::{ResourceLock, UninstallBlocked, Warning};
+use crate::protected::{look, Protected};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -95,25 +96,26 @@ pub struct StandardRoots {
     pub rustup_home: PathBuf,
 }
 
-fn is_real_dir(path: &Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .map(|meta| meta.file_type().is_dir())
-        .unwrap_or(false)
+/// Whether `path` is a real folder, not a link (`lstat`), never looked up
+/// into or through a protected place (`protected::look`).
+fn is_real_dir(path: &Path, protected: &Protected) -> bool {
+    look::lstat(path, protected).is_ok_and(|meta| meta.is_dir())
 }
 
 /// Whether anything at the top of `root` is a link: `Ok(())` when nothing
 /// is, else the path `standard_roots` refuses at -- the first link by
 /// name, or `root` itself when it cannot be listed, since a folder Banager
-/// cannot list may hold a link it cannot see. `read_dir` and each entry's
-/// own type (`DirEntry::file_type`, which does not follow); nothing is
-/// opened or followed. Read by `standard_roots`.
-fn no_link_at_the_top(root: &Path) -> Result<(), PathBuf> {
+/// cannot list may hold a link it cannot see. The folder's names and each
+/// entry's own `lstat`, from the folder held open (`look::list`), never
+/// in or through a protected place; nothing is opened or followed. Read
+/// by `standard_roots`.
+fn no_link_at_the_top(root: &Path, protected: &Protected) -> Result<(), PathBuf> {
     let unlistable = |_| root.to_path_buf();
+    let listing = look::list(root, protected).map_err(unlistable)?;
     let mut links = Vec::new();
-    for entry in std::fs::read_dir(root).map_err(unlistable)? {
-        let entry = entry.map_err(unlistable)?;
-        if entry.file_type().map_err(unlistable)?.is_symlink() {
-            links.push(entry.path());
+    for name in listing.names().map_err(unlistable)? {
+        if listing.lstat(&name).map_err(unlistable)?.is_symlink() {
+            links.push(root.join(name));
         }
     }
     links.sort();
@@ -166,24 +168,27 @@ pub fn standard_roots(d: &Detected) -> Result<StandardRoots, GateRefusal> {
         reason: UninstallBlocked::NoSafeMethod,
         path,
     };
+    let protected = d.protected();
     let standard_cargo = d.home.join(".cargo");
     let standard_rustup = d.home.join(".rustup");
     let cargo_home = match d.cargo_home.as_deref() {
         Some(cargo_home)
-            if d.home.is_absolute() && cargo_home == standard_cargo && is_real_dir(cargo_home) =>
+            if d.home.is_absolute()
+                && cargo_home == standard_cargo
+                && is_real_dir(cargo_home, &protected) =>
         {
             cargo_home
         }
         _ => return Err(refused(standard_cargo)),
     };
-    no_link_at_the_top(cargo_home).map_err(refused)?;
+    no_link_at_the_top(cargo_home, &protected).map_err(refused)?;
     let rustup_home = match d.rustup_home.as_deref() {
         Some(rustup_home) if rustup_home == standard_rustup => rustup_home,
         _ => return Err(refused(standard_rustup)),
     };
-    match std::fs::symlink_metadata(rustup_home) {
-        Ok(meta) if meta.file_type().is_dir() => {
-            no_link_at_the_top(rustup_home).map_err(refused)?
+    match look::lstat(rustup_home, &protected) {
+        Ok(meta) if meta.is_dir() => {
+            no_link_at_the_top(rustup_home, &protected).map_err(refused)?
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         _ => return Err(refused(standard_rustup)),
@@ -211,13 +216,15 @@ pub fn uninstall_blocked(d: &Detected) -> Option<GateRefusal> {
 /// the home whole, so its names are the toolchains that go; a linked
 /// toolchain (`rustup toolchain link`) is an entry like any other. No
 /// directory, or an unreadable one: no names, and the dialog says "every
-/// toolchain" (ruling 15). Nothing is run.
-pub fn toolchain_names(rustup_home: &Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(rustup_home.join("toolchains"))
+/// toolchain" (ruling 15). Nothing is run, and nothing is looked up into
+/// or through a protected place (`protected::look`).
+pub fn toolchain_names(rustup_home: &Path, protected: &Protected) -> Vec<String> {
+    let mut names: Vec<String> = look::list(&rustup_home.join("toolchains"), protected)
+        .and_then(|listing| listing.names())
         .map(|entries| {
             entries
-                .filter_map(Result::ok)
-                .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+                .into_iter()
+                .filter_map(|name| name.to_str().map(str::to_string))
                 .filter(|name| !name.starts_with('.'))
                 .collect()
         })
@@ -249,20 +256,21 @@ pub fn toolchain_names(rustup_home: &Path) -> Vec<String> {
 /// unreadable one, no record or a broken one each add nothing: a name is
 /// better missing than invented, and `DeletesCargoHome` always says the
 /// whole folder goes.
-pub fn bin_programs_rustup_removes(cargo_home: &Path) -> Vec<String> {
+pub fn bin_programs_rustup_removes(cargo_home: &Path, protected: &Protected) -> Vec<String> {
     let removed =
         |name: &str| !name.starts_with('.') && name != "rustup" && !RUSTUP_PROXIES.contains(&name);
-    let listed: Vec<String> = std::fs::read_dir(cargo_home.join("bin"))
+    let listed: Vec<String> = look::list(&cargo_home.join("bin"), protected)
+        .and_then(|listing| listing.names())
         .map(|entries| {
             entries
-                .filter_map(Result::ok)
-                .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+                .into_iter()
+                .filter_map(|name| name.to_str().map(str::to_string))
                 .filter(|name| removed(name))
                 .collect()
         })
         .unwrap_or_default();
     let recorded: Vec<(String, Vec<String>)> =
-        crate::adapters::read_file::read_text(&cargo_home.join(".crates2.json"))
+        crate::adapters::read_file::read_text(&cargo_home.join(".crates2.json"), protected)
             .ok()
             .and_then(|json| parse_crates2_bins(&json).ok())
             .unwrap_or_default();
@@ -287,10 +295,10 @@ pub fn bin_programs_rustup_removes(cargo_home: &Path) -> Vec<String> {
 /// on where the binary sits (`home::rustup_home_with_cwd_env`,
 /// env.rs:101-113), so that rustup shares `~/.rustup` with the native
 /// one and loses its toolchains when it goes (ruling 21). Read-only.
-pub fn homebrew_rustup_present(prefixes: &[PathBuf]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| prefix.join("Cellar/rustup").is_dir())
+pub fn homebrew_rustup_present(prefixes: &[PathBuf], protected: &Protected) -> bool {
+    prefixes.iter().any(|prefix| {
+        look::target(&prefix.join("Cellar/rustup"), protected).is_ok_and(|(_, meta)| meta.is_dir())
+    })
 }
 
 /// How rustup 1.29.1 spells the Cargo home in the line it writes and
@@ -713,12 +721,17 @@ type FileIdentity = (u64, u64);
 /// would wait for a writer), and the identity is the opened file's own
 /// (`fstat`), the file whose bytes were read. Read by
 /// `shell_config_leftovers`.
-fn read_startup_file(path: &Path) -> Option<(FileIdentity, String)> {
-    use std::os::unix::fs::MetadataExt;
+fn read_startup_file(path: &Path, protected: &Protected) -> Option<(FileIdentity, String)> {
     // Opened without waiting and read only when `fstat` says it is a
-    // regular file, at most `read_file::LIMIT` bytes of it.
-    let (meta, bytes) =
-        crate::adapters::read_file::read_regular(path, crate::adapters::read_file::LIMIT).ok()?;
+    // regular file, at most `read_file::LIMIT` bytes of it, and never in
+    // or through a protected place: a `~/.zshrc` kept in iCloud Drive is
+    // a name not read.
+    let (meta, bytes) = crate::adapters::read_file::read_regular(
+        path,
+        crate::adapters::read_file::LIMIT,
+        protected,
+    )
+    .ok()?;
     let contents = String::from_utf8(bytes).ok()?;
     Some(((meta.dev(), meta.ino()), contents))
 }
@@ -747,10 +760,11 @@ pub fn shell_config_leftovers(
 ) -> Vec<Warning> {
     let spelled = cargo_home_str(home, cargo_home);
     let ordered = startup_files(home, zdotdir);
+    let protected = Protected::new(home);
     let mut file_of: BTreeMap<PathBuf, FileIdentity> = BTreeMap::new();
     let mut copies: BTreeMap<FileIdentity, String> = BTreeMap::new();
     for path in &ordered {
-        if let Some((identity, contents)) = read_startup_file(path) {
+        if let Some((identity, contents)) = read_startup_file(path, &protected) {
             file_of.insert(path.clone(), identity);
             copies.entry(identity).or_insert(contents);
         }
@@ -797,6 +811,7 @@ pub fn preview_with(
     homebrew_prefixes: &[PathBuf],
 ) -> Result<Vec<Warning>, GateRefusal> {
     let roots = standard_roots(d)?;
+    let protected = d.protected();
     let tilde = |path: &Path| {
         crate::scan::display_path(path, &d.home)
             .display()
@@ -805,17 +820,17 @@ pub fn preview_with(
     let mut warnings = vec![
         Warning::RemovesToolchains {
             path: tilde(&roots.rustup_home),
-            names: toolchain_names(&roots.rustup_home),
+            names: toolchain_names(&roots.rustup_home, &protected),
         },
         Warning::DeletesCargoHome {
             path: tilde(&roots.cargo_home),
         },
     ];
-    let bins = bin_programs_rustup_removes(&roots.cargo_home);
+    let bins = bin_programs_rustup_removes(&roots.cargo_home, &protected);
     if !bins.is_empty() {
         warnings.push(Warning::RemovesCargoInstalled { names: bins });
     }
-    if homebrew_rustup_present(homebrew_prefixes) {
+    if homebrew_rustup_present(homebrew_prefixes, &protected) {
         warnings.push(Warning::HomebrewRustupLosesToolchains);
     }
     warnings.push(Warning::EditsShellConfig);
@@ -865,7 +880,8 @@ mod tests {
         std::fs::create_dir_all(cargo_home.join("bin")).unwrap();
         make_fifo(&cargo_home.join(".crates2.json"));
         let home = cargo_home.clone();
-        let names = finishes(move || bin_programs_rustup_removes(&home));
+        let names =
+            finishes(move || bin_programs_rustup_removes(&home, &Protected::of_this_process()));
         assert!(names.is_empty(), "{names:?}");
         let _ = std::fs::remove_dir_all(&cargo_home);
     }
@@ -1107,12 +1123,12 @@ mod tests {
         // (ruling 15).
         let home = TempHome::new("toolchains-none");
         assert_eq!(
-            toolchain_names(&home.path().join(".rustup")),
+            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()),
             Vec::<String>::new()
         );
         home.dir(".rustup");
         assert_eq!(
-            toolchain_names(&home.path().join(".rustup")),
+            toolchain_names(&home.path().join(".rustup"), &Protected::of_this_process()),
             Vec::<String>::new()
         );
 
@@ -1125,7 +1141,7 @@ mod tests {
         let linked = home.dir("src/my-toolchain");
         home.link(".rustup/toolchains/custom", &linked);
         assert_eq!(
-            toolchain_names(&rustup_home),
+            toolchain_names(&rustup_home, &Protected::of_this_process()),
             vec![
                 "1.90.0-aarch64-apple-darwin".to_string(),
                 "custom".to_string(),
@@ -1174,7 +1190,7 @@ mod tests {
         )
         .expect("copy the recorded record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             vec!["hexyl".to_string()]
         );
     }
@@ -1202,7 +1218,7 @@ mod tests {
         )
         .expect("write the record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             vec![
                 "cargo-binstall".to_string(),
                 "jj-cli".to_string(),
@@ -1225,12 +1241,12 @@ mod tests {
         std::fs::write(cargo_home.join("bin/mytool"), b"x").expect("write mytool");
         std::fs::write(cargo_home.join("bin/.DS_Store"), b"x").expect("write .DS_Store");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             vec!["mytool".to_string()]
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             vec!["mytool".to_string()]
         );
     }
@@ -1255,7 +1271,7 @@ mod tests {
         )
         .expect("write record");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             vec![
                 "cargo-binstall".to_string(),
                 "hexyl".to_string(),
@@ -1272,18 +1288,18 @@ mod tests {
         let home = TempHome::new("rustup-bins-none");
         let cargo_home = home.dir(".cargo");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             Vec::<String>::new()
         );
         std::fs::write(cargo_home.join(".crates2.json"), "{ not json").expect("write");
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             Vec::<String>::new()
         );
         // rustup and its proxies alone: nothing else to name.
         rustup_layout(&cargo_home);
         assert_eq!(
-            bin_programs_rustup_removes(&cargo_home),
+            bin_programs_rustup_removes(&cargo_home, &Protected::of_this_process()),
             Vec::<String>::new()
         );
     }
@@ -1296,14 +1312,20 @@ mod tests {
         // prefixes are `HOMEBREW_PREFIXES`; the tests hand in their own.
         let home = TempHome::new("brew-present");
         let prefix = home.dir("opt/homebrew");
-        assert!(!homebrew_rustup_present(std::slice::from_ref(&prefix)));
+        assert!(!homebrew_rustup_present(
+            std::slice::from_ref(&prefix),
+            &Protected::of_this_process()
+        ));
         home.dir("opt/homebrew/Cellar/rustup/1.29.1/bin");
-        assert!(homebrew_rustup_present(std::slice::from_ref(&prefix)));
-        assert!(homebrew_rustup_present(&[
-            home.path().join("usr/local"),
-            prefix
-        ]));
-        assert!(!homebrew_rustup_present(&[]));
+        assert!(homebrew_rustup_present(
+            std::slice::from_ref(&prefix),
+            &Protected::of_this_process()
+        ));
+        assert!(homebrew_rustup_present(
+            &[home.path().join("usr/local"), prefix],
+            &Protected::of_this_process()
+        ));
+        assert!(!homebrew_rustup_present(&[], &Protected::of_this_process()));
         assert_eq!(HOMEBREW_PREFIXES, ["/opt/homebrew", "/usr/local"]);
     }
 
@@ -1738,6 +1760,42 @@ mod tests {
                 certain: true
             }]
         );
+    }
+
+    #[test]
+    fn test_shell_config_leftovers_never_reads_a_startup_file_kept_in_a_protected_place() {
+        // `~/.zshrc` a link to dotfiles kept in `~/Documents` or iCloud
+        // Drive: not read there, so no sentence about it -- as for a file
+        // Banager cannot open. Kept anywhere else, it is read and said.
+        for (keep, protected_place) in [
+            ("dotfiles", false),
+            ("Documents/dotfiles", true),
+            (
+                "Library/Mobile Documents/com~apple~CloudDocs/dotfiles",
+                true,
+            ),
+        ] {
+            let home = TempHome::new("rustup-rc-kept");
+            let kept = home.dir(keep).join("zshrc");
+            std::fs::write(&kept, format!("{}\n", rc_line())).expect("write rc");
+            home.link(".zshrc", &kept);
+            let (warnings, made) = crate::dirfd::calls::measure(|| {
+                shell_config_leftovers(home.path(), None, &home.path().join(".cargo"))
+            });
+            let protected = home.protected();
+            for (call, path) in &made.paths {
+                assert!(!protected.contains(path), "{keep}: {call:?} {path:?}");
+            }
+            let expected = if protected_place {
+                Vec::new()
+            } else {
+                vec![Warning::LeavesShellConfigLine {
+                    path: "~/.zshrc".to_string(),
+                    certain: true,
+                }]
+            };
+            assert_eq!(warnings, expected, "{keep}");
+        }
     }
 
     #[test]

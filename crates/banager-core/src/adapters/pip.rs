@@ -8,11 +8,11 @@ use crate::model::{
     OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, Unavailable,
     UpdateCandidate, UpdateChannel,
 };
+use crate::protected::{self, look, Protected};
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashSet;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -158,13 +158,19 @@ impl PipAdapter {
         let mut found = Vec::new();
         // `Some(answer)` once xcode-select has been asked in this call.
         let mut developer_dir: Option<Option<PathBuf>> = None;
+        // Every look here one step at a time, never into or through a
+        // protected place (`protected::look`), for this home folder and
+        // the account's.
+        let protected = Protected::new(&env.home);
         for name in Self::CANDIDATE_INTERPRETERS {
             let Some(python_path) = resolve_exe(name, env) else {
                 continue;
             };
             let canonical =
-                std::fs::canonicalize(&python_path).unwrap_or_else(|_| python_path.clone());
-            if !seen.insert(canonical.clone()) {
+                look::real_path(&python_path, &protected).unwrap_or_else(|_| python_path.clone());
+            // As the disk compares names: each is spelled as `PATH` and
+            // its links spell it (`protected::look`).
+            if !seen.insert(protected::folded(&canonical)) {
                 continue;
             }
             // By where it leads, so a link elsewhere on `PATH` to the shim
@@ -178,7 +184,7 @@ impl PipAdapter {
                     developer_dir = Some(self.active_developer_dir().await);
                 }
                 let dir = developer_dir.as_ref().and_then(|dir| dir.as_deref());
-                if !self.shim_has_tool(shim, dir) {
+                if !self.shim_has_tool(shim, dir, &protected) {
                     continue;
                 }
             }
@@ -297,17 +303,25 @@ impl PipAdapter {
     /// would lead back to the shim. Homebrew's git shim goes by the same
     /// two things (`Library/Homebrew/shims/shared/git`: the folder
     /// `xcode-select -print-path` names, then the tool of its name under
-    /// `usr/bin` there, run only when it is an executable file).
-    fn shim_has_tool(&self, shim: &Path, developer_dir: Option<&Path>) -> bool {
+    /// `usr/bin` there, run only when it is an executable file). Looked up
+    /// one step at a time and never into or through a protected place
+    /// (`protected::look`): a developer folder in `~/Downloads` -- an
+    /// Xcode beta never moved to Applications, chosen with `xcode-select
+    /// -s` -- is one Banager cannot look at, so the shim has no tool it
+    /// knows of, and is skipped.
+    fn shim_has_tool(
+        &self,
+        shim: &Path,
+        developer_dir: Option<&Path>,
+        protected: &Protected,
+    ) -> bool {
         let (Some(dir), Some(name)) = (developer_dir, shim.file_name()) else {
             return false;
         };
-        let Ok(tool) = std::fs::canonicalize(dir.join("usr/bin").join(name)) else {
+        let Ok((tool, meta)) = look::target(&dir.join("usr/bin").join(name), protected) else {
             return false;
         };
-        tool.parent() != Some(self.shim_dir.as_path())
-            && std::fs::metadata(&tool)
-                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        tool.parent() != Some(self.shim_dir.as_path()) && meta.is_file() && meta.mode() & 0o111 != 0
     }
 
     async fn run_pip_list(
@@ -567,6 +581,7 @@ impl Adapter for PipAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     // Regressions found by `adapters/robustness.rs`.
 
@@ -963,6 +978,45 @@ mod tests {
         for dir in [&shims, &gone, &not_executable, &loops_back] {
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+
+    #[tokio::test]
+    async fn test_detect_never_looks_for_the_shims_tool_in_a_protected_place() {
+        // A developer folder in `~/Downloads` -- an Xcode beta never moved
+        // to Applications, chosen with `xcode-select -s` -- or reached
+        // through a link into one: never looked into, so the shim is
+        // skipped as when the folder has no tool, and never run.
+        let home = temp_folder("home-xcode-in-downloads");
+        let shims = temp_folder("shims-protected");
+        let shim = shims.join("python3");
+        file_at(&shim, 0o755);
+        let developer = home.join("Downloads/Xcode-beta.app/Contents/Developer");
+        file_at(&developer.join("usr/bin/python3"), 0o755);
+        let linked = home.join("xcode-developer");
+        std::os::unix::fs::symlink(&developer, &linked).expect("link");
+        for answer in [&developer, &linked] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+                exited(0, &format!("{}\n", answer.display())),
+            );
+            runner.respond(
+                vec![text(&shim), "-m", "pip", "--version"],
+                exited(0, PIP_VERSION),
+            );
+            let adapter = adapter_with_shims_in(runner.clone(), &shims);
+            let mut env = path_of(&[&shims]);
+            env.home = home.clone();
+            let instances = adapter.detect(&env).await;
+            assert!(instances.is_empty(), "{answer:?}: {instances:?}");
+            assert_eq!(
+                runner.calls(),
+                vec![argv(&PipAdapter::XCODE_SELECT_ARGV)],
+                "{answer:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&shims);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[tokio::test]

@@ -507,7 +507,7 @@ fn test_every_file_opened_is_opened_without_waiting_or_as_a_folder() {
         unguarded.is_empty(),
         "an open that would wait on a named pipe: {unguarded:#?}"
     );
-    assert!(opens >= 6, "the opens were found: {opens}");
+    assert!(opens >= 5, "the opens were found: {opens}");
 
     // The plain reads that remain, each by its text, with why it cannot
     // wait: Banager's own settings.json and history.json, in its own

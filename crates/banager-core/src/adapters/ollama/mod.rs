@@ -423,12 +423,16 @@ impl OllamaAdapter {
         tag: &str,
     ) -> Result<Option<RegistryChange>, LookupFailure> {
         let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
-        let local_json = crate::adapters::read_file::read_text(&local_path).map_err(|e| {
-            format!(
-                "could not read local manifest {}: {e}",
-                local_path.display()
-            )
-        })?;
+        // Never in or through a protected place (`read_file`): a
+        // `~/.ollama` kept in one is a manifest that cannot be read.
+        let protected = crate::protected::Protected::of_this_process();
+        let local_json =
+            crate::adapters::read_file::read_text(&local_path, &protected).map_err(|e| {
+                format!(
+                    "could not read local manifest {}: {e}",
+                    local_path.display()
+                )
+            })?;
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
 
