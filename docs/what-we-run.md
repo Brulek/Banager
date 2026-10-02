@@ -1107,6 +1107,10 @@ Verified against pipx 1.17.3 (`adapters/meta/pipx.toml`).
 If `pipx list --outdated` exits non-zero, `<pipx> list --json` is run once
 more so every installed tool can be listed as "could not check", with the
 reason — one more process than the table shows, on that path only.
+pipx runs `pip list --outdated` in each tool's environment and keeps that
+command's error output to its own debug log, so a lookup pip gave up on
+there (as under pip, below) reaches Banager as no update; Banager cannot
+tell it from one, and reads no pipx log to find out.
 
 On a pipx older than 1.16, which has no `list --outdated`, Banager
 instead asks PyPI about each installed tool: `GET
@@ -1233,6 +1237,21 @@ are installed, its pip is listed.
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
 | List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` | 60 s |
+
+If `pip list --outdated` exits non-zero, `<python> -m pip list
+--format=json` is run once more so every installed package can be listed
+as "could not check", with the reason — one more process than the table
+shows, on that path only. It is run too when the command exits 0 but gave
+up on reaching the index for some package: pip then leaves that package
+out as if it were up to date, and says so only in its error output, as
+the warning urllib3 prints before its last try — `Retrying
+(Retry(total=0, …)) after connection broken by '…': /simple/<project>/`
+(`lookups_given_up` in `adapters/pip.rs`). Each such package that is not
+listed is "could not check", with the error from that warning; where the
+address names no installed package (a `--find-links` page, say), every
+package not listed is. What was listed is kept. At pip's usual level of
+detail nothing is printed for a server error (5xx) pip gave up on, nor for
+a lookup with `--retries 0`, so those still read as up to date.
 
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command

@@ -73,6 +73,123 @@ pub(crate) fn parse_pip_outdated(
     ))
 }
 
+/// A project's name as pip asks its index for it (PEP 503, pip's
+/// `canonicalize_name`): lower case, each run of `-`, `_` and `.` one `-`.
+/// `pip list` prints a package as it was published (`PyYAML`,
+/// `typing_extensions`, `zope.interface`), the index's address has it as
+/// `pyyaml`, `typing-extensions`, `zope-interface`.
+fn canonical_project(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut in_run = false;
+    for c in name.chars() {
+        if matches!(c, '-' | '_' | '.') {
+            if !in_run {
+                out.push('-');
+            }
+            in_run = true;
+        } else {
+            out.extend(c.to_lowercase());
+            in_run = false;
+        }
+    }
+    out
+}
+
+/// `text` without the `<... object at 0x...>` Python puts in an error's
+/// repr for the connection it failed on, and the `: ` or `, ` after it:
+/// `NameResolutionError("<pip._vendor.urllib3.connection.HTTPSConnection
+/// object at 0x1048a5e50>: Failed to resolve 'pypi.org' (...)")` becomes
+/// `NameResolutionError("Failed to resolve 'pypi.org' (...)")`, so the
+/// words that say what failed fit in a row's reason
+/// (`lookup_failure_reason` keeps 200 characters).
+fn without_object_reprs(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('<') {
+        let Some(len) = rest[start..].find('>') else {
+            break;
+        };
+        let end = start + len + 1;
+        if rest[start..end].contains(" object at 0x") {
+            out.push_str(&rest[..start]);
+            let after = &rest[end..];
+            rest = after
+                .strip_prefix(": ")
+                .or_else(|| after.strip_prefix(", "))
+                .unwrap_or(after);
+        } else {
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// One lookup pip gave up on, read off the warning urllib3 prints before
+/// its last try:
+///
+/// ```text
+/// WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by '<error>': /simple/<project>/
+/// ```
+///
+/// urllib3 (pip 26.2.1 vendors 2.7.0) warns
+/// `"Retrying (%r) after connection broken by '%r': %s"` with what is
+/// left of the `Retry` each time a request fails to connect or breaks off
+/// (`connectionpool.py`, `urlopen`), and pip shows it on stderr as
+/// `WARNING: ` (`utils/logging.py`; urllib3's logger stays at `WARNING`,
+/// one line, `soft_wrap`). `total=0` is the warning before the last try --
+/// pip retries 5 times unless told otherwise (`--retries`, `network/
+/// session.py`) -- after which urllib3 gives up and pip's collector drops
+/// the page with a debug message only ("Could not fetch URL ... -
+/// skipping", `index/collector.py`), finds no candidates, and `pip list
+/// --outdated` leaves the project out and exits 0 (`commands/list.py`).
+/// So stdout alone reads as "up to date". `project` is the last segment of
+/// the address it was fetching -- the project, for an index's
+/// `/simple/<project>/` -- and `words` the error, without the connection's
+/// `<... object at 0x...>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GaveUp {
+    project: String,
+    words: String,
+}
+
+/// Each lookup pip gave up on, in `stderr`'s order (`GaveUp`): the lines
+/// that are urllib3's retry warning with `total=0`. A retry warning with
+/// any other total is a try that may yet have worked -- the next one, if
+/// not, warns again -- and is not one.
+fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
+    const RETRY: &str = "Retrying (Retry(total=";
+    const BROKEN: &str = "after connection broken by '";
+    stderr
+        .lines()
+        .filter_map(|line| {
+            let total = &line[line.find(RETRY)? + RETRY.len()..];
+            if total.split(',').next()?.trim() != "0" {
+                return None;
+            }
+            let error_start = line.find(BROKEN)? + BROKEN.len();
+            let error_end = line.rfind("': ")?;
+            if error_end < error_start {
+                return None;
+            }
+            let address = line[error_end + 3..].trim();
+            let project = address
+                .split(['?', '#'])
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or("");
+            Some(GaveUp {
+                project: canonical_project(project),
+                words: without_object_reprs(&line[error_start..error_end]),
+            })
+        })
+        .collect()
+}
+
 /// Whether `stderr` is Python's own answer to `-m pip` when it has no
 /// module named `pip`: `<python>: No module named pip`, alone on its line.
 /// Not `No module named pip.__main__; 'pip' is a package and cannot be
@@ -464,7 +581,68 @@ impl PipAdapter {
                 .collect::<Vec<_>>()
                 .into());
         }
-        Ok(parse_pip_outdated(&output.stdout, &inst.id)?.into())
+        let checked = parse_pip_outdated(&output.stdout, &inst.id)?;
+        // Exit 0 is not "every package was looked up": a lookup pip gave
+        // up on is left out of stdout as if it were up to date (round-5
+        // review finding 7). Its retry warnings on stderr say which.
+        let gave_up = lookups_given_up(&output.stderr);
+        if gave_up.is_empty() {
+            return Ok(checked.into());
+        }
+        Ok(self
+            .with_lookups_given_up(inst, checked, &gave_up)
+            .await?
+            .into())
+    }
+
+    /// `checked` -- what `pip list --outdated` listed, each a real answer
+    /// -- and, after it, a "could not check" row (`uncheckable_candidate`)
+    /// for each installed package it did not list whose lookup pip gave
+    /// up on (`lookups_given_up`), with that lookup's words: transient
+    /// where they say the network failed, as when `pip list --outdated`
+    /// exits non-zero (`LookupFailure::words`). A lookup whose address
+    /// names no installed package -- a `--find-links` page, say -- left
+    /// every package's answer short, so every package not listed gets the
+    /// row. Installed packages come from the plain list, as on that path.
+    async fn with_lookups_given_up(
+        &self,
+        inst: &ManagerInstance,
+        mut checked: Vec<UpdateCandidate>,
+        gave_up: &[GaveUp],
+    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        let installed = self.run_pip_list(inst, &[]).await?;
+        let projects: HashSet<String> = installed
+            .iter()
+            .map(|p| canonical_project(&p.name))
+            .collect();
+        let everyone = gave_up.iter().rfind(|g| !projects.contains(&g.project));
+        let listed: HashSet<String> = checked
+            .iter()
+            .map(|c| canonical_project(&c.key.name))
+            .collect();
+        for package in installed {
+            let project = canonical_project(&package.name);
+            if listed.contains(&project) {
+                continue;
+            }
+            let Some(lookup) = gave_up.iter().rfind(|g| g.project == project).or(everyone) else {
+                continue;
+            };
+            checked.push(uncheckable_candidate(
+                ArtifactKey {
+                    instance_id: inst.id.clone(),
+                    kind: ArtifactKind::Package,
+                    name: package.name,
+                },
+                package.version,
+                UpdateChannel::Native,
+                LookupFailure::words(
+                    lookup_failure_reason("pip list --outdated", Some(0), &lookup.words),
+                    &lookup.words,
+                ),
+            ));
+        }
+        Ok(checked)
     }
 
     pub async fn search(
@@ -1300,6 +1478,301 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::Message(m) if m.contains("Read timed out")))));
+    }
+
+    /// One line of urllib3's retry warning as pip prints it on stderr
+    /// (`connectionpool.py`: `"Retrying (%r) after connection broken by
+    /// '%r': %s"`, pip's `WARNING: `), `total` tries left.
+    fn retry_warning(total: u8, error: &str, address: &str) -> String {
+        format!(
+            "WARNING: Retrying (Retry(total={total}, connect=None, read=None, redirect=None, status=None)) after connection broken by '{error}': {address}"
+        )
+    }
+
+    /// urllib3's `NameResolutionError` repr, as macOS's resolver words a
+    /// name that would not resolve.
+    const NO_DNS: &str = "NameResolutionError(\"<pip._vendor.urllib3.connection.HTTPSConnection object at 0x1048a5e50>: Failed to resolve 'pypi.org' ([Errno 8] nodename nor servname provided, or not known)\")";
+    /// urllib3's `ReadTimeoutError` repr at pip's 15-second timeout.
+    const READ_TIMEOUT: &str = "ReadTimeoutError(\"HTTPSConnectionPool(host='pypi.org', port=443): Read timed out. (read timeout=15)\")";
+    /// A server that hung up: urllib3's `ProtocolError` around
+    /// http.client's `RemoteDisconnected`.
+    const HUNG_UP: &str = "ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))";
+
+    /// Every warning pip prints for one lookup that never connects: one
+    /// per retry, `total=4` down to `total=0`, then nothing.
+    fn gave_up_on(error: &str, address: &str) -> String {
+        (0..=4)
+            .rev()
+            .map(|total| retry_warning(total, error, address))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    const OUTDATED_ARGV: [&str; 6] = [
+        "/opt/homebrew/bin/python3.14",
+        "-m",
+        "pip",
+        "list",
+        "--outdated",
+        "--format=json",
+    ];
+    const LIST_ARGV: [&str; 5] = [
+        "/opt/homebrew/bin/python3.14",
+        "-m",
+        "pip",
+        "list",
+        "--format=json",
+    ];
+
+    fn exited_with(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(code),
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    #[test]
+    fn test_canonical_project_is_the_name_the_index_is_asked_for() {
+        for (name, project) in [
+            ("PyYAML", "pyyaml"),
+            ("typing_extensions", "typing-extensions"),
+            ("zope.interface", "zope-interface"),
+            ("Foo__Bar-.baz", "foo-bar-baz"),
+            ("cowsay", "cowsay"),
+        ] {
+            assert_eq!(canonical_project(name), project, "{name}");
+        }
+    }
+
+    #[test]
+    fn test_without_object_reprs_keeps_the_words_and_drops_the_connections_address() {
+        assert_eq!(
+            without_object_reprs(NO_DNS),
+            "NameResolutionError(\"Failed to resolve 'pypi.org' ([Errno 8] nodename nor servname provided, or not known)\")"
+        );
+        assert_eq!(
+            without_object_reprs("ConnectTimeoutError(<pip._vendor.urllib3.connection.HTTPSConnection object at 0x10>, 'Connection to pypi.org timed out. (connect timeout=15)')"),
+            "ConnectTimeoutError('Connection to pypi.org timed out. (connect timeout=15)')"
+        );
+        // A `<` that is no object's repr stays.
+        assert_eq!(without_object_reprs("a <b> c"), "a <b> c");
+        assert_eq!(without_object_reprs("unclosed <x"), "unclosed <x");
+    }
+
+    #[test]
+    fn test_lookups_given_up_reads_only_the_warning_before_the_last_try() {
+        let stderr = [
+            retry_warning(4, READ_TIMEOUT, "/simple/requests/"),
+            gave_up_on(NO_DNS, "/simple/cowsay/"),
+            "WARNING: There was an error checking the latest version of pip.".to_string(),
+            // Through a proxy urllib3 names the whole address.
+            retry_warning(0, HUNG_UP, "https://pypi.org/simple/pyyaml/"),
+        ]
+        .join("\n");
+        assert_eq!(
+            lookups_given_up(&stderr),
+            vec![
+                GaveUp {
+                    project: "cowsay".to_string(),
+                    words: without_object_reprs(NO_DNS),
+                },
+                GaveUp {
+                    project: "pyyaml".to_string(),
+                    words: HUNG_UP.to_string(),
+                },
+            ]
+        );
+        assert_eq!(lookups_given_up(""), vec![]);
+        assert_eq!(
+            lookups_given_up(&retry_warning(1, NO_DNS, "/simple/cowsay/")),
+            vec![]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_lists_every_lookup_pip_gave_up_on_though_it_exited_0() {
+        // Round-5 review finding 7. A small environment, no network: pip
+        // retries each lookup five times, gives each up, finds nothing, and
+        // exits 0 with `[]` -- which read as "every package is up to date".
+        let stderr = [
+            gave_up_on(NO_DNS, "/simple/cowsay/"),
+            gave_up_on(NO_DNS, "/simple/pip/"),
+            gave_up_on(NO_DNS, "/simple/requests/"),
+            "WARNING: There was an error checking the latest version of pip.".to_string(),
+        ]
+        .join("\n");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, "[]\n", &stderr));
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "cowsay", "version": "6.1"}, {"name": "pip", "version": "26.2.1"}, {"name": "requests", "version": "2.32.3"}]"#,
+                "",
+            ),
+        );
+        let adapter = PipAdapter::new(runner.clone());
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("lookups pip gave up on are rows, not a failed source")
+            .candidates;
+        let names: Vec<&str> = candidates.iter().map(|c| c.key.name.as_str()).collect();
+        assert_eq!(names, ["cowsay", "pip", "requests"]);
+        for candidate in &candidates {
+            assert!(!candidate.checkable, "{}", candidate.key.name);
+            assert_eq!(candidate.target, candidate.current);
+            assert_eq!(
+                candidate.warnings,
+                vec![
+                    Warning::Message(
+                        "pip list --outdated: NameResolutionError(\"Failed to resolve 'pypi.org' ([Errno 8] nodename nor servname provided, or not known)\")".to_string()
+                    ),
+                    Warning::TransientLookupFailure,
+                ],
+                "{}",
+                candidate.key.name
+            );
+        }
+        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_keeps_what_pip_listed_and_marks_only_the_lookups_it_gave_up_on() {
+        // black was looked up and is listed; requests needed one retry and
+        // then answered; cowsay answered first time; PyYAML's lookup timed
+        // out five times over. Only PyYAML was not checked.
+        let stderr = [
+            retry_warning(4, READ_TIMEOUT, "/simple/requests/"),
+            gave_up_on(READ_TIMEOUT, "/simple/pyyaml/"),
+        ]
+        .join("\n");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "black", "version": "24.1.0", "latest_version": "24.10.0", "latest_filetype": "wheel"}]"#,
+                &stderr,
+            ),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "black", "version": "24.1.0"}, {"name": "cowsay", "version": "6.1"}, {"name": "PyYAML", "version": "6.0.1"}, {"name": "requests", "version": "2.32.3"}]"#,
+                "",
+            ),
+        );
+        let adapter = PipAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert_eq!(candidates.len(), 2, "{candidates:?}");
+        let black = &candidates[0];
+        assert_eq!(black.key.name, "black");
+        assert!(black.checkable);
+        assert_eq!(black.target, "24.10.0");
+        assert!(black.warnings.is_empty());
+        let yaml = &candidates[1];
+        assert_eq!(yaml.key.name, "PyYAML");
+        assert_eq!(yaml.current, "6.0.1");
+        assert!(!yaml.checkable);
+        assert!(yaml.warnings.contains(&Warning::TransientLookupFailure));
+        assert!(matches!(
+            &yaml.warnings[0],
+            Warning::Message(m) if m.contains("Read timed out")
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_a_lookup_given_up_for_words_that_are_not_the_network_as_lasting(
+    ) {
+        // A server that hung up five times: not checked, but nothing in
+        // the words says the network failed, so not counted as one to
+        // check again (`says_network_failed`).
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(0, "[]", &gave_up_on(HUNG_UP, "/simple/cowsay/")),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(0, r#"[{"name": "cowsay", "version": "6.1"}]"#, ""),
+        );
+        let adapter = PipAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert!(!candidates[0].checkable);
+        assert_eq!(
+            candidates[0].warnings,
+            vec![Warning::Message(format!("pip list --outdated: {HUNG_UP}"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_every_unlisted_package_when_a_lookup_names_none_of_them() {
+        // A `--find-links` page from pip.conf that could not be reached:
+        // every package's answer is short of what it holds.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "black", "version": "24.1.0", "latest_version": "24.10.0", "latest_filetype": "wheel"}]"#,
+                &gave_up_on(NO_DNS, "https://wheels.example.org/simple-links/index.html"),
+            ),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "black", "version": "24.1.0"}, {"name": "cowsay", "version": "6.1"}]"#,
+                "",
+            ),
+        );
+        let adapter = PipAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        let names: Vec<(&str, bool)> = candidates
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.checkable))
+            .collect();
+        assert_eq!(names, [("black", true), ("cowsay", false)]);
+        assert!(candidates[1]
+            .warnings
+            .contains(&Warning::TransientLookupFailure));
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_runs_nothing_more_when_every_retry_was_answered() {
+        // One retry, then an answer: every lookup was made, so stdout is
+        // the whole answer and the plain list is not run.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(0, "[]", &retry_warning(4, READ_TIMEOUT, "/simple/cowsay/")),
+        );
+        let adapter = PipAdapter::new(runner.clone());
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert!(candidates.is_empty());
+        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV)]);
     }
 
     #[tokio::test]
