@@ -242,14 +242,14 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     open([{ UninstallScope: { what: "Npm" } }, ...claudeKept]);
     await screen.findByRole("region", { name: "Stays after uninstalling" });
     expect(
-      screen.getByText("Deletes Claude Code's folder in npm's global folder and its commands; npm runs none of its code."),
+      screen.getByText("Deletes Claude Code's folder from npm's global folder, along with its commands. None of Claude Code's code is run."),
     ).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/settings and data outside that folder are not deleted/);
+    expect(document.body.textContent).not.toMatch(/settings and data outside that folder stay/);
   });
 
   it("keeps the general sentence where nothing is named", async () => {
     open([{ UninstallScope: { what: "Npm" } }]);
-    expect(await screen.findByText(/its settings and data outside that folder are not deleted/)).toBeInTheDocument();
+    expect(await screen.findByText(/its settings and data outside that folder stay/)).toBeInTheDocument();
   });
 
   it("says which other tool's data a shared folder's size leaves out, in both languages", async () => {

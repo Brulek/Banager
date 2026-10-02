@@ -787,7 +787,7 @@ describe("UninstallDialog", () => {
       [
         { UninstallScope: { what: "Npm" } },
         "typescript",
-        "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted." +
+        "Deletes typescript's folder from npm's global folder, along with its commands. None of typescript's code is run, so its settings and data outside that folder stay." +
           EN_SKIPS,
         "删除npm全局目录中的“typescript”文件夹和命令，不运行它的代码；它在别处的设置和数据不删除。" + ZH_SKIPS,
       ],

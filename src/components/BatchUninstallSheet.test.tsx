@@ -619,7 +619,7 @@ describe("the batch uninstall's sheet", () => {
     });
 
     it("by number, one of several", async () => {
-      expect(line(await openSheet([wget, codex, git]))).toBe("1 of them leaves some files behind, listed below.");
+      expect(line(await openSheet([wget, codex, git]))).toBe("One of them leaves some files behind, listed below.");
     });
 
     it("as all of them, where it is", async () => {
@@ -641,7 +641,7 @@ describe("the batch uninstall's sheet", () => {
       ];
       const dialog = await openSheet([python, wget, codex]);
       expect(listOf(dialog, "Won't be uninstalled")).toEqual(["python@3.13"]);
-      expect(line(dialog)).toBe("1 of them leaves some files behind, listed below.");
+      expect(line(dialog)).toBe("One of them leaves some files behind, listed below.");
       const kept = within(dialog).getByRole("region", { name: "Stays after uninstalling" });
       expect([...kept.querySelectorAll("[data-kept-path]")].map((path) => path.textContent)).toEqual(["~/.codex"]);
     });
