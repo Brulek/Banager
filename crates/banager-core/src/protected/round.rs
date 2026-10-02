@@ -86,11 +86,15 @@ pub(crate) struct Round {
     /// but for a test that takes every step one at a time, as on a
     /// kernel without the flag.
     in_one: bool,
+    /// Whether checking the whole rest stands for checking each folder on
+    /// its way (`Protected::one_check_covers_the_way`), asked once.
+    one_check: bool,
 }
 
 impl Round {
     pub(crate) fn new(protected: Protected) -> Round {
         Round {
+            one_check: protected.one_check_covers_the_way(),
             protected,
             root: None,
             held: HashMap::new(),
@@ -271,18 +275,28 @@ impl Round {
             Some(_) => return Beneath::NotAsked,
         }
         // Checked before the lookup is made, as one step at a time checks
-        // each name: the last one outside every place, so is every
-        // folder on its way (`Protected::contains`).
+        // each name: with the last one outside every place, so is every
+        // folder on its way (`Protected::one_check_covers_the_way`, which
+        // holds for every home folder); else each folder is checked.
         let mut at = candidate.to_path_buf();
         at.extend(pending);
         if self.protected.contains(&at) {
             return Beneath::NotAsked;
         }
-        debug_assert!(
-            at.ancestors()
-                .all(|folder| !self.protected.contains(folder)),
-            "{at:?}"
-        );
+        if self.one_check {
+            debug_assert!(
+                at.ancestors()
+                    .all(|folder| !self.protected.contains(folder)),
+                "{at:?}"
+            );
+        } else if at
+            .ancestors()
+            .skip(1)
+            .take(pending.len())
+            .any(|folder| self.protected.contains(folder))
+        {
+            return Beneath::NotAsked;
+        }
         // Looked at before, through folders only: as the lookup would
         // answer, or a link, which it would not.
         match self.entries.get(&at) {
@@ -606,6 +620,28 @@ mod tests {
             }
         }
         assert!(looked > 0, "the links were looked at");
+    }
+
+    #[test]
+    fn test_with_a_place_on_the_way_to_the_data_volume_each_folder_is_checked() {
+        // No place is, for any home folder; were one, a path through it
+        // spelled from the data volume would be outside every place while
+        // a folder on its way is in one. The round then checks each.
+        let tree = Tree::new("on-the-way");
+        tree.file("bin/tool", 0o755);
+        let protected = Protected {
+            places: vec![PathBuf::from("/System/Volumes")],
+        };
+        assert!(!protected.one_check_covers_the_way());
+        let path = tree.on_data_volume("bin/tool");
+        assert!(!protected.contains(&path));
+        let old = resolve(&path, &protected, true);
+        assert!(matches!(old, Resolution::Protected(_)), "{old:?}");
+        let mut round = Round::new(protected.clone());
+        let (new, made) = calls::measure(|| round.resolve(&path));
+        assert_same(&old, &new, &path);
+        assert_eq!(made.stat_beneath, 0, "{made:?}");
+        assert!(Protected::new(&tree.root).one_check_covers_the_way());
     }
 
     #[test]

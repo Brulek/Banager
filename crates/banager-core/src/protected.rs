@@ -262,6 +262,23 @@ impl Protected {
             .any(|place| starts_with_folded(&path, place))
     }
 
+    /// Whether a path outside every place has no folder on its way that
+    /// is inside one, so that one check of a whole path stands for a check
+    /// of each step (`Round`'s one-lookup rests). It has, unless a place
+    /// is a folder on the way to the data volume -- `/`, `/System`,
+    /// `/System/Volumes` or `DATA_VOLUME` itself, however spelled: only
+    /// there is a folder spelled from `/` (`without_data_volume`) other
+    /// than as the start of the path below it. No place is (each is
+    /// `/Volumes` or a name under the home folder), whatever the home
+    /// folder; this keeps the shortcut honest should one ever be added.
+    pub fn one_check_covers_the_way(&self) -> bool {
+        let data = Path::new(DATA_VOLUME);
+        !self
+            .places
+            .iter()
+            .any(|place| starts_with_folded(data, place))
+    }
+
     /// Whether one of the places is inside `path` (or is it): walking
     /// `path` would reach it, whichever spelling of the data volume either
     /// names it with (`DATA_VOLUME`).
@@ -726,6 +743,7 @@ mod tests {
             let protected = Protected {
                 places: raw.iter().map(|place| without_data_volume(place)).collect(),
             };
+            assert!(protected.one_check_covers_the_way(), "{home}");
             for path in &paths {
                 assert_eq!(
                     protected.contains(path),
