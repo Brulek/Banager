@@ -1056,4 +1056,24 @@ describe("the mock backend's facts for the diagnostic text (get_system_facts)", 
     expect(commands.length).toBeGreaterThan(0);
     expect(commands.every((command) => command.state === null)).toBe(true);
   });
+
+  it("has no verdict, with a folder at the end of PATH unread, for a command no folder read leads to", async () => {
+    const notFound = (snapshot: Snapshot) =>
+      snapshot.artifacts.filter((artifact) =>
+        artifact.facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
+      );
+    const read = await answer<Snapshot>(backendFor().backend.invoke("refresh"));
+    const unread = await answer<Snapshot>(backendFor({ path: "unread" }).backend.invoke("refresh"));
+    expect(notFound(read).length).toBeGreaterThan(0);
+    // The unread folder might hold a link to it (`commands::judge`): not
+    // "not found" but no verdict, for those tools only.
+    expect(notFound(unread)).toEqual([]);
+    const withoutVerdict = unread.artifacts.filter((artifact) =>
+      artifact.facts.commands.some(({ state }) => state === null),
+    );
+    for (const artifact of notFound(read)) {
+      expect(withoutVerdict.map((a) => a.key)).toContainEqual(artifact.key);
+    }
+    expect(unread.artifacts.some((artifact) => artifact.facts.commands.some(({ state }) => state === "Runs"))).toBe(true);
+  });
 });

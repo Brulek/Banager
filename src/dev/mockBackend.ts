@@ -9,6 +9,7 @@
  */
 import type {
   ArtifactKey,
+  CommandFact,
   HistoryView,
   InstalledArtifact,
   IssuedPlan,
@@ -35,7 +36,7 @@ import { namesASource, withMockNeededBy } from "./mockNeededBy";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
-import type { Scenario } from "./scenario";
+import type { Scenario, ScenarioPath } from "./scenario";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
 export const MOCK_COMMANDS = [
@@ -167,16 +168,31 @@ interface Operation {
   started: boolean;
 }
 
-/** `artifacts` as they are when `judged`, else with every command's verdict taken away. */
-function unjudgedUnless(judged: boolean, artifacts: InstalledArtifact[]): InstalledArtifact[] {
-  if (judged) return artifacts;
+/**
+ * `artifacts` with the verdicts `commands::judge` leaves them for `?path=`:
+ * every one with `read`; none with `default`, where the login shell's
+ * `PATH` was never read; and with `unread`, where a folder at the end of
+ * `PATH` could not be read, none for a command no folder read leads to --
+ * one Terminal would not find were every folder read -- as that folder
+ * might hold a link to it. Check Tool Setup then says how many tools it
+ * could not check.
+ */
+function judgedFor(path: ScenarioPath, artifacts: InstalledArtifact[]): InstalledArtifact[] {
+  if (path === "read") return artifacts;
+  const unjudged = (state: CommandFact["state"]) =>
+    path === "default" || (typeof state === "object" && state !== null && "NotOnPath" in state);
   return artifacts.map((artifact) =>
-    artifact.facts.commands.length === 0
-      ? artifact
-      : {
+    artifact.facts.commands.some(({ state }) => unjudged(state))
+      ? {
           ...artifact,
-          facts: { ...artifact.facts, commands: artifact.facts.commands.map((command) => ({ ...command, state: null })) },
-        },
+          facts: {
+            ...artifact.facts,
+            commands: artifact.facts.commands.map((command) =>
+              unjudged(command.state) ? { ...command, state: null } : command,
+            ),
+          },
+        }
+      : artifact,
   );
 }
 
@@ -215,8 +231,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // Which AI coding tool each is, set here once, as `families::assign`
       // does where Rust puts a snapshot together.
       // With `?path=default` the login shell's `PATH` was never read: no
-      // command has a verdict (`commands::judge`), only its name.
-      artifacts: unjudgedUnless(scenario.path !== "default", withFamilies(from.instances, from.artifacts)),
+      // command has a verdict (`commands::judge`), only its name; with
+      // `?path=unread`, none that a folder not read might lead to.
+      artifacts: judgedFor(scenario.path, withFamilies(from.instances, from.artifacts)),
       updates: updatesOf(from, current),
       errors: from.errors,
     };

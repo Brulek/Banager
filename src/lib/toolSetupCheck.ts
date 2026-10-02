@@ -19,7 +19,7 @@
  * settings unread -- has the orange ⚠︎ the Overview gives a warning.
  */
 import { create } from "zustand";
-import { commandsKnown } from "./commandsKnown";
+import { commandsKnown, toolsNotJudged } from "./commandsKnown";
 import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
@@ -250,7 +250,10 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
  * 「命令」: how many tools Terminal cannot find, and how many are installed
  * more than once, each with 查看 to the Installed page's choice that lists
  * them -- or, where the check did not look at the commands, that it did
- * not (`commandsKnown`), as the diagnostic text says it.
+ * not (`commandsKnown`), as the diagnostic text says it. Where it looked at
+ * some tools' commands and not at others' (`toolsNotJudged`), 「终端都能找到」
+ * is said of the tools checked, and how many it could not check under it:
+ * never 「每个已安装的工具」 of tools it did not check.
  */
 function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const artifacts = input.snapshot?.artifacts ?? [];
@@ -260,7 +263,8 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const names = commandsKnown(artifacts, false, "names") === "known";
   const notOnPath = discoverCounts(artifacts).notOnPath;
   const twins = toolsInstalledTwice(artifacts);
-  if (verdicts && names && notOnPath === 0 && twins === 0) {
+  const notJudged = verdicts ? toolsNotJudged(artifacts) : 0;
+  if (verdicts && notJudged === 0 && names && notOnPath === 0 && twins === 0) {
     return [line("allFine", "fine", t("setupCheck.commands.allFine"))];
   }
   const lines: SetupLine[] = [];
@@ -275,7 +279,20 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       }),
     );
   } else {
-    lines.push(line("notOnPath", "fine", t("setupCheck.commands.notOnPathFine")));
+    lines.push(
+      line(
+        "notOnPath",
+        "fine",
+        t(notJudged === 0 ? "setupCheck.commands.notOnPathFine" : "setupCheckCoverage.notOnPathFine"),
+      ),
+    );
+  }
+  if (notJudged > 0) {
+    lines.push(
+      line("notChecked", "note", t("setupCheckCoverage.notChecked", { count: notJudged }), {
+        detail: t("setupCheckCoverage.notCheckedDetail"),
+      }),
+    );
   }
   if (!names) {
     lines.push(line("twins", "note", t("commandsKnown.twinsUnknown")));

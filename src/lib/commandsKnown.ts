@@ -39,3 +39,28 @@ export const COMMANDS_UNKNOWN_KEYS: Record<Exclude<CommandsKnown, "known">, stri
   previewing: "commandsKnown.previewing",
   unjudged: "commandsKnown.unjudged",
 };
+
+/**
+ * How many tools a round that judged the commands still said nothing about
+ * for at least one of theirs (`CommandFact.state: null`): a folder Terminal
+ * looks in that could not be read comes first or might hold it, its link
+ * was replaced, where its command was put is not known, or it is a
+ * keg-only formula linked by hand that Terminal does not find
+ * (crates/banager-core/src/commands.rs, `judge`). `commandsKnown` is
+ * `known` for verdicts once any one tool has one, so 「终端都能找到…」 is
+ * said of the tools checked only, with how many these are.
+ *
+ * Not counted: a Homebrew dependency, whose commands are never judged
+ * (`judged` there: nobody typed its name to install it -- the Installed
+ * page folds it away as a component); and a tool with a command Terminal
+ * cannot find, already counted as one (`hasCommandNotOnPath`). Read from
+ * the commands as the window has them; nothing is asked for.
+ */
+export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "reason">[]): number {
+  return artifacts.filter(
+    ({ facts, reason }) =>
+      reason !== "Dependency" &&
+      facts.commands.some(({ state }) => state === null) &&
+      !facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
+  ).length;
+}

@@ -389,6 +389,88 @@ describe("toolSetupCheck's command lines", () => {
       "note Tools installed more than once: not looked at this time",
     ]);
   });
+
+  /**
+   * jq runs; two more tools' launchers could not be checked -- one behind a
+   * folder Terminal looks in that could not be read, one whose link was
+   * replaced -- and so have no verdict, as Astra's round-5 review (#5) found
+   * the sheet then said every installed tool was found.
+   */
+  function partlyCheckedSnapshot(): Snapshot {
+    const snapshot = fineSnapshot();
+    snapshot.instances.push(instance(CLAUDE));
+    snapshot.artifacts.push(
+      artifact({ instance_id: CLAUDE, kind: "Binary", name: "claude" }, { commands: [{ name: "claude", state: null }] }),
+      artifact(
+        { instance_id: NPM, kind: "Package", name: "eslint" },
+        { commands: [runs("eslint"), { name: "eslint-config-inspector", state: null }] },
+      ),
+    );
+    return snapshot;
+  }
+
+  it("says Terminal finds the tools that were checked, and how many could not be, when only some were", () => {
+    const facts = { ...FACTS, path_folders: { read: 2, unread: ["~/Documents/bin"] } };
+    expect(shape(toolSetupCheck(en, input({ snapshot: partlyCheckedSnapshot(), facts })))["Commands"]).toEqual([
+      "fine Terminal finds every tool that was checked",
+      "note Couldn't check whether Terminal finds 2 tools",
+      "fine No tool is installed more than once",
+    ]);
+    const zhCheck = toolSetupCheck(zh, input({ snapshot: partlyCheckedSnapshot(), facts }));
+    expect(shape(zhCheck)["命令"]).toEqual([
+      "fine 终端都能找到检查过的工具",
+      "note 2个工具无法确认终端能否找到",
+      "fine 没有装了不止一份的工具",
+    ]);
+    expect(lineOf(zhCheck, "commands", "notChecked").detail).toBe(
+      "Banager无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
+    );
+    // Never the green sentence about every installed tool, folders read or not.
+    const enCheck = toolSetupCheck(en, input({ snapshot: partlyCheckedSnapshot() }));
+    for (const [check, said] of [
+      [zhCheck, zh],
+      [enCheck, en],
+    ] as const) {
+      const texts = check.sections.find((s) => s.id === "commands")!.lines.map((l) => l.text);
+      expect(texts).not.toContain(said("setupCheck.commands.allFine"));
+      expect(texts).not.toContain(said("setupCheck.commands.notOnPathFine"));
+    }
+  });
+
+  it("says one in the singular, and the count beside the tools Terminal can't find", () => {
+    const snapshot = partlyCheckedSnapshot();
+    snapshot.artifacts.pop();
+    snapshot.artifacts.push(
+      artifact({ instance_id: NPM, kind: "Package", name: "tsx" }, { commands: [notOnPath("tsx")] }),
+    );
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "warning 1 tool can't be found in Terminal → installed:notOnPath",
+      "note Couldn't check whether Terminal finds 1 tool",
+      "fine No tool is installed more than once",
+    ]);
+  });
+
+  it("does not count what is never checked: a Homebrew dependency, or a tool already counted as not found", () => {
+    const snapshot = fineSnapshot();
+    snapshot.artifacts.push(
+      {
+        ...artifact({ instance_id: BREW, kind: "Formula", name: "openssl@3" }, { commands: [{ name: "openssl", state: null }] }),
+        reason: "Dependency",
+      },
+      artifact(
+        { instance_id: NPM, kind: "Package", name: "tsx" },
+        { commands: [notOnPath("tsx"), { name: "tsx-watch", state: null }] },
+      ),
+    );
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "warning 1 tool can't be found in Terminal → installed:notOnPath",
+      "fine No tool is installed more than once",
+    ]);
+    snapshot.artifacts.pop();
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "fine Terminal finds every installed tool, and none is installed more than once",
+    ]);
+  });
 });
 
 describe("toolSetupCheck's Homebrew lines", () => {
