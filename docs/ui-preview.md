@@ -427,16 +427,19 @@ headless Chrome against a production build of the preview (`vite build
 the median of three runs, and one run with the CPU slowed 4×. Before is
 8798a5c; after, the commits of the track p3-perf-at-scale. A step set by a
 popup (the 「显示」 and 排序方式 choices) is timed from the change to the
-next frame; the others are interactions as above.
+next frame; the others are interactions as above. Two rows did not change
+beyond what separates one run from the next: opening Installed and ticking
+rows. Eight runs of each build, taken in turn, gave the ranges shown, with
+medians a few milliseconds apart.
 
 | | Before | After | 4× slower CPU, before → after |
 |---|---|---|---|
-| Opening Installed from the sidebar: interaction, longest task | 64 ms, 46 ms | 48 ms, 31 ms | 160 → 144 ms, 138 → 122 ms |
+| Opening Installed from the sidebar: interaction, longest task | about 50–65 ms, 30–48 ms | the same, within run-to-run noise | about 135–160 ms, 120–140 ms, before and after |
 | A key of a search for "py" (the first): longest task | 17 ms | 11 ms | 42 → 29 ms |
 | 「显示」 back to every tool, to the next frame | 25 ms | 19 ms | 92 → 79 ms |
 | 排序方式 By Size, to the next frame | 29 ms | 18 ms | 100 → 60 ms |
 | By Date, By Name, to the next frame | 13, 14 ms | 11, 8 ms | 64 → 39, 48 → 31 ms |
-| Ticking 20 rows: main thread busy | 265 ms | 179 ms | 521 → 300 ms |
+| Ticking 20 rows: main thread busy | about 70–280 ms | the same, within run-to-run noise | one run each, not compared |
 | 「卸载所选」's sheet for them: longest task | 11 ms | 9 ms | 55 → 37 ms |
 | Update All's sheet for 753: longest task, ready after | 56 ms, 0.80 s | 37 ms, 0.47 s | 252 → 132 ms, 1.99 → 0.60 s |
 | Update All, starting all 753: main thread busy | 25 s | 3.3–5.9 s (median 4.1), no task over 50 ms | over 120 s (timed out) → 33 s, 24 tasks over 50 ms |
@@ -452,7 +455,15 @@ when sorting by size, and went through every row to see which could be
 ticked at every drawing. Now each tool is looked up by key, notes are
 worded once per plan, the name order is worked out once per check
 (`rankedComparator`, src/lib/sortRank.ts) and the tickable rows once per
-change of the list.
+change of the list. That last change, and the name order, did not make
+opening Installed or ticking rows measurably faster.
+
+Not timed at this size: the 「AI 工具」 and 「装了不止一份」 choices list few
+rows here (8–20 ms), because a tool belongs to a family only when it is
+one of the AI tools `data/ai-tools.json` names, in the preview as in the
+app. So `twinsByArtifact` (src/lib/commands.ts), which compares every pair
+of copies within a family, runs over a handful of copies per family and
+is not stressed by `?state=huge`. 「终端里找不到」 has about 100 rows.
 
 Still there with this many tools: each page shown fetches the snapshot
 again (TanStack Query's refetch on mount, as does a 「显示」 choice that
@@ -460,4 +471,5 @@ brings back the line over the list), and taking in about 5,000 tools --
 the reply copied, and compared with the one held -- is a task of its own
 after the page is drawn: at least 45 ms of it with the CPU slowed 4×, in
 a profile. Every interaction stays under 100 ms at full speed; with the
-CPU slowed 4×, opening Installed takes 144 ms and the Updates page 80 ms.
+CPU slowed 4×, opening Installed takes about 135–160 ms and the Updates
+page 80 ms.
