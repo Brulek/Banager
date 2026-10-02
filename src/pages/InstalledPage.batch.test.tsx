@@ -3,7 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { WithToolbarSlot } from "../test/toolbarSlot";
-import { InstalledPage } from "./InstalledPage";
+import { InstalledPage, searchWidth } from "./InstalledPage";
 import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
@@ -325,11 +325,20 @@ describe("Uninstall Selected, on the Installed page", () => {
     renderInstalled();
     await findRow("jq");
     const field = () => screen.getByRole("searchbox").parentElement as HTMLElement;
-    // Nothing ticked: the field as it always is.
-    expect(field().className.split(" ")).toContain("w-50");
+    // Nothing ticked: 160, leaving the subtitle room for the total (walk-3 W3-2).
+    expect(field().className.split(" ")).toContain("w-40");
     fireEvent.click(boxOf("jq")!);
     expect(await screen.findByRole("button", { name: "Uninstall (1)…" })).toBeEnabled();
     expect(field().className.split(" ")).toContain("w-32");
+  });
+
+  it("narrows the search field beside it at any width, so the subtitle keeps room for the total (walk-3 W3-2)", () => {
+    // 200 → 144 at the default window's width, where "58 tools · 10.6 GB
+    // or more" was cut to "58 tools · 10.6 G…" once a row was ticked.
+    expect(searchWidth(false, false)).toBe("w-50");
+    expect(searchWidth(false, true)).toBe("w-36");
+    expect(searchWidth(true, false)).toBe("w-40");
+    expect(searchWidth(true, true)).toBe("w-32");
   });
 
   it("is off with more ticked than one batch takes", async () => {

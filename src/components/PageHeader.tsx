@@ -131,6 +131,13 @@ export function CheckAgain() {
 /** A page's subtitle: how many it lists, or where its check stands -- in the danger colour, as an alert, when that failed. */
 export interface PageSubtitle {
   text: string;
+  /**
+   * What follows the count after a 「·」 -- what the tools take, 「约10.6
+   * GB」 -- shown whole on the line, or, where the toolbar is too narrow
+   * for it, not at all: never cut in the middle of a number or a unit
+   * (walk-3 W3-2). A screen reader hears it either way.
+   */
+  rest?: string;
   failed: boolean;
   /** What the words leave out, as the subtitle's tooltip: what a size total counts. */
   note?: string;
@@ -200,13 +207,24 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
             the count. A node put in the page with its words, or given a
             role as they change, is one it may never read. A check that
             failed is an alert of its own, which is heard as it appears. */}
+        {/* One line 14 high whose second part, what follows the count,
+            wraps out of sight below it where the line has no room for it
+            whole: the count alone is cut short only where it alone does
+            not fit. */}
         <p
           role="status"
           data-subtitle=""
           title={shown === null ? undefined : subtitle?.note}
-          className={shown === null ? "sr-only" : "truncate text-small text-muted"}
+          className={shown === null ? "sr-only" : "flex h-3.5 flex-wrap overflow-hidden text-small text-muted"}
         >
-          {shown}
+          {shown === null ? null : (
+            <>
+              <span className="min-w-0 truncate">{shown}</span>
+              {subtitle?.rest === undefined ? null : (
+                <span data-subtitle-rest="" className="whitespace-pre">{` · ${subtitle.rest}`}</span>
+              )}
+            </>
+          )}
         </p>
         {subtitle?.failed ? (
           <p role="alert" className="truncate text-small text-danger-text">

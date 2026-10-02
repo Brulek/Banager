@@ -145,18 +145,21 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
         const total = models === null ? viewTotal(shownSource) : null;
         // Ollama's page counts models, 「2个模型」.
         const ollama = snapshot?.instances.find((instance) => instance.id === shownSource)?.adapter_id === "ollama";
-        const text = [counted(ollama ? "clarity.modelCount" : "toolbar.toolCount", inSource.length), models ?? total]
-          .filter((part): part is string => part !== null)
-          .join(" · ");
-        if (text === "") return null;
+        // The count, and what they take after it (`rest`), which the
+        // toolbar shows whole or not at all where it is narrow -- never
+        // 「58 tools · 10.6 G…」 (walk-3 W3-2).
+        const count = counted(ollama ? "clarity.modelCount" : "toolbar.toolCount", inSource.length);
+        const size = models ?? total;
+        if (count === null && size === null) return null;
+        const words = count === null ? { text: size as string } : { text: count, rest: size ?? undefined };
         // What a total holds, as its tooltip: a formula's other versions,
         // which the rows' sizes leave out, and why it is 「…以上」 where it
         // is; models' shared files, counted once.
-        if (models !== null) return { text, failed: false, note: t("clarity.modelsNote") };
-        if (total === null) return said(text);
+        if (models !== null) return { ...words, failed: false, note: t("clarity.modelsNote") };
+        if (total === null) return { ...words, failed: false };
         const short = (shownSource === null ? totals.all : totals.bySource.get(shownSource))?.atLeast ?? false;
         return {
-          text,
+          ...words,
           failed: false,
           note: t(short ? "clarity.totalNoteAtLeast" : "sizeTotals.note"),
         };

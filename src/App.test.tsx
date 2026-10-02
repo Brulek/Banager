@@ -435,7 +435,7 @@ describe("App", () => {
         : answer(cmd, args),
     );
     fireEvent.click(getByRole("button", { name: "Check Again" }));
-    expect(await within(getByRole("banner")).findByText("Checking…")).toBe(status);
+    expect((await within(getByRole("banner")).findByText("Checking…")).closest("[role=status]")).toBe(status);
 
     await waitFor(() => expect(finish).toBeDefined());
     finish?.();

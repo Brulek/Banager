@@ -96,12 +96,31 @@ describe("PageHeader", () => {
     expect(header.className).not.toMatch(/\bbg-/);
     expect(title.className).toContain("text-title");
 
-    const subtitle = getByText("10 updates available");
+    const subtitle = getByText("10 updates available").closest("p") as HTMLElement;
     // Under the title, the two centred together.
     expect(subtitle.previousElementSibling).toBe(title);
     expect(subtitle.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
     // A status, which a screen reader hears change (below).
     expect(subtitle).toHaveAttribute("role", "status");
+  });
+
+  it("shows what follows the count whole or not at all, never cut short in the middle of a number (walk-3 W3-2)", () => {
+    const { getByRole } = renderWithProviders(
+      <PageHeader title="Installed" subtitle={{ text: "58 tools", rest: "10.6 GB or more", failed: false }} actions={null} />,
+    );
+    const status = getByRole("status");
+    // Heard as one line.
+    expect(status).toHaveTextContent("58 tools · 10.6 GB or more");
+    // One line 14 high, whose second part wraps out of sight below it
+    // where the line has no room for it whole.
+    expect(status.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-wrap", "h-3.5", "overflow-hidden"]));
+    const [count, rest] = [...status.children] as HTMLElement[];
+    expect(count).toHaveTextContent("58 tools");
+    expect(count.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(rest.textContent).toBe(" · 10.6 GB or more");
+    // Never truncated itself: it is on the line whole, or below it.
+    expect(rest.className.split(" ")).not.toContain("truncate");
+    expect(rest.className.split(" ")).toContain("whitespace-pre");
   });
 
   it("says its subtitle's changes through one status node, from 「正在检查…」 to the count and back to nothing", () => {

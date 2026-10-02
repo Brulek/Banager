@@ -118,6 +118,17 @@ const NOTICES_ESTIMATE = 32;
  */
 const NARROW_INSPECTOR_BELOW = 900 - 208;
 
+/**
+ * The search field's width in the toolbar: 200, 144 once 「卸载所选（3）…」
+ * stands beside it, 160 in a narrow window, and 128 there with rows
+ * ticked. What it gives up is the subtitle's, which shows what the tools
+ * take only where it fits whole (`PageHeader`).
+ */
+export function searchWidth(narrow: boolean, ticked: boolean): string {
+  if (narrow) return ticked ? "w-32" : "w-40";
+  return ticked ? "w-36" : "w-50";
+}
+
 /** An update the user hid on the Updates page, and how (`hidingRule`). */
 interface HiddenUpdate {
   by: HiddenBy;
@@ -1826,7 +1837,7 @@ export function InstalledPage() {
           (every tool, or the AI coding tools) and the sort, grey popup
           buttons; and the search field, 200 wide. */}
       <ToolbarItems>
-        <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
+        <p role="status" className="max-w-40 shrink-0 truncate text-small text-muted empty:hidden">
           {copyStatusText(t, copyStatus)}
         </p>
         <ToolShowButton twins value={show} onChange={setShow} counts={discover} twinsCount={twinsInView} />
@@ -1841,9 +1852,12 @@ export function InstalledPage() {
           ]}
           onChange={setSort}
         />
-        {/* 128 wide, not 200, while 「卸载（3）…」 stands beside it in a
-            narrow window: the page's title keeps its room. */}
-        <span className={`relative flex h-6 ${narrowInspector && counted.length > 0 ? "w-32" : "w-50"} shrink-0 items-center`}>
+        {/* 200 wide where the toolbar has the room, narrower where it
+            does not -- in a narrow window, and beside 「卸载所选（3）…」
+            once something is ticked -- so that the page's subtitle keeps
+            room for what the tools take, 「58个工具 · 10.6 GB以上」, at
+            the window's smallest too (walk-3 W3-2). */}
+        <span className={`relative flex h-6 ${searchWidth(narrowInspector, counted.length > 0)} shrink-0 items-center`}>
           <SearchIcon size={14} className="pointer-events-none absolute left-2 text-muted" />
           <input
             ref={attachSearch}
