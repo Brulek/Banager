@@ -5,7 +5,7 @@ import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSent
 import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
-import { CHANGED_SINCE_SHOWN, mayPlanAgain, startShown } from "../lib/heldPlans";
+import { CHANGED_SINCE_SHOWN, letGoPolicy, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, InstalledArtifact, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
@@ -203,8 +203,14 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   const onCancelledRef = useRef<VoidFunction | null>(null);
   const afterCloseRef = useRef<VoidFunction | null>(null);
   // When the newest batch asked for its plans (`performance.now()`): how
-  // old its plans are at most, for `mayPlanAgain`.
+  // old its plans are at most, for `letGoPolicy`.
   const askedAtRef = useRef(0);
+  // The batch whose submitting has begun, so that it begins once: a second
+  // call on the same ready batch -- two presses before the page has drawn
+  // the first -- would otherwise go through it again, and a plan the first
+  // had already started reads as one let go (`unknown`) and, past
+  // `PLANS_HELD`, would be worked out again and started twice.
+  const submittedBatchRef = useRef<number | null>(null);
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -276,8 +282,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   }
 
   async function confirmAndSubmit() {
-    if (!batch || batch.phase !== "ready") return;
+    if (!batch || batch.phase !== "ready" || submittedBatchRef.current === batch.id) return;
     const { id } = batch;
+    submittedBatchRef.current = id;
     const items = [...batch.items];
     setBatch({ id, phase: "submitting", items });
     // More plans than the backend holds: the first of them are no longer
@@ -299,8 +306,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       const item = items[i];
       if (!item.issued) continue;
       try {
-        const planAgain = mayPlanAgain(planned, askedAtRef.current, performance.now());
-        const opId = await startShown(item.issued, toRequest(item.candidate), planAgain, through);
+        const letGo = letGoPolicy(planned, askedAtRef.current, performance.now());
+        const opId = await startShown(item.issued, toRequest(item.candidate), letGo, through);
         items[i] = { ...item, submittedOpId: opId };
         // Which version this operation is for, so its row can tell its
         // outcome from a later version's (`useUpdateOperationFor`).

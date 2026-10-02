@@ -6,14 +6,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nextProvider } from "react-i18next";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import i18n from "../i18n";
-import { PLANS_HELD } from "../lib/heldPlans";
+import { PLAN_LIFETIME_MS, PLANS_HELD } from "../lib/heldPlans";
 import type { IssuedPlan, OpRequest, Plan, Settings, UpdateCandidate } from "../lib/types";
 import { useUpdateConfirm } from "./UpdateConfirm";
 
 // Update all of more tools than the backend holds plans for
 // (src/lib/heldPlans.ts): the whole flow of the confirmation -- every plan
 // asked for at once, then Update -- against a backend that holds at most
-// `PLANS_HELD` and lets the oldest go, as `Session::issue` does.
+// `PLANS_HELD` and lets the oldest go, as `Session::issue` does, and
+// refuses one held past `PLAN_LIFETIME_MS` as expired, as `Session::submit`
+// does -- by `performance.now()`, the page's clock, set by the test.
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -50,22 +52,31 @@ function brewPlan(request: OpRequest, program = "/opt/homebrew/bin/brew"): Plan 
   };
 }
 
-let held: Map<string, IssuedPlan>;
+let held: Map<string, IssuedPlan & { at: number }>;
 let submitted: IssuedPlan[];
 let planned: string[];
 /** A name whose plan comes out different the second time it is worked out. */
 let changesWhenPlannedAgain: string | null;
+/** The page's clock (`performance.now()`), and the backend's. */
+let clock: number;
+/** Where the clock is once the plans are worked out: how long preparing took. */
+let preparedAt: number;
+let clockSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   held = new Map();
   submitted = [];
   planned = [];
   changesWhenPlannedAgain = null;
+  clock = 0;
+  preparedAt = 0;
+  clockSpy = vi.spyOn(performance, "now").mockImplementation(() => clock);
   let next = 0;
   mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
     if (cmd === "get_settings") return Promise.resolve(SETTINGS);
     if (cmd === "plan_operation") {
       const { request } = args as { request: OpRequest };
+      clock = Math.max(clock, preparedAt);
       const again = planned.includes(request.name);
       planned.push(request.name);
       while (held.size >= PLANS_HELD) held.delete(held.keys().next().value!);
@@ -75,7 +86,7 @@ beforeEach(() => {
           ? brewPlan(request, "/usr/local/bin/brew")
           : brewPlan(request);
       const issued: IssuedPlan = { id: next.toString(16).padStart(32, "0"), plan, issued_at: 1_790_000_000 };
-      held.set(issued.id, issued);
+      held.set(issued.id, { ...issued, at: clock });
       return Promise.resolve(issued);
     }
     if (cmd === "submit_operation") {
@@ -83,6 +94,7 @@ beforeEach(() => {
       const issued = held.get(planId);
       // A bare string, as a `Result<_, String>` command rejects.
       if (issued === undefined) return Promise.reject(JSON.stringify({ kind: "unknown" }));
+      if (clock - issued.at > PLAN_LIFETIME_MS) return Promise.reject(JSON.stringify({ kind: "expired" }));
       held.delete(planId);
       submitted.push(issued);
       return Promise.resolve(submitted.length);
@@ -93,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mockInvoke.mockReset();
+  clockSpy.mockRestore();
 });
 
 function renderConfirm() {
@@ -170,5 +183,56 @@ describe("Update all of more tools than the backend holds plans for", () => {
     expect(result.current.batch).toBeNull();
     expect(planned).toHaveLength(PLANS_HELD);
     expect(submitted).toHaveLength(PLANS_HELD);
+  });
+  it("goes by how long ago the plans were asked for, not since they came back", async () => {
+    // Preparing took five minutes; Update is pressed five and a half after
+    // that -- ten and a half after the plans were asked for. The ones let
+    // go are older than a plan may be, and are refused, not worked out
+    // again; those still held are five and a half minutes old, and start.
+    preparedAt = 5 * 60_000;
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    clock = preparedAt + 5.5 * 60_000;
+    await act(() => result.current.confirmAndSubmit());
+    const batch = result.current.batch!;
+    expect(batch.phase).toBe("done");
+    expect(planned).toHaveLength(1100);
+    const refused = batch.items.filter((item) => item.submitError !== null);
+    expect(refused.map((item) => item.name)).toEqual(tools(1100 - PLANS_HELD));
+    expect(submitted).toHaveLength(PLANS_HELD);
+  });
+
+  it("starts them all when Update is pressed within the plans' lifetime of asking for them", async () => {
+    preparedAt = 5 * 60_000;
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    clock = 9 * 60_000;
+    await act(() => result.current.confirmAndSubmit());
+    expect(result.current.batch).toBeNull();
+    expect(submitted).toHaveLength(1100);
+  });
+
+  it("says the same sentence of every update once the sheet is older than a plan's lifetime, let go or held", async () => {
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    clock = PLAN_LIFETIME_MS + 1;
+    await act(() => result.current.confirmAndSubmit());
+    const batch = result.current.batch!;
+    expect(submitted).toEqual([]);
+    expect(planned).toHaveLength(1100);
+    const said = new Set(batch.items.map((item) => result.current.refusalOf(item)?.text));
+    expect([...said]).toEqual([
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+    ]);
+  });
+
+  it("starts each update once when Update is pressed twice before the page is drawn again", async () => {
+    const { result } = renderConfirm();
+    await act(() => result.current.openConfirm(tools(1100).map(candidate)));
+    // Both presses reach the same ready batch.
+    const { confirmAndSubmit } = result.current;
+    await act(() => Promise.all([confirmAndSubmit(), confirmAndSubmit()]));
+    expect(submitted.map((issued) => issued.plan.request.name)).toEqual(tools(1100));
+    expect(result.current.batch).toBeNull();
   });
 });

@@ -16,12 +16,23 @@
  * notes, the same everything (`samePlan`). One that came out different is
  * not started (`CHANGED_SINCE_SHOWN`), so "every command is shown before
  * it runs" holds for every update of the batch. Only in a batch of more
- * than `PLANS_HELD`: in a smaller one nothing of it can have been let go
- * -- a plan let go is always the oldest held, and nothing else plans while
- * the confirmation is up -- and an `unknown` refusal there is said as it
- * is. And only while the batch is younger than a plan's lifetime: a plan
- * held that long would be refused as expired, and one let go is not given
- * a longer life than it would have had.
+ * than `PLANS_HELD`: in a smaller one an `unknown` refusal is said as it
+ * is. A plan let go is always the oldest held, and no other sheet plans
+ * while the confirmation is up -- save the last few plans of a sheet
+ * closed while it was still preparing, which the backend may still be
+ * working out (four at once, `PLANS_AT_ONCE`): a batch of about 1,022 to
+ * 1,024 opened right after such a sheet can lose its first plan or two,
+ * and those are refused as `unknown`, never run unshown. And only while
+ * the batch is younger than a plan's lifetime: past it, a plan let go is
+ * refused as expired, as one still held is (`LetGo`), never given a longer
+ * life than it would have had.
+ *
+ * Upgrade plans only, each a `Command` (`isUpgradeCommand`): every field
+ * of one is on the wire, so `samePlan` sees all of it. A path-list
+ * uninstall's plan also carries what its preview found on disk, which
+ * never leaves the backend (`PlanAction::TrashPaths`' `previewed` in
+ * crates/banager-core/src/model.rs); worked out again, it would be checked
+ * against the disk as it is now, not as the person was shown it.
  */
 import { isUnknownPlan } from "./sources";
 import type { IssuedPlan, OpRequest, Plan, PlanId } from "./types";
@@ -67,15 +78,40 @@ export function samePlan(shown: Plan, again: Plan): boolean {
 }
 
 /**
- * Whether a batch's plans may have been let go, and may be worked out
- * again: more of them than the backend holds, and the batch asked for
- * them no longer than a plan's lifetime ago. `askedAt` and `now` are
- * `performance.now()` readings -- a clock nothing can set -- taken before
- * the first plan was asked for, so the age is never less than the oldest
- * plan's.
+ * What `submit_operation_error` (src-tauri/src/ipc.rs) sends for a plan
+ * older than its lifetime: said too of a plan let go once its batch is that
+ * old, as the backend would have said it of that plan had it still held
+ * it, so that one cause reads as one sentence (`planRefused.expired`).
  */
-export function mayPlanAgain(planned: number, askedAt: number, now: number): boolean {
-  return planned > PLANS_HELD && now - askedAt <= PLAN_LIFETIME_MS;
+export const EXPIRED = '{"kind":"expired"}';
+
+/**
+ * What becomes of a plan of a batch the backend no longer holds
+ * (`unknown`):
+ *
+ * - `asSent`: its refusal is said as it came -- a batch of no more than
+ *   the backend holds, where nothing of it is let go but by accident;
+ * - `planAgain`: it is worked out again (`startShown`) -- more than that,
+ *   and no older than a plan's lifetime;
+ * - `expired`: refused as `EXPIRED` -- more than that, and older.
+ */
+export type LetGo = "asSent" | "planAgain" | "expired";
+
+/**
+ * `LetGo` for a batch of `planned` plans, asked for at `askedAt`, at `now`:
+ * `performance.now()` readings -- a clock nothing can set -- the first
+ * taken before the first plan was asked for, so the age is never less than
+ * the oldest plan's. Its lifetime's last moment is still within it, as
+ * `has_expired` in plans.rs has it.
+ */
+export function letGoPolicy(planned: number, askedAt: number, now: number): LetGo {
+  if (planned <= PLANS_HELD) return "asSent";
+  return now - askedAt <= PLAN_LIFETIME_MS ? "planAgain" : "expired";
+}
+
+/** Whether `plan` is an upgrade that runs a command: the only kind `startShown` works out again. */
+export function isUpgradeCommand(plan: Plan): boolean {
+  return plan.request.kind === "Upgrade" && "Command" in plan.action;
 }
 
 /** What `startShown` asks the backend through: `plan_operation` and `submit_operation`. */
@@ -90,24 +126,25 @@ function messageOf(e: unknown): string {
 
 /**
  * Starts the update the person was shown as `shown`, and resolves with its
- * operation's id. Rejects with the backend's refusal as it came, or with
- * `CHANGED_SINCE_SHOWN`.
+ * operation's id. Rejects with the backend's refusal as it came,
+ * `EXPIRED`, or `CHANGED_SINCE_SHOWN`.
  *
- * `planAgain` (`mayPlanAgain`): when the backend no longer holds `shown`
- * (`unknown`), `request` is planned again, and the new plan submitted only
- * when it is `shown`'s (`samePlan`). Otherwise -- or when it is not --
- * nothing more is asked.
+ * When the backend no longer holds `shown` (`unknown`) and `shown` is an
+ * upgrade's command (`isUpgradeCommand`), `letGo` says what then: with
+ * `planAgain`, `request` is planned again, and the new plan submitted only
+ * when it is `shown`'s (`samePlan`). Otherwise nothing more is asked.
  */
 export async function startShown(
   shown: IssuedPlan,
   request: OpRequest,
-  planAgain: boolean,
+  letGo: LetGo,
   through: StartThrough,
 ): Promise<number> {
   try {
     return await through.submit(shown.id);
   } catch (e) {
-    if (!planAgain || !isUnknownPlan(messageOf(e))) throw e;
+    if (letGo === "asSent" || !isUpgradeCommand(shown.plan) || !isUnknownPlan(messageOf(e))) throw e;
+    if (letGo === "expired") throw new Error(EXPIRED);
   }
   const again = await through.plan(request);
   if (!samePlan(shown.plan, again.plan)) throw new Error(CHANGED_SINCE_SHOWN);

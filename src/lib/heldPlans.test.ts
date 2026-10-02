@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   CHANGED_SINCE_SHOWN,
-  mayPlanAgain,
+  EXPIRED,
+  letGoPolicy,
   PLAN_LIFETIME_MS,
   PLANS_HELD,
   samePlan,
   startShown,
+  type LetGo,
   type StartThrough,
 } from "./heldPlans";
 import type { IssuedPlan, OpRequest, Plan } from "./types";
@@ -91,18 +93,20 @@ async function preview(backend: ReturnType<typeof heldBackend>, tools: string[])
 async function startEach(
   backend: ReturnType<typeof heldBackend>,
   shown: IssuedPlan[],
-  planAgain: boolean,
+  letGo: LetGo,
 ): Promise<Array<number | string>> {
   const out: Array<number | string> = [];
   for (const issued of shown) {
     try {
-      out.push(await startShown(issued, issued.plan.request, planAgain, backend.through));
+      out.push(await startShown(issued, issued.plan.request, letGo, backend.through));
     } catch (e) {
       out.push((e as Error).message);
     }
   }
   return out;
 }
+
+const UNKNOWN = JSON.stringify({ kind: "unknown" });
 
 describe("PLANS_HELD and PLAN_LIFETIME_MS", () => {
   it("are the backend's own numbers", () => {
@@ -111,6 +115,13 @@ describe("PLANS_HELD and PLAN_LIFETIME_MS", () => {
       `pub(crate) const PLAN_LIFETIME: Duration = Duration::from_secs(${PLAN_LIFETIME_MS / 1000});`,
     );
   });
+
+  it("EXPIRED is what the backend sends for a plan past its lifetime", () => {
+    expect(readFileSync(path.join(ROOT, "src-tauri/src/ipc.rs"), "utf-8")).toContain(
+      'SubmitError::Expired => {\n            serde_json::json!({ "kind": "expired" }).to_string()',
+    );
+    expect(JSON.parse(EXPIRED)).toEqual({ kind: "expired" });
+  });
 });
 
 describe("startShown, for Update all of more tools than the backend holds", () => {
@@ -118,17 +129,17 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     const backend = heldBackend();
     const shown = await preview(backend, names(1100));
     expect(backend.held.size).toBe(PLANS_HELD);
-    const started = await startEach(backend, shown, false);
+    const started = await startEach(backend, shown, "asSent");
     const refused = started.filter((result) => typeof result === "string");
     expect(refused).toHaveLength(1100 - PLANS_HELD);
-    expect(new Set(refused)).toEqual(new Set([JSON.stringify({ kind: "unknown" })]));
+    expect(new Set(refused)).toEqual(new Set([UNKNOWN]));
   });
 
   it("starts every one of 1,100, each with exactly the plan shown, planning again only those let go", async () => {
     const backend = heldBackend();
     const tools = names(1100);
     const shown = await preview(backend, tools);
-    const started = await startEach(backend, shown, mayPlanAgain(shown.length, 0, 1000));
+    const started = await startEach(backend, shown, letGoPolicy(shown.length, 0, 1000));
     expect(started.every((result) => typeof result === "number")).toBe(true);
     expect(backend.submitted.map((issued) => issued.plan.request.name)).toEqual(tools);
     backend.submitted.forEach((issued, i) => expect(samePlan(shown[i].plan, issued.plan)).toBe(true));
@@ -142,9 +153,18 @@ describe("startShown, for Update all of more tools than the backend holds", () =
   it("starts 3,000 too, the backend never holding more than it may", async () => {
     const backend = heldBackend();
     const shown = await preview(backend, names(3000));
-    const started = await startEach(backend, shown, mayPlanAgain(shown.length, 0, 0));
+    const started = await startEach(backend, shown, letGoPolicy(shown.length, 0, 0));
     expect(started.filter((result) => typeof result === "number")).toHaveLength(3000);
     expect(backend.held.size).toBeLessThanOrEqual(PLANS_HELD);
+  });
+
+  it("refuses one let go as expired, in the held ones' words, once the batch is older than a plan's lifetime", async () => {
+    const backend = heldBackend();
+    const shown = await preview(backend, names(1100));
+    const started = await startEach(backend, shown, letGoPolicy(shown.length, 0, PLAN_LIFETIME_MS + 1));
+    expect(started.slice(0, 1100 - PLANS_HELD)).toEqual(Array(1100 - PLANS_HELD).fill(EXPIRED));
+    // Nothing is planned again.
+    expect(backend.planned).toHaveLength(1100);
   });
 
   it("does not start one whose plan came out different, and starts the rest", async () => {
@@ -156,7 +176,7 @@ describe("startShown, for Update all of more tools than the backend holds", () =
         : brewPlan(req),
     );
     const shown = await preview(backend, names(1100));
-    const started = await startEach(backend, shown, true);
+    const started = await startEach(backend, shown, "planAgain");
     expect(started[3]).toBe(CHANGED_SINCE_SHOWN);
     expect(started.filter((result) => typeof result === "number")).toHaveLength(1099);
     expect(backend.submitted.some((issued) => issued.plan.request.name === "tool-0003")).toBe(false);
@@ -167,7 +187,7 @@ describe("startShown, for Update all of more tools than the backend holds", () =
       req.name === "tool-0000" && nth > 1 ? brewPlan(req, { needs_password: true }) : brewPlan(req),
     );
     const shown = await preview(backend, names(1100));
-    expect((await startEach(backend, shown, true))[0]).toBe(CHANGED_SINCE_SHOWN);
+    expect((await startEach(backend, shown, "planAgain"))[0]).toBe(CHANGED_SINCE_SHOWN);
   });
 
   it("says the backend's refusal as it came when planning again is refused, or when it was not let go", async () => {
@@ -177,49 +197,97 @@ describe("startShown, for Update all of more tools than the backend holds", () =
     listed.through.plan = async () => {
       throw new Error(JSON.stringify({ kind: "not_listed" }));
     };
-    await expect(startShown(shown[0], shown[0].plan.request, true, listed.through)).rejects.toThrow(
+    await expect(startShown(shown[0], shown[0].plan.request, "planAgain", listed.through)).rejects.toThrow(
       JSON.stringify({ kind: "not_listed" }),
     );
     // Held, but refused for another reason: nothing is planned again.
     const expired = heldBackend();
     const [one] = await preview(expired, ["jq"]);
     expired.through.submit = async () => {
-      throw new Error(JSON.stringify({ kind: "expired" }));
+      throw new Error(EXPIRED);
     };
-    await expect(startShown(one, one.plan.request, true, expired.through)).rejects.toThrow(
-      JSON.stringify({ kind: "expired" }),
-    );
+    await expect(startShown(one, one.plan.request, "planAgain", expired.through)).rejects.toThrow(EXPIRED);
     expect(expired.planned).toHaveLength(1);
+  });
+
+  it("works out again only an upgrade's command: never an uninstall, least of all one that moves files to the Trash", async () => {
+    const uninstall: OpRequest = { ...request("jq"), kind: "Uninstall" };
+    const shown: IssuedPlan[] = [
+      // brew's uninstall: a command, but not an upgrade.
+      { id: "a".repeat(32), plan: brewPlan(uninstall), issued_at: 0 },
+      // A tool with its own installer: its files to the Trash, with what the
+      // preview found on disk kept by the backend alone.
+      {
+        id: "b".repeat(32),
+        plan: brewPlan(uninstall, { action: { TrashPaths: { paths: ["~/.local/bin/claude"] } } }),
+        issued_at: 0,
+      },
+    ];
+    for (const issued of shown) {
+      const backend = heldBackend();
+      for (const letGo of ["planAgain", "expired"] as const) {
+        await expect(startShown(issued, issued.plan.request, letGo, backend.through)).rejects.toThrow(UNKNOWN);
+      }
+      expect(backend.planned).toEqual([]);
+    }
   });
 });
 
-describe("mayPlanAgain", () => {
-  it("is only for a batch of more than the backend holds", () => {
-    expect(mayPlanAgain(PLANS_HELD, 0, 0)).toBe(false);
-    expect(mayPlanAgain(PLANS_HELD + 1, 0, 0)).toBe(true);
+describe("letGoPolicy", () => {
+  it("says a refusal as it came in a batch of no more than the backend holds", () => {
+    expect(letGoPolicy(PLANS_HELD, 0, 0)).toBe("asSent");
+    expect(letGoPolicy(PLANS_HELD, 0, PLAN_LIFETIME_MS * 2)).toBe("asSent");
+    expect(letGoPolicy(PLANS_HELD + 1, 0, 0)).toBe("planAgain");
   });
 
-  it("and only within a plan's lifetime of asking for them, its last moment included", () => {
-    expect(mayPlanAgain(2000, 1000, 1000 + PLAN_LIFETIME_MS)).toBe(true);
-    expect(mayPlanAgain(2000, 1000, 1000 + PLAN_LIFETIME_MS + 1)).toBe(false);
+  it("plans again within a plan's lifetime of asking, its last moment included, and says expired after", () => {
+    expect(letGoPolicy(2000, 1000, 1000 + PLAN_LIFETIME_MS)).toBe("planAgain");
+    expect(letGoPolicy(2000, 1000, 1000 + PLAN_LIFETIME_MS + 1)).toBe("expired");
   });
 });
 
 describe("samePlan", () => {
-  it("goes by every field, not by the order the keys came in", () => {
+  it("is not fooled by the order the keys came in", () => {
     const plan = brewPlan(request("jq"));
     const reordered = Object.fromEntries(Object.entries(plan).reverse()) as unknown as Plan;
     expect(samePlan(plan, reordered)).toBe(true);
-    expect(samePlan(plan, brewPlan(request("jq"), { warnings: ["CompilesLocally"] }))).toBe(false);
-    expect(samePlan(plan, brewPlan(request("jq"), { cancel_policy: "NoCancel" }))).toBe(false);
-    expect(
-      samePlan(
-        plan,
-        brewPlan(request("jq"), {
-          action: { Command: { program: "/opt/homebrew/bin/brew", args: ["upgrade", "--formula", "jq"], env: [] } },
-        }),
-      ),
-    ).toBe(false);
-    expect(samePlan(plan, brewPlan(request("yq")))).toBe(false);
+  });
+
+  // One change to each field of a plan: a field added to `Plan` and left
+  // out here fails `tsc` (the `Record`) and the test below (`Object.keys`).
+  const base = brewPlan(request("jq"));
+  const CHANGED: Record<keyof Plan, Plan[keyof Plan]> = {
+    // The request alone, its command still jq's.
+    request: { ...base.request, name: "yq" },
+    action: { Command: { program: "/usr/local/bin/brew", args: ["upgrade", "--formula", "jq"], env: [["HOMEBREW_NO_AUTO_UPDATE", "1"]] } },
+    needs_password: true,
+    locks: ["brew:/usr/local"],
+    cancel_policy: "NoCancel",
+    warnings: ["CompilesLocally"],
+    affected: ["ffmpeg"],
+    timeout_secs: 600,
+  };
+
+  it("tells apart a plan that differs in any one field", () => {
+    expect(Object.keys(CHANGED).sort()).toEqual(Object.keys(base).sort());
+    for (const key of Object.keys(base) as Array<keyof Plan>) {
+      expect(samePlan(base, { ...base, [key]: CHANGED[key] }), key).toBe(false);
+    }
+  });
+
+  it("goes by the order of a command's arguments and environment, and counts each", () => {
+    const command = (args: string[], env: [string, string][]): Plan => ({
+      ...base,
+      action: { Command: { program: "/opt/homebrew/bin/brew", args, env } },
+    });
+    const shown = command(["upgrade", "--formula", "jq"], [["A", "1"], ["B", "2"]]);
+    expect(samePlan(shown, command(["upgrade", "--formula", "jq"], [["A", "1"], ["B", "2"]]))).toBe(true);
+    // Arguments swapped.
+    expect(samePlan(shown, command(["upgrade", "jq", "--formula"], [["A", "1"], ["B", "2"]]))).toBe(false);
+    // Two variables swapped, and a name and value swapped within one.
+    expect(samePlan(shown, command(["upgrade", "--formula", "jq"], [["B", "2"], ["A", "1"]]))).toBe(false);
+    expect(samePlan(shown, command(["upgrade", "--formula", "jq"], [["1", "A"], ["B", "2"]]))).toBe(false);
+    // A variable twice.
+    expect(samePlan(shown, command(["upgrade", "--formula", "jq"], [["A", "1"], ["A", "1"], ["B", "2"]]))).toBe(false);
   });
 });
