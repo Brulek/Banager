@@ -598,7 +598,7 @@ impl PipAdapter {
         }
         Ok(self
             .with_lookups_given_up(inst, checked, &gave_up)
-            .await?
+            .await
             .into())
     }
 
@@ -611,13 +611,20 @@ impl PipAdapter {
     /// names no installed package -- a `--find-links` page, say -- left
     /// every package's answer short, so every package not listed gets the
     /// row. Installed packages come from the plain list, as on that path.
+    ///
+    /// If that list cannot be had, `checked` as it is: the answers pip did
+    /// give are real, and a package Banager cannot name gets no row -- it
+    /// reads as up to date, as it did before any of this was read -- where
+    /// failing the source would throw those answers away too (a2 review 4).
     async fn with_lookups_given_up(
         &self,
         inst: &ManagerInstance,
         mut checked: Vec<UpdateCandidate>,
         gave_up: &[GaveUp],
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-        let installed = self.run_pip_list(inst, &[]).await?;
+    ) -> Vec<UpdateCandidate> {
+        let Ok(installed) = self.run_pip_list(inst, &[]).await else {
+            return checked;
+        };
         let projects: HashSet<String> = installed
             .iter()
             .map(|p| canonical_project(&p.name))
@@ -649,7 +656,7 @@ impl PipAdapter {
                 ),
             ));
         }
-        Ok(checked)
+        checked
     }
 
     pub async fn search(
@@ -1761,6 +1768,40 @@ mod tests {
         assert!(candidates[1]
             .warnings
             .contains(&Warning::TransientLookupFailure));
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_keeps_what_pip_listed_when_the_plain_list_then_fails() {
+        // a2 review 4: the extra `pip list` failing used to fail the
+        // whole source, throwing away the answers pip did give.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "black", "version": "24.1.0", "latest_version": "24.10.0", "latest_filetype": "wheel"}]"#,
+                &gave_up_on(READ_TIMEOUT, "/simple/pyyaml/"),
+            ),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                1,
+                "",
+                "ERROR: Exception:\nTraceback (most recent call last):",
+            ),
+        );
+        let adapter = PipAdapter::new(runner.clone());
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("the answers pip gave are kept")
+            .candidates;
+        assert_eq!(candidates.len(), 1, "{candidates:?}");
+        assert_eq!(candidates[0].key.name, "black");
+        assert!(candidates[0].checkable);
+        assert_eq!(candidates[0].target, "24.10.0");
+        assert_eq!(runner.calls(), vec![argv(&OUTDATED_ARGV), argv(&LIST_ARGV)]);
     }
 
     #[tokio::test]

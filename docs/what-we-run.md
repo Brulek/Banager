@@ -1250,7 +1250,9 @@ final try — `Retrying (Retry(total=0, …)) after connection broken by
 such package that is not listed is "could not check", with the error
 from that warning; where the address names no installed package (a
 `--find-links` page, say), every package not listed is. What was listed
-is kept. Nothing is printed when that final try answers, so a package
+is kept — also when that second list fails, and then the packages pip
+gave up on cannot be named and read as up to date, as before. Nothing is
+printed when that final try answers, so a package
 whose sixth try worked and that is up to date is still shown as not
 checked — counted, where the words name the network, among the tools to
 check again, until the next check that reaches the index. At pip's usual
