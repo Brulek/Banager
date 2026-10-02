@@ -204,11 +204,11 @@ describe("what a batch uninstall did not uninstall", () => {
     const sentences = {
       en: {
         generic:
-          "The words above are Homebrew's own error. You can uninstall it again later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
+          "The words above are the error message from Homebrew itself. You can uninstall it again later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
         withCause:
-          "The words above are Homebrew's own error. There's no permission to change its files. Check the permissions, then try again.",
+          "The words above are the error message from Homebrew itself. There's no permission to change its files. Check the permissions, then try again.",
         inTerminal:
-          "The words above are Homebrew's own error. This needs your Mac login password, which can't be entered here. You can click View Log and run the command it gives in Terminal.",
+          "The words above are the error message from Homebrew itself. This needs your Mac login password, which can't be entered here. You can click View Log and run the command it gives in Terminal.",
       },
       "zh-CN": {
         generic: "上面是Homebrew自己的报错。可以稍后重新卸载；还是失败，就点按“查看日志”，再点按“拷贝日志”，发给懂的人看。",

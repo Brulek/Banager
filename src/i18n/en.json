@@ -1410,10 +1410,10 @@
       "passwordNotAccepted": "The password wasn't accepted. Enter your Mac login password in the password window, then try again."
     },
     "toolWords": {
-      "generic": "The words above are {{program}}'s own error. You can {{again}} later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
-      "withCause": "The words above are {{program}}'s own error. {{line}}",
-      "inTerminal": "The words above are {{program}}'s own error. {{line}} You can click View Log and run the command it gives in Terminal.",
-      "noLog": "The words above are {{program}}'s own error. You can {{again}} later. If it still fails, show these words to someone who can help."
+      "generic": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click View Log, then Copy Log, and send the log to someone who can help.",
+      "withCause": "The words above are the error message from {{program}} itself. {{line}}",
+      "inTerminal": "The words above are the error message from {{program}} itself. {{line}} You can click View Log and run the command it gives in Terminal.",
+      "noLog": "The words above are the error message from {{program}} itself. You can {{again}} later. If it still fails, show these words to someone who can help."
     }
   },
   "failureSteps": {
@@ -1442,10 +1442,10 @@
       "Install": "install it again"
     },
     "log": {
-      "generic": "The lines above are {{program}}'s own error. You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
-      "afterStep": "The lines above are {{program}}'s own error. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
-      "inTerminal": "The lines above are {{program}}'s own error. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
-      "copyOnly": "The lines above are {{program}}'s own error. You can click Copy Log and send the log to someone who can help."
+      "generic": "The lines above are the error message from {{program}} itself. You can {{again}} later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "afterStep": "The lines above are the error message from {{program}} itself. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
+      "inTerminal": "The lines above are the error message from {{program}} itself. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
+      "copyOnly": "The lines above are the error message from {{program}} itself. You can click Copy Log and send the log to someone who can help."
     }
   },
   "needsPassword": {

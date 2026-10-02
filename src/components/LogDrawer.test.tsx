@@ -659,7 +659,7 @@ describe("LogDrawer, under a tool's own words", () => {
     said("Error: wget: something went wrong");
 
     const step = await findByText(
-      "The lines above are Homebrew's own error. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "The lines above are the error message from Homebrew itself. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
     );
     // After the log, in the dialog's body; Copy Log is in the foot below it.
     const log = getByRole("log");
@@ -682,11 +682,11 @@ describe("LogDrawer, under a tool's own words", () => {
       "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
     const sentences = {
       en: {
-        generic: "The lines above are Homebrew's own error. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
-        install: "The lines above are Homebrew's own error. You can install it again later. If it still fails, click Copy Log and send the log to someone who can help.",
-        afterStep: "The lines above are Homebrew's own error. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
-        inTerminal: "The lines above are Homebrew's own error. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
-        copyOnly: "The lines above are npm's own error. You can click Copy Log and send the log to someone who can help.",
+        generic: "The lines above are the error message from Homebrew itself. You can click Retry later. If it still fails, click Copy Log and send the log to someone who can help.",
+        install: "The lines above are the error message from Homebrew itself. You can install it again later. If it still fails, click Copy Log and send the log to someone who can help.",
+        afterStep: "The lines above are the error message from Homebrew itself. If it still fails after the step above, click Copy Log and send the log to someone who can help.",
+        inTerminal: "The lines above are the error message from Homebrew itself. If the command above still fails in Terminal, click Copy Log and send the log to someone who can help.",
+        copyOnly: "The lines above are the error message from npm itself. You can click Copy Log and send the log to someone who can help.",
       },
       "zh-CN": {
         generic: "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就点按“拷贝日志”，发给懂的人看。",
@@ -740,7 +740,7 @@ describe("LogDrawer, under a tool's own words", () => {
     const en = renderWithProviders(<LogDrawer />);
     said("npm error code EUNEXPECTED");
     await en.findByText(
-      "The lines above are npm's own error. You can uninstall it again later. If it still fails, click Copy Log and send the log to someone who can help.",
+      "The lines above are the error message from npm itself. You can uninstall it again later. If it still fails, click Copy Log and send the log to someone who can help.",
     );
     en.unmount();
 
@@ -781,7 +781,7 @@ describe("LogDrawer, under a tool's own words", () => {
     const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
     said("curl: (6) Could not resolve host: ghcr.io");
     const over = await findByText("Check your internet connection, then try again.");
-    const under = await findByText(/^The lines above are Homebrew's own error\. If it still fails after the step above/);
+    const under = await findByText(/^The lines above are the error message from Homebrew itself\. If it still fails after the step above/);
     const described = getByRole("dialog").getAttribute("aria-describedby")?.split(" ") ?? [];
     expect(described).toContain(over.id);
     expect(described).not.toContain(under.id);
@@ -815,7 +815,7 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     outcome: { Failed: { exit_code: exitCode, summary } },
   });
   const sentence = {
-    en: "The words above are Homebrew's own error. You can click Retry later. If it still fails, show these words to someone who can help.",
+    en: "The words above are the error message from Homebrew itself. You can click Retry later. If it still fails, show these words to someone who can help.",
     "zh-CN": "上面是Homebrew自己的报错。可以稍后点按“重试”；还是失败，就把这段报错告诉懂的人。",
   };
 
@@ -846,7 +846,7 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     act(() => {
       useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "Error: wget: something went wrong" });
     });
-    await withLog.findByText(/^The lines above are Homebrew's own error\./);
+    await withLog.findByText(/^The lines above are the error message from Homebrew itself\./);
     expect(withLog.queryByText(sentence.en)).toBeNull();
     withLog.unmount();
     useUiStore.setState({ logs: [] });
