@@ -65,8 +65,8 @@ pub enum Probe {
     /// package manager's copy, another route's shape, or a link that
     /// resolves outside the root; a dangling link pointing somewhere else;
     /// or one `probe` cannot resolve (a symlink loop, a permission error,
-    /// a second dangling link along the way). "Not installed", never "not
-    /// responding".
+    /// a second dangling link along the way, a step into a protected
+    /// place, never taken). "Not installed", never "not responding".
     Absent,
     /// The launcher is this route's; `real` is the canonical binary it
     /// resolves to (the artifact's `path`).

@@ -4,7 +4,11 @@
 //! walks that could otherwise reach them -- which copy a command runs
 //! (`commands::read_folders`, over `PATH`'s folders), how much a tool
 //! takes on disk (`size::Protected`, over a tool's own folders), and the
-//! Other Programs scan (`scan::scan_dirs`, over the usual bin folders).
+//! Other Programs scan (`scan::scan_dirs`, over the usual bin folders) --
+//! and by every other look Banager takes at a path by itself (`look`: a
+//! tool's launcher and the links around it, the files a tool wrote, npm's
+//! prefix, the program about to run, ...). The places are kept for the
+//! home folder `HOME` names and for the account's own (`Protected::new`).
 //!
 //! A refresh or a scan must never put up a permission request, nor wait
 //! on a disk that is not this Mac's own: reading one of these places can

@@ -29,7 +29,7 @@
 //! `killpg` so a `brew` invocation's grandchildren stop with it
 //! (`runner::real`), refuses to run a package manager as root via
 //! `geteuid` (`adapters::brew`, `runner::path_env`), and asks `access(2)`
-//! whether npm's global prefix is writable (`adapters::npm`). None of
+//! (`faccessat`) whether npm's global prefix is writable (`adapters::npm`). None of
 //! those have a drop-in Windows equivalent — they need a different design,
 //! not a shim.
 //!
