@@ -223,7 +223,7 @@ pub fn read_entry(path: &Path, protected: &Protected, limit: u64) -> io::Result<
 /// file (`Dir::open_file_at`), and what `fstat` says of what was opened:
 /// for a caller that asks the open file itself (`fcntl`), and decides
 /// what it may be. Only the very thing `resolve` found there is opened.
-pub fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {
+pub(crate) fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {
     let (real, stat) = target(path, protected)?;
     let (folder, name) = Dir::open_parent(&real)?;
     let (file, opened) = folder.open_file_at(&name)?;

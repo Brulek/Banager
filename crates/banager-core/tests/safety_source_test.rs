@@ -692,12 +692,12 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 14] = [
     ),
     (
         "crates/banager-core/src/dirfd.rs:",
-        "pub fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {",
+        "pub(crate) fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {",
         "a return type",
     ),
     (
         "crates/banager-core/src/protected/look.rs:",
-        "pub fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {",
+        "pub(crate) fn open(path: &Path, protected: &Protected) -> io::Result<(std::fs::File, Stat)> {",
         "a return type",
     ),
     (
@@ -731,6 +731,42 @@ fn test_every_path_lookup_left_in_production_is_listed_with_why() {
         "a path looked up by its name, not through protected::look: {others:#?}"
     );
     for (file, text, why) in PATH_LOOKUPS_ALLOWED {
+        assert!(
+            found
+                .iter()
+                .any(|entry| entry.starts_with(file) && entry.ends_with(text)),
+            "{file} no longer has `{text}` ({why}): drop it from the list"
+        );
+    }
+}
+
+/// The calls that read whatever they were handed to its end, however
+/// large: #4 of the round 5 review found the disk-use pass reading
+/// `.crates2.json` whole, a sparse file of gigabytes included. Each one
+/// left in production, by its file and its whole line, with what stops it.
+/// (`std::fs::read_to_string` and the like are `PATH_LOOKUPS`' already.)
+const READS_TO_THE_END: [&str; 2] = [".read_to_end(", ".read_to_string("];
+
+const READS_TO_THE_END_ALLOWED: [(&str, &str, &str); 1] = [(
+    "crates/banager-core/src/dirfd.rs:",
+    "file.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;",
+    "`Dir::read_file_at_most`: at most one byte past the limit its caller must name (`take`)",
+)];
+
+#[test]
+fn test_every_read_to_a_files_end_left_in_production_stops_at_a_limit() {
+    let found = holding(production_lines().iter(), &READS_TO_THE_END);
+    let allowed = |entry: &String| {
+        READS_TO_THE_END_ALLOWED
+            .iter()
+            .any(|(file, text, _)| entry.starts_with(file) && entry.ends_with(text))
+    };
+    let others: Vec<&String> = found.iter().filter(|entry| !allowed(entry)).collect();
+    assert!(
+        others.is_empty(),
+        "a read to the end of whatever it was handed, with no limit: {others:#?}"
+    );
+    for (file, text, why) in READS_TO_THE_END_ALLOWED {
         assert!(
             found
                 .iter()

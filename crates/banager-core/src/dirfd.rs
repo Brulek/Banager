@@ -18,9 +18,13 @@
 //!
 //! Folders on the way are opened for search only (`O_SEARCH`: nothing in
 //! them is listed), a folder to list for reading (`O_RDONLY`, as
-//! `opendir` does). No file is opened here but by `read_file_at_most`,
-//! which reads a regular file only up to the size its caller names: there
-//! is no way to read one whole, however large it is.
+//! `opendir` does). No file is read here but by `read_file_at_most`, which
+//! reads a regular file only up to the size its caller names. A file is
+//! opened by `open_file_at`, which reads nothing: for `read_file_at_most`,
+//! and for `protected::look::open`, whose one caller asks the open file
+//! about a lock (`fcntl`) and reads none of it. Both are this crate's
+//! alone, and `safety_source_test` holds production code to the one read
+//! to a file's end, `read_file_at_most`'s, which stops past its limit.
 
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::io::{self, Read};
@@ -482,8 +486,9 @@ impl Dir {
     /// Whatever is at `name` in this folder, opened to read without
     /// following a link (`O_NOFOLLOW`) and without waiting on anything
     /// that is not a file (`O_NONBLOCK`), with what `fstat` says of what
-    /// was opened: the caller decides what it may be.
-    pub fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {
+    /// was opened: the caller decides what it may be. Reads nothing of it:
+    /// what is read is read by `read_file_at_most`, under a limit.
+    pub(crate) fn open_file_at(&self, name: &OsStr) -> io::Result<(std::fs::File, Stat)> {
         let c = c_name(name)?;
         // SAFETY: `c` is NUL-terminated; the result is checked.
         let fd = unsafe {
