@@ -1235,7 +1235,7 @@
       },
       "changesMac": {
         "question": "Does this app change my Mac?",
-        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files: checking for updates, for example, Homebrew may first update itself and its list of software."
+        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files, and sometimes more: checking for updates, Homebrew may first update itself and its list of software, and uninstalling rustup removes the line it added to Terminal's settings files, which the confirmation says beforehand."
       },
       "otherPrograms": {
         "question": "What's in Other Programs?",
