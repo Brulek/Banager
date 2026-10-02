@@ -305,6 +305,7 @@ impl StandaloneAdapter {
             scope: Scope::User,
             status: InstanceStatus { unavailable, notes },
             version,
+            answered_at: None,
             unverified_version,
             read_only_reason: None,
         }]

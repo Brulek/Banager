@@ -238,6 +238,7 @@ impl NpmAdapter {
                         notes: Vec::new(),
                     },
                     version: None,
+                    answered_at: None,
                     unverified_version: None,
                     read_only_reason: None,
                 }];
@@ -286,6 +287,7 @@ impl NpmAdapter {
                 notes: Vec::new(),
             },
             version,
+            answered_at: None,
             unverified_version,
             read_only_reason,
         }]

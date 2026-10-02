@@ -154,10 +154,31 @@ impl Snapshot {
 
     /// Whether `self` and `other` carry the same *data* -- every field
     /// except `generation`, `round`, `refreshed_at` and `stale`, which
-    /// describe the refresh attempt rather than the fetched data itself.
+    /// describe the refresh attempt rather than the fetched data itself --
+    /// and, for the same reason, each instance's `answered_at`
+    /// (`ManagerInstance::same_content`). A round in which every source
+    /// answered just as before still stamps a new time on each, and is
+    /// committed with it (its `round` moves on), but it does not move
+    /// `generation`: counting the clock as news would announce a changed
+    /// snapshot after every check (`SnapshotChanged`), and make every plan
+    /// previewed before it go through the actionability gate again on
+    /// submit (`Session::submit`).
+    ///
+    /// So the window can hold an older time than this snapshot's for a
+    /// source that keeps answering, and that is never on screen: a time is
+    /// shown only for a source that did not answer (`sourceNoticesFor` in
+    /// src/lib/sources.ts). Such a source's `answered_at` cannot move --
+    /// it is not asked -- and the round it went quiet in changed its
+    /// `status`, which is content: that round moves `generation`, and the
+    /// window receives the snapshot with the latest time in it.
     fn same_content(&self, other: &Snapshot) -> bool {
         self.detect == other.detect
-            && self.instances == other.instances
+            && self.instances.len() == other.instances.len()
+            && self
+                .instances
+                .iter()
+                .zip(&other.instances)
+                .all(|(a, b)| a.same_content(b))
             && self.artifacts == other.artifacts
             && self.updates == other.updates
             && self.errors == other.errors
@@ -185,7 +206,9 @@ pub struct InventoryPreview {
     /// snapshot will carry as `Snapshot::round` when it commits.
     pub round: u64,
     /// Every source this round detected, as detection described it: no
-    /// note an update check adds is on them yet.
+    /// note an update check adds is on them yet, and no `answered_at` --
+    /// no round before this one committed one, and this one's are stamped
+    /// as it commits.
     pub instances: Vec<ManagerInstance>,
     /// What each source that read its list this round listed, in the order
     /// the round asked them. A source whose read failed, or declined
@@ -580,7 +603,13 @@ impl Session {
     }
 
     fn now(&self) -> i64 {
-        match self.now_fn {
+        Self::clock(self.now_fn)
+    }
+
+    /// `now`, for a task that holds only the clock: a refresh's per-source
+    /// task stamps when it asked its source (`answered_at`, refresh.rs).
+    fn clock(now_fn: Option<fn() -> i64>) -> i64 {
+        match now_fn {
             Some(f) => f(),
             None => std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

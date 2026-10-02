@@ -323,8 +323,10 @@ impl Session {
     /// The re-check is skipped when `generation` has not moved since the
     /// plan was issued, and only then: an unchanged generation means
     /// `Snapshot::same_content` held on every commit in between, so the
-    /// instance the gate already passed is byte-for-byte the instance that
-    /// would be re-resolved. When it has moved, the instance is looked up
+    /// instance the gate already passed is the instance that would be
+    /// re-resolved in everything but when it last answered
+    /// (`ManagerInstance::answered_at`), which the gate does not read.
+    /// When it has moved, the instance is looked up
     /// again and re-tested rather than the plan being rejected outright --
     /// the generation is global and this invariant is per instance, so
     /// rejecting on any change would invalidate a preview the user is

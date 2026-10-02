@@ -185,12 +185,9 @@ impl InstanceNote {
 /// The state axis of a source: can Banager talk to it at all, and is there
 /// anything about this answer the user has to know to read it correctly.
 ///
-/// Deliberately *without* a per-instance `refreshed_at` (spec §2.4's note):
-/// `Snapshot::same_content` compares `instances` with the derived
-/// `PartialEq`, so a unix second that moves every refresh would bump the
-/// generation and rebroadcast `SnapshotChanged` on every poll, and the one
-/// relative time `src/` renders -- the page header's "Checked 3 min ago" --
-/// reads the snapshot's own `refreshed_at`.
+/// When the source last answered is not here but on the instance
+/// (`ManagerInstance::answered_at`): this is what this round found out, and
+/// a source that did not answer this round has no time of its own to say.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceStatus {
     /// `None` means the source answered.
@@ -206,6 +203,23 @@ pub struct ManagerInstance {
     pub prefix: PathBuf,
     pub scope: Scope,
     pub version: Option<String>,
+    /// When this source last answered, Unix seconds: the end of the last
+    /// round, this session, in which both its inventory and its update
+    /// check answered (`Session::refresh`). What its rows show is from that
+    /// answer or a later one, so a source that does not answer this round,
+    /// whose rows are carried forward, can say how old they are at most
+    /// (`sourceNoticesFor` in src/lib/sources.ts) -- never newer than
+    /// they are.
+    ///
+    /// Kept in memory only, like the snapshot it is part of: `None` from
+    /// `detect()` -- no adapter knows it, so every one leaves it `None` --
+    /// until `refresh` carries it over from last round's instance of the
+    /// same id, or stamps a new one. So it is `None` on the first round
+    /// after launch, for a source that has not answered since, and for one
+    /// whose id was not in last round's snapshot. Not part of
+    /// `same_content`: it is when the data came, not the data.
+    #[serde(default)]
+    pub answered_at: Option<i64>,
     /// None when the adapter's metadata lists no verified versions, or when
     /// the detected version is among them. Some(detected) when it is not,
     /// so the UI can mark the source as running an unverified version (spec
@@ -225,6 +239,35 @@ pub struct ManagerInstance {
 }
 
 impl ManagerInstance {
+    /// Whether `self` and `other` say the same about the source: every field
+    /// but `answered_at`, which says when it was said
+    /// (`Snapshot::same_content`). Destructured, not `..`-ed, so a field
+    /// added to the struct fails to compile here until someone decides
+    /// which side of that line it is on.
+    pub(crate) fn same_content(&self, other: &Self) -> bool {
+        let Self {
+            id,
+            adapter_id,
+            exe_path,
+            prefix,
+            scope,
+            version,
+            answered_at: _,
+            unverified_version,
+            read_only_reason,
+            status,
+        } = self;
+        id == &other.id
+            && adapter_id == &other.adapter_id
+            && exe_path == &other.exe_path
+            && prefix == &other.prefix
+            && scope == &other.scope
+            && version == &other.version
+            && unverified_version == &other.unverified_version
+            && read_only_reason == &other.read_only_reason
+            && status == &other.status
+    }
+
     /// Whether Banager may offer operations on this source at all.
     ///
     /// The capability half of the actionability invariant (spec §2.5);
@@ -1733,6 +1776,7 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
+            answered_at: None,
             unverified_version: None,
             read_only_reason: None,
             status: InstanceStatus::default(),
@@ -1740,6 +1784,57 @@ mod tests {
         let json = serde_json::to_string(&instance).expect("serialize");
         let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(instance, back);
+    }
+
+    #[test]
+    fn test_answered_at_is_seconds_or_null_on_the_wire_and_absent_from_older_payloads() {
+        let mut instance = crate::testing::manager_instance("uv", "uv");
+        for stamp in [None, Some(1_791_000_000)] {
+            instance.answered_at = stamp;
+            let wire = serde_json::to_value(&instance).unwrap();
+            assert_eq!(wire["answered_at"], serde_json::json!(stamp));
+            assert_eq!(
+                serde_json::from_value::<ManagerInstance>(wire).unwrap(),
+                instance
+            );
+        }
+        // A payload from before the field existed reads as "not known".
+        let mut older = serde_json::to_value(&instance).unwrap();
+        older.as_object_mut().unwrap().remove("answered_at");
+        assert_eq!(
+            serde_json::from_value::<ManagerInstance>(older)
+                .unwrap()
+                .answered_at,
+            None
+        );
+    }
+
+    #[test]
+    fn test_same_content_ignores_when_the_source_answered_and_nothing_else() {
+        let instance = crate::testing::manager_instance("uv", "uv");
+        let mut later = instance.clone();
+        later.answered_at = Some(1_791_000_100);
+        assert!(instance.same_content(&later));
+        assert_ne!(
+            instance, later,
+            "the derived PartialEq still tells them apart"
+        );
+        let changes: [fn(&mut ManagerInstance); 9] = [
+            |i| i.id = "uv:elsewhere".into(),
+            |i| i.adapter_id = "pipx".into(),
+            |i| i.exe_path = PathBuf::from("/elsewhere/uv"),
+            |i| i.prefix = PathBuf::from("/elsewhere"),
+            |i| i.scope = Scope::System,
+            |i| i.version = Some("9.9.9".into()),
+            |i| i.unverified_version = Some("9.9.9".into()),
+            |i| i.read_only_reason = Some(ReadOnlyReason::ByDesign),
+            |i| i.status.unavailable = Some(Unavailable::NotResponding),
+        ];
+        for change in changes {
+            let mut other = later.clone();
+            change(&mut other);
+            assert!(!instance.same_content(&other), "{other:?}");
+        }
     }
 
     #[test]
@@ -1751,6 +1846,7 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("99.9.9".to_string()),
+            answered_at: None,
             unverified_version: Some("99.9.9".to_string()),
             read_only_reason: None,
             status: InstanceStatus::default(),
@@ -1774,6 +1870,7 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
+            answered_at: None,
             unverified_version: None,
             read_only_reason: None,
             status: InstanceStatus::default(),

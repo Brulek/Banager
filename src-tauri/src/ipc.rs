@@ -3158,7 +3158,13 @@ mod tests {
             [UiEvent::InventoryPreview(preview), UiEvent::SnapshotChanged { generation }] => {
                 assert_eq!(preview.round, first.round);
                 assert_eq!(preview.artifacts, vec![jq]);
-                assert_eq!(preview.instances, first.instances);
+                // The same sources -- when each answered is the commit's to say.
+                let mut committed = first.instances.clone();
+                assert!(committed.iter().all(|i| i.answered_at.is_some()));
+                for instance in &mut committed {
+                    instance.answered_at = None;
+                }
+                assert_eq!(preview.instances, committed);
                 assert_eq!(*generation, first.generation);
             }
             other => panic!("expected the preview, then the snapshot, and nothing else: {other:?}"),

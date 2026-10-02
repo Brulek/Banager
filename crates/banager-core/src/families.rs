@@ -357,6 +357,7 @@ mod tests {
             prefix: PathBuf::from("/"),
             scope: Scope::User,
             version: None,
+            answered_at: None,
             unverified_version: None,
             read_only_reason: None,
             status: InstanceStatus::default(),

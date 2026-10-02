@@ -92,6 +92,20 @@ impl Session {
     /// as a failed read, but is neither an error nor `stale`: it gets
     /// `InstanceNote::IndexUpdating` instead, and when the inventory is
     /// what declined, `check_updates` is not called at all.
+    ///
+    /// Each instance's `answered_at` says how old its rows can be. A source
+    /// whose inventory and update check both answer this round is stamped
+    /// with the time its task began asking it -- not when the round
+    /// commits, which waits for the slowest source, and not when its
+    /// answer ended, since its rows are from then or after. An `Ok`
+    /// answer counts whole: a package it could not look up
+    /// (`checkable: false`) or a catalogue it could not update
+    /// (`IndexMayBeStale`) is what it said then, and its rows say so. Any
+    /// other instance keeps the time last round's instance of the same id
+    /// had: one that is unavailable or held by an operation (not asked),
+    /// one whose inventory or update check failed, declined or panicked,
+    /// and every instance of an adapter whose `detect` panicked. An id that
+    /// was not in last round's snapshot has none.
     pub async fn refresh(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
@@ -383,6 +397,19 @@ impl Session {
         // per id and would otherwise misattribute silently.
         let (mut instances, duplicate_errors) = dedupe_instance_ids(instances);
         detect_errors.extend(duplicate_errors);
+        // When each source last answered, as last round left it -- what it
+        // keeps unless its task below answers in full. By id, after the
+        // dedupe and npm's recovery of its old id (`resume_unanswered_npm`),
+        // so one source keeps one time; never from `detect`, which cannot
+        // know it. Set here, before the fan-out, so every path that skips
+        // or carries an instance carries its time with it.
+        for inst in &mut instances {
+            inst.answered_at = previous
+                .instances
+                .iter()
+                .find(|last| last.id == inst.id)
+                .and_then(|last| last.answered_at);
+        }
         for inst in &instances {
             self.ops.register_instance(inst.clone());
         }
@@ -475,6 +502,7 @@ impl Session {
                 continue;
             };
             let ops = self.ops.clone();
+            let now_fn = self.now_fn;
             let previous = previous.clone();
             // This task's place in the fan-out, which the preview lists by.
             let place = handles.len();
@@ -487,6 +515,10 @@ impl Session {
                     let _lock = ops
                         .acquire_resource_lock(ResourceLock(inst.id.clone()))
                         .await;
+                    // When this source was asked: its `answered_at` if both
+                    // halves below answer (`refresh`'s doc). After the lock,
+                    // so not the time an operation kept it waiting.
+                    let asked_at = Session::clock(now_fn);
                     let mut artifacts = Vec::new();
                     let mut updates = Vec::new();
                     let mut errors = Vec::new();
@@ -557,6 +589,7 @@ impl Session {
                     } else {
                         adapter.check_updates(&inst, &opts).await
                     };
+                    let check_answered = checked.is_ok();
                     match checked {
                         Ok(outcome) => {
                             updates.extend(outcome.candidates);
@@ -667,7 +700,12 @@ impl Session {
                     if index_updating {
                         notes.push(InstanceNote::IndexUpdating);
                     }
-                    (artifacts, updates, errors, stale, notes)
+                    // Both halves answered: everything this task hands
+                    // back is this round's, from `asked_at` on. Either one
+                    // failing or declining left last round's rows in, so
+                    // the time stays last round's (`refresh`'s doc).
+                    let answered_at = (inventory_confirmed && check_answered).then_some(asked_at);
+                    (artifacts, updates, errors, stale, notes, answered_at)
                 })),
             ));
         }
@@ -724,12 +762,19 @@ impl Session {
         let mut stale = !errors.is_empty();
         for (instance_id, handle) in handles {
             match handle.await {
-                Ok((a, u, e, s, notes)) => {
+                Ok((a, u, e, s, notes, answered_at)) => {
                     artifacts.extend(a);
                     updates.extend(u);
                     errors.extend(e);
                     stale = stale || s;
                     merge_instance_notes(&mut instances, &instance_id, notes);
+                    // Into `instances` by id, as its notes just went: the
+                    // task's `inst` was a clone.
+                    if let Some(at) = answered_at {
+                        if let Some(inst) = instances.iter_mut().find(|i| i.id == instance_id) {
+                            inst.answered_at = Some(at);
+                        }
+                    }
                 }
                 Err(_join_err) => {
                     // The task panicked or was cancelled, so it returned
@@ -1007,6 +1052,11 @@ mod tests {
         panicking_updates: Vec<InstanceId>,
         /// Whether `detect` panics, losing the whole adapter's answer.
         panicking_detect: bool,
+        /// Instances whose `inventory` / `check_updates` declines once with
+        /// `AdapterError::IndexUpdating`, as brew's does while `brew update`
+        /// rewrites its catalogue.
+        declining_inventory: Vec<InstanceId>,
+        declining_updates: Vec<InstanceId>,
         detect_delay: Duration,
         /// How long every `inventory` sleeps before answering: a slow
         /// source (cargo's per-crate lookups, pipx's PyPI calls) that keeps
@@ -1060,6 +1110,8 @@ mod tests {
                 panicking_inventory: Vec::new(),
                 panicking_updates: Vec::new(),
                 panicking_detect: false,
+                declining_inventory: Vec::new(),
+                declining_updates: Vec::new(),
                 detect_delay: Duration::from_millis(0),
                 inventory_delay: Duration::ZERO,
                 detect_calls: 0,
@@ -1145,6 +1197,10 @@ mod tests {
                     stderr: format!("{} inventory failed", inst.id),
                 });
             }
+            if let Some(pos) = s.declining_inventory.iter().position(|id| id == &inst.id) {
+                s.declining_inventory.remove(pos);
+                return Err(AdapterError::IndexUpdating);
+            }
             Ok(s.artifacts.get(&inst.id).cloned().unwrap_or_default())
         }
 
@@ -1178,6 +1234,10 @@ mod tests {
                     code: Some(1),
                     stderr: format!("{} update check failed", inst.id),
                 });
+            }
+            if let Some(pos) = s.declining_updates.iter().position(|id| id == &inst.id) {
+                s.declining_updates.remove(pos);
+                return Err(AdapterError::IndexUpdating);
             }
             Ok(CheckOutcome {
                 candidates: s.updates.get(&inst.id).cloned().unwrap_or_default(),
@@ -1313,6 +1373,8 @@ mod tests {
             .refresh(&non_root_env(), &CheckOptions::default())
             .await;
         assert_eq!(first.artifacts.len(), 1);
+        let answered_at = first.instances[0].answered_at;
+        assert!(answered_at.is_some());
 
         // `~/.npmrc` broke: every npm command fails, `npm prefix -g` too.
         state.lock().unwrap().instances = vec![stand_in.clone()];
@@ -1326,6 +1388,8 @@ mod tests {
             assert_eq!(npm.prefix, PathBuf::from("/opt/homebrew"));
             assert_eq!(npm.version, Some("12.0.2".to_string()));
             assert_eq!(npm.status.unavailable, Some(Unavailable::NotResponding));
+            // And when it last answered, under that id: what its rows are.
+            assert_eq!(npm.answered_at, answered_at, "round {round}");
             let names: Vec<_> = snapshot
                 .artifacts
                 .iter()
@@ -1347,6 +1411,7 @@ mod tests {
             .refresh(&non_root_env(), &CheckOptions::default())
             .await;
         assert_eq!(snapshot.instances[0].id, stand_in.id);
+        assert_eq!(snapshot.instances[0].answered_at, None);
     }
 
     #[test]
@@ -1584,6 +1649,268 @@ mod tests {
             second.refreshed_at,
             first_refreshed_at
         );
+    }
+
+    #[tokio::test]
+    async fn test_answered_at_moves_on_each_full_answer_without_a_new_generation() {
+        static NOW: AtomicI64 = AtomicI64::new(100);
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".into(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![adapter],
+            Some(|| NOW.load(Ordering::SeqCst)),
+        );
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.instances[0].answered_at, Some(100));
+
+        // The same answer, later: only the time moved. Committed -- a later
+        // round, the new time in it -- but not news.
+        NOW.store(200, Ordering::SeqCst);
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(second.generation, first.generation);
+        assert!(second.round > first.round);
+        assert_eq!(second.instances[0].answered_at, Some(200));
+        assert_eq!(session.snapshot().instances[0].answered_at, Some(200));
+    }
+
+    /// What happens to `fake:1` in a round, set up on its fixture first.
+    type Turn = fn(&mut FakeState);
+
+    #[tokio::test]
+    async fn test_answered_at_stays_last_rounds_unless_both_halves_answer() {
+        static NOW: AtomicI64 = AtomicI64::new(100);
+        // What happens this round, and whether `fake:1` and `fake:2` then
+        // have this round's time (200) or last round's (100).
+        let turns: [(&str, Turn, bool, bool); 12] = [
+            ("everything answers", |_| {}, true, true),
+            (
+                "inventory fails",
+                |s| s.failing.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "update check fails",
+                |s| s.failing_updates.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "inventory panics",
+                |s| s.panicking_inventory.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "update check panics",
+                |s| s.panicking_updates.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "inventory declines while the catalogue is rewritten",
+                |s| s.declining_inventory.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "update check declines while the catalogue is rewritten",
+                |s| s.declining_updates.push("fake:1".into()),
+                false,
+                true,
+            ),
+            (
+                "not responding",
+                |s| s.instances[0].status.unavailable = Some(Unavailable::NotResponding),
+                false,
+                true,
+            ),
+            (
+                "not running",
+                |s| s.instances[0].status.unavailable = Some(Unavailable::NotRunning),
+                false,
+                true,
+            ),
+            // The whole adapter's answer lost: neither of its sources was asked.
+            ("detect panics", |s| s.panicking_detect = true, false, false),
+            // What a source said of one package, or of its catalogue, is
+            // still its answer, given then; its rows say the rest.
+            (
+                "a package it could not look up",
+                |s| {
+                    let mut candidate = make_update("fake:1", "jq");
+                    candidate.checkable = false;
+                    s.updates.insert("fake:1".into(), vec![candidate]);
+                },
+                true,
+                true,
+            ),
+            (
+                "an old catalogue",
+                |s| {
+                    s.notes
+                        .insert("fake:1".into(), vec![InstanceNote::IndexMayBeStale]);
+                },
+                true,
+                true,
+            ),
+        ];
+        for (turn, set_up, first_stamped, second_stamped) in turns {
+            NOW.store(100, Ordering::SeqCst);
+            let (adapter, state) = FakeAdapter::new("fake");
+            {
+                let mut s = state.lock().unwrap();
+                s.instances = vec![
+                    make_instance("fake", "fake:1"),
+                    make_instance("fake", "fake:2"),
+                ];
+                s.artifacts
+                    .insert("fake:1".into(), vec![make_artifact("fake:1", "jq")]);
+            }
+            let session = Session::with_adapters(
+                Arc::new(VecSink::new()),
+                vec![adapter],
+                Some(|| NOW.load(Ordering::SeqCst)),
+            );
+            session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            NOW.store(200, Ordering::SeqCst);
+            set_up(&mut state.lock().unwrap());
+            let snapshot = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            let at = |id: &str| {
+                snapshot
+                    .instances
+                    .iter()
+                    .find(|i| i.id == id)
+                    .unwrap_or_else(|| panic!("{turn}: {id} is listed"))
+                    .answered_at
+            };
+            let time = |stamped: bool| Some(if stamped { 200 } else { 100 });
+            assert_eq!(at("fake:1"), time(first_stamped), "{turn}");
+            assert_eq!(at("fake:2"), time(second_stamped), "{turn}");
+            assert!(
+                snapshot.artifacts.iter().any(|a| a.key.name == "jq"),
+                "{turn}: its rows are on screen either way"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_answered_at_is_unknown_until_this_session_hears_from_that_id() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        let mut silent = make_instance("fake", "fake:1");
+        silent.status.unavailable = Some(Unavailable::NotResponding);
+        // Whatever `detect` says, the time is the session's to know.
+        silent.answered_at = Some(99);
+        state.lock().unwrap().instances = vec![silent.clone()];
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![adapter.clone()],
+            Some(|| 200),
+        );
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(
+            first.instances[0].answered_at, None,
+            "silent on the first round"
+        );
+
+        state.lock().unwrap().instances[0].status.unavailable = None;
+        let answered = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(answered.instances[0].answered_at, Some(200));
+
+        // Another id is another source, with no time of its own yet.
+        silent.id = "fake:2".into();
+        state.lock().unwrap().instances = vec![silent.clone()];
+        let other = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(other.instances[0].answered_at, None);
+
+        // `fake:1` again, after a round without it: last round had no time
+        // for it to keep.
+        silent.id = "fake:1".into();
+        state.lock().unwrap().instances = vec![silent];
+        let back = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(back.instances[0].answered_at, None);
+
+        // A new session -- a relaunch -- starts knowing nothing.
+        let relaunched =
+            Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], Some(|| 300));
+        let snapshot = relaunched
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(snapshot.instances[0].answered_at, None);
+    }
+
+    #[tokio::test]
+    async fn test_answered_at_is_when_the_source_was_asked_not_when_the_round_commits() {
+        static NOW: AtomicI64 = AtomicI64::new(100);
+        let (slow, slow_state) = FakeAdapter::new("a");
+        let (fast, fast_state) = FakeAdapter::new("b");
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        {
+            let mut s = slow_state.lock().unwrap();
+            s.instances = vec![make_instance("a", "a:1")];
+            s.check_gate = Some(gate.clone());
+        }
+        fast_state.lock().unwrap().instances = vec![make_instance("b", "b:1")];
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![slow, fast],
+            Some(|| NOW.load(Ordering::SeqCst)),
+        );
+        let refresh = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        // Both asked -- each lists its packages before its update check --
+        // and `a` held in its update check, so the round cannot commit.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let slow_asked = !slow_state.lock().unwrap().inventory_calls.is_empty();
+                let fast_asked = !fast_state.lock().unwrap().inventory_calls.is_empty();
+                if slow_asked && fast_asked {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("both sources are asked");
+        assert!(
+            session.snapshot().instances.is_empty(),
+            "nothing is committed while a source still answers"
+        );
+        NOW.store(200, Ordering::SeqCst);
+        gate.add_permits(1);
+        let snapshot = refresh.await.unwrap();
+        assert_eq!(snapshot.refreshed_at, Some(200));
+        for instance in &snapshot.instances {
+            assert_eq!(instance.answered_at, Some(100), "{}", instance.id);
+        }
     }
 
     #[tokio::test]
@@ -1992,8 +2319,9 @@ mod tests {
                 "the adapter's detect is not run this round"
             );
         }
-        // Carried forward *unchanged*: the same instance, no notice, no
-        // stale flag, its rows as they were.
+        // Carried forward *unchanged*: the same instance -- when it last
+        // answered included, as it was not asked -- no notice, no stale
+        // flag, its rows as they were.
         let fake_1 = snapshot
             .instances
             .iter()
@@ -2003,6 +2331,7 @@ mod tests {
             fake_1,
             first.instances.iter().find(|i| i.id == "fake:1").unwrap()
         );
+        assert!(fake_1.answered_at.is_some());
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
         assert!(!snapshot.stale);

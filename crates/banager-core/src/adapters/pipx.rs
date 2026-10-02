@@ -319,6 +319,7 @@ impl PipxAdapter {
                 notes: Vec::new(),
             },
             version,
+            answered_at: None,
             unverified_version,
             read_only_reason: None,
         }]

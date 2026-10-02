@@ -51,6 +51,7 @@ pub fn manager_instance(adapter_id: &str, id: &str) -> ManagerInstance {
         prefix: PathBuf::from("/"),
         scope: Scope::User,
         version: Some("1.0".to_string()),
+        answered_at: None,
         unverified_version: None,
         read_only_reason: None,
         status: InstanceStatus::default(),

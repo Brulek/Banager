@@ -247,6 +247,7 @@ impl PipAdapter {
                     notes: Vec::new(),
                 },
                 version,
+                answered_at: None,
                 unverified_version,
                 // Not a property of this machine: pip offers no
                 // install/uninstall path Banager can safely drive, so
