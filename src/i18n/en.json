@@ -525,12 +525,12 @@
   },
   "unreadInProtectedPlace": {
     "homebrewMayAutoremove": "Homebrew may also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
-    "homebrewMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in a protected location and wasn't read, so whether it sets that back to a value Homebrew reads as unset isn't known.",
+    "homebrewMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that back to a value Homebrew reads as unset isn't known.",
     "homebrewMayCleanUp": "After installing or updating, Homebrew may delete the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
-    "homebrewMayCleanUpDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but one of its brew.env files is in a protected location and wasn't read, so whether it sets that to nothing isn't known.",
+    "homebrewMayCleanUpDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known.",
     "homebrewCleanupMayAutoremove": "Homebrew's periodic clean-up may also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
-    "homebrewCleanupMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in a protected location and wasn't read, so whether it sets that back to a value Homebrew reads as unset isn't known.",
-    "shellConfigUnread": "{{path}} is in a protected location and wasn't read, so whether it keeps a line that loads Cargo isn't known.",
+    "homebrewCleanupMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether brew.env takes both back isn't known.",
+    "shellConfigUnread": "{{path}} is in, or points to, a protected location and wasn't read, so whether it keeps a line that loads Cargo isn't known.",
     "shellConfigUnreadDetail": "If a terminal shows an error when it starts after uninstalling, delete the line in {{path}} that loads Cargo."
   },
   "modelDownload": {

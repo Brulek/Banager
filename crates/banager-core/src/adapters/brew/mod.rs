@@ -710,10 +710,16 @@ impl BrewAdapter {
                     Warning::HomebrewPeriodicCleanup
                 }];
                 if !switches.no_autoremove {
-                    warnings.push(autoremoves(
-                        Warning::HomebrewCleanupMayAutoremove,
-                        Warning::HomebrewCleanupAutoremoves,
-                    ));
+                    // "May" when either switch is unknown: the line rests
+                    // on both, and the "will" line's detail says a
+                    // brew.env takes both back.
+                    warnings.push(
+                        if switches.autoremove_unknown || switches.install_cleanup_unknown {
+                            Warning::HomebrewCleanupMayAutoremove
+                        } else {
+                            Warning::HomebrewCleanupAutoremoves
+                        },
+                    );
                 }
                 warnings.extend(except(true, !switches.no_autoremove));
                 warnings
@@ -5927,6 +5933,80 @@ mod plan_execute_tests {
             "got {probed:?}"
         );
         let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn test_each_brew_env_line_says_only_what_is_known_when_one_file_was_not_read() {
+        // z1's re-check, R1: a managed Mac's `/etc/homebrew/brew.env` asks
+        // to be read last and turns autoremove back on; the user's
+        // `~/.homebrew` is in iCloud Drive, not read. Autoremove is then
+        // known, the clean-up is not: the clean-up line says "may", and
+        // so does the autoremove-in-the-clean-up line, whose "will" detail
+        // says a brew.env takes both switches back -- not known here.
+        let env: Vec<(String, String)> = BrewAdapter::ENV
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let switches = |system: &'static [u8], user_unknown: bool| {
+            brew_env::after_brew_env(
+                &env,
+                Path::new("/opt/homebrew"),
+                &|name| (name == "HOME").then(|| OsString::from("/Users/someone")),
+                &|path| {
+                    if path == Path::new(brew_env::SYSTEM_FILE) {
+                        brew_env::EnvFile::Read(system.to_vec())
+                    } else if user_unknown && path == Path::new("/Users/someone/.homebrew/brew.env")
+                    {
+                        brew_env::EnvFile::Unknown
+                    } else {
+                        brew_env::EnvFile::Skipped
+                    }
+                },
+            )
+        };
+        let managed: &[u8] = b"HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY=1\nHOMEBREW_NO_AUTOREMOVE=0\n";
+        let mixed = switches(managed, true);
+        assert!(
+            !mixed.autoremove_unknown && mixed.install_cleanup_unknown,
+            "{mixed:?}"
+        );
+        assert_eq!(
+            BrewAdapter::switch_warnings(&mixed, OpKind::Upgrade),
+            vec![
+                Warning::HomebrewMayCleanUp,
+                Warning::HomebrewCleanupMayAutoremove
+            ]
+        );
+        // Autoremove known back on: the uninstall says it will.
+        assert_eq!(
+            BrewAdapter::switch_warnings(&mixed, OpKind::Uninstall),
+            vec![Warning::HomebrewAutoremoves]
+        );
+        // The other way round: the clean-up known back on, autoremove not.
+        let other = switches(
+            b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_XDG_CONFIG_HOME=\n",
+            true,
+        );
+        let other = HomebrewSwitches {
+            install_cleanup_unknown: false,
+            no_install_cleanup: false,
+            ..other
+        };
+        assert!(other.autoremove_unknown, "{other:?}");
+        assert_eq!(
+            BrewAdapter::switch_warnings(&other, OpKind::Upgrade),
+            vec![
+                Warning::HomebrewPeriodicCleanup,
+                Warning::HomebrewCleanupMayAutoremove
+            ]
+        );
+        // Every file read: "will" throughout, as before.
+        let known = switches(managed, false);
+        assert_eq!(
+            BrewAdapter::switch_warnings(&known, OpKind::Upgrade),
+            Vec::<Warning>::new(),
+            "the clean-up stays off: only autoremove was turned back on"
+        );
     }
 
     #[test]

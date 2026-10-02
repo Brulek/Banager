@@ -479,12 +479,12 @@
   },
   "unreadInProtectedPlace": {
     "homebrewMayAutoremove": "Homebrew可能还会删除只作为依赖安装、现已没有软件需要的其他软件包。",
-    "homebrewMayAutoremoveDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTOREMOVE=1，但它的某个brew.env文件在受保护的位置，没有读取，无法得知它是否把这个值改成了Homebrew视为未设置的值。",
+    "homebrewMayAutoremoveDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTOREMOVE=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知它是否把这个值改成了Homebrew视为未设置的值。",
     "homebrewMayCleanUp": "安装或更新后，Homebrew可能会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，可能还会删除所有Homebrew软件的旧版本和旧下载文件。",
-    "homebrewMayCleanUpDetail": "运行Homebrew时设置了HOMEBREW_NO_INSTALL_CLEANUP=1，但它的某个brew.env文件在受保护的位置，没有读取，无法得知它是否把这个值设成了空值。",
+    "homebrewMayCleanUpDetail": "运行Homebrew时设置了HOMEBREW_NO_INSTALL_CLEANUP=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知它是否把这个值设成了空值。",
     "homebrewCleanupMayAutoremove": "Homebrew的定期清理可能还会删除只作为依赖安装、现已没有软件需要的其他软件包。",
-    "homebrewCleanupMayAutoremoveDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTOREMOVE=1，但它的某个brew.env文件在受保护的位置，没有读取，无法得知它是否把这个值改成了Homebrew视为未设置的值。",
-    "shellConfigUnread": "{{path}}在受保护的位置，没有读取，无法得知其中是否有加载Cargo的一行。",
+    "homebrewCleanupMayAutoremoveDetail": "运行Homebrew时设置了HOMEBREW_NO_INSTALL_CLEANUP=1和HOMEBREW_NO_AUTOREMOVE=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知brew.env是否把这两个值都改掉了。",
+    "shellConfigUnread": "{{path}}在受保护的位置或指向那里，没有读取，无法得知其中是否有加载Cargo的一行。",
     "shellConfigUnreadDetail": "卸载后如果终端启动时报错，请删除{{path}}中加载Cargo的那一行。"
   },
   "modelDownload": {

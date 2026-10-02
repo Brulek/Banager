@@ -641,9 +641,11 @@ later file sets it outright (`brew_env::EnvFile::Unknown`); when the
 folder of the user's file hangs on such a variable, what that file sets is
 unknown too. The lines below then say what Homebrew *may* do, and why
 behind their ⓘ: that a `brew.env` Homebrew reads is in a protected
-location and was not read (`Warning::HomebrewMayAutoremove`,
+location, or points there, and was not read (`Warning::HomebrewMayAutoremove`,
 `HomebrewMayCleanUp`, `HomebrewCleanupMayAutoremove`, in place of the
-three named below). When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
+three named below; the last whenever either variable is unknown, since
+its line rests on both). A line whose variables are all known still says
+"will", beside a "may" line. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
 uninstall preview says that Homebrew will also remove other Homebrew
 packages that were installed only as dependencies and that nothing needs
 any more (`Warning::HomebrewAutoremoves`). When they leave

@@ -979,8 +979,9 @@ pub enum Warning {
     /// is taken back is not known, for the same cause. In its place.
     HomebrewMayCleanUp,
     /// `HomebrewCleanupAutoremoves`, when whether `HOMEBREW_NO_AUTOREMOVE=1`
-    /// is taken back is not known, for the same cause. In its place, right
-    /// after `HomebrewPeriodicCleanup` or `HomebrewMayCleanUp`.
+    /// or `HOMEBREW_NO_INSTALL_CLEANUP=1` is taken back is not known, for
+    /// the same cause: the line rests on both. In its place, right after
+    /// `HomebrewPeriodicCleanup` or `HomebrewMayCleanUp`.
     HomebrewCleanupMayAutoremove,
     /// What the lines before it say Homebrew deletes leaves out the
     /// formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names (`names`, as

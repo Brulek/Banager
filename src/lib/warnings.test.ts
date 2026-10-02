@@ -209,7 +209,16 @@ describe("warningKey", () => {
       }
       expect(locale.unreadInProtectedPlace.homebrewMayCleanUpDetail).toContain("HOMEBREW_NO_INSTALL_CLEANUP=1");
       expect(locale.unreadInProtectedPlace.homebrewMayAutoremoveDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
+      // Said whenever either switch is unknown (z1's re-check, R1): it
+      // names both, and claims neither.
+      expect(locale.unreadInProtectedPlace.homebrewCleanupMayAutoremoveDetail).toContain(
+        "HOMEBREW_NO_INSTALL_CLEANUP=1",
+      );
+      expect(locale.unreadInProtectedPlace.homebrewCleanupMayAutoremoveDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
     }
+    // A brew.env file that is, or points into, a protected place (R2).
+    expect(en.unreadInProtectedPlace.homebrewMayAutoremoveDetail).toContain("in, or points to, a protected location");
+    expect(zhCN.unreadInProtectedPlace.homebrewMayAutoremoveDetail).toContain("在受保护的位置或指向那里");
   });
 
   it("names a startup file rustup's preview could not read, with its path, as a caution", () => {
@@ -220,6 +229,9 @@ describe("warningKey", () => {
     expect(isCaution(unread)).toBe(true);
     expect(warningGroup(unread)).toBe("note");
     expect(deletesForGood(unread)).toBe(false);
+    // A `~/.zshrc` Mackup keeps in iCloud Drive points there (z1's re-check, R2).
+    expect(en.unreadInProtectedPlace.shellConfigUnread).toContain("is in, or points to, a protected location");
+    expect(zhCN.unreadInProtectedPlace.shellConfigUnread).toContain("在受保护的位置或指向那里");
     for (const locale of [en, zhCN]) {
       expect(locale.unreadInProtectedPlace.shellConfigUnread).toContain("{{path}}");
       expect(locale.unreadInProtectedPlace.shellConfigUnreadDetail).toContain("{{path}}");
