@@ -321,7 +321,9 @@ function commandNameOf(instance: ManagerInstance): string {
  * does for one tool, done for the two that answer to one name.
  */
 function searchCommand(instance: ManagerInstance): SourceNoticeAction {
-  return { id: "searchCommand", labelKey: "sourceNotice.showTool", command: commandNameOf(instance) };
+  // Named for the command it searches for, 「查看」 in Chinese: a bare
+  // "Show" said nothing of what (walk-3 W3-5).
+  return { id: "searchCommand", labelKey: "sourceNotice.showCommand", command: commandNameOf(instance) };
 }
 
 /**

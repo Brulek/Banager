@@ -1604,7 +1604,7 @@ describe("InstalledPage", () => {
       const title = screen.getByText("Claude Code's program files are missing");
       const line = title.closest("[data-notice-line]") as HTMLElement;
       expect(within(line).queryByRole("button", { name: "Check Again" })).toBeNull();
-      fireEvent.click(within(line).getByRole("button", { name: "Show" }));
+      fireEvent.click(within(line).getByRole("button", { name: "Show Tool" }));
 
       // Selected, its inspector open, the focus on its row.
       const inspector = await screen.findByRole("complementary", { name: "Claude Code" });
@@ -1617,7 +1617,7 @@ describe("InstalledPage", () => {
       // a Show, which would show what the inspector shows already.
       expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
       expect(within(inspector).getByText("Claude Code's program files are missing")).toBeInTheDocument();
-      expect(within(inspector).queryByRole("button", { name: "Show" })).toBeNull();
+      expect(within(inspector).queryByRole("button", { name: "Show Tool" })).toBeNull();
     });
 
     it("says nothing about updates for a launcher left without its program: there was no version to check", async () => {
@@ -3506,7 +3506,7 @@ describe("which copy of a command runs (advantages round, item 4)", () => {
 
     await findRow("Claude Code");
     expect(rowNames().length).toBeGreaterThan(2);
-    fireEvent.click(await screen.findByRole("button", { name: "Show" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show “claude”" }));
 
     expect(useUiStore.getState().query).toBe("claude");
     await waitFor(() => expect(rowNames().sort()).toEqual(["Claude Code", "cc-wrapper"]));

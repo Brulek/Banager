@@ -114,7 +114,14 @@
     "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
     "brewRetiredNotice_other": "{{count}} tools were disabled or deprecated by Homebrew",
     "brewRetiredNoticeDetail": "Homebrew no longer updates a disabled tool, and may disable a deprecated one later. What's installed isn't removed.",
-    "view": "Show"
+    "view_one": "Show Tool",
+    "view_other": "Show Tools",
+    "viewIn": {
+      "installed": "Show in Installed",
+      "unknown": "Show in Other Programs",
+      "updates": "Show in Updates",
+      "settings": "Show in Settings"
+    }
   },
   "notOnPathMore": {
     "detailOne": "One of its commands is in a folder Terminal doesn't search, so typing it in Terminal doesn't run this copy: it may find nothing, or another program with the same name. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions.",
@@ -616,7 +623,8 @@
       "description": "Open {{source}} to see what it has and check for updates."
     },
     "openOllama": "Open Ollama",
-    "showTool": "Show",
+    "showTool": "Show Tool",
+    "showCommand": "Show “{{command}}”",
     "openOllamaFailed": {
       "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then click Open Ollama again.",
       "notInstalledDetail": "The ollama command from Homebrew doesn't include the app.",
@@ -1116,7 +1124,7 @@
     "title": "Tool Setup",
     "pending": "The check hasn't finished. Here's what's known so far.",
     "neverChecked": "Not checked yet",
-    "viewLabel": "Show: {{line}}",
+    "viewLabel": "{{action}}: {{line}}",
     "sections": {
       "terminal": "Finding Commands in Terminal",
       "sources": "Sources",
@@ -1217,7 +1225,7 @@
   },
   "faq": {
     "title": "Common Questions",
-    "viewLabel": "Show: {{question}}",
+    "viewLabel": "{{action}}: {{question}}",
     "questions": {
       "notFound": {
         "question": "Terminal says a command isn't found. What can I do?",

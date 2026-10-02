@@ -421,7 +421,7 @@ describe("sourceNoticesFor", () => {
           // all, there is nothing to show beside the tool.
           ...(note === "NotOnPath"
             ? {}
-            : { action: { id: "searchCommand", labelKey: "sourceNotice.showTool", command: "claude" } }),
+            : { action: { id: "searchCommand", labelKey: "sourceNotice.showCommand", command: "claude" } }),
         },
       ]);
     }
@@ -449,7 +449,8 @@ describe("sourceNoticesFor", () => {
         action: { id: "showTool", labelKey: "sourceNotice.showTool", instanceId: "standalone-claude" },
       },
     ]);
-    expect(en.sourceNotice.showTool).toBe("Show");
+    // Named for what it shows, never a bare "Show" (walk-3 W3-5).
+    expect(en.sourceNotice.showTool).toBe("Show Tool");
     expect(zhCN.sourceNotice.showTool).toBe("查看");
   });
 

@@ -21,6 +21,19 @@ const QUESTION_KEYS: Record<FaqId, { question: string; answer: string }> = {
 };
 
 /**
+ * What a question's button says, by where it goes: "Show in Updates",
+ * "Show in Settings" -- never a bare "Show" (walk-3 W3-5); 「查看」 in
+ * Chinese. A `Record`, so a kind of view added without one fails `tsc`.
+ */
+const VIEW_LABEL_KEYS: Record<FaqView["kind"], string> = {
+  installed: "families.viewIn.installed",
+  installedBySize: "families.viewIn.installed",
+  updates: "families.viewIn.updates",
+  unknown: "families.viewIn.unknown",
+  settings: "families.viewIn.settings",
+};
+
+/**
  * One question: the question as the group's title, over a group of one row
  * -- the answer, in the label colour, and on its right, where Banager has a
  * place to act on it, a grey 查看 that closes the sheet and goes there, as
@@ -32,6 +45,7 @@ function Question({ item, onView }: { item: FaqItem; onView: (view: FaqView) => 
   const keys = QUESTION_KEYS[item.id];
   const question = t(keys.question);
   const view = item.view;
+  const action = view === null ? "" : t(VIEW_LABEL_KEYS[view.kind]);
   return (
     <section aria-labelledby={titleId} data-faq={item.id} className="mt-4">
       <h3 id={titleId} className={GROUP_TITLE}>
@@ -44,10 +58,10 @@ function Question({ item, onView }: { item: FaqItem; onView: (view: FaqView) => 
             <button
               type="button"
               onClick={() => onView(view)}
-              aria-label={t("faq.viewLabel", { question })}
+              aria-label={t("faq.viewLabel", { action, question })}
               className={`${BUTTON.regular.grey} shrink-0`}
             >
-              {t("families.view")}
+              {action}
             </button>
           ) : null}
         </div>

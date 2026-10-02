@@ -111,7 +111,7 @@ a protected place**, and the link is not followed.
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
   isn't answering, how many tools Terminal can't find or has twice, what Homebrew disabled or keeps
   other versions of, and the disk measured. Each line that counts tools, and each line about a source
-  with a problem, has a **Show** that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
+  with a problem, has a **Show in Installed** (or **Show in Other Programs**) button that opens that list or that source. It has no score; it is built from what the last check found, and runs nothing.
 
 Banager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
@@ -162,8 +162,8 @@ and the keys that page or jump to an end, Space to tick a row, Return and Escape
 details, Tab) and the dialogs' (Return, Escape). **Common Questions**, above it, answers ten questions
 in a few plain sentences each — a command Terminal can't find, why some tools can't be updated here,
 "Installed twice", the Mac password, what an uninstall leaves, what Banager itself changes, Other
-Programs, sizes, major updates and the automatic check — with a *Show* button to the page or Installed
-choice where the answer can be acted on.
+Programs, sizes, major updates and the automatic check — with a button named for the page it opens
+(*Show in Installed*, *Show in Updates*…) where the answer can be acted on.
 
 The first time Banager opens, a welcome sheet says in three short points what it does: it lists the
 tools you use in Terminal, such as Claude Code, Codex and Gemini CLI, in one place, with Sources in the

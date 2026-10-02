@@ -122,8 +122,21 @@ describe("FaqSheet", () => {
     act(() => openFaqSheet());
     const dialog = await screen.findByRole("dialog", { name: "Common Questions" });
     const question = en.faq.questions[id].question;
+    // Named for where it goes, never a bare "Show" (walk-3 W3-5).
+    const label = {
+      notFound: "Show in Installed",
+      cantUpdate: "Show in Updates",
+      twins: "Show in Installed",
+      leftBehind: "Show in Installed",
+      otherPrograms: "Show in Other Programs",
+      sizes: "Show in Installed",
+      majorUpdate: "Show in Updates",
+      autoCheck: "Show in Settings",
+    }[id];
+    const view = within(dialog).getByRole("button", { name: `${label}: ${question}` });
+    expect(view).toHaveTextContent(new RegExp(`^${label}$`));
 
-    fireEvent.click(within(dialog).getByRole("button", { name: `Show: ${question}` }));
+    fireEvent.click(view);
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(useFaqSheet.getState().open).toBe(false);
@@ -165,10 +178,14 @@ describe("FaqSheet", () => {
     for (const { id, question } of questionsIn(en)) {
       expect(within(dialog).getByRole("region", { name: question }).getAttribute("data-faq")).toBe(id);
     }
-    const views = within(dialog).getAllByRole("button", { name: /^Show: / });
-    // Each one tells apart from the others by its name, and shows "Show".
+    const views = within(dialog).getAllByRole("button", { name: /^Show in [^:]+: / });
+    // Each one tells apart from the others by its name, which starts with
+    // the words it shows: where it goes.
     expect(new Set(views.map((button) => button.getAttribute("aria-label"))).size).toBe(views.length);
-    for (const button of views) expect(button).toHaveTextContent(/^Show$/);
+    for (const button of views) {
+      expect(button).toHaveTextContent(/^Show in /);
+      expect(button.getAttribute("aria-label")?.startsWith(`${button.textContent}: `)).toBe(true);
+    }
   });
 
   it("closes with Done and with Escape", async () => {

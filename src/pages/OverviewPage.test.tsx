@@ -1196,11 +1196,12 @@ describe("OverviewPage", () => {
     // A note is folded behind the warnings: unfolded, it shows.
     const list = await findByRole("list", { name: "Needs attention" });
     fireEvent.click(within(list).getByRole("button", { name: "1 more note" }));
-    // Two buttons named Show, each described by its row's title, so a
-    // screen reader's list of buttons tells them apart.
+    // Two Show buttons, each named for what it shows (walk-3 W3-5) and
+    // described by its row's title, so a screen reader's list of buttons
+    // tells them apart.
     expect(
       within(list)
-        .getAllByRole("button", { name: "Show" })
+        .getAllByRole("button", { name: /^Show / })
         .map((button) => document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent),
     ).toEqual([
       "Grok Build's program files are missing",
@@ -1208,7 +1209,7 @@ describe("OverviewPage", () => {
     ]);
     const lines = within(list).getAllByRole("listitem");
     const line = lines[lines.length - 1];
-    expect(within(line).getByRole("button", { name: "Show" })).toHaveAccessibleDescription(
+    expect(within(line).getByRole("button", { name: "Show “claude”" })).toHaveAccessibleDescription(
       "Typing claude in Terminal runs a program with that name from npm",
     );
     expect(within(line).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
@@ -1217,7 +1218,7 @@ describe("OverviewPage", () => {
         "Terminal finds the one from npm first, not the one Claude Code's own installer installed. Couldn't confirm whether it's another copy of Claude Code.",
       ),
     ).toBeInTheDocument();
-    fireEvent.click(within(line).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(line).getByRole("button", { name: "Show “claude”" }));
 
     const state = useUiStore.getState();
     expect(state.page).toBe("installed");
@@ -1303,7 +1304,7 @@ describe("OverviewPage", () => {
     // Claude Code's program files are gone: its way out in the app is its
     // Uninstall…, so its button shows it on the Installed page. Checking
     // again after a reinstall is the toolbar's ⟳.
-    const show = within(lines[2]).getByRole("button", { name: "Show" });
+    const show = within(lines[2]).getByRole("button", { name: "Show Tool" });
     expect(show.className).toContain(BUTTON.regular.grey);
     expect(within(lines[2]).queryByRole("button", { name: "Check Again" })).toBeNull();
     // Ollama's keeps its own.

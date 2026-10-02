@@ -181,8 +181,10 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       );
   }
 
-  const button = (action: SourceNoticeAction) => {
-    const label = t(action.labelKey);
+  // Its label may name what it shows, from the notice's own values: Show
+  // Tools for a count, Show “codex” for a command (walk-3 W3-5).
+  const button = (action: SourceNoticeAction, values?: SourceNoticeSpec["values"]) => {
+    const label = t(action.labelKey, values);
     switch (action.id) {
       case "openOllama":
         return { label, onClick: () => openOllamaApp.mutate() };
@@ -211,7 +213,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       variant: notice.variant,
       title,
       description: t(notice.descriptionKey, notice.values),
-      action: notice.action ? button(notice.action) : undefined,
+      action: notice.action ? button(notice.action, notice.values) : undefined,
       // Only the notice whose button failed says so.
       error: notice.action?.id === "openOllama" ? openOllamaError : undefined,
     };

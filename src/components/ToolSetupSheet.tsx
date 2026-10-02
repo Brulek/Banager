@@ -43,6 +43,18 @@ function LineSymbol({ kind }: { kind: SetupSymbol }) {
 }
 
 /**
+ * What a line's button says, by where it goes: "Show in Installed", "Show
+ * in Other Programs" -- a bare "Show" said nothing of what it would show
+ * (walk-3 W3-5); 「查看」 in Chinese. A `Record`, so a kind of view added
+ * without one fails `tsc`.
+ */
+const VIEW_LABEL_KEYS: Record<SetupView["kind"], string> = {
+  installed: "families.viewIn.installed",
+  source: "families.viewIn.installed",
+  unknown: "families.viewIn.unknown",
+};
+
+/**
  * One line: its symbol, its words -- with an ⓘ at their end where it has a
  * longer why -- and under them, 11 muted, the sources it means or the
  * folders it names; on the right its 查看, which closes the sheet and
@@ -51,6 +63,7 @@ function LineSymbol({ kind }: { kind: SetupSymbol }) {
 function Line({ line, onView }: { line: SetupLine; onView: (view: SetupView) => void }) {
   const { t } = useTranslation();
   const view = line.view;
+  const action = view === null ? "" : t(VIEW_LABEL_KEYS[view.kind]);
   return (
     <li data-setup-line={line.id} data-symbol={line.symbol} className="flex min-h-9 items-center gap-4 px-2.5 py-1.5">
       {/* The symbol by the first line of the words, however many there are. */}
@@ -75,10 +88,10 @@ function Line({ line, onView }: { line: SetupLine; onView: (view: SetupView) => 
         <button
           type="button"
           onClick={() => onView(view)}
-          aria-label={t("setupCheck.viewLabel", { line: line.text })}
+          aria-label={t("setupCheck.viewLabel", { action, line: line.text })}
           className={BUTTON.regular.grey}
         >
-          {t("families.view")}
+          {action}
         </button>
       ) : null}
     </li>

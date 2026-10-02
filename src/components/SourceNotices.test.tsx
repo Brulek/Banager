@@ -60,7 +60,7 @@ const claudeShadowed: SourceNoticeSpec = {
   titleKey: "sourceNotice.shadowedByNpm.title",
   descriptionKey: "sourceNotice.shadowedByNpm.description",
   values: { source: "Claude Code", command: "claude" },
-  action: { id: "searchCommand", labelKey: "sourceNotice.showTool", command: "claude" },
+  action: { id: "searchCommand", labelKey: "sourceNotice.showCommand", command: "claude" },
 };
 const npmUntested: SourceNoticeSpec = {
   ...claudeUntested,
@@ -285,7 +285,7 @@ describe("SourceNotices, folded", () => {
     useUiStore.setState({ page: "updates", installedFilter: "npm", installedShow: "twins", query: "ruff" });
     renderWithProviders(<SourceNotices notices={[claudeShadowed]} layout="line" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show “claude”" }));
 
     const state = useUiStore.getState();
     expect(state.page).toBe("installed");

@@ -229,7 +229,9 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           aria-describedby={titleId}
           className={BUTTON.regular.grey}
         >
-          {t(action.labelKey)}
+          {/* Named for what it shows, from the notice's values: Show
+              “codex” (walk-3 W3-5). */}
+          {t(action.labelKey, notice.values)}
         </button>
       ) : null}
     </li>

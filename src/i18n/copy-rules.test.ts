@@ -177,7 +177,14 @@ describe("the polish-3 copy rules, in English", () => {
       "otherVersionsShow.show",
       "otherVersionsShow.showCount",
       "twinsFilterMore.showCount",
-      "families.view",
+      "families.view_one",
+      "families.view_other",
+      "families.viewIn.installed",
+      "families.viewIn.unknown",
+      "families.viewIn.updates",
+      "families.viewIn.settings",
+      "sourceNotice.showTool",
+      "sourceNotice.showCommand",
       "updates.update",
       "updates.retry",
       "updates.skipVersion",
@@ -227,7 +234,8 @@ describe("the polish-3 copy rules, in English", () => {
       const words = text
         .replace(/…$/, "")
         .split(" ")
-        .filter((word) => !/^[({]/.test(word));
+        // A placeholder, or a name in quotes, has no case of its own.
+        .filter((word) => !/^[({“]/.test(word));
       return words.every(
         // A number has no case: Remind Me in 30 Days.
         (word, index) => /^[A-Z0-9]/.test(word) || (index > 0 && index < words.length - 1 && minor.has(word)),
@@ -239,6 +247,12 @@ describe("the polish-3 copy rules, in English", () => {
       expect(text, key).toBeTypeOf("string");
       expect(titleCase(text as string), `${key}: ${text}`).toBe(true);
     }
+  });
+
+  it("never names a button a bare Show or View: it says what it shows, or where (walk-3 W3-5)", () => {
+    // The 「显示」 popup's own label is the name of a menu, not a button.
+    const bare = keysWhere(en, (text) => /^(Show|View)$/.test(text)).filter((key) => key !== "families.showLabel");
+    expect(bare).toEqual([]);
   });
 
   it("writes a disclosure's count in sentence case: it says how many more, it is not a command", () => {

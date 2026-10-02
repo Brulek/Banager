@@ -160,7 +160,7 @@ describe("ToolSetupSheet", () => {
     ["1 tool keeps other versions", "otherVersions"],
   ] as const)("closes on 查看 of “%s” and opens Installed on every source showing that choice", async (line, show) => {
     const { dialog, findByRole, queryByRole } = await openedFromHelp();
-    fireEvent.click(within(dialog).getByRole("button", { name: `Show: ${line}` }));
+    fireEvent.click(within(dialog).getByRole("button", { name: `Show in Installed: ${line}` }));
 
     expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
     await waitFor(() => expect(queryByRole("dialog")).toBeNull());
@@ -169,7 +169,7 @@ describe("ToolSetupSheet", () => {
 
   it("opens a source's own page from its line, and Other Programs from its own", async () => {
     const first = await openedFromHelp();
-    fireEvent.click(within(first.dialog).getByRole("button", { name: "Show: uv: Not responding" }));
+    fireEvent.click(within(first.dialog).getByRole("button", { name: "Show in Installed: uv: Not responding" }));
     expect(await first.findByRole("heading", { level: 1, name: "uv" })).toBeInTheDocument();
     expect(useUiStore.getState()).toMatchObject({ page: "installed", installedFilter: UV, installedShow: "all" });
     await waitFor(() => expect(first.queryByRole("dialog")).toBeNull());
@@ -178,7 +178,7 @@ describe("ToolSetupSheet", () => {
     const dialog = await first.findByRole("dialog", { name: "Tool Setup" });
     fireEvent.click(
       within(dialog).getByRole("button", {
-        name: "Show: Command-line programs from other sources are in Other Programs",
+        name: "Show in Other Programs: Command-line programs from other sources are in Other Programs",
       }),
     );
     expect(await first.findByRole("heading", { level: 1, name: "Other Programs" })).toBeInTheDocument();

@@ -547,7 +547,7 @@ describe("App", () => {
     // What the user can do about it in the app is its Uninstall…: Show
     // leads there. Checking again is the toolbar's ⟳.
     expect(within(problem).queryByRole("button", { name: "Check Again" })).toBeNull();
-    fireEvent.click(within(problem).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(problem).getByRole("button", { name: "Show Tool" }));
 
     expect(getByRole("heading", { level: 1 })).toHaveTextContent("Installed");
     expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");

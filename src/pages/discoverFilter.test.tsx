@@ -218,7 +218,7 @@ describe("the Installed page's discovery choices", () => {
     expect(rowNames()).toEqual(["wget"]);
     expect(screen.getByText("1 more component came with other software")).toBeInTheDocument();
     expect(screen.getByText("1 tool was disabled or deprecated by Homebrew")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Tool" }));
     await waitFor(() => expect(rowNames()).toEqual(["libfoo"]));
     expect(screen.queryByText(/more component/)).not.toBeInTheDocument();
   });
@@ -388,7 +388,8 @@ describe("the lines over 所有工具 that point at them", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     await unfold();
     const lines = [...document.querySelectorAll<HTMLElement>("[data-notice-line]")];
-    const shows = lines.map((line) => within(line).getByRole("button", { name: "Show" }));
+    // Named for what it shows, as many as the line counts (walk-3 W3-5).
+    const shows = lines.map((line) => within(line).getByRole("button", { name: "Show Tools" }));
     expect(shows[0]).toHaveAccessibleDescription("2 tools can't be found in Terminal");
     expect(shows[1]).toHaveAccessibleDescription("2 tools were disabled or deprecated by Homebrew");
   });
@@ -398,7 +399,7 @@ describe("the lines over 所有工具 that point at them", () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     expect(noticeLines()).toEqual([expect.stringContaining("2 tools can't be found in Terminal")]);
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Tools" }));
     await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
     expect(useUiStore.getState().installedShow).toBe("notOnPath");
     expect(screen.getByRole("combobox", { name: "Show" })).toHaveValue("notOnPath");
@@ -412,7 +413,7 @@ describe("the lines over 所有工具 that point at them", () => {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "wget" } });
     await waitFor(() => expect(rowNames()).toEqual(["wget"]));
     expect(noticeLines()).toEqual([expect.stringContaining("2 tools can't be found in Terminal")]);
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Tools" }));
     await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));
     expect(useUiStore.getState().query).toBe("");
   });
@@ -422,7 +423,7 @@ describe("the lines over 所有工具 that point at them", () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     expect(noticeLines()).toEqual([expect.stringContaining("2 tools were disabled or deprecated by Homebrew")]);
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Tools" }));
     await waitFor(() => expect(rowNames()).toEqual(["QuickJot", "youtube-dl"]));
   });
 
@@ -512,7 +513,7 @@ describe("the details and the focus when a choice hides the selected tool", () =
     artifacts = fullWorld().filter((a) => a.facts.homebrew?.deprecated == null && a.facts.homebrew?.disabled == null);
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
-    const view = screen.getByRole("button", { name: "Show" });
+    const view = screen.getByRole("button", { name: "Show Tools" });
     view.focus();
     fireEvent.click(view);
     await waitFor(() => expect(rowNames()).toEqual(["Grok Build", "httpie"]));

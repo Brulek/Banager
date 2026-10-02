@@ -102,7 +102,13 @@
     "notOnPathNotice_other": "{{count}}个工具在终端里找不到",
     "brewRetiredNotice_other": "{{count}}个工具已被Homebrew停用或弃用",
     "brewRetiredNoticeDetail": "Homebrew不再为停用的工具提供更新，弃用的以后可能会停用。已安装的不会被删除。",
-    "view": "查看"
+    "view_other": "查看",
+    "viewIn": {
+      "installed": "查看",
+      "unknown": "查看",
+      "updates": "查看",
+      "settings": "查看"
+    }
   },
   "notOnPathMore": {
     "detailOne": "它至少有一个命令在终端不会查找的文件夹里，所以在终端里输入这个命令不会运行这一份：可能什么也找不到，或者运行另一个同名程序。请新开一个终端窗口再试；如果仍然找不到，请按照它的安装说明操作。",
@@ -571,6 +577,7 @@
     },
     "openOllama": "打开Ollama",
     "showTool": "查看",
+    "showCommand": "查看",
     "openOllamaFailed": {
       "notInstalled": "“应用程序”中没有Ollama App。请从ollama.com下载并安装，然后点按“打开Ollama”。",
       "notInstalledDetail": "用Homebrew安装的ollama命令不包含此App。",
@@ -1026,7 +1033,7 @@
     "title": "工具环境",
     "pending": "检查还没有完成，下面是目前知道的情况。",
     "neverChecked": "还没有检查过",
-    "viewLabel": "查看：{{line}}",
+    "viewLabel": "{{action}}：{{line}}",
     "sections": {
       "terminal": "在终端里查找命令",
       "sources": "来源",
@@ -1123,7 +1130,7 @@
   },
   "faq": {
     "title": "常见问题",
-    "viewLabel": "查看：{{question}}",
+    "viewLabel": "{{action}}：{{question}}",
     "questions": {
       "notFound": {
         "question": "终端里说找不到命令，怎么办？",
