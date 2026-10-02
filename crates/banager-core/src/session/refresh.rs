@@ -1787,6 +1787,7 @@ mod tests {
                 NEW,
             ),
         ];
+        const GOES_QUIET: [&str; 3] = ["not responding", "not running", "detect panics"];
         for (turn, set_up, first_at, second_at) in turns {
             NOW.store(100, Ordering::SeqCst);
             let (adapter, state) = FakeAdapter::new("fake");
@@ -1804,7 +1805,7 @@ mod tests {
                 vec![adapter],
                 Some(|| NOW.load(Ordering::SeqCst)),
             );
-            session
+            let first = session
                 .refresh(&non_root_env(), &CheckOptions::default())
                 .await;
             NOW.store(200, Ordering::SeqCst);
@@ -1812,6 +1813,11 @@ mod tests {
             let snapshot = session
                 .refresh(&non_root_env(), &CheckOptions::default())
                 .await;
+            // A source going quiet is news (`Snapshot::same_content`'s doc):
+            // the window is sent this snapshot, with the time in it.
+            if GOES_QUIET.contains(&turn) {
+                assert!(snapshot.generation > first.generation, "{turn}");
+            }
             let at = |id: &str| {
                 snapshot
                     .instances
@@ -1827,6 +1833,55 @@ mod tests {
                 "{turn}: its rows are on screen either way"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_a_source_going_silent_moves_the_generation_with_its_latest_time() {
+        // What `Snapshot::same_content` leaves out has to reach the window
+        // when it is shown: a round where only the time moved is not
+        // announced, so the round the source goes silent in must be.
+        static NOW: AtomicI64 = AtomicI64::new(100);
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".into(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![adapter],
+            Some(|| NOW.load(Ordering::SeqCst)),
+        );
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.instances[0].answered_at, Some(100));
+
+        NOW.store(200, Ordering::SeqCst);
+        let time_only = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(time_only.generation, first.generation);
+        assert_eq!(time_only.instances[0].answered_at, Some(200));
+
+        // Silent, nothing else changed: a new generation, carrying the time
+        // of the round no event announced.
+        NOW.store(300, Ordering::SeqCst);
+        state.lock().unwrap().instances[0].status.unavailable = Some(Unavailable::NotResponding);
+        let silent = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(silent.generation, first.generation + 1);
+        assert_eq!(silent.instances[0].answered_at, Some(200));
+
+        // Still silent: nothing moves, the time included.
+        NOW.store(400, Ordering::SeqCst);
+        let still = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(still.generation, silent.generation);
+        assert_eq!(still.instances[0].answered_at, Some(200));
     }
 
     #[tokio::test]
