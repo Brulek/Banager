@@ -5758,7 +5758,7 @@ describe("UpdatesPage", () => {
       // What may change, then where the way to wait is and what it does --
       // and nothing about the tools it never marks (walk-2 W2-14).
       expect(detail).toHaveTextContent(
-        "From 2 to 3: how it's used or set up may change. If you're not sure, choose “Skip This Version” from the “⋯” at the right of this row, and you'll be reminded when the next version comes out.",
+        "Going from version 2 to 3 may change how it works or how it's set up. If you're not sure, choose “Skip This Version” from the “⋯” menu on this row, and you'll be reminded when the next version comes out.",
       );
       expect(detail).not.toHaveTextContent(/starts with 0/);
       // The menu item it points at is the row's own.
@@ -5771,7 +5771,7 @@ describe("UpdatesPage", () => {
       // Said again where the update is confirmed, as one quiet line.
       fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
       const dialog = await screen.findByRole("dialog");
-      expect(await within(dialog).findByText("This is a major update; how it's used may change.")).toBeInTheDocument();
+      expect(await within(dialog).findByText("This is a major update, so how it works may change.")).toBeInTheDocument();
     });
 
     it("lets an app that updates itself keep its own word, across a major version too", async () => {
