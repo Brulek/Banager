@@ -1215,15 +1215,15 @@
     "questions": {
       "notFound": {
         "question": "Terminal says a command isn't found. What can I do?",
-        "answer": "Some tools put their commands in a folder Terminal doesn't search, so typing one finds nothing, or runs another program with the same name. Open a new Terminal window and try again; if it still isn't found, follow the tool's installation instructions. A command's name isn't always the tool's name, and you can search Installed by command. This is judged from the Terminal settings read when this app opened."
+        "answer": "Some tools put their commands in a folder Terminal doesn't search, so typing one may find nothing, or run another program with the same name. Open a new Terminal window and try again; if it still isn't found, follow the tool's installation instructions. A command's name isn't always the tool's name, and you can search Installed by command. This is judged from the Terminal settings read when this app opened."
       },
       "cantUpdate": {
         "question": "Why can't some tools be updated here?",
-        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; a tool that updates itself checks for a new version when you open it once."
+        "answer": "On Updates, under the tools that can be updated, a line says how many more can't be updated here; click it to see them. Each of their rows says why, for example “View only”, “Pinned” or “Open to update”. Tools installed with pip, and npm packages in a folder this account can't change, can only be viewed. A pinned tool has to be unpinned in Terminal first; one marked “Open to update” updates itself, and opening it once checks for a new version."
       },
       "twins": {
         "question": "What does “Installed twice” mean, and what should I do?",
-        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” shows which one. Updating the copy Terminal doesn't use doesn't change the one it runs. Uninstalling one copy leaves the other as it is."
+        "answer": "The same AI coding tool was installed in two ways, say once with npm and once by its own installer. Typing its command in Terminal runs one of them at most; select the tool, and “In Terminal” can show which one. Updating the copy Terminal doesn't use doesn't change the one it runs. Uninstalling one copy leaves the other as it is."
       },
       "password": {
         "question": "Why is my Mac password needed? Can it be typed for me here?",
@@ -1231,7 +1231,7 @@
       },
       "leftBehind": {
         "question": "What stays behind after uninstalling, and where?",
-        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path, so you can delete it yourself if you don't need it. For the copies Claude Code, Antigravity CLI and Grok Build installed themselves, the files are moved to the Trash, and you can drag them back. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
+        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path. For the copies Claude Code, Antigravity CLI and Grok Build installed themselves, the files are moved to the Trash, and you can drag them back; uninstalling rustup deletes its folders for good, without the Trash. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
       },
       "changesMac": {
         "question": "Does this app change my Mac?",
