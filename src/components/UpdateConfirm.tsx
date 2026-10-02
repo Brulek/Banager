@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
@@ -19,6 +19,7 @@ import {
   SheetTool,
   SheetToolList,
   sheetMeta,
+  TOOLS_DRAWN_FIRST,
   useToolsInTurn,
 } from "./SheetParts";
 import { CheckIcon } from "./icons";
@@ -382,6 +383,9 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   };
 }
 
+/** What a tool of the list has to say before its plan is back. */
+const NO_NOTES: WarningLine[] = [];
+
 /** Each plan's notes, with the candidate they were worded for (`notesOf` in the dialog). */
 type NotesCache = WeakMap<IssuedPlan, { candidate: UpdateCandidate; notes: WarningLine[] }>;
 
@@ -445,6 +449,8 @@ interface BatchToolProps {
   adapterId: string;
   sourceLabel: string;
   showSource: boolean;
+  /** Every tool but the list's first: the hairline over it (`SheetTool`). */
+  separated: boolean;
 }
 
 /**
@@ -463,6 +469,7 @@ const BatchTool = memo(function BatchTool({
   adapterId,
   sourceLabel,
   showSource,
+  separated,
 }: BatchToolProps) {
   const jump = versionJump(t, item.candidate);
   const digest = item.candidate.channel === "Digest";
@@ -471,6 +478,7 @@ const BatchTool = memo(function BatchTool({
       adapterId={adapterId}
       sourceLabel={sourceLabel}
       showSource={showSource}
+      separated={separated}
       iconKey={item.candidate.key}
       name={item.name}
       // A model pulled by a path by its last segment, as its row names it,
@@ -498,6 +506,7 @@ function sameBatchTool(was: BatchToolProps, now: BatchToolProps): boolean {
     was.adapterId === now.adapterId &&
     was.sourceLabel === now.sourceLabel &&
     was.showSource === now.showSource &&
+    was.separated === now.separated &&
     a.candidate === b.candidate &&
     a.name === b.name &&
     a.submittedOpId === b.submittedOpId &&
@@ -669,8 +678,21 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const rank = ({ item, notes }: { item: BatchItem; notes: WarningLine[] }) =>
     item.planError !== null || item.submitError !== null ? 0 : notes.length > 0 ? 1 : 2;
   const ordered = several ? [...said].sort((a, b) => rank(a) - rank(b)) : said;
-  // The first few drawn with the dialog, the rest just after (`useToolsInTurn`).
-  const drawn = useToolsInTurn(ordered.length, batch?.id ?? null);
+  // The first few drawn with the dialog, the rest in turns
+  // (`useToolsInTurn`): as it opens, and again once its plans are back.
+  // A list longer than the first few keeps the tools as the first stage
+  // drew them apart from those drawn as they are now, so that the second
+  // stage takes them out of it a turn at a time, never all at once -- each
+  // drawn anew as it does. A list that fits is drawn whole, in place, at
+  // every stage.
+  const firstStage = phase === "planning";
+  const turns = useToolsInTurn(ordered.length, batch?.id ?? null, firstStage ? "planning" : "planned");
+  const apart = !firstStage && ordered.length > TOOLS_DRAWN_FIRST;
+  const drawnNow = ordered.slice(0, turns.drawn);
+  const nowKeys = new Set(drawnNow.map(({ item }) => artifactKeyId(item.candidate.key)));
+  const asFirstDrawn = apart
+    ? said.slice(0, turns.held).filter(({ item }) => !nowKeys.has(artifactKeyId(item.candidate.key)))
+    : drawnNow;
   // A name the list has from two sources says which is which (spec R3).
   const seenNames = new Set<string>();
   const twice = new Set<string>();
@@ -678,6 +700,35 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     if (seenNames.has(name)) twice.add(name);
     seenNames.add(name);
   }
+
+  // The commands, worked out once per step of the batch, not at each turn
+  // of its list: the same element, which React does not draw again.
+  const batchItems = batch?.items;
+  const commands = useMemo(() => {
+    const all = batchItems ?? [];
+    const plans = all.flatMap(({ issued: plan, name }) =>
+      plan === null ? [] : [{ id: plan.id, name: all.length > 1 ? name : undefined, action: plan.plan.action }],
+    );
+    return <CommandPreview plans={plans} />;
+  }, [batchItems]);
+
+  // One tool of the list (`BatchTool`), the `index`th from its top.
+  const tool = (item: BatchItem, notes: WarningLine[], refusal: ItemRefusal | null, index: number) => {
+    const { key } = item.candidate;
+    return (
+      <BatchTool
+        key={artifactKeyId(key)}
+        t={t}
+        item={item}
+        refusal={refusal}
+        notes={notes}
+        adapterId={adapterFor(key.instance_id)}
+        sourceLabel={sourceLabelOf(key.instance_id)}
+        showSource={twice.has(item.name)}
+        separated={index > 0}
+      />
+    );
+  };
 
   const only = items.length === 1 ? items[0] : null;
   const onlyAdapter = only === null ? null : adapterFor(only.candidate.key.instance_id);
@@ -752,34 +803,25 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>
       ) : (
-        <SheetToolList label={t("a11y.updateList")}>
-          {ordered.slice(0, drawn).map(({ item, notes }) => {
-            const { key } = item.candidate;
-            return (
-              <BatchTool
-                key={artifactKeyId(key)}
-                t={t}
-                item={item}
-                refusal={confirm.refusalOf(item)}
-                notes={notes}
-                adapterId={adapterFor(key.instance_id)}
-                sourceLabel={sourceLabelOf(key.instance_id)}
-                showSource={twice.has(item.name)}
-              />
-            );
-          })}
+        <SheetToolList label={t("a11y.updateList")} rowsSeparate>
+          <Fragment key="now">
+            {apart ? drawnNow.map(({ item, notes }, index) => tool(item, notes, confirm.refusalOf(item), index)) : null}
+          </Fragment>
+          <Fragment key="first">
+            {/* Held, as the first stage drew them: nothing to say yet,
+                and no refusal. Otherwise, as they are. */}
+            {asFirstDrawn.map(({ item, notes }, index) =>
+              apart
+                ? tool(item, NO_NOTES, null, drawnNow.length + index)
+                : tool(item, notes, confirm.refusalOf(item), index),
+            )}
+          </Fragment>
         </SheetToolList>
       )}
 
       {phase === "planning" ? <SheetPending text={t("updates.preparing")} /> : null}
 
-      <CommandPreview
-        plans={issued.map((item) => ({
-          id: item.issued.id,
-          name: several ? item.name : undefined,
-          action: item.issued.plan.action,
-        }))}
-      />
+      {commands}
     </Dialog>
   );
 }

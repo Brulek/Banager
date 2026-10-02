@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
-import { Refusal, SheetLines, SheetText, SheetTool, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn } from "./SheetParts";
+import { Refusal, SheetLines, SheetText, SheetTool, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn, type ToolsInTurn } from "./SheetParts";
 
 describe("sheetMeta", () => {
   it("says the source and the version, each on its own, apart by a middle dot", () => {
@@ -58,34 +58,57 @@ describe("SheetText", () => {
 });
 
 describe("useToolsInTurn", () => {
-  /** A dialog's list of `count` tools, saying how many it draws each time it is drawn. */
-  function List({ count, batch, drawn }: { count: number; batch: number | null; drawn: number[] }) {
-    const shown = useToolsInTurn(count, batch);
-    drawn.push(shown);
-    return <p data-testid="shown">{shown}</p>;
+  /** A dialog's list of `count` tools, saying what it draws each time it is drawn. */
+  function List({ count, batch, stage, seen }: { count: number; batch: number | null; stage: string; seen: ToolsInTurn[] }) {
+    const turn = useToolsInTurn(count, batch, stage);
+    seen.push(turn);
+    return <p data-testid="shown">{`${turn.drawn} ${turn.held}`}</p>;
   }
+  const drawnCounts = (seen: ToolsInTurn[]) => [...new Set(seen.map((turn) => turn.drawn))];
 
-  it("draws the first few of a long list with the dialog and the rest just after, starting over for a new batch", async () => {
+  it("draws the first few of a long list with the dialog and the rest a turn at a time, starting over for a new batch", async () => {
     // As many as a 320 high list shows at 36 a tool, and no fewer.
     expect(TOOLS_DRAWN_FIRST * 36).toBeGreaterThanOrEqual(320);
     expect((TOOLS_DRAWN_FIRST - 1) * 36).toBeLessThan(320);
-    const drawn: number[] = [];
-    const { rerender } = render(<List count={121} batch={1} drawn={drawn} />);
-    expect(drawn[0]).toBe(TOOLS_DRAWN_FIRST);
-    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("121"));
+    const seen: ToolsInTurn[] = [];
+    const { rerender } = render(<List count={200} batch={1} stage="planning" seen={seen} />);
+    expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 0 });
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("200 0"));
+    expect(drawnCounts(seen)).toEqual([9, 69, 129, 189, 200]);
+    expect(seen.every((turn) => turn.held === 0)).toBe(true);
 
-    // Update all again: a new batch, from the first few.
-    drawn.length = 0;
-    rerender(<List count={121} batch={2} drawn={drawn} />);
-    expect(drawn[0]).toBe(TOOLS_DRAWN_FIRST);
-    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("121"));
+    // Update all again: a new batch, from the first few, holding nothing.
+    seen.length = 0;
+    rerender(<List count={200} batch={2} stage="planning" seen={seen} />);
+    expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 0 });
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("200 0"));
 
     // A list that fits is drawn whole at once, and none while there is no batch.
-    drawn.length = 0;
-    rerender(<List count={5} batch={3} drawn={drawn} />);
-    expect(new Set(drawn)).toEqual(new Set([5]));
-    rerender(<List count={0} batch={null} drawn={drawn} />);
-    expect(screen.getByTestId("shown")).toHaveTextContent("0");
+    seen.length = 0;
+    rerender(<List count={5} batch={3} stage="planning" seen={seen} />);
+    expect(seen).toEqual(seen.map(() => ({ drawn: 5, held: 0 })));
+    rerender(<List count={0} batch={null} stage="planning" seen={seen} />);
+    expect(screen.getByTestId("shown")).toHaveTextContent("0 0");
+  });
+
+  it("draws a batch's next stage a turn at a time too, holding what the first drew until a turn reaches it", async () => {
+    const seen: ToolsInTurn[] = [];
+    const { rerender } = render(<List count={200} batch={1} stage="planning" seen={seen} />);
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("200 0"));
+
+    // Its plans back: the first few as they are now at once, and all 200
+    // the first stage drew held until then.
+    seen.length = 0;
+    rerender(<List count={200} batch={1} stage="planned" seen={seen} />);
+    expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 200 });
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("200 0"));
+    expect(drawnCounts(seen)).toEqual([9, 69, 129, 189, 200]);
+    expect(seen.filter((turn) => turn.drawn < 200).every((turn) => turn.held === 200)).toBe(true);
+
+    // Another batch's first stage holds nothing of this one's.
+    seen.length = 0;
+    rerender(<List count={200} batch={2} stage="planning" seen={seen} />);
+    expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 0 });
   });
 });
 

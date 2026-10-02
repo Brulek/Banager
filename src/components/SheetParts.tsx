@@ -107,7 +107,20 @@ export interface SheetToolProps {
   aside?: ReactNode;
   /** Under the name: what to know about it, what became of it -- started, or why not. */
   children?: ReactNode;
+  /**
+   * The hairline over it that parts it from the tool before, for a list
+   * whose tools draw their own (`SheetToolList`'s `rowsSeparate`): every
+   * tool but the first.
+   */
+  separated?: boolean;
 }
+
+/**
+ * The hairline over a tool of the list, from where its name starts: what
+ * `SheetToolList` draws over every tool but its first, drawn by the tool.
+ */
+const TOOL_SEPARATOR =
+  "relative before:absolute before:left-10.5 before:right-2.5 before:top-0 before:h-px before:bg-group-separator";
 
 /**
  * One tool of a dialog about several, a row of its grouped list
@@ -126,10 +139,11 @@ export function SheetTool({
   shownName,
   aside,
   children,
+  separated = false,
 }: SheetToolProps) {
   const hasChildren = children !== undefined && children !== null && children !== false;
   return (
-    <li data-sheet-tool="" className="px-2.5 py-1.5">
+    <li data-sheet-tool="" className={separated ? `px-2.5 py-1.5 ${TOOL_SEPARATOR}` : "px-2.5 py-1.5"}>
       <div className="flex min-h-6 items-center gap-2">
         <ToolAvatar size="sm" adapterId={adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
         <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
@@ -167,22 +181,36 @@ export function SheetTool({
  * of the dialog's body -- for a list with notes under every tool (a batch
  * uninstall's, at most 20), where a box scrolling inside the body would
  * hide a tool's only caution below its edge.
+ *
+ * `rowsSeparate`: the tools draw the hairlines themselves (`SheetTool`'s
+ * `separated`), the same lines in the same places, for a long list whose
+ * tools come and go other than at its end. A tool put in or taken out
+ * between others of a list that draws them over "every tool after
+ * another" has the browser work out the look of every tool after it
+ * again: about 10,000 elements for Update all over 754 tools, 35-40 ms
+ * in Chrome with the CPU slowed 4x, at each of its turns
+ * (`useToolsInTurn`); drawn by the tools, about 2-5 ms.
  */
 export function SheetToolList({
   label,
   contained = true,
+  rowsSeparate = false,
   children,
 }: {
   label?: string;
   contained?: boolean;
+  rowsSeparate?: boolean;
   children: ReactNode;
 }) {
+  const separators = rowsSeparate
+    ? ""
+    : " [&>*+*]:relative [&>*+*]:before:absolute [&>*+*]:before:left-10.5 [&>*+*]:before:right-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-group-separator";
   return (
     <ul
       aria-label={label}
       data-sheet-tools=""
       tabIndex={contained ? 0 : undefined}
-      className={`${contained ? "max-h-80 overflow-y-auto " : ""}rounded-group bg-group py-1 [&>*+*]:relative [&>*+*]:before:absolute [&>*+*]:before:left-10.5 [&>*+*]:before:right-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-group-separator`}
+      className={`${contained ? "max-h-80 overflow-y-auto " : ""}rounded-group bg-group py-1${separators}`}
     >
       {children}
     </ul>
@@ -197,21 +225,76 @@ export function SheetToolList({
 export const TOOLS_DRAWN_FIRST = 9;
 
 /**
- * How many of a dialog's `count` tools its list (`SheetToolList`) draws:
- * the first `TOOLS_DRAWN_FIRST` as the dialog opens, and the rest a moment
- * later, in the background -- a transition, which gives way to the pointer
- * and the keyboard -- so that Update all over a hundred tools is up as
- * soon as over ten would be. `batch` names what the dialog is about: a new
- * one starts over from the first few.
+ * How many more tools a dialog's list draws at each turn after its first
+ * few (`useToolsInTurn`): what a frame lays out with room to spare on a
+ * slow Mac.
  */
-export function useToolsInTurn(count: number, batch: number | null): number {
-  const [drawnAll, setDrawnAll] = useState<number | null>(null);
-  const all = batch !== null && drawnAll === batch;
+export const TOOLS_DRAWN_PER_TURN = 60;
+
+/** Which of a dialog's tools its list draws now (`useToolsInTurn`). */
+export interface ToolsInTurn {
+  /** How many of the list, from its first, are drawn as they are now. */
+  drawn: number;
+  /**
+   * How many of the list as the batch's first stage drew it, from its
+   * first, are still drawn as they were -- those of them not among the
+   * `drawn` -- because this stage has not reached them yet. None in the
+   * first stage, and none once every tool is drawn as it is now.
+   */
+  held: number;
+}
+
+interface Turn {
+  /** The batch and stage the turns are for. */
+  key: string | null;
+  batch: number | null;
+  /** How many are drawn as they are now, before `count` caps it. */
+  drawn: number;
+  held: number;
+}
+
+/**
+ * Which of a dialog's `count` tools its list (`SheetToolList`) draws: the
+ * first `TOOLS_DRAWN_FIRST` as the dialog opens, then
+ * `TOOLS_DRAWN_PER_TURN` more at each turn -- a transition once the last
+ * is drawn, which gives way to the pointer and the keyboard -- so that no
+ * one task lays out the whole list. Update all over 754 tools used to lay
+ * out all of them at once, as it opened and again as its plans came back.
+ *
+ * `batch` names what the dialog is about and `stage` what its tools look
+ * like. A new batch starts over from the first few. A new stage of the
+ * same batch -- its plans back: notes under its tools, those with
+ * something to say first -- draws its first few as they are now at once,
+ * and keeps the others as the first stage drew them (`held`) until a turn
+ * reaches them. Once every turn has run, the list is the same whatever
+ * the turns were.
+ */
+export function useToolsInTurn(count: number, batch: number | null, stage: string): ToolsInTurn {
+  const key = batch === null ? null : `${batch} ${stage}`;
+  const [turn, setTurn] = useState<Turn>({ key: null, batch: null, drawn: 0, held: 0 });
+  // A new batch or stage, until its first turn is kept: worked out from the
+  // last one's as it is drawn, so that no drawing shows it with the last
+  // one's turns. What the batch's first stage drew is held: a stage whose
+  // own `held` is none.
+  const current: Turn =
+    turn.key === key
+      ? turn
+      : {
+          key,
+          batch,
+          drawn: TOOLS_DRAWN_FIRST,
+          held: batch !== null && turn.batch === batch && turn.held === 0 ? turn.drawn : 0,
+        };
+  const drawn = Math.min(count, current.drawn);
+  const { held } = current;
   useEffect(() => {
-    if (batch === null || all || count <= TOOLS_DRAWN_FIRST) return;
-    startTransition(() => setDrawnAll(batch));
-  }, [batch, all, count]);
-  return all ? count : Math.min(count, TOOLS_DRAWN_FIRST);
+    if (key === null || drawn >= count) return;
+    // The next turn as a value, from what this drawing showed: run twice,
+    // it is the same turn; one for a batch or stage gone since is only
+    // worked out from again, as above.
+    startTransition(() => setTurn({ key, batch, drawn: drawn + TOOLS_DRAWN_PER_TURN, held }));
+  }, [key, batch, drawn, held, count]);
+  return { drawn, held: drawn >= count ? 0 : Math.min(count, held) };
 }
 
 /**
