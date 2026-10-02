@@ -3042,6 +3042,9 @@ describe("UpdatesPage", () => {
       // in the Update button's place, 「查看步骤」, which opens that log
       // (walk-2 W2-5).
       expect(glib.querySelector("[data-status-column]")).toContainElement(word);
+      // And it is the list's only status word: the other rows keep the
+      // column's room too, so the words line up (walk-2 review 3.1).
+      expect(rowOf("onyx").querySelector("[data-status-column]")).not.toBeNull();
       const steps = within(glib).getByRole("button", { name: "View steps: glib" });
       expect(steps).toHaveTextContent("View Steps");
       fireEvent.click(steps);
