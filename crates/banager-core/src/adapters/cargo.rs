@@ -1286,6 +1286,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_inventory_never_reads_a_cargo_home_kept_in_a_protected_place() {
+        // `~/.cargo` a link into `~/Documents` (dotfiles synced that way):
+        // its record is not read there -- the inventory cannot be told, an
+        // error, never "nothing installed". Kept anywhere else, it is read.
+        let home = std::fs::canonicalize({
+            let raw = temp_cargo_home("kept");
+            std::fs::create_dir_all(&raw).unwrap();
+            raw
+        })
+        .unwrap();
+        for keep in ["elsewhere", "Documents"] {
+            let kept = home.join(keep).join("cargo");
+            std::fs::create_dir_all(&kept).unwrap();
+            std::fs::write(kept.join(".crates2.json"), r#"{"installs":{}}"#).unwrap();
+            let linked = home.join(format!(".cargo-{}", keep.to_lowercase()));
+            std::os::unix::fs::symlink(&kept, &linked).unwrap();
+            let adapter =
+                CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+            let _home = crate::protected::as_if_home(&home);
+            let read = adapter.inventory(&test_instance(linked)).await;
+            if keep == "Documents" {
+                assert!(read.is_err(), "{read:?}");
+            } else {
+                assert!(read.expect("read").is_empty());
+            }
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
     async fn test_plan_refuses_when_request_instance_id_does_not_match_given_instance() {
         let adapter =
             CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));

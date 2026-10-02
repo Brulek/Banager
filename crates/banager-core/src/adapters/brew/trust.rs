@@ -212,6 +212,16 @@ mod tests {
         let other = crate::adapters::read_file::tests::temp_dir("trust-list-dir");
         std::fs::create_dir(other.join(TRUST_FILE)).unwrap();
         assert_eq!(read_trust_list(&other), None);
+        // A config folder kept in `~/Documents` (`dir` as the home folder):
+        // not read there -- a file Banager cannot read.
+        let home = std::fs::canonicalize(&dir).unwrap();
+        let kept = home.join("Documents/homebrew");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join(TRUST_FILE), r#"{"trustedcasks":["a/b/c"]}"#).unwrap();
+        assert_eq!(read_trust_list(&kept).unwrap().casks, ["a/b/c"]);
+        let as_if = crate::protected::as_if_home(&home);
+        assert_eq!(read_trust_list(&kept), None);
+        drop(as_if);
         std::fs::remove_dir_all(&dir).unwrap();
         std::fs::remove_dir_all(&other).unwrap();
     }

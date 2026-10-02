@@ -724,4 +724,23 @@ mod tests {
         assert_eq!(read_brew_env_file(&dir.0.join("missing.env")), None);
         assert_eq!(read_brew_env_file(&dir.0), None, "a folder is not read");
     }
+
+    #[test]
+    fn test_read_brew_env_file_never_reads_one_in_a_protected_place() {
+        // `~/.homebrew` a link into `~/Documents`: its `brew.env` is not
+        // read there, by either name, as a file Banager cannot open is not.
+        let dir = TempDir::new();
+        let home = std::fs::canonicalize(&dir.0).unwrap();
+        std::fs::create_dir_all(home.join("Documents/homebrew")).unwrap();
+        let kept = home.join("Documents/homebrew/brew.env");
+        std::fs::write(&kept, b"HOMEBREW_NO_AUTOREMOVE=0\n").unwrap();
+        std::os::unix::fs::symlink(home.join("Documents/homebrew"), home.join(".homebrew"))
+            .unwrap();
+        let as_if = crate::protected::as_if_home(&home);
+        assert_eq!(read_brew_env_file(&kept), None);
+        assert_eq!(read_brew_env_file(&home.join(".homebrew/brew.env")), None);
+        // With another home folder, nothing here is protected: both read.
+        drop(as_if);
+        assert!(read_brew_env_file(&home.join(".homebrew/brew.env")).is_some());
+    }
 }

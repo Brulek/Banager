@@ -1733,6 +1733,48 @@ mod tests {
     }
 
     #[test]
+    fn reads_nothing_through_a_caskroom_kept_in_a_protected_place() {
+        // The prefix's `Caskroom` a link into `~/Documents` (the prefix
+        // standing in for the home folder): nothing in it is read, and the
+        // record is one Banager cannot tell -- as it is read otherwise.
+        let prefix = Prefix::new("receipt-protected");
+        let (_, json) = receipt!("microsoft-word");
+        prefix.receipt("microsoft-word", json);
+        prefix.caskfile(
+            "microsoft-word",
+            "16.113.26092012",
+            "20260927132900.000",
+            "microsoft-word.json",
+            "{}",
+        );
+        let home = std::fs::canonicalize(&prefix.0).unwrap();
+        std::fs::create_dir_all(home.join("Documents")).unwrap();
+        std::fs::rename(home.join("Caskroom"), home.join("Documents/Caskroom")).unwrap();
+        std::os::unix::fs::symlink(home.join("Documents/Caskroom"), home.join("Caskroom")).unwrap();
+        assert_eq!(read_recorded(&home, "microsoft-word"), Some(recorded(json)));
+        let _home = crate::protected::as_if_home(&home);
+        assert_eq!(read_recorded(&home, "microsoft-word"), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reads_no_app_kept_in_a_protected_place() {
+        let prefix = Prefix::new("app-protected");
+        let home = std::fs::canonicalize(&prefix.0).unwrap();
+        let app = home.join("Documents/Apps/Thing.app");
+        std::fs::create_dir_all(app.join("Contents")).unwrap();
+        std::fs::write(
+            app.join("Contents/Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.thing</string></dict></plist>"#,
+        )
+        .unwrap();
+        assert_eq!(app_bundle_id(&app).as_deref(), Some("com.example.thing"));
+        let _home = crate::protected::as_if_home(&home);
+        assert_eq!(app_bundle_id(&app), None);
+    }
+
+    #[test]
     fn reads_the_receipt_beside_the_caskfile_homebrew_7_saves() {
         // Homebrew 7 saves `{}` (or only `url_specs`) as the caskfile and
         // keeps the list in the receipt, as the five casks on this Mac show.

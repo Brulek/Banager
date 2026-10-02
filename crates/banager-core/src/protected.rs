@@ -281,6 +281,10 @@ impl Protected {
     /// account's own: for a look made where no `HostEnv` is at hand (a
     /// file a tool wrote, read by an adapter that keeps none).
     pub fn of_this_process() -> Protected {
+        #[cfg(test)]
+        if let Some(home) = PROCESS_HOME.with(|home| home.borrow().clone()) {
+            return Protected::new(&home);
+        }
         Protected::new(
             &std::env::var_os("HOME")
                 .map(PathBuf::from)
@@ -375,6 +379,34 @@ fn password_database_home() -> Option<PathBuf> {
         let dir = unsafe { std::ffi::CStr::from_ptr(dir) };
         let home = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
         return home.is_absolute().then_some(home);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The home folder `Protected::of_this_process` answers for on this
+    /// thread instead of `HOME` (`as_if_home`).
+    static PROCESS_HOME: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A test's stand-in for this process's `HOME`, on its own thread only,
+/// until the guard is dropped: what `Protected::of_this_process` keeps out
+/// then is `home`'s places (and the account's), so a test can put a
+/// protected place of its own where an adapter that keeps no `HostEnv`
+/// would look.
+#[cfg(test)]
+pub(crate) fn as_if_home(home: &Path) -> AsIfHome {
+    PROCESS_HOME.with(|slot| *slot.borrow_mut() = Some(home.to_path_buf()));
+    AsIfHome
+}
+
+#[cfg(test)]
+pub(crate) struct AsIfHome;
+
+#[cfg(test)]
+impl Drop for AsIfHome {
+    fn drop(&mut self) {
+        PROCESS_HOME.with(|slot| *slot.borrow_mut() = None);
     }
 }
 

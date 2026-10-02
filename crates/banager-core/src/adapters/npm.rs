@@ -15,6 +15,7 @@ use crate::model::{
 /// every other package is updated and uninstalled with, and the program
 /// `npm uninstall -g npm` would remove (`UninstallBlocked::SourceProgram`).
 const OWN_PACKAGE: &str = "npm";
+use crate::protected::{look, Protected};
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -52,26 +53,27 @@ fn validate_search_query(query: &str) -> Result<(), AdapterError> {
 /// whichever of those exists first. A prefix owned by another user (e.g. a
 /// system-wide npm) is read-only for this adapter — see the per-adapter
 /// contract table's Notes column.
+///
+/// Each is looked up one step at a time and never into or through a
+/// protected place (`protected::look`): one that is, or leads into, one --
+/// a prefix kept in `~/Documents` -- is not looked at, and the prefix is
+/// read-only here, as one Banager cannot write to is.
 fn real_prefix_is_writable(prefix: &Path) -> bool {
+    let protected = Protected::of_this_process();
     let node_modules = prefix.join("lib").join("node_modules");
     let lib_dir = prefix.join("lib");
     for candidate in [node_modules.as_path(), lib_dir.as_path(), prefix] {
-        if candidate.exists() {
-            return path_is_writable(candidate);
+        match look::target(candidate, &protected) {
+            Ok(_) => return look::writable_folder(candidate, &protected),
+            Err(error) if look::is_protected(&error) => return false,
+            // Not there, or not to be looked up: the next one out.
+            Err(_) => continue,
         }
     }
     // None of the three exist (npm prefix -g pointed at a prefix that isn't
     // on disk at all) — there is nothing nearer to test than the root itself,
-    // and `access` on a missing path correctly reports "not writable".
-    path_is_writable(prefix)
-}
-
-fn path_is_writable(path: &Path) -> bool {
-    use std::os::unix::ffi::OsStrExt;
-    match std::ffi::CString::new(path.as_os_str().as_bytes()) {
-        Ok(c_path) => unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 },
-        Err(_) => false,
-    }
+    // and a missing path correctly reports "not writable".
+    look::writable_folder(prefix, &protected)
 }
 
 /// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
@@ -1630,6 +1632,28 @@ mod tests {
         assert!(!real_prefix_is_writable(&prefix));
 
         let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn real_prefix_is_writable_never_looks_into_a_protected_place() {
+        // A prefix kept in `~/Documents`, by its own path or through a
+        // link (`npm config set prefix ~/.npm-global`, that folder synced
+        // into Documents): never looked at, so read-only here -- as one
+        // Banager cannot write to is -- though it could be written.
+        let home = std::fs::canonicalize(scratch_dir("prefix-in-documents")).unwrap();
+        let kept = home.join("Documents/npm-global");
+        std::fs::create_dir_all(kept.join("lib/node_modules")).expect("create prefix");
+        let linked = home.join(".npm-global");
+        std::os::unix::fs::symlink(&kept, &linked).expect("link");
+        assert!(
+            real_prefix_is_writable(&linked),
+            "writable where nothing is protected"
+        );
+        let as_if = crate::protected::as_if_home(&home);
+        assert!(!real_prefix_is_writable(&kept));
+        assert!(!real_prefix_is_writable(&linked));
+        drop(as_if);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

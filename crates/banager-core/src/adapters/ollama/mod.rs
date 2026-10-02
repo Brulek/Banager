@@ -11,6 +11,7 @@ use crate::model::{
     OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
+use crate::protected::{look, Protected};
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use parse::{
@@ -179,13 +180,16 @@ pub fn ollama_app_roots(home: &Path) -> Vec<PathBuf> {
 /// The Ollama.app bundle under any of `roots`, or `None` when there is
 /// none.
 ///
-/// A bundle is a directory, so `is_dir` is the check -- `exists` would
-/// also answer yes to a stray file named `Ollama.app`.
-pub fn ollama_app_in(roots: &[PathBuf]) -> Option<PathBuf> {
+/// A bundle is a directory, so "is a folder" is the check -- "exists"
+/// would also answer yes to a stray file named `Ollama.app`. Looked up one
+/// step at a time and never into or through a place `protected` keeps out
+/// (`protected::look`): an `~/Applications` kept in `~/Documents` is not
+/// looked into.
+pub fn ollama_app_in(roots: &[PathBuf], protected: &Protected) -> Option<PathBuf> {
     roots
         .iter()
         .map(|root| root.join("Ollama.app"))
-        .find(|path| path.is_dir())
+        .find(|path| look::target(path, protected).is_ok_and(|(_, meta)| meta.is_dir()))
 }
 
 /// [`ollama_app_in`] over [`ollama_app_roots`]: the real question, asked
@@ -193,7 +197,7 @@ pub fn ollama_app_in(roots: &[PathBuf]) -> Option<PathBuf> {
 /// the Open Ollama button to open, and by the Tauri command behind that
 /// button to say why it cannot.
 pub fn ollama_app_path(home: &Path) -> Option<PathBuf> {
-    ollama_app_in(&ollama_app_roots(home))
+    ollama_app_in(&ollama_app_roots(home), &Protected::new(home))
 }
 
 /// Whether `host` -- a daemon URL as [`host_for`] builds it -- names this
@@ -1129,6 +1133,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_compare_digests_never_reads_a_manifest_kept_in_a_protected_place() {
+        // `~/.ollama` a link into `~/Documents`: the local manifest is not
+        // read there -- the model cannot be checked, as when the file
+        // cannot be read -- and is read where nothing is protected.
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        let registry_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/registry-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read registry manifest fixture");
+        let home = std::fs::canonicalize(isolated_path_dir("ollama-manifest-protected")).unwrap();
+        let kept = home.join("Documents/ollama");
+        let model_dir = kept.join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::write(model_dir.join("27b-mlx"), &local_json).unwrap();
+        std::os::unix::fs::symlink(&kept, home.join(".ollama")).unwrap();
+        let manifests_root = home.join(".ollama/models/manifests/registry.ollama.ai");
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
+            HttpResponse {
+                status: 200,
+                body: registry_json,
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
+        let read = adapter
+            .compare_digests(&manifests_root, "library", "qwen3.8", "27b-mlx")
+            .await;
+        assert!(read.is_ok(), "read where nothing is protected");
+        let as_if = crate::protected::as_if_home(&home);
+        let refused = adapter
+            .compare_digests(&manifests_root, "library", "qwen3.8", "27b-mlx")
+            .await;
+        drop(as_if);
+        assert!(refused.is_err(), "{refused:?}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
     async fn test_check_updates_marks_a_model_uncheckable_when_the_local_manifest_is_missing() {
         // Edge case the fixture cannot show directly: the local manifest
         // file is absent (e.g. deleted out from under Banager).
@@ -1683,18 +1729,22 @@ mod tests {
         std::fs::create_dir_all(&user).expect("create user root");
         let roots = vec![system.clone(), user.clone()];
 
-        assert_eq!(ollama_app_in(&roots), None, "nothing installed yet");
+        assert_eq!(
+            ollama_app_in(&roots, &Protected::new(&base.join("home"))),
+            None,
+            "nothing installed yet"
+        );
 
         std::fs::create_dir_all(user.join("Ollama.app")).expect("create user bundle");
         assert_eq!(
-            ollama_app_in(&roots),
+            ollama_app_in(&roots, &Protected::new(&base.join("home"))),
             Some(user.join("Ollama.app")),
             "a drag-install into ~/Applications counts"
         );
 
         std::fs::create_dir_all(system.join("Ollama.app")).expect("create system bundle");
         assert_eq!(
-            ollama_app_in(&roots),
+            ollama_app_in(&roots, &Protected::new(&base.join("home"))),
             Some(system.join("Ollama.app")),
             "the first root wins when both have one"
         );
@@ -1703,8 +1753,30 @@ mod tests {
         let only_file = base.join("only-file");
         std::fs::create_dir_all(&only_file).expect("create third root");
         std::fs::write(only_file.join("Ollama.app"), b"not a bundle").expect("write decoy");
-        assert_eq!(ollama_app_in(&[only_file]), None);
+        assert_eq!(
+            ollama_app_in(&[only_file], &Protected::new(&base.join("home"))),
+            None
+        );
 
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_ollama_app_in_never_looks_into_a_protected_place() {
+        // `~/Applications` a link into `~/Documents`: the bundle there is
+        // never looked at, so it is not found, as one Banager cannot see.
+        let base = std::fs::canonicalize(isolated_path_dir("ollama-app-protected")).unwrap();
+        let home = base.join("home");
+        std::fs::create_dir_all(home.join("Documents/Apps/Ollama.app")).unwrap();
+        std::os::unix::fs::symlink(home.join("Documents/Apps"), home.join("Applications")).unwrap();
+        let roots = vec![base.join("no-system-apps"), home.join("Applications")];
+        assert_eq!(
+            ollama_app_in(&roots, &Protected::new(&base.join("someone-else"))),
+            Some(home.join("Applications/Ollama.app")),
+            "found where nothing is protected"
+        );
+        assert_eq!(ollama_app_in(&roots, &Protected::new(&home)), None);
+        assert_eq!(ollama_app_path(&home), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -37,6 +37,7 @@ pub struct Stat {
     mode: u32,
     size: u64,
     mtime: i64,
+    mtime_nsec: i64,
     uid: u32,
 }
 
@@ -54,6 +55,7 @@ impl Stat {
             mode: st.st_mode as u32,
             size: st.st_size as u64,
             mtime: st.st_mtime as i64,
+            mtime_nsec: st.st_mtime_nsec as i64,
             uid: st.st_uid as u32,
         }
     }
@@ -83,6 +85,11 @@ impl Stat {
     /// When its contents last changed, unix seconds (`st_mtime`).
     pub fn mtime(&self) -> i64 {
         self.mtime
+    }
+
+    /// The nanoseconds past `mtime` (`st_mtime_nsec`).
+    pub fn mtime_nsec(&self) -> i64 {
+        self.mtime_nsec
     }
 
     /// The account that owns it (`st_uid`).
@@ -467,6 +474,7 @@ impl Dir {
             mode: std::os::unix::fs::MetadataExt::mode(&meta),
             size: std::os::unix::fs::MetadataExt::size(&meta),
             mtime: std::os::unix::fs::MetadataExt::mtime(&meta),
+            mtime_nsec: std::os::unix::fs::MetadataExt::mtime_nsec(&meta),
             uid: std::os::unix::fs::MetadataExt::uid(&meta),
         };
         if !stat.is_file() || expected.is_some_and(|expected| !expected.same_as(&stat)) {

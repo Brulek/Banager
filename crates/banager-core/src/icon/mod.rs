@@ -25,12 +25,11 @@
 //! without it.
 
 use crate::model::{ArtifactKind, InstalledArtifact};
+use crate::protected::{look, Protected};
 use base64::Engine as _;
 use std::collections::HashMap;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::SystemTime;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod mock;
@@ -77,7 +76,7 @@ pub(crate) fn cask_app_bundle(artifact: &InstalledArtifact) -> Option<&Path> {
 /// counts as new even when the two carry the same time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Stamp {
-    modified: Option<SystemTime>,
+    modified: (i64, i64),
     dev: u64,
     ino: u64,
 }
@@ -182,14 +181,17 @@ impl AppIcons {
 }
 
 /// `path`'s stamp when it is a folder -- `lstat`, so a symbolic link is
-/// never followed and never counts as one -- and `None` otherwise.
+/// never followed and never counts as one -- and `None` otherwise: also
+/// for a folder in or through a protected place, which is never looked at
+/// (`protected::look`), so its icon is never drawn -- drawing reads the
+/// app's files.
 fn folder_stamp(path: &Path) -> Option<Stamp> {
-    let meta = std::fs::symlink_metadata(path).ok()?;
-    if !meta.file_type().is_dir() {
+    let meta = look::lstat(path, &Protected::of_this_process()).ok()?;
+    if !meta.is_dir() {
         return None;
     }
     Some(Stamp {
-        modified: meta.modified().ok(),
+        modified: (meta.mtime(), meta.mtime_nsec()),
         dev: meta.dev(),
         ino: meta.ino(),
     })
@@ -206,6 +208,7 @@ fn data_url(png: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::model::{ArtifactKey, InstallReason};
+    use std::time::SystemTime;
 
     /// A fresh, canonical folder under the system temp dir, removed when
     /// the test ends.
@@ -398,6 +401,28 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).expect("symlink");
         assert_eq!(icons.bundle_icon(&link), None);
 
+        assert!(renderer.calls().is_empty(), "{:?}", renderer.calls());
+    }
+
+    #[test]
+    fn test_bundle_icon_never_draws_an_app_kept_in_a_protected_place() {
+        // An app in `~/Documents`, by its own path or through a link to
+        // the folder it is in: never looked at, never drawn -- drawing
+        // reads its files.
+        let temp = TempDir::new("protected");
+        let app = temp.folder("Documents/Apps/Thing.app");
+        let linked = temp.0.join("Apps");
+        std::os::unix::fs::symlink(temp.0.join("Documents/Apps"), &linked).unwrap();
+        let renderer = Arc::new(MockIconRenderer::answering(PNG));
+        assert!(
+            icons(&renderer).bundle_icon(&app).is_some(),
+            "drawn where nothing is protected"
+        );
+        let _home = crate::protected::as_if_home(&temp.0);
+        let renderer = Arc::new(MockIconRenderer::answering(PNG));
+        let drawer = icons(&renderer);
+        assert_eq!(drawer.bundle_icon(&app), None);
+        assert_eq!(drawer.bundle_icon(&linked.join("Thing.app")), None);
         assert!(renderer.calls().is_empty(), "{:?}", renderer.calls());
     }
 
