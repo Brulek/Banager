@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderWithProviders } from "../test/setup";
-import { Refusal, SheetLines, SheetText, SheetTool, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn, type ToolsInTurn } from "./SheetParts";
+import {
+  Refusal,
+  SheetLines,
+  SheetText,
+  SheetTool,
+  SheetToolList,
+  sheetMeta,
+  TOOLS_DRAWN_FIRST,
+  useToolsInTurn,
+  type ToolsInTurn,
+} from "./SheetParts";
 
 describe("sheetMeta", () => {
   it("says the source and the version, each on its own, apart by a middle dot", () => {
@@ -110,6 +121,47 @@ describe("useToolsInTurn", () => {
     rerender(<List count={200} batch={2} stage="planning" seen={seen} />);
     expect(seen[0]).toEqual({ drawn: TOOLS_DRAWN_FIRST, held: 0 });
   });
+
+  // React as the window runs it: not under `act`, which draws every
+  // transition at once, so that a turn takes time and a drawing can come
+  // between two turns.
+  describe("outside act", () => {
+    let root: Root;
+    let element: HTMLDivElement;
+    const flag = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    beforeEach(() => {
+      flag.IS_REACT_ACT_ENVIRONMENT = false;
+      element = document.createElement("div");
+      document.body.append(element);
+      root = createRoot(element);
+    });
+    afterEach(() => {
+      root.unmount();
+      element.remove();
+      flag.IS_REACT_ACT_ENVIRONMENT = true;
+    });
+
+    /** A list whose every drawing takes 12 ms, as 754 tools do on a slow Mac. */
+    function Slow({ stage, seen }: { stage: string; seen: ToolsInTurn[] }) {
+      const turn = useToolsInTurn(754, 1, stage);
+      seen.push(turn);
+      const started = performance.now();
+      while (performance.now() - started < 12) {
+        // a drawing that takes time
+      }
+      return <p>{`${turn.drawn} ${turn.held}`}</p>;
+    }
+
+    it("draws every tool when the plans come back while the first stage is still drawing", async () => {
+      const seen: ToolsInTurn[] = [];
+      root.render(<Slow stage="planning" seen={seen} />);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      root.render(<Slow stage="planned" seen={seen} />);
+      await waitFor(() => expect(element.textContent).toBe("754 0"), { timeout: 5000 });
+      // It did come mid-way: tools held as the first stage drew them, not all 754.
+      expect(seen.some((turn) => turn.held > 0 && turn.held < 754 && turn.drawn < 754)).toBe(true);
+    });
+  });
 });
 
 describe("SheetLines", () => {
@@ -150,6 +202,47 @@ describe("SheetLines", () => {
     expect(tail?.textContent?.trim()).toBe("update.");
     expect(tail?.className.split(" ")).toContain("whitespace-nowrap");
     expect(screen.getByRole("alert").textContent?.trim()).toBe("Couldn't prepare the update.");
+  });
+});
+
+describe("SheetToolList", () => {
+  const listLines = [
+    "[&>*+*]:relative",
+    "[&>*+*]:before:absolute",
+    "[&>*+*]:before:left-10.5",
+    "[&>*+*]:before:right-2.5",
+    "[&>*+*]:before:top-0",
+    "[&>*+*]:before:h-px",
+    "[&>*+*]:before:bg-group-separator",
+  ];
+  const rowLines = listLines.map((line) => line.slice("[&>*+*]:".length));
+  const tools = (separated: boolean) =>
+    ["glib", "jq", "wget"].map((name, index) => (
+      <SheetTool key={name} adapterId="brew" sourceLabel="Homebrew" name={name} separated={separated && index > 0} />
+    ));
+
+  it("parts its tools itself with a hairline over every one after the first, unless they draw their own", () => {
+    const { container, unmount } = renderWithProviders(<SheetToolList label="Tools">{tools(false)}</SheetToolList>);
+    const list = container.querySelector("[data-sheet-tools]")!;
+    expect([...list.classList]).toEqual(expect.arrayContaining(listLines));
+    for (const row of list.querySelectorAll("li")) {
+      expect(rowLines.filter((line) => row.classList.contains(line))).toEqual([]);
+    }
+    unmount();
+
+    // `rowsSeparate`: the same lines, drawn by the tools after the first.
+    const own = renderWithProviders(
+      <SheetToolList label="Tools" rowsSeparate>
+        {tools(true)}
+      </SheetToolList>,
+    );
+    const ownList = own.container.querySelector("[data-sheet-tools]")!;
+    expect(listLines.filter((line) => ownList.classList.contains(line))).toEqual([]);
+    expect([...ownList.querySelectorAll("li")].map((row) => rowLines.every((line) => row.classList.contains(line)))).toEqual([
+      false,
+      true,
+      true,
+    ]);
   });
 });
 
