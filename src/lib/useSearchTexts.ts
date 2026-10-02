@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { artifactKeyId } from "../store/ui";
 import { searchTextOf, type SearchText } from "./searchMatch";
-import { instanceLabels, toolDescription } from "./sources";
+import { adapterIdOf, instanceLabels, toolDescription } from "./sources";
 import { otherLanguage, useOtherLanguageDescription, useTranslatedDescription } from "./toolDescriptions";
 import type { Snapshot } from "./types";
 
@@ -33,7 +33,7 @@ export function useSearchTexts(
     for (const artifact of snapshot.artifacts) {
       const instanceId = artifact.key.instance_id;
       // Without its source in the snapshot, the id starts with its adapter's.
-      const adapterId = adapters.get(instanceId) ?? instanceId.split(":")[0];
+      const adapterId = adapters.get(instanceId) ?? adapterIdOf(instanceId);
       const tool = { description: artifact.description, kind: artifact.key.kind, path: artifact.path };
       const shown = toolDescription(
         t,
