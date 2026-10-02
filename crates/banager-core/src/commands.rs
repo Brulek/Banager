@@ -77,6 +77,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+mod round_tests;
+
 /// How much of the file system one round may look at for this, and for
 /// how long, before it gives up on its verdicts. Each half -- reading the
 /// folders, then judging -- gets `max_duration` of its own, checked before
