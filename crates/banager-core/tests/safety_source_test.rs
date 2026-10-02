@@ -179,18 +179,34 @@ fn test_the_test_only_files_are_compiled_for_tests_only() {
 /// (`read_dir(` after `use std::fs::read_dir`), so each is matched without
 /// its `fs::` or leading dot where that adds no false match. The kind
 /// questions (`is_dir()` and the like) are `asks_a_path`'s.
-const PATH_LOOKUPS: [&str; 26] = [
+const PATH_LOOKUPS: [&str; 40] = [
     // The system's own calls by a path, as `libc` and the frameworks name
-    // them: a lookup all the same.
+    // them: a lookup all the same -- and an `*at` call from the current
+    // folder (`AT_FDCWD`) is one by a path too.
     "libc::open(",
     "libc::stat(",
     "libc::lstat(",
+    "libc::stat64(",
+    "libc::lstat64(",
     "libc::access(",
     "libc::readlink(",
     "libc::opendir(",
     "libc::statfs(",
+    "AT_FDCWD",
+    "xattr(",
+    "statvfs(",
+    "pathconf(",
+    "chdir(",
+    "current_dir(",
     "getattrlist",
     "iconForFile",
+    "AtPath",
+    "WithPath",
+    "bundleWithPath",
+    // A crate's own lookup of a path it is handed.
+    "from_file(",
+    "reveal_item_in_dir",
+    "::try_exists(",
     "metadata(",
     "canonicalize(",
     "read_dir(",
@@ -218,7 +234,7 @@ const PATH_LOOKUPS: [&str; 26] = [
 /// names the walks give it. `meta.is_dir()` on a `Stat` asks nothing of
 /// the disk, where `path.is_dir()` stats `path` and follows every link in
 /// it; the two can only be told apart by what the call is made on.
-const STAT_NAMES: [&str; 4] = ["meta", "stat", "lstat", "target"];
+const STAT_NAMES: [&str; 3] = ["meta", "stat", "lstat"];
 
 /// Whether `text` asks `is_dir()`, `is_file()` or `is_symlink()` of
 /// anything but a `STAT_NAMES` value or `Dir::stat_at`'s answer
@@ -260,7 +276,7 @@ fn test_a_kind_question_is_told_apart_by_what_it_is_asked_of() {
         "if !meta.is_dir() && meta.nlink() > 1 {",
         "Resolution::Found(_, stat) if stat.is_symlink() => link = place,",
         "} else if lstat.is_file() {",
-        "if target.is_dir() || (target.mode() & 0o111) == 0 {",
+        "if meta.is_dir() || (meta.mode() & 0o111) == 0 {",
         "if !opened.same_as(&stat) || !held.stat_at(name).ok()?.is_symlink() {",
     ] {
         assert!(!asks_a_path(answered), "{answered}");
@@ -270,6 +286,11 @@ fn test_a_kind_question_is_told_apart_by_what_it_is_asked_of() {
         "folder.join(name).is_file()",
         "if path.is_symlink() {",
         "if xstat.is_dir() {",
+        // A path named `target` is a path: not answered by a look.
+        "if target.is_dir() {",
+        "Path::try_exists(&p)",
+        "libc::fstatat(libc::AT_FDCWD, p, &mut st, 0)",
+        "plist::Value::from_file(&p)",
         "meta.is_dir() && root.is_dir()",
         "std::fs::read_dir(&p)",
         "read_dir(&p)",
@@ -623,7 +644,7 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 11] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 14] = [
     (
         "crates/banager-core/src/dirfd.rs:",
         "let fd = unsafe { libc::open(c\"/\".as_ptr(), SEARCH | libc::O_CLOEXEC) };",
@@ -631,8 +652,23 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 11] = [
     ),
     (
         "crates/banager-core/src/dirfd.rs:",
-        "libc::open(",
+        "let fd = unsafe { libc::open(c\"/\".as_ptr(), flags) };",
         "`/` again, opened to list (`reopen_root_to_list`)",
+    ),
+    (
+        "crates/banager-core/src/runner/real.rs:",
+        "cmd.current_dir(cwd);",
+        "a plan's working folder: no plan names one (`CommandSpec.cwd` is always `None`)",
+    ),
+    (
+        "crates/banager-core/src/trash/real.rs:",
+        "let url = NSURL::fileURLWithPath_isDirectory(&NSString::from_str(utf8), is_dir);",
+        "the URL of a previewed path whose last check was just made (`removal::take_turn`); the move itself is the documented Trash call",
+    ),
+    (
+        "src-tauri/src/reveal.rs:",
+        "tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())",
+        "Show in Finder of a path the newest scan resolved outside every protected place (`Revealable`); the plugin resolves it again",
     ),
     (
         "crates/banager-core/src/icon/real.rs:",

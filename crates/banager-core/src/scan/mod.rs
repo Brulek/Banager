@@ -884,7 +884,7 @@ fn examine(
 ) -> Option<Examined> {
     let lstat = folder.stat_at(name).ok()?;
     let at = dir.join(name);
-    let (kind, resolved, link_target, target, leads) = if lstat.is_symlink() {
+    let (kind, resolved, link_target, meta, leads) = if lstat.is_symlink() {
         let text = folder.read_link_at(name).ok();
         let link_target = text
             .as_ref()
@@ -919,15 +919,16 @@ fn examine(
     } else {
         return None;
     };
-    // Size, date and the executable check are the target's: a link's own
-    // say only when the installer made the link.
-    if let Some(target) = &target {
-        if target.is_dir() || (target.mode() & 0o111) == 0 {
+    // Size, date and the executable check are the target's (`meta`, what
+    // the entry leads to): a link's own say only when the installer made
+    // the link.
+    if let Some(meta) = &meta {
+        if meta.is_dir() || (meta.mode() & 0o111) == 0 {
             return None;
         }
     }
-    let (size_bytes, modified_at) = match &target {
-        Some(target) => (Some(target.size()), Some(target.mtime())),
+    let (size_bytes, modified_at) = match &meta {
+        Some(meta) => (Some(meta.size()), Some(meta.mtime())),
         None => (None, None),
     };
     let mut bundle_candidates: Vec<&Path> = Vec::new();

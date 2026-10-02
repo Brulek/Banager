@@ -206,13 +206,9 @@ impl Dir {
     }
 
     fn reopen_root_to_list() -> io::Result<Dir> {
+        let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC;
         // SAFETY: a NUL-terminated literal path; the result is checked.
-        let fd = unsafe {
-            libc::open(
-                c"/".as_ptr(),
-                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
-            )
-        };
+        let fd = unsafe { libc::open(c"/".as_ptr(), flags) };
         Dir::owned(fd)
     }
 
