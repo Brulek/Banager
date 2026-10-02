@@ -1048,7 +1048,7 @@
     "version": "Version",
     "iconCredits": {
       "label": "Icon credits",
-      "open": "View…",
+      "open": "View Icon Credits…",
       "openAriaLabel": "View icon credits",
       "title": "Icon credits",
       "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
@@ -1128,7 +1128,7 @@
   "setupCheck": {
     "menu": "Check Tool Setup…",
     "label": "Tool setup",
-    "open": "View…",
+    "open": "Check Tool Setup…",
     "title": "Tool Setup",
     "pending": "The check hasn't finished. Here's what's known so far.",
     "neverChecked": "Not checked yet",

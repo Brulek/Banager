@@ -251,9 +251,13 @@ describe("the polish-3 copy rules, in English", () => {
     }
   });
 
-  it("never names a button a bare Show or View: it says what it shows, or where (walk-3 W3-5)", () => {
-    // The 「显示」 popup's own label is the name of a menu, not a button.
-    const bare = keysWhere(en, (text) => /^(Show|View)$/.test(text)).filter((key) => key !== "families.showLabel");
+  it("never names a button a bare Show or View, with or without …: it says what it shows, or where (walk-3 W3-5)", () => {
+    // Allowed: the 「显示」 popup's own label, which names a menu whose
+    // choices say what it shows ("Show: AI Tools"), and is no button.
+    const allowed = ["families.showLabel"];
+    const bare = keysWhere(en, (text) => /^\s*(Show|View)\b[\s….]*$/i.test(text)).filter(
+      (key) => !allowed.includes(key),
+    );
     expect(bare).toEqual([]);
   });
 

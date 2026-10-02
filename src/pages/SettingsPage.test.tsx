@@ -1394,16 +1394,18 @@ describe("SettingsPage's icon credits", () => {
     // Its row under the version's: its name and its button, which opens
     // more (「查看…」), and no sentence explaining it.
     const open = within(about).getByRole("button", { name: "View icon credits" });
-    expect(open).toHaveTextContent("View…");
+    expect(open).toHaveTextContent("View Icon Credits…");
     expect(within(about).getAllByText(/./).map((node) => node.textContent)).toEqual([
       "About",
       "Version",
       tauriConfig.version,
       "Icon credits",
-      "View…",
-      // Then Tool setup, whose Check… opens the sheet (ToolSetupSheet.test.tsx).
+      // Named for what it opens, never a bare "View…" (walk-3 review 3.5).
+      "View Icon Credits…",
+      // Then Tool setup, whose button opens the sheet (ToolSetupSheet.test.tsx),
+      // named as the Help menu's item is.
       "Tool setup",
-      "View…",
+      "Check Tool Setup…",
       // Then Diagnostic info, its checkbox and Copy Diagnostic Info, and
       // what the text holds (DiagnosticsRows.test.tsx).
       "Diagnostic info",

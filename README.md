@@ -107,7 +107,7 @@ a protected place**, and the link is not followed.
   Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
   this Mac and its sources to paste to whoever is helping you; it lists your tools only when you tick
   the box, and writes your home folder as `~`.
-- **Check Tool Setup…** in the Help menu, or **Check…** beside it on the Overview and in Settings, says in short lines
+- **Check Tool Setup…**, in the Help menu and as a button on the Overview and in Settings, says in short lines
   how this Mac's tools are set up — whether Terminal's login settings were read, each source that
   isn't answering, how many tools Terminal can't find or has twice, what Homebrew disabled or keeps
   other versions of, and the disk measured. Each line that counts tools, and each line about a source

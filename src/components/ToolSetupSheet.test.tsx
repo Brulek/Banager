@@ -188,7 +188,7 @@ describe("ToolSetupSheet", () => {
     useUiStore.setState({ page: "settings" });
     const { findByRole, queryByRole } = renderWithProviders(<App />);
     const open = await findByRole("button", { name: "Check Tool Setup…" });
-    expect(open).toHaveTextContent(/^View…$/);
+    expect(open).toHaveTextContent(/^Check Tool Setup…$/);
     open.focus();
     fireEvent.click(open);
     const dialog = await findByRole("dialog", { name: "Tool Setup" });
