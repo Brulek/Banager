@@ -1076,8 +1076,8 @@ describe("OverviewPage", () => {
     // A note alone is folded into the group's one row: unfolded, it shows.
     const list = await findByRole("list", { name: "Needs attention" });
     fireEvent.click(within(list).getByRole("button", { name: "1 more note" }));
-    const line = within(list).getAllByRole("listitem").at(-1);
-    if (line === undefined) throw new Error("no line");
+    const lines = within(list).getAllByRole("listitem");
+    const line = lines[lines.length - 1];
     expect(within(line).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
     expect(
       within(line).getByText(
