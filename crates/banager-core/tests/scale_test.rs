@@ -415,6 +415,7 @@ impl Adapter for Fixed {
                     checkable: true,
                     warnings: vec![],
                     blocked: None,
+                    download_bytes: None,
                 })
                 .collect(),
             notes: vec![],

@@ -1351,6 +1351,18 @@ pub struct UpdateCandidate {
     /// page's `isUpdateActionable` hides the row's button and checkbox for
     /// it.
     pub blocked: Option<UpdateBlocked>,
+    /// The most this update can download, in bytes: an Ollama model's
+    /// changed blobs as the registry manifest sizes them
+    /// (`ollama::parse::changed_blob_bytes`), from the two manifests the
+    /// check already read -- an upper bound, since a blob another local
+    /// model shares is already on this Mac. `None` for every other source,
+    /// and for a model whenever the number could be wrong. Read by
+    /// src/lib/modelDownload.ts: 「最多约4.7 GB」 in the update
+    /// confirmation's note and the row's version column. Always sent
+    /// (`null` when `None`); `serde(default)` so a candidate written
+    /// before it existed still reads.
+    #[serde(default)]
+    pub download_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1816,6 +1828,7 @@ mod tests {
             checkable: true,
             warnings: Vec::new(),
             blocked: None,
+            download_bytes: None,
         };
         let json = serde_json::to_string(&candidate).expect("serialize");
         assert!(
@@ -1859,6 +1872,61 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UpdateBlocked>(r#""Disabled""#).unwrap(),
             UpdateBlocked::Disabled
+        );
+    }
+
+    #[test]
+    fn test_download_bytes_is_a_number_or_null_on_the_wire_and_optional_when_read() {
+        // `src/lib/types.ts` spells it `download_bytes?: number | null`;
+        // src/lib/modelDownload.ts reads it.
+        let model = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "ollama:http://127.0.0.1:11434".to_string(),
+                kind: ArtifactKind::Model,
+                name: "llama3.2:3b".to_string(),
+            },
+            current: "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66".to_string(),
+            target: "sha256:25a98d24af806ec8c25c21df601953c6a42f154dfcd8637bc82ec581f1c849aa"
+                .to_string(),
+            channel: UpdateChannel::Digest,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+            download_bytes: Some(4_683_087_520),
+        };
+        let json = serde_json::to_string(&model).expect("serialize");
+        assert!(
+            json.contains("\"download_bytes\":4683087520"),
+            "a plain JSON number: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            model
+        );
+
+        let unknown = UpdateCandidate {
+            download_bytes: None,
+            ..model.clone()
+        };
+        let json = serde_json::to_string(&unknown).expect("serialize");
+        assert!(
+            json.contains("\"download_bytes\":null"),
+            "an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            unknown
+        );
+
+        // A candidate written before the field existed still reads, as None.
+        let mut value = serde_json::to_value(&model).expect("to value");
+        value
+            .as_object_mut()
+            .expect("an object")
+            .remove("download_bytes");
+        assert_eq!(
+            serde_json::from_value::<UpdateCandidate>(value).expect("deserialize"),
+            unknown
         );
     }
 

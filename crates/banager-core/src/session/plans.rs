@@ -801,6 +801,7 @@ mod tests {
             checkable: true,
             warnings: Vec::new(),
             blocked,
+            download_bytes: None,
         }
     }
 

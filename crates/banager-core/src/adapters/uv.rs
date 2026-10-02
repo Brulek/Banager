@@ -146,6 +146,7 @@ pub(crate) fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<Upd
                 checkable: true,
                 warnings: Vec::new(),
                 blocked: None,
+                download_bytes: None,
             })
         })
         .collect();

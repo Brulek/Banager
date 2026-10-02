@@ -269,6 +269,7 @@ mod tests {
             checkable: true,
             warnings: Vec::new(),
             blocked: None,
+            download_bytes: None,
         };
         let candidates = [
             candidate(ArtifactKind::Formula, "jq", "1.8.1"),

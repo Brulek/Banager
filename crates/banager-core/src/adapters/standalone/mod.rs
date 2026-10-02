@@ -731,6 +731,7 @@ impl StandaloneAdapter {
                     .upgrade
                     .is_none()
                     .then_some(UpdateBlocked::SelfUpdatesOnly),
+                download_bytes: None,
             }],
         }
         .into())
@@ -2473,6 +2474,7 @@ mod tests {
                 checkable: true,
                 warnings: Vec::new(),
                 blocked: None,
+                download_bytes: None,
             }]
         );
         assert_eq!(http.calls(), vec![LATEST_URL.to_string()]);
@@ -5141,6 +5143,7 @@ mod tests {
                 checkable: true,
                 warnings: Vec::new(),
                 blocked: Some(UpdateBlocked::SelfUpdatesOnly),
+                download_bytes: None,
             }]
         );
         assert_eq!(http.calls(), vec![AGY_MANIFEST_URL.to_string()]);
@@ -5586,6 +5589,7 @@ mod tests {
                 checkable: true,
                 warnings: Vec::new(),
                 blocked: None,
+                download_bytes: None,
             }]
         );
         // The check runs against the launcher, with the recipe's argv and

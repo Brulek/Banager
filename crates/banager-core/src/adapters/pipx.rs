@@ -231,6 +231,7 @@ pub(crate) fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandida
             checkable: true,
             warnings: Vec::new(),
             blocked,
+            download_bytes: None,
         });
     }
     crate::adapters::sanity::candidates(out)
@@ -406,6 +407,7 @@ impl PipxAdapter {
                     checkable: true,
                     warnings: Vec::new(),
                     blocked: None,
+                    download_bytes: None,
                 }),
                 Ok(_) => {}
                 Err(reason) => out.push(uncheckable_candidate(

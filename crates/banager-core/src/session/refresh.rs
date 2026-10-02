@@ -2641,6 +2641,7 @@ mod tests {
             checkable: true,
             warnings: Vec::new(),
             blocked: None,
+            download_bytes: None,
         }
     }
 
@@ -2661,6 +2662,7 @@ mod tests {
             checkable: false,
             warnings: Vec::new(),
             blocked: None,
+            download_bytes: None,
         }
     }
 

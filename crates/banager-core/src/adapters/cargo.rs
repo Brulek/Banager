@@ -469,6 +469,7 @@ impl CargoAdapter {
                     checkable: false,
                     warnings: vec![Warning::NonRegistrySource],
                     blocked: None,
+                    download_bytes: None,
                 });
                 continue;
             }
@@ -481,6 +482,7 @@ impl CargoAdapter {
                     checkable: true,
                     warnings: Vec::new(),
                     blocked: None,
+                    download_bytes: None,
                 }),
                 Ok(_) => {}
                 Err(reason) => out.push(uncheckable_candidate(

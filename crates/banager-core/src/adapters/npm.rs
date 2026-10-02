@@ -611,6 +611,7 @@ pub(crate) fn parse_outdated_global(
             checkable: true,
             warnings: Vec::new(),
             blocked: None,
+            download_bytes: None,
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));

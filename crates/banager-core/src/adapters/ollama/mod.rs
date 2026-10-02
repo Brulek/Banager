@@ -13,7 +13,10 @@ use crate::model::{
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
-use parse::{config_digest, layer_digests, parse_tags, parse_version, split_model_reference};
+use parse::{
+    changed_blob_bytes, config_digest, layer_digests, parse_tags, parse_version,
+    split_model_reference,
+};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +43,16 @@ fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
         return Err(AdapterError::InvalidName(name.to_string()));
     }
     Ok(())
+}
+
+/// What `OllamaAdapter::compare_digests` learned of a model the registry
+/// has republished: its new config digest, the update's `target`, and the
+/// most pulling it can download (`parse::changed_blob_bytes`), the
+/// candidate's `download_bytes`.
+#[derive(Debug)]
+struct RegistryChange {
+    config: String,
+    download_bytes: Option<u64>,
 }
 
 /// Joins a model reference's `namespace`/`name`/`tag` onto the Ollama
@@ -385,11 +398,12 @@ impl OllamaAdapter {
     }
 
     /// Returns `Ok(None)` when the local and registry manifests' layer-digest
-    /// sets are identical (model up to date), `Ok(Some(registry_config))`
-    /// when they differ — carrying the registry's config digest, which is
-    /// what an available update's `target` must be, since the tag
-    /// (`27b-mlx`) is unchanged by a republish and `UpdateCandidate`'s
-    /// contract is that current and target differ — or `Err(reason)` when
+    /// sets are identical (model up to date), `Ok(Some(change))` when they
+    /// differ — carrying the registry's config digest, which is what an
+    /// available update's `target` must be, since the tag (`27b-mlx`) is
+    /// unchanged by a republish and `UpdateCandidate`'s contract is that
+    /// current and target differ, and the most the pull can download, from
+    /// the same two manifests (`changed_blob_bytes`) — or `Err(reason)` when
     /// either manifest could not be read/fetched/parsed. A network failure
     /// or a 404 for a model removed upstream must not crash the whole
     /// `check_updates` call, so the caller turns that into a single
@@ -406,7 +420,7 @@ impl OllamaAdapter {
         namespace: &str,
         name: &str,
         tag: &str,
-    ) -> Result<Option<String>, LookupFailure> {
+    ) -> Result<Option<RegistryChange>, LookupFailure> {
         let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
         let local_json = crate::adapters::read_file::read_text(&local_path).map_err(|e| {
             format!(
@@ -456,7 +470,10 @@ impl OllamaAdapter {
         let registry_config = config_digest(&response.body)
             .map_err(|e| format!("could not parse registry manifest: {e}"))?
             .ok_or_else(|| "registry manifest has no config digest".to_string())?;
-        Ok(Some(registry_config))
+        Ok(Some(RegistryChange {
+            config: registry_config,
+            download_bytes: changed_blob_bytes(&local_json, &response.body),
+        }))
     }
 
     async fn check_one_model(
@@ -484,14 +501,15 @@ impl OllamaAdapter {
             // decision is made above by `compare_digests` on the layer-digest
             // sets, never by these fields; an `UpdateChannel::Digest` row is a
             // "changed / not changed" marker. See docs/superpowers/backlog.md.
-            Ok(Some(registry_config)) => Some(UpdateCandidate {
+            Ok(Some(change)) => Some(UpdateCandidate {
                 key: artifact.key.clone(),
                 current: artifact.version.clone(),
-                target: registry_config,
+                target: change.config,
                 channel: UpdateChannel::Digest,
                 checkable: true,
                 warnings: Vec::new(),
                 blocked: None,
+                download_bytes: change.download_bytes,
             }),
             // Uncheckable: there is no target to claim. `checkable: false`
             // is what stops the UI offering an Update button for this row
@@ -959,8 +977,85 @@ mod tests {
             "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e"
         );
         assert_ne!(candidate.current, candidate.target);
+        // Both layers and the config are new to this Mac: the most the pull
+        // downloads is all three, as the registry manifest sizes them.
+        assert_eq!(
+            candidate.download_bytes,
+            Some(715_161_924 + 2_542_796_928 + 251)
+        );
 
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_says_the_most_a_model_downloads_and_none_when_a_size_is_missing() {
+        // One layer the recorded local manifest already names (lm_head,
+        // 715161924 bytes) and one it does not, under the same config: only
+        // the new layer counts. Without its size, the number is unknown.
+        const LOCAL_CONFIG: &str =
+            "sha256:25a98d24af806ec8c25c21df601953c6a42f154dfcd8637bc82ec581f1c849aa";
+        const SHARED_LAYER: &str =
+            "sha256:830bcce777461c80d35963b0c43a0ae31f5ebbb6fdcf1e3dbbadafb5c8d39991";
+        const NEW_LAYER: &str =
+            "sha256:b7e4a1c05f38d296471ea80c3b95d6f2081c74a3e9d05b6f2a8c41739de60bb2";
+        let registry_manifest = |new_size: &str| {
+            format!(
+                r#"{{"schemaVersion":2,
+                    "mediaType":"application/vnd.docker.distribution.manifest.v2+json",
+                    "config":{{"digest":"{LOCAL_CONFIG}","size":251}},
+                    "layers":[
+                      {{"digest":"{SHARED_LAYER}","size":715161924}},
+                      {{"digest":"{NEW_LAYER}"{new_size}}}
+                    ]}}"#
+            )
+        };
+        let tags_json =
+            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+                .expect("read ollama api-tags.json fixture");
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        for (new_size, expected) in [(r#","size":2542796928"#, Some(2_542_796_928)), ("", None)] {
+            let home = std::env::temp_dir().join(format!(
+                "banager-ollama-download-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
+            std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
+            std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(
+                "http://127.0.0.1:11434/api/tags",
+                HttpResponse {
+                    status: 200,
+                    body: tags_json.clone(),
+                },
+            );
+            http.respond(
+                "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
+                HttpResponse {
+                    status: 200,
+                    body: registry_manifest(new_size),
+                },
+            );
+            let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
+            let inst = test_instance("http://127.0.0.1:11434", home.clone());
+            let candidates = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates")
+                .candidates;
+            assert_eq!(candidates.len(), 1);
+            assert!(candidates[0].checkable, "still an offerable update");
+            assert_eq!(candidates[0].target, LOCAL_CONFIG);
+            assert_eq!(candidates[0].download_bytes, expected, "size {new_size:?}");
+            let _ = std::fs::remove_dir_all(&home);
+        }
     }
 
     #[tokio::test]
