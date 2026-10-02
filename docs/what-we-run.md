@@ -2574,7 +2574,7 @@ than linked, is a folder like any other there and is measured:
 | a Homebrew cask with an app | the `.app` Homebrew names for it (Homebrew's section, `brew info --installed --json=v2`) and `<prefix>/Caskroom/<token>` |
 | an npm package | `<prefix>/lib/node_modules/<name>` |
 | a pipx or uv tool | its environment, the folder its own listing names |
-| a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this) |
+| a Cargo crate | each program `<CARGO_HOME>/.crates2.json` says it installed, in `<CARGO_HOME>/bin` (that file is read again for this, only when it is a regular file of at most 16 MiB, as the Cargo source reads it: a larger one is refused by its size, not read, and the crate is measured as its own listing names it) |
 | Claude Code, Antigravity CLI, Grok Build, rustup, Codex, opencode | the program file its launcher leads to |
 | Ollama's models | `~/.ollama/models/blobs`, once for all of them, when the Ollama Banager asks is on this Mac |
 

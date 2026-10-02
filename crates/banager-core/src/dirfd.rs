@@ -18,8 +18,9 @@
 //!
 //! Folders on the way are opened for search only (`O_SEARCH`: nothing in
 //! them is listed), a folder to list for reading (`O_RDONLY`, as
-//! `opendir` does). No file is opened here but by `read_file_at`, for the
-//! one file a caller reads (`<CARGO_HOME>/.crates2.json`).
+//! `opendir` does). No file is opened here but by `read_file_at_most`,
+//! which reads a regular file only up to the size its caller names: there
+//! is no way to read one whole, however large it is.
 
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::io::{self, Read};
@@ -436,19 +437,18 @@ impl Dir {
         })
     }
 
-    /// The regular file `name` in this folder, read whole: opened without
-    /// following a link (`O_NOFOLLOW`) and without waiting on anything
-    /// that is not a file (`O_NONBLOCK`), and read only when `fstat` says
-    /// it is a regular file -- `expected`, when given, the very one.
-    pub fn read_file_at(&self, name: &OsStr, expected: Option<&Stat>) -> io::Result<Vec<u8>> {
-        self.read_file_at_most(name, expected, u64::MAX)
-            .map(|(_, bytes)| bytes)
-    }
-
-    /// `read_file_at`, of a file of at most `limit` bytes: a larger one is
-    /// refused (`InvalidData`) rather than read, by what `fstat` says on
-    /// the opened file and by what the read finds, should the file have
-    /// grown in between. With what `fstat` said of it.
+    /// The regular file `name` in this folder, of at most `limit` bytes:
+    /// opened without following a link (`O_NOFOLLOW`) and without waiting
+    /// on anything that is not a file (`O_NONBLOCK`), and read only when
+    /// `fstat` says it is a regular file -- `expected`, when given, the
+    /// very one. A larger one is refused (`InvalidData`) rather than read,
+    /// by what `fstat` says on the opened file and by what the read finds,
+    /// should the file have grown in between. With what `fstat` said of it.
+    ///
+    /// The limit is the caller's to name, every time: there is no reader
+    /// without one, so a file a tool wrote -- or one put in its place, a
+    /// sparse file of gigabytes -- is never read whole into memory by
+    /// accident (`adapters::read_file::LIMIT` is the usual one).
     pub fn read_file_at_most(
         &self,
         name: &OsStr,
@@ -781,10 +781,14 @@ mod tests {
             dir.read_link_at(OsStr::new("link")).unwrap(),
             PathBuf::from("/etc")
         );
-        assert_eq!(dir.read_file_at(OsStr::new("file"), None).unwrap(), b"x");
+        assert_eq!(
+            dir.read_file_at_most(OsStr::new("file"), None, 1).unwrap().1,
+            b"x"
+        );
+        assert!(dir.read_file_at_most(OsStr::new("file"), None, 0).is_err());
         // A link is never opened as a folder, nor read as a file.
         assert!(dir.open_dir_at(OsStr::new("link"), None, true).is_err());
-        assert!(dir.read_file_at(OsStr::new("link"), None).is_err());
+        assert!(dir.read_file_at_most(OsStr::new("link"), None, 1).is_err());
     }
 
     #[test]

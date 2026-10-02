@@ -844,8 +844,8 @@ fn roots_of(
 }
 
 /// `<cargo_home>/.crates2.json`'s programs per crate, every name a plain
-/// file name; `None` when it is not a regular file in an allowed place or
-/// does not parse.
+/// file name; `None` when it is not a regular file in an allowed place, is
+/// larger than `read_file::LIMIT` (16 MiB), or does not parse.
 fn read_crates_bins(
     cargo_home: &Path,
     protected: &Protected,
@@ -861,7 +861,13 @@ fn read_crates_bins(
     // Read from the folder it was found in, the very file found there
     // (`dirfd`): never through a link put in its place since.
     let (folder, name) = Dir::open_parent(&path).ok()?;
-    let json = String::from_utf8(folder.read_file_at(&name, Some(&meta)).ok()?).ok()?;
+    // Under the bound the Cargo adapter reads the same record under: a
+    // record past it -- an accident, or a sparse file of gigabytes put in
+    // its place -- is refused by its size, not read into memory whole.
+    let (_, bytes) = folder
+        .read_file_at_most(&name, Some(&meta), crate::adapters::read_file::LIMIT)
+        .ok()?;
+    let json = String::from_utf8(bytes).ok()?;
     let parsed = crate::adapters::cargo::parse_crates2_bins(&json).ok()?;
     Some(
         parsed
@@ -2541,6 +2547,40 @@ mod tests {
             third.artifacts[0].measured.unwrap().bytes > before,
             "a new version is walked again"
         );
+    }
+
+    #[test]
+    fn test_a_crates2_json_past_the_limit_is_not_read() {
+        // The same bound the Cargo adapter reads the record under
+        // (`read_file::LIMIT`): a record past it is refused, not read
+        // whole into memory and parsed -- even one that would parse.
+        let scratch = Scratch::new("crates2-limit");
+        let home = scratch.dir("home");
+        let cargo = scratch.dir("home/.cargo");
+        let protected = Protected::new(&home);
+        let record = r#"{"installs":{"hexyl 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["hexyl"]}}}"#;
+        std::fs::write(cargo.join(".crates2.json"), record).unwrap();
+        assert_eq!(
+            read_crates_bins(&cargo, &protected),
+            Some(HashMap::from([(
+                "hexyl".to_string(),
+                vec!["hexyl".to_string()]
+            )]))
+        );
+        // Valid JSON, padded with spaces to one byte past the limit.
+        let limit = usize::try_from(crate::adapters::read_file::LIMIT).unwrap();
+        let mut padded = record.as_bytes().to_vec();
+        padded.resize(limit + 1, b' ');
+        std::fs::write(cargo.join(".crates2.json"), &padded).unwrap();
+        assert_eq!(read_crates_bins(&cargo, &protected), None);
+        // A sparse file of 64 GiB, which a whole read would try to hold:
+        // refused by its size before a byte is read.
+        let sparse = std::fs::File::create(cargo.join(".crates2.json")).unwrap();
+        sparse.set_len(64 << 30).unwrap();
+        drop(sparse);
+        let started = std::time::Instant::now();
+        assert_eq!(read_crates_bins(&cargo, &protected), None);
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
