@@ -207,7 +207,6 @@ fn data_url(png: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ArtifactKey, InstallReason};
     use std::time::SystemTime;
 
     /// A fresh, canonical folder under the system temp dir, removed when
@@ -243,22 +242,10 @@ mod tests {
 
     fn artifact(kind: ArtifactKind, path: Option<&Path>) -> InstalledArtifact {
         InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: "brew:/opt/homebrew".to_string(),
-                kind,
-                name: "iterm2".to_string(),
-            },
             display_name: "iTerm2".to_string(),
             version: "3.6.4".to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
             path: path.map(Path::to_path_buf),
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
+            ..crate::testing::installed_artifact("brew:/opt/homebrew", kind, "iterm2")
         }
     }
 

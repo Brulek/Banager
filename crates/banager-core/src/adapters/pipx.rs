@@ -939,14 +939,7 @@ mod tests {
         // A dedicated temp directory used only as a fake PATH entry — never
         // a real system path — so this test cannot collide with, depend on,
         // or modify anything actually installed on the machine running it.
-        let tmp_dir = std::env::temp_dir().join(format!(
-            "banager-pipx-detect-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let tmp_dir = crate::testing::unique_temp_path("pipx-detect");
         std::fs::create_dir_all(&tmp_dir).expect("create temp PATH dir");
         let exe_path = tmp_dir.join("pipx");
         std::fs::write(&exe_path, b"#!/bin/sh\n").expect("write fake pipx executable");
@@ -1412,14 +1405,7 @@ mod tests {
     /// in a fresh temp directory used only as a fake PATH entry, as in the
     /// detect test above; nothing installed on the machine is touched.
     async fn refreshed_pipx_session(outdated: String) -> Arc<crate::session::Session> {
-        let tmp_dir = std::env::temp_dir().join(format!(
-            "banager-pipx-session-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let tmp_dir = crate::testing::unique_temp_path("pipx-session");
         std::fs::create_dir_all(&tmp_dir).expect("create temp PATH dir");
         let exe_path = tmp_dir.join("pipx");
         std::fs::write(&exe_path, b"#!/bin/sh\n").expect("write fake pipx executable");

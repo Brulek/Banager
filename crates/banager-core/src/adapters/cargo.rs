@@ -1061,14 +1061,7 @@ mod tests {
         // never runs. A dedicated temp directory stands in for a PATH entry,
         // so this cannot depend on whether the machine running it actually
         // has cargo-binstall installed.
-        let dir = std::env::temp_dir().join(format!(
-            "banager-binstall-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("binstall");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
@@ -1587,14 +1580,7 @@ mod tests {
         // ~/.cargo, and `inventory` reads `.crates2.json` out of the instance
         // prefix. This also pins the hand-off detect -> plan: the program the
         // preview names is the path detect resolved, not a fresh guess.
-        let dir = std::env::temp_dir().join(format!(
-            "banager-cargo-detect-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("cargo-detect");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let cargo_path = fake_exe(&dir, "cargo");
         let binstall_path = fake_exe(&dir, "cargo-binstall");
@@ -1641,14 +1627,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_falls_back_to_home_dot_cargo_and_flags_an_unverified_version() {
-        let dir = std::env::temp_dir().join(format!(
-            "banager-cargo-detect-default-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("cargo-detect-default");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let cargo_path = fake_exe(&dir, "cargo");
         let runner = version_runner(

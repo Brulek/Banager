@@ -784,14 +784,7 @@ mod tests {
         )
         .expect("read registry manifest fixture");
 
-        let tmp_root = std::env::temp_dir().join(format!(
-            "banager-ollama-manifests-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let tmp_root = crate::testing::unique_temp_path("ollama-manifests");
         let model_dir = tmp_root.join("library").join("qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
@@ -851,14 +844,7 @@ mod tests {
         )
         .expect("read registry manifest fixture");
 
-        let home = std::env::temp_dir().join(format!(
-            "banager-ollama-home-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let home = crate::testing::unique_temp_path("ollama-home");
         let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
@@ -924,14 +910,7 @@ mod tests {
         )
         .expect("read local manifest fixture");
 
-        let home = std::env::temp_dir().join(format!(
-            "banager-ollama-outdated-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let home = crate::testing::unique_temp_path("ollama-outdated");
         let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
@@ -1019,14 +998,7 @@ mod tests {
         )
         .expect("read local manifest fixture");
         for (new_size, expected) in [(r#","size":2542796928"#, Some(2_542_796_928)), ("", None)] {
-            let home = std::env::temp_dir().join(format!(
-                "banager-ollama-download-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+            let home = crate::testing::unique_temp_path("ollama-download");
             let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
             std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
             std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
@@ -1075,14 +1047,7 @@ mod tests {
         .expect("read local manifest fixture");
         let registry = "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx";
         for (status, transient) in [(Some(404), false), (None, true)] {
-            let home = std::env::temp_dir().join(format!(
-                "banager-ollama-lookup-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+            let home = crate::testing::unique_temp_path("ollama-lookup");
             let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
             std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
             std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
@@ -1174,14 +1139,7 @@ mod tests {
         let tags_json =
             std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
                 .expect("read ollama api-tags.json fixture");
-        let home = std::env::temp_dir().join(format!(
-            "banager-ollama-missing-manifest-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let home = crate::testing::unique_temp_path("ollama-missing-manifest");
         let http = Arc::new(MockHttpClient::new());
         http.respond(
             "http://127.0.0.1:11434/api/tags",
@@ -1787,14 +1745,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_returns_no_instance_when_ollama_is_not_on_path() {
-        let tmp_dir = std::env::temp_dir().join(format!(
-            "banager-ollama-detect-absent-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let tmp_dir = crate::testing::unique_temp_path("ollama-detect-absent");
         std::fs::create_dir_all(&tmp_dir).expect("create temp PATH dir");
         let env = HostEnv {
             path_dirs: vec![tmp_dir.clone()],
@@ -2183,14 +2134,7 @@ mod tests {
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )
         .expect("read local manifest fixture");
-        let root = std::env::temp_dir().join(format!(
-            "banager-ollama-table-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = crate::testing::unique_temp_path("ollama-table");
         let model_dir = root.join("library").join("qwen3.8");
         std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
         std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");

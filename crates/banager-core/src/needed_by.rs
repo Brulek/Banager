@@ -496,7 +496,7 @@ impl Look {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ArtifactKey, InstanceStatus, Scope};
+    use crate::model::{InstanceStatus, Scope};
 
     #[test]
     fn test_the_per_source_tables_are_the_ones_the_window_mirrors() {
@@ -701,24 +701,7 @@ mod tests {
     }
 
     fn row(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
-        InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind,
-                name: name.to_string(),
-            },
-            display_name: name.to_string(),
-            version: "1.0".to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
-        }
+        crate::testing::installed_artifact(instance_id, kind, name)
     }
 
     fn with_path(mut artifact: InstalledArtifact, path: PathBuf) -> InstalledArtifact {

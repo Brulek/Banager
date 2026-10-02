@@ -862,14 +862,7 @@ mod tests {
         // machine's permissions -- so every pip instance, on every Mac,
         // carries `ByDesign`. This replaces the front end's hardcoded
         // "pip is the read-only adapter" list: the wire now says so.
-        let dir = std::env::temp_dir().join(format!(
-            "banager-pip-detect-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("pip-detect");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let python_path = dir.join("python3.14");
         std::fs::write(&python_path, b"#!/bin/sh\n").expect("write fake python");
@@ -922,14 +915,7 @@ mod tests {
         // one never depended on the failing command (`python_path` was
         // already resolved by `resolve_exe`), so there is no reason not to
         // report it.
-        let dir = std::env::temp_dir().join(format!(
-            "banager-pip-detect-unreachable-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("pip-detect-unreachable");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let python_path = dir.join("python3.14");
         std::fs::write(&python_path, b"#!/bin/sh\n").expect("write fake python");

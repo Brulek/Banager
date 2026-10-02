@@ -1014,9 +1014,9 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceId, InstanceNote,
-        InstanceStatus, ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled,
-        SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
+        ArtifactKey, ArtifactKind, InstalledArtifact, InstanceId, InstanceNote, InstanceStatus,
+        ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit,
+        Unavailable, UpdateCandidate, UpdateChannel,
     };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::test_support::{make_instance, non_root_env, root_env};
@@ -1303,22 +1303,8 @@ mod tests {
     /// candidate assumes about the package it offers to update.
     fn make_artifact_at(instance_id: &str, name: &str, version: &str) -> InstalledArtifact {
         InstalledArtifact {
-            key: crate::model::ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Formula,
-                name: name.to_string(),
-            },
-            display_name: name.to_string(),
             version: version.to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
+            ..crate::testing::installed_artifact(instance_id, ArtifactKind::Formula, name)
         }
     }
 
@@ -2825,14 +2811,7 @@ mod tests {
     /// finds the proxy so the cargo adapter detects too.
     fn rustup_home() -> (PathBuf, HostEnv) {
         use std::os::unix::fs::PermissionsExt;
-        let raw = std::env::temp_dir().join(format!(
-            "banager-refresh-rustup-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let raw = crate::testing::unique_temp_path("refresh-rustup");
         std::fs::create_dir_all(&raw).expect("temp home");
         let home = std::fs::canonicalize(&raw).expect("canonical temp home");
         let bin = home.join(".cargo/bin");

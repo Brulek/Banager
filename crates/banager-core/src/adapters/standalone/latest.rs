@@ -461,14 +461,7 @@ mod tests {
 
     #[test]
     fn test_claude_channel_reads_the_settings_file_under_home_and_defaults_when_absent() {
-        let home = std::env::temp_dir().join(format!(
-            "banager-standalone-channel-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let home = crate::testing::unique_temp_path("standalone-channel");
         std::fs::create_dir_all(home.join(".claude")).expect("create .claude");
         assert_eq!(
             claude_channel(&home),
@@ -498,14 +491,7 @@ mod tests {
                 None,
             ),
         ] {
-            let raw = std::env::temp_dir().join(format!(
-                "banager-standalone-channel-kept-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+            let raw = crate::testing::unique_temp_path("standalone-channel-kept");
             std::fs::create_dir_all(raw.join(keep)).expect("create the kept folder");
             let home = std::fs::canonicalize(&raw).unwrap();
             std::fs::write(

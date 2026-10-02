@@ -42,8 +42,8 @@ mod tests {
     use crate::events::{EventSink, OpId, VecSink};
     use crate::icon::{AppIcons, MockIconRenderer};
     use crate::model::{
-        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest,
-        Outcome, Plan, Reconciled, SearchHit,
+        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan,
+        Reconciled, SearchHit,
     };
     use crate::runner::HostEnv;
     use crate::session::Session;
@@ -148,18 +148,8 @@ mod tests {
 
     fn row(kind: ArtifactKind, name: &str, path: &Path) -> InstalledArtifact {
         InstalledArtifact {
-            key: key(kind, name),
-            display_name: name.to_string(),
-            version: "1.0".to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
             path: Some(path.to_path_buf()),
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
+            ..crate::testing::installed_artifact("fake:1", kind, name)
         }
     }
 

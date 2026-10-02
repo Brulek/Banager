@@ -12,9 +12,9 @@ use banager_core::commands::{bin_folders, judge, read_folders, CommandBudget, Fo
 use banager_core::diagnostics::PathFolders;
 use banager_core::events::{EventSink, OpId, VecSink};
 use banager_core::model::{
-    ArtifactFacts, ArtifactKey, ArtifactKind, CommandFact, CommandInputs, CommandState,
-    InstallReason, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, ProvidedCommand,
-    Reconciled, SearchHit,
+    ArtifactKey, ArtifactKind, CommandFact, CommandInputs, CommandState, InstallReason,
+    InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, ProvidedCommand, Reconciled,
+    SearchHit,
 };
 use banager_core::runner::HostEnv;
 use banager_core::session::Session;
@@ -113,24 +113,7 @@ fn instance(adapter_id: &str, id: &str, prefix: &Path, exe_path: &Path) -> Manag
 }
 
 fn artifact(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
-    InstalledArtifact {
-        key: ArtifactKey {
-            instance_id: instance_id.to_string(),
-            kind,
-            name: name.to_string(),
-        },
-        display_name: name.to_string(),
-        version: "1.0".to_string(),
-        reason: InstallReason::Requested,
-        description: None,
-        homepage: None,
-        size_bytes: None,
-        installed_at: None,
-        path: None,
-        auto_updates: false,
-        uninstall_blocked: None,
-        facts: ArtifactFacts::default(),
-    }
+    banager_core::testing::installed_artifact(instance_id, kind, name)
 }
 
 fn with_family(mut artifact: InstalledArtifact, family: &str) -> InstalledArtifact {

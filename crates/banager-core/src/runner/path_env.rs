@@ -183,14 +183,7 @@ mod tests {
     #[test]
     fn test_resolve_exe_never_looks_into_a_protected_place_on_path() {
         use std::os::unix::fs::{symlink, PermissionsExt};
-        let root = std::env::temp_dir().join(format!(
-            "banager-resolve-exe-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root = crate::testing::unique_temp_path("resolve-exe");
         let home = std::fs::canonicalize({
             std::fs::create_dir_all(&root).unwrap();
             &root

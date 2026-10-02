@@ -922,6 +922,7 @@ impl CommandRunner for RealRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::unique_temp_path;
     use std::sync::{Arc, Mutex};
 
     /// A callback for tests that only look at the tool's own lines. A note
@@ -978,14 +979,7 @@ mod tests {
         // not found, and never started -- it would leave `ran` behind. The
         // same program where nothing is protected runs.
         use std::os::unix::fs::PermissionsExt;
-        let raw = std::env::temp_dir().join(format!(
-            "banager-runner-protected-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let raw = unique_temp_path("runner-protected");
         std::fs::create_dir_all(raw.join("Documents")).unwrap();
         let home = std::fs::canonicalize(&raw).unwrap();
         let program = home.join("Documents/tool");
@@ -1123,14 +1117,7 @@ mod tests {
         // must short-circuit before `spawn()` — proven here by targeting a
         // command that would otherwise leave an observable trace (creating a
         // file) if it ran.
-        let marker = std::env::temp_dir().join(format!(
-            "banager-cancel-before-spawn-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let marker = unique_temp_path("cancel-before-spawn");
         let _ = std::fs::remove_file(&marker);
 
         let runner = RealRunner::new();
@@ -1855,20 +1842,6 @@ mod tests {
             elapsed < std::time::Duration::from_secs(10),
             "the timeout must bound the whole run, not just the reads; took {elapsed:?}"
         );
-    }
-
-    /// A unique path under the temp dir, so tests that create files on
-    /// disk cannot collide with each other or with a previous run.
-    fn unique_temp_path(label: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "banager-{}-{}-{}",
-            label,
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
     }
 
     #[tokio::test]

@@ -13,7 +13,7 @@
 
 use banager_core::adapters::brew::parse::parse_info_installed;
 use banager_core::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, RemovedWhat,
+    ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, RemovedWhat,
 };
 use banager_core::runner::HostEnv;
 use banager_core::scan::{scan_dirs, EntryKind, Glob, ScanBudget, ScanStop, ScannedDir};
@@ -101,22 +101,8 @@ fn link(dir: &Path, name: &str, target: &Path) -> PathBuf {
 
 fn artifact(instance_id: &str, name: &str, path: &Path) -> InstalledArtifact {
     InstalledArtifact {
-        key: ArtifactKey {
-            instance_id: instance_id.to_string(),
-            kind: ArtifactKind::Tool,
-            name: name.to_string(),
-        },
-        display_name: name.to_string(),
-        version: "1.0".to_string(),
-        reason: InstallReason::Requested,
-        description: None,
-        homepage: None,
-        size_bytes: None,
-        installed_at: None,
         path: Some(path.to_path_buf()),
-        auto_updates: false,
-        uninstall_blocked: None,
-        facts: Default::default(),
+        ..banager_core::testing::installed_artifact(instance_id, ArtifactKind::Tool, name)
     }
 }
 

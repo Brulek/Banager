@@ -6,86 +6,9 @@
 
 use super::*;
 use crate::dirfd::calls;
-use crate::model::{ArtifactFacts, ArtifactKey, ProvidedCommand};
-use crate::protected::DATA_VOLUME;
-use crate::testing::manager_instance;
+use crate::model::ProvidedCommand;
+use crate::testing::{manager_instance, Rng, TempTree as Tree};
 use std::fs;
-use std::os::unix::fs::{symlink, PermissionsExt};
-
-/// A fresh folder, canonical (`/var` is a link on a Mac), removed with
-/// everything in it -- folders locked by the test unlocked first.
-struct Tree {
-    root: PathBuf,
-    locked: Vec<PathBuf>,
-}
-
-impl Tree {
-    fn new(tag: &str) -> Tree {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let raw = std::env::temp_dir().join(format!(
-            "banager-judge-{tag}-{}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        fs::create_dir_all(&raw).unwrap();
-        Tree {
-            root: fs::canonicalize(raw).unwrap(),
-            locked: Vec::new(),
-        }
-    }
-
-    fn at(&self, rel: &str) -> PathBuf {
-        self.root.join(rel)
-    }
-
-    fn dir(&self, rel: &str) -> PathBuf {
-        let path = self.at(rel);
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
-
-    fn file(&self, rel: &str, mode: u32) -> PathBuf {
-        let path = self.at(rel);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, b"never run").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
-        path
-    }
-
-    fn link(&self, rel: &str, target: impl AsRef<Path>) -> PathBuf {
-        let path = self.at(rel);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        // A name linked twice keeps its first link.
-        let _ = symlink(target, &path);
-        path
-    }
-
-    fn lock(&mut self, rel: &str, mode: u32) {
-        let path = self.at(rel);
-        fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
-        self.locked.push(path);
-    }
-
-    /// `rel` under the tree, spelled from the data volume.
-    fn on_data_volume(&self, rel: &str) -> PathBuf {
-        Path::new(DATA_VOLUME)
-            .join(self.root.strip_prefix("/").unwrap())
-            .join(rel)
-    }
-}
-
-impl Drop for Tree {
-    fn drop(&mut self) {
-        for path in self.locked.iter().rev() {
-            let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
-        }
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
 
 fn instance(adapter_id: &str, prefix: PathBuf) -> ManagerInstance {
     ManagerInstance {
@@ -96,22 +19,9 @@ fn instance(adapter_id: &str, prefix: PathBuf) -> ManagerInstance {
 
 fn artifact(instance: &str, name: &str, kind: ArtifactKind) -> InstalledArtifact {
     InstalledArtifact {
-        key: ArtifactKey {
-            instance_id: instance.into(),
-            name: name.into(),
-            kind,
-        },
         display_name: name.rsplit('/').next().unwrap().into(),
         version: "1".into(),
-        reason: InstallReason::Requested,
-        description: None,
-        homepage: None,
-        size_bytes: None,
-        installed_at: None,
-        path: None,
-        auto_updates: false,
-        uninstall_blocked: None,
-        facts: ArtifactFacts::default(),
+        ..crate::testing::installed_artifact(instance, kind, name)
     }
 }
 
@@ -167,7 +77,7 @@ fn brew_of(
         for c in 0..per {
             let command = format!("cmd{f}_{c}");
             tree.file(&format!("brew/Cellar/{formula}/1.0/bin/{command}"), 0o755);
-            tree.link(
+            tree.link_keeping_first(
                 &format!("brew/bin/{command}"),
                 format!("../Cellar/{formula}/1.0/bin/{command}"),
             );
@@ -220,35 +130,6 @@ fn test_judge_through_a_round_makes_far_fewer_calls_for_the_same_verdicts() {
     assert_nothing_protected_looked_at(&new, &Protected::new(&tree.root));
 }
 
-/// Reproducible numbers, with no new dependency.
-struct Rng(u64);
-
-impl Rng {
-    fn below(&mut self, n: usize) -> usize {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 % n as u64) as usize
-    }
-
-    /// `rel` with one of its names, picked at random, spelled another
-    /// way a Mac's disk takes for the same name: in capitals, or with a
-    /// long s, a Kelvin sign or an `st` ligature (`protected::AS_ASCII`).
-    fn shout(&mut self, rel: &str) -> String {
-        let mut names: Vec<String> = rel.split('/').map(str::to_string).collect();
-        let at = self.below(names.len());
-        names[at] = match self.below(4) {
-            0 => names[at].replace(['s', 'S'], "\u{17F}"),
-            1 => names[at].replace(['k', 'K'], "\u{212A}"),
-            2 => names[at]
-                .replace("st", "\u{FB06}")
-                .replace("St", "\u{FB05}"),
-            _ => names[at].to_ascii_uppercase(),
-        };
-        names.join("/")
-    }
-}
-
 /// A Mac to judge: one tool of every source -- Homebrew formulae (some
 /// through `opt`, some keg-only, some dependencies) and casks, npm
 /// packages (some scoped), Cargo, uv and pipx tools, Grok Build's two
@@ -275,7 +156,7 @@ fn lead(rng: &mut Rng, tree: &Tree, link: &str, real: &str) -> PathBuf {
         3 => PathBuf::from("/Volumes/banager-no-such-disk/bin").join(name),
         4 => tree.at("missing").join(name),
         5 => tree.at("cycle-a"),
-        6 => tree.link(&format!("chain/{name}"), tree.at(real)),
+        6 => tree.link_keeping_first(&format!("chain/{name}"), tree.at(real)),
         7 => tree.on_data_volume(real),
         8 => tree.at(&rng.shout(real)),
         9 => tree.at("locked/in").join(name),
@@ -314,13 +195,13 @@ fn random_mac(seed: u64) -> RandomMac {
     ] {
         tree.dir(dir);
     }
-    tree.link("alias", "brew/bin");
-    tree.link("protected-alias", "Documents/bin");
-    tree.link("cycle-a", "cycle-b");
-    tree.link("cycle-b", "cycle-a");
+    tree.link_keeping_first("alias", "brew/bin");
+    tree.link_keeping_first("protected-alias", "Documents/bin");
+    tree.link_keeping_first("cycle-a", "cycle-b");
+    tree.link_keeping_first("cycle-b", "cycle-a");
     tree.file(".grok/downloads/grok-1.0", 0o755);
-    tree.link(".grok/bin/grok", "../downloads/grok-1.0");
-    tree.link(
+    tree.link_keeping_first(".grok/bin/grok", "../downloads/grok-1.0");
+    tree.link_keeping_first(
         ".grok/bin/agent",
         if rng.below(2) == 0 {
             tree.at(".grok/downloads/grok-1.0")
@@ -350,7 +231,7 @@ fn random_mac(seed: u64) -> RandomMac {
                 let real = format!("brew/Cellar/{formula}/1.0/bin/{command}");
                 tree.file(&real, mode(&mut rng));
                 let via = if rng.below(3) == 0 {
-                    tree.link(
+                    tree.link_keeping_first(
                         &format!("brew/opt/{formula}"),
                         format!("../Cellar/{formula}/1.0"),
                     );
@@ -361,7 +242,7 @@ fn random_mac(seed: u64) -> RandomMac {
                 let bin = if rng.below(5) == 0 { "sbin" } else { "bin" };
                 let link = format!("brew/{bin}/{command}");
                 let target = lead(&mut rng, &tree, &link, &via);
-                tree.link(&link, target);
+                tree.link_keeping_first(&link, target);
                 let mut row = artifact("brew", &formula, ArtifactKind::Formula);
                 if rng.below(5) == 0 {
                     row.reason = InstallReason::Dependency;
@@ -380,7 +261,7 @@ fn random_mac(seed: u64) -> RandomMac {
                 tree.file(&real, mode(&mut rng));
                 let link = format!("brew/bin/{command}");
                 let target = lead(&mut rng, &tree, &link, &real);
-                let link = tree.link(&link, target);
+                let link = tree.link_keeping_first(&link, target);
                 let mut row = artifact("brew", &token, ArtifactKind::Cask);
                 row.path = Some(tree.at(&format!("Applications/K{i}.app")));
                 let within = if rng.below(2) == 0 {
@@ -402,7 +283,7 @@ fn random_mac(seed: u64) -> RandomMac {
                 tree.file(&real, mode(&mut rng));
                 let link = format!("npm/bin/{command}");
                 let target = lead(&mut rng, &tree, &link, &real);
-                tree.link(&link, target);
+                tree.link_keeping_first(&link, target);
                 artifacts.push(artifact("npm", &package, ArtifactKind::Package));
             }
             // A Cargo binary: a file in its bin folder.
@@ -429,7 +310,7 @@ fn random_mac(seed: u64) -> RandomMac {
                 tree.file(&real, mode(&mut rng));
                 let link = format!(".local/bin/{command}");
                 let target = lead(&mut rng, &tree, &link, &real);
-                let link = tree.link(&link, target);
+                let link = tree.link_keeping_first(&link, target);
                 let mut row = artifact("uv", &tool, ArtifactKind::Tool);
                 row.facts.command_inputs.provided = vec![provided(
                     &command,
@@ -451,7 +332,7 @@ fn random_mac(seed: u64) -> RandomMac {
                         &link,
                         &format!("pipx/venvs/{tool}/bin/{command}"),
                     );
-                    tree.link(&link, target);
+                    tree.link_keeping_first(&link, target);
                 }
                 let mut row = artifact("pipx", &tool, ArtifactKind::Tool);
                 row.facts.command_inputs.provided = vec![provided(&command, real, vec![])];
@@ -600,7 +481,7 @@ fn test_a_new_judgement_sees_what_changed_since_the_last() {
     // Swapped for a link into a protected place: nothing carried over
     // from the round before.
     fs::remove_file(tree.at("cargo/bin/tool")).unwrap();
-    tree.link("cargo/bin/tool", tree.at("Documents/secret"));
+    tree.link_keeping_first("cargo/bin/tool", tree.at("Documents/secret"));
     let (next, made) =
         calls::measure(|| judged(false, &tree.root, &folders, &instances, &rows, true));
     assert_eq!(
@@ -642,7 +523,7 @@ fn probe_like(tree: &Tree) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>, Vec
             command += 1;
             if f % 40 == 1 {
                 tree.file(&format!("{keg}/libexec/bin/{name}"), 0o755);
-                tree.link(
+                tree.link_keeping_first(
                     &format!("{keg}/bin/{name}"),
                     format!("../libexec/bin/{name}"),
                 );
@@ -650,7 +531,7 @@ fn probe_like(tree: &Tree) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>, Vec
                 tree.file(&format!("{keg}/bin/{name}"), 0o755);
             }
             let bin = if f % 25 == 0 { "sbin" } else { "bin" };
-            tree.link(
+            tree.link_keeping_first(
                 &format!("opt/homebrew/{bin}/{name}"),
                 format!("../Cellar/{formula}/1.2.{f}/bin/{name}"),
             );
@@ -669,7 +550,7 @@ fn probe_like(tree: &Tree) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>, Vec
             &format!("opt/homebrew/lib/node_modules/{package}/bin/cli.js"),
             0o755,
         );
-        tree.link(
+        tree.link_keeping_first(
             &format!("opt/homebrew/bin/npm{p}"),
             format!("../lib/node_modules/{package}/bin/cli.js"),
         );
@@ -682,8 +563,8 @@ fn probe_like(tree: &Tree) -> (Vec<ManagerInstance>, Vec<InstalledArtifact>, Vec
         artifacts.push(row);
     }
     tree.file("home/.grok/downloads/grok-1.0", 0o755);
-    tree.link("home/.grok/bin/grok", "../downloads/grok-1.0");
-    tree.link("home/.grok/bin/agent", "../downloads/grok-1.0");
+    tree.link_keeping_first("home/.grok/bin/grok", "../downloads/grok-1.0");
+    tree.link_keeping_first("home/.grok/bin/agent", "../downloads/grok-1.0");
     artifacts.push(artifact("standalone-grok", "grok", ArtifactKind::Binary));
     for s in 0..300 {
         tree.file(&format!("usr/bin/sys{s}"), 0o755);

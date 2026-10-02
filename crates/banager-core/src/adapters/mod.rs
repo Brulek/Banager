@@ -1441,22 +1441,8 @@ mod tests {
 
     fn installed(kind: ArtifactKind, name: &str, version: &str) -> InstalledArtifact {
         InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: "inst".to_string(),
-                kind,
-                name: name.to_string(),
-            },
-            display_name: name.to_string(),
             version: version.to_string(),
-            reason: crate::model::InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: Default::default(),
+            ..crate::testing::installed_artifact("inst", kind, name)
         }
     }
 

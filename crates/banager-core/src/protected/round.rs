@@ -490,82 +490,9 @@ mod tests {
     use super::super::{is_within, places, resolve, DATA_VOLUME, PROTECTED_IN_HOME, STEP};
     use super::*;
     use crate::dirfd::calls;
+    use crate::testing::{Rng, TempTree as Tree};
     use std::fs;
-    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
-
-    /// A fresh folder, canonical (`/var` is a link on a Mac), removed with
-    /// everything in it -- folders locked by the test unlocked first.
-    struct Tree {
-        root: PathBuf,
-        locked: Vec<PathBuf>,
-    }
-
-    impl Tree {
-        fn new(tag: &str) -> Tree {
-            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let raw = std::env::temp_dir().join(format!(
-                "banager-round-{tag}-{}-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
-            fs::create_dir_all(&raw).unwrap();
-            Tree {
-                root: fs::canonicalize(raw).unwrap(),
-                locked: Vec::new(),
-            }
-        }
-
-        fn at(&self, rel: &str) -> PathBuf {
-            self.root.join(rel)
-        }
-
-        fn dir(&self, rel: &str) -> PathBuf {
-            let path = self.at(rel);
-            fs::create_dir_all(&path).unwrap();
-            path
-        }
-
-        fn file(&self, rel: &str, mode: u32) -> PathBuf {
-            let path = self.at(rel);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(&path, b"never run").unwrap();
-            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
-            path
-        }
-
-        fn link(&self, rel: &str, target: impl AsRef<Path>) -> PathBuf {
-            let path = self.at(rel);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            symlink(target, &path).unwrap();
-            path
-        }
-
-        fn lock(&mut self, rel: &str, mode: u32) {
-            let path = self.at(rel);
-            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
-            self.locked.push(path);
-        }
-
-        /// `rel` under the tree, spelled from the data volume.
-        fn on_data_volume(&self, rel: &str) -> PathBuf {
-            Path::new(DATA_VOLUME)
-                .join(self.root.strip_prefix("/").unwrap())
-                .join(rel)
-        }
-    }
-
-    impl Drop for Tree {
-        fn drop(&mut self) {
-            for path in self.locked.iter().rev() {
-                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
-            }
-            let _ = fs::remove_dir_all(&self.root);
-        }
-    }
+    use std::os::unix::fs::{symlink, MetadataExt};
 
     /// `old` and `new` are the same answer: the same path, byte for byte,
     /// and the same `fstatat` fields.
@@ -989,39 +916,6 @@ mod tests {
         );
         drop(round);
         assert_eq!(OPEN.with(|open| open.get()), open_before, "all closed");
-    }
-
-    /// Reproducible numbers, with no new dependency.
-    struct Rng(u64);
-
-    impl Rng {
-        fn below(&mut self, n: usize) -> usize {
-            self.0 ^= self.0 << 13;
-            self.0 ^= self.0 >> 7;
-            self.0 ^= self.0 << 17;
-            (self.0 % n as u64) as usize
-        }
-
-        fn pick<'a>(&mut self, items: &'a [String]) -> &'a str {
-            &items[self.below(items.len())]
-        }
-
-        /// `rel` with one of its names, picked at random, spelled another
-        /// way a Mac's disk takes for the same name: in capitals, or with a
-        /// long s, a Kelvin sign or an `st` ligature (`protected::AS_ASCII`).
-        fn shout(&mut self, rel: &str) -> String {
-            let mut names: Vec<String> = rel.split('/').map(str::to_string).collect();
-            let at = self.below(names.len());
-            names[at] = match self.below(4) {
-                0 => names[at].replace(['s', 'S'], "\u{17F}"),
-                1 => names[at].replace(['k', 'K'], "\u{212A}"),
-                2 => names[at]
-                    .replace("st", "\u{FB06}")
-                    .replace("St", "\u{FB05}"),
-                _ => names[at].to_ascii_uppercase(),
-            };
-            names.join("/")
-        }
     }
 
     /// A tree of folders, files and links of every kind `resolve` meets

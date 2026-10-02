@@ -23,9 +23,7 @@
 use banager_core::adapters::standalone::route::shadow_note;
 use banager_core::commands::{read_folders, CommandBudget};
 use banager_core::kept_data::kept_data;
-use banager_core::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, Warning,
-};
+use banager_core::model::{ArtifactKind, InstalledArtifact, ManagerInstance, Warning};
 use banager_core::protected::{DATA_VOLUME, PROTECTED_IN_HOME};
 use banager_core::runner::{resolve_exe, HostEnv};
 use banager_core::scan::{scan_dirs, ScanBudget};
@@ -417,22 +415,8 @@ fn npm_instance(id: &str, prefix: &Path) -> ManagerInstance {
 
 fn npm_package(id: &str, name: &str) -> InstalledArtifact {
     InstalledArtifact {
-        key: ArtifactKey {
-            instance_id: id.to_string(),
-            kind: ArtifactKind::Package,
-            name: name.to_string(),
-        },
-        display_name: name.to_string(),
         version: "1.0.0".to_string(),
-        reason: InstallReason::Requested,
-        description: None,
-        homepage: None,
-        size_bytes: None,
-        installed_at: None,
-        path: None,
-        auto_updates: false,
-        uninstall_blocked: None,
-        facts: Default::default(),
+        ..banager_core::testing::installed_artifact(id, ArtifactKind::Package, name)
     }
 }
 

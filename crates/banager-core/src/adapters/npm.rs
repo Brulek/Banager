@@ -790,14 +790,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_finds_npm_on_path_and_resolves_its_global_prefix() {
-        let dir = std::env::temp_dir().join(format!(
-            "banager-npm-detect-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("npm-detect");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let npm_path = fake_exe(&dir, "npm");
         let npm_path_str = npm_path.to_str().expect("utf8 path");
@@ -853,14 +846,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_flags_an_unverified_version() {
-        let dir = std::env::temp_dir().join(format!(
-            "banager-npm-detect-unverified-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("npm-detect-unverified");
         std::fs::create_dir_all(&dir).expect("create temp PATH dir");
         let npm_path = fake_exe(&dir, "npm");
         let npm_path_str = npm_path.to_str().expect("utf8 path");

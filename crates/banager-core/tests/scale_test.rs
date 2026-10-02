@@ -18,8 +18,8 @@ use banager_core::commands::{bin_folders, judge, read_folders, CommandBudget};
 use banager_core::events::{EventSink, OpId, VecSink};
 use banager_core::families;
 use banager_core::model::{
-    ArtifactFacts, ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance,
-    OpRequest, Outcome, Plan, Reconciled, SearchHit, UpdateCandidate, UpdateChannel,
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest,
+    Outcome, Plan, Reconciled, SearchHit, UpdateCandidate, UpdateChannel,
 };
 use banager_core::runner::HostEnv;
 use banager_core::session::Session;
@@ -107,24 +107,7 @@ fn instance(adapter_id: &str, id: &str, prefix: &Path) -> ManagerInstance {
 }
 
 fn artifact(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
-    InstalledArtifact {
-        key: ArtifactKey {
-            instance_id: instance_id.to_string(),
-            kind,
-            name: name.to_string(),
-        },
-        display_name: name.to_string(),
-        version: "1.0".to_string(),
-        reason: InstallReason::Requested,
-        description: None,
-        homepage: None,
-        size_bytes: None,
-        installed_at: None,
-        path: None,
-        auto_updates: false,
-        uninstall_blocked: None,
-        facts: ArtifactFacts::default(),
-    }
+    banager_core::testing::installed_artifact(instance_id, kind, name)
 }
 
 /// The Mac: a Homebrew in `<home>/brew` whose every formula has a keg in

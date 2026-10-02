@@ -1832,14 +1832,7 @@ mod tests {
     #[tokio::test]
     async fn test_a_submitted_uninstall_is_kept_in_the_attached_history_with_its_rows_name_and_version(
     ) {
-        let dir = std::env::temp_dir().join(format!(
-            "banager-plans-history-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = crate::testing::unique_temp_path("plans-history");
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let mut jq = installed_on("fake:1", ArtifactKind::Formula, "jq", None);
         jq.display_name = "JQ".to_string();

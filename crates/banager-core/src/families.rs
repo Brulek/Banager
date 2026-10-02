@@ -333,7 +333,7 @@ pub fn assign(instances: &[ManagerInstance], artifacts: &mut [InstalledArtifact]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ArtifactFacts, InstallReason, InstanceStatus, Scope};
+    use crate::model::{InstanceStatus, Scope};
     use std::collections::HashSet;
     use std::path::PathBuf;
 
@@ -366,18 +366,8 @@ mod tests {
 
     fn artifact(instance_id: &str, kind: ArtifactKind, name: &str) -> InstalledArtifact {
         InstalledArtifact {
-            key: key(instance_id, kind, name),
-            display_name: name.to_string(),
             version: "1.0.0".to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
-            facts: ArtifactFacts::default(),
+            ..crate::testing::installed_artifact(instance_id, kind, name)
         }
     }
 
