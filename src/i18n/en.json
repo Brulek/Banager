@@ -10,8 +10,8 @@
     "listText": "Tools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Once the first check finishes, Sources in the sidebar shows how each was installed, such as Homebrew, npm or the tool's own installer; programs installed some other way are under Other Programs.",
     "confirmTitle": "You Confirm Every Update and Uninstall",
     "confirmText": "Before an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
-    "settingsTitle": "No Shell Edits, No Data Collected",
-    "settingsText": "Doesn't edit your shell's startup files; where a tool's own uninstall does, it says so first. Collects no usage data and needs no account.",
+    "settingsTitle": "No Terminal Changes, No Data Collected",
+    "settingsText": "It doesn't change your Terminal settings files; if a tool's own uninstaller does, you're told before it starts. It collects no usage data and needs no account.",
     "start": "Get Started"
   },
   "inventoryPreview": {

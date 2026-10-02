@@ -95,7 +95,7 @@ describe("WelcomeSheet", () => {
     expect(points.map((point) => point.textContent)).toEqual([
       "See What's InstalledTools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Once the first check finishes, Sources in the sidebar shows how each was installed, such as Homebrew, npm or the tool's own installer; programs installed some other way are under Other Programs.",
       "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
-      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; where a tool's own uninstall does, it says so first. Collects no usage data and needs no account.",
+      "No Terminal Changes, No Data CollectedIt doesn't change your Terminal settings files; if a tool's own uninstaller does, you're told before it starts. It collects no usage data and needs no account.",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {

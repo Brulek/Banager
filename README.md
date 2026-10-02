@@ -169,8 +169,8 @@ The first time Banager opens, a welcome sheet says in three short points what it
 tools you use in Terminal, such as Claude Code, Codex and Gemini CLI, in one place, with Sources in the
 sidebar showing how each was installed once the first check finishes (Homebrew, npm, a tool's own installer
 and so on); an update or uninstall shows what it will do and starts only when you confirm; and Banager itself
-doesn't edit your shell's startup files, collects no usage data and needs no account. (The one exception to
-not editing startup files is rustup's own uninstall, which removes the line it added to them; its preview says so.) The first check runs behind it. However
+doesn't change your Terminal settings files, collects no usage data and needs no account. (The one exception to
+not changing those files is rustup's own uninstall, which removes the line it added to them; its preview says so.) The first check runs behind it. However
 you close it — **Get Started**, Return, Escape or a click beside it — its settings file records that
 it was shown, and it doesn't open on its own again; **Welcome to Banager** in the Help menu shows it
 again at any time.
