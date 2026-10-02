@@ -8,6 +8,7 @@ import {
   adapterLabel,
   instanceLabels,
   settingsSaveSentence,
+  installedCountByInstance,
   sourceNoticesFor,
   toolDescription,
   unfinishedChecksNotice,
@@ -603,9 +604,10 @@ export function UpdatesPage() {
   // not download, another copy that runs when its name is typed. What a
   // source lets Banager do at all -- pip being read-only -- is not a
   // notice: every row of such a source says it with its own "View only"
-  // chip. How many rows a source has is part of what its notice says: a
-  // silent source's "what's listed for it is last time's" is true only
-  // over rows it actually has.
+  // chip. How many tools a source has installed is part of what its
+  // notice says: a silent source's "these are its last answer" is true
+  // only over rows it actually has -- counted as every page counts them
+  // (`installedCountByInstance`), not by the updates listed here.
   //
   // Iterates `snapshot.instances`, which is every source any candidate can
   // come from: `refresh` builds `updates` only from instances it also puts
@@ -615,19 +617,15 @@ export function UpdatesPage() {
   // (`unfinishedChecksNotice`): a line like the others, once a band of
   // its own over the page.
   const notices = useMemo(() => {
-    const rowsByInstance = new Map<string, number>();
-    for (const update of visibleUpdates) {
-      const id = update.key.instance_id;
-      rowsByInstance.set(id, (rowsByInstance.get(id) ?? 0) + 1);
-    }
+    const installed = installedCountByInstance(snapshot?.artifacts ?? []);
     const unfinished = snapshot ? unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) : null;
     return [
       ...(unfinished === null ? [] : [unfinished]),
       ...(snapshot?.instances ?? []).flatMap((instance) =>
-        sourceNoticesFor(instance, sourceLabelFor(instance.id), rowsByInstance.get(instance.id) ?? 0),
+        sourceNoticesFor(instance, sourceLabelFor(instance.id), installed.get(instance.id) ?? 0),
       ),
     ];
-  }, [snapshot, visibleUpdates, sourceLabelFor, t]);
+  }, [snapshot, sourceLabelFor, t]);
   // Two lines or more fold into one (`SourceNotices`).
   const noticeFold = useNoticeFold(notices.length);
 

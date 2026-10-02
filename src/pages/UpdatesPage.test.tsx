@@ -351,6 +351,24 @@ function brewCandidate(name: string): Snapshot["updates"][number] {
   };
 }
 
+/** A row of `artifacts`: what a source has installed, whatever its updates. */
+function installedRow(key: ArtifactKey): Snapshot["artifacts"][number] {
+  return {
+    key,
+    display_name: key.name,
+    version: "1.0.0",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+    facts: NO_FACTS,
+  };
+}
+
 function operation(key: ArtifactKey, fields: Partial<OpSummary> = {}): OpSummary {
   return {
     id: 7,
@@ -4027,6 +4045,10 @@ describe("UpdatesPage", () => {
         ...snapshot.instances,
         { ...stoppedOllama, status: { unavailable: "NotResponding", notes: [] } },
       ];
+      // Three models carried forward, two of them with an update: the
+      // notice counts what Ollama has, as every page does, not the rows
+      // this page lists (W2-10 review).
+      artifacts = [qwenKey, llamaKey, { ...qwenKey, name: "gemma3:4b" }].map(installedRow);
       updates = [
         ...snapshot.updates,
         brewCandidate("jq"),
@@ -4045,12 +4067,12 @@ describe("UpdatesPage", () => {
       await findByText("Ollama isn't responding");
       const details = getByRole("button", { name: "Details: Ollama isn't responding" });
       fireEvent.click(details);
-      // Its rows, by name: in a list that mixes sources, "what's listed
+      // Its rows, by source: in a list that mixes sources, "what's listed
       // here" alone would take in Homebrew's fresh rows too.
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Of the models listed, 2 are from Ollama. It didn't respond this time, so they show its last answer. Check again later.",
+        "Ollama has 3 models. It didn't respond this time, so they show its last answer. Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -4110,6 +4132,9 @@ describe("UpdatesPage", () => {
         { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
         ...snapshot.instances.slice(1),
       ];
+      // Three installed, two of them with an update listed here: the
+      // notice says three, the number every page says (W2-10 review).
+      artifacts = [glibKey, onyxKey, { ...glibKey, name: "jq" }].map(installedRow);
       const withRows = renderPage();
 
       const details = await withRows.findByRole("button", {
@@ -4119,7 +4144,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+        "3 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
       );
       // The next step it names, as its line's own button, which checks again.
       const line = details.closest("[data-notice-line]") as HTMLElement;
@@ -4130,9 +4155,24 @@ describe("UpdatesPage", () => {
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
       withRows.unmount();
 
+      // Its tools carried forward but none with an update: they are still
+      // its last answer, on the Installed page, and the notice says so
+      // here too -- not that they cannot be listed.
+      updates = snapshot.updates.filter((update) => update.key.instance_id !== glibKey.instance_id);
+      const noUpdates = renderPage();
+      const quietDetails = await noUpdates.findByRole("button", {
+        name: "Details: Homebrew isn't responding",
+      });
+      fireEvent.click(quietDetails);
+      expect(document.getElementById(quietDetails.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "3 tools were installed with Homebrew.",
+      );
+      noUpdates.unmount();
+
       // And the cold start, which is every launch: the snapshot is in
       // memory only, so the first refresh has nothing to carry forward and
       // the same notice promised rows that were not there.
+      artifacts = [];
       updates = [
         {
           key: urllib3Key,

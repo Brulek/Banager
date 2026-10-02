@@ -325,6 +325,22 @@ function searchCommand(instance: ManagerInstance): SourceNoticeAction {
 }
 
 /**
+ * How many tools each source has installed, by instance id: every row of
+ * the snapshot, components other software brought in included -- the
+ * number the Installed page on that source says in its subtitle
+ * (「30个工具」). What a silent source's notice counts
+ * (`sourceNoticesFor`), on every page alike.
+ */
+export function installedCountByInstance(artifacts: readonly InstalledArtifact[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const artifact of artifacts) {
+    const id = artifact.key.instance_id;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
  * What a source that did not answer has put in the list, which is what its
  * notice says it is to someone who has never heard of it (W2-10): the
  * program that installed some of the listed tools -- Homebrew, npm, pipx,
@@ -367,21 +383,23 @@ const UNREACHABLE_KEYS: Record<SilentSourceKind, { withRows: string; withoutRows
  * through `ADAPTER_LABEL_KEYS`, because keeping `t()` out of here is what
  * makes this testable and shareable.
  *
- * `rowsOnScreen` is how many rows for this source the caller is about to
- * draw underneath the notice, and it changes one sentence: a source that
- * did not answer keeps its last known rows, and the copy that describes
- * them is a lie when there are none. That is not a corner case. The
- * snapshot is in memory only -- `Session::new` starts from
- * `Snapshot::empty()` and nothing is written to disk -- so on the first
- * refresh after every launch there is nothing to carry forward, and a
- * source whose CLI fails outright (cargo, when `cargo --version` does)
+ * `installedCount` is how many of this source's tools the snapshot holds
+ * (`installedCountByInstance`) -- the same number on every page, whatever
+ * its search, its 「显示」 popup or its list of updates leaves on screen --
+ * and it changes one sentence: a source that did not answer keeps its
+ * last known rows, and its notice says how many there are and that they
+ * are its last answer, which is a lie when there are none. That is not a
+ * corner case. The snapshot is in memory only -- `Session::new` starts
+ * from `Snapshot::empty()` and nothing is written to disk -- so on the
+ * first refresh after every launch there is nothing to carry forward, and
+ * a source whose CLI fails outright (cargo, when `cargo --version` does)
  * has nothing to carry forward ever. It defaults to 0, the copy that
  * claims nothing: a caller that has not counted must not promise rows.
  */
 export function sourceNoticesFor(
   instance: ManagerInstance,
   sourceLabel: string,
-  rowsOnScreen = 0,
+  installedCount = 0,
 ): SourceNoticeSpec[] {
   const notices: SourceNoticeSpec[] = [];
 
@@ -422,13 +440,15 @@ export function sourceNoticesFor(
       // happen is the pattern this phase exists to remove.
       //
       // Each also says what the source is to the person reading it, who
-      // may never have heard of uv (W2-10): what it put in the list, and
-      // how many of the rows on screen are its -- the rows are last time's
-      // (`silentSourceKind`).
-      ...(rowsOnScreen > 0
+      // may never have heard of uv (W2-10): what it installed and how
+      // many -- the rows are last time's (`silentSourceKind`). A count of
+      // what it installed, never of what a page lists: a search, the
+      // 「显示」 popup or a list of updates shows fewer, and the Overview
+      // none.
+      ...(installedCount > 0
         ? {
             descriptionKey: UNREACHABLE_KEYS[silentSourceKind(instance)].withRows,
-            values: { source: sourceLabel, count: rowsOnScreen },
+            values: { source: sourceLabel, count: installedCount },
           }
         : {
             // Under its title, which already names the source; the
@@ -1277,9 +1297,9 @@ export function instanceNames(
 export function sourceWarningOf(
   instance: ManagerInstance,
   sourceLabel: string,
-  rowsOnScreen: number,
+  installedCount: number,
 ): SourceNoticeSpec | null {
-  return sourceNoticesFor(instance, sourceLabel, rowsOnScreen).find((notice) => notice.variant === "warning") ?? null;
+  return sourceNoticesFor(instance, sourceLabel, installedCount).find((notice) => notice.variant === "warning") ?? null;
 }
 
 /**

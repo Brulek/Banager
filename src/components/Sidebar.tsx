@@ -135,7 +135,7 @@ function useSourceRows(): SourceRow[] {
     }
     return snapshot.instances.map((instance) => {
       const label = labels.get(instance.id) ?? instance.id;
-      // Its rows as the page it opens draws them (`rowsOnScreen`), though
+      // How many it has installed (`installedCount`), though
       // only the notice's sentence turns on them, not the title said here.
       const warning = sourceWarningOf(instance, label, counts.get(instance.id) ?? 0);
       return {

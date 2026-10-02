@@ -545,8 +545,8 @@
       "title": "{{source}}没有响应",
       "description": "{{source}}没有响应，无法列出它安装的内容。请稍后重新检查。",
       "detail": "这次无法列出用它安装的工具。请稍后重新检查。",
-      "descriptionWithRows_other": "列出的工具中有{{count}}个是用{{source}}安装的。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
-      "descriptionWithModels_other": "列出的模型中有{{count}}个来自{{source}}。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "descriptionWithRows_other": "有{{count}}个工具是用{{source}}安装的。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "descriptionWithModels_other": "{{source}}中有{{count}}个模型。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
       "descriptionWithOwnRow": "{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
       "detailModels": "这次无法列出它的模型。请稍后重新检查。",
       "detailOwn": "这次无法列出它。请稍后重新检查。"

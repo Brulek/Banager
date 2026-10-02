@@ -37,6 +37,7 @@ import {
   unfinishedChecksNotice,
   UPDATE_BLOCKED_KEYS,
   typedLauncherName,
+  installedCountByInstance,
 } from "./sources";
 import type { DescribedTool } from "./sources";
 import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError } from "./types";
@@ -230,11 +231,13 @@ describe("sourceNoticesFor", () => {
     expect(notice.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
   });
 
-  it("says what a silent source is and how many listed rows are its last answer, by what it lists (W2-10)", () => {
+  it("says what a silent source is and how many of its tools are its last answer, by what it lists (W2-10)", () => {
     // 「uv没有响应」 on every page left the person asking what uv is and
     // which of their tools it touches. The sentence says: the program that
-    // installed this many of the tools listed; Ollama, whose rows are
-    // models; a tool with its own installer, whose one row is itself.
+    // installed this many tools; Ollama, whose rows are models; a tool with
+    // its own installer, whose one row is itself. A count of what it
+    // installed, never "of those listed": a search, the 「显示」 popup or
+    // the Updates page's list shows fewer, and the Overview none.
     const silent = (adapter_id: string) =>
       instance({ id: adapter_id, adapter_id, status: { unavailable: "NotResponding", notes: [] } });
     const say = (adapterId: string, label: string, rows: number, language: "en" | "zh-CN") => {
@@ -242,19 +245,22 @@ describe("sourceNoticesFor", () => {
       return i18n.getFixedT(language)(notice.descriptionKey, notice.values);
     };
     expect(say("uv", "uv", 1, "zh-CN")).toBe(
-      "列出的工具中有1个是用uv安装的。uv这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "有1个工具是用uv安装的。uv这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
     );
     expect(say("uv", "uv", 1, "en")).toBe(
-      "Of the tools listed, 1 was installed with uv. It didn't respond this time, so that one shows its last answer. Check again later.",
+      "One tool was installed with uv. It didn't respond this time, so that tool shows its last answer. Check again later.",
     );
     expect(say("brew", "Homebrew", 12, "en")).toBe(
-      "Of the tools listed, 12 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+      "12 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
     );
     expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
-      "列出的模型中有3个来自Ollama。Ollama这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "Ollama中有3个模型。Ollama这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
     );
     expect(say("ollama", "Ollama", 3, "en")).toBe(
-      "Of the models listed, 3 are from Ollama. It didn't respond this time, so they show its last answer. Check again later.",
+      "Ollama has 3 models. It didn't respond this time, so they show its last answer. Check again later.",
+    );
+    expect(say("ollama", "Ollama", 1, "en")).toBe(
+      "Ollama has one model. It didn't respond this time, so that model shows its last answer. Check again later.",
     );
     expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
       "Claude Code这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
@@ -267,12 +273,24 @@ describe("sourceNoticesFor", () => {
     expect(say("uv", "uv", 0, "zh-CN")).toBe("这次无法列出用它安装的工具。请稍后重新检查。");
     expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。请稍后重新检查。");
     expect(say("standalone-claude", "Claude Code", 0, "zh-CN")).toBe("这次无法列出它。请稍后重新检查。");
-    // Nothing that soothes: whether it needs anything is not known.
+    // Nothing that soothes: whether it needs anything is not known. And
+    // nothing about what a page lists, which the count is not.
     for (const language of ["en", "zh-CN"] as const) {
-      for (const [id, rows] of [["uv", 2], ["ollama", 2], ["standalone-claude", 1], ["uv", 0]] as const) {
-        expect(say(id, id, rows, language)).not.toMatch(/通常|不用管|usually|nothing to worry/i);
+      for (const [id, rows] of [["uv", 2], ["ollama", 2], ["standalone-claude", 1]] as const) {
+        expect(say(id, id, rows, language)).not.toMatch(/通常|不用管|usually|nothing to worry|列出的|listed/i);
       }
+      expect(say("uv", "uv", 0, language)).not.toMatch(/通常|不用管|usually|nothing to worry/i);
     }
+  });
+
+  it("counts what each source has installed, every row of the snapshot, for every page alike", () => {
+    const row = (instance_id: string, name: string) => ({ key: { instance_id, kind: "Formula" as const, name } });
+    const counts = installedCountByInstance(
+      [row("uv", "ruff"), row("brew", "jq"), row("uv", "llm"), row("brew", "openssl@3")] as InstalledArtifact[],
+    );
+    expect(counts.get("uv")).toBe(2);
+    expect(counts.get("brew")).toBe(2);
+    expect(counts.get("npm")).toBeUndefined();
   });
 
   it("does not promise carried-forward rows when the page has none to show", () => {

@@ -1783,11 +1783,14 @@ describe("InstalledPage", () => {
     });
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
-    // How many of the tools are Homebrew's, the search aside, and that
-    // they are its last answer (W2-10).
-    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
-    );
+    // How many tools Homebrew has installed, and that they are its last
+    // answer (W2-10): the same number whatever the search leaves listed --
+    // here none -- so the sentence claims nothing about what is on screen.
+    const sentence =
+      "2 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.";
+    expect(rowNames()).toEqual([]);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(sentence);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")?.textContent).not.toMatch(/listed/);
     // Its next step's button on its own line, after its ⓘ, which checks again.
     const line = details.closest("[data-notice-line]") as HTMLElement;
     const again = within(line).getByRole("button", { name: "Check Again" });
@@ -1796,6 +1799,15 @@ describe("InstalledPage", () => {
     mockInvoke.mockClear();
     fireEvent.click(again);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+    // The 「显示」 popup on AI tools, none of which is Homebrew's: the same
+    // number again.
+    fireEvent.change(getByRole("searchbox", { name: "Search installed tools" }), { target: { value: "" } });
+    act(() => useUiStore.getState().setInstalledShow("ai"));
+    await waitFor(() => expect(rowNames()).toEqual([]));
+    const aiDetails = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
+    fireEvent.click(aiDetails);
+    expect(document.getElementById(aiDetails.getAttribute("aria-controls") ?? "")).toHaveTextContent(sentence);
   });
 
   it("shows every row's version, and never a model's digest, technical details on or off", async () => {
@@ -2944,7 +2956,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "Of the tools listed, 2 were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
+          "2 tools were installed with Homebrew. It didn't respond this time, so they show its last answer. Check again later.",
         ),
       ).toBeInTheDocument();
       // And the button its next step needs, under its sentence.
