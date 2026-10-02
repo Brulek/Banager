@@ -609,9 +609,25 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     ];
   };
 
+  // Each tool's notes, worked out once per plan: the dialog is drawn again
+  // as each of hundreds of updates starts, and the notes of a plan do not
+  // change while what they are worded from -- the window's words, the
+  // snapshot, its sources' names -- stays the same.
+  const notesCache = useMemo(
+    () => new WeakMap<IssuedPlan, { candidate: UpdateCandidate; notes: WarningLine[] }>(),
+    // What `notesFor` reads: a change to any starts the cache over.
+    [t, snapshot, twins, artifactsById, labels],
+  );
   const notesOf = (item: BatchItem): WarningLine[] => {
     if (item.issued === null) return [];
-    const { plan } = item.issued;
+    const cached = notesCache.get(item.issued);
+    if (cached !== undefined && cached.candidate === item.candidate) return cached.notes;
+    const notes = notesFor(item, item.issued);
+    notesCache.set(item.issued, { candidate: item.candidate, notes });
+    return notes;
+  };
+  const notesFor = (item: BatchItem, issued: IssuedPlan): WarningLine[] => {
+    const { plan } = issued;
     const lines = warningLines(t, plan.warnings);
     return [
       // The row's 「大版本更新」, said again where the update is confirmed.
