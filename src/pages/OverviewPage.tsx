@@ -334,7 +334,9 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
   const setPage = useUiStore((s) => s.setPage);
   const hintId = useId();
   // 「检查更新的频率」 here, not Settings' 「检查更新」: on its own, over a
-  // button-like row, that reads as a button that checks now.
+  // button-like row, that reads as a button that checks now. In English
+  // Settings' own "Check for updates", with the choice beside it as
+  // there: "Update checks" was a second name for one setting (walk-3 W3-14).
   const label = t("overviewMore.autoCheckLabel");
   const value = t(AUTO_CHECK_CHOICE_KEYS[autoCheckChoice(settings)]);
   return (
