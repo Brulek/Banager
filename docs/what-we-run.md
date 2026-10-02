@@ -1283,12 +1283,20 @@ From the same two manifests, and nothing else, a model with an update
 also gets the most its pull can download: the sum of the `size`s the
 registry manifest gives its layers and config whose digests the local
 manifest does not name (`changed_blob_bytes`, the candidate's
-`download_bytes`). No other request is made and no other file is read —
-Banager does not look in `~/.ollama/models/blobs` — so a file another
-model shares, which `ollama pull` skips, still counts: the number is an
-upper bound, and the window words it as one ("up to about 4.7 GB"). A
-blob to download with no size, or one that is not a whole number of
-bytes, leaves it unknown, and the window says what it said before.
+`download_bytes`), each entry counted — a digest listed twice counts
+twice, as Ollama's pull for a model with tensor layers can download it
+twice. No other request is made and no other file is read for this
+number: it does not use `~/.ollama/models/blobs` (only the size
+measurement, under "Disk use" below, looks in that folder, for the models'
+total). So a file another model shares, which `ollama pull` skips, still
+counts, and the number is an upper bound, which the window words as one
+("up to about 4.7 GB", rounded up). It assumes that the files the local
+manifest names are on this Mac with their sizes: one missing, or of
+another size, can be fetched again, and only reading `blobs` could tell. The number
+is left unknown — and the window says what it said before — when either
+manifest does not parse, a blob to download has no size or one that is
+not a whole number of bytes, one digest is given two different sizes, or
+the sum does not fit in 64 bits.
 
 **Write commands:**
 
@@ -1306,8 +1314,10 @@ with a warning naming that host; it is never blocked, since `ollama pull`
 is what will contact it, under Ollama's own configuration. An upgrade's
 preview also says, after that warning, that it downloads the model files
 that changed and can take a while (`Warning::DownloadsModelChanges`, from
-`OllamaAdapter::plan`) — with the most it can download where the check
-above worked it out; an install's and an uninstall's do not.
+`OllamaAdapter::plan`); an install's and an uninstall's do not. Where the
+check above worked out the most the pull can download, the window adds
+it to that note from the update's candidate — the plan itself carries
+only the warning.
 
 **The Open Ollama button** runs `/usr/bin/open -a Ollama`
 (`open_ollama_app_argv` in `src-tauri/src/ipc.rs`), with its stdin,
