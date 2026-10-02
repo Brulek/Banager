@@ -480,42 +480,75 @@ Codex 独立评审发现 3 项 P1 + 9 项 P2，控制者逐条核实属实；其
 Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分组。
 
 **规格与实现不一致（下一个计划开头就处理）**
-- 更新确认对话框没有展示版本跳变（`current → target`）与 `UpdateCandidate.warnings` 的文字内容（现在只有一个数量徽章）。spec §6 两项都要求。位置 `src/pages/UpdatesPage.tsx:361-378`。
+- ~~更新确认对话框没有展示版本跳变（`current → target`）与 `UpdateCandidate.warnings` 的文字内容（现在只有一个数量徽章）。spec §6 两项都要求。位置 `src/pages/UpdatesPage.tsx:361-378`。
   **做这条时必须一并处理 Ollama**：`UpdateChannel::Digest` 的行不能按 `current → target` 渲染。阶段 3 任务 10 的评审查实（对着提交进仓的 fixture 逐字比对）：Ollama 的 `current` 是 `/api/tags` 的清单摘要、`target` 是注册表清单里的 config 摘要，**是两个不同的哈希空间**，互不包含，拉取成功后新的 `current` 也不会等于旧的 `target`。这两个字段只是「变了／没变」的标记，真正的判定在 `compare_digests` 对层摘要集合的比较上。给小白看两串 64 位十六进制本来也毫无意义——这类行应该说「有新版本可拉取」，而不是打印哈希。
-  为什么不在阶段 3 改：修它的两条路都拿一种不一致换另一种。改 `current` 为本地 config 摘要，会和「已安装」页显示的 `artifact.version`（`/api/tags` 摘要）自相矛盾；改 `target` 为注册表的清单摘要才是真正对的，但那要读 `Docker-Content-Digest` 响应头，而 `HttpResponse` 只有 `status` 和 `body`，得改 trait、Mock、真实实现和全部测试。当前无人渲染这两个字段，`reconcile` 也不比较它们，所以没有实际故障，只有一个等着被踩的坑——坑口已经写在 `adapters/ollama/mod.rs` 的注释里（2026-09-20 控制者裁决）。
-- `greedy_casks`：计划的任务表把它列为任务 15 的交付物、spec §4.2 与 §5 也定义了它，但计划里那份权威 `Settings` 结构体没有它，于是实现也没有。补它是一次跨 Rust、TypeScript 与磁盘 JSON 的线格式变更，越晚越贵。**需要作者拍板**。
-- 更新列表未虚拟化（`src/pages/UpdatesPage.tsx:283-315`），而已安装列表用了 `useVirtualizer`。Global Constraints 与 spec §7 都写了长列表要虚拟化。
+  为什么不在阶段 3 改：修它的两条路都拿一种不一致换另一种。改 `current` 为本地 config 摘要，会和「已安装」页显示的 `artifact.version`（`/api/tags` 摘要）自相矛盾；改 `target` 为注册表的清单摘要才是真正对的，但那要读 `Docker-Content-Digest` 响应头，而 `HttpResponse` 只有 `status` 和 `body`，得改 trait、Mock、真实实现和全部测试。当前无人渲染这两个字段，`reconcile` 也不比较它们，所以没有实际故障，只有一个等着被踩的坑——坑口已经写在 `adapters/ollama/mod.rs` 的注释里（2026-09-20 控制者裁决）。~~
+  —— **已于 2026-09-22 解决**（`60188b4`；Ollama 那半是 2026-09-20 的 `71bbacb`）：确认框写版本跳变（`versionJump`，
+  `src/components/UpdateConfirm.tsx:401-405`），`Digest` 的行写「此模型有新版本」，不印摘要（`:402`）；计划的提醒逐条成句
+  （`warningLines`，`:607`），没有数量徽章了；候选自带的 `warnings` 在行的说明里成句（`src/components/updateDetails.tsx:42-60`）。
+- ~~`greedy_casks`：计划的任务表把它列为任务 15 的交付物、spec §4.2 与 §5 也定义了它，但计划里那份权威 `Settings` 结构体没有它，于是实现也没有。补它是一次跨 Rust、TypeScript 与磁盘 JSON 的线格式变更，越晚越贵。**需要作者拍板**。~~
+  —— **已于 2026-09-20 解决**（`9f9a43f`、`6d0e38c`）：设置里的「包含自更新的应用」，`Settings.include_self_updating`（`settings.rs:82-89`），
+  见上文「阶段 3（其余来源）」第一条。
+- ~~更新列表未虚拟化（`src/pages/UpdatesPage.tsx:283-315`），而已安装列表用了 `useVirtualizer`。Global Constraints 与 spec §7 都写了长列表要虚拟化。~~
+  —— **已于 2026-09-22 解决**（`7a3ab59`）：见上文「阶段 5（发现页）之前」同名一条，更新页用 `VirtualList`（`src/pages/UpdatesPage.tsx:1239`）。
 
 **资源增长（接入更多来源前处理）**
-- `crates/banager-core/src/session/mod.rs:138` 的 `issued_plans` 只在成功提交时清理，被放弃的预览（关掉对话框、被取代的批次、StrictMode 双次签发）会泄漏到进程结束。插入时顺带清掉超过 600 秒的条目。
-- `crates/banager-core/src/ops/mod.rs:154` 的 `records` 只增不减，于是 `summaries()` 无限增长，底部操作条在一次会话里做完第一个操作后就再也回不到空闲态。给历史加个上限（比如最新 100 条）。
+- ~~`crates/banager-core/src/session/mod.rs:138` 的 `issued_plans` 只在成功提交时清理，被放弃的预览（关掉对话框、被取代的批次、StrictMode 双次签发）会泄漏到进程结束。插入时顺带清掉超过 600 秒的条目。~~
+  —— **已于 2026-09-20 解决**（`93871e5`）：签发新计划时清掉超过 `PLAN_LIFETIME`（600 秒，`session/plans.rs:18`）的条目（`:174-176`）。
+- ~~`crates/banager-core/src/ops/mod.rs:154` 的 `records` 只增不减，于是 `summaries()` 无限增长，底部操作条在一次会话里做完第一个操作后就再也回不到空闲态。给历史加个上限（比如最新 100 条）。~~
+  —— **已于 2026-09-20 解决**（`93871e5`）：上限 `DEFAULT_MAX_RECORDS = 200`（`ops/mod.rs:20`）。
 
 **并发与一致性打磨**
-- `src/lib/queries.ts:33-41` 的 `useRefresh` 绕过了 `src/lib/events.ts` 里的模块级合并器，手动重试可能与事件驱动的刷新赛跑。改为走 `refreshIntoCache`。
-- `src-tauri/src/ipc.rs:27-32`：两个并发的 refresh 都在完成前读了 `generation_before`，一次真实变化可能广播两次 `SnapshotChanged`（幂等，但注释声称的不变量比实际强）。
-- `crates/banager-core/src/session/mod.rs:216-218`：`RefusedAsRoot` 分支清空了 artifacts 与 updates，而逐实例失败路径是保留旧数据并标记陈旧。实际不可达（进程内 euid 不变），但与既定规则不一致。
-- `src/components/UninstallDialog.tsx:56` 缺同步的重入闩，两次极快的点击都会进入；服务端一次性 PlanId 挡住了重复卸载，但失败那次会重新签发计划。另外 `:123` 的提交错误文字会停留在新预览旁边，读起来像「还是坏的」——在 `onError` 重新签发时顺手 `submitMutation.reset()`。
+- ~~`src/lib/queries.ts:33-41` 的 `useRefresh` 绕过了 `src/lib/events.ts` 里的模块级合并器，手动重试可能与事件驱动的刷新赛跑。改为走 `refreshIntoCache`。~~
+  —— **已于 2026-09-20 解决**（`93871e5`）：`useRefresh` 走 `refreshIntoCache`（`src/lib/queries.ts:121-133`）。
+- ~~`src-tauri/src/ipc.rs:27-32`：两个并发的 refresh 都在完成前读了 `generation_before`，一次真实变化可能广播两次 `SnapshotChanged`（幂等，但注释声称的不变量比实际强）。~~
+  —— **已于 2026-09-22 解决**（`93871e5`、`67d86b6`）：一代快照只由认领到它的那次调用广播（`claim_broadcast`，`src-tauri/src/ipc.rs:201`；
+  `announce`，`:137-159`）；每日自动检查那一轮另行照常通知。
+- ~~`crates/banager-core/src/session/mod.rs:216-218`：`RefusedAsRoot` 分支清空了 artifacts 与 updates，而逐实例失败路径是保留旧数据并标记陈旧。实际不可达（进程内 euid 不变），但与既定规则不一致。~~
+  —— **已不适用**（2026-09-22 起）：`RefusedAsRoot` 整体删除，root 下由 brew 的 `detect` 给实例标 `RefusesAsRoot`（见上文「二～四」
+  第三条与「阶段 2 之前」第五条）；代码里只剩两处说明历史的注释（`session/mod.rs:65`、`session/refresh.rs:201`）。
+- ~~`src/components/UninstallDialog.tsx:56` 缺同步的重入闩，两次极快的点击都会进入；服务端一次性 PlanId 挡住了重复卸载，但失败那次会重新签发计划。另外 `:123` 的提交错误文字会停留在新预览旁边，读起来像「还是坏的」——在 `onError` 重新签发时顺手 `submitMutation.reset()`。~~
+  —— **已于 2026-09-24 解决**（`34e80fb`）：同步的 `submitLatch`（`src/components/UninstallDialog.tsx:127`），重新签发的预览回来时
+  `submitMutation.reset()`（`:275-278`）。
 
 **测试与工具链**
-- `src/pages/UpdatesPage.tsx` 的 14 个测试里 `snapshot.artifacts` 全是空数组，所以 `artifactsById` 从来没命中过，非技术细节视图的描述路径从未被真正执行。补一个带 artifact 的夹具。全部规划失败那条页面错误分支也没有任何测试。
-- `tsconfig.json:16` 的 `"types": ["node"]` 把 Node 全局类型套给了整个 `src/`，而这是个 WebView 应用。改用 `tsconfig.test.json` 把这个让步限制在测试里；同时复查 `vite.config.ts:5` 那个在 `tsc -b` 下已过时的 `@ts-expect-error`。（`vite.config.ts` 那半**已于
-  2026-10-02 做了**：删掉那行，`pnpm typecheck` 加跑 `tsc -p tsconfig.node.json --noEmit --composite false`，以后再过时
-  会报错。）
-- `src/i18n/no-literal-strings.test.ts:8` 只扫 `components` 与 `pages`，漏了 `App.tsx`、`lib/` 与 `store/`；正则要求至少 4 个字符，"OK"、"Done" 这类短文案会溜过去。
-- `crates/banager-core/src/session/mod.rs` 已 1152 行，阶段 3 值得拆分。
+- ~~`src/pages/UpdatesPage.tsx` 的 14 个测试里 `snapshot.artifacts` 全是空数组，所以 `artifactsById` 从来没命中过，非技术细节视图的描述路径从未被真正执行。补一个带 artifact 的夹具。全部规划失败那条页面错误分支也没有任何测试。~~
+  —— **已于 2026-09-22 解决**（`7940893`、`a8f50b3`）：多处测试带 artifact 夹具（如 `src/pages/UpdatesPage.test.tsx:531`、`:925`、`:3275`），
+  全部规划被拒那条页面错误分支有测试（`:4720`）。
+- ~~`tsconfig.json:16` 的 `"types": ["node"]` 把 Node 全局类型套给了整个 `src/`，而这是个 WebView 应用。改用 `tsconfig.test.json` 把这个让步限制在测试里；同时复查 `vite.config.ts:5` 那个在 `tsc -b` 下已过时的 `@ts-expect-error`。~~
+  —— **已于 2026-09-24 解决**（`a6fe7e7`）：`tsconfig.json:19` 为 `"types": []`，Node 类型只给测试（`tsconfig.test.json:10`）。
+  （`vite.config.ts` 那半**已于 2026-10-02 做了**：删掉那行，`pnpm typecheck` 加跑 `tsc -p tsconfig.node.json --noEmit --composite false`
+  （`package.json:15`），以后再过时会报错。）
+- ~~`src/i18n/no-literal-strings.test.ts:8` 只扫 `components` 与 `pages`，漏了 `App.tsx`、`lib/` 与 `store/`；正则要求至少 4 个字符，"OK"、"Done" 这类短文案会溜过去。~~
+  —— **已于 2026-09-24 解决**（`1d27015`、`82e77ae`）：从 `src` 根扫起（`src/i18n/no-literal-strings.test.ts:7-11`），两个字母就算
+  （`:24-32`）。
+- ~~`crates/banager-core/src/session/mod.rs` 已 1152 行，阶段 3 值得拆分。~~
+  —— **已于 2026-09-20 解决**（`af6057c`）：拆成 `session/` 下的 `mod.rs`（现 870 行）、`refresh.rs`、`plans.rs` 等九个文件。
 
 **界面打磨**
-- `src/pages/SettingsPage.tsx:98-108` 的 `role="radio"` 按钮没有 roving tabindex 也没有方向键处理，键盘用户只能逐个 Tab；这些按钮与 `EmptyState` 的操作按钮都完全没有样式类。
-- `src/components/LogDrawer.tsx:36-39` 是 `role="dialog"` 却没有焦点陷阱、也不能按 Esc 关闭。
-- spec §7 的 8pt 网格：`px-3`、`py-1`、`gap-3` 等多处不在网格上。
-- `src/store/ui.ts` 的 `showDependencies` 是一个全局开关，而列表项带着 `instanceId`；两个 brew 前缀（spec §4.2 提到的 Intel 迁移场景）下两组会一起展开收起。
+- ~~`src/pages/SettingsPage.tsx:98-108` 的 `role="radio"` 按钮没有 roving tabindex 也没有方向键处理，键盘用户只能逐个 Tab；这些按钮与 `EmptyState` 的操作按钮都完全没有样式类。~~
+  —— **已于 2026-09-22 解决**（`f35623b`），之后的界面重构又改了样子：设置页的选项现在是 `PopupButton` 与 `Switch`
+  （`src/pages/SettingsPage.tsx:384`、`:405`），没有 `role="radio"` 按钮了；`EmptyState` 的按钮用 `BUTTON.regular.grey`
+  （`src/components/EmptyState.tsx:92`）。
+- ~~`src/components/LogDrawer.tsx:36-39` 是 `role="dialog"` 却没有焦点陷阱、也不能按 Esc 关闭。~~
+  —— **已于 2026-09-22 解决**（`dc8683d`）：日志窗口用共用的 `Dialog`（`src/components/LogDrawer.tsx:180`），Tab 留在里面、Esc 关闭
+  （`:90-91`，`src/components/ui/Dialog.tsx:184`）。
+- ~~spec §7 的 8pt 网格：`px-3`、`py-1`、`gap-3` 等多处不在网格上。~~
+  —— **已不适用**：2026-09-29 的审美规格另定了尺寸（行高 52、内容边距 20、按钮高 20/24/28），`docs/superpowers/2026-09-29-aesthetics-spec.md:13`、`:34-35`。
+- ~~`src/store/ui.ts` 的 `showDependencies` 是一个全局开关，而列表项带着 `instanceId`；两个 brew 前缀（spec §4.2 提到的 Intel 迁移场景）下两组会一起展开收起。~~
+  —— **已于 2026-09-22 解决**（`5c2c653`）：按实例记 `expandedDependencies`（`src/store/ui.ts:91`、`:254-259`）。
 
 **杂项**
-- 提交 `b4d6722` 的署名是 `Claude Sonnet 5`，28 个提交里唯一一个不一致。改它要重写 27 个后代提交，建议明确接受现状而不是返工。
-- `clearSelectedUpdates` 与 `clearLogs` 在计划的接口里、有测试，但生产代码从不调用。
-- `src/pages/UpdatesPage.tsx:264` 的 `item.planError ?? ""` 按构造是死代码。
-- `src/components/UninstallDialog.tsx:36` 带着一个 eslint 抑制注释，而本仓库并未配置 eslint。
-- `crates/banager-core/src/settings.rs:57` 用了 `Ordering::SeqCst`，`Relaxed` 就够。
+- ~~提交 `b4d6722` 的署名是 `Claude Sonnet 5`，28 个提交里唯一一个不一致。改它要重写 27 个后代提交，建议明确接受现状而不是返工。~~
+  —— **已不适用**（2026-10-02 核对）：`b4d6722` 早已在 `main` 里（`git merge-base --is-ancestor b4d6722 main` 为真），接受现状，不再改。
+- ~~`clearSelectedUpdates` 与 `clearLogs` 在计划的接口里、有测试，但生产代码从不调用。~~
+  —— **已于 2026-09-24 解决**（`8739b5a`、`b67f5f6`）：两者已删，`src` 里没有了。
+- ~~`src/pages/UpdatesPage.tsx:264` 的 `item.planError ?? ""` 按构造是死代码。~~
+  —— **已于 2026-09-24 解决**（`338f704`）：改为类型收窄，`src/pages/UpdatesPage.tsx` 里没有 `planError ??` 了。
+- ~~`src/components/UninstallDialog.tsx:36` 带着一个 eslint 抑制注释，而本仓库并未配置 eslint。~~
+  —— **已于 2026-09-24 解决**（`b1c7818`）：`src` 里没有 `eslint-disable` 了。
+- ~~`crates/banager-core/src/settings.rs:57` 用了 `Ordering::SeqCst`，`Relaxed` 就够。~~
+  —— **已于 2026-09-24 解决**（`989a495`）：`settings.rs:227` 用 `Relaxed`。
 
 ## 界面重构终审推迟项（2026-09-28 立，分支 feat/ui-redesign）
 
