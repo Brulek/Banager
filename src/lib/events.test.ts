@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { isNewerSnapshot, refreshIntoCache, useOperationEvents, useStartupRefresh } from "./events";
 import { useUiStore } from "../store/ui";
-import { queryKeys, useSnapshot } from "./queries";
+import { queryKeys, useOperations, useSnapshot } from "./queries";
+import { OPERATIONS_REFETCH_EVERY_MS, OPERATIONS_REFETCH_WAIT_MS } from "./operationsRefetch";
 import type { Snapshot } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -86,6 +87,50 @@ describe("useOperationEvents", () => {
     // A note is a log line, not a status change: it must not fall through
     // to the branch that treats every non-Log event as one.
     expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("fetches the operations again a frame after a Status or a Finished event, and not after a Log or a Note", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      if (cmd === "list_operations") return Promise.resolve([]);
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const listCalls = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "list_operations").length;
+    const queryClient = new QueryClient();
+
+    // The operations on screen, as the operation bar always has them.
+    renderHook(
+      () => {
+        useOperationEvents();
+        return useOperations().data;
+      },
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    await waitFor(() => expect(listCalls()).toBe(1));
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      capturedChannel!.onmessage({ Operation: { Log: { op_id: 1, stream: "Stdout", line: "Upgrading jq" } } });
+      capturedChannel!.onmessage({ Operation: { Note: { op_id: 1, note: { WaitingForBrewUpdate: { minutes: 10 } } } } });
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS * 2);
+      expect(listCalls()).toBe(1);
+
+      capturedChannel!.onmessage({ Operation: { Status: { op_id: 1, status: "Running" } } });
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+      expect(listCalls()).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_EVERY_MS);
+      capturedChannel!.onmessage({ Operation: { Finished: { op_id: 1, outcome: "Succeeded" } } });
+      await vi.advanceTimersByTimeAsync(OPERATIONS_REFETCH_WAIT_MS);
+      expect(listCalls()).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("invalidates the snapshot query on SnapshotChanged", async () => {

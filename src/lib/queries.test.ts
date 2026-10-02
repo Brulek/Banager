@@ -8,6 +8,7 @@ import {
   useRefresh,
   usePlanOperation,
   useSubmitOperation,
+  useCancelOperation,
   useOpenOllamaApp,
   useUnknownScan,
   useArtifactIcon,
@@ -239,7 +240,22 @@ describe("queries", () => {
     result.current.mutate("a1b2c3");
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] });
+    // Within a frame, with any other ask (`refetchOperations`): waited for,
+    // not assumed to have come before the success was seen.
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] }));
+  });
+
+  it("useCancelOperation invalidates the operations query on success", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    const queryClient = newClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCancelOperation(), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate(7);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 7 });
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] }));
   });
 
   it("useUnknownScan runs nothing until asked, then fetches through scanUnknown", async () => {
