@@ -52,10 +52,67 @@ beforeEach(() => {
     if (cmd === "get_snapshot") return new Promise(() => {});
     return Promise.resolve(undefined);
   });
-  useUiStore.setState({ logs: [], drawerOpen: true, focusedOpId: 1 });
+  useUiStore.setState({ logs: [], drawerOpen: true, focusedOpId: 1, logRun: [] });
 });
 
 describe("LogDrawer", () => {
+  it("steps through each log of a run the operation bar opened, with Previous and Next, and keeps the focus on one", async () => {
+    // Walk-2 W2-4: six updates failed, and the bar's View Log opened the
+    // last one's alone.
+    const failed = (id: number, name: string): OpSummary => ({
+      ...runningOp,
+      id,
+      kind: "Upgrade",
+      name,
+      status: "Done",
+      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong" } },
+    });
+    operations = [failed(3, "wget"), failed(2, "jq"), failed(1, "git")];
+    act(() => useUiStore.getState().openLogRun([1, 2, 3], 1));
+    const { findByRole, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
+
+    const dialog = await findByRole("dialog", { name: "Update git" });
+    expect(within(dialog).getByText("1 of 3")).toBeInTheDocument();
+    const previous = getByRole("button", { name: "Previous" });
+    const next = getByRole("button", { name: "Next" });
+    expect(previous).toBeDisabled();
+    expect(previous.className).toBe(BUTTON.small.grey);
+
+    act(() => next.focus());
+    fireEvent.click(next);
+    expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Previous" })).toBeEnabled();
+    fireEvent.click(getByRole("button", { name: "Next" }));
+    expect(await findByRole("dialog", { name: "Update wget" })).toBeInTheDocument();
+    expect(queryByText("3 of 3")).toBeInTheDocument();
+    // At the end, Next is off, and the focus is on Previous, not lost.
+    expect(getByRole("button", { name: "Next" })).toBeDisabled();
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("button", { name: "Previous" })));
+
+    // Opened on one operation, it has nothing to step through.
+    act(() => useUiStore.getState().setFocusedOpId(2));
+    expect(await findByRole("dialog", { name: "Update jq" })).toBeInTheDocument();
+    expect(queryByText(/ of 3$/)).toBeNull();
+    expect(document.querySelector("[data-log-run]")).toBeNull();
+  });
+
+  it("says where it is in the run in Chinese", async () => {
+    operations = [
+      { ...runningOp, id: 2, status: "Done", outcome: "Unconfirmed" },
+      { ...runningOp, status: "Done", outcome: "Unconfirmed" },
+    ];
+    act(() => useUiStore.getState().openLogRun([1, 2], 2));
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+      expect(await findByText("第2个，共2个")).toBeInTheDocument();
+      expect(getByRole("button", { name: "上一个" })).toBeEnabled();
+      expect(getByRole("button", { name: "下一个" })).toBeDisabled();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("renders a synthetic sequence of streamed log lines in order", async () => {
     const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
 

@@ -90,12 +90,19 @@ function noteText(t: TFunction, note: LogNote): string {
  * A modal dialog: Escape, Done or a click beside it closes it, Tab stays
  * inside, and the focus goes back to what opened it. It opens by itself
  * when an uninstall starts, so the focus lands on the dialog, not on Done.
+ *
+ * Opened by the operation bar's 「查看N个日志」 (`logRun`), it steps through
+ * each operation of the run that needs a look: over the log, which one of
+ * how many it shows -- 「第2个，共6个」 -- with Previous and Next, small and
+ * grey (`LogRunStepper`; walk-2 W2-4).
  */
 export function LogDrawer() {
   const { t } = useTranslation();
   const drawerOpen = useUiStore((s) => s.drawerOpen);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const focusedOpId = useUiStore((s) => s.focusedOpId);
+  const logRun = useUiStore((s) => s.logRun);
+  const stepLogRun = useUiStore((s) => s.stepLogRun);
   const logs = useUiStore((s) => s.logs);
   const { data: operations } = useOperations();
   const { data: settings } = useSettings();
@@ -216,6 +223,7 @@ export function LogDrawer() {
         </>
       }
     >
+      {focusedOpId !== null ? <LogRunStepper run={logRun} at={focusedOpId} onStep={stepLogRun} /> : null}
       {parts?.next ? (
         <p id={nextId} className="mb-3 break-words text-body text-foreground">
           {parts.next}
@@ -263,5 +271,59 @@ export function LogDrawer() {
       {/* Under the tool's own words: whose they are, and what to do next. */}
       {operation !== undefined ? <FailureNextStep op={operation} logs={logs} id={stepId} /> : null}
     </Dialog>
+  );
+}
+
+/**
+ * Where the log is in a run it steps through (`logRun`), over the log:
+ * 「第2个，共6个」 in the muted grey, and Previous and Next, small and grey,
+ * at its right, each off at its end of the run. Nothing for a log of one
+ * operation, or one the run does not hold. The focus stays on a button:
+ * where the one pressed turns off at an end, it moves to the other.
+ */
+function LogRunStepper({ run, at, onStep }: { run: number[]; at: number; onStep: (id: number) => void }) {
+  const { t } = useTranslation();
+  const previousRef = useRef<HTMLButtonElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+  // The button to take the focus once the step is drawn: the other one
+  // can only take it once it is on.
+  const refocus = useRef<"previous" | "next" | null>(null);
+  const index = run.indexOf(at);
+  useEffect(() => {
+    const which = refocus.current;
+    refocus.current = null;
+    if (which === "previous") previousRef.current?.focus();
+    else if (which === "next") nextRef.current?.focus();
+  }, [index]);
+  if (run.length < 2 || index < 0) return null;
+  const step = (to: number) => {
+    if (to === 0) refocus.current = "next";
+    else if (to === run.length - 1) refocus.current = "previous";
+    onStep(run[to]);
+  };
+  return (
+    <div data-log-run="" className="mb-3 flex items-center gap-2">
+      <span role="status" className="min-w-0 flex-1 text-small text-muted">
+        {t("failureSteps.position", { current: index + 1, total: run.length })}
+      </span>
+      <button
+        ref={previousRef}
+        type="button"
+        disabled={index === 0}
+        onClick={() => step(index - 1)}
+        className={BUTTON.small.grey}
+      >
+        {t("failureSteps.previous")}
+      </button>
+      <button
+        ref={nextRef}
+        type="button"
+        disabled={index === run.length - 1}
+        onClick={() => step(index + 1)}
+        className={BUTTON.small.grey}
+      >
+        {t("failureSteps.next")}
+      </button>
+    </div>
   );
 }

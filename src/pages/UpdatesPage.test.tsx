@@ -3006,7 +3006,12 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole } = renderPage();
 
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
+      const word = await within(glib).findByText("Couldn't update");
+      // An ⓘ after it, as every status word with a why has: it opens the
+      // log, which says what to do (walk-2 W2-4).
+      const button = within(glib).getByRole("button", { name: "View log: glib" });
+      expect(button).toContainElement(word);
+      expect(button.querySelectorAll("svg")).toHaveLength(1);
       expect(await findByText("2 updates available")).toBeInTheDocument();
       expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
       fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
@@ -3033,6 +3038,14 @@ describe("UpdatesPage", () => {
       const glib = await findRow("glib");
       const word = await within(glib).findByText("Needs your password");
       expect(getByRole("button", { name: "View log: glib" })).toContainElement(word);
+      // The word stands in the status column, and the way on is a button
+      // in the Update button's place, 「查看步骤」, which opens that log
+      // (walk-2 W2-5).
+      expect(glib.querySelector("[data-status-column]")).toContainElement(word);
+      const steps = within(glib).getByRole("button", { name: "View steps: glib" });
+      expect(steps).toHaveTextContent("View Steps");
+      fireEvent.click(steps);
+      expect(useUiStore.getState()).toMatchObject({ focusedOpId: 9, drawerOpen: true, logRun: [] });
       expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
       expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
       expect(within(glib).queryByRole("checkbox")).toBeNull();

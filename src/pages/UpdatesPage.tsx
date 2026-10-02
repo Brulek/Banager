@@ -1069,19 +1069,31 @@ export function UpdatesPage() {
     const op = operationFor(candidate);
     const progress = op !== null ? progressOf(op) : null;
     const retry = progress !== null && actionable && isRetryable(progress);
+    // Stopped where sudo wanted the Mac's password: no Retry (`isRetryable`),
+    // and the way on is the command for Terminal in its log. That is said
+    // as a button of its own, 「查看步骤」, in the button's place, the word
+    // standing where Retry's word would (walk-2 W2-5): a red word alone
+    // read as a dead end, and the steps as a log for programmers.
+    const passwordSteps =
+      progress !== null && progress.kind === "failed" && progress.cause === "needsPassword" ? progress.opId : null;
     const outcome =
       progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
     // How it ended has the status word's column to itself: it comes back
     // once the outcome clears -- a Retry under way, a newer version offered.
-    const word = retry ? undefined : statusOf(candidate, state, instance);
-    const status = retry ? outcome : word === undefined ? undefined : <StatusChip {...word} />;
+    const endingInStatus = retry || passwordSteps !== null;
+    const word = endingInStatus ? undefined : statusOf(candidate, state, instance);
+    const status = endingInStatus ? outcome : word === undefined ? undefined : <StatusChip {...word} />;
     // The same, in words, for the row's name.
-    const statusText = retry && progress !== null ? progressWord(t, progress) : word?.label;
+    const statusText = endingInStatus && progress !== null ? progressWord(t, progress) : word?.label;
     const adapterId = instance?.adapter_id ?? adapterIdOf(candidate.key.instance_id);
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     const column = updateVersionColumn(t, candidate);
     const action =
-      progress !== null && !retry ? (
+      passwordSteps !== null ? (
+        <RowAction onClick={() => viewLog(passwordSteps)} ariaLabel={t("needsPassword.viewStepsLabel", { name })}>
+          {t("needsPassword.viewSteps")}
+        </RowAction>
+      ) : progress !== null && !retry ? (
         outcome
       ) : actionable ? (
         <RowAction
@@ -1150,6 +1162,7 @@ export function UpdatesPage() {
     const op = operationFor(candidate);
     const progress = op !== null ? progressOf(op) : null;
     if (progress !== null && state.kind === "actionable" && isRetryable(progress)) return true;
+    if (progress !== null && progress.kind === "failed" && progress.cause === "needsPassword") return true;
     return statusOf(candidate, state, instancesById.get(candidate.key.instance_id)) !== undefined;
   };
   const statusColumn = items.some((item) => item.type === "update" && hasStatusWord(item.candidate));

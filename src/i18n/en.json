@@ -1364,6 +1364,11 @@
     }
   },
   "failureSteps": {
+    "viewLogs_one": "View {{count}} Log",
+    "viewLogs_other": "View {{count}} Logs",
+    "position": "{{current}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next",
     "bar": {
       "updatesFailed_one": "{{count}} update failed",
       "updatesFailed_other": "{{count}} updates failed",
@@ -1391,7 +1396,9 @@
   "needsPassword": {
     "intro": "You can run the command below in Terminal and type your password when asked. Nothing appears on screen as you type. That's normal.",
     "after": "When it's done, come back here and press ⌘R to check again.",
-    "commandLabel": "Command to run in Terminal"
+    "commandLabel": "Command to run in Terminal",
+    "viewSteps": "View Steps",
+    "viewStepsLabel": "View steps: {{name}}"
   },
   "a11y": {
     "updateList": "Tools to update"

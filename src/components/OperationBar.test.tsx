@@ -66,7 +66,7 @@ beforeEach(() => {
     if (cmd === "get_snapshot") return snapshot === null ? new Promise(() => {}) : Promise.resolve(snapshot);
     return Promise.resolve(undefined);
   });
-  useUiStore.setState({ drawerOpen: false, focusedOpId: null, logs: [] });
+  useUiStore.setState({ drawerOpen: false, focusedOpId: null, logs: [], logRun: [] });
 });
 
 /** The ids `cancel_operation` was called with, in order. */
@@ -456,9 +456,10 @@ describe("OperationBar", () => {
     // The failure said as one, with the ones that worked beside it.
     await findByText("1 update failed, 2 succeeded");
     expect(queryByRole("button", { name: /^Stop/ })).toBeNull();
-    // Its log is the one that needs it.
+    // Its log is the one that needs it: one, so nothing to step through.
     fireEvent.click(getByRole("button", { name: "View Log" }));
     expect(useUiStore.getState().focusedOpId).toBe(12);
+    expect(useUiStore.getState().logRun).toEqual([]);
     await act(async () => {
       await i18n.changeLanguage("zh-CN");
     });
@@ -616,6 +617,45 @@ describe("OperationBar", () => {
         await i18n.changeLanguage("en");
       }
     });
+  });
+
+  it("names its button View Steps where sudo wanted the Mac's password, as the log has the command for Terminal", async () => {
+    // Walk-2 W2-5: the way on was behind 「查看日志」, which a person who
+    // does not write code reads as something for programmers.
+    const { findByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    const password: Outcome = {
+      Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password\nsudo: a password is required" },
+    };
+    await listNow(queryClient, [op(21, "android-platform-tools", "Done", password)]);
+    await findByText("Update android-platform-tools: Needs your password");
+    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "View Steps" }));
+    expect(useUiStore.getState()).toMatchObject({ focusedOpId: 21, logRun: [], drawerOpen: true });
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    expect(getByRole("button", { name: "查看步骤" })).toBeInTheDocument();
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("opens every log of a run that needs a look, from the first, and a log opened on one has none to step through", async () => {
+    const { findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    await listNow(queryClient, [
+      op(34, "wget", "Done", "Succeeded"),
+      op(33, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(32, "git", "Done", { NeedsAttention: "UnchangedAfterUpgrade" }),
+      op(31, "gh", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host" } }),
+    ]);
+    await findByText("2 updates failed, 1 succeeded, 1 needs attention");
+    fireEvent.click(getByRole("button", { name: "View 3 Logs" }));
+    expect(useUiStore.getState()).toMatchObject({ focusedOpId: 31, logRun: [31, 32, 33], drawerOpen: true });
+    // A row's own word opens its log alone.
+    act(() => useUiStore.getState().setFocusedOpId(33));
+    expect(useUiStore.getState().logRun).toEqual([]);
   });
 
   it("says a run of several all succeeded, or how many were cancelled, with nothing to look at", async () => {
@@ -792,13 +832,17 @@ describe("OperationBar, after a batch uninstall", () => {
     ]);
     // htop succeeded in the same run: said with the two that didn't.
     await findByText("Uninstalled 1; 2 weren't uninstalled");
-    fireEvent.click(getByRole("button", { name: "View Log" }));
-    expect(useUiStore.getState().focusedOpId).toBe(6);
+    // Both logs, from the first of them, in the order they ran (walk-2
+    // W2-4): View Log used to open the last one's alone.
+    expect(queryByRole("button", { name: "View Log" })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "View 2 Logs" }));
+    expect(useUiStore.getState()).toMatchObject({ focusedOpId: 5, logRun: [5, 6], drawerOpen: true });
 
     await act(async () => {
       await i18n.changeLanguage("zh-CN");
     });
     await findByText("已卸载1个，2个没有卸载");
+    expect(getByRole("button", { name: "查看2个日志" })).toBeInTheDocument();
     await act(async () => {
       await i18n.changeLanguage("en");
     });

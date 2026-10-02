@@ -16,6 +16,7 @@ import {
   type OutcomeTone,
 } from "../lib/operations";
 import { failedRunWords } from "../lib/runResult";
+import { outcomeCause } from "../lib/failureCause";
 import { useUiStore } from "../store/ui";
 import type { TFunction } from "i18next";
 import type { OpSummary } from "../lib/types";
@@ -72,6 +73,7 @@ export function OperationBar() {
   const cancelMutation = useCancelOperation();
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
+  const openLogRun = useUiStore((s) => s.openLogRun);
   const logs = useUiStore((s) => s.logs);
   const nameOf = useOperationName(operations);
   const [run, setRun] = useState<OperationRun | null>(null);
@@ -103,11 +105,25 @@ export function OperationBar() {
   // running bar's View Log (second) became the finished bar's Close
   // (second): the log, closed after the run ended, gave the focus back to a
   // Close, which the next Space pressed.
+  //
+  // Named for what it opens: 「查看步骤」 where sudo wanted the Mac's
+  // password, whose log has the command for Terminal (walk-2 W2-5).
   const viewLog = (op: OpSummary) => (
     <button key="viewLog" type="button" onClick={() => openLog(op)} className={VIEW_LOG_BUTTON}>
-      {t("common.viewLog")}
+      {outcomeCause(op.outcome) === "needsPassword" ? t("needsPassword.viewSteps") : t("common.viewLog")}
     </button>
   );
+  // Several to look at, once a run is done: 「查看N个日志」, which opens
+  // the log on the first of them, from where it steps through the rest
+  // (`openLogRun`), in the order they ran (walk-2 W2-4).
+  const viewLogs = (ops: OpSummary[]) => {
+    const ids = ops.map((op) => op.id).sort((a, b) => a - b);
+    return (
+      <button key="viewLog" type="button" onClick={() => openLogRun(ids, ids[0])} className={VIEW_LOG_BUTTON}>
+        {t("failureSteps.viewLogs", { count: ids.length })}
+      </button>
+    );
+  };
 
   // What the bar shows, in three parts about the one line it says: what
   // goes before the line (how a finished run went, as a symbol), the line,
@@ -215,6 +231,7 @@ export function OperationBar() {
     let tone: OutcomeTone;
     let words: string;
     let logOf: OpSummary | undefined;
+    let logsOf: OpSummary[] = [];
     if (total === 1) {
       const [op] = inRun;
       tone = tones[0];
@@ -228,7 +245,8 @@ export function OperationBar() {
       // 「2个更新失败，3个已成功」; 「需要查看」 only for a run with none.
       words =
         failedRunWords(t, inRun) ?? t("operations.batch.needsAttention", { count: toLook.length, total });
-      logOf = newestToLook;
+      if (toLook.length > 1) logsOf = toLook;
+      else logOf = newestToLook;
     } else if (tones.every((each) => each === "success")) {
       tone = "success";
       words = updates
@@ -252,7 +270,7 @@ export function OperationBar() {
     saidClassName = "flex min-w-0 flex-1";
     after = (
       <>
-        {logOf !== undefined ? viewLog(logOf) : null}
+        {logsOf.length > 0 ? viewLogs(logsOf) : logOf !== undefined ? viewLog(logOf) : null}
         <button
           key="close"
           type="button"

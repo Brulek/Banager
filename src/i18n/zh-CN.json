@@ -1260,6 +1260,10 @@
     }
   },
   "failureSteps": {
+    "viewLogs_other": "查看{{count}}个日志",
+    "position": "第{{current}}个，共{{total}}个",
+    "previous": "上一个",
+    "next": "下一个",
     "bar": {
       "updatesFailed_other": "{{count}}个更新失败",
       "failed_other": "{{count}}个失败",
@@ -1282,7 +1286,9 @@
   "needsPassword": {
     "intro": "可以在终端里运行下面这条命令，按提示输入密码。输入时屏幕上不显示任何字符，这是正常的。",
     "after": "完成后回到这里，按⌘R重新检查。",
-    "commandLabel": "要在终端里运行的命令"
+    "commandLabel": "要在终端里运行的命令",
+    "viewSteps": "查看步骤",
+    "viewStepsLabel": "查看步骤：{{name}}"
   },
   "a11y": {
     "updateList": "要更新的工具"

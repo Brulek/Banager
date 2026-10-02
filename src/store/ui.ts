@@ -93,7 +93,20 @@ export interface UiState {
   drawerOpen: boolean;
   setDrawerOpen(open: boolean): void;
   focusedOpId: number | null;
+  /** Opens the log on one operation (`focusedOpId`), with nothing to step through. */
   setFocusedOpId(id: number | null): void;
+  /**
+   * The operations the open log steps through, in the order they ran:
+   * those of a finished run that need a look, which the operation bar's
+   * 「查看N个日志」 opens (`openLogRun`) -- or none, for a log opened on one
+   * operation. Without it, the bar's View Log after six failures opened
+   * the last one's alone (walk-2 W2-4).
+   */
+  logRun: number[];
+  /** Opens the log on `focus`, one of `ids`, which it can step through. */
+  openLogRun(ids: number[], focus: number): void;
+  /** Moves the open log to `id`, another of `logRun`. */
+  stepLogRun(id: number): void;
   logs: LogLine[];
   appendLog(l: LogEntry): void;
   selectedUpdates: string[];
@@ -261,7 +274,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   drawerOpen: false,
   setDrawerOpen: (open) => set({ drawerOpen: open }),
   focusedOpId: null,
-  setFocusedOpId: (id) => set({ focusedOpId: id }),
+  setFocusedOpId: (id) => set({ focusedOpId: id, logRun: [] }),
+  logRun: [],
+  openLogRun: (ids, focus) => set({ logRun: ids, focusedOpId: focus, drawerOpen: true }),
+  stepLogRun: (id) => set({ focusedOpId: id }),
   logs: [],
   appendLog: (l) =>
     set((s) => {

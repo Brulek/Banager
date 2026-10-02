@@ -5,7 +5,7 @@ import { actionableUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
-import { CheckIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
+import { CheckIcon, InfoIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
 
 /**
  * What a row shows in place of its Update button while an update of it is
@@ -232,7 +232,10 @@ export interface UpdateProgressProps {
  * tool's own words say, 「网络连接失败」 (`failureCause`) -- and a 12
  * orange ⚠︎ and 「结果不符」 where the result is not what the tool said.
  * An ending the row can retry (`isRetryable`) stands in the status column,
- * beside the row's Retry, which takes the button's place.
+ * beside the row's Retry, which takes the button's place. Such a word has
+ * an ⓘ after it, as every status word with a why has (`StatusChip`): red
+ * words alone did not read as something to press, and 「未能更新」 with no
+ * way to see why left only Retry (walk-2 W2-4).
  */
 export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProps) {
   const { t } = useTranslation();
@@ -250,6 +253,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
     >
       {symbol}
       <span id={wordId}>{word}</span>
+      <InfoIcon size={12} className="shrink-0" />
     </button>
   );
   const word = progressWord(t, progress);
