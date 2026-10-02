@@ -442,9 +442,11 @@ export interface ManagerInstance {
    * Mirrors `ManagerInstance::answered_at`: when this source last answered
    * this session, Unix seconds -- the time its refresh task began asking
    * it, in the latest round in which both its list and its update check
-   * answered, so its rows are from then or later. `null` until it has:
-   * the first check after launch, a source that has not answered since,
-   * one Banager has just found. Not written anywhere; a round in which
+   * answered, so its rows are from then or later; and only while all its
+   * rows are still from that answer. `null` otherwise: the first check
+   * after launch, a source that has not answered in full since, one whose
+   * list answered and update check did not (or the other way round), one
+   * Banager has just found. Not written anywhere; a round in which
    * only this moved keeps its `generation`. Said only where a source did
    * not answer (`sourceNoticesFor` in src/lib/sources.ts).
    */

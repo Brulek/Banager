@@ -93,19 +93,23 @@ impl Session {
     /// `InstanceNote::IndexUpdating` instead, and when the inventory is
     /// what declined, `check_updates` is not called at all.
     ///
-    /// Each instance's `answered_at` says how old its rows can be. A source
-    /// whose inventory and update check both answer this round is stamped
-    /// with the time its task began asking it -- not when the round
-    /// commits, which waits for the slowest source, and not when its
-    /// answer ended, since its rows are from then or after. An `Ok`
-    /// answer counts whole: a package it could not look up
-    /// (`checkable: false`) or a catalogue it could not update
-    /// (`IndexMayBeStale`) is what it said then, and its rows say so. Any
-    /// other instance keeps the time last round's instance of the same id
-    /// had: one that is unavailable or held by an operation (not asked),
-    /// one whose inventory or update check failed, declined or panicked,
-    /// and every instance of an adapter whose `detect` panicked. An id that
-    /// was not in last round's snapshot has none.
+    /// Each instance's `answered_at` says which answer its rows are: it is
+    /// only ever the time of the answer every one of them came from. A
+    /// source whose inventory and update check both answer this round is
+    /// stamped with the time its task began asking it -- not when the round
+    /// commits, which waits for the slowest source, and not when its answer
+    /// ended, since its rows are from then or after. An `Ok` answer counts
+    /// whole: a package it could not look up (`checkable: false`) or a
+    /// catalogue it could not update (`IndexMayBeStale`) is what it said
+    /// then, and its rows say so. A source none of whose rows were replaced
+    /// keeps the time last round's instance of the same id had: one that
+    /// is unavailable or held by an operation (not asked), one whose
+    /// inventory and update check both failed or declined, one whose task
+    /// panicked, and every instance of an adapter whose `detect` panicked.
+    /// One whose inventory answered and update check did not, or the other
+    /// way round, has this round's rows beside older ones, which no one
+    /// time describes: it has none. An id that was not in last round's
+    /// snapshot has none either.
     pub async fn refresh(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
@@ -398,7 +402,7 @@ impl Session {
         let (mut instances, duplicate_errors) = dedupe_instance_ids(instances);
         detect_errors.extend(duplicate_errors);
         // When each source last answered, as last round left it -- what it
-        // keeps unless its task below answers in full. By id, after the
+        // keeps unless its task below replaces any of its rows. By id, after the
         // dedupe and npm's recovery of its old id (`resume_unanswered_npm`),
         // so one source keeps one time; never from `detect`, which cannot
         // know it. Set here, before the fan-out, so every path that skips
@@ -700,11 +704,18 @@ impl Session {
                     if index_updating {
                         notes.push(InstanceNote::IndexUpdating);
                     }
-                    // Both halves answered: everything this task hands
-                    // back is this round's, from `asked_at` on. Either one
-                    // failing or declining left last round's rows in, so
-                    // the time stays last round's (`refresh`'s doc).
-                    let answered_at = (inventory_confirmed && check_answered).then_some(asked_at);
+                    // Which answer the rows this task hands back are
+                    // (`refresh`'s doc): both halves this round's, from
+                    // `asked_at` on; both last round's, carried whole, with
+                    // last round's time (`inst` was seeded with it before
+                    // the fan-out); one of each, no one answer's, so none --
+                    // 「它09:12响应时，没有任何工具」 over a list read at 09:40
+                    // would not be true.
+                    let answered_at = match (inventory_confirmed, check_answered) {
+                        (true, true) => Some(asked_at),
+                        (false, false) => inst.answered_at,
+                        _ => None,
+                    };
                     (artifacts, updates, errors, stale, notes, answered_at)
                 })),
             ));
@@ -770,10 +781,8 @@ impl Session {
                     merge_instance_notes(&mut instances, &instance_id, notes);
                     // Into `instances` by id, as its notes just went: the
                     // task's `inst` was a clone.
-                    if let Some(at) = answered_at {
-                        if let Some(inst) = instances.iter_mut().find(|i| i.id == instance_id) {
-                            inst.answered_at = Some(at);
-                        }
+                    if let Some(inst) = instances.iter_mut().find(|i| i.id == instance_id) {
+                        inst.answered_at = answered_at;
                     }
                 }
                 Err(_join_err) => {
@@ -1687,62 +1696,75 @@ mod tests {
     type Turn = fn(&mut FakeState);
 
     #[tokio::test]
-    async fn test_answered_at_stays_last_rounds_unless_both_halves_answer() {
+    async fn test_answered_at_is_the_answer_its_rows_are_from_or_none() {
         static NOW: AtomicI64 = AtomicI64::new(100);
-        // What happens this round, and whether `fake:1` and `fake:2` then
-        // have this round's time (200) or last round's (100).
-        let turns: [(&str, Turn, bool, bool); 12] = [
-            ("everything answers", |_| {}, true, true),
+        // Last round answered at 100; this round asks at 200.
+        const NEW: Option<i64> = Some(200);
+        const OLD: Option<i64> = Some(100);
+        // What happens this round, and the time `fake:1` and `fake:2` then have.
+        let turns: [(&str, Turn, Option<i64>, Option<i64>); 13] = [
+            ("everything answers", |_| {}, NEW, NEW),
+            // Every row carried whole: still last round's answer.
             (
-                "inventory fails",
-                |s| s.failing.push("fake:1".into()),
-                false,
-                true,
-            ),
-            (
-                "update check fails",
-                |s| s.failing_updates.push("fake:1".into()),
-                false,
-                true,
+                "inventory and update check both fail",
+                |s| {
+                    s.failing.push("fake:1".into());
+                    s.failing_updates.push("fake:1".into());
+                },
+                OLD,
+                NEW,
             ),
             (
                 "inventory panics",
                 |s| s.panicking_inventory.push("fake:1".into()),
-                false,
-                true,
+                OLD,
+                NEW,
             ),
             (
                 "update check panics",
                 |s| s.panicking_updates.push("fake:1".into()),
-                false,
-                true,
+                OLD,
+                NEW,
             ),
             (
                 "inventory declines while the catalogue is rewritten",
                 |s| s.declining_inventory.push("fake:1".into()),
-                false,
-                true,
-            ),
-            (
-                "update check declines while the catalogue is rewritten",
-                |s| s.declining_updates.push("fake:1".into()),
-                false,
-                true,
+                OLD,
+                NEW,
             ),
             (
                 "not responding",
                 |s| s.instances[0].status.unavailable = Some(Unavailable::NotResponding),
-                false,
-                true,
+                OLD,
+                NEW,
             ),
             (
                 "not running",
                 |s| s.instances[0].status.unavailable = Some(Unavailable::NotRunning),
-                false,
-                true,
+                OLD,
+                NEW,
             ),
             // The whole adapter's answer lost: neither of its sources was asked.
-            ("detect panics", |s| s.panicking_detect = true, false, false),
+            ("detect panics", |s| s.panicking_detect = true, OLD, OLD),
+            // One half this round's, the other last round's: no one answer.
+            (
+                "inventory fails",
+                |s| s.failing.push("fake:1".into()),
+                None,
+                NEW,
+            ),
+            (
+                "update check fails",
+                |s| s.failing_updates.push("fake:1".into()),
+                None,
+                NEW,
+            ),
+            (
+                "update check declines while the catalogue is rewritten",
+                |s| s.declining_updates.push("fake:1".into()),
+                None,
+                NEW,
+            ),
             // What a source said of one package, or of its catalogue, is
             // still its answer, given then; its rows say the rest.
             (
@@ -1752,8 +1774,8 @@ mod tests {
                     candidate.checkable = false;
                     s.updates.insert("fake:1".into(), vec![candidate]);
                 },
-                true,
-                true,
+                NEW,
+                NEW,
             ),
             (
                 "an old catalogue",
@@ -1761,11 +1783,11 @@ mod tests {
                     s.notes
                         .insert("fake:1".into(), vec![InstanceNote::IndexMayBeStale]);
                 },
-                true,
-                true,
+                NEW,
+                NEW,
             ),
         ];
-        for (turn, set_up, first_stamped, second_stamped) in turns {
+        for (turn, set_up, first_at, second_at) in turns {
             NOW.store(100, Ordering::SeqCst);
             let (adapter, state) = FakeAdapter::new("fake");
             {
@@ -1798,14 +1820,67 @@ mod tests {
                     .unwrap_or_else(|| panic!("{turn}: {id} is listed"))
                     .answered_at
             };
-            let time = |stamped: bool| Some(if stamped { 200 } else { 100 });
-            assert_eq!(at("fake:1"), time(first_stamped), "{turn}");
-            assert_eq!(at("fake:2"), time(second_stamped), "{turn}");
+            assert_eq!(at("fake:1"), first_at, "{turn}");
+            assert_eq!(at("fake:2"), second_at, "{turn}");
             assert!(
                 snapshot.artifacts.iter().any(|a| a.key.name == "jq"),
                 "{turn}: its rows are on screen either way"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_a_time_never_labels_rows_a_later_half_answer_replaced() {
+        // The review's case (k4 finding 4): a full answer at 100 lists jq;
+        // at 200 the list answers empty -- jq removed outside Banager --
+        // and the update check fails; at 300 the source is silent. Had 100
+        // stayed, the empty page would say 「它…响应时，没有任何工具」 of an
+        // answer that listed jq.
+        static NOW: AtomicI64 = AtomicI64::new(100);
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".into(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let session = Session::with_adapters(
+            Arc::new(VecSink::new()),
+            vec![adapter],
+            Some(|| NOW.load(Ordering::SeqCst)),
+        );
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.instances[0].answered_at, Some(100));
+
+        NOW.store(200, Ordering::SeqCst);
+        {
+            let mut s = state.lock().unwrap();
+            s.artifacts.remove("fake:1");
+            s.failing_updates.push("fake:1".into());
+        }
+        let half = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(half.artifacts.is_empty(), "the list read at 200 is shown");
+        assert_eq!(half.instances[0].answered_at, None);
+
+        NOW.store(300, Ordering::SeqCst);
+        state.lock().unwrap().instances[0].status.unavailable = Some(Unavailable::NotResponding);
+        let silent = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(silent.artifacts.is_empty());
+        assert_eq!(silent.instances[0].answered_at, None, "no time to say");
+
+        // The next full answer has one again.
+        NOW.store(400, Ordering::SeqCst);
+        state.lock().unwrap().instances[0].status.unavailable = None;
+        let answered = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(answered.instances[0].answered_at, Some(400));
     }
 
     #[tokio::test]

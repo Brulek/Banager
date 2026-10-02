@@ -205,18 +205,21 @@ pub struct ManagerInstance {
     /// When this source last answered, Unix seconds: the time its refresh
     /// task began asking it (after taking that source's lock), in the
     /// latest round this session in which both its inventory and its update
-    /// check answered (`Session::refresh`). Every row of that answer is
-    /// from that moment or later, so a source that does not answer this
-    /// round, whose rows are carried forward, can say when they are from
+    /// check answered (`Session::refresh`) -- and only while every row of
+    /// the source is still from that answer. Each of them is from that
+    /// moment or later, so a source that does not answer this round, whose
+    /// rows are carried forward, can say when they are from
     /// (`sourceNoticesFor` in src/lib/sources.ts) -- never newer than they
-    /// are.
+    /// are, and never of rows a later answer replaced.
     ///
     /// Kept in memory only, like the snapshot it is part of: `None` from
     /// `detect()` -- no adapter knows it, so every one leaves it `None` --
     /// until `refresh` carries it over from last round's instance of the
-    /// same id, or stamps a new one. So it is `None` on the first round
-    /// after launch, for a source that has not answered since, and for one
-    /// whose id was not in last round's snapshot. Not part of
+    /// same id (none of its rows replaced), stamps a new one (all of them
+    /// replaced), or clears it (one half answered and the other did not,
+    /// so its rows are of two answers). So it is `None` on the first round
+    /// after launch, for a source that has not answered in full since, and
+    /// for one whose id was not in last round's snapshot. Not part of
     /// `same_content`: it is when the data came, not the data.
     #[serde(default)]
     pub answered_at: Option<i64>,
