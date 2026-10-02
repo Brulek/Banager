@@ -227,21 +227,44 @@ pub fn strip_prefix_folded<'a>(path: &'a Path, prefix: &Path) -> Option<&'a Path
 /// limit for a path (`MAXSYMLINKS`).
 const MAX_LINKS: u32 = 32;
 
-/// The places neither walk enters, for one home folder: each of
-/// `PROTECTED_IN_HOME` under it -- spelled as given and with its own links
-/// followed -- and `OTHER_VOLUMES`. What `resolve` checks every step
-/// against.
+/// The places no walk enters, for the home folder `HOME` names and for
+/// the account's own (`Protected::new`): each of `PROTECTED_IN_HOME`
+/// under each -- spelled as given and with its own links followed -- and
+/// `OTHER_VOLUMES`. What `resolve` checks every step against.
 #[derive(Clone, Debug, Default)]
 pub struct Protected {
     places: Vec<PathBuf>,
 }
 
 impl Protected {
+    /// The places for `home` -- the home folder `HOME` names, as a refresh
+    /// read it -- and for the account's own home folder, as the password
+    /// database names it (`account_home`), each as given and where its
+    /// own links lead: `HOME` may name another folder than the account's,
+    /// or none at all, and the folders macOS asks about are the account's
+    /// whatever `HOME` says. A `home` that is empty or relative is no home
+    /// folder: places under it would be relative, which no path a walk
+    /// looks at ever is, and would keep nothing out; only the account's
+    /// are kept then. The account's is looked up only when it is not
+    /// `home` itself, as it is unless `HOME` was changed.
     pub fn new(home: &Path) -> Protected {
-        let mut homes = vec![home.to_path_buf()];
-        if let Resolution::Found(real, _) = resolve(home, &Protected::default(), true) {
-            if real != home {
-                homes.push(real);
+        let mut homes: Vec<PathBuf> = Vec::new();
+        for given in [Some(home.to_path_buf()), account_home()]
+            .into_iter()
+            .flatten()
+        {
+            if !given.is_absolute() || homes.iter().any(|known| same_path(known, &given)) {
+                continue;
+            }
+            let real = match resolve(&given, &Protected::default(), true) {
+                Resolution::Found(real, _) => Some(real),
+                _ => None,
+            };
+            homes.push(given);
+            if let Some(real) = real {
+                if !homes.iter().any(|known| same_path(known, &real)) {
+                    homes.push(real);
+                }
             }
         }
         Protected {
@@ -291,6 +314,54 @@ impl Protected {
         self.places
             .iter()
             .any(|place| starts_with_folded(place, &path))
+    }
+}
+
+/// The home folder of the account Banager runs as -- the real user id's
+/// entry in the password database (`getpwuid_r(getuid())`) -- when it
+/// has one and it is absolute. Asked once a process: the entry does not
+/// change while Banager runs, and asking can mean a round trip to the
+/// directory service.
+pub fn account_home() -> Option<PathBuf> {
+    static ACCOUNT_HOME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    ACCOUNT_HOME.get_or_init(password_database_home).clone()
+}
+
+fn password_database_home() -> Option<PathBuf> {
+    // SAFETY: `getuid` has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    let mut buf = vec![0u8; 4096];
+    loop {
+        let mut entry = std::mem::MaybeUninit::<libc::passwd>::uninit();
+        let mut found: *mut libc::passwd = std::ptr::null_mut();
+        // SAFETY: `entry` has room for a `passwd` and `buf` is writable for
+        // its length; the call sets `found` to `entry` when the account has
+        // an entry and to null when not, and is read only after it returns.
+        let rc = unsafe {
+            libc::getpwuid_r(
+                uid,
+                entry.as_mut_ptr(),
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+                &mut found,
+            )
+        };
+        if rc == libc::ERANGE && buf.len() < 1 << 20 {
+            buf.resize(buf.len() * 2, 0);
+            continue;
+        }
+        if rc != 0 || found.is_null() {
+            return None;
+        }
+        // SAFETY: the call succeeded and filled `entry`.
+        let dir = unsafe { entry.assume_init() }.pw_dir;
+        if dir.is_null() {
+            return None;
+        }
+        // SAFETY: a NUL-terminated string in `buf`, which outlives this.
+        let dir = unsafe { std::ffi::CStr::from_ptr(dir) };
+        let home = PathBuf::from(std::ffi::OsStr::from_bytes(dir.to_bytes()));
+        return home.is_absolute().then_some(home);
     }
 }
 
@@ -804,6 +875,73 @@ mod tests {
                 assert!(protected.under(Path::new(path)), "{home}: {path}");
             }
             assert!(!protected.under(Path::new("/System/Volumes/Data/opt/homebrew")));
+        }
+    }
+
+    #[test]
+    fn test_the_accounts_own_home_is_protected_whatever_home_names() {
+        // `HOME` set to another folder, emptied or made relative from a
+        // terminal: the account's own folders are still kept out, and
+        // only by `contains` here -- nothing under the real home folder
+        // is looked at by this test.
+        let Some(account) = account_home() else {
+            return;
+        };
+        let other = Temp::new("other-home");
+        for home in [
+            other.0.as_path(),
+            Path::new(""),
+            Path::new("."),
+            Path::new("relative/home"),
+            Path::new("Users/you"),
+        ] {
+            let protected = Protected::new(home);
+            for place in PROTECTED_IN_HOME {
+                let inside = account.join(place).join("bin/tool");
+                assert!(protected.contains(&inside), "{home:?}: {inside:?}");
+            }
+            assert!(protected.contains(Path::new("/Volumes/x")), "{home:?}");
+            // A relative `HOME` is no home folder: nothing relative is
+            // among the places, so nothing is kept out under it either.
+            assert!(
+                protected.places.iter().all(|place| place.is_absolute()),
+                "{home:?}: {:?}",
+                protected.places
+            );
+            if home.is_relative() {
+                assert!(!protected.contains(&home.join("Documents")), "{home:?}");
+            }
+        }
+        // `HOME` naming another folder than the account's: both kept out.
+        let protected = Protected::new(&other.0);
+        assert!(protected.contains(&other.0.join("Documents/bin")));
+        assert!(protected.contains(&account.join("Documents/bin")));
+        assert!(!protected.contains(&other.0.join(".cargo/bin")));
+        assert!(!protected.contains(&account.join(".cargo/bin")));
+    }
+
+    #[test]
+    fn test_the_accounts_home_adds_no_place_when_home_names_it() {
+        // The usual case: `HOME` is the account's own folder, spelled in
+        // any case, and the list is what it was with one home folder.
+        let Some(account) = account_home() else {
+            return;
+        };
+        let one = Protected::new(&account);
+        let upper = PathBuf::from(account.as_os_str().to_ascii_uppercase());
+        for protected in [&one, &Protected::new(&upper)] {
+            assert!(protected.contains(&account.join("Desktop")));
+            assert_eq!(
+                protected
+                    .places
+                    .iter()
+                    .filter(|place| place.ends_with("Desktop"))
+                    .count(),
+                one.places
+                    .iter()
+                    .filter(|place| place.ends_with("Desktop"))
+                    .count(),
+            );
         }
     }
 

@@ -197,10 +197,12 @@ fn test_judge_through_a_round_makes_far_fewer_calls_for_the_same_verdicts() {
         .iter()
         .flatten()
         .any(|fact| fact.state == Some(CommandState::Runs)));
-    // `/` twice -- once to find where the home folder leads
-    // (`Protected::new`), once for the round -- not once per path.
+    // `/` once to find where each home folder leads (`Protected::new`:
+    // this test's, and the account's own, which is another) and once for
+    // the round -- not once per path.
     assert!(old.root > 500, "{}", old.root);
-    assert_eq!(new.root, 2);
+    let homes = 1 + usize::from(crate::protected::account_home().is_some());
+    assert_eq!(new.root, homes + 1);
     // Each command: its link in `brew/bin` (held open), the link's text,
     // and the rest of the way in one lookup from `brew`; and, once, the
     // folders above them, looked up twice before they are held open.
