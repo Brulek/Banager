@@ -469,6 +469,9 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
       "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
       "sha256:2a548b8405827e18697cc78e00b1c445de40756c6e6a1be1a4e37964a4e17342",
       "Digest",
+      // A GGUF republished: its one weights file changed, so the most the
+      // pull downloads is about the whole model (`download_bytes`).
+      { download_bytes: 4_683_087_520 },
     ),
     // pip is read-only: listed, never offered.
     update(key(IDS.pip, "Package", "requests"), "2.32.4", "2.32.5", "Native"),
@@ -485,6 +488,15 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     // Pinned in pipx (`pipx pin poetry`): the unpin command, and that it
     // unpins what was injected into poetry's environment too.
     update(key(IDS.pipx, "Tool", "poetry"), "2.2.1", "2.2.2", "Native", { blocked: "Pinned" }),
+    // A model from Ollama's own library whose download size is not known
+    // (`download_bytes: null`): its row and note keep the plain words.
+    update(
+      key(IDS.ollama, "Model", MODELS.llama),
+      "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66",
+      "sha256:6f0c3e2a91b84d75c0e19a3b5d7f2c4e8a6b0d1f3c5e7a9b2d4f6e8c0a1b3d5f",
+      "Digest",
+      { download_bytes: null },
+    ),
   ];
   return { artifacts, updates };
 }
