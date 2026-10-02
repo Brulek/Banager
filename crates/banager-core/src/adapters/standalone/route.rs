@@ -769,8 +769,8 @@ mod tests {
             )
             .expect_err("a permission error is not an answer");
             // Not "not there": a folder on the way that could not be
-            // searched (`protected::look` says no more than that).
-            assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+            // searched, as the system says (`protected::look` keeps it).
+            assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
         }
         std::fs::remove_file(&layout.launcher).unwrap();
         assert_eq!(

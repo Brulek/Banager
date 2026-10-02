@@ -24,12 +24,12 @@
 //!   `protected::starts_with_folded`, as the disk compares names.
 //!
 //! The other errors keep `NotFound` -- a name on the way, or at the end,
-//! that is not there, a link to nothing among them -- and are otherwise
-//! one error (`Refused`): a folder on the way that cannot be searched,
-//! that is not a folder, or that was replaced while it was looked at, or
-//! too many links.
+//! that is not there, a link to nothing among them -- and otherwise the
+//! system's own reason, kind and words (a folder on the way that may not
+//! be searched, that is not a folder, or that was replaced while it was
+//! looked at, too many links), each naming the path, for a log.
 
-use super::{resolve, Protected, Resolution};
+use super::{resolve_saying_why, Protected, Resolution};
 use crate::dirfd::{Dir, Stat};
 use std::ffi::OsString;
 use std::io;
@@ -80,14 +80,24 @@ fn protected_error(at: PathBuf) -> io::Error {
     )
 }
 
-/// `resolve`'s answer as `std::fs` answers.
-fn found(resolution: Resolution) -> io::Result<(PathBuf, Stat)> {
-    match resolution {
-        Resolution::Found(path, stat) => Ok((path, stat)),
-        Resolution::Missing => Err(io::Error::from(io::ErrorKind::NotFound)),
-        Resolution::Protected(at) => Err(protected_error(at)),
-        Resolution::Refused => Err(io::Error::other(
-            "a folder on the way could not be looked into",
+/// `resolve`'s answer as `std::fs` answers, naming `path` in the error,
+/// and keeping the system's own reason for a refusal (its kind and its
+/// words, for a log).
+fn found(path: &Path, protected: &Protected, follow_last: bool) -> io::Result<(PathBuf, Stat)> {
+    match resolve_saying_why(path, protected, follow_last) {
+        Ok(Resolution::Found(path, stat)) => Ok((path, stat)),
+        Ok(Resolution::Missing) => Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("{}: no such file or folder", path.display()),
+        )),
+        Ok(Resolution::Protected(at)) => Err(protected_error(at)),
+        Ok(Resolution::Refused) => Err(io::Error::other(format!(
+            "{}: could not be looked up",
+            path.display()
+        ))),
+        Err(why) => Err(io::Error::new(
+            why.kind(),
+            format!("{}: {why}", path.display()),
         )),
     }
 }
@@ -96,7 +106,7 @@ fn found(resolution: Resolution) -> io::Result<(PathBuf, Stat)> {
 /// not, and what is there -- a link itself, never what it leads to:
 /// `lstat`, and where the entry it looked at is.
 pub fn entry(path: &Path, protected: &Protected) -> io::Result<(PathBuf, Stat)> {
-    found(resolve(path, protected, false))
+    found(path, protected, false)
 }
 
 /// `lstat(path)`.
@@ -107,7 +117,7 @@ pub fn lstat(path: &Path, protected: &Protected) -> io::Result<Stat> {
 /// Where `path` leads, every link on the way and at the end followed,
 /// and what is there: `realpath` and `stat`.
 pub fn target(path: &Path, protected: &Protected) -> io::Result<(PathBuf, Stat)> {
-    found(resolve(path, protected, true))
+    found(path, protected, true)
 }
 
 /// `realpath(path)`.
@@ -350,6 +360,38 @@ mod tests {
         );
         assert!(list(&home.at(".tool/marker"), &protected).is_err());
         assert!(!writable_folder(&missing, &protected));
+    }
+
+    #[test]
+    fn test_a_refused_look_keeps_the_systems_reason_and_names_the_path() {
+        // For a log: a folder that may not be searched is the system's
+        // permission error, a loop its own, a relative path bad input, and
+        // a missing name `NotFound` -- each naming the path asked.
+        use std::os::unix::fs::PermissionsExt;
+        let home = Home::new("reasons");
+        std::fs::create_dir_all(home.at("locked/inner")).unwrap();
+        symlink(home.at("loop-b"), home.at("loop-a")).unwrap();
+        symlink(home.at("loop-a"), home.at("loop-b")).unwrap();
+        let protected = home.protected();
+        let missing = lstat(&home.at("gone/x"), &protected).unwrap_err();
+        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
+        assert!(missing.to_string().contains("gone/x"), "{missing}");
+        let looping = target(&home.at("loop-a"), &protected).unwrap_err();
+        assert!(looping.to_string().contains("loop-a"), "{looping}");
+        assert!(looping.to_string().contains("symbolic links"), "{looping}");
+        assert_ne!(looping.kind(), io::ErrorKind::NotFound);
+        let relative = lstat(Path::new("relative/x"), &protected).unwrap_err();
+        assert_eq!(relative.kind(), io::ErrorKind::InvalidInput);
+        std::fs::set_permissions(home.at("locked"), std::fs::Permissions::from_mode(0o000))
+            .unwrap();
+        let locked = lstat(&home.at("locked/inner"), &protected);
+        std::fs::set_permissions(home.at("locked"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        // Root may search anything: nothing to show then.
+        if let Err(locked) = locked {
+            assert_eq!(locked.kind(), io::ErrorKind::PermissionDenied, "{locked}");
+            assert!(locked.to_string().contains("locked/inner"), "{locked}");
+        }
     }
 
     #[test]

@@ -477,12 +477,23 @@ thread_local! {
 /// one round; `Round` answers the same for each, from what the round has
 /// already looked at where it can.
 pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolution {
+    resolve_saying_why(path, protected, follow_last).unwrap_or(Resolution::Refused)
+}
+
+/// `resolve`, with why it was refused: `Err` stands for
+/// `Resolution::Refused`, carrying the system's own reason (a folder that
+/// may not be searched, one that is not a folder, too many links...) for
+/// a log to say -- `protected::look` passes it on.
+pub(crate) fn resolve_saying_why(
+    path: &Path,
+    protected: &Protected,
+    follow_last: bool,
+) -> std::io::Result<Resolution> {
+    use std::io::{Error, ErrorKind};
     if !path.is_absolute() {
-        return Resolution::Refused;
+        return Err(Error::new(ErrorKind::InvalidInput, "not an absolute path"));
     }
-    let Ok(root) = Dir::root() else {
-        return Resolution::Refused;
-    };
+    let root = Dir::root()?;
     // `dirs[i]` is open on the folder `resolved` names at depth `i`.
     let mut dirs: Vec<Dir> = vec![root];
     let mut pending: VecDeque<OsString> = names(path).collect();
@@ -514,24 +525,22 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
                     at.push(name);
                 }
             }
-            return Resolution::Protected(at);
+            return Ok(Resolution::Protected(at));
         }
         let Some(here) = dirs.last() else {
-            return Resolution::Refused;
+            return Err(Error::other("no folder to look from"));
         };
         let stat = match here.stat_at(&name) {
             Ok(stat) => stat,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Resolution::Missing,
-            Err(_) => return Resolution::Refused,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Resolution::Missing),
+            Err(e) => return Err(e),
         };
         if stat.is_symlink() && (!pending.is_empty() || follow_last) {
             links += 1;
             if links > MAX_LINKS {
-                return Resolution::Refused;
+                return Err(Error::from_raw_os_error(libc::ELOOP));
             }
-            let Ok(target) = here.read_link_at(&name) else {
-                return Resolution::Refused;
-            };
+            let target = here.read_link_at(&name)?;
             if target.is_absolute() {
                 resolved = PathBuf::from("/");
                 dirs.truncate(1);
@@ -548,23 +557,21 @@ pub fn resolve(path: &Path, protected: &Protected, follow_last: bool) -> Resolut
             // the very one just looked at. Not a folder, or not one this
             // may search, is where the kernel's own lookup stops too.
             if !stat.is_dir() {
-                return Resolution::Refused;
+                return Err(Error::from_raw_os_error(libc::ENOTDIR));
             }
-            match here.open_dir_at(&name, Some(&stat), false) {
-                Ok((next, _)) => dirs.push(next),
-                Err(_) => return Resolution::Refused,
-            }
+            let (next, _) = here.open_dir_at(&name, Some(&stat), false)?;
+            dirs.push(next);
         }
         resolved = candidate;
         found = Some(stat);
     }
     match found {
-        Some(stat) => Resolution::Found(resolved, stat),
+        Some(stat) => Ok(Resolution::Found(resolved, stat)),
         // Ended on `..` (or is the root): the folder reached, already
         // checked on the way down, and open.
         None => match dirs.last().map(Dir::stat) {
-            Some(Ok(stat)) => Resolution::Found(resolved, stat),
-            _ => Resolution::Refused,
+            Some(stat) => Ok(Resolution::Found(resolved, stat?)),
+            None => Err(Error::other("no folder reached")),
         },
     }
 }
