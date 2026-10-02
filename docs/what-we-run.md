@@ -146,7 +146,9 @@ and never run. `crates/banager-core/tests/safety_source_test.rs` holds
 every production file to this: a path looked up any other way fails it,
 but for the few its `PATH_LOOKUPS_ALLOWED` names with why -- Banager's
 own `settings.json` and `history.json`, `/` itself, the icon drawn for an
-app folder already looked at this way, and a debug build's look at the
+app folder already looked at this way, the Trash call for a path just
+checked, Show in Finder of a path the scan resolved, a command's working
+folder (no command is given one), and a debug build's look at the
 Trash.
 
 The places are those of the home folder `HOME` names -- as given and
