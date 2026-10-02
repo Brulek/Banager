@@ -1347,7 +1347,7 @@
     "brokenLink": "Points to {{target}}, which can't be found",
     "linksTo": "Links to {{path}}",
     "partOfApp": "Part of {{app}}",
-    "adminOwned": "Owned by the system or another account",
+    "adminOwned": "Not owned by your account",
     "pointsInto": "Points into {{app}}",
     "showInFinder": "Show in Finder",
     "showsLinkTarget": "Shows the file this link points to.",

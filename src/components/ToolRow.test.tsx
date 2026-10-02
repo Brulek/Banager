@@ -295,7 +295,7 @@ describe("ToolRow", () => {
     expect(getByText("helper-cli")).not.toHaveClass("select-text");
   });
 
-  it("puts a note after its description, on its line, that the description gives way to and never selects with it", () => {
+  it("puts a note after its description, on its line, that gives way to the description and never selects with it", () => {
     const { container, getByText } = renderWithProviders(
       <ToolRow
         avatar={<span />}
@@ -310,11 +310,13 @@ describe("ToolRow", () => {
     const note = getByText("Points into Docker.app");
     expect(note.parentElement).toBe(path.parentElement);
     expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The path is cut short first, its whole text in its tooltip; the note
-    // does not shrink, short of a row too narrow for it alone.
+    // The note is cut short first; the path keeps up to 70% of the line,
+    // whole where it fits, its whole text in its tooltip (walk-3 W3-8: the
+    // path, what the row is about, went first, all of it at 800 wide).
     expect(path).toHaveAttribute("title", "/usr/local/bin/docker");
-    expect(atRest(path.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
-    expect(atRest(note.className)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
+    expect(atRest(path.className)).toEqual(expect.arrayContaining(["max-w-[70%]", "shrink-0", "truncate"]));
+    expect(atRest(note.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(atRest(note.className)).not.toContain("shrink-0");
     // Only the path selects; space sets the note apart, with no dot between them.
     expect([...container.querySelectorAll(".select-text")]).toEqual([path]);
     expect(note.previousElementSibling).toBe(path);

@@ -206,10 +206,10 @@ describe("UnknownPage", () => {
     expect(within(helper).queryByRole("button", { name: "Details: helper-cli" })).toBeNull();
     expect(helper.querySelector("[data-status]")).toBeNull();
     // Only what can be confirmed: the file is not the user's.
-    expect(tooltipOf(helper)).toEqual(["Part of Helper", "Owned by the system or another account"]);
+    expect(tooltipOf(helper)).toEqual(["Part of Helper", "Not owned by your account"]);
     // In sight after the path, the app it leads into and its owner; the
     // avatar tells a screen reader only what the line does not say.
-    expect(within(helper).getByText("Points into Helper.app · Owned by the system or another account")).not.toHaveClass(
+    expect(within(helper).getByText("Points into Helper.app · Not owned by your account")).not.toHaveClass(
       "sr-only",
     );
     expect(within(helper).getByText("Part of Helper")).toHaveClass("sr-only");
@@ -886,7 +886,7 @@ describe("in a narrow window (R9)", () => {
     });
     const { findByText } = renderWithProviders(<UnknownPage />);
     const helper = rowOf(await findByText("helper-cli"));
-    expect(within(helper).getByText("Points into Helper.app · Owned by the system or another account")).not.toHaveClass("sr-only");
+    expect(within(helper).getByText("Points into Helper.app · Not owned by your account")).not.toHaveClass("sr-only");
   });
 
   it("keeps a broken link's word where its size and date would be, every path at one x, the app after the path", async () => {
@@ -957,7 +957,7 @@ describe("the app a link points into", () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
     const helper = rowOf(await findByText("helper-cli"));
-    const note = within(helper).getByText("Points into Helper.app · Owned by the system or another account");
+    const note = within(helper).getByText("Points into Helper.app · Not owned by your account");
     const path = within(helper).getByText("/usr/local/bin/helper-cli");
     // One line, the path first; only the path selects.
     expect(note.closest("p")).toBe(path.closest("p"));

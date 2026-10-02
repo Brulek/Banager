@@ -107,9 +107,11 @@ export interface ToolRowContentProps {
   selectableDescription?: boolean;
   /**
    * A few words after the description, on its line and set apart from it
-   * by space alone, that stay whole when the row is too narrow for both --
-   * the description gives way to them: the Unknown page's "Points into
-   * Docker.app". Never selected with the description.
+   * by space alone: the Unknown page's "Points into Docker.app". Where the
+   * row is too narrow for both, they give way first, cut short -- the
+   * description, a path there, is what the row is about, and keeps up to
+   * 70% of the line, whole if it fits (walk-3 W3-8). Never selected with
+   * the description.
    */
   descriptionNote?: string;
   /**
@@ -579,7 +581,7 @@ export function ToolRow({
       data-description=""
       className={
         descriptionShown
-          ? `min-w-0 truncate ${versionInline ? "flex-1" : ""} ${selectableDescription ? "select-text" : ""}`
+          ? `${descriptionNote === undefined ? "min-w-0" : "max-w-[70%] shrink-0"} truncate ${versionInline ? "flex-1" : ""} ${selectableDescription ? "select-text" : ""}`
           : "sr-only"
       }
     >
@@ -682,10 +684,10 @@ export function ToolRow({
             ) : null}
             {descriptionText}
             {descriptionNote !== undefined ? (
-              // The description gives way to the note, cut short first; the
-              // note is cut short only on a row too narrow for it alone.
+              // The note gives way to the description, cut short first: the
+              // path keeps its room, up to 70% of the line (walk-3 W3-8).
               // Space sets the two apart, not a dot between them.
-              <span id={noteId} className="max-w-full shrink-0 truncate pl-3">
+              <span id={noteId} className="min-w-0 truncate pl-3">
                 {descriptionNote}
               </span>
             ) : null}
