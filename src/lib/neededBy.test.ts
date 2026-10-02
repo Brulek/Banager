@@ -1,6 +1,19 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
-import { countsAsTool, neededBy, neededByItem, neededByReason, neededBySentence, type NeededBy } from "./neededBy";
+import { HOSTED_SOURCES, RUNS_ON } from "./batchUninstall";
+import {
+  COMES_WITH_PROGRAM,
+  MANAGES_ONLY,
+  countsAsTool,
+  neededBy,
+  neededByItem,
+  neededByReason,
+  neededBySentence,
+  type NeededBy,
+} from "./neededBy";
 import type { InstalledArtifact, Warning } from "./types";
 
 const zh = i18n.getFixedT("zh-CN");
@@ -132,5 +145,24 @@ describe("countsAsTool", () => {
     expect(countsAsTool("pip", tool("Setup_Tools".replace("_T", "t")))).toBe(false);
     expect(countsAsTool("pip", tool("requests", "Dependency"))).toBe(false);
     expect(countsAsTool("pip", tool("requests"))).toBe(true);
+  });
+});
+
+describe("the per-source tables", () => {
+  it("are the ones Rust's needed_by has, as the shared file says", () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const tables: {
+      hosted: string[];
+      comes_with_program: Record<string, string[]>;
+      interpreter: Record<string, string>;
+      manages_only: string[];
+      batch_hosted_leaves_out: Record<string, string>;
+    } = JSON.parse(readFileSync(path.join(root, "crates/banager-core/src/needed_by_tables.json"), "utf-8"));
+    expect(COMES_WITH_PROGRAM).toEqual(tables.comes_with_program);
+    expect(RUNS_ON).toEqual(tables.interpreter);
+    expect([...MANAGES_ONLY].sort()).toEqual([...tables.manages_only].sort());
+    expect([...HOSTED_SOURCES].sort()).toEqual(
+      tables.hosted.filter((id) => !(id in tables.batch_hosted_leaves_out)).sort(),
+    );
   });
 });

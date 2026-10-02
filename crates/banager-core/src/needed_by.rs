@@ -497,6 +497,58 @@ impl Look {
 mod tests {
     use super::*;
     use crate::model::{ArtifactKey, InstanceStatus, Scope};
+
+    #[test]
+    fn test_the_per_source_tables_are_the_ones_the_window_mirrors() {
+        // `needed_by_tables.json` is read here and by
+        // src/lib/neededBy.test.ts, which holds `COMES_WITH_PROGRAM`,
+        // `MANAGES_ONLY` (src/lib/neededBy.ts), `HOSTED_SOURCES` and
+        // `RUNS_ON` (src/lib/batchUninstall.ts) to it.
+        #[derive(serde::Deserialize)]
+        struct Tables {
+            hosted: Vec<String>,
+            comes_with_program: std::collections::BTreeMap<String, Vec<String>>,
+            interpreter: std::collections::BTreeMap<String, String>,
+            has_environments: Vec<String>,
+            manages_only: Vec<String>,
+            batch_hosted_leaves_out: std::collections::BTreeMap<String, String>,
+        }
+        let tables: Tables =
+            serde_json::from_str(include_str!("needed_by_tables.json")).expect("tables parse");
+        assert_eq!(tables.hosted, HOSTED);
+        for id in HOSTED.iter().chain(&["brew", "standalone-claude", "pip3"]) {
+            let listed: Vec<&str> = tables
+                .comes_with_program
+                .get(*id)
+                .map(|names| names.iter().map(String::as_str).collect())
+                .unwrap_or_default();
+            assert_eq!(comes_with_program(id), listed.as_slice(), "{id}");
+            assert_eq!(
+                interpreter(id),
+                tables.interpreter.get(*id).map(String::as_str),
+                "{id}"
+            );
+            assert_eq!(
+                has_environments(id),
+                tables.has_environments.iter().any(|each| each == id),
+                "{id}"
+            );
+        }
+        // Whose tools keep running without the package: a source of
+        // `HOSTED` with no interpreter of its own and nothing it lists of
+        // its own program, every source with environments among them.
+        for id in &tables.manages_only {
+            assert!(HOSTED.contains(&id.as_str()), "{id}");
+            assert_eq!(interpreter(id), None, "{id}");
+            assert!(comes_with_program(id).is_empty(), "{id}");
+        }
+        for id in &tables.has_environments {
+            assert!(tables.manages_only.contains(id), "{id}");
+        }
+        for id in tables.batch_hosted_leaves_out.keys() {
+            assert!(HOSTED.contains(&id.as_str()), "{id}");
+        }
+    }
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     /// A folder of a test's own, standing in for `/`: a Homebrew prefix at

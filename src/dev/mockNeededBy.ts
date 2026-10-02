@@ -1,4 +1,5 @@
-import type { InstalledArtifact, OpRequest, Plan, Warning } from "../lib/types";
+import { countsAsTool } from "../lib/neededBy";
+import type { OpRequest, Plan, Warning } from "../lib/types";
 import { IDS, type World } from "./mockData";
 
 /**
@@ -24,18 +25,6 @@ const RUNS_ON: Record<string, ReadonlyArray<{ instance: string; program: boolean
   ],
 };
 
-/** What a source lists of its own program, as `needed_by::comes_with_program` has it. */
-const COMES_WITH_PROGRAM: Record<string, readonly string[]> = {
-  npm: ["npm", "corepack"],
-  pip: ["pip", "setuptools", "wheel"],
-};
-
-/** Whether `tool`, one of `adapterId`'s rows, counts (`needed_by::counts`). */
-function counts(adapterId: string, tool: InstalledArtifact): boolean {
-  const name = tool.key.name.toLowerCase().replace(/[_.]/g, "-");
-  return tool.reason !== "Dependency" && !(COMES_WITH_PROGRAM[adapterId] ?? []).includes(name);
-}
-
 /**
  * `plan`, with a `NeededBySource` for each source of `world` that runs on
  * the Homebrew formula `request` uninstalls, and how many of its tools
@@ -51,7 +40,7 @@ export function withMockNeededBy(plan: Plan, world: World, request: OpRequest): 
     const tools = world.artifacts.filter(
       (artifact) =>
         artifact.key.instance_id === id &&
-        counts(instance.adapter_id, artifact) &&
+        countsAsTool(instance.adapter_id, artifact) &&
         // A pipx tool's own environment, for one only its venv runs on.
         (program || artifact.path !== null),
     );

@@ -58,9 +58,10 @@ function toRemove(t: Translate, entry: NeededBy, source: string): string {
 /**
  * What a source lists of its own program, which `needed_by` does not count
  * (`comes_with_program` in crates/banager-core/src/needed_by.rs), spelled
- * as PyPI normalizes a name.
+ * as PyPI normalizes a name. Held to Rust's by
+ * crates/banager-core/src/needed_by_tables.json (neededBy.test.ts).
  */
-const COMES_WITH_PROGRAM: Record<string, readonly string[]> = {
+export const COMES_WITH_PROGRAM: Readonly<Record<string, readonly string[]>> = {
   npm: ["npm", "corepack"],
   pip: ["pip", "setuptools", "wheel"],
 };
@@ -79,9 +80,10 @@ export function countsAsTool(adapterId: string, tool: InstalledArtifact): boolea
 /**
  * Sources whose tools keep their own program or environment, which go on
  * running without it: only updating and uninstalling them goes with the
- * package.
+ * package. Held to Rust's `needed_by` tables by
+ * crates/banager-core/src/needed_by_tables.json (neededBy.test.ts).
  */
-const MANAGES_ONLY = new Set(["pipx", "uv", "cargo"]);
+export const MANAGES_ONLY: ReadonlySet<string> = new Set(["pipx", "uv", "cargo"]);
 
 /**
  * What else a sentence about `entries` says after what to uninstall first:

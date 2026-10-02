@@ -297,9 +297,11 @@ function scopeOf(warnings: readonly Warning[]): UninstallScope | null {
  * Ollama's `ollama` -- and which fail without it (spec §5.3, X5). Not a
  * tool's own installer: its launcher's name is the tool's, which another
  * copy of the tool provides too (npm's `claude`), and the other copy is a
- * twin, not its host.
+ * twin, not its host. Rust's `needed_by::HOSTED` without pip, for the
+ * reason crates/banager-core/src/needed_by_tables.json gives
+ * (`batch_hosted_leaves_out`, held by neededBy.test.ts).
  */
-const HOSTED_SOURCES: ReadonlySet<string> = new Set(["npm", "pipx", "uv", "cargo", "ollama"]);
+export const HOSTED_SOURCES: ReadonlySet<string> = new Set(["npm", "pipx", "uv", "cargo", "ollama"]);
 
 /**
  * The program a source's tools run on, beside the one that manages them:
@@ -308,7 +310,7 @@ const HOSTED_SOURCES: ReadonlySet<string> = new Set(["npm", "pipx", "uv", "cargo
  * Python, a cargo crate is a program of its own, and an Ollama model is
  * run by `ollama`, its manager.
  */
-const RUNS_ON: Readonly<Record<string, string>> = { npm: "node" };
+export const RUNS_ON: Readonly<Record<string, string>> = { npm: "node" };
 
 /** The program a source runs, by name: the last part of its `exe_path`. */
 function programName(instance: ManagerInstance): string {
