@@ -879,7 +879,9 @@
     },
     "copyPath": "拷贝路径",
     "copyPathLabel": "拷贝路径：{{path}}",
-    "notCounting": "{{path}}是{{tool}}的数据，不算在内"
+    "notCounting": "{{path}}是{{tool}}的数据，不算在内",
+    "findInFinder": "要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。",
+    "findInFinderHome": "路径开头的“~”是你的个人文件夹。要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。"
   },
   "settings": {
     "groups": {

@@ -966,7 +966,9 @@
     },
     "copyPath": "Copy Path",
     "copyPathLabel": "Copy path: {{path}}",
-    "notCounting": "{{path}} is {{tool}}'s data and isn't counted here"
+    "notCounting": "{{path}} is {{tool}}'s data and isn't counted here",
+    "findInFinder": "To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
+    "findInFinderHome": "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return."
   },
   "settings": {
     "groups": {

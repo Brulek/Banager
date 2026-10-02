@@ -183,6 +183,31 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
   });
 
+  it("says under the list how to reach a path in Finder, and what ~ is, and never how to delete one", async () => {
+    open(claudeKept);
+    const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
+    const find = group.querySelector("[data-kept-find]");
+    expect(find).toHaveTextContent(
+      "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
+    );
+    // After the list, not in a row.
+    expect(find?.closest("li")).toBeNull();
+    expect(group.textContent).not.toMatch(/delete|remove|trash/i);
+
+    await i18n.changeLanguage("zh-CN");
+    expect(await within(group).findByText(/个人文件夹/)).toHaveTextContent(
+      "路径开头的“~”是你的个人文件夹。要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。",
+    );
+    expect(group.textContent).not.toMatch(/删除|移除|废纸篓/);
+  });
+
+  it("says nothing of ~ where no path starts with it", () => {
+    renderWithProviders(<KeptDataGroup warnings={[{ WillKeep: { path: "/usr/local/bin/claude", what: "OutsideHome" } }]} />);
+    expect(document.querySelector("[data-kept-find]")).toHaveTextContent(
+      /^To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return\.$/,
+    );
+  });
+
   it("says a budget cut short as at least, and the models as models, in Chinese", async () => {
     await i18n.changeLanguage("zh-CN");
     const ollama: OpRequest = {

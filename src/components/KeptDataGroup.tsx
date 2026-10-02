@@ -43,8 +43,11 @@ interface KeptLine {
  * plain words, its why behind an ⓘ where it needs one, and Copy Path, which
  * copies the path as shown, `~` and all, and says 「已拷贝」 beside itself
  * (`CopyButton`, as the details' copy buttons do). These are hidden folders,
- * so Show in Finder would show nothing; and there is no button, menu or
- * command here that deletes one. Nothing when the plan names none. A folder
+ * so Show in Finder would show nothing: under the list, one line says how
+ * to reach one with the copied path -- Finder's Go to Folder, ⇧⌘G -- and,
+ * where a path starts with `~`, that `~` is the home folder. There is no
+ * button, menu or command here that deletes one, and the line does not
+ * say how to. Nothing when the plan names none. A folder
  * two tools share says, under it, which other tool's data it does not count
  * (`~/.gemini` without Antigravity CLI's `~/.gemini/antigravity-cli`).
  */
@@ -102,6 +105,7 @@ export function KeptDataGroup({
     lines.push({ path: item.path, size, what: t(KEPT_DATA_KEYS[item.what]), why, others, owners: ownersText(item.path) });
   }
   if (lines.length === 0) return null;
+  const home = lines.some((line) => line.path.startsWith("~"));
   return (
     <SheetSection title={t("keepsData.title")}>
       <ul className="flex flex-col gap-1.5">
@@ -145,6 +149,9 @@ export function KeptDataGroup({
           </li>
         ))}
       </ul>
+      <p data-kept-find="" className={`mt-1.5 break-words text-muted ${SMALL_WRAPPING}`}>
+        {t(home ? "keepsData.findInFinderHome" : "keepsData.findInFinder")}
+      </p>
     </SheetSection>
   );
 }
