@@ -179,7 +179,18 @@ fn test_the_test_only_files_are_compiled_for_tests_only() {
 /// (`read_dir(` after `use std::fs::read_dir`), so each is matched without
 /// its `fs::` or leading dot where that adds no false match. The kind
 /// questions (`is_dir()` and the like) are `asks_a_path`'s.
-const PATH_LOOKUPS: [&str; 17] = [
+const PATH_LOOKUPS: [&str; 26] = [
+    // The system's own calls by a path, as `libc` and the frameworks name
+    // them: a lookup all the same.
+    "libc::open(",
+    "libc::stat(",
+    "libc::lstat(",
+    "libc::access(",
+    "libc::readlink(",
+    "libc::opendir(",
+    "libc::statfs(",
+    "getattrlist",
+    "iconForFile",
     "metadata(",
     "canonicalize(",
     "read_dir(",
@@ -604,14 +615,30 @@ fn test_an_opens_flags_are_read_from_its_own_statement() {
 }
 
 /// The path lookups production code may still make by a path of its own,
-/// each by its file and its text, with why it cannot look into or through
+/// each by its file and its whole line (one that ends with the text), with
+/// why it cannot look into or through
 /// a protected place. Every other lookup of a path -- in any file, walk or
 /// not -- goes through `protected::resolve`, `protected::look` or `dirfd`
 /// (`docs/what-we-run.md`, "Where the program comes from"): N1 of the
 /// round 5 review found the Codex version read and the standalone launcher
 /// check following `~/.codex` and `~/.local/bin/claude` with plain
 /// `read_link`/`realpath`, which this list now rules out.
-const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 7] = [
+const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 11] = [
+    (
+        "crates/banager-core/src/dirfd.rs:",
+        "let fd = unsafe { libc::open(c\"/\".as_ptr(), SEARCH | libc::O_CLOEXEC) };",
+        "`/` itself, where every walk starts (`Dir::root`)",
+    ),
+    (
+        "crates/banager-core/src/dirfd.rs:",
+        "libc::open(",
+        "`/` again, opened to list (`reopen_root_to_list`)",
+    ),
+    (
+        "crates/banager-core/src/icon/real.rs:",
+        "let icon = NSWorkspace::sharedWorkspace().iconForFile(&NSString::from_str(utf8));",
+        "draws only a folder `AppIcons::bundle_icon` found outside every protected place (`folder_stamp`)",
+    ),
     (
         "crates/banager-core/src/settings.rs:",
         "match std::fs::read(path) {",
@@ -644,8 +671,13 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 7] = [
     ),
     (
         "crates/banager-core/src/trash/real.rs:",
-        "debug: read_dir(",
-        "the two lines that print that answer",
+        "\"[banager] debug: read_dir({}) -> Ok: this process can list the Trash (it has Full Disk Access)\",",
+        "the line that prints that answer",
+    ),
+    (
+        "crates/banager-core/src/trash/real.rs:",
+        "Err(error) => eprintln!(\"[banager] debug: read_dir({}) -> Err: {error}\", trash.display()),",
+        "and the one that prints a refusal",
     ),
 ];
 
@@ -655,7 +687,7 @@ fn test_every_path_lookup_left_in_production_is_listed_with_why() {
     let allowed = |entry: &String| {
         PATH_LOOKUPS_ALLOWED
             .iter()
-            .any(|(file, text, _)| entry.starts_with(file) && entry.contains(text))
+            .any(|(file, text, _)| entry.starts_with(file) && entry.ends_with(text))
     };
     let others: Vec<&String> = found.iter().filter(|entry| !allowed(entry)).collect();
     assert!(
@@ -666,7 +698,7 @@ fn test_every_path_lookup_left_in_production_is_listed_with_why() {
         assert!(
             found
                 .iter()
-                .any(|entry| entry.starts_with(file) && entry.contains(text)),
+                .any(|entry| entry.starts_with(file) && entry.ends_with(text)),
             "{file} no longer has `{text}` ({why}): drop it from the list"
         );
     }
