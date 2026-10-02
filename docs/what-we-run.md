@@ -3256,16 +3256,19 @@ error. Nothing is ever sent by any method but `GET`.
 
 A lookup that ends in one of those refusals — a redirect, a host off the
 list (`HttpError::Refused`) — or in a secure connection rustls will not
-set up (`HttpError::Tls`: a certificate it does not trust, as a proxy or
-security software that reads https traffic presents, one that has expired
-by this Mac's clock, or a failed handshake) would end the same way on the
-next check. Its row says that it could not be checked — for a secure
-connection, also "Couldn't establish a secure connection to" the host —
-and it is not counted among the tools that "couldn't be checked", whose
-notice asks to check again. Of the requests that get no answer, only one
-whose connection failed or timed out (`HttpError::Network`,
-`HttpError::Timeout`) is counted; so is an answer of 408, 429 or a server
-error (`LookupFailure` in `crates/banager-core/src/adapters/mod.rs`).
+set up because of the server's certificate (`HttpError::Tls`: one it
+does not trust, as a proxy or security software that reads https traffic
+presents, one that has expired by this Mac's clock, one for another name,
+or none at all) would end the same way on the next check. Its row says
+that it could not be checked — for a certificate, also "Couldn't
+establish a secure connection to" the host — and it is not counted among
+the tools that "couldn't be checked", whose notice asks to check again.
+A handshake that fails any other way — a server that answers in plain
+HTTP, as a Wi-Fi sign-in page does, an alert, a reset — counts as the
+network. Of the requests that get no answer, only one whose connection
+failed or timed out (`HttpError::Network`, `HttpError::Timeout`) is
+counted; so is an answer of 408, 429 or a server error (`LookupFailure`
+in `crates/banager-core/src/adapters/mod.rs`).
 
 Three things are outside that client and worth saying out loud. The
 window itself cannot make a network request: its content security policy

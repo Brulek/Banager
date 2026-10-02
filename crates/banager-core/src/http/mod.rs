@@ -45,9 +45,11 @@ pub enum HttpError {
     /// be set up on it: rustls did not accept the certificate it was shown
     /// (one no trusted authority issued, as a proxy or security software
     /// that reads https presents; expired, or not yet valid by this Mac's
-    /// clock; for another name), or the handshake itself failed. `detail`
-    /// is rustls's own words. Asking again meets the same certificate, so
-    /// this is not a network that failed for now.
+    /// clock; for another name), or was shown none
+    /// (`real::is_certificate_error`). `detail` is rustls's own words.
+    /// Asking again meets the same certificate, so this is not a network
+    /// that failed for now. A handshake that failed any other way -- plain
+    /// HTTP on the TLS port, an alert, a reset -- is `Network`.
     #[error("secure connection to {host} failed: {detail}")]
     Tls { host: String, detail: String },
     /// This client would not make the request, by its own rules: an https

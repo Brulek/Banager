@@ -8,10 +8,13 @@
 //! `ALLOWED_HTTPS_HOSTS` is refused before any connection is opened.
 //!
 //! Its errors say which kind of failure each one was (`request_error`):
-//! the network (`HttpError::Network`), the time (`Timeout`), a secure
-//! connection rustls would not set up (`Tls`), or this client's own refusal
+//! the network (`HttpError::Network`), the time (`Timeout`), a certificate
+//! rustls would not accept (`Tls`), or this client's own refusal
 //! (`Refused`) -- a check that ends in either of the last two would end the
-//! same way next time, and is not asked to be tried again.
+//! same way next time, and is not asked to be tried again. Any other way a
+//! TLS handshake fails -- a server that answers in plain HTTP, as a Wi-Fi
+//! sign-in page does, an alert, a reset -- is the network: it may well
+//! clear by itself.
 
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
 use async_trait::async_trait;
@@ -162,29 +165,49 @@ fn rustls_error_in<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&
     None
 }
 
+/// Whether rustls refused the server's certificate: `InvalidCertificate`
+/// -- which is how the macOS platform verifier reports every trust
+/// failure, by name for the four Apple codes it maps (another name,
+/// no chain to a trusted root, wrong key usage, revoked) and as `Other`
+/// with Apple's own words for the rest ("“localhost” certificate is not
+/// trusted: -67843") -- or a server that showed none
+/// (`NoCertificatesPresented`). Asking again meets the same certificate.
+/// No other rustls error is known to: a corrupt record (plain HTTP on the
+/// TLS port, as a Wi-Fi sign-in page answers), an alert, a failed
+/// decryption may be gone on the next try.
+fn is_certificate_error(error: &rustls::Error) -> bool {
+    matches!(
+        error,
+        rustls::Error::InvalidCertificate(_) | rustls::Error::NoCertificatesPresented
+    )
+}
+
 /// What a `reqwest` error was, for `req`: the time running out
-/// (`Timeout`); a secure connection rustls would not set up (`Tls`, with
+/// (`Timeout`); a certificate rustls would not accept (`Tls`, with
 /// rustls's words and the request's host -- not reqwest's own "error
-/// sending request", which says nothing of it); a request that could not
-/// be built (`Refused`); else the network (`Network`).
+/// sending request", which says nothing of it, `is_certificate_error`); a
+/// request that could not be built (`Refused`); else the network
+/// (`Network`) -- with rustls's words after reqwest's where the handshake
+/// failed some other way.
 fn request_error(e: reqwest::Error, req: &HttpRequest) -> HttpError {
     if e.is_timeout() {
         return HttpError::Timeout(req.timeout);
     }
-    if let Some(tls) = rustls_error_in(&e) {
-        let host = url::Url::parse(&req.url)
-            .ok()
-            .and_then(|url| url.host_str().map(str::to_string))
-            .unwrap_or_default();
-        return HttpError::Tls {
-            host,
-            detail: tls.to_string(),
-        };
+    match rustls_error_in(&e) {
+        Some(tls) if is_certificate_error(tls) => {
+            let host = url::Url::parse(&req.url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+                .unwrap_or_default();
+            HttpError::Tls {
+                host,
+                detail: tls.to_string(),
+            }
+        }
+        Some(tls) => HttpError::Network(format!("{e}: {tls}")),
+        None if e.is_builder() => HttpError::Refused(format!("could not build the request: {e}")),
+        None => HttpError::Network(e.to_string()),
     }
-    if e.is_builder() {
-        return HttpError::Refused(format!("could not build the request: {e}"));
-    }
-    HttpError::Network(e.to_string())
 }
 
 impl RealHttpClient {
@@ -563,10 +586,15 @@ mod tests {
     }
 
     /// Accepts one connection, reads whatever arrives first -- for an
-    /// https request, the TLS ClientHello -- and answers it with plain
-    /// HTTP, as a server that does not speak TLS on that port would: no
-    /// secure connection can be set up on it, every time.
-    async fn serve_plain_http_to_a_tls_client() -> std::net::SocketAddr {
+    /// https request, the TLS ClientHello -- and then does `then` with the
+    /// socket: answer in plain HTTP, hang up, reset.
+    async fn serve_after_the_client_hello(
+        then: impl FnOnce(
+                tokio::net::TcpStream,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            + Send
+            + 'static,
+    ) -> std::net::SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -575,39 +603,112 @@ mod tests {
             let (mut socket, _) = listener.accept().await.expect("accept");
             let mut chunk = [0u8; 4096];
             let _ = socket.read(&mut chunk).await;
-            let _ = socket
-                .write_all(
-                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                )
-                .await;
-            let _ = socket.shutdown().await;
+            then(socket).await;
         });
         addr
     }
 
-    #[tokio::test]
-    async fn test_real_http_client_reports_a_failed_tls_handshake_as_tls_not_network() {
-        // Finding 6 of the round-5 review: a secure connection that cannot
-        // be set up was `Network`, which a lookup counts as "check again"
-        // forever. `fetch` is `send` past the host check, which would
-        // refuse a loopback https host before connecting.
-        let addr = serve_plain_http_to_a_tls_client().await;
-        let client = RealHttpClient::new();
-        let result = client
+    /// `fetch` -- `send` past the host check, which would refuse a
+    /// loopback https host before connecting -- of `https://{addr}/`.
+    async fn fetch_https(addr: std::net::SocketAddr) -> Result<HttpResponse, HttpError> {
+        RealHttpClient::new()
             .fetch(HttpRequest {
                 method: "GET",
                 url: format!("https://{addr}/"),
                 headers: vec![],
                 timeout: std::time::Duration::from_secs(5),
             })
-            .await;
-        match result {
+            .await
+    }
+
+    /// A self-signed certificate for `localhost` and 127.0.0.1 (P-256,
+    /// valid to 2126) and its PKCS#8 key, DER in base64: made for this
+    /// test alone with `openssl req -x509`, trusted by nothing, protecting
+    /// nothing.
+    const UNTRUSTED_CERT: &str = "MIIBmzCCAUGgAwIBAgIUZMYRWQvH8GsneQTG+3GxNikiKJ4wCgYIKoZIzj0EAwIwFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MTAwMjExMDY0NVoYDzIxMjYwOTA4MTEwNjQ1WjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASsogJHbE96DqRB8vnKhNjWKebNvoq2pQsJMWXFrM92UUW/KdmHJCFSM8aHlNfHZB07HUFUhpk7+9Gwe9ZrAvANo28wbTAdBgNVHQ4EFgQUkZPDt782qqIFrqD8q17N4pzzh/QwHwYDVR0jBBgwFoAUkZPDt782qqIFrqD8q17N4pzzh/QwDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARhwR/AAABgglsb2NhbGhvc3QwCgYIKoZIzj0EAwIDSAAwRQIhAMLRJ8Usf7+1nRWu/r8/eaMJbbpsMYraHnsVc5DFOeyoAiBfyFS/9NB2WMw0PhOLCnelbaeHW6jxmBWQY9oUPxz63Q==";
+    const UNTRUSTED_KEY: &str = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgiPkxgmWoci2kKASFp0CioJnrvcIg3Y+VfQhJff4y0kGhRANCAASsogJHbE96DqRB8vnKhNjWKebNvoq2pQsJMWXFrM92UUW/KdmHJCFSM8aHlNfHZB07HUFUhpk7+9Gwe9ZrAvAN";
+
+    /// Accepts one connection and answers its TLS handshake with
+    /// `UNTRUSTED_CERT`, as a proxy that reads https traffic does with a
+    /// certificate of its own that this Mac does not trust. rustls on a
+    /// thread of its own, over a blocking socket: the server half needs no
+    /// async, and rustls (with reqwest's aws-lc-rs provider) is all it needs.
+    fn serve_an_untrusted_certificate() -> std::net::SocketAddr {
+        use base64::Engine;
+        let decode = |b64: &str| {
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .expect("test certificate base64")
+        };
+        let certificate = rustls::pki_types::CertificateDer::from(decode(UNTRUSTED_CERT));
+        let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+            rustls::pki_types::PrivatePkcs8KeyDer::from(decode(UNTRUSTED_KEY)),
+        );
+        let config = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .expect("protocol versions")
+        .with_no_client_auth()
+        .with_single_cert(vec![certificate], key)
+        .expect("test certificate and key");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local_addr");
+        std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().expect("accept");
+            let mut connection = rustls::ServerConnection::new(std::sync::Arc::new(config))
+                .expect("server connection");
+            // Until the client gives up on the certificate (its alert ends
+            // the handshake as an error here) or the socket closes.
+            while connection.is_handshaking() {
+                if connection.complete_io(&mut socket).is_err() {
+                    break;
+                }
+            }
+        });
+        addr
+    }
+
+    #[test]
+    fn test_is_certificate_error_is_only_a_refused_certificate() {
+        use rustls::{AlertDescription, CertificateError, Error, InvalidMessage, OtherError};
+        for certificate in [
+            Error::InvalidCertificate(CertificateError::UnknownIssuer),
+            Error::InvalidCertificate(CertificateError::NotValidForName),
+            Error::InvalidCertificate(CertificateError::Expired),
+            Error::InvalidCertificate(CertificateError::Revoked),
+            // The macOS verifier's words for every code it does not name.
+            Error::InvalidCertificate(CertificateError::Other(OtherError(std::sync::Arc::new(
+                std::io::Error::other("“localhost” certificate is not trusted: -67843"),
+            )))),
+            Error::NoCertificatesPresented,
+        ] {
+            assert!(is_certificate_error(&certificate), "{certificate:?}");
+        }
+        for other in [
+            // Plain HTTP on the TLS port: a Wi-Fi sign-in page.
+            Error::InvalidMessage(InvalidMessage::InvalidContentType),
+            Error::AlertReceived(AlertDescription::HandshakeFailure),
+            Error::AlertReceived(AlertDescription::InternalError),
+            Error::DecryptError,
+        ] {
+            assert!(!is_certificate_error(&other), "{other:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_an_untrusted_certificate_as_tls_not_network() {
+        // Round-5 review finding 6: a certificate this Mac does not trust
+        // was `Network`, which a lookup counts as "check again" forever.
+        // Checked by the platform verifier, as every real request is.
+        let addr = serve_an_untrusted_certificate();
+        match fetch_https(addr).await {
             Err(error @ HttpError::Tls { .. }) => {
                 let HttpError::Tls { host, detail } = &error else {
                     unreachable!()
                 };
                 assert_eq!(host, "127.0.0.1");
-                assert!(!detail.is_empty());
+                assert!(detail.starts_with("invalid peer certificate"), "{detail}");
                 // rustls's words, never reqwest's "error sending request",
                 // which the window would read as the network failing.
                 let words = error.to_string();
@@ -618,6 +719,61 @@ mod tests {
             }
             other => panic!("expected Tls, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_plain_http_on_the_tls_port_as_network() {
+        // What a Wi-Fi sign-in page or a broken middlebox does: rustls
+        // reads a corrupt record, which may be gone once the person has
+        // signed in -- the network, with rustls's words after reqwest's.
+        let addr = serve_after_the_client_hello(|mut socket| {
+            Box::pin(async move {
+                let _ = socket
+                    .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await;
+                let _ = socket.shutdown().await;
+            })
+        })
+        .await;
+        match fetch_https(addr).await {
+            Err(HttpError::Network(message)) => {
+                assert!(message.contains("corrupt message"), "{message}")
+            }
+            other => panic!("expected Network, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_a_server_that_hangs_up_in_the_handshake_as_network() {
+        let addr = serve_after_the_client_hello(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.shutdown().await;
+            })
+        })
+        .await;
+        let result = fetch_https(addr).await;
+        assert!(
+            matches!(result, Err(HttpError::Network(_))),
+            "expected Network, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_a_reset_in_the_handshake_as_network() {
+        let addr = serve_after_the_client_hello(|socket| {
+            Box::pin(async move {
+                // Closed with no linger: the client gets a reset, not a
+                // hang-up.
+                socket.set_zero_linger().expect("SO_LINGER 0");
+                drop(socket);
+            })
+        })
+        .await;
+        let result = fetch_https(addr).await;
+        assert!(
+            matches!(result, Err(HttpError::Network(_))),
+            "expected Network, got {result:?}"
+        );
     }
 
     #[tokio::test]

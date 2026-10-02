@@ -789,8 +789,8 @@ pub enum Warning {
     /// On a `checkable: false` candidate, after the `Message` that says
     /// why: its lookup reached `host` but could not set up a secure
     /// connection there (`HttpError::Tls`) -- rustls did not accept the
-    /// certificate it was shown, as with a proxy or security software that
-    /// reads https traffic, or a clock far off, or the handshake failed.
+    /// certificate it was shown (or was shown none), as with a proxy or
+    /// security software that reads https traffic, or a clock far off.
     /// The words for a person, where the `Message` is rustls's own (behind
     /// "Show technical details"): without it the row said the network had
     /// failed, which checking the network would not mend. Never with
