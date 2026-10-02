@@ -250,30 +250,40 @@ impl Protected {
     /// whatever `HOME` says. A `home` that is empty or relative is no home
     /// folder: places under it would be relative, which no path a walk
     /// looks at ever is, and would keep nothing out; only the account's
-    /// are kept then. The account's is looked up only when it is not
-    /// `home` itself, as it is unless `HOME` was changed.
+    /// are kept then.
+    ///
+    /// Finding where a home folder leads is a walk too, and never steps
+    /// into a place known by then: the account's places are known as
+    /// spelled before anything is looked at, the account's home is
+    /// followed past none of them, and `home` -- unless it is the
+    /// account's, as it is unless `HOME` was changed -- is followed past
+    /// none of the account's nor its own. A `home` inside one of the
+    /// account's places (`HOME=~/Documents/h` from a terminal) is kept as
+    /// given, and nothing in it is looked at.
     pub fn new(home: &Path) -> Protected {
         let mut homes: Vec<PathBuf> = Vec::new();
-        for given in [Some(home.to_path_buf()), account_home()]
+        for given in [account_home(), Some(home.to_path_buf())]
             .into_iter()
             .flatten()
         {
             if !given.is_absolute() || homes.iter().any(|known| same_path(known, &given)) {
                 continue;
             }
-            let real = match resolve(&given, &Protected::default(), true) {
-                Resolution::Found(real, _) => Some(real),
-                _ => None,
-            };
-            homes.push(given);
-            if let Some(real) = real {
+            homes.push(given.clone());
+            let so_far = Protected::of_homes(&homes);
+            if let Resolution::Found(real, _) = resolve(&given, &so_far, true) {
                 if !homes.iter().any(|known| same_path(known, &real)) {
                     homes.push(real);
                 }
             }
         }
+        Protected::of_homes(&homes)
+    }
+
+    /// The places for `homes`, each as given, spelled from `/` once.
+    fn of_homes(homes: &[PathBuf]) -> Protected {
         Protected {
-            places: places(&homes)
+            places: places(homes)
                 .iter()
                 .map(|place| without_data_volume(place))
                 .collect(),
@@ -344,6 +354,10 @@ impl Protected {
 /// change while Banager runs, and asking can mean a round trip to the
 /// directory service.
 pub fn account_home() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(account) = ACCOUNT_HOME_FOR_TESTS.with(|account| account.borrow().clone()) {
+        return account;
+    }
     static ACCOUNT_HOME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     ACCOUNT_HOME.get_or_init(password_database_home).clone()
 }
@@ -391,6 +405,9 @@ thread_local! {
     /// The home folder `Protected::of_this_process` answers for on this
     /// thread instead of `HOME` (`as_if_home`).
     static PROCESS_HOME: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+    /// What `account_home` answers on this thread instead of the password
+    /// database, when a test sets it (`tests::AsIfAccount`).
+    static ACCOUNT_HOME_FOR_TESTS: std::cell::RefCell<Option<Option<PathBuf>>> = const { std::cell::RefCell::new(None) };
 }
 
 /// A test's stand-in for this process's `HOME`, on its own thread only,
@@ -967,6 +984,53 @@ mod tests {
         assert!(protected.contains(&account.join("Documents/bin")));
         assert!(!protected.contains(&other.0.join(".cargo/bin")));
         assert!(!protected.contains(&account.join(".cargo/bin")));
+    }
+
+    /// `account_home` answering `account` on this thread until dropped.
+    struct AsIfAccount;
+
+    impl AsIfAccount {
+        fn new(account: &Path) -> AsIfAccount {
+            ACCOUNT_HOME_FOR_TESTS
+                .with(|slot| *slot.borrow_mut() = Some(Some(account.to_path_buf())));
+            AsIfAccount
+        }
+    }
+
+    impl Drop for AsIfAccount {
+        fn drop(&mut self) {
+            ACCOUNT_HOME_FOR_TESTS.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
+    #[test]
+    fn test_finding_where_home_leads_never_steps_into_the_accounts_places() {
+        // `HOME=~/Documents/h` from a terminal (the account's home faked
+        // as a folder of the test's own): `HOME` is kept as given, and the
+        // walk that finds where it leads stops at `Documents`, never looks
+        // in. The account's places are kept, and `HOME`'s as given.
+        let account = Temp::new("account");
+        std::fs::create_dir_all(account.0.join("Documents/h")).unwrap();
+        let _account = AsIfAccount::new(&account.0);
+        let home = account.0.join("Documents/h");
+        let (protected, made) = crate::dirfd::calls::measure(|| Protected::new(&home));
+        for (call, path) in &made.paths {
+            assert!(!protected.contains(path), "{call:?} looked at {path:?}");
+            assert!(
+                !path.starts_with(account.0.join("Documents")),
+                "{call:?} looked at {path:?}"
+            );
+        }
+        assert!(protected.contains(&account.0.join("Documents/x")));
+        assert!(protected.contains(&home.join("Desktop")));
+        // An ordinary `HOME` beside it: followed, its own places kept.
+        let other = Temp::new("other-beside-account");
+        std::fs::create_dir_all(other.0.join("real")).unwrap();
+        std::os::unix::fs::symlink(other.0.join("real"), other.0.join("linked")).unwrap();
+        let protected = Protected::new(&other.0.join("linked"));
+        assert!(protected.contains(&other.0.join("real/Documents")));
+        assert!(protected.contains(&other.0.join("linked/Documents")));
+        assert!(protected.contains(&account.0.join("Music")));
     }
 
     #[test]
