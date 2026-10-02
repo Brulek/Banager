@@ -82,7 +82,8 @@ import { updatesUnchecked } from "../lib/uncheckedStandalone";
 import { CommandsGroup, notOnPathChip, twinChip, useTwins } from "../components/CommandFacts";
 import { withoutJudgedPathNotices } from "../lib/commands";
 import { sizeFact } from "../components/SizeFact";
-import { compareBySize, sizeCellOf, sizeOrderOf } from "../lib/sizes";
+import { compareSizes, sizeCellOf, sizeOrderOf } from "../lib/sizes";
+import { cachedRankedComparator } from "../lib/sortRank";
 import { compareByInstalledAt, installedDateCellOf } from "../lib/installedDates";
 import { COMMANDS_UNKNOWN_KEYS, commandsKnown } from "../lib/commandsKnown";
 import { sizeTotalsOf, sourceTotalText } from "../lib/sizeTotals";
@@ -627,11 +628,19 @@ export function InstalledPage() {
     () => new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" }),
     [i18n.language],
   );
-  const compareArtifacts = useCallback(
-    (a: InstalledArtifact, b: InstalledArtifact) =>
-      collator.compare(listedName(a.key, a.display_name), listedName(b.key, b.display_name)) ||
-      collator.compare(artifactKeyId(a.key), artifactKeyId(b.key)),
-    [collator],
+  // Worked out once for every tool of the check (`cachedRankedComparator`):
+  // a search, a 「显示」 choice or another sort then sorts by number, not by
+  // name through the collator thousands of times over.
+  const compareArtifacts = useMemo(
+    () =>
+      cachedRankedComparator(
+        snapshot?.artifacts ?? [],
+        i18n.language,
+        (a: InstalledArtifact, b: InstalledArtifact) =>
+          collator.compare(listedName(a.key, a.display_name), listedName(b.key, b.display_name)) ||
+          collator.compare(artifactKeyId(a.key), artifactKeyId(b.key)),
+      ),
+    [snapshot, collator, i18n.language],
   );
   const nameOf = useCallback(
     (candidate: UpdateCandidate): string =>
@@ -811,9 +820,16 @@ export function InstalledPage() {
       const byName = (a: ListItem, b: ListItem) =>
         a.type === "row" && b.type === "row" ? compareArtifacts(a.artifact, b.artifact) : 0;
       // By size: the largest first, then by name, a row with no size last.
+      // Each row's size looked up once, not at each of the sort's comparisons.
+      const sizeOf = new Map<InstalledArtifact, number | undefined>();
+      if (sort === "size") {
+        for (const item of rows) {
+          if (item.type === "row") sizeOf.set(item.artifact, sizeOrder.get(artifactKeyId(item.artifact.key)));
+        }
+      }
       const bySize = (a: ListItem, b: ListItem) =>
         a.type === "row" && b.type === "row"
-          ? compareBySize(sizeOrder, a.artifact, b.artifact) || compareArtifacts(a.artifact, b.artifact)
+          ? compareSizes(sizeOf.get(a.artifact), sizeOf.get(b.artifact)) || compareArtifacts(a.artifact, b.artifact)
           : 0;
       // By date installed: the newest first, then by name, a row with no
       // date last.
@@ -940,6 +956,40 @@ export function InstalledPage() {
     [rowItems, notices.length],
   );
 
+  // An uninstall of each tool already queued or running, by its key's id.
+  // Indexed once per change of the operations: every row of the list asks,
+  // not only those in sight (whether it can be ticked), and the operations
+  // run to hundreds. The first in the backend's order, newest first, as a
+  // search of it finds.
+  const activeUninstalls = useMemo(() => {
+    const byId = new Map<string, OpSummary>();
+    for (const op of operations ?? []) {
+      if (op.kind !== "Uninstall" || op.status === "Done") continue;
+      const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
+      if (!byId.has(id)) byId.set(id, op);
+    }
+    return byId;
+  }, [operations]);
+  // A batch's tool already uninstalled while another operation on its
+  // source runs: its row is the last check's, carried forward until the
+  // source is read again (`uninstalledWhileBusy`), and says so.
+  const uninstalledIds = useMemo(() => uninstalledWhileBusy(operations ?? []), [operations]);
+  // The rows the list shows that can be ticked, in its order, each with its
+  // key's id (`tickable`, held as `holdsOf` says): worked out when the list
+  // or the operations change, not at every drawing of the page -- a tick,
+  // a selection -- through every one of thousands of rows.
+  const shownTickable = useMemo(
+    () =>
+      rowItems.flatMap((item) => {
+        if (item.type !== "row") return [];
+        const id = artifactKeyId(item.artifact.key);
+        const holds = { preview, underway: activeUninstalls.has(id), uninstalled: uninstalledIds.has(id) };
+        return tickable(item.artifact, item.instance, holds) ? [{ id, artifact: item.artifact }] : [];
+      }),
+    [rowItems, preview, activeUninstalls, uninstalledIds],
+  );
+  const shownArtifacts = useMemo(() => shownTickable.map(({ artifact }) => artifact), [shownTickable]);
+
   // The menu bar's Search (⌘F, `searchInstalled`): the field takes the
   // focus as soon as it is in the toolbar, its text selected to be typed
   // over, wherever the focus was. Still loading, or before the toolbar
@@ -1012,21 +1062,8 @@ export function InstalledPage() {
     heldBy(artifact, instance, holdsOf(artifact));
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
-  // Indexed once a draw: every row of the list asks, not only those in
-  // sight (whether it can be ticked), and the operations run to hundreds.
-  // The first in the backend's order, newest first, as a search of it finds.
-  const activeUninstalls = new Map<string, OpSummary>();
-  for (const op of operations ?? []) {
-    if (op.kind !== "Uninstall" || op.status === "Done") continue;
-    const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
-    if (!activeUninstalls.has(id)) activeUninstalls.set(id, op);
-  }
   const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined =>
     activeUninstalls.get(artifactKeyId(artifact.key));
-  // A batch's tool already uninstalled while another operation on its
-  // source runs: its row is the last check's, carried forward until the
-  // source is read again (`uninstalledWhileBusy`), and says so.
-  const uninstalledIds = uninstalledWhileBusy(operations ?? []);
   const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
     const op = uninstallOp(artifact);
     if (op === undefined) {
@@ -1780,15 +1817,8 @@ export function InstalledPage() {
   // list, in place of a 全选 that could tick nothing (`ReadOnlySourceLine`).
   const viewed = activeFilter === null ? undefined : instancesById.get(activeFilter);
   const readOnlySource = viewed !== undefined && !canWrite(viewed) ? viewed : null;
-  // The rows the list shows that can be ticked, in its order, and those of
-  // them that are: what 「卸载所选」 acts on (`countedTicks`).
-  const shownTickable = rowItems.flatMap((item) =>
-    item.type === "row" && tickable(item.artifact, item.instance, holdsOf(item.artifact)) ? [item.artifact] : [],
-  );
-  const counted = countedTicks(
-    shownTickable.map((artifact) => ({ id: artifactKeyId(artifact.key), artifact })),
-    selectedUninstalls,
-  ).map(({ artifact }) => artifact);
+  // Those of the rows that can be ticked that are: what 「卸载所选」 acts on (`countedTicks`).
+  const counted = countedTicks(shownTickable, selectedUninstalls).map(({ artifact }) => artifact);
   return (
     <div ref={attachPage} className="relative flex h-full">
       {/* The page's own controls, in the window's toolbar (spec §3.2):
@@ -1874,7 +1904,7 @@ export function InstalledPage() {
         {sourceEmpty ? null : readOnlySource !== null && shownTickable.length === 0 ? (
           <ReadOnlySourceLine instance={readOnlySource} />
         ) : (
-          <InstalledSelectionHeader shown={shownTickable} counted={counted} sizes={sizes} />
+          <InstalledSelectionHeader shown={shownArtifacts} counted={counted} sizes={sizes} />
         )}
         {/* Virtualized: a Mac with Homebrew's components unfolded lists
             hundreds of rows. */}

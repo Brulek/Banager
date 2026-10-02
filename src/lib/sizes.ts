@@ -142,8 +142,15 @@ export function sizeOrderOf(sizes: Sizes | undefined, artifacts: InstalledArtifa
  * neither has one", for the caller to order by name.
  */
 export function compareBySize(order: Map<string, number>, a: InstalledArtifact, b: InstalledArtifact): number {
-  const left = order.get(artifactKeyId(a.key));
-  const right = order.get(artifactKeyId(b.key));
+  return compareSizes(order.get(artifactKeyId(a.key)), order.get(artifactKeyId(b.key)));
+}
+
+/**
+ * `compareBySize` for two sizes already looked up in its order (`undefined`
+ * for a row with none): for a long list, each row's looked up once rather
+ * than at every comparison.
+ */
+export function compareSizes(left: number | undefined, right: number | undefined): number {
   if (left === right) return 0;
   if (left === undefined) return 1;
   if (right === undefined) return -1;
