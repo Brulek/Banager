@@ -155,7 +155,9 @@ export function ToolSetupSheet() {
         sizes: sizes ?? null,
         technicalDetails: settings?.show_technical_details ?? false,
         language: i18n.language,
-        nowMs: now,
+        // Read as it is built, so never behind a source's newest stamp; the
+        // minute clock only builds it again.
+        nowMs: Math.max(now, Date.now()),
       })
     : null;
 

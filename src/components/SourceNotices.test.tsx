@@ -442,6 +442,19 @@ describe("SourceNotices: when a source that did not answer last did (R12)", () =
     expect(document.body.textContent).not.toContain("{{when}}");
   });
 
+  it("runs no minute timer while no notice says a time", () => {
+    const setInterval = vi.spyOn(globalThis, "setInterval");
+    try {
+      const plain = renderWithProviders(<SourceNotices notices={[uvSilent, ollamaStopped]} layout="line" />);
+      expect(setInterval.mock.calls.filter(([, ms]) => ms === 60_000)).toEqual([]);
+      plain.unmount();
+      renderWithProviders(<SourceNotices notices={[uvAnswered]} layout="line" />);
+      expect(setInterval.mock.calls.filter(([, ms]) => ms === 60_000)).toHaveLength(1);
+    } finally {
+      setInterval.mockRestore();
+    }
+  });
+
   it("turns 今天 into 昨天 at midnight while the window stays open", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: new Date(2026, 9, 2, 23, 59, 30) });
     await i18n.changeLanguage("zh-CN");
