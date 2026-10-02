@@ -1,0 +1,255 @@
+[
+  {
+    "name": "npm: no DNS",
+    "text": "npm error code ENOTFOUND",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "npm: DNS not answering for now",
+    "text": "npm ERR! code EAI_AGAIN",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "npm: connection reset",
+    "text": "npm error errno ECONNRESET",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "npm: timed out",
+    "text": "npm error code ETIMEDOUT",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "npm: connection refused",
+    "text": "npm error code ECONNREFUSED",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "npm: network out of reach",
+    "text": "npm error code ENETUNREACH",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "pip (urllib3): no connection made",
+    "text": "WARNING: Retrying (Retry(total=4)) after connection broken by 'NewConnectionError('<HTTPSConnection>: Failed to establish a new connection: [Errno 8] nodename nor servname provided, or not known')'",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "pip (urllib3): read timed out",
+    "text": "ReadTimeoutError: HTTPSConnectionPool(host='pypi.org', port=443): Read timed out. (read timeout=15)",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "pip on Linux: name resolution",
+    "text": "[Errno -3] Temporary failure in name resolution",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "uv: network out of reach",
+    "text": "error: could not reach https://pypi.org/simple/ (network is unreachable)",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "uv (reqwest): dns error",
+    "text": "error: Request failed after 3 retries\n  Caused by: error sending request for url (https://pypi.org/simple/ruff/)\n  Caused by: dns error: failed to lookup address information",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "grok's own update check",
+    "text": "the update check reported: could not reach the update server: error sending request: dns error",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "curl: could not resolve host",
+    "text": "curl: (6) Could not resolve host: formulae.brew.sh",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "curl: couldn't resolve host",
+    "text": "curl: (6) Couldn't resolve host 'example.org'",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "Rust: connection refused",
+    "text": "Connection refused (os error 61)",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "Rust: connection reset",
+    "text": "Connection reset by peer (os error 54)",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "no route to host",
+    "text": "No route to host",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "macOS resolver",
+    "text": "failed to lookup address information: nodename nor servname provided, or not known",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "nothing at all",
+    "text": "",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "a status the registry answered with",
+    "text": "registry returned status 404",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "npm: not logged in",
+    "text": "npm error code E401",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "npm: no such package",
+    "text": "npm error code E404 Not Found - GET https://registry.npmjs.org/left-pad",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "a file that could not be read",
+    "text": "could not read local manifest /Users/me/.ollama/x: Permission denied (os error 13)",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "Antigravity CLI on an Intel Mac",
+    "text": "Antigravity CLI's update manifest is not yet verified on Intel Macs (x86_64)",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "a version that could not be read",
+    "text": "cannot read the installed version now",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "a package named timeout",
+    "text": "npm ERR! 404 'timeout@9.9.9' is not in this registry",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "a code inside a longer word",
+    "text": "ENOTFOUNDISH",
+    "transient": false,
+    "network": false
+  },
+  {
+    "name": "only Rust: hyper's resolver words alone",
+    "text": "failed to lookup address information",
+    "transient": true,
+    "network": false,
+    "why": "Rust's HTTP clients say it after 'dns error', which both read; alone it is read as the network only for the transient flag"
+  },
+  {
+    "name": "only Rust: HttpError::Network's own words",
+    "text": "network error: connection closed before message completed",
+    "transient": true,
+    "network": false,
+    "why": "HttpError::Network's Display; Banager's own requests are judged by the error's variant (LookupFailure::request), not these words"
+  },
+  {
+    "name": "only the window: a certificate",
+    "text": "SSL: CERTIFICATE_VERIFY_FAILED",
+    "transient": false,
+    "network": true,
+    "why": "intended: a certificate a proxy or security software presents is met again at the next check, so it is not transient; the cause line still says the network"
+  },
+  {
+    "name": "only the window: urllib3's certificate words",
+    "text": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1006)",
+    "transient": false,
+    "network": true,
+    "why": "intended, as above: TLS is not transient"
+  },
+  {
+    "name": "only the window: curl's secure connection",
+    "text": "curl: (35) SSL connect error",
+    "transient": false,
+    "network": true,
+    "why": "intended, as above: TLS is not transient"
+  },
+  {
+    "name": "only the window: Go's resolver",
+    "text": "dial tcp: lookup registry.ollama.ai: no such host",
+    "transient": false,
+    "network": true,
+    "why": "Go's words; no lookup whose stderr Rust reads (npm, pip, pipx, uv, grok's check) is a Go program"
+  },
+  {
+    "name": "only the window: Go's timeout",
+    "text": "dial tcp 34.36.133.15:443: i/o timeout",
+    "transient": false,
+    "network": true,
+    "why": "Go's words, as above"
+  },
+  {
+    "name": "only the window: libcurl's timeout",
+    "text": "curl: (28) Timeout was reached",
+    "transient": false,
+    "network": true,
+    "why": "libcurl's words (Homebrew's downloads); no lookup whose stderr Rust reads is curl"
+  },
+  {
+    "name": "only the window: curl's empty reply",
+    "text": "curl: (52) Empty reply from server",
+    "transient": false,
+    "network": true,
+    "why": "curl's words, as above"
+  },
+  {
+    "name": "only the window: urllib3's retries alone",
+    "text": "HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/ruff/",
+    "transient": false,
+    "network": true,
+    "why": "urllib3 names the cause after it (a new connection, a read timeout, SSL), and Rust reads that cause; alone it could be a certificate"
+  },
+  {
+    "name": "only the window: a download Homebrew could not make",
+    "text": "Error: Failed to download resource \"jq\"",
+    "transient": false,
+    "network": true,
+    "why": "Homebrew's words for an update, not a lookup's"
+  },
+  {
+    "name": "only the window: cargo's fetch",
+    "text": "error: failed to fetch `https://github.com/rust-lang/crates.io-index`",
+    "transient": false,
+    "network": true,
+    "why": "cargo's words for an install; cargo's lookup is Banager's own request to crates.io"
+  },
+  {
+    "name": "only the window: npm's network line alone",
+    "text": "npm error network socket hang up",
+    "transient": false,
+    "network": true,
+    "why": "npm puts an E-code line beside it, which both read; alone it is read as the network only for the cause"
+  }
+]

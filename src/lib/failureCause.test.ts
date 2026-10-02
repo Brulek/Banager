@@ -1,5 +1,14 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FAILURE_CAUSE_KEYS, failureCause, outcomeCause, type FailureCause } from "./failureCause";
+import {
+  FAILURE_CAUSE_KEYS,
+  failureCause,
+  lookupFailureCause,
+  outcomeCause,
+  type FailureCause,
+} from "./failureCause";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 
@@ -330,6 +339,24 @@ describe("FAILURE_CAUSE_KEYS", () => {
       expect(next.endsWith("。"), keys.next).toBe(true);
       // No command names: a person's words.
       expect(lookup(zhCN, keys.line) as string, keys.line).not.toMatch(/brew update|curl|npm|pip/);
+    }
+  });
+});
+
+describe("lookupFailureCause", () => {
+  it("reads a lookup's words as the network where the cases Rust's transient flag is tested on say, and lists every difference", () => {
+    // `transient` is Rust's `says_network_failed` (crates/banager-core/src/
+    // adapters/mod.rs): whether a later check can get past it. `network`
+    // is what this window shows. Where they differ, the case says why.
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const cases: Array<{ name: string; text: string; transient: boolean; network: boolean; why?: string }> =
+      JSON.parse(
+        readFileSync(path.join(root, "crates/banager-core/src/adapters/network_words_cases.json"), "utf-8"),
+      );
+    expect(cases.length).toBeGreaterThanOrEqual(30);
+    for (const { name, text, transient, network, why } of cases) {
+      expect(lookupFailureCause(text) === "network", name).toBe(network);
+      expect(why !== undefined, name).toBe(transient !== network);
     }
   });
 });

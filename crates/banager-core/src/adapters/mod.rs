@@ -996,6 +996,49 @@ mod tests {
     }
 
     #[test]
+    fn test_says_network_failed_reads_every_shared_case_and_each_difference_from_the_window_is_listed(
+    ) {
+        // `network_words_cases.json` is read here and by
+        // src/lib/failureCause.test.ts: `transient` is this function's
+        // answer (a later check can get past it), `network` the cause the
+        // window shows for a lookup's words (`lookupFailureCause`, the
+        // same rule as `history::failure_cause`). Where the two differ,
+        // the case says why, so a difference is never by accident.
+        #[derive(serde::Deserialize)]
+        struct Case {
+            name: String,
+            text: String,
+            transient: bool,
+            network: bool,
+            why: Option<String>,
+        }
+        let cases: Vec<Case> =
+            serde_json::from_str(include_str!("network_words_cases.json")).expect("cases parse");
+        assert!(cases.len() >= 30, "the shared cases are all there");
+        for case in cases {
+            assert_eq!(
+                says_network_failed(&case.text),
+                case.transient,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                crate::history::failure_cause(&case.text)
+                    == Some(crate::history::FailureCause::Network),
+                case.network,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                case.why.is_some(),
+                case.transient != case.network,
+                "{}: only a difference is listed, and every one is",
+                case.name
+            );
+        }
+    }
+
+    #[test]
     fn regression_second_token_refuses_a_version_with_a_control_character() {
         // Found by `adapters/robustness.rs` (a flipped byte in cargo's line).
         assert_eq!(second_token("cargo 1.9\u{0}.1 (797e8a9bc)\n"), None);
