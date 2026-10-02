@@ -7,8 +7,9 @@
 
 use super::recipe::RouteKind;
 use crate::model::InstanceNote;
-use crate::protected::{self, Protected, Resolution};
+use crate::protected::{self, look, Protected, Resolution};
 use crate::runner::HostEnv;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 /// A recipe path (`~/.local/bin/claude`) under `home`. `HostEnv.home` is
@@ -88,9 +89,14 @@ pub enum Probe {
 /// never listed twice (spec §3.3 step 2, D3).
 const PACKAGE_MANAGER_MARKERS: [&str; 4] = ["Cellar", "Caskroom", "node_modules", "corepack"];
 
+/// Whether one of `path`'s names is one of `names`, as the disk compares
+/// names (`protected::same_name`): a path is spelled here as its link
+/// texts spell it, not as the disk does (`protected::look`).
 fn has_component(path: &Path, names: &[&str]) -> bool {
     path.components().any(|component| match component {
-        Component::Normal(name) => names.iter().any(|candidate| name == *candidate),
+        Component::Normal(name) => names
+            .iter()
+            .any(|candidate| protected::same_name(name.as_bytes(), candidate.as_bytes())),
         _ => false,
     })
 }
@@ -100,7 +106,10 @@ fn has_component(path: &Path, names: &[&str]) -> bool {
 /// non-directories, or dangling intermediate symlinks) are not evidence of
 /// missing program files. Private readers: `probe_strict`'s NotFound
 /// branch, `placed` (and through it `one_hop`), and `leads_to_program`.
-fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
+/// Each component looked up one step at a time, never into a protected
+/// place (`protected::look`): one that is, or leads into, one is an
+/// error, as a folder Banager may not search is.
+fn canonicalize_existing_prefix(path: &Path, protected: &Protected) -> std::io::Result<PathBuf> {
     let mut resolved = PathBuf::new();
     for component in path.components() {
         let Component::Normal(name) = component else {
@@ -112,12 +121,12 @@ fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
             continue;
         };
         let next = resolved.join(name);
-        match std::fs::canonicalize(&next) {
+        match look::real_path(&next, protected) {
             Ok(real) => resolved = real,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 // An existing symlink with a missing destination
                 // cannot safely be treated as a missing directory.
-                match std::fs::symlink_metadata(&next) {
+                match look::lstat(&next, protected) {
                     Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => {
                         resolved = next;
                     }
@@ -137,9 +146,11 @@ fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
 /// never "not responding", for detection. An instance already detected is
 /// read again through `probe_strict` (`StandaloneAdapter::look`, for
 /// `inventory` and the readings before and after an upgrade), where what
-/// could not be told stays an error rather than "gone".
-pub fn probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
-    probe_strict(kind, launcher, root).unwrap_or(Probe::Absent)
+/// could not be told stays an error rather than "gone". So is a launcher
+/// that is, or leads, into a place `protected` keeps out: nothing there
+/// is looked at.
+pub fn probe(protected: &Protected, kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
+    probe_strict(protected, kind, launcher, root).unwrap_or(Probe::Absent)
 }
 
 /// `probe`, keeping what it could not tell: `Ok(Absent)` only when the
@@ -161,14 +172,28 @@ pub fn probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
 /// dangle and the launcher's own text would no longer say whose it is: a
 /// stopped uninstall would read as a finished one. A link the tool keeps
 /// inside its root (a `current`) moves with the root and is its business.
-pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::Result<Probe> {
+///
+/// Every look -- `lstat`, `readlink`, `realpath`, of the launcher, the
+/// folders above it and the root -- is taken one step at a time and never
+/// into or through a place `protected` keeps out (`protected::look`): a
+/// launcher, root or folder above either that is, or leads into, one is
+/// an error here (`look::is_protected`), as a folder Banager may not
+/// search is, and nothing in the place is looked at. Paths are compared
+/// as the disk compares names (`protected::starts_with_folded`), since
+/// each is spelled as its link texts spell it.
+pub fn probe_strict(
+    protected: &Protected,
+    kind: RouteKind,
+    launcher: &Path,
+    root: &Path,
+) -> std::io::Result<Probe> {
     // Step 1: `lstat`, not `stat` -- a dangling link is still a launcher.
-    let meta = match std::fs::symlink_metadata(launcher) {
+    let meta = match look::lstat(launcher, protected) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Probe::Absent),
         Err(error) => return Err(error),
     };
-    match std::fs::canonicalize(launcher) {
+    match look::real_path(launcher, protected) {
         Ok(real) => {
             // Step 2: shared exclusion.
             if has_component(&real, &PACKAGE_MANAGER_MARKERS) {
@@ -177,10 +202,10 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
             // Step 3: the fingerprint.
             match kind {
                 RouteKind::SymlinkIntoRoot => {
-                    if !meta.file_type().is_symlink() {
+                    if !meta.is_symlink() {
                         return Ok(Probe::Absent);
                     }
-                    let canonical_root = match std::fs::canonicalize(root) {
+                    let canonical_root = match look::real_path(root, protected) {
                         Ok(canonical_root) => canonical_root,
                         // The launcher runs something, and there is no
                         // root it could be in.
@@ -189,8 +214,10 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
                         }
                         Err(error) => return Err(error),
                     };
-                    if one_hop(launcher)?.starts_with(&canonical_root)
-                        && real.starts_with(&canonical_root)
+                    if protected::starts_with_folded(
+                        &one_hop(launcher, protected)?,
+                        &canonical_root,
+                    ) && protected::starts_with_folded(&real, &canonical_root)
                     {
                         Ok(Probe::Present { real })
                     } else {
@@ -200,7 +227,7 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
                 RouteKind::FlatFile => {
                     // The installer's own copy is a regular file; a link
                     // of that name points at somebody else's.
-                    if meta.file_type().is_file() {
+                    if meta.is_file() {
                         Ok(Probe::Present { real })
                     } else {
                         Ok(Probe::Absent)
@@ -219,12 +246,14 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
                 RouteKind::SymlinkIntoRoot => {}
                 RouteKind::FlatFile => return Ok(Probe::Absent),
             }
-            if !meta.file_type().is_symlink() {
+            if !meta.is_symlink() {
                 return Ok(Probe::Absent);
             }
-            let hop = one_hop(launcher)?;
-            let root = canonicalize_existing_prefix(root)?;
-            if !has_component(&hop, &PACKAGE_MANAGER_MARKERS) && hop.starts_with(&root) {
+            let hop = one_hop(launcher, protected)?;
+            let root = canonicalize_existing_prefix(root, protected)?;
+            if !has_component(&hop, &PACKAGE_MANAGER_MARKERS)
+                && protected::starts_with_folded(&hop, &root)
+            {
                 Ok(Probe::LauncherOnly)
             } else {
                 Ok(Probe::Absent)
@@ -243,24 +272,26 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
 /// as it exists and the destination itself not followed (`placed`): it may
 /// be gone (the launcher-only state) or a link the tool keeps inside its
 /// root. Read by `probe_strict`, in both of its launcher arms, and by
-/// `leads_to_program`, for any link.
-fn one_hop(launcher: &Path) -> std::io::Result<PathBuf> {
-    let text = std::fs::read_link(launcher)?;
-    let dir = std::fs::canonicalize(launcher.parent().unwrap_or(Path::new("/")))?;
+/// `leads_to_program`, for any link. Never into a protected place.
+fn one_hop(launcher: &Path, protected: &Protected) -> std::io::Result<PathBuf> {
+    let text = look::link_text(launcher, protected)?;
+    let dir = look::real_path(launcher.parent().unwrap_or(Path::new("/")), protected)?;
     // `join` with an absolute text is that text.
-    placed(&dir.join(text))
+    placed(&dir.join(text), protected)
 }
 
 /// `path` as `one_hop` places a link's destination: its folder resolved as
 /// far as it exists (`canonicalize_existing_prefix`), its last component
 /// not followed. Read by `one_hop`, and by `leads_to_program` to place the
 /// links a link may point at the same way, so the two compare.
-fn placed(path: &Path) -> std::io::Result<PathBuf> {
+fn placed(path: &Path, protected: &Protected) -> std::io::Result<PathBuf> {
     match (path.parent(), path.file_name()) {
-        (Some(parent), Some(name)) => Ok(canonicalize_existing_prefix(parent)?.join(name)),
+        (Some(parent), Some(name)) => {
+            Ok(canonicalize_existing_prefix(parent, protected)?.join(name))
+        }
         // A path ending in `..`, or naming `/`: a directory, resolved like
         // any other -- never a program the route could run.
-        _ => canonicalize_existing_prefix(path),
+        _ => canonicalize_existing_prefix(path, protected),
     }
 }
 
@@ -280,24 +311,37 @@ fn placed(path: &Path) -> std::io::Result<PathBuf> {
 /// it dangles, or is not this route's). A dangling link -- `program`
 /// already in the Trash, or removed by hand -- is judged by its text alone,
 /// as the launcher is. Anything else -- not a link, not there, a loop or an
-/// error on the way -- is `false`: not confirmed. Read by
-/// `removal::check_item`, for `Expect::SymlinkToProgram`.
-pub fn leads_to_program(link: &Path, program: &Path, via: &[PathBuf], runs: Option<&Path>) -> bool {
-    let is_link = std::fs::symlink_metadata(link).is_ok_and(|meta| meta.file_type().is_symlink());
+/// error on the way, or a look that would go into a place `protected`
+/// keeps out -- is `false`: not confirmed. Read by `removal::check_item`,
+/// for `Expect::SymlinkToProgram`.
+pub fn leads_to_program(
+    protected: &Protected,
+    link: &Path,
+    program: &Path,
+    via: &[PathBuf],
+    runs: Option<&Path>,
+) -> bool {
+    let is_link = look::lstat(link, protected).is_ok_and(|meta| meta.is_symlink());
     if !is_link {
         return false;
     }
-    let (Ok(hop), Ok(program)) = (one_hop(link), canonicalize_existing_prefix(program)) else {
+    let (Ok(hop), Ok(program)) = (
+        one_hop(link, protected),
+        canonicalize_existing_prefix(program, protected),
+    ) else {
         return false;
     };
-    let names_one_of_via = via
-        .iter()
-        .any(|other| placed(other).is_ok_and(|other| other == hop));
-    if !hop.starts_with(&program) && !names_one_of_via {
+    let names_one_of_via = via.iter().any(|other| {
+        placed(other, protected).is_ok_and(|other| protected::same_path(&other, &hop))
+    });
+    if !protected::starts_with_folded(&hop, &program) && !names_one_of_via {
         return false;
     }
-    match std::fs::canonicalize(link) {
-        Ok(real) => real.starts_with(&program) || runs == Some(real.as_path()),
+    match look::real_path(link, protected) {
+        Ok(real) => {
+            protected::starts_with_folded(&real, &program)
+                || runs.is_some_and(|runs| protected::same_path(runs, &real))
+        }
         Err(error) => error.kind() == std::io::ErrorKind::NotFound,
     }
 }
@@ -510,7 +554,12 @@ mod tests {
         let home = TempHome::new("probe-flat-present");
         let layout = rustup_layout(&home.path().join(".cargo"));
         assert_eq!(
-            probe(RouteKind::FlatFile, &layout.launcher, &layout.cargo_home),
+            probe(
+                &home.protected(),
+                RouteKind::FlatFile,
+                &layout.launcher,
+                &layout.cargo_home
+            ),
             Probe::Present {
                 real: layout.launcher.clone()
             }
@@ -526,14 +575,24 @@ mod tests {
         let elsewhere = home.file("opt/homebrew/Cellar/rustup/1.29.1/bin/rustup");
         let launcher = home.link(".cargo/bin/rustup", &elsewhere);
         assert_eq!(
-            probe(RouteKind::FlatFile, &launcher, &home.path().join(".cargo")),
+            probe(
+                &home.protected(),
+                RouteKind::FlatFile,
+                &launcher,
+                &home.path().join(".cargo")
+            ),
             Probe::Absent
         );
 
         let home = TempHome::new("probe-flat-dir");
         let launcher = home.dir(".cargo/bin/rustup");
         assert_eq!(
-            probe(RouteKind::FlatFile, &launcher, &home.path().join(".cargo")),
+            probe(
+                &home.protected(),
+                RouteKind::FlatFile,
+                &launcher,
+                &home.path().join(".cargo")
+            ),
             Probe::Absent
         );
     }
@@ -543,6 +602,7 @@ mod tests {
         let home = TempHome::new("probe-flat-missing");
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::FlatFile,
                 &home.path().join(".cargo/bin/rustup"),
                 &home.path().join(".cargo")
@@ -562,13 +622,23 @@ mod tests {
         let cargo_home = home.dir(".cargo");
         let launcher = home.link(".cargo/bin/rustup", Path::new("rustup.old"));
         assert_eq!(
-            probe(RouteKind::FlatFile, &launcher, &cargo_home),
+            probe(
+                &home.protected(),
+                RouteKind::FlatFile,
+                &launcher,
+                &cargo_home
+            ),
             Probe::Absent
         );
         // The same link under the link-shaped route is still B's
         // `LauncherOnly`: the rule belongs to the route, not to the link.
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &cargo_home),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &cargo_home
+            ),
             Probe::LauncherOnly
         );
     }
@@ -578,7 +648,12 @@ mod tests {
         let home = TempHome::new("probe-present");
         let layout = claude_layout(&home, "2.1.281");
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &layout.launcher,
+                &layout.root
+            ),
             Probe::Present { real: layout.real }
         );
     }
@@ -594,6 +669,7 @@ mod tests {
         let launcher = home.link(".local/bin/claude", &current);
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &launcher,
                 &home.path().join(".local/share/claude")
@@ -617,12 +693,22 @@ mod tests {
         let launcher = home.link(".local/bin/claude", &current);
         let root = home.path().join(".local/share/claude");
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::Absent
         );
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::Absent
         );
     }
@@ -642,7 +728,12 @@ mod tests {
         let root = home.path().join(".local/share/claude");
         std::fs::remove_dir_all(root.join("versions")).unwrap();
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::LauncherOnly
         );
     }
@@ -662,18 +753,105 @@ mod tests {
                 return;
             };
             assert_eq!(
-                probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+                probe(
+                    &home.protected(),
+                    RouteKind::SymlinkIntoRoot,
+                    &layout.launcher,
+                    &layout.root
+                ),
                 Probe::Absent
             );
-            let error = probe_strict(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root)
-                .expect_err("a permission error is not an answer");
-            assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+            let error = probe_strict(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &layout.launcher,
+                &layout.root,
+            )
+            .expect_err("a permission error is not an answer");
+            // Not "not there": a folder on the way that could not be
+            // searched (`protected::look` says no more than that).
+            assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
         }
         std::fs::remove_file(&layout.launcher).unwrap();
         assert_eq!(
-            probe_strict(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root).unwrap(),
+            probe_strict(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &layout.launcher,
+                &layout.root
+            )
+            .unwrap(),
             Probe::Absent
         );
+    }
+
+    #[test]
+    fn test_probe_never_follows_a_launcher_into_a_protected_place() {
+        // Claude Code's program folder, then its whole `~/.local`, kept in
+        // a protected place behind a link of the same name (dotfiles
+        // synced through `~/Documents` or iCloud Drive): the launcher is
+        // one that cannot be looked at -- `Absent` for detection, an error
+        // that says so for the readings after it -- and nothing there is
+        // looked at. Kept anywhere else, it is this route's.
+        for keep in [
+            "elsewhere",
+            "Documents",
+            "Library/Mobile Documents/com~apple~CloudDocs",
+            "Library/CloudStorage/Dropbox",
+        ] {
+            for moved in [".local/share/claude", ".local"] {
+                let home = TempHome::new("probe-kept-in-a-protected-place");
+                let layout = claude_layout(&home, "2.1.281");
+                let kept = home.path().join(keep).join(moved);
+                std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+                std::fs::rename(home.path().join(moved), &kept).unwrap();
+                home.link(moved, &kept);
+                let protected = home.protected();
+                let (strict, made) = crate::dirfd::calls::measure(|| {
+                    probe_strict(
+                        &protected,
+                        RouteKind::SymlinkIntoRoot,
+                        &layout.launcher,
+                        &layout.root,
+                    )
+                });
+                for (call, path) in &made.paths {
+                    assert!(
+                        !protected.contains(path),
+                        "{keep} {moved}: {call:?} {path:?}"
+                    );
+                }
+                let probed = probe(
+                    &protected,
+                    RouteKind::SymlinkIntoRoot,
+                    &layout.launcher,
+                    &layout.root,
+                );
+                if keep == "elsewhere" {
+                    assert_eq!(
+                        probed,
+                        Probe::Present {
+                            real: kept
+                                .join(layout.real.strip_prefix(home.path().join(moved)).unwrap())
+                        },
+                        "{moved}"
+                    );
+                } else {
+                    let error = strict.expect_err(keep);
+                    assert!(look::is_protected(&error), "{keep} {moved}: {error}");
+                    assert_eq!(probed, Probe::Absent, "{keep} {moved}");
+                }
+                // Another link to the program, as the uninstall asks of
+                // grok's: not confirmed through a protected place.
+                let other = home.link("other-link", &layout.real);
+                let program = layout.root.join("versions");
+                assert_eq!(
+                    leads_to_program(&protected, &other, &program, &[], None),
+                    keep == "elsewhere",
+                    "{keep} {moved}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -691,7 +869,12 @@ mod tests {
         let launcher = linked_home.join(".local/bin/claude");
         let root = linked_home.join(".local/share/claude");
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::Present { real }
         );
     }
@@ -712,6 +895,7 @@ mod tests {
             let launcher = home.link(".local/bin/claude", &target);
             assert_eq!(
                 probe(
+                    &home.protected(),
                     RouteKind::SymlinkIntoRoot,
                     &launcher,
                     &home.path().join(".local/share/claude")
@@ -732,12 +916,22 @@ mod tests {
             // Without the marker exclusion, the root fingerprint accepts
             // this real executable, so this test detects that deletion.
             assert_eq!(
-                probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+                probe(
+                    &home.protected(),
+                    RouteKind::SymlinkIntoRoot,
+                    &launcher,
+                    &root
+                ),
                 Probe::Absent
             );
             std::fs::remove_file(&target).unwrap();
             assert_eq!(
-                probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+                probe(
+                    &home.protected(),
+                    RouteKind::SymlinkIntoRoot,
+                    &launcher,
+                    &root
+                ),
                 Probe::Absent
             );
         }
@@ -754,14 +948,24 @@ mod tests {
         );
         let native_root = home.path().join(".local/share/claude");
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &native_root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &native_root
+            ),
             Probe::Absent
         );
         // The very same link belongs to this root, proving the parent
         // resolution changes its meaning instead of rejecting all links.
         let actual_root = home.path().join("other/share/claude");
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &actual_root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &actual_root
+            ),
             Probe::LauncherOnly
         );
     }
@@ -774,7 +978,12 @@ mod tests {
         home.link(".local/share/claude/loop", &target);
         let launcher = home.link(".local/bin/claude", &target);
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::Absent
         );
     }
@@ -785,6 +994,7 @@ mod tests {
         let launcher = home.file(".local/bin/claude");
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &launcher,
                 &home.path().join(".local/share/claude")
@@ -801,6 +1011,7 @@ mod tests {
         home.dir(".local/share/claude");
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &launcher,
                 &home.path().join(".local/share/claude")
@@ -815,6 +1026,7 @@ mod tests {
         let home = TempHome::new("probe-missing");
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &home.path().join(".local/bin/claude"),
                 &home.path().join(".local/share/claude")
@@ -832,7 +1044,12 @@ mod tests {
         let root = home.path().join(".local/share/claude");
         let launcher = home.link(".local/bin/claude", &root.join("versions/2.1.281"));
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::LauncherOnly
         );
 
@@ -843,7 +1060,12 @@ mod tests {
             Path::new("../share/claude/versions/2.1.281"),
         );
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &launcher,
+                &root
+            ),
             Probe::LauncherOnly
         );
     }
@@ -862,6 +1084,7 @@ mod tests {
         );
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &launcher,
                 &home.path().join(".local/share/claude")
@@ -891,6 +1114,7 @@ mod tests {
         let linked_home = home.link("linked-home", &real_home);
         assert_eq!(
             probe(
+                &home.protected(),
                 RouteKind::SymlinkIntoRoot,
                 &linked_home.join(".local/bin/claude"),
                 &linked_home.join(".local/share/claude")
@@ -924,7 +1148,13 @@ mod tests {
         ];
         for link in &links {
             assert!(
-                leads_to_program(link, &program, &via, Some(layout.real.as_path())),
+                leads_to_program(
+                    &home.protected(),
+                    link,
+                    &program,
+                    &via,
+                    Some(layout.real.as_path())
+                ),
                 "{link:?}"
             );
         }
@@ -938,6 +1168,7 @@ mod tests {
         for link in &links {
             assert!(
                 leads_to_program(
+                    &home.protected(),
                     &spelled(link),
                     &spelled(&program),
                     &via,
@@ -980,7 +1211,10 @@ mod tests {
             home.path().join(".local/bin/missing"),
         ];
         for link in &refused {
-            assert!(!leads_to_program(link, &program, &via, runs), "{link:?}");
+            assert!(
+                !leads_to_program(&home.protected(), link, &program, &via, runs),
+                "{link:?}"
+            );
         }
 
         // grok's own `agent` replaced by a link to the plugin: not grok's,
@@ -989,12 +1223,30 @@ mod tests {
         std::fs::remove_file(&layout.agent).unwrap();
         home.link(".grok/bin/agent", Path::new("../plugins/p/bin/agent"));
         let through_agent = home.link(".local/bin/agent-two-hops", &layout.agent);
-        assert!(!leads_to_program(&layout.agent, &program, &via, runs));
-        assert!(!leads_to_program(&through_agent, &program, &via, runs));
+        assert!(!leads_to_program(
+            &home.protected(),
+            &layout.agent,
+            &program,
+            &via,
+            runs
+        ));
+        assert!(!leads_to_program(
+            &home.protected(),
+            &through_agent,
+            &program,
+            &via,
+            runs
+        ));
         // And through a loop, nothing is confirmed.
         std::fs::remove_file(&layout.agent).unwrap();
         home.link(".grok/bin/agent", Path::new("agent"));
-        assert!(!leads_to_program(&through_agent, &program, &via, runs));
+        assert!(!leads_to_program(
+            &home.protected(),
+            &through_agent,
+            &program,
+            &via,
+            runs
+        ));
     }
 
     #[test]
@@ -1025,9 +1277,18 @@ mod tests {
         std::fs::remove_dir_all(&program).unwrap();
         for link in &accepted {
             assert!(!link.exists(), "{link:?} dangles");
-            assert!(leads_to_program(link, &program, &via, None), "{link:?}");
+            assert!(
+                leads_to_program(&home.protected(), link, &program, &via, None),
+                "{link:?}"
+            );
         }
-        assert!(!leads_to_program(&plugin_gone, &program, &via, None));
+        assert!(!leads_to_program(
+            &home.protected(),
+            &plugin_gone,
+            &program,
+            &via,
+            None
+        ));
     }
 
     #[test]
@@ -1044,13 +1305,21 @@ mod tests {
         let via = [launcher.clone()];
         let fallback = home.link(".local/bin/grok", &launcher);
         assert!(leads_to_program(
+            &home.protected(),
             &fallback,
             &program,
             &via,
             Some(runs.as_path())
         ));
-        assert!(!leads_to_program(&fallback, &program, &via, None));
         assert!(!leads_to_program(
+            &home.protected(),
+            &fallback,
+            &program,
+            &via,
+            None
+        ));
+        assert!(!leads_to_program(
+            &home.protected(),
             &fallback,
             &program,
             &via,

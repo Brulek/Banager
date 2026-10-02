@@ -25,14 +25,15 @@ use super::recipe::{Expect, KeepSpec, Recipe, RemoveSpec, SHARED_FOLDERS};
 use super::route::{self, Probe};
 use super::Detected;
 use crate::adapters::AdapterError;
+use crate::dirfd::Stat;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
     Attention, Fault, ItemIdentity, ItemKind, KeptWhat, Outcome, RemovedWhat,
     UninstallUnsafeReason, Warning,
 };
+use crate::protected::{self, look, Protected};
 use crate::scan::Glob;
 use crate::trash::{TrashError, Trasher};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -187,13 +188,12 @@ fn spelled(recipe_path: &'static str) -> &'static Path {
 
 /// What `lstat` said about a path: `(st_dev, st_ino)` and the kind -- a
 /// link's own, never its target's.
-fn identity_of(meta: &std::fs::Metadata) -> ItemIdentity {
-    let file_type = meta.file_type();
-    let kind = if file_type.is_symlink() {
+fn identity_of(meta: &Stat) -> ItemIdentity {
+    let kind = if meta.is_symlink() {
         ItemKind::Symlink
-    } else if file_type.is_dir() {
+    } else if meta.is_dir() {
         ItemKind::Dir
-    } else if file_type.is_file() {
+    } else if meta.is_file() {
         ItemKind::File
     } else {
         ItemKind::Other
@@ -227,8 +227,10 @@ struct Item {
 /// -- so it still goes last (spec §6.2). A
 /// match is a regular file (never a link) directly in the pattern's folder
 /// whose name is prefix + something + suffix (`Glob::matches_name`), in
-/// name order so the preview is stable; a folder that cannot be read
-/// matches nothing (the launcher's own check speaks for that folder).
+/// name order so the preview is stable; a folder that cannot be read --
+/// or is, or leads into, a protected place, which is never listed
+/// (`protected::look`) -- matches nothing (the launcher's own check
+/// speaks for that folder).
 /// Every match is optional: it may be gone by its turn, and one Banager
 /// cannot confirm is the tool's is kept and said, like an optional listed
 /// path.
@@ -245,18 +247,23 @@ fn listed_items(job: &Job) -> Vec<Item> {
         return Vec::new();
     };
     let mut items: Vec<Item> = before.iter().map(listed).collect();
+    let protected = job.detected.protected();
     for glob in job.globs {
         let dir = glob.dir_under(home);
-        let Ok(read) = std::fs::read_dir(&dir) else {
+        let Ok(listing) = look::list(&dir, &protected) else {
             continue;
         };
-        let mut names: Vec<String> = read
-            .filter_map(Result::ok)
-            .filter_map(|entry| entry.file_name().into_string().ok())
+        let Ok(found) = listing.names() else {
+            continue;
+        };
+        let mut names: Vec<String> = found
+            .into_iter()
+            .filter_map(|name| name.into_string().ok())
             .filter(|name| glob.matches_name(name))
             .filter(|name| {
-                std::fs::symlink_metadata(dir.join(name))
-                    .is_ok_and(|meta| meta.file_type().is_file())
+                listing
+                    .lstat(name.as_ref())
+                    .is_ok_and(|meta| meta.is_file())
             })
             .collect();
         names.sort();
@@ -311,7 +318,7 @@ fn outside_home_keeps(look: &Look<'_>, moved: &[PathBuf]) -> Vec<Warning> {
         .keep
         .iter()
         .filter(|spec| spec.what == KeptWhat::OutsideHome)
-        .filter(|spec| dead_after(Path::new(spec.path), &look.root, moved))
+        .filter(|spec| dead_after(&look.protected, Path::new(spec.path), &look.root, moved))
         .map(|spec| Warning::WillKeep {
             path: spec.path.to_string(),
             what: KeptWhat::OutsideHome,
@@ -330,16 +337,21 @@ fn outside_home_keeps(look: &Look<'_>, moved: &[PathBuf]) -> Vec<Warning> {
 /// kept `~/.grok`, or to a `~/.grok/bin/agent` the list keeps as not
 /// grok's -- leads where it did afterwards: `false`. `false` too for a link
 /// whose way cannot be looked up, or that does not resolve for a reason
-/// other than a name that is not there: nothing then confirms it leads
-/// nowhere afterwards. Read by `outside_home_keeps`.
-fn dead_after(link: &Path, root: &Path, moved: &[PathBuf]) -> bool {
-    if !points_into(link, root) {
+/// other than a name that is not there -- one that leads into a
+/// protected place among them, which is never followed there
+/// (`protected::look`): nothing then confirms it leads nowhere
+/// afterwards. Read by `outside_home_keeps`.
+fn dead_after(protected: &Protected, link: &Path, root: &Path, moved: &[PathBuf]) -> bool {
+    if !points_into(protected, link, root) {
         return false;
     }
-    match std::fs::canonicalize(link) {
-        Ok(_) => the_way_to(link).is_ok_and(|way| {
-            way.iter()
-                .any(|step| moved.iter().any(|place| step.starts_with(place)))
+    match look::real_path(link, protected) {
+        Ok(_) => the_way_to(link, protected).is_ok_and(|way| {
+            way.iter().any(|step| {
+                moved
+                    .iter()
+                    .any(|place| protected::starts_with_folded(step, place))
+            })
         }),
         Err(error) => error.kind() == std::io::ErrorKind::NotFound,
     }
@@ -352,33 +364,41 @@ fn dead_after(link: &Path, root: &Path, moved: &[PathBuf]) -> bool {
 /// folded from the link's folder without touching the disk
 /// (`route::lexical_join`), compared against the root as spelled and as
 /// canonical. Anything that is not a symbolic link, or is not there, is
-/// not the installer's fallback link: `false`. Read by `dead_after`.
-fn points_into(link: &Path, root: &Path) -> bool {
-    let Ok(meta) = std::fs::symlink_metadata(link) else {
+/// not the installer's fallback link: `false`. Every look one step at a
+/// time, never into a protected place (`protected::look`). Read by
+/// `dead_after`.
+fn points_into(protected: &Protected, link: &Path, root: &Path) -> bool {
+    let Ok(meta) = look::lstat(link, protected) else {
         return false;
     };
-    if !meta.file_type().is_symlink() {
+    if !meta.is_symlink() {
         return false;
     }
-    let canonical_root = std::fs::canonicalize(root).ok();
-    match std::fs::canonicalize(link) {
-        Ok(real) => canonical_root.is_some_and(|root| real.starts_with(root)),
+    let canonical_root = look::real_path(root, protected).ok();
+    match look::real_path(link, protected) {
+        Ok(real) => canonical_root.is_some_and(|root| protected::starts_with_folded(&real, &root)),
         Err(_) => {
-            let Ok(text) = std::fs::read_link(link) else {
+            let Ok(text) = look::link_text(link, protected) else {
                 return false;
             };
             let folder = link.parent().unwrap_or(Path::new("/"));
             let named = route::lexical_join(folder, &text);
-            named.starts_with(root) || canonical_root.is_some_and(|root| named.starts_with(root))
+            protected::starts_with_folded(&named, root)
+                || canonical_root.is_some_and(|root| protected::starts_with_folded(&named, &root))
         }
     }
 }
 
 /// One look at the disk: the home folder resolved, and the route's two
 /// paths as the recipe expands them. Taken afresh by `plan_removal` and by
-/// every item's turn (`take_turn`), never kept across a pause.
+/// every item's turn (`take_turn`), never kept across a pause. Every look
+/// it takes is one step at a time and never into or through a protected
+/// place (`protected`, for the seat's home folder and the account's;
+/// `protected::look`): a path that is, or leads into, one is a path
+/// Banager cannot look at, never one that is not there.
 struct Look<'j> {
     job: &'j Job,
+    protected: Protected,
     canonical_home: PathBuf,
     launcher: PathBuf,
     root: PathBuf,
@@ -387,9 +407,11 @@ struct Look<'j> {
 impl<'j> Look<'j> {
     fn new(job: &'j Job) -> std::io::Result<Look<'j>> {
         let home = job.detected.home.as_path();
+        let protected = job.detected.protected();
         Ok(Look {
             job,
-            canonical_home: std::fs::canonicalize(home)?,
+            canonical_home: look::real_path(home, &protected)?,
+            protected,
             launcher: route::expand(home, job.recipe.route.launcher),
             root: route::expand(home, job.recipe.route.root),
         })
@@ -450,10 +472,11 @@ fn push_steps(left: &mut Vec<Step>, path: &Path) {
 /// leads that far. Anything else that stops the lookup -- a name on the
 /// way that is not a folder (a `..` after a file included, which macOS's
 /// `realpath`, and so `canonicalize`, climbs past without looking), more
-/// links than `MOST_LINKS`, a folder Banager may not look into -- is an
+/// links than `MOST_LINKS`, a folder Banager may not look into, a step
+/// into a protected place (never taken: `protected::look`) -- is an
 /// error, as the system's own lookup (`stat`) gives one. Read by
-/// `kept_places`.
-fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+/// `kept_places` and `dead_after`.
+fn the_way_to(path: &Path, protected: &Protected) -> std::io::Result<Vec<PathBuf>> {
     let mut left = Vec::new();
     push_steps(&mut left, &std::path::absolute(path)?);
     // Where the lookup has got to: a real folder, never a link.
@@ -473,18 +496,18 @@ fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
             Step::Name(name) => name,
         };
         let entry = folder.join(&name);
-        let meta = match std::fs::symlink_metadata(&entry) {
+        let meta = match look::lstat(&entry, protected) {
             Ok(meta) => meta,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
             Err(error) => return Err(error),
         };
-        way.push(std::fs::canonicalize(&folder)?.join(&name));
-        if meta.file_type().is_symlink() {
+        way.push(look::real_path(&folder, protected)?.join(&name));
+        if meta.is_symlink() {
             links += 1;
             if links > MOST_LINKS {
                 return Err(std::io::Error::from_raw_os_error(libc::ELOOP));
             }
-            push_steps(&mut left, &std::fs::read_link(&entry)?);
+            push_steps(&mut left, &look::link_text(&entry, protected)?);
         } else if meta.is_dir() {
             folder = entry;
         } else if !left.is_empty() {
@@ -497,9 +520,10 @@ fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// The kept paths that exist -- a missing one is neither listed nor
 /// protected (ruling 6) -- each placed, with the way to what it leads to
 /// (`the_way_to`). One that is there but cannot be placed -- its folder,
-/// what it leads to or the way there cannot be looked up -- refuses the
-/// whole list: Banager could not confirm the moves leave it alone
-/// (`OverlapsKept`).
+/// what it leads to or the way there cannot be looked up, or leads into a
+/// protected place, where Banager never looks (`protected::look`) --
+/// refuses the whole list: Banager could not confirm the moves leave it
+/// alone (`OverlapsKept`).
 fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
     let mut kept = Vec::new();
@@ -511,23 +535,27 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
             continue;
         }
         let path = route::expand(home, spec.path);
-        match std::fs::symlink_metadata(&path) {
+        let protected = &look.protected;
+        match look::lstat(&path, protected) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(_) => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
         }
-        let entry = match (path.parent().map(std::fs::canonicalize), path.file_name()) {
+        let folder = path
+            .parent()
+            .map(|folder| look::real_path(folder, protected));
+        let entry = match (folder, path.file_name()) {
             (Some(Ok(folder)), Some(name)) => folder.join(name),
             _ => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
         };
-        let target = match std::fs::canonicalize(&path) {
+        let target = match look::real_path(&path, protected) {
             Ok(target) => Some(target),
             // A link to nothing: nothing at its end to keep -- the link
             // itself, and the way as far as it goes (`on_the_way`).
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(_) => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
         };
-        let Ok(on_the_way) = the_way_to(&path) else {
+        let Ok(on_the_way) = the_way_to(&path, protected) else {
             return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept));
         };
         kept.push(Kept {
@@ -556,15 +584,17 @@ fn disturbed<'k>(kept: &'k [Kept], rel: &Path, location: &Path) -> Option<&'k Ke
     kept.iter().find(|kept| {
         let kept_rel = spelled(kept.spec.path);
         let target = kept.target.as_deref();
-        let takes_it = kept.entry.starts_with(location)
-            || target.is_some_and(|t| t.starts_with(location))
-            || kept
-                .on_the_way
-                .iter()
-                .any(|step| step.starts_with(location));
-        let listed_inside =
-            rel.starts_with(kept_rel) && rel != kept_rel && target == Some(kept.entry.as_path());
-        let inside_it = target.is_some_and(|t| location.starts_with(t)) && !listed_inside;
+        // As the disk compares names (`protected::starts_with_folded`):
+        // each path is spelled as its link texts spell it, not as the disk
+        // does (`protected::look`), and more alike is the safe direction.
+        let under = protected::starts_with_folded;
+        let takes_it = under(&kept.entry, location)
+            || target.is_some_and(|t| under(t, location))
+            || kept.on_the_way.iter().any(|step| under(step, location));
+        let listed_inside = rel.starts_with(kept_rel)
+            && rel != kept_rel
+            && target.is_some_and(|t| protected::same_path(t, &kept.entry));
+        let inside_it = target.is_some_and(|t| under(location, t)) && !listed_inside;
         takes_it || inside_it
     })
 }
@@ -572,12 +602,16 @@ fn disturbed<'k>(kept: &'k [Kept], rel: &Path, location: &Path) -> Option<&'k Ke
 /// Whether `folder` (fully resolved) is the home folder or one of
 /// `SHARED_FOLDERS` -- each compared both as the resolved home spells it
 /// and where it resolves, so a shared folder kept elsewhere in the home
-/// folder through a link (dotfiles) still counts. Check 1's never-list.
-fn is_shared_folder(folder: &Path, canonical_home: &Path) -> bool {
-    folder == canonical_home
+/// folder through a link (dotfiles) still counts -- as the disk compares
+/// names (`protected::same_path`), more alike being the safe direction
+/// here. Check 1's never-list.
+fn is_shared_folder(protected: &Protected, folder: &Path, canonical_home: &Path) -> bool {
+    let same = protected::same_path;
+    same(folder, canonical_home)
         || SHARED_FOLDERS.iter().any(|name| {
             let shared = canonical_home.join(name);
-            folder == shared || std::fs::canonicalize(&shared).is_ok_and(|real| folder == real)
+            same(folder, &shared)
+                || look::real_path(&shared, protected).is_ok_and(|real| same(folder, &real))
         })
 }
 
@@ -626,13 +660,13 @@ fn check_item(
     let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(refuse(NotWhatInstructionsExpect));
     };
-    let Ok(real_folder) = std::fs::canonicalize(folder) else {
+    let Ok(real_folder) = look::real_path(folder, &look.protected) else {
         return Err(refuse(NotWhatInstructionsExpect));
     };
     if !real_folder.starts_with(&look.canonical_home) {
         return Err(refuse(OutsideHome));
     }
-    if is_shared_folder(&real_folder, &look.canonical_home) {
+    if is_shared_folder(&look.protected, &real_folder, &look.canonical_home) {
         return Err(refuse(SharedFolder));
     }
     if real_folder
@@ -648,24 +682,30 @@ fn check_item(
     let kind = look.job.recipe.route.kind;
     let confirmed = match expect {
         Expect::SymlinkIntoRoot => matches!(
-            route::probe(kind, path, &look.root),
+            route::probe(&look.protected, kind, path, &look.root),
             Probe::Present { .. } | Probe::LauncherOnly
         ),
         Expect::SymlinkToProgram { program, via } => {
             let home = look.job.detected.home.as_path();
-            let runs = match route::probe(kind, &look.launcher, &look.root) {
+            let runs = match route::probe(&look.protected, kind, &look.launcher, &look.root) {
                 Probe::Present { real } => Some(real),
                 Probe::Absent | Probe::LauncherOnly => None,
             };
             let via: Vec<PathBuf> = via.iter().map(|link| route::expand(home, link)).collect();
-            route::leads_to_program(path, &route::expand(home, program), &via, runs.as_deref())
+            route::leads_to_program(
+                &look.protected,
+                path,
+                &route::expand(home, program),
+                &via,
+                runs.as_deref(),
+            )
         }
         Expect::Dir | Expect::File => true,
     };
     if !confirmed {
         return Err(refuse(NotWhatInstructionsExpect));
     }
-    let meta = match std::fs::symlink_metadata(path) {
+    let meta = match look::lstat(path, &look.protected) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(refuse(Missing)),
         Err(_) => return Err(refuse(NotWhatInstructionsExpect)),
@@ -709,8 +749,12 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
         ))
     })?;
     let kept = kept_places(&look).map_err(|refusal| refusal.into_error(home))?;
-    let launcher_only =
-        route::probe(job.recipe.route.kind, &look.launcher, &look.root) == Probe::LauncherOnly;
+    let launcher_only = route::probe(
+        &look.protected,
+        job.recipe.route.kind,
+        &look.launcher,
+        &look.root,
+    ) == Probe::LauncherOnly;
 
     let mut paths = Vec::new();
     let mut identities = Vec::new();
@@ -722,7 +766,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let mut not_ours = Vec::new();
     for item in listed_items(job) {
         // Check 2: is it there? `lstat`, so a dangling launcher counts.
-        match std::fs::symlink_metadata(&item.path) {
+        match look::lstat(&item.path, &look.protected) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if item.optional {
@@ -921,7 +965,7 @@ fn listed_path_back(look: &Look<'_>, moved: &[PathBuf]) -> Option<PathBuf> {
         .filter(|(_, path)| *path != look.launcher)
         .find(|(spec, path)| {
             let gone = matches!(
-                std::fs::symlink_metadata(path),
+                look::lstat(path, &look.protected),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound
             );
             let excepted = spec.optional
@@ -943,7 +987,7 @@ fn listed_path_back(look: &Look<'_>, moved: &[PathBuf]) -> Option<PathBuf> {
 /// path cannot be placed (`kept_places`) nothing is confirmed: `false` for
 /// both. Read by `listed_path_back` and `left_behind`.
 fn kept_as_not_ours(look: &Look<'_>, rel: &Path, expect: Expect, path: &Path) -> bool {
-    match std::fs::symlink_metadata(path) {
+    match look::lstat(path, &look.protected) {
         Ok(_) => kept_places(look).is_ok_and(|kept| {
             matches!(
                 check_item(look, &kept, rel, expect, path),
@@ -985,12 +1029,13 @@ fn kept_as_not_ours(look: &Look<'_>, rel: &Path, expect: Expect, path: &Path) ->
 /// `moved`, which counts anything left behind as the tool still there.
 pub fn left_behind(job: &Job, moved: &[PathBuf]) -> Result<Vec<PathBuf>, PathBuf> {
     let launcher = route::expand(&job.detected.home, job.recipe.route.launcher);
+    let protected = job.detected.protected();
     let mut left = Vec::new();
     for item in listed_items(job) {
         if item.path == launcher {
             continue;
         }
-        let seen = std::fs::symlink_metadata(&item.path);
+        let seen = look::lstat(&item.path, &protected);
         if matches!(&seen, Err(error) if error.kind() == std::io::ErrorKind::NotFound) {
             continue;
         }
@@ -1264,6 +1309,7 @@ mod tests {
     use crate::model::{Attention, KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
     use crate::scan::Glob;
     use crate::trash::{MockTrasher, TrashError};
+    use std::os::unix::fs::MetadataExt;
     use std::sync::Mutex as StdMutex;
 
     fn claude_lists() -> (&'static [RemoveSpec], &'static [KeepSpec]) {
@@ -1338,7 +1384,7 @@ mod tests {
     }
 
     fn identity(path: &Path) -> ItemIdentity {
-        identity_of(&std::fs::symlink_metadata(path).expect("lstat"))
+        identity_of(&look::lstat(path, &Protected::default()).expect("lstat"))
     }
 
     #[test]
@@ -1550,6 +1596,89 @@ mod tests {
     }
 
     #[test]
+    fn test_plan_removal_never_follows_a_kept_path_into_a_protected_place() {
+        // `~/.claude` or `~/.claude.json` kept in `~/Documents` or iCloud
+        // Drive (dotfiles synced that way): where it leads is never looked
+        // at, so nothing confirms the moves leave it alone -- refused as a
+        // kept path that cannot be looked up is, naming it. The same
+        // layout kept anywhere else is planned.
+        for (keep, protected_place) in [
+            ("elsewhere", false),
+            ("Documents", true),
+            ("Library/Mobile Documents/com~apple~CloudDocs", true),
+        ] {
+            let home = TempHome::new("removal-kept-in-a-protected-place");
+            let layout = claude_layout(&home, "2.1.281");
+            let settings = home.dir(&format!("{keep}/claude"));
+            home.dir(&format!("{keep}/claude/downloads"));
+            home.link(".claude", &settings);
+            let d = detected(home.path());
+            let protected = d.protected();
+            let (planned, made) = crate::dirfd::calls::measure(|| plan_removal(&claude_job(&d)));
+            for (call, path) in &made.paths {
+                assert!(!protected.contains(path), "{keep}: {call:?} {path:?}");
+            }
+            if protected_place {
+                let (path, reason) = refused(planned);
+                assert_eq!(
+                    (path.as_str(), reason),
+                    ("~/.claude", UninstallUnsafeReason::OverlapsKept),
+                    "{keep}"
+                );
+            } else {
+                assert_eq!(planned.expect("a plan").paths.len(), 2, "{keep}");
+            }
+            assert!(layout.root.is_dir());
+
+            let home = TempHome::new("removal-kept-file-in-a-protected-place");
+            let _layout = claude_layout(&home, "2.1.281");
+            let file = home.file(&format!("{keep}/claude.json"));
+            home.link(".claude.json", &file);
+            let planned = plan_removal(&claude_job(&detected(home.path())));
+            if protected_place {
+                let (path, reason) = refused(planned);
+                assert_eq!(
+                    (path.as_str(), reason),
+                    ("~/.claude.json", UninstallUnsafeReason::OverlapsKept),
+                    "{keep}"
+                );
+            } else {
+                assert!(planned.is_ok(), "{keep}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_plan_removal_takes_a_listed_path_through_a_protected_place_as_one_it_cannot_look_at() {
+        // `~/.local/share` kept in `~/Documents`: the program folder is
+        // never looked at there, so it is not what the list describes
+        // (`NotWhatInstructionsExpect`), as a folder Banager may not
+        // search is.
+        let home = TempHome::new("removal-share-in-documents");
+        let layout = claude_layout(&home, "2.1.281");
+        let kept_share = home.path().join("Documents/share");
+        std::fs::create_dir_all(kept_share.parent().unwrap()).unwrap();
+        std::fs::rename(home.path().join(".local/share"), &kept_share).unwrap();
+        home.link(".local/share", &kept_share);
+        let d = detected(home.path());
+        let protected = d.protected();
+        let (planned, made) = crate::dirfd::calls::measure(|| plan_removal(&claude_job(&d)));
+        for (call, path) in &made.paths {
+            assert!(!protected.contains(path), "{call:?} {path:?}");
+        }
+        let (path, reason) = refused(planned);
+        assert_eq!(
+            (path.as_str(), reason),
+            (
+                "~/.local/share/claude",
+                UninstallUnsafeReason::NotWhatInstructionsExpect
+            )
+        );
+        assert!(kept_share.join("claude").is_dir());
+        assert!(layout.launcher.is_symlink());
+    }
+
+    #[test]
     fn test_plan_removal_refuses_when_the_way_to_a_kept_path_runs_through_what_it_would_move() {
         // A kept path needs more than its two ends (the step C code review,
         // 2026-09-26): `~/.claude.json -> ~/.local/share/claude/settings-link
@@ -1676,7 +1805,7 @@ mod tests {
                 .collect()
         };
 
-        let way = the_way_to(&kept).expect("a way");
+        let way = the_way_to(&kept, &home.protected()).expect("a way");
 
         assert_eq!(
             below_home(way.clone()),
@@ -1693,20 +1822,23 @@ mod tests {
 
         let dangling = home.link("gone-link", &h.join("share/claude/nothing/x"));
         assert_eq!(
-            below_home(the_way_to(&dangling).expect("a way as far as it goes")),
+            below_home(the_way_to(&dangling, &home.protected()).expect("a way as far as it goes")),
             vec![h.join("gone-link"), h.join("share"), h.join("share/claude")]
         );
 
         home.link("loop-a", &h.join("loop-b"));
         let looping = home.link("loop-b", &h.join("loop-a"));
-        assert!(the_way_to(&looping).is_err(), "a loop");
+        assert!(the_way_to(&looping, &home.protected()).is_err(), "a loop");
         assert!(std::fs::metadata(&looping).is_err(), "a loop");
         for through_a_file in [
             "settings/claude.json/x",
             "settings/claude.json/../claude.json",
         ] {
             let link = home.link("through-a-file", &h.join(through_a_file));
-            assert!(the_way_to(&link).is_err(), "{through_a_file}");
+            assert!(
+                the_way_to(&link, &home.protected()).is_err(),
+                "{through_a_file}"
+            );
             assert!(std::fs::metadata(&link).is_err(), "{through_a_file}");
             std::fs::remove_file(&link).unwrap();
         }
@@ -1879,17 +2011,18 @@ mod tests {
     fn test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere() {
         // The other reasons the skip covers (ruling 5): an optional path
         // whose folder is a link inside the home folder (C's ruling 24 case,
-        // `~/.claude -> ~/Documents`, which C refused as
-        // `NotWhatInstructionsExpect` and now keeps), to another volume
+        // `~/.claude -> ~/elsewhere`, which C refused as
+        // `NotWhatInstructionsExpect` and now keeps; one into a protected
+        // place is refused instead, below), to another volume
         // (`OutsideHome`), or into a shared folder (`SharedFolder`). None is
         // the tool's to move; a grok whose `~/.config` is a dotfiles link
         // keeps its fish completion rather than becoming impossible to
         // uninstall.
         let home = TempHome::new("removal-optional-linked-inside");
         let _layout = claude_layout(&home, "2.1.281");
-        let documents = home.dir("Documents");
-        home.dir("Documents/downloads");
-        home.link(".claude", &documents);
+        let elsewhere = home.dir("elsewhere");
+        home.dir("elsewhere/downloads");
+        home.link(".claude", &elsewhere);
         let d = detected(home.path());
         let removal = plan_removal(&claude_job(&d)).expect("a plan, not C's refusal");
         assert_eq!(
@@ -1901,7 +2034,7 @@ mod tests {
                 keep("~/.claude", KeptWhat::SettingsAndHistory),
             ]
         );
-        assert!(home.path().join("Documents/downloads").is_dir());
+        assert!(home.path().join("elsewhere/downloads").is_dir());
 
         let outside = TempHome::new("removal-optional-outside");
         let home = TempHome::new("removal-optional-folder-away");
@@ -2210,18 +2343,22 @@ mod tests {
         let elsewhere = outside.link("bin/other", &outside.executable("Caskroom/x/grok"));
         let file = outside.file("bin/file");
         let folder = outside.dir("bin/folder");
-        assert!(points_into(&resolving, &root));
-        assert!(points_into(&dangling, &root));
+        assert!(points_into(&home.protected(), &resolving, &root));
+        assert!(points_into(&home.protected(), &dangling, &root));
         // `../../<home-name>/.grok/bin/grok` from `<outside>/bin`: the two
         // temp homes are siblings, so the text lands under the root.
         assert!(
-            points_into(&relative_dangling, &root),
+            points_into(&home.protected(), &relative_dangling, &root),
             "{relative_dangling:?}"
         );
-        assert!(!points_into(&elsewhere, &root));
-        assert!(!points_into(&file, &root));
-        assert!(!points_into(&folder, &root));
-        assert!(!points_into(&outside.path().join("bin/missing"), &root));
+        assert!(!points_into(&home.protected(), &elsewhere, &root));
+        assert!(!points_into(&home.protected(), &file, &root));
+        assert!(!points_into(&home.protected(), &folder, &root));
+        assert!(!points_into(
+            &home.protected(),
+            &outside.path().join("bin/missing"),
+            &root
+        ));
     }
 
     #[tokio::test]
@@ -2908,7 +3045,12 @@ mod tests {
                 "{version}: the launcher stays"
             );
             assert_ne!(
-                route::probe(CLAUDE.route.kind, &layout.launcher, &layout.root),
+                route::probe(
+                    &home.protected(),
+                    CLAUDE.route.kind,
+                    &layout.launcher,
+                    &layout.root
+                ),
                 Probe::Absent,
                 "{version}: the row stays"
             );
@@ -2971,12 +3113,12 @@ mod tests {
         // the uninstall goes on (spec §十三 #27). At the launcher's turn it is
         // still there -- nothing moved it -- and the preview showed it
         // staying, so the launcher moves. Claude Code's `~/.claude` as a link
-        // to `~/Documents`, whose `downloads` the preview keeps.
+        // to `~/elsewhere`, whose `downloads` the preview keeps.
         let home = TempHome::new("removal-exec-past-not-ours");
         let layout = claude_layout(&home, "2.1.281");
-        let documents = home.dir("Documents");
-        home.dir("Documents/downloads");
-        home.link(".claude", &documents);
+        let elsewhere = home.dir("elsewhere");
+        home.dir("elsewhere/downloads");
+        home.link(".claude", &elsewhere);
         let d = detected(home.path());
         let job = claude_job(&d);
         let preview = plan_removal(&job).unwrap();
@@ -2993,7 +3135,7 @@ mod tests {
             "the launcher moved"
         );
         assert!(
-            home.path().join("Documents/downloads").is_dir(),
+            home.path().join("elsewhere/downloads").is_dir(),
             "what the preview kept stays"
         );
 

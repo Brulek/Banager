@@ -39,6 +39,7 @@ use crate::model::{
     ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UpdateBlocked, UpdateCandidate,
     UpdateChannel,
 };
+use crate::protected::Protected;
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, OutputUse};
 use crate::trash::Trasher;
 use async_trait::async_trait;
@@ -85,6 +86,14 @@ pub struct Detected {
     pub cargo_home: Option<PathBuf>,
     pub rustup_home: Option<PathBuf>,
     pub zdotdir: Option<PathBuf>,
+}
+
+impl Detected {
+    /// The places no look under this seat goes into: for its home folder
+    /// and the account's own (`Protected::new`).
+    pub fn protected(&self) -> Protected {
+        Protected::new(&self.home)
+    }
 }
 
 /// What `inventory` read at the launcher, kept for the `check_updates`
@@ -252,8 +261,12 @@ impl StandaloneAdapter {
         ) else {
             return Vec::new();
         };
+        // Nothing a look here takes goes into a place macOS asks about,
+        // for this home folder or the account's (`route::probe`,
+        // `release_link::read`).
+        let protected = Protected::new(&env.home);
         let (version, unavailable, notes) =
-            match route::probe(self.recipe.route.kind, &launcher, &root) {
+            match route::probe(&protected, self.recipe.route.kind, &launcher, &root) {
                 Probe::Absent => return Vec::new(),
                 // No program to ask: no version read; not unavailable,
                 // because nothing about the source has stopped answering --
@@ -262,7 +275,10 @@ impl StandaloneAdapter {
                 // instance (spec Q17).
                 Probe::LauncherOnly => (None, None, vec![InstanceNote::LauncherOnly]),
                 Probe::Present { real } => {
-                    let version = self.read_version(&launcher, &root).await.version;
+                    let version = self
+                        .read_version(&launcher, &root, &protected)
+                        .await
+                        .version;
                     // The state axis, exactly as uv's rule: the launcher is
                     // there and is ours, it just did not answer. A version
                     // read from a link asks nothing, so nothing failed to
@@ -319,11 +335,16 @@ impl StandaloneAdapter {
     /// (`release_link::read`), `None` when that gives none. For a
     /// `VersionSource::NotRead` recipe (opencode) nothing runs and nothing
     /// is read: `None`.
-    async fn read_version(&self, launcher: &Path, root: &Path) -> VersionRead {
+    async fn read_version(
+        &self,
+        launcher: &Path,
+        root: &Path,
+        protected: &Protected,
+    ) -> VersionRead {
         let cmd = match &self.recipe.version {
             VersionSource::Command(cmd) => cmd,
             VersionSource::ReleaseLink(spec) => {
-                let reading = release_link::read(root, spec);
+                let reading = release_link::read(root, spec, protected);
                 return VersionRead {
                     version: reading.version,
                     follows_latest: Some(reading.follows_latest),
@@ -475,9 +496,18 @@ impl StandaloneAdapter {
     /// with the error, as it refuses an install that changed; `reconcile`
     /// returns it, which `run_operation` reports as `Unconfirmed`.
     async fn look(&self, inst: &ManagerInstance) -> std::io::Result<Look> {
-        let probe = route::probe_strict(self.recipe.route.kind, &inst.exe_path, &inst.prefix)?;
+        let protected = self.protected();
+        let probe = route::probe_strict(
+            &protected,
+            self.recipe.route.kind,
+            &inst.exe_path,
+            &inst.prefix,
+        )?;
         let read = match probe {
-            Probe::Present { .. } => self.read_version(&inst.exe_path, &inst.prefix).await,
+            Probe::Present { .. } => {
+                self.read_version(&inst.exe_path, &inst.prefix, &protected)
+                    .await
+            }
             Probe::Absent | Probe::LauncherOnly => VersionRead {
                 version: None,
                 follows_latest: None,
@@ -1021,6 +1051,21 @@ impl StandaloneAdapter {
         })
     }
 
+    /// The places no look at this tool goes into (`protected::look`): for
+    /// the home folder the last `detect` was given, and for the account's
+    /// own (`Protected::new`). Before any detect -- which `Session` never
+    /// lets an instance reach -- for the account's alone.
+    fn protected(&self) -> Protected {
+        let home = self
+            .detected
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|seat| seat.home.clone())
+            .unwrap_or_default();
+        Protected::new(&home)
+    }
+
     /// A `Command` plan -- the upgrade, `<launcher> update`, or a
     /// `Command` uninstall, rustup's `<launcher> self uninstall -y` -- runs
     /// through `run_plan` like every source's, after one more look at the
@@ -1089,7 +1134,12 @@ impl StandaloneAdapter {
                     )));
                 }
                 if !matches!(
-                    route::probe(self.recipe.route.kind, &launcher, &root),
+                    route::probe(
+                        &Protected::new(&detected.home),
+                        self.recipe.route.kind,
+                        &launcher,
+                        &root
+                    ),
                     Probe::Present { .. }
                 ) {
                     return Ok(Outcome::BanagerFailed(Fault::PathChanged {
@@ -1242,17 +1292,21 @@ impl StandaloneAdapter {
         key: &ArtifactKey,
         plan: &Plan,
     ) -> Result<Reconciled, AdapterError> {
-        let launcher_there =
-            match route::probe_strict(self.recipe.route.kind, &inst.exe_path, &inst.prefix) {
-                Ok(Probe::Absent) => false,
-                Ok(Probe::Present { .. } | Probe::LauncherOnly) => true,
-                Err(error) => {
-                    return Err(AdapterError::Parse(format!(
-                        "cannot tell whether {} is still there: {error}",
-                        inst.exe_path.display()
-                    )))
-                }
-            };
+        let launcher_there = match route::probe_strict(
+            &self.protected(),
+            self.recipe.route.kind,
+            &inst.exe_path,
+            &inst.prefix,
+        ) {
+            Ok(Probe::Absent) => false,
+            Ok(Probe::Present { .. } | Probe::LauncherOnly) => true,
+            Err(error) => {
+                return Err(AdapterError::Parse(format!(
+                    "cannot tell whether {} is still there: {error}",
+                    inst.exe_path.display()
+                )))
+            }
+        };
         let left_behind = match self.recipe.uninstall {
             Some(Uninstall::Paths { remove, keep }) if !launcher_there => {
                 let moved: &[PathBuf] = match &plan.action {
@@ -1416,6 +1470,11 @@ pub(super) mod testing {
 
         pub fn path(&self) -> &Path {
             &self.0
+        }
+
+        /// The places kept out for this home folder (and the account's).
+        pub fn protected(&self) -> crate::protected::Protected {
+            crate::protected::Protected::new(&self.0)
         }
 
         /// Creates `rel` (and its parents) under the home.
@@ -4793,7 +4852,12 @@ mod tests {
             home.link(container, &elsewhere);
             assert!(
                 matches!(
-                    route::probe(RouteKind::FlatFile, &launcher, &cargo_home),
+                    route::probe(
+                        &home.protected(),
+                        RouteKind::FlatFile,
+                        &launcher,
+                        &cargo_home
+                    ),
                     Probe::Present { .. }
                 ),
                 "{container}: the launcher's look alone would let the command run"
@@ -6095,7 +6159,12 @@ mod tests {
             .is_symlink());
         assert!(!layout.agent.exists() && !layout.launcher.exists());
         assert_eq!(
-            route::probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+            route::probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &layout.launcher,
+                &layout.root
+            ),
             Probe::LauncherOnly
         );
         let key = adapter.artifact_key(&inst);
@@ -6157,7 +6226,12 @@ mod tests {
             .expect("execute");
         assert_eq!(outcome, Outcome::Succeeded);
         assert_eq!(
-            route::probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+            route::probe(
+                &home.protected(),
+                RouteKind::SymlinkIntoRoot,
+                &layout.launcher,
+                &layout.root
+            ),
             Probe::Absent
         );
         assert!(

@@ -20,6 +20,7 @@ use banager_core::kept_data::kept_data;
 use banager_core::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance,
 };
+use banager_core::protected::Protected;
 use banager_core::runner::{resolve_exe, HostEnv};
 use banager_core::scan::{scan_dirs, ScanBudget};
 use banager_core::size::{SizeBudget, SizeMeter};
@@ -195,8 +196,9 @@ fn test_codexs_version_marker_is_not_waited_on_when_it_is_a_named_pipe() {
         ".codex/packages/standalone/{}",
         spec.follows_latest
     ));
+    let protected = Protected::new(&home.0);
     let reading = finishes("Codex's version marker", move || {
-        release_link::read(&root, spec)
+        release_link::read(&root, spec, &protected)
     });
     assert_eq!(reading.version.as_deref(), Some("0.159.3"));
     assert!(!reading.follows_latest);

@@ -760,7 +760,12 @@ async fn claude_upgrade_outputs(
         use banager_core::adapters::standalone::recipe::RouteKind;
         use banager_core::adapters::standalone::route::{probe, Probe};
         assert_eq!(
-            probe(RouteKind::SymlinkIntoRoot, &inst.exe_path, &inst.prefix),
+            probe(
+                &banager_core::protected::Protected::new(&home),
+                RouteKind::SymlinkIntoRoot,
+                &inst.exe_path,
+                &inst.prefix
+            ),
             Probe::LauncherOnly
         );
         // The next refresh: detect lists the launcher alone, and the

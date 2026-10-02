@@ -4,18 +4,21 @@
 //! and points `<root>/current` at the one in use, so the version is in
 //! that folder's name and Banager never has to run `codex` to learn it.
 //!
-//! Read-only: `readlink`, `realpath`, `lstat` and one small file read.
-//! Nothing here writes, and nothing here runs.
+//! Read-only: `readlink`, `realpath`, `lstat` and one small file read,
+//! each taken one step at a time and never into or through a protected
+//! place (`protected::look`): a `~/.codex` kept in iCloud Drive or in
+//! `~/Documents` -- dotfiles synced that way -- is not looked into, and
+//! reads as no version, as a link Banager cannot read does. Nothing here
+//! writes, and nothing here runs.
 
 use super::recipe::ReleaseLink;
 use super::route::lexical_join;
-use std::io::Read;
-use std::os::unix::fs::OpenOptionsExt;
+use crate::protected::{look, Protected};
 use std::path::Path;
 
 /// The longest marker file read. The installer writes one release folder's
 /// name into it (`0.159.3-aarch64-apple-darwin`); anything much longer is
-/// not that, and is not read past this.
+/// not that, and is not read.
 const MARKER_LIMIT: u64 = 256;
 
 /// The longest version a folder name may give.
@@ -26,7 +29,8 @@ const VERSION_LIMIT: usize = 64;
 pub struct LinkReading {
     /// The version in the release folder's name; `None` when the link is
     /// missing, is not a link, leads nowhere, leads out of the releases
-    /// folder, or names a folder without one of the recipe's endings.
+    /// folder, names a folder without one of the recipe's endings, or
+    /// cannot be followed without looking into a protected place.
     pub version: Option<String>,
     /// Whether the install follows the latest release: the marker file
     /// names the very folder the link points at. False whenever `version`
@@ -34,7 +38,8 @@ pub struct LinkReading {
     pub follows_latest: bool,
 }
 
-/// Reads `spec`'s link under `root` (the instance's `prefix`).
+/// Reads `spec`'s link under `root` (the instance's `prefix`), never into
+/// a place `protected` keeps out.
 ///
 /// The link must be a symbolic link whose target, resolved, is a folder
 /// directly inside `<root>/<releases>` (resolved too): the installer writes
@@ -43,8 +48,8 @@ pub struct LinkReading {
 /// of `spec.suffixes`, is the version, which must look like one: it starts
 /// with a digit and holds only letters, digits, `.`, `+` and `-` (the
 /// install script's own pattern for a version, `[0-9][0-9A-Za-z.+-]*`).
-pub fn read(root: &Path, spec: &ReleaseLink) -> LinkReading {
-    let Some(name) = release_name(root, spec) else {
+pub fn read(root: &Path, spec: &ReleaseLink, protected: &Protected) -> LinkReading {
+    let Some(name) = release_name(root, spec, protected) else {
         return LinkReading::default();
     };
     let Some(version) = version_in(&name, spec.suffixes) else {
@@ -52,23 +57,25 @@ pub fn read(root: &Path, spec: &ReleaseLink) -> LinkReading {
     };
     LinkReading {
         version: Some(version),
-        follows_latest: marker_names(&root.join(spec.follows_latest), &name),
+        follows_latest: marker_names(&root.join(spec.follows_latest), &name, protected),
     }
 }
 
 /// The name of the release folder the link resolves to, when it resolves
-/// to a folder directly inside the releases folder.
-fn release_name(root: &Path, spec: &ReleaseLink) -> Option<String> {
+/// to a folder directly inside the releases folder: the folder it is in
+/// is the very folder (`st_dev`, `st_ino`) the releases folder leads to.
+fn release_name(root: &Path, spec: &ReleaseLink, protected: &Protected) -> Option<String> {
     let link = root.join(spec.link);
-    // `read_link` fails on anything that is not a symbolic link.
-    let text = std::fs::read_link(&link).ok()?;
+    // `readlink` fails on anything that is not a symbolic link.
+    let text = look::link_text(&link, protected).ok()?;
     let target = lexical_join(root, &text);
-    let real = std::fs::canonicalize(&target).ok()?;
-    if !real.is_dir() {
+    let (real, meta) = look::target(&target, protected).ok()?;
+    if !meta.is_dir() {
         return None;
     }
-    let releases = std::fs::canonicalize(root.join(spec.releases)).ok()?;
-    if real.parent()? != releases.as_path() {
+    let (_, releases) = look::target(&root.join(spec.releases), protected).ok()?;
+    let (_, parent) = look::target(real.parent()?, protected).ok()?;
+    if !parent.same_as(&releases) {
         return None;
     }
     real.file_name()?.to_str().map(str::to_string)
@@ -92,29 +99,21 @@ fn looks_like_a_version(s: &str) -> bool {
 }
 
 /// Whether the regular file at `marker` holds `name` and nothing else
-/// (surrounding white space aside). A missing marker, a link, a folder or
-/// an unreadable file is "no".
+/// (surrounding white space aside). A missing marker, a link, a folder,
+/// one larger than `MARKER_LIMIT`, one in a protected place or an
+/// unreadable file is "no".
 ///
-/// Opened without following a link at its end (`O_NOFOLLOW`) and without
-/// waiting (`O_NONBLOCK`), then checked with `fstat` on the opened file:
-/// a named pipe there, even one swapped in just before the open, is "no"
-/// at once rather than a refresh that waits for a writer.
-fn marker_names(marker: &Path, name: &str) -> bool {
-    let Ok(file) = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
-        .open(marker)
-    else {
+/// Read from the folder it is in, held open, without following a link at
+/// its end (`O_NOFOLLOW`) and without waiting (`O_NONBLOCK`), and only
+/// when `fstat` on the opened file says it is the regular file `lstat`
+/// saw (`look::read_entry`): a named pipe there, even one swapped in just
+/// before the open, is "no" at once rather than a refresh that waits for
+/// a writer.
+fn marker_names(marker: &Path, name: &str, protected: &Protected) -> bool {
+    let Ok((_, bytes)) = look::read_entry(marker, protected, MARKER_LIMIT) else {
         return false;
     };
-    if !file.metadata().is_ok_and(|meta| meta.is_file()) {
-        return false;
-    }
-    let mut text = String::new();
-    if file.take(MARKER_LIMIT).read_to_string(&mut text).is_err() {
-        return false;
-    }
-    text.trim() == name
+    String::from_utf8(bytes).is_ok_and(|text| text.trim() == name)
 }
 
 #[cfg(test)]
@@ -154,7 +153,7 @@ mod tests {
         let home = TempHome::new("codex-link-version");
         let root = installed(&home, "0.159.3-aarch64-apple-darwin");
         assert_eq!(
-            read(&root, spec()),
+            read(&root, spec(), &home.protected()),
             LinkReading {
                 version: Some("0.159.3".to_string()),
                 follows_latest: false,
@@ -167,7 +166,7 @@ mod tests {
         let home = TempHome::new("codex-link-intel");
         let root = installed(&home, "0.160.0-alpha.2-x86_64-apple-darwin");
         assert_eq!(
-            read(&root, spec()).version.as_deref(),
+            read(&root, spec(), &home.protected()).version.as_deref(),
             Some("0.160.0-alpha.2")
         );
     }
@@ -181,7 +180,7 @@ mod tests {
             "0.159.3-aarch64-apple-darwin",
         )
         .unwrap();
-        assert!(read(&root, spec()).follows_latest);
+        assert!(read(&root, spec(), &home.protected()).follows_latest);
         // A marker left from an older release (the link has moved on to a
         // pinned one) is not this install following latest.
         std::fs::write(
@@ -189,7 +188,7 @@ mod tests {
             "0.158.0-aarch64-apple-darwin\n",
         )
         .unwrap();
-        let reading = read(&root, spec());
+        let reading = read(&root, spec(), &home.protected());
         assert_eq!(reading.version.as_deref(), Some("0.159.3"));
         assert!(!reading.follows_latest);
     }
@@ -201,10 +200,10 @@ mod tests {
         let elsewhere = home.path().join("elsewhere.txt");
         std::fs::write(&elsewhere, "0.159.3-aarch64-apple-darwin").unwrap();
         std::os::unix::fs::symlink(&elsewhere, root.join("auto-update-version")).unwrap();
-        assert!(!read(&root, spec()).follows_latest);
+        assert!(!read(&root, spec(), &home.protected()).follows_latest);
         std::fs::remove_file(root.join("auto-update-version")).unwrap();
         std::fs::create_dir(root.join("auto-update-version")).unwrap();
-        assert!(!read(&root, spec()).follows_latest);
+        assert!(!read(&root, spec(), &home.protected()).follows_latest);
     }
 
     #[test]
@@ -214,7 +213,10 @@ mod tests {
         home.executable(
             ".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex",
         );
-        assert_eq!(read(&root, spec()), LinkReading::default());
+        assert_eq!(
+            read(&root, spec(), &home.protected()),
+            LinkReading::default()
+        );
     }
 
     #[test]
@@ -226,7 +228,10 @@ mod tests {
             ".codex/packages/standalone/current",
             &root.join("releases/0.159.3-aarch64-apple-darwin"),
         );
-        assert_eq!(read(&root, spec()), LinkReading::default());
+        assert_eq!(
+            read(&root, spec(), &home.protected()),
+            LinkReading::default()
+        );
     }
 
     #[test]
@@ -234,7 +239,10 @@ mod tests {
         let home = TempHome::new("codex-link-folder");
         let root = home.dir(".codex/packages/standalone");
         home.dir(".codex/packages/standalone/current/bin");
-        assert_eq!(read(&root, spec()), LinkReading::default());
+        assert_eq!(
+            read(&root, spec(), &home.protected()),
+            LinkReading::default()
+        );
     }
 
     #[test]
@@ -242,14 +250,84 @@ mod tests {
         let home = TempHome::new("codex-link-outside");
         let root = home.dir(".codex/packages/standalone");
         home.dir(".codex/packages/standalone/releases");
-        let other = home.dir("Downloads/0.159.3-aarch64-apple-darwin");
+        let other = home.dir("elsewhere/0.159.3-aarch64-apple-darwin");
         home.link(".codex/packages/standalone/current", &other);
-        assert_eq!(read(&root, spec()), LinkReading::default());
+        assert_eq!(
+            read(&root, spec(), &home.protected()),
+            LinkReading::default()
+        );
         // Nor one two levels down inside it.
         std::fs::remove_file(root.join("current")).unwrap();
         let deep = home.dir(".codex/packages/standalone/releases/x/0.159.3-aarch64-apple-darwin");
         home.link(".codex/packages/standalone/current", &deep);
-        assert_eq!(read(&root, spec()), LinkReading::default());
+        assert_eq!(
+            read(&root, spec(), &home.protected()),
+            LinkReading::default()
+        );
+    }
+
+    #[test]
+    fn test_a_link_into_a_protected_place_is_not_followed_and_gives_no_version() {
+        // Each layout gives its version where nothing is protected
+        // (`elsewhere`), and none once that place is `~/Documents` or
+        // iCloud Drive: what is there is never looked at.
+        for keep in [
+            "elsewhere",
+            "Documents",
+            "Library/Mobile Documents/com~apple~CloudDocs",
+        ] {
+            let name = "0.159.3-aarch64-apple-darwin";
+            let protected_place = keep != "elsewhere";
+            // `~/.codex` itself a link into the place, the whole install
+            // there.
+            let home = TempHome::new("codex-link-kept-codex-home");
+            home.executable(&format!(
+                "{keep}/codex/packages/standalone/releases/{name}/bin/codex"
+            ));
+            let kept_root = home.path().join(keep).join("codex/packages/standalone");
+            home.link(
+                &format!("{keep}/codex/packages/standalone/current"),
+                &kept_root.join("releases").join(name),
+            );
+            std::fs::write(kept_root.join("auto-update-version"), name).unwrap();
+            home.link(".codex", &home.path().join(keep).join("codex"));
+            let root = home.path().join(".codex/packages/standalone");
+            let protected = home.protected();
+            let (reading, made) = crate::dirfd::calls::measure(|| read(&root, spec(), &protected));
+            for (call, path) in &made.paths {
+                assert!(!protected.contains(path), "{keep}: {call:?} {path:?}");
+            }
+            if protected_place {
+                assert_eq!(reading, LinkReading::default(), "{keep}");
+            } else {
+                assert_eq!(
+                    reading,
+                    LinkReading {
+                        version: Some("0.159.3".to_string()),
+                        follows_latest: true,
+                    },
+                    "{keep}"
+                );
+            }
+
+            // Only the release folders kept there: `releases` a link into
+            // the place, `current` and the marker where the installer put
+            // them.
+            let home = TempHome::new("codex-link-kept-releases");
+            let root = home.dir(".codex/packages/standalone");
+            home.executable(&format!("{keep}/codex-releases/{name}/bin/codex"));
+            home.link(
+                ".codex/packages/standalone/releases",
+                &home.path().join(keep).join("codex-releases"),
+            );
+            home.link(
+                ".codex/packages/standalone/current",
+                &root.join("releases").join(name),
+            );
+            let reading = read(&root, spec(), &home.protected());
+            let expected = (!protected_place).then(|| "0.159.3".to_string());
+            assert_eq!(reading.version, expected, "{keep}");
+        }
     }
 
     #[test]
@@ -263,7 +341,10 @@ mod tests {
             ".codex/packages/standalone/current",
             Path::new("releases/0.159.3-aarch64-apple-darwin"),
         );
-        assert_eq!(read(&root, spec()).version.as_deref(), Some("0.159.3"));
+        assert_eq!(
+            read(&root, spec(), &home.protected()).version.as_deref(),
+            Some("0.159.3")
+        );
     }
 
     #[test]
@@ -278,7 +359,11 @@ mod tests {
         ] {
             let home = TempHome::new("codex-link-name");
             let root = installed(&home, name);
-            assert_eq!(read(&root, spec()).version, None, "{name:?}");
+            assert_eq!(
+                read(&root, spec(), &home.protected()).version,
+                None,
+                "{name:?}"
+            );
         }
         let long = format!("{}-aarch64-apple-darwin", "1".repeat(VERSION_LIMIT + 1));
         assert_eq!(version_in(&long, spec().suffixes), None);

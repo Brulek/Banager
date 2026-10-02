@@ -183,6 +183,21 @@ pub fn read_regular(path: &Path, protected: &Protected, limit: u64) -> io::Resul
     folder.read_file_at_most(&name, Some(&stat), limit)
 }
 
+/// `read_regular` of the file `path` itself: a link at its end is not
+/// followed (`O_NOFOLLOW`), and is `InvalidInput`, as anything else that
+/// is not a regular file is.
+pub fn read_entry(path: &Path, protected: &Protected, limit: u64) -> io::Result<(Stat, Vec<u8>)> {
+    let (at, stat) = entry(path, protected)?;
+    if !stat.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    let (folder, name) = Dir::open_parent(&at)?;
+    folder.read_file_at_most(&name, Some(&stat), limit)
+}
+
 /// Whether this account may write in the folder `path` leads to, as
 /// `access(path, W_OK)` answers: `false` for anything that is not a
 /// folder there, or cannot be looked at -- a protected place among them.
