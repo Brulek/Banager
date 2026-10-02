@@ -320,9 +320,12 @@ Paths are under a generic home folder, `/Users/you`.
 - The Installed page's search finds a tool by a command it puts on the Mac
   as well as by its name, the command by its start: 「rg」 lists ripgrep,
   「pip3.13」 or 「pip」 python@3.13, 「tsc」 typescript, 「psql」
-  postgresql@17, 「adb」 android-platform-tools -- each row with
-  「命令：rg」 ("Command: rg") after its description, which a row found by
-  its name never has. The field's tooltip says 「按名称或命令搜索」.
+  postgresql@17, 「adb」 android-platform-tools, 「agy」 Antigravity CLI --
+  each row with 「命令：rg」 ("Command: rg") after its description, which a
+  row found by what it shows never has. It finds a tool by a word of its
+  description too, in the window's language or the other: 「编程」 lists the
+  AI coding tools, 「视频」 or "video" ffmpeg and youtube-dl, 「JSON」 jq.
+  The field's tooltip says 「按名称、说明或命令搜索」.
 
 ## URL switches
 

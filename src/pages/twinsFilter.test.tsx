@@ -205,7 +205,11 @@ describe("the Installed page with 「装了不止一份」 shown", () => {
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     show("twins");
+    // Both copies of Claude Code: npm's by its name, the native one by
+    // its line, "Anthropic's AI coding assistant"; not Grok's two.
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "anthropic" } });
+    await waitFor(() => expect(rowNames()).toEqual(["@anthropic-ai/claude-code", "Claude Code"]));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "@anthropic" } });
     await waitFor(() => expect(rowNames()).toEqual(["@anthropic-ai/claude-code"]));
   });
 

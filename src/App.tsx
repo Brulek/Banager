@@ -32,7 +32,8 @@ import { useOperationsNotification } from "./lib/operationsNotification";
 import { useSnoozeExpiry } from "./lib/snoozeExpiry";
 import { useFocusOnPageChange } from "./lib/pageFocus";
 import { searchMatch } from "./lib/searchMatch";
-import { useUiStore, type Page } from "./store/ui";
+import { useSearchTexts } from "./lib/useSearchTexts";
+import { artifactKeyId, useUiStore, type Page } from "./store/ui";
 
 /**
  * What each page's toolbar has on the right: its own way to look again,
@@ -101,6 +102,8 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
   const show = useUiStore((s) => s.installedShow);
   // And the search's text: a search shows only some too.
   const needle = useUiStore((s) => s.query).trim().toLowerCase();
+  // Matched as the page matches it, through the same words (`useSearchTexts`).
+  const searchTexts = useSearchTexts(snapshot, needle !== "" && page === "installed");
   const twins = useMemo(() => (show === "all" ? undefined : twinsByArtifact(snapshot?.artifacts ?? [])), [show, snapshot]);
   const viewTotal = (source: string | null): string | null => {
     const total = source === null ? totals.all : (totals.bySource.get(source) ?? null);
@@ -131,7 +134,9 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
         if (show !== "all" || needle !== "") {
           if (inSource.length === 0) return null;
           const shown = inSource.filter(
-            (artifact) => shownBy(show, artifact, twins) && searchMatch(artifact, needle) !== null,
+            (artifact) =>
+              shownBy(show, artifact, twins) &&
+              searchMatch(artifact, needle, searchTexts?.get(artifactKeyId(artifact.key))) !== null,
           ).length;
           return said(t("clarity.shownOfAll", { count: shown, total: inSource.length }));
         }

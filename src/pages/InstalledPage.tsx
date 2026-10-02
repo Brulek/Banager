@@ -33,6 +33,7 @@ import { snoozeOf, snoozedUntilText } from "../lib/snooze";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { searchMatch } from "../lib/searchMatch";
+import { useSearchTexts } from "../lib/useSearchTexts";
 import { SEARCH_SETTLE_MS, useSettled } from "../lib/settled";
 import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
@@ -712,9 +713,13 @@ export function InstalledPage() {
 
   // What the search box asks for, by the name a row shows or the
   // package's own name ("visual-studio-code" finds "Microsoft Visual
-  // Studio Code"), or by a command it puts on the Mac ("rg" finds
-  // ripgrep; `searchMatch`).
+  // Studio Code"), by a word of its line in either language ("编程"), or
+  // by a command it puts on the Mac ("rg" finds ripgrep; `searchMatch`),
+  // through each tool's words, made once for the list (`useSearchTexts`).
   const needle = query.trim().toLowerCase();
+  const searchTexts = useSearchTexts(snapshot, needle !== "");
+  const found = (artifact: InstalledArtifact, text: string) =>
+    searchMatch(artifact, text, searchTexts?.get(artifactKeyId(artifact.key)));
   // A heading's 「约4.1 GB」, only while it counts the whole source: no search, every tool shown.
   const sourceTotalOf = (instanceId: string): string | null => {
     const total = needle === "" && show === "all" ? sizeTotals.bySource.get(instanceId) : undefined;
@@ -729,14 +734,14 @@ export function InstalledPage() {
     for (const artifact of snapshot?.artifacts ?? []) {
       const matches =
         shownBy(show, artifact, twins) &&
-        searchMatch(artifact, needle) !== null;
+        searchMatch(artifact, needle, searchTexts?.get(artifactKeyId(artifact.key))) !== null;
       if (!matches) continue;
       const list = byInstance.get(artifact.key.instance_id) ?? [];
       list.push(artifact);
       byInstance.set(artifact.key.instance_id, list);
     }
     return byInstance;
-  }, [snapshot, needle, show, twins]);
+  }, [snapshot, needle, show, twins, searchTexts]);
 
   // The sources in view: the filter's, or every one.
   const instancesInView = useMemo(
@@ -853,7 +858,7 @@ export function InstalledPage() {
     const hidden =
       selected !== undefined &&
       (!shownBy(show, selected, twins) ||
-        (searchMatch(selected, needle) === null && searchMatch(selected, settledNeedle) === null));
+        (found(selected, needle) === null && found(selected, settledNeedle) === null));
     if (hidden) setSelection(null);
     if (!showChanged && !hidden) return;
     const focus = document.activeElement;
@@ -865,7 +870,7 @@ export function InstalledPage() {
     if (!lost) return;
     if (rowItems.some(keyboardRow)) listHandle.current?.focusFirst();
     else focusOrFallback(null);
-  }, [show, selectedId, artifactsById, twins, needle, settledNeedle, rowItems]);
+  }, [show, selectedId, artifactsById, twins, needle, settledNeedle, rowItems, searchTexts]);
 
   // The names the list shows under more than one source (spec R3), whose
   // rows say their source's name after the tool's.
@@ -1401,7 +1406,7 @@ export function InstalledPage() {
     const name = artifact.display_name;
     const chip = rowChipOf(chipsOf(artifact, instance, label));
     // Found by a command alone, which the row names: 「命令：rg」.
-    const found = needle === "" ? null : searchMatch(artifact, needle);
+    const match = needle === "" ? null : found(artifact, needle);
     // Where an update is listed, the version it moves to, as the Updates
     // page's row says it ("7.1 → 7.2"), in place of an "Update available"
     // word; a hidden one leaves the version installed.
@@ -1429,7 +1434,7 @@ export function InstalledPage() {
         namePath={modelPath(artifact.key, name)}
         showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label)}
-        descriptionNote={found?.by === "command" ? t("installed.commandMatch", { command: found.command }) : undefined}
+        descriptionNote={match?.by === "command" ? t("installed.commandMatch", { command: match.command }) : undefined}
         status={
           chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} ariaLabel={chip.ariaLabel} />
         }

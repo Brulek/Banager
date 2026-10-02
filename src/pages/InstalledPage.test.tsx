@@ -508,6 +508,12 @@ describe("InstalledPage", () => {
           facts: { ...NO_FACTS, commands: runs(["idle3.13", "pip3.13", "pydoc3.13", "python3.13"]) },
         }),
         formula("gh", { facts: { ...NO_FACTS, commands: runs(["gh"]) } }),
+        // A package called as its command, which its row shows neither of.
+        formula("agy", {
+          display_name: "Antigravity CLI",
+          description: "Google's AI coding assistant",
+          facts: { ...NO_FACTS, commands: runs(["agy"]) },
+        }),
       ],
     };
     const { findByText, getByRole } = renderInstalled();
@@ -515,7 +521,7 @@ describe("InstalledPage", () => {
     await findByText("jq");
     const search = getByRole("searchbox", { name: "Search installed tools" });
     // What it searches by, in its tooltip; the placeholder stays 「Search」.
-    expect(search).toHaveAttribute("title", "Search by name or command");
+    expect(search).toHaveAttribute("title", "Search by name, description or command");
     expect(search).toHaveAttribute("placeholder", "Search");
     const noteOf = (name: string) => within(rowOf(name)).queryByText(/^Command: /)?.textContent ?? null;
 
@@ -535,6 +541,12 @@ describe("InstalledPage", () => {
     await waitFor(() => expect(rowNames()).toEqual(["gh"]));
     expect(noteOf("gh")).toBeNull();
     expect(rowOf("gh")).not.toHaveAttribute("aria-describedby");
+
+    // Found by its package's name, which is also its command, and which
+    // the row does not show: the row says which command.
+    fireEvent.change(search, { target: { value: "agy" } });
+    await waitFor(() => expect(rowNames()).toEqual(["Antigravity CLI"]));
+    expect(noteOf("Antigravity CLI")).toBe("Command: agy");
 
     // Letters in a command's middle find nothing.
     fireEvent.change(search, { target: { value: "ip3" } });
@@ -3247,6 +3259,44 @@ describe("InstalledPage", () => {
       // English again: its line, at once.
       expect(within(rowOf("prettier")).getByText(PRETTIER)).toBeInTheDocument();
       expect(within(rowOf("corepack")).getByText("npm package")).toBeInTheDocument();
+    });
+
+    it("finds a row by a word of its line, in the window's language or the other, reading the other's lines only for a search", async () => {
+      const read = vi.fn(async () => ({ "brew:jq": "命令行JSON处理工具", "npm:prettier": "代码格式化工具" }));
+      renderInstalled({ toolDescriptions: { en: english(), "zh-CN": lazyDescriptionTable(read) } });
+      await within(await findRow("prettier")).findByText(PRETTIER);
+      // A window in English, not searched: the Chinese lines are not read.
+      expect(read).not.toHaveBeenCalled();
+      const search = screen.getByRole("searchbox", { name: "Search installed tools" });
+
+      // A word of the line the row shows.
+      fireEvent.change(search, { target: { value: "formatter" } });
+      await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+      expect(read).toHaveBeenCalledTimes(1);
+      fireEvent.change(search, { target: { value: "JSON" } });
+      await waitFor(() => expect(rowNames()).toEqual(["jq"]));
+      // What matched is on the row: no word about a command.
+      expect(within(rowOf("jq")).queryByText(/^Command: /)).toBeNull();
+      // A word of its line in Chinese, once the search has read them.
+      fireEvent.change(search, { target: { value: "格式化" } });
+      await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+      fireEvent.change(search, { target: { value: "" } });
+
+      await inChinese(async () => {
+        const field = screen.getByRole("searchbox", { name: "搜索已安装的工具" });
+        fireEvent.change(field, { target: { value: "编程" } });
+        await waitFor(() => expect(rowNames()).toEqual(["Claude Code"]));
+        fireEvent.change(field, { target: { value: "anthropic" } });
+        await waitFor(() => expect(rowNames()).toEqual(["Claude Code"]));
+        fireEvent.change(field, { target: { value: "json" } });
+        await waitFor(() => expect(rowNames()).toEqual(["jq"]));
+        // The English lines too: Claude Code's summary, prettier's line.
+        fireEvent.change(field, { target: { value: "coding" } });
+        await waitFor(() => expect(rowNames()).toEqual(["Claude Code"]));
+        fireEvent.change(field, { target: { value: "opinionated" } });
+        await waitFor(() => expect(rowNames()).toEqual(["prettier"]));
+        fireEvent.change(field, { target: { value: "" } });
+      });
     });
 
     it("shows a package's line in English alone in its details: its source said nothing", async () => {

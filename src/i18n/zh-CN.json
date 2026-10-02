@@ -261,7 +261,7 @@
     "sortByDate": "按安装日期",
     "dateRowName": "安装于{{date}}",
     "commandMatch": "命令：{{command}}",
-    "searchHint": "按名称或命令搜索"
+    "searchHint": "按名称、说明或命令搜索"
   },
   "updates": {
     "upToDate": "所有工具都是最新的",

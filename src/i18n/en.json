@@ -280,7 +280,7 @@
     "sortByDate": "By Date Installed",
     "dateRowName": "Date installed: {{date}}",
     "commandMatch": "Command: {{command}}",
-    "searchHint": "Search by name or command"
+    "searchHint": "Search by name, description or command"
   },
   "updates": {
     "upToDate": "Everything is up to date",
