@@ -8,7 +8,9 @@ import {
   type SourceNoticeAction,
   type SourceNoticeSpec,
 } from "../lib/sources";
+import { noticeValues } from "../lib/answeredWhen";
 import { useUiStore } from "../store/ui";
+import { useMinuteClock } from "./PageHeader";
 import { NOTICE_GRID, SourceNotice, SourceNoticeLine, type NoticeGrid } from "./SourceNotice";
 import { DisclosureIcon } from "./icons";
 import { InfoDetail } from "./InfoDetail";
@@ -61,6 +63,24 @@ export function useSearchCommand(): (command: string) => void {
     openInstalled(null);
     setQuery(command);
   };
+}
+
+/**
+ * The words a notice interpolates (`noticeValues`), with when its source
+ * last answered said for the time now: 「今天09:12」 turns into
+ * 「昨天09:12」 at midnight while the window stays open. Every place that
+ * draws a notice's words takes them from here -- the lists' lines and the
+ * inspector (`SourceNotices`), the Overview's problems and a source's empty
+ * page -- so the sentence is the same on each, and none shows a bare
+ * `{{when}}`. `notices` are the ones it will be asked about: the clock
+ * starts over when the first one with a time changes.
+ */
+export function useNoticeValues(
+  notices: readonly SourceNoticeSpec[],
+): (notice: SourceNoticeSpec) => SourceNoticeSpec["values"] {
+  const { t, i18n } = useTranslation();
+  const now = useMinuteClock(notices.find((notice) => notice.answeredAt !== undefined)?.answeredAt ?? null);
+  return (notice) => noticeValues(t, notice, now, i18n.language);
 }
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */
@@ -137,6 +157,7 @@ export interface SourceNoticesProps {
  */
 export function SourceNotices({ notices, layout = "line", fold, grid = "avatar", separator = true }: SourceNoticesProps) {
   const { t } = useTranslation();
+  const valuesOf = useNoticeValues(notices);
   const openOllamaApp = useOpenOllamaApp();
   const { data: settings } = useSettings();
   // The header's Check again, and off when that one is: pressed while a
@@ -208,12 +229,13 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   };
 
   const noticeView = (notice: SourceNoticeSpec, trailing?: ReactNode) => {
-    const title = t(notice.titleKey, notice.values);
+    const values = valuesOf(notice);
+    const title = t(notice.titleKey, values);
     const props = {
       variant: notice.variant,
       title,
-      description: t(notice.descriptionKey, notice.values),
-      action: notice.action ? button(notice.action, notice.values) : undefined,
+      description: t(notice.descriptionKey, values),
+      action: notice.action ? button(notice.action, values) : undefined,
       // Only the notice whose button failed says so.
       error: notice.action?.id === "openOllama" ? openOllamaError : undefined,
     };

@@ -40,7 +40,7 @@ import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { ToolbarPopupButton } from "../components/ui/PopupButton";
-import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
+import { SourceNotices, useNoticeFold, useNoticeValues } from "../components/SourceNotices";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
@@ -407,6 +407,8 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
     sourceWarningOf(instance, label, 0) ??
     unfinishedChecksNotice(t, snapshot?.errors ?? [], snapshot?.instances ?? [], [instance]) ??
     (isAvailable(instance) ? null : (sourceNoticesFor(instance, label, 0)[0] ?? null));
+  // In the notice's words, when it last answered included: 「它今天09:12响应时，没有任何工具。」
+  const valuesOf = useNoticeValues(warning === null ? [] : [warning]);
   // No Check Again where checking again cannot change the answer: a Python
   // with no pip, and an https OLLAMA_HOST, which only a new address and a
   // reopened app fix -- their notices have no button either.
@@ -416,12 +418,12 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
     <EmptyState
       symbol={warning === null || warning.variant === "info" ? "info" : "warning"}
       title={
-        warning === null ? t("installed.sourceEmpty.title", { source: label }) : t(warning.titleKey, warning.values)
+        warning === null ? t("installed.sourceEmpty.title", { source: label }) : t(warning.titleKey, valuesOf(warning))
       }
       description={
         warning === null
           ? t("installed.sourceEmpty.description", { source: label })
-          : t(EMPTY_PAGE_DESCRIPTION_KEYS[warning.descriptionKey] ?? warning.descriptionKey, warning.values)
+          : t(EMPTY_PAGE_DESCRIPTION_KEYS[warning.descriptionKey] ?? warning.descriptionKey, valuesOf(warning))
       }
       {...(checkingAgainHelps ? { action: { label: t("header.checkAgain"), onClick: checkAgain, disabled: checking } } : {})}
     />

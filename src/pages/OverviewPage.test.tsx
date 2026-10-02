@@ -579,6 +579,37 @@ describe("OverviewPage", () => {
     }
   });
 
+  it("says when a source that did not answer last did, in the lists' own sentence (R12)", async () => {
+    // A clock of local times, so the day does not hang on the machine's time zone.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 28, 10, 0));
+    const at = new Date(2026, 8, 28, 9, 12);
+    served = snapshotWith({
+      instances: [
+        { ...brew, answered_at: at.getTime() / 1000, status: { unavailable: "NotResponding", notes: [] } },
+        pip,
+      ],
+    });
+    const nine = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(at);
+    const first = renderOverview();
+    const row = within(await first.findByRole("list", { name: "Needs attention" })).getAllByRole("listitem")[0];
+    expect(row).toHaveTextContent(
+      `3 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
+    );
+    first.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByRole } = renderOverview();
+      const zhRow = within(await findByRole("list", { name: "需要查看" })).getAllByRole("listitem")[0];
+      expect(zhRow).toHaveTextContent(
+        "有3个工具是用Homebrew安装的。Homebrew这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says the checks that did not finish once, as the problems group's first row, with Check Again", async () => {
     // It was a band over the page -- 「部分检查未完成」, Homebrew's name --
     // and a count under the headline, "2 checks didn't finish", for an

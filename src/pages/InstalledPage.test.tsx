@@ -2237,6 +2237,45 @@ describe("InstalledPage", () => {
       }
     });
 
+    it("says when a silent source with nothing to list last answered, and that it had nothing then (R12)", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 2, 10, 0));
+      const at = new Date(2026, 9, 1, 21, 40);
+      const intel: ManagerInstance = {
+        ...brew,
+        id: "brew:/usr/local",
+        exe_path: "/usr/local/bin/brew",
+        prefix: "/usr/local",
+        answered_at: at.getTime() / 1000,
+        status: { unavailable: "NotResponding", notes: [] },
+      };
+      served = { ...snapshot, instances: [brew, intel] };
+      useUiStore.getState().openInstalled(intel.id);
+      try {
+        const { findByText } = renderInstalled();
+        await findByText("Homebrew (Intel) isn't responding");
+        const nine = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(at);
+        expect(
+          screen.getByText(
+            `The tools installed with it can't be listed this time. When it last responded at ${nine} yesterday, it had no tools. Check again later.`,
+          ),
+        ).toBeVisible();
+        expect(rowNames()).toEqual([]);
+
+        await act(async () => {
+          await i18n.changeLanguage("zh-CN");
+        });
+        expect(
+          await findByText("这次无法列出用它安装的工具。它昨天21:40响应时，没有任何工具。请稍后重新检查。"),
+        ).toBeVisible();
+      } finally {
+        vi.useRealTimers();
+        await act(async () => {
+          await i18n.changeLanguage("en");
+        });
+      }
+    });
+
     it("says a source that answered has nothing installed with it", async () => {
       const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
       served = { ...snapshot, instances: [brew, npm] };

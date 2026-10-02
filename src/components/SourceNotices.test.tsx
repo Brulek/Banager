@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
@@ -402,5 +402,59 @@ describe("SourceNotices' Check again", () => {
     });
     await waitFor(() => expect(notice).toBeEnabled());
     expect(refreshes()).toBe(2);
+  });
+});
+
+describe("SourceNotices: when a source that did not answer last did (R12)", () => {
+  // As `sourceNoticesFor` writes uv's notice once this session has heard it answer.
+  const at = new Date(2026, 9, 2, 9, 12);
+  const uvAnswered: SourceNoticeSpec = {
+    ...uvSilent,
+    descriptionKey: "sourceNotice.unreachable.descriptionWithRowsAt",
+    values: { source: "uv", count: 2 },
+    answeredAt: at.getTime() / 1000,
+    action: { id: "checkAgain", labelKey: "header.checkAgain" },
+  };
+  const nine = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(at);
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await i18n.changeLanguage("en");
+  });
+
+  it("says it in the line's ⓘ and under the inspector's title, in both languages", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: new Date(2026, 9, 2, 10, 0) });
+    const line = renderWithProviders(<SourceNotices notices={[uvAnswered]} layout="line" />);
+    const details = screen.getByRole("button", { name: "Details: uv isn't responding" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      `2 tools were installed with uv. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
+    );
+    line.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    renderWithProviders(<SourceNotices notices={[uvAnswered]} layout="block" />);
+    expect(
+      screen.getByText("有2个工具是用uv安装的。uv这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。"),
+    ).toBeVisible();
+    // The title, the button and its label are as ever.
+    expect(screen.getByText("uv没有响应")).toBeVisible();
+    expect(document.body.textContent).not.toContain("{{when}}");
+  });
+
+  it("turns 今天 into 昨天 at midnight while the window stays open", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: new Date(2026, 9, 2, 23, 59, 30) });
+    await i18n.changeLanguage("zh-CN");
+    renderWithProviders(
+      <SourceNotices
+        notices={[{ ...uvAnswered, answeredAt: new Date(2026, 9, 2, 21, 40).getTime() / 1000 }]}
+        layout="block"
+      />,
+    );
+    expect(screen.getByText(/显示的是它今天21:40响应时的结果/)).toBeVisible();
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText(/显示的是它昨天21:40响应时的结果/)).toBeVisible();
   });
 });

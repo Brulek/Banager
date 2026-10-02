@@ -298,6 +298,13 @@ export interface SourceNoticeSpec {
   descriptionKey: string;
   /** Interpolation values, already in the user's language; a `count` picks the plural. */
   values?: Record<string, string | number>;
+  /**
+   * When the source last answered (`ManagerInstance.answered_at`), for a
+   * description that says it -- `{{when}}`, worded at render time, since
+   * 「今天」 turns into 「昨天」 while a window stays open (`noticeValues`,
+   * src/lib/answeredWhen.ts). Absent where the description says no time.
+   */
+  answeredAt?: number;
   /** What the notice offers to do about itself, if anything. */
   action?: SourceNoticeAction;
 }
@@ -362,19 +369,35 @@ function silentSourceKind(instance: ManagerInstance): SilentSourceKind {
  * A silent source's sentence, by what it lists: over its rows, how many
  * there are and that they are its last answer (`count` picks the plural);
  * with none on screen, that this time they cannot be listed.
+ *
+ * Each has a twin that also says when that last answer was, `{{when}}`
+ * (`...At`), for a source this session has heard from
+ * (`ManagerInstance.answered_at`): 「显示的是它今天09:12响应时的结果」 over
+ * its rows; over none, that it had none then. Except a tool with its own
+ * installer, whose answer always lists its one row: with none, there is no
+ * answer of its to date.
  */
-const UNREACHABLE_KEYS: Record<SilentSourceKind, { withRows: string; withoutRows: string }> = {
+const UNREACHABLE_KEYS: Record<
+  SilentSourceKind,
+  { withRows: string; withRowsAt: string; withoutRows: string; withoutRowsAt: string | null }
+> = {
   tools: {
     withRows: "sourceNotice.unreachable.descriptionWithRows",
+    withRowsAt: "sourceNotice.unreachable.descriptionWithRowsAt",
     withoutRows: "sourceNotice.unreachable.detail",
+    withoutRowsAt: "sourceNotice.unreachable.detailAt",
   },
   models: {
     withRows: "sourceNotice.unreachable.descriptionWithModels",
+    withRowsAt: "sourceNotice.unreachable.descriptionWithModelsAt",
     withoutRows: "sourceNotice.unreachable.detailModels",
+    withoutRowsAt: "sourceNotice.unreachable.detailModelsAt",
   },
   itself: {
     withRows: "sourceNotice.unreachable.descriptionWithOwnRow",
+    withRowsAt: "sourceNotice.unreachable.descriptionWithOwnRowAt",
     withoutRows: "sourceNotice.unreachable.detailOwn",
+    withoutRowsAt: null,
   },
 };
 
@@ -397,6 +420,11 @@ const UNREACHABLE_KEYS: Record<SilentSourceKind, { withRows: string; withoutRows
  * a source whose CLI fails outright (cargo, when `cargo --version` does)
  * has nothing to carry forward ever. It defaults to 0, the copy that
  * claims nothing: a caller that has not counted must not promise rows.
+ *
+ * The same sentence says when that last answer was where this session
+ * heard one (`instance.answered_at`), and nothing about time where it did
+ * not: the notice then carries `answeredAt` for its `{{when}}`, which every
+ * page words the same way (`noticeValues`).
  */
 export function sourceNoticesFor(
   instance: ManagerInstance,
@@ -428,6 +456,12 @@ export function sourceNoticesFor(
         : {}),
     });
   } else if (unavailable === "NotResponding") {
+    const keys = UNREACHABLE_KEYS[silentSourceKind(instance)];
+    // When it last answered, where this session heard it answer: never on
+    // the first check after launch, nor for a source that has not answered
+    // since. Absent from an older payload, which is the same news.
+    const answeredAt = instance.answered_at ?? null;
+    const timedKey = answeredAt === null ? null : installedCount > 0 ? keys.withRowsAt : keys.withoutRowsAt;
     notices.push({
       id: `${instance.id}:unreachable`,
       variant: "warning",
@@ -446,19 +480,21 @@ export function sourceNoticesFor(
       // many -- the rows are last time's (`silentSourceKind`). A count of
       // what it installed, never of what a page lists: a search, the
       // 「显示」 popup or a list of updates shows fewer, and the Overview
-      // none.
+      // none. And, once this session has heard it answer, when that was
+      // (`UNREACHABLE_KEYS`'s `...At` twins): how old its rows can be.
       ...(installedCount > 0
         ? {
-            descriptionKey: UNREACHABLE_KEYS[silentSourceKind(instance)].withRows,
+            descriptionKey: timedKey ?? keys.withRows,
             values: { source: sourceLabel, count: installedCount },
           }
         : {
             // Under its title, which already names the source; the
             // self-contained sentence is the refusal's
             // (`notActionableMessage`).
-            descriptionKey: UNREACHABLE_KEYS[silentSourceKind(instance)].withoutRows,
+            descriptionKey: timedKey ?? keys.withoutRows,
             values: { source: sourceLabel },
           }),
+      ...(timedKey !== null && answeredAt !== null ? { answeredAt } : {}),
       action: { id: "checkAgain", labelKey: "header.checkAgain" },
     });
   } else if (unavailable === "RefusesAsRoot") {

@@ -608,12 +608,19 @@
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
       "detail": "The tools installed with it can't be listed this time. Check again later.",
+      "detailAt": "The tools installed with it can't be listed this time. When it last responded {{when}}, it had no tools. Check again later.",
       "descriptionWithRows_one": "One tool was installed with {{source}}. It didn't respond this time, so that tool is shown as it was when {{source}} last responded. Check again later.",
       "descriptionWithRows_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      "descriptionWithRowsAt_one": "One tool was installed with {{source}}. It didn't respond this time, so that tool is shown as it was when {{source}} last responded {{when}}. Check again later.",
+      "descriptionWithRowsAt_other": "{{count}} tools were installed with {{source}}. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
       "descriptionWithModels_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded. Check again later.",
       "descriptionWithModels_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
+      "descriptionWithModelsAt_one": "{{source}} has one model. It didn't respond this time, so that model is shown as it was when {{source}} last responded {{when}}. Check again later.",
+      "descriptionWithModelsAt_other": "{{source}} has {{count}} models. It didn't respond this time, so they're shown as they were when it last responded {{when}}. Check again later.",
       "descriptionWithOwnRow": "{{source}} didn't respond this time, so what's shown is from when it last responded. Check again later.",
+      "descriptionWithOwnRowAt": "{{source}} didn't respond this time, so what's shown is from when it last responded {{when}}. Check again later.",
       "detailModels": "Its models can't be listed this time. Check again later.",
+      "detailModelsAt": "Its models can't be listed this time. When it last responded {{when}}, it had no models. Check again later.",
       "detailOwn": "It can't be listed this time. Check again later."
     },
     "refusesAsRoot": {
@@ -678,6 +685,12 @@
       "title": "{{command}} doesn't include pip",
       "description": "This Python doesn't include pip, so there's nothing to list.",
       "statusWord": "No pip"
+    },
+    "answered": {
+      "today": "at {{time}} today",
+      "yesterday": "at {{time}} yesterday",
+      "date": "on {{date}} at {{time}}",
+      "setupLine": "Last responded {{when}}"
     }
   },
   "planRefused": {

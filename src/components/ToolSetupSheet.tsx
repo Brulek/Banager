@@ -128,7 +128,7 @@ function Section({ section, onView }: { section: SetupSection; onView: (view: Se
  * button, closes it.
  */
 export function ToolSetupSheet() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const open = useToolSetupSheet((s) => s.open);
   const close = () => useToolSetupSheet.setState({ open: false });
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -154,6 +154,8 @@ export function ToolSetupSheet() {
         facts,
         sizes: sizes ?? null,
         technicalDetails: settings?.show_technical_details ?? false,
+        language: i18n.language,
+        nowMs: now,
       })
     : null;
 

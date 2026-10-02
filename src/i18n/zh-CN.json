@@ -562,10 +562,15 @@
       "title": "{{source}}没有响应",
       "description": "{{source}}没有响应，无法列出它安装的内容。请稍后重新检查。",
       "detail": "这次无法列出用它安装的工具。请稍后重新检查。",
+      "detailAt": "这次无法列出用它安装的工具。它{{when}}响应时，没有任何工具。请稍后重新检查。",
       "descriptionWithRows_other": "有{{count}}个工具是用{{source}}安装的。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "descriptionWithRowsAt_other": "有{{count}}个工具是用{{source}}安装的。{{source}}这次没有响应，显示的是它{{when}}响应时的结果，请稍后重新检查。",
       "descriptionWithModels_other": "{{source}}中有{{count}}个模型。{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "descriptionWithModelsAt_other": "{{source}}中有{{count}}个模型。{{source}}这次没有响应，显示的是它{{when}}响应时的结果，请稍后重新检查。",
       "descriptionWithOwnRow": "{{source}}这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+      "descriptionWithOwnRowAt": "{{source}}这次没有响应，显示的是它{{when}}响应时的结果，请稍后重新检查。",
       "detailModels": "这次无法列出它的模型。请稍后重新检查。",
+      "detailModelsAt": "这次无法列出它的模型。它{{when}}响应时，没有任何模型。请稍后重新检查。",
       "detailOwn": "这次无法列出它。请稍后重新检查。"
     },
     "refusesAsRoot": {
@@ -628,6 +633,12 @@
       "title": "“{{command}}”没有附带pip",
       "description": "这个Python没有附带pip，所以没有可列出的内容。",
       "statusWord": "没有pip"
+    },
+    "answered": {
+      "today": "今天{{time}}",
+      "yesterday": "昨天{{time}}",
+      "date": "{{date}}{{time}}",
+      "setupLine": "上次响应：{{when}}"
     }
   },
   "planRefused": {

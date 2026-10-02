@@ -25,7 +25,7 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
-import { useSearchCommand, useShowSourceTool } from "../components/SourceNotices";
+import { useNoticeValues, useSearchCommand, useShowSourceTool } from "../components/SourceNotices";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { ToolSetupRow } from "../components/ToolSetupRow";
@@ -135,6 +135,8 @@ function nothingToUpdateLine(
  */
 function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const { t } = useTranslation();
+  // In the lists' words, when its source last answered included.
+  const values = useNoticeValues([notice])(notice);
   const openOllamaApp = useOpenOllamaApp();
   const { data: settings } = useSettings();
   const { checkAgain, checking } = useCheckAgain();
@@ -210,9 +212,9 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
         )}
         <div className="min-w-0">
           <p id={titleId} className="text-body text-foreground">
-            {t(notice.titleKey, notice.values)}
+            {t(notice.titleKey, values)}
           </p>
-          <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, notice.values)}</p>
+          <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, values)}</p>
           {/* A <div>: the error's own "Details" panel is one. */}
           {error !== null ? (
             <div role="alert" className="text-small text-danger-text">
@@ -231,7 +233,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
         >
           {/* Named for what it shows, from the notice's values: Show
               “codex” (walk-3 W3-5). */}
-          {t(action.labelKey, notice.values)}
+          {t(action.labelKey, values)}
         </button>
       ) : null}
     </li>

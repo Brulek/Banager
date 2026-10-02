@@ -24,8 +24,9 @@ import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnos
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
 import { sizeTotalsOf, sourceTotalText, type SizeTotal } from "./sizeTotals";
+import { answeredWhen } from "./answeredWhen";
 import { instanceLabels } from "./sources";
-import type { InstalledArtifact, Sizes, Snapshot, SystemFacts } from "./types";
+import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts } from "./types";
 import { artifactKeyId } from "../store/ui";
 
 /**
@@ -52,7 +53,7 @@ export interface SetupLine {
   text: string;
   /** The longer why, behind an ⓘ at the end of the text; null for none. */
   detail: string | null;
-  /** A second line under it, 11 muted: the names of the sources it means, or paths. */
+  /** A second line under it, 11 muted: the names of the sources it means, paths, or when a source last answered. */
   secondary: string | null;
   /** Its 查看, or null for none. */
   view: SetupView | null;
@@ -89,6 +90,9 @@ export interface ToolSetupInput {
   sizes: Sizes | null;
   /** Settings' Show technical details: the unread folders by path. */
   technicalDetails: boolean;
+  /** The window's language and the time now, for when a source that did not answer last did (`answeredWhen`). */
+  language: string;
+  nowMs: number;
 }
 
 export interface ToolSetupCheck {
@@ -170,12 +174,26 @@ function inSentence(words: readonly string[]): string[] {
  * 「来源」: each source not answering, read-only or on a version not tested
  * -- in the diagnostic text's words (`sourceStateWords`) -- or whose check
  * did not finish, a line of its own with 查看 to its page, those that do
- * not answer or did not finish first; the rest said
+ * not answer or did not finish first -- under one that does not answer,
+ * when it last did, where this session heard it (「上次响应：今天09:12」,
+ * as its notice says it: `sourceNoticesFor`); the rest said
  * once, 「所有来源都正常回应」, with their names, two Homebrews named as the
  * sidebar names them (`instanceLabels`). Then where the programs no source
  * installed are: Other Programs. While the first check runs, the sources
  * have answered nothing yet, so the rest are only 「目前没有发现问题」.
  */
+/**
+ * Under a source that did not answer, when it last did -- only where its
+ * notice says so too (`sourceNoticesFor`: not responding, and this
+ * session heard it answer); null otherwise, a time Banager does not have
+ * never said.
+ */
+function lastAnswered(t: Translate, instance: ManagerInstance, input: ToolSetupInput): string | null {
+  const at = instance.answered_at ?? null;
+  if (instance.status.unavailable !== "NotResponding" || at === null) return null;
+  return t("sourceNotice.answered.setupLine", { when: answeredWhen(t, at, input.nowMs, input.language) });
+}
+
 function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const { snapshot } = input;
   if (snapshot === null) return [line("checking", "busy", t("common.checking"))];
@@ -198,7 +216,10 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
         `source:${instance.id}`,
         instance.status.unavailable !== null || unfinished ? "warning" : "note",
         t("setupCheck.sources.state", { source: label, state: inSentence(words).join(t("common.listSeparator")) }),
-        { view: { kind: "source", instanceId: instance.id } },
+        {
+          view: { kind: "source", instanceId: instance.id },
+          secondary: lastAnswered(t, instance, input),
+        },
       ),
     );
   }

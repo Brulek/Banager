@@ -118,6 +118,8 @@ function input(more: Partial<ToolSetupInput> = {}): ToolSetupInput {
     facts: FACTS,
     sizes: snapshot === null ? null : sizesFor(snapshot),
     technicalDetails: false,
+    language: "en",
+    nowMs: Date.now(),
     ...more,
   };
 }
@@ -289,6 +291,34 @@ describe("toolSetupCheck's source lines", () => {
       `warning Homebrew: Not responding → source:${BREW}`,
       "note Command-line programs from other sources are listed separately → unknown",
     ]);
+  });
+
+  it("says under a source that did not answer when it last did, and no time Banager does not have (R12)", () => {
+    const nowMs = new Date(2026, 9, 2, 10, 0).getTime();
+    const at = new Date(2026, 9, 2, 9, 12).getTime() / 1000;
+    const answered = { answered_at: at };
+    const snapshot: Snapshot = {
+      ...fineSnapshot(),
+      instances: [
+        instance(BREW, { ...answered, status: { unavailable: "NotResponding", notes: [] } }),
+        // Not heard this session: no time.
+        instance(INTEL, { status: { unavailable: "NotResponding", notes: [] } }),
+        // Heard, but its line says something else than not answering.
+        instance(OLLAMA, { ...answered, status: { unavailable: "NotRunning", notes: [] } }),
+        instance(CLAUDE, answered),
+      ],
+      errors: [{ instance_id: CLAUDE, message: "timed out" }],
+    };
+    expect(shape(toolSetupCheck(zh, input({ snapshot, nowMs, language: "zh-CN" })))["来源"].slice(0, 4)).toEqual([
+      `warning Homebrew（Apple芯片）：没有响应 · 上次响应：今天09:12 → source:${BREW}`,
+      `warning Homebrew（Intel）：没有响应 → source:${INTEL}`,
+      `warning Ollama：没有运行 → source:${OLLAMA}`,
+      `warning Claude Code：这次没有检查完 → source:${CLAUDE}`,
+    ]);
+    const nine = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(at * 1000));
+    expect(shape(toolSetupCheck(en, input({ snapshot, nowMs, language: "en" })))["Sources"][0]).toBe(
+      `warning Homebrew (Apple silicon): Not responding · Last responded at ${nine} today → source:${BREW}`,
+    );
   });
 
   it("says so when no source was found", () => {

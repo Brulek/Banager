@@ -45,6 +45,7 @@ import { NO_FACTS } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import i18n from "../i18n";
+import { noticeValues } from "./answeredWhen";
 
 /** A stub `t`: returns the key with its interpolations inlined -- same
  *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
@@ -313,6 +314,123 @@ describe("sourceNoticesFor", () => {
       sourceNoticesFor(instance({ status: { unavailable: "NotResponding", notes: [] } }), "x")[0]
         .descriptionKey,
     ).toBe("sourceNotice.unreachable.detail");
+  });
+
+  it("says when a silent source last answered, in each of its sentences, once this session has heard it (R12)", () => {
+    // How old the rows of a source that did not answer are: the one thing
+    // 「显示的是它上次响应时的结果」 left out. Said where Banager has the
+    // time (`answered_at`), in the sentence the notice already says.
+    const at = new Date(2026, 9, 2, 9, 12).getTime() / 1000;
+    const now = new Date(2026, 9, 2, 10, 0).getTime();
+    const nine = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(at * 1000));
+    const silent = (adapter_id: string, answered_at: number | null) =>
+      instance({ id: adapter_id, adapter_id, answered_at, status: { unavailable: "NotResponding", notes: [] } });
+    const say = (adapterId: string, label: string, rows: number, language: "en" | "zh-CN", answeredAt: number | null = at) => {
+      const [notice] = sourceNoticesFor(silent(adapterId, answeredAt), label, rows);
+      const t = i18n.getFixedT(language);
+      return t(notice.descriptionKey, noticeValues(t, notice, now, language));
+    };
+    expect(say("uv", "uv", 2, "zh-CN")).toBe(
+      "有2个工具是用uv安装的。uv这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
+    );
+    expect(say("uv", "uv", 1, "en")).toBe(
+      `One tool was installed with uv. It didn't respond this time, so that tool is shown as it was when uv last responded at ${nine} today. Check again later.`,
+    );
+    expect(say("brew", "Homebrew", 12, "en")).toBe(
+      `12 tools were installed with Homebrew. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
+    );
+    expect(say("ollama", "Ollama", 3, "zh-CN")).toBe(
+      "Ollama中有3个模型。Ollama这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
+    );
+    expect(say("ollama", "Ollama", 1, "en")).toBe(
+      `Ollama has one model. It didn't respond this time, so that model is shown as it was when Ollama last responded at ${nine} today. Check again later.`,
+    );
+    expect(say("ollama", "Ollama", 3, "en")).toBe(
+      `Ollama has 3 models. It didn't respond this time, so they're shown as they were when it last responded at ${nine} today. Check again later.`,
+    );
+    expect(say("standalone-claude", "Claude Code", 1, "zh-CN")).toBe(
+      "Claude Code这次没有响应，显示的是它今天09:12响应时的结果，请稍后重新检查。",
+    );
+    expect(say("standalone-claude", "Claude Code", 1, "en")).toBe(
+      `Claude Code didn't respond this time, so what's shown is from when it last responded at ${nine} today. Check again later.`,
+    );
+    // With none of its rows to show: what that answer had.
+    expect(say("uv", "uv", 0, "zh-CN")).toBe("这次无法列出用它安装的工具。它今天09:12响应时，没有任何工具。请稍后重新检查。");
+    expect(say("uv", "uv", 0, "en")).toBe(
+      `The tools installed with it can't be listed this time. When it last responded at ${nine} today, it had no tools. Check again later.`,
+    );
+    expect(say("ollama", "Ollama", 0, "zh-CN")).toBe("这次无法列出它的模型。它今天09:12响应时，没有任何模型。请稍后重新检查。");
+    expect(say("ollama", "Ollama", 0, "en")).toBe(
+      `Its models can't be listed this time. When it last responded at ${nine} today, it had no models. Check again later.`,
+    );
+    // A tool with its own installer lists itself whenever it answers: with
+    // no row of it, there is no answer of its to date.
+    expect(say("standalone-claude", "Claude Code", 0, "zh-CN")).toBe("这次无法列出它。请稍后重新检查。");
+    expect(sourceNoticesFor(silent("standalone-claude", at), "Claude Code", 0)[0].answeredAt).toBeUndefined();
+    // Not heard this session -- the first check after launch, or a source
+    // that has not answered since -- and a payload from before the field:
+    // the same sentences as ever, and no time.
+    for (const answeredAt of [null, undefined]) {
+      for (const [id, rows] of [["uv", 0], ["uv", 2], ["ollama", 0], ["ollama", 2], ["standalone-claude", 1]] as const) {
+        const bare = instance({ id, adapter_id: id, status: { unavailable: "NotResponding", notes: [] } });
+        const [notice] = sourceNoticesFor({ ...bare, answered_at: answeredAt as number | null }, id, rows);
+        expect(notice.answeredAt).toBeUndefined();
+        expect(notice.descriptionKey).toBe(sourceNoticesFor(bare, id, rows)[0].descriptionKey);
+        expect(notice.descriptionKey).not.toMatch(/At$/);
+      }
+    }
+    expect(say("uv", "uv", 2, "zh-CN", null)).toBe(
+      "有2个工具是用uv安装的。uv这次没有响应，显示的是它上次响应时的结果，请稍后重新检查。",
+    );
+  });
+
+  it("says a time only for a source that did not answer: what it said, and how it is, are this round's", () => {
+    const at = new Date(2026, 9, 2, 9, 12).getTime() / 1000;
+    const states: ManagerInstance["status"][] = [
+      { unavailable: "NotRunning", notes: [] },
+      { unavailable: "RefusesAsRoot", notes: [] },
+      { unavailable: "HttpsHostRefused", notes: [] },
+      { unavailable: "NoPip", notes: [] },
+      {
+        unavailable: null,
+        notes: ["IndexUpdating", "IndexMayBeStale", "NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly"],
+      },
+    ];
+    for (const status of states) {
+      for (const notice of sourceNoticesFor(instance({ answered_at: at, status }), "Homebrew", 3)) {
+        expect(notice.answeredAt, notice.id).toBeUndefined();
+        for (const language of ["en", "zh-CN"]) {
+          expect(i18n.getFixedT(language)(notice.descriptionKey, notice.values), notice.id).not.toContain("{{when}}");
+        }
+      }
+    }
+  });
+
+  it("writes each timed sentence as its timeless twin, the time in it and the same next step at its end", () => {
+    const timed = (locale: typeof en | typeof zhCN) =>
+      Object.entries(locale.sourceNotice.unreachable).filter(([key]) => /At(_one|_other)?$/.test(key));
+    expect(timed(en).map(([key]) => key)).toEqual([
+      "detailAt",
+      "descriptionWithRowsAt_one",
+      "descriptionWithRowsAt_other",
+      "descriptionWithModelsAt_one",
+      "descriptionWithModelsAt_other",
+      "descriptionWithOwnRowAt",
+      "detailModelsAt",
+    ]);
+    for (const [key, copy] of [...timed(en), ...timed(zhCN)]) {
+      expect(copy, key).toContain("{{when}}");
+      expect(copy.endsWith("Check again later.") || copy.endsWith("请稍后重新检查。"), key).toBe(true);
+      // Never what a page lists (W2-10): the count is what it installed.
+      if (key.startsWith("description")) expect(copy, key).not.toMatch(/列出的|listed/);
+    }
+    // The rows' sentences keep their words; only 「上次」 gives way to the time.
+    expect(zhCN.sourceNotice.unreachable.descriptionWithRowsAt_other).toBe(
+      zhCN.sourceNotice.unreachable.descriptionWithRows_other.replace("它上次响应时", "它{{when}}响应时"),
+    );
+    expect(en.sourceNotice.unreachable.descriptionWithRowsAt_other).toBe(
+      en.sourceNotice.unreachable.descriptionWithRows_other.replace("last responded.", "last responded {{when}}."),
+    );
   });
 
   it("warns that a stale index makes up-to-date unreliable, with the header's Check again", () => {
