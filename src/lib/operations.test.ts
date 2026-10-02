@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  OP_FAILED_KEYS,
+  OP_KIND_KEYS,
+  OP_RUNNING_KEYS,
+  OP_SUCCEEDED_KEYS,
   cancelState,
   currentOf,
   isWaitingForBrewUpdate,
+  operationWords,
   outcomeTone,
   runsToItsEnd,
   trackRun,
   type OperationRun,
 } from "./operations";
 import type { LogLine } from "../store/ui";
-import type { OpStatus, OpSummary } from "./types";
+import type { OpKind, OpStatus, OpSummary, Outcome } from "./types";
 
 function op(id: number, status: OpStatus, extra: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -148,5 +153,67 @@ describe("outcomeTone", () => {
     expect(outcomeTone({ BanagerFailed: "Internal" })).toBe("failure");
     // Never sent, and so claims nothing either way.
     expect(outcomeTone(null)).toBe("attention");
+  });
+});
+
+describe("operationWords", () => {
+  // The words that say what the operation does themselves: running, a
+  // plain success, a plain failure, and what did not add up after it.
+  // Every other status or outcome word needs the kind in front.
+  const namingKind = new Set([
+    ...Object.values(OP_RUNNING_KEYS),
+    ...Object.values(OP_SUCCEEDED_KEYS),
+    ...Object.values(OP_FAILED_KEYS),
+  ]);
+  const namesKind = (key: string) => namingKind.has(key) || key.startsWith("operations.outcome.NeedsAttention.");
+  // Each key as itself, so which words were chosen shows.
+  const keyT = (key: string, options?: Record<string, unknown>) =>
+    key === "operations.kindStatus" ? `${String(options?.kind)} · ${String(options?.status)}` : key;
+  const outcomes: (Outcome | null)[] = [
+    null,
+    "Succeeded",
+    "Cancelled",
+    "Unconfirmed",
+    { NeedsAttention: "NotInstalledAfterInstall" },
+    { NeedsAttention: "StillInstalledAfterUninstall" },
+    { NeedsAttention: "GoneAfterUpgrade" },
+    { NeedsAttention: "UnchangedAfterUpgrade" },
+    { NeedsAttention: "BackAfterUninstall" },
+    { Failed: { exit_code: 1, summary: "" } },
+    { Failed: { exit_code: 1, summary: "   " } },
+    { Failed: { exit_code: 1, summary: "Error: something odd happened" } },
+    { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } },
+    { Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password" } },
+    { Failed: { exit_code: null, summary: "Operation not permitted" } },
+    { BanagerFailed: "Panicked" },
+    { BanagerFailed: "Internal" },
+    { BanagerFailed: { ProgramMissing: { program: "brew" } } },
+    { BanagerFailed: { SpawnFailed: { detail: "Permission denied" } } },
+    { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
+    { BanagerFailed: { PathChanged: { path: "/opt/homebrew/bin/jq" } } },
+  ];
+  const waiting: LogLine = { opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } }, seq: 1 };
+  const kinds: OpKind[] = ["Install", "Uninstall", "Upgrade"];
+  const states: [OpSummary, LogLine[]][] = kinds.flatMap((kind) => [
+    ...(["Queued", "Running", "CancelRequested", "Cancelling", "Verifying"] as const).flatMap(
+      (status): [OpSummary, LogLine[]][] => [
+        [op(1, status, { kind }), []],
+        [op(1, status, { kind }), [waiting]],
+      ],
+    ),
+    ...outcomes.map((outcome): [OpSummary, LogLine[]] => [op(1, "Done", { kind, outcome }), []]),
+  ]);
+
+  it("names what the operation does exactly once, whatever the status or outcome", () => {
+    expect(states.length).toBe(3 * (10 + outcomes.length));
+    for (const technical of [false, true]) {
+      for (const [each, logs] of states) {
+        const words = operationWords(keyT, each, logs, technical);
+        const prefix = `${OP_KIND_KEYS[each.kind]} · `;
+        const shown = words.startsWith(prefix) ? words.slice(prefix.length) : words;
+        const label = `${each.kind} ${each.status} ${JSON.stringify(each.outcome)} logs=${logs.length} technical=${technical}: ${words}`;
+        expect(namesKind(shown), label).toBe(shown === words);
+      }
+    }
   });
 });
