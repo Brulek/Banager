@@ -841,6 +841,54 @@ describe("UpdatesPage", () => {
     ]);
   });
 
+  it("says a secure connection could not be set up, and neither the network nor to check again, and counts neither it nor a refused redirect", async () => {
+    // Round-5 review finding 6: a certificate rustls would not accept (a
+    // proxy that reads https) and a redirect the client will not follow
+    // were the network, so every check said "check again" for good -- and
+    // reqwest's "error sending request" made the row say the connection
+    // had failed. Rust now sends rustls's words, the host, and no mark.
+    const row = (name: string, warnings: Warning[]): Snapshot["updates"][number] => ({
+      key: { ...myForkKey, name },
+      current: "0.1.0",
+      target: "0.1.0",
+      channel: "Registry",
+      checkable: false,
+      warnings,
+      blocked: null,
+    });
+    updates = [
+      row("proxied", [
+        {
+          Message:
+            "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer",
+        },
+        { SecureConnectionFailed: { host: "crates.io" } },
+      ]),
+      row("moved", [
+        {
+          Message:
+            "crates.io request failed: refused: refusing to follow a redirect: https://crates.io/api/v1/crates/moved answered 301 Moved Permanently pointing at /api/v1/crates/renamed",
+        },
+      ]),
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const proxied = chipDetail(await findRow("proxied"), "Can't check");
+    expect([...proxied.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "Couldn't establish a secure connection to crates.io.",
+    ]);
+    const moved = chipDetail(rowOf("moved"), "Can't check");
+    expect([...moved.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+    ]);
+    // Not counted as tools a later check could get to: no notice up front
+    // (the line over the rows, "2 tools couldn't be checked for updates.",
+    // counts every row whose why is in the tools' words).
+    expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
+  });
+
   it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
     // Hiding the checkbox is not enough on its own. A selection lives in
     // the UI store and outlives the row that made it, so a candidate

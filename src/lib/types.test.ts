@@ -415,6 +415,19 @@ describe("types", () => {
       { Message: "npm error code ENOTFOUND" },
       "TransientLookupFailure",
     ]);
+    // A secure connection rustls would not set up: the reason, then the
+    // host to name, and never the mark (`uncheckable_candidate`).
+    const secureConnectionFailed: Warning = { SecureConnectionFailed: { host: "crates.io" } };
+    expect(JSON.stringify(secureConnectionFailed)).toBe('{"SecureConnectionFailed":{"host":"crates.io"}}');
+    expect(
+      roundTrip<Warning[]>([
+        { Message: "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer" },
+        secureConnectionFailed,
+      ]),
+    ).toEqual([
+      { Message: "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer" },
+      { SecureConnectionFailed: { host: "crates.io" } },
+    ]);
     expect(JSON.stringify(wouldBreak)).toBe('{"WouldBreak":{"names":["python@3.13"]}}');
     expect(roundTrip(wouldBreak)).toEqual({ WouldBreak: { names: ["python@3.13"] } });
     expect(JSON.stringify(thirdPartyRegistry)).toBe(

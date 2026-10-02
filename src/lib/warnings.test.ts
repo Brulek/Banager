@@ -31,6 +31,7 @@ describe("warningKey", () => {
     expect(warningKey("DownloadsModelChanges")).toBe("warnings.downloadsModelChanges");
     expect(warningKey("NonRegistrySource")).toBe("warnings.nonRegistrySource");
     expect(warningKey("TransientLookupFailure")).toBe("warnings.transientLookupFailure");
+    expect(warningKey({ SecureConnectionFailed: { host: "crates.io" } })).toBe("secureConnection.failed");
     expect(warningKey({ WouldBreak: { names: ["python@3.13"] } })).toBe("warnings.wouldBreak");
     expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
       "warnings.thirdPartyRegistry",
@@ -323,6 +324,7 @@ describe("warningKey", () => {
       "DownloadsModelChanges",
       "NonRegistrySource",
       "TransientLookupFailure",
+      { SecureConnectionFailed: { host: "crates.io" } },
       { WouldBreak: { names: ["a"] } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
@@ -362,6 +364,15 @@ describe("warningArgs", () => {
       count: 2,
       names: "a, b",
     });
+  });
+
+  it("names the host a secure connection could not be set up with, in either language", () => {
+    expect(warningArgs({ SecureConnectionFailed: { host: "crates.io" } })).toEqual({ host: "crates.io" });
+    for (const locale of [en, zhCN]) {
+      expect(locale.secureConnection.failed).toContain("{{host}}");
+    }
+    expect(en.secureConnection.failed).toBe("Couldn't establish a secure connection to {{host}}.");
+    expect(zhCN.secureConnection.failed).toBe("无法与{{host}}建立安全连接。");
   });
 
   it("interpolates the registry host so the copy can name it in either language", () => {
@@ -519,6 +530,7 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewRustupLosesToolchains",
   "EditsShellConfig",
   { WouldBreak: { names: ["a"] } },
+  { SecureConnectionFailed: { host: "crates.io" } },
   { ThirdPartyRegistry: { host: "modelscope.cn" } },
   { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
   { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
@@ -650,7 +662,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(24);
+    expect(notes).toHaveLength(25);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -734,6 +746,7 @@ describe("warningDetailKey", () => {
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { WouldBreak: { names: ["a"] } },
+      { SecureConnectionFailed: { host: "crates.io" } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
       { AlreadyGone: { path: "~/.local/share/claude" } },
@@ -1016,6 +1029,7 @@ describe("isCaution", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      { SecureConnectionFailed: { host: "crates.io" } },
       "EditsShellConfig",
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
       { WillKeep: { path: "~/.claude.json", what: "Settings" } },

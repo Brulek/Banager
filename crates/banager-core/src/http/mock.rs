@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// failures keyed by exact URL, plus a call log in request order.
 pub struct MockHttpClient {
     responses: Mutex<HashMap<String, HttpResponse>>,
-    failures: Mutex<HashMap<String, String>>,
+    failures: Mutex<HashMap<String, HttpError>>,
     calls: Mutex<Vec<String>>,
     requests: Mutex<Vec<HttpRequest>>,
 }
@@ -29,11 +29,17 @@ impl MockHttpClient {
             .insert(url.to_string(), response);
     }
 
+    /// A request to `url` fails as the network failing
+    /// (`HttpError::Network(error)`).
     pub fn fail(&self, url: &str, error: &str) {
-        self.failures
-            .lock()
-            .unwrap()
-            .insert(url.to_string(), error.to_string());
+        self.fail_with(url, HttpError::Network(error.to_string()));
+    }
+
+    /// A request to `url` fails with `error`: a certificate rustls would
+    /// not accept (`HttpError::Tls`), a refusal of the client's own
+    /// (`HttpError::Refused`), the time running out.
+    pub fn fail_with(&self, url: &str, error: HttpError) {
+        self.failures.lock().unwrap().insert(url.to_string(), error);
     }
 
     pub fn calls(&self) -> Vec<String> {
@@ -63,7 +69,7 @@ impl HttpClient for MockHttpClient {
         self.calls.lock().unwrap().push(req.url.clone());
         self.requests.lock().unwrap().push(req.clone());
         if let Some(error) = self.failures.lock().unwrap().get(&req.url) {
-            return Err(HttpError::Network(error.clone()));
+            return Err(error.clone());
         }
         self.responses
             .lock()
@@ -122,6 +128,26 @@ mod tests {
             HttpError::Network(msg) => assert_eq!(msg, "connection refused"),
             other => panic!("expected Network, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_mock_http_client_fail_with_returns_that_error() {
+        let client = MockHttpClient::new();
+        client.fail_with(
+            "https://crates.io/api/v1/crates/hexyl",
+            HttpError::Tls {
+                host: "crates.io".to_string(),
+                detail: "invalid peer certificate: UnknownIssuer".to_string(),
+            },
+        );
+        let err = client
+            .send(get_request("https://crates.io/api/v1/crates/hexyl"))
+            .await
+            .expect_err("expected a failure");
+        assert!(
+            matches!(&err, HttpError::Tls { host, .. } if host == "crates.io"),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]

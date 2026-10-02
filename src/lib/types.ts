@@ -309,6 +309,14 @@ export type Warning =
    * counted as "couldn't be checked" (`isFailedLookup`).
    */
   | "TransientLookupFailure"
+  /**
+   * On a `checkable: false` candidate, after the `Message` that says why
+   * (rustls's own words): its lookup reached `host` but could not set up
+   * a secure connection there -- a certificate rustls would not accept, or
+   * a failed handshake. Said in a person's words (`warningKey`); never with
+   * `TransientLookupFailure`, as the next check meets the same certificate.
+   */
+  | { SecureConnectionFailed: { host: string } }
   | { ThirdPartyRegistry: { host: string } }
   | "DownloadsModelChanges"
   | { WillTrash: { path: string; what: RemovedWhat } }

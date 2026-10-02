@@ -1085,6 +1085,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_check_updates_via_pypi_marks_only_a_network_failure_as_one_to_check_again() {
+        // Round-5 review finding 6: a certificate rustls would not accept
+        // and a redirect the client will not follow used to be the network
+        // too, and so "check again" on every check. Each kind, per tool.
+        use crate::http::HttpError;
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: r#"{"venvs":{
+                    "cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}},
+                    "black":{"metadata":{"main_package":{"package":"black","package_version":"24.1.0"}}},
+                    "ruff":{"metadata":{"main_package":{"package":"ruff","package_version":"0.5.0"}}}
+                }}"#
+                .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.fail("https://pypi.org/pypi/cowsay/json", "connection refused");
+        http.fail_with(
+            "https://pypi.org/pypi/black/json",
+            HttpError::Tls {
+                host: "pypi.org".to_string(),
+                detail: "invalid peer certificate: UnknownIssuer".to_string(),
+            },
+        );
+        http.fail_with(
+            "https://pypi.org/pypi/ruff/json",
+            HttpError::Refused(
+                "refusing to follow a redirect: https://pypi.org/pypi/ruff/json answered 301 Moved Permanently pointing at /pypi/ruff/json/".to_string(),
+            ),
+        );
+        let adapter = PipxAdapter::new(runner, http);
+        let mut inst = test_instance();
+        inst.version = Some("1.10.0".to_string());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("failed lookups are rows, not a failed source")
+            .candidates;
+        let row = |name: &str| {
+            candidates
+                .iter()
+                .find(|c| c.key.name == name)
+                .unwrap_or_else(|| panic!("no row for {name}"))
+        };
+        for name in ["cowsay", "black", "ruff"] {
+            assert!(!row(name).checkable, "{name}");
+        }
+        assert!(row("cowsay")
+            .warnings
+            .contains(&Warning::TransientLookupFailure));
+        assert_eq!(
+            row("black").warnings[1..],
+            [Warning::SecureConnectionFailed {
+                host: "pypi.org".to_string()
+            }]
+        );
+        assert!(matches!(
+            &row("black").warnings[0],
+            Warning::Message(m) if m.contains("secure connection to pypi.org failed")
+        ));
+        assert_eq!(row("ruff").warnings.len(), 1, "{:?}", row("ruff").warnings);
+        assert!(matches!(
+            &row("ruff").warnings[0],
+            Warning::Message(m) if m.contains("refusing to follow a redirect")
+        ));
+    }
+
+    #[tokio::test]
     async fn test_plan_refuses_when_request_instance_id_does_not_match_given_instance() {
         let runner = Arc::new(MockRunner::new());
         let adapter = PipxAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));

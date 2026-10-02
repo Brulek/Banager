@@ -197,7 +197,7 @@ fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
     // debugs their daemon instead of Banager.
     let refused = host_allowed("https://ollama.home.lan/api/tags");
     assert!(
-        matches!(&refused, Err(HttpError::Network(message)) if message.contains("host not allowed")),
+        matches!(&refused, Err(HttpError::Refused(message)) if message.contains("host not allowed")),
         "an https OLLAMA_HOST is refused by the allowlist today; if that has changed, the sentences this test looks for are now false and must go with it: {refused:?}"
     );
     let doc = read_doc();

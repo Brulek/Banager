@@ -28,6 +28,13 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 # because `adapters::url_path_segment` encodes untrusted names into registry
 # URLs and must not rely on another crate happening to pull it in.
 percent-encoding = "2"
+# Same rationale: already in Cargo.lock at this version as reqwest's TLS
+# backend, with every feature reqwest gives it, so nothing new is compiled
+# and no feature is added (`default-features = false`). Named directly only
+# so `http::real::request_error` can find rustls's own error in a failed
+# request's causes and report a certificate or handshake failure as one
+# (`HttpError::Tls`), rather than as the network.
+rustls = { version = "0.23", default-features = false }
 # Same rationale as percent-encoding: already in Cargo.lock via reqwest, so
 # nothing new is compiled. Used to parse OLLAMA_HOST in runner::path_env,
 # where hand-rolling "is this a usable http url" is exactly the kind of

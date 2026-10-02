@@ -523,6 +523,9 @@
       "systemNames_other": "As macOS names them: {{items}}"
     }
   },
+  "secureConnection": {
+    "failed": "Couldn't establish a secure connection to {{host}}."
+  },
   "unreadInProtectedPlace": {
     "homebrewMayAutoremove": "Homebrew may also remove other Homebrew packages that were installed only as dependencies and that nothing needs anymore.",
     "homebrewMayAutoremoveDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that back to a value Homebrew reads as unset isn't known.",

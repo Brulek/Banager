@@ -45,6 +45,17 @@ describe("isFailedLookup", () => {
       expect(isFailedLookup(lasting)).toBe(false);
       expect(saysWhyInToolWords(lasting)).toBe(true);
     }
+    // A certificate rustls would not accept, a redirect the client will
+    // not follow: met again on every check (round-5 review finding 6).
+    for (const warnings of [
+      [
+        { Message: "PyPI request failed: secure connection to pypi.org failed: invalid peer certificate: UnknownIssuer" },
+        { SecureConnectionFailed: { host: "pypi.org" } },
+      ],
+      [{ Message: "PyPI request failed: refused: refusing to follow a redirect" }],
+    ] as UpdateCandidate["warnings"][]) {
+      expect(isFailedLookup(row("lasting", { warnings }))).toBe(false);
+    }
     expect(saysWhyInToolWords(row("crate", { warnings: ["NonRegistrySource"] }))).toBe(false);
     expect(isFailedLookup(row("fine", { checkable: true, target: "1.1.0", warnings: [] }))).toBe(false);
     // Checked, with a note of its own: not a failed lookup.

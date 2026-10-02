@@ -28,12 +28,35 @@ pub struct HttpResponse {
     pub body: String,
 }
 
-#[derive(Debug, thiserror::Error)]
+/// Why a request got no response. Which variant matters past the words:
+/// `adapters::LookupFailure::request` reads it to tell a failure the next
+/// check can get past (`Network`, `Timeout`) from one it will meet again
+/// (`Tls`, `Refused`, `BodyTooLarge`), and only the former is counted as
+/// "couldn't be checked, check again" (`Warning::TransientLookupFailure`).
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum HttpError {
+    /// The connection could not be made or broke off: a name that would
+    /// not resolve, a refused or reset connection, a network out of reach.
     #[error("network error: {0}")]
     Network(String),
     #[error("timed out after {0:?}")]
     Timeout(std::time::Duration),
+    /// The connection to `host` was made, but no secure connection could
+    /// be set up on it: rustls did not accept the certificate it was shown
+    /// (one no trusted authority issued, as a proxy or security software
+    /// that reads https presents; expired, or not yet valid by this Mac's
+    /// clock; for another name), or the handshake itself failed. `detail`
+    /// is rustls's own words. Asking again meets the same certificate, so
+    /// this is not a network that failed for now.
+    #[error("secure connection to {host} failed: {detail}")]
+    Tls { host: String, detail: String },
+    /// This client would not make the request, by its own rules: an https
+    /// host not in `real::ALLOWED_HTTPS_HOSTS`, another scheme, a URL that
+    /// does not parse, a request that could not be built, or a redirect
+    /// the server answered with, which is never followed. The same rules
+    /// refuse it again next time.
+    #[error("refused: {0}")]
+    Refused(String),
     #[error("response body is larger than the {limit}-byte limit")]
     BodyTooLarge { limit: usize },
     #[error("no canned response for {0}")]
@@ -66,6 +89,18 @@ mod tests {
         assert_eq!(
             HttpError::BodyTooLarge { limit: 8388608 }.to_string(),
             "response body is larger than the 8388608-byte limit"
+        );
+        assert_eq!(
+            HttpError::Tls {
+                host: "crates.io".to_string(),
+                detail: "invalid peer certificate: UnknownIssuer".to_string()
+            }
+            .to_string(),
+            "secure connection to crates.io failed: invalid peer certificate: UnknownIssuer"
+        );
+        assert_eq!(
+            HttpError::Refused("host not allowed: \"example.com\"".to_string()).to_string(),
+            "refused: host not allowed: \"example.com\""
         );
     }
 }

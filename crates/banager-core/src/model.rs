@@ -769,7 +769,10 @@ pub enum Warning {
     NonRegistrySource,
     /// On a `checkable: false` candidate, after the `Message` that says
     /// why: its lookup failed in a way checking again can get past. The
-    /// request got no answer (`HttpError::Network`, `HttpError::Timeout`),
+    /// request could not connect or broke off (`HttpError::Network`), or
+    /// got no answer in time (`HttpError::Timeout`) -- not a secure
+    /// connection that could not be set up (`SecureConnectionFailed`) nor a
+    /// request the client refuses by its own rules (`HttpError::Refused`),
     /// the registry answered 408, 429 or a server error (5xx), or the
     /// words of the tool that looked it up say the network failed
     /// (`adapters::says_network_failed`). Without it a failed lookup is not
@@ -783,6 +786,18 @@ pub enum Warning {
     /// counted by the lists' and the Overview's "N tools couldn't be
     /// checked", whose Check Again can clear it.
     TransientLookupFailure,
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: its lookup reached `host` but could not set up a secure
+    /// connection there (`HttpError::Tls`) -- rustls did not accept the
+    /// certificate it was shown, as with a proxy or security software that
+    /// reads https traffic, or a clock far off, or the handshake failed.
+    /// The words for a person, where the `Message` is rustls's own (behind
+    /// "Show technical details"): without it the row said the network had
+    /// failed, which checking the network would not mend. Never with
+    /// `TransientLookupFailure`: the next check meets the same certificate.
+    /// Set only by `adapters::uncheckable_candidate` from a
+    /// `LookupFailure`; read by `warningKey` in src/lib/warnings.ts.
+    SecureConnectionFailed { host: String },
     /// Installing or upgrading this model downloads it from `host`, a
     /// registry other than Ollama's own library. Carried only on
     /// Install/Upgrade plans: where a model came from is a reason to look
@@ -2373,6 +2388,20 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Warning>(r#""TransientLookupFailure""#).unwrap(),
             Warning::TransientLookupFailure
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::SecureConnectionFailed {
+                host: "crates.io".to_string()
+            })
+            .unwrap(),
+            r#"{"SecureConnectionFailed":{"host":"crates.io"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#"{"SecureConnectionFailed":{"host":"crates.io"}}"#)
+                .unwrap(),
+            Warning::SecureConnectionFailed {
+                host: "crates.io".to_string()
+            }
         );
         assert_eq!(
             serde_json::to_string(&Warning::WouldBreak {

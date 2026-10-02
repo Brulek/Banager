@@ -6,6 +6,12 @@
 //! than a response, a response body is read to a cap instead of being
 //! swallowed whole, and an `https` request to a host outside
 //! `ALLOWED_HTTPS_HOSTS` is refused before any connection is opened.
+//!
+//! Its errors say which kind of failure each one was (`request_error`):
+//! the network (`HttpError::Network`), the time (`Timeout`), a secure
+//! connection rustls would not set up (`Tls`), or this client's own refusal
+//! (`Refused`) -- a check that ends in either of the last two would end the
+//! same way next time, and is not asked to be tried again.
 
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
 use async_trait::async_trait;
@@ -62,14 +68,14 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
 /// `https` URL whose host is in `ALLOWED_HTTPS_HOSTS` exactly (no
 /// subdomains: `api.crates.io` is not `crates.io`). Anything else -- another
 /// https host, another scheme, a URL that does not parse -- is
-/// `HttpError::Network` naming the reason, the same error a refused
+/// `HttpError::Refused` naming the reason, the same error a refused
 /// redirect gets, since both mean "this client will not go there".
 ///
 /// `Url` lowercases an ASCII host, so the comparison is case-insensitive
 /// without the list carrying uppercase spellings.
 pub fn host_allowed(url: &str) -> Result<(), HttpError> {
     let parsed = url::Url::parse(url)
-        .map_err(|e| HttpError::Network(format!("invalid url {url:?}: {e}")))?;
+        .map_err(|e| HttpError::Refused(format!("invalid url {url:?}: {e}")))?;
     match parsed.scheme() {
         "http" => Ok(()),
         "https" => {
@@ -77,12 +83,12 @@ pub fn host_allowed(url: &str) -> Result<(), HttpError> {
             if ALLOWED_HTTPS_HOSTS.contains(&host) {
                 Ok(())
             } else {
-                Err(HttpError::Network(format!(
+                Err(HttpError::Refused(format!(
                     "host not allowed: {host:?} is not one of {ALLOWED_HTTPS_HOSTS:?} (from {url})"
                 )))
             }
         }
-        other => Err(HttpError::Network(format!(
+        other => Err(HttpError::Refused(format!(
             "scheme not allowed: {other:?} in {url}"
         ))),
     }
@@ -131,14 +137,63 @@ impl Default for RealHttpClient {
     }
 }
 
-#[async_trait]
-impl HttpClient for RealHttpClient {
-    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
-        // Before the request is even built: a refused host must never
-        // resolve, connect, or carry a header anywhere.
-        host_allowed(&req.url)?;
+/// The rustls error somewhere in `error`'s chain of causes, if there is
+/// one: what a failed TLS handshake leaves there. tokio-rustls hands it on
+/// inside an `io::Error` (`InvalidData`), which hyper-rustls wraps in
+/// another, and `io::Error::source` skips the error it wraps -- it gives
+/// that error's own source -- so each `io::Error` is opened with
+/// `get_ref` as well as followed.
+fn rustls_error_in<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a rustls::Error> {
+    let mut next = Some(error);
+    while let Some(err) = next {
+        if let Some(tls) = err.downcast_ref::<rustls::Error>() {
+            return Some(tls);
+        }
+        if let Some(inner) = err
+            .downcast_ref::<std::io::Error>()
+            .and_then(|io| io.get_ref())
+        {
+            if let Some(tls) = rustls_error_in(inner) {
+                return Some(tls);
+            }
+        }
+        next = err.source();
+    }
+    None
+}
+
+/// What a `reqwest` error was, for `req`: the time running out
+/// (`Timeout`); a secure connection rustls would not set up (`Tls`, with
+/// rustls's words and the request's host -- not reqwest's own "error
+/// sending request", which says nothing of it); a request that could not
+/// be built (`Refused`); else the network (`Network`).
+fn request_error(e: reqwest::Error, req: &HttpRequest) -> HttpError {
+    if e.is_timeout() {
+        return HttpError::Timeout(req.timeout);
+    }
+    if let Some(tls) = rustls_error_in(&e) {
+        let host = url::Url::parse(&req.url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+            .unwrap_or_default();
+        return HttpError::Tls {
+            host,
+            detail: tls.to_string(),
+        };
+    }
+    if e.is_builder() {
+        return HttpError::Refused(format!("could not build the request: {e}"));
+    }
+    HttpError::Network(e.to_string())
+}
+
+impl RealHttpClient {
+    /// `send` without the host check: the request as it goes out once
+    /// `host_allowed` has passed it. Separate only so a test can reach a
+    /// loopback https server, which the check would refuse.
+    async fn fetch(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
         let method = reqwest::Method::from_bytes(req.method.as_bytes())
-            .map_err(|e| HttpError::Network(format!("invalid method {:?}: {e}", req.method)))?;
+            .map_err(|e| HttpError::Refused(format!("invalid method {:?}: {e}", req.method)))?;
         let mut builder = self
             .client
             .request(method, req.url.as_str())
@@ -146,13 +201,7 @@ impl HttpClient for RealHttpClient {
         for (name, value) in &req.headers {
             builder = builder.header(name.as_str(), value.as_str());
         }
-        let response = builder.send().await.map_err(|e| {
-            if e.is_timeout() {
-                HttpError::Timeout(req.timeout)
-            } else {
-                HttpError::Network(e.to_string())
-            }
-        })?;
+        let response = builder.send().await.map_err(|e| request_error(e, &req))?;
         let status = response.status();
         if status.is_redirection() {
             let location = response
@@ -161,7 +210,7 @@ impl HttpClient for RealHttpClient {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("<no Location header>")
                 .to_string();
-            return Err(HttpError::Network(format!(
+            return Err(HttpError::Refused(format!(
                 "refusing to follow a redirect: {} answered {} pointing at {location}",
                 req.url, status
             )));
@@ -175,13 +224,7 @@ impl HttpClient for RealHttpClient {
         // same job.
         let mut response = response;
         let mut bytes: Vec<u8> = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|e| {
-            if e.is_timeout() {
-                HttpError::Timeout(req.timeout)
-            } else {
-                HttpError::Network(e.to_string())
-            }
-        })? {
+        while let Some(chunk) = response.chunk().await.map_err(|e| request_error(e, &req))? {
             if bytes.len() + chunk.len() > self.max_body_bytes {
                 return Err(HttpError::BodyTooLarge {
                     limit: self.max_body_bytes,
@@ -194,6 +237,16 @@ impl HttpClient for RealHttpClient {
         // invalid byte should not turn a readable response into a hard error.
         let body = String::from_utf8_lossy(&bytes).into_owned();
         Ok(HttpResponse { status, body })
+    }
+}
+
+#[async_trait]
+impl HttpClient for RealHttpClient {
+    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+        // Before the request is even built: a refused host must never
+        // resolve, connect, or carry a header anywhere.
+        host_allowed(&req.url)?;
+        self.fetch(req).await
     }
 }
 
@@ -395,7 +448,7 @@ mod tests {
             .await;
 
         match result {
-            Err(HttpError::Network(message)) => assert!(
+            Err(HttpError::Refused(message)) => assert!(
                 message.contains("302"),
                 "the error must name the status it refused to follow, got {message:?}"
             ),
@@ -509,6 +562,132 @@ mod tests {
         }
     }
 
+    /// Accepts one connection, reads whatever arrives first -- for an
+    /// https request, the TLS ClientHello -- and answers it with plain
+    /// HTTP, as a server that does not speak TLS on that port would: no
+    /// secure connection can be set up on it, every time.
+    async fn serve_plain_http_to_a_tls_client() -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local_addr");
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut chunk = [0u8; 4096];
+            let _ = socket.read(&mut chunk).await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_a_failed_tls_handshake_as_tls_not_network() {
+        // Finding 6 of the round-5 review: a secure connection that cannot
+        // be set up was `Network`, which a lookup counts as "check again"
+        // forever. `fetch` is `send` past the host check, which would
+        // refuse a loopback https host before connecting.
+        let addr = serve_plain_http_to_a_tls_client().await;
+        let client = RealHttpClient::new();
+        let result = client
+            .fetch(HttpRequest {
+                method: "GET",
+                url: format!("https://{addr}/"),
+                headers: vec![],
+                timeout: std::time::Duration::from_secs(5),
+            })
+            .await;
+        match result {
+            Err(error @ HttpError::Tls { .. }) => {
+                let HttpError::Tls { host, detail } = &error else {
+                    unreachable!()
+                };
+                assert_eq!(host, "127.0.0.1");
+                assert!(!detail.is_empty());
+                // rustls's words, never reqwest's "error sending request",
+                // which the window would read as the network failing.
+                let words = error.to_string();
+                assert!(
+                    !words.contains("error sending request") && !words.contains("network"),
+                    "{words}"
+                );
+            }
+            other => panic!("expected Tls, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_reports_a_refused_connection_as_network() {
+        // A port nothing listens on: the connection is refused, which the
+        // next check may well get past.
+        let addr = {
+            let listener = TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind ephemeral port");
+            listener.local_addr().expect("local_addr")
+        };
+        let client = RealHttpClient::new();
+        let result = client
+            .send(HttpRequest {
+                method: "GET",
+                url: format!("http://{addr}/"),
+                headers: vec![],
+                timeout: std::time::Duration::from_secs(5),
+            })
+            .await;
+        assert!(
+            matches!(result, Err(HttpError::Network(_))),
+            "expected Network, got {result:?}"
+        );
+    }
+
+    /// An error whose cause is `inner`, as hyper's and reqwest's wrap the
+    /// connector's.
+    #[derive(Debug)]
+    struct Wrapped(Box<dyn std::error::Error + Send + Sync>);
+
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("error sending request")
+        }
+    }
+
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(self.0.as_ref())
+        }
+    }
+
+    #[test]
+    fn test_rustls_error_in_finds_a_certificate_error_inside_two_io_errors() {
+        // The chain a certificate rustls does not trust leaves: tokio-rustls
+        // puts the rustls error in an `InvalidData` io::Error, hyper-rustls
+        // puts that in another (`io::Error::other`), and hyper and reqwest
+        // wrap that. `io::Error::source` skips what it wraps, so following
+        // `source()` alone would never reach rustls's error.
+        let certificate =
+            rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer);
+        let chain = Wrapped(Box::new(std::io::Error::other(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            certificate.clone(),
+        ))));
+        assert_eq!(rustls_error_in(&chain), Some(&certificate));
+        assert_eq!(
+            rustls_error_in(&chain).map(|e| e.to_string()).as_deref(),
+            Some("invalid peer certificate: UnknownIssuer")
+        );
+        // And nothing where there is no rustls error: a refused connection.
+        let refused = Wrapped(Box::new(std::io::Error::other(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "Connection refused (os error 61)",
+        ))));
+        assert_eq!(rustls_error_in(&refused), None);
+    }
+
     #[test]
     fn test_host_allowed_accepts_the_three_https_urls_the_adapters_build() {
         // The exact URL shapes `CargoAdapter::latest_stable_version`,
@@ -541,7 +720,7 @@ mod tests {
             "https://crates.io@evil.example/",
         ] {
             match host_allowed(url) {
-                Err(HttpError::Network(message)) => assert!(
+                Err(HttpError::Refused(message)) => assert!(
                     message.contains("host not allowed"),
                     "{url}: the error must say the host is not allowed, got {message:?}"
                 ),
@@ -560,13 +739,13 @@ mod tests {
     #[test]
     fn test_host_allowed_refuses_other_schemes_and_unparseable_urls() {
         match host_allowed("ftp://crates.io/") {
-            Err(HttpError::Network(message)) => {
+            Err(HttpError::Refused(message)) => {
                 assert!(message.contains("scheme not allowed"), "got {message:?}")
             }
             other => panic!("expected a scheme error, got {other:?}"),
         }
         match host_allowed("not a url") {
-            Err(HttpError::Network(message)) => {
+            Err(HttpError::Refused(message)) => {
                 assert!(message.contains("invalid url"), "got {message:?}")
             }
             other => panic!("expected an invalid-url error, got {other:?}"),
@@ -589,7 +768,7 @@ mod tests {
             })
             .await;
         match result {
-            Err(HttpError::Network(message)) => assert!(
+            Err(HttpError::Refused(message)) => assert!(
                 message.contains("host not allowed"),
                 "expected the allowlist's refusal, got {message:?}"
             ),

@@ -299,6 +299,8 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
 /// claiming exists.
 ///
 /// Its warnings: the reason (`Warning::Message`), then
+/// `Warning::SecureConnectionFailed` where no secure connection could be
+/// set up (`LookupFailure::secure_connection`), and
 /// `Warning::TransientLookupFailure` where the failure is one checking
 /// again can get past (`LookupFailure::transient`).
 pub(crate) fn uncheckable_candidate(
@@ -309,6 +311,9 @@ pub(crate) fn uncheckable_candidate(
 ) -> UpdateCandidate {
     let failure = failure.into();
     let mut warnings = vec![Warning::Message(failure.reason)];
+    if let Some(host) = failure.secure_connection {
+        warnings.push(Warning::SecureConnectionFailed { host });
+    }
     if failure.transient {
         warnings.push(Warning::TransientLookupFailure);
     }
@@ -328,19 +333,26 @@ pub(crate) fn uncheckable_candidate(
 /// row's `Warning::Message`), and whether checking again can get past it
 /// (`transient`, the row's `Warning::TransientLookupFailure`).
 ///
-/// `transient` is claimed only where it is known: the request got no
-/// answer at all, the registry answered with a status that says "not
-/// now" (408, 429, 5xx), or the tool's own words say the network failed.
-/// Anything else -- a 404, an answer that would not parse, a version that
+/// `transient` is claimed only where it is known: the request could not
+/// connect or got no answer in time, the registry answered with a status
+/// that says "not now" (408, 429, 5xx), or the tool's own words say the
+/// network failed. Anything else -- a certificate rustls would not accept,
+/// a redirect or host the client refuses, a 404, an answer that would not
+/// parse, a version that
 /// could not be read, a tool not looked up on this Mac, a command that did
 /// not finish -- is not known to mend itself, and a warning that asks the
 /// person to check again would then never go away. A plain `String` is
 /// such a failure (`From<String>`), so `?` on a helper that fails with
 /// words alone says nothing it does not know.
+///
+/// `secure_connection` is the host a request reached but could not set up
+/// a secure connection with (`HttpError::Tls`), for the row's words
+/// (`Warning::SecureConnectionFailed`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LookupFailure {
     pub(crate) reason: String,
     pub(crate) transient: bool,
+    pub(crate) secure_connection: Option<String>,
 }
 
 impl From<String> for LookupFailure {
@@ -348,19 +360,28 @@ impl From<String> for LookupFailure {
         LookupFailure {
             reason,
             transient: false,
+            secure_connection: None,
         }
     }
 }
 
 impl LookupFailure {
     /// A request that got no answer: `"{what}: {error}"`, transient when
-    /// the network failed or the time ran out, and not for a body over the
-    /// size limit (the same next time) or a test's missing canned answer.
+    /// the network failed or the time ran out (`HttpError::Network`,
+    /// `HttpError::Timeout`). Not for what the next check meets again: a
+    /// secure connection rustls would not set up (`HttpError::Tls`, whose
+    /// host the row names), a request the client refuses -- a redirect, a
+    /// host off its list (`HttpError::Refused`) -- a body over the size
+    /// limit, or a test's missing canned answer.
     pub(crate) fn request(what: &str, error: &crate::http::HttpError) -> Self {
         use crate::http::HttpError;
         LookupFailure {
             reason: format!("{what}: {error}"),
             transient: matches!(error, HttpError::Network(_) | HttpError::Timeout(_)),
+            secure_connection: match error {
+                HttpError::Tls { host, .. } => Some(host.clone()),
+                _ => None,
+            },
         }
     }
 
@@ -372,6 +393,7 @@ impl LookupFailure {
         LookupFailure {
             reason,
             transient: status == 408 || status == 429 || (500..=599).contains(&status),
+            secure_connection: None,
         }
     }
 
@@ -382,6 +404,7 @@ impl LookupFailure {
         LookupFailure {
             reason,
             transient: says_network_failed(words),
+            secure_connection: None,
         }
     }
 }
@@ -801,8 +824,105 @@ mod tests {
             LookupFailure::from("could not parse registry manifest".to_string()),
             LookupFailure {
                 reason: "could not parse registry manifest".to_string(),
-                transient: false
+                transient: false,
+                secure_connection: None
             }
+        );
+    }
+
+    #[test]
+    fn test_lookup_failure_is_lasting_for_a_secure_connection_or_a_refusal() {
+        // Round-5 review finding 6: both used to be `HttpError::Network`,
+        // and so "check again" on every check, for good.
+        use crate::http::HttpError;
+        let tls = LookupFailure::request(
+            "crates.io request failed",
+            &HttpError::Tls {
+                host: "crates.io".to_string(),
+                detail: "invalid peer certificate: UnknownIssuer".to_string(),
+            },
+        );
+        assert_eq!(
+            tls,
+            LookupFailure {
+                reason: "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer".to_string(),
+                transient: false,
+                secure_connection: Some("crates.io".to_string()),
+            }
+        );
+        for refused in [
+            "refusing to follow a redirect: https://pypi.org/pypi/Django/json answered 301 Moved Permanently pointing at /pypi/django/json",
+            "host not allowed: \"example.com\" is not one of [\"crates.io\"] (from https://example.com/)",
+        ] {
+            let failure =
+                LookupFailure::request("PyPI request failed", &HttpError::Refused(refused.to_string()));
+            assert!(!failure.transient, "{refused}");
+            assert_eq!(failure.secure_connection, None, "{refused}");
+            assert_eq!(failure.reason, format!("PyPI request failed: refused: {refused}"));
+        }
+        // Only the network and the time are transient, and neither names
+        // a secure connection.
+        for error in [
+            HttpError::Network("dns error".to_string()),
+            HttpError::Timeout(Duration::from_secs(30)),
+        ] {
+            let failure = LookupFailure::request("x", &error);
+            assert!(failure.transient, "{error:?}");
+            assert_eq!(failure.secure_connection, None, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn test_uncheckable_candidate_names_the_host_of_a_failed_secure_connection_and_never_says_try_again(
+    ) {
+        use crate::http::HttpError;
+        let row = uncheckable_candidate(
+            ArtifactKey {
+                instance_id: "cargo:/Users/a/.cargo".to_string(),
+                kind: crate::model::ArtifactKind::Package,
+                name: "hexyl".to_string(),
+            },
+            "0.16.0".to_string(),
+            UpdateChannel::Native,
+            LookupFailure::request(
+                "crates.io request failed",
+                &HttpError::Tls {
+                    host: "crates.io".to_string(),
+                    detail: "invalid peer certificate: UnknownIssuer".to_string(),
+                },
+            ),
+        );
+        assert!(!row.checkable);
+        assert_eq!(
+            row.warnings,
+            vec![
+                Warning::Message(
+                    "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer".to_string()
+                ),
+                Warning::SecureConnectionFailed {
+                    host: "crates.io".to_string()
+                },
+            ]
+        );
+        // A refused redirect: only the words, no mark.
+        let refused = uncheckable_candidate(
+            ArtifactKey {
+                instance_id: "pipx:/Users/a/.local/pipx".to_string(),
+                kind: crate::model::ArtifactKind::Package,
+                name: "Django".to_string(),
+            },
+            "5.0".to_string(),
+            UpdateChannel::Native,
+            LookupFailure::request(
+                "PyPI request failed",
+                &HttpError::Refused("refusing to follow a redirect".to_string()),
+            ),
+        );
+        assert_eq!(
+            refused.warnings,
+            vec![Warning::Message(
+                "PyPI request failed: refused: refusing to follow a redirect".to_string()
+            )]
         );
     }
 

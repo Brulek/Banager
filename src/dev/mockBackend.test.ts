@@ -341,6 +341,18 @@ describe("the browser preview's mock backend", () => {
     }
   });
 
+  it("has a lookup that met a certificate rustls would not accept and one a redirect refused with ?state=refused, neither to check again", async () => {
+    const { backend } = backendFor({ state: "refused" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const tokei = snapshot.updates.find((u) => u.key.name === "tokei");
+    expect(tokei?.checkable).toBe(false);
+    expect(tokei?.warnings.slice(1)).toEqual([{ SecureConnectionFailed: { host: "crates.io" } }]);
+    const rustup = snapshot.updates.find((u) => u.key.name === "rustup");
+    expect(rustup?.checkable).toBe(false);
+    expect(rustup?.warnings).toHaveLength(1);
+    expect(snapshot.updates.filter((u) => u.warnings.includes("TransientLookupFailure"))).toEqual([]);
+  });
+
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));

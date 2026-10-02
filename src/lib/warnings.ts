@@ -270,6 +270,7 @@ export function warningKey(warning: Warning): string | null {
     }
   }
   if ("WouldBreak" in warning) return "warnings.wouldBreak";
+  if ("SecureConnectionFailed" in warning) return "secureConnection.failed";
   if ("ThirdPartyRegistry" in warning) return "warnings.thirdPartyRegistry";
   if ("WillTrash" in warning) return REMOVED_WHAT_KEYS[warning.WillTrash.what];
   if ("WillKeep" in warning) return KEPT_WHAT_KEYS[warning.WillKeep.what];
@@ -327,6 +328,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     const names = warning.WouldBreak.names;
     return { count: names.length, names: names.join(separator) };
   }
+  if ("SecureConnectionFailed" in warning) return { host: warning.SecureConnectionFailed.host };
   if ("ThirdPartyRegistry" in warning) return { host: warning.ThirdPartyRegistry.host };
   if ("WillTrash" in warning) return { path: warning.WillTrash.path };
   if ("WillKeep" in warning) return { path: warning.WillKeep.path };
@@ -478,6 +480,7 @@ export function warningDetailKey(warning: Warning): string | null {
   if (
     "WouldBreak" in warning ||
     "NeededBySource" in warning ||
+    "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
     "WillTrash" in warning ||
     "AlreadyGone" in warning ||
@@ -522,6 +525,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     // No line (`warningKey`): the confirmation lists it with Homebrew's
     // dependents instead.
     "NeededBySource" in warning ||
+    "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
     "RemovesToolchains" in warning ||
     "DeletesCargoHome" in warning ||
@@ -594,6 +598,7 @@ export function deletesForGood(warning: Warning): boolean {
   if (
     "WouldBreak" in warning ||
     "NeededBySource" in warning ||
+    "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
     "WillTrash" in warning ||
     "WillKeep" in warning ||
@@ -730,6 +735,9 @@ export function isCaution(warning: Warning): boolean {
     }
   }
   if (
+    // Why a row could not be checked, as `NonRegistrySource` is: said on
+    // its row, never in a confirmation.
+    "SecureConnectionFailed" in warning ||
     "WillTrash" in warning ||
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||

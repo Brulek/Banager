@@ -1056,6 +1056,7 @@ function scenarioWorld(state: ScenarioState): World {
       return world;
     case "refused":
       withRefusedSources(world);
+      withRefusedLookups(world);
       return world;
   }
 }
@@ -1081,6 +1082,30 @@ function withRefusedSources(world: World): void {
     instance("pip", "pip:/opt/local/bin/python3.13", "/opt/local/bin/python3.13", "/opt/local/bin", null, {
       read_only_reason: "ByDesign",
       status: { unavailable: "NoPip", notes: [] },
+    }),
+  );
+}
+
+/**
+ * Two lookups that end the same way on every check (`?state=refused`),
+ * so neither is counted as one to check again: tokei's crates.io lookup
+ * met a certificate rustls would not accept -- a proxy that reads https --
+ * which its row names in a person's words (`SecureConnectionFailed`), and
+ * rustup's release file answered with a redirect, which Banager's client
+ * never follows (`HttpError` in crates/banager-core/src/http/mod.rs).
+ */
+function withRefusedLookups(world: World): void {
+  const replaced = [key(IDS.cargo, "Binary", "tokei"), key(IDS.rustup, "Binary", "rustup")];
+  world.updates = world.updates.filter((u) => !replaced.some((k) => sameKey(k, u.key)));
+  const tokei = uncheckable(replaced[0], "12.1.2", "Registry", {
+    Message:
+      "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer",
+  });
+  world.updates.push(
+    { ...tokei, warnings: [...tokei.warnings, { SecureConnectionFailed: { host: "crates.io" } }] },
+    uncheckable(replaced[1], "1.29.1", "Registry", {
+      Message:
+        "request to https://static.rust-lang.org/rustup/release-stable.toml failed: refused: refusing to follow a redirect: https://static.rust-lang.org/rustup/release-stable.toml answered 302 Found pointing at http://portal.example.net/login",
     }),
   );
 }
