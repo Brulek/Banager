@@ -225,11 +225,20 @@ impl Rng {
         (self.0 % n as u64) as usize
     }
 
-    /// `rel` with one of its names, picked at random, in capitals.
+    /// `rel` with one of its names, picked at random, spelled another
+    /// way a Mac's disk takes for the same name: in capitals, or with a
+    /// long s, a Kelvin sign or an `st` ligature (`protected::AS_ASCII`).
     fn shout(&mut self, rel: &str) -> String {
         let mut names: Vec<String> = rel.split('/').map(str::to_string).collect();
         let at = self.below(names.len());
-        names[at] = names[at].to_ascii_uppercase();
+        names[at] = match self.below(4) {
+            0 => names[at].replace(['s', 'S'], "\u{17F}"),
+            1 => names[at].replace(['k', 'K'], "\u{212A}"),
+            2 => names[at]
+                .replace("st", "\u{FB06}")
+                .replace("St", "\u{FB05}"),
+            _ => names[at].to_ascii_uppercase(),
+        };
         names.join("/")
     }
 }

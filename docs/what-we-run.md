@@ -2129,8 +2129,13 @@ Like the command check and the disk-use measurement, this scan never
 reads into `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies`, `~/Music`, `~/Library/Mobile Documents` (iCloud Drive),
 `~/Library/CloudStorage`, `~/Library/Containers`,
-`~/Library/Group Containers` or `/Volumes` (every other disk), whatever
-case spells them and also when spelled from `/System/Volumes/Data`
+`~/Library/Group Containers` or `/Volumes` (every other disk),
+whatever case spells them -- ASCII letters in either case, and the
+characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
+`K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
+`ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found
+by asking the disk for every character); any other letter only as
+spelled -- and also when spelled from `/System/Volumes/Data`
 (`protected::DATA_VOLUME`): it is the same list
 (`crates/banager-core/src/protected.rs`), so scanning never makes macOS
 ask for permission. Nothing in these places is listed, `lstat`ed, read as
@@ -2266,7 +2271,7 @@ It reads:
 | every `PATH` folder, in `PATH`'s order; the `bin` and `sbin` folders of every Homebrew prefix and the `bin` folder of every npm prefix | where the folder leads, then `read_dir`, one level deep: each folder once, however many entries name it. An empty or relative `PATH` entry is skipped, and so is a folder that does not exist or that no shell could reach. A `PATH` folder that is there but cannot be listed is kept in its place, unread, as a protected one is (`read_folders`) |
 | each entry in a Homebrew or npm prefix's `bin` (and Homebrew's `sbin`) | where it leads: which formula's folder in `Cellar`, or which package's in `lib/node_modules` |
 | each command a source's own answer names: a cask's `binary` link (`brew info --installed --json=v2`), a pipx app and `~/.local/bin/<its name>`, a uv tool's executable (`uv tool list --show-paths`), a Cargo crate's binaries in `<CARGO_HOME>/bin` (`.crates2.json`), a tool with its own installer's launcher and the commands its installer puts beside it (Grok Build's `agent`, rustup's proxies) | where it leads: whether into that tool's own folder, and whether to a file with an execute bit |
-| in each `PATH` folder, the entry of each name some tool provides, whatever ASCII case the folder spells it in (on a Mac's disk, typing `node` runs `NODE`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
+| in each `PATH` folder, the entry of each name some tool provides, however the folder spells it that a Mac's disk takes for the same name (typing `node` runs `NODE`; `protected::same_name`) | where it leads, and whether to a file with an execute bit, in `PATH`'s order |
 
 "Where it leads" is found one step at a time, as `realpath` would, but
 with only `lstat` of each folder and link on the way and `readlink` of
@@ -2286,15 +2291,21 @@ in one `fstatat` that follows no link anywhere on the way
 folder that may not be searched, is then taken one step at a time, as
 above.
 Unlike `realpath`, it keeps each name as `PATH` or the link's text spells
-it, so two paths are compared without regard to ASCII case, as a Mac's
-disk names them: `~/.CARGO/bin` on `PATH` is `~/.cargo/bin`
+it, so two paths are compared as a Mac's disk compares names -- ASCII
+case aside, and the characters it takes for ASCII letters taken for them
+(`protected::same_name`): `~/.CARGO/bin` on `PATH` is `~/.cargo/bin`
 (`protected::same_path`).
 
 A folder in `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`,
 `~/Movies` or `~/Music`, in iCloud Drive or another cloud folder
 (`~/Library/Mobile Documents`, `~/Library/CloudStorage`), in another
 app's data (`~/Library/Containers`, `~/Library/Group Containers`) or on
-another disk (`/Volumes`), whatever case spells them and also when
+another disk (`/Volumes`), whatever case spells them -- ASCII letters in either case, and the
+characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
+`K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
+`ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found
+by asking the disk for every character); any other letter only as
+spelled -- and also when
 spelled from `/System/Volumes/Data` (the same folders, through macOS's
 firmlinks; `protected::DATA_VOLUME`), is not read at all,
 as named or where it leads (`protected::resolve`): macOS asks you before
@@ -2450,7 +2461,12 @@ measuring never makes macOS ask for permission: `~/Desktop`,
 `~/Library/Mobile Documents` (iCloud Drive), `~/Library/CloudStorage`
 (apps that keep files in the cloud), `~/Library/Containers` and
 `~/Library/Group Containers` (other apps' data), and `/Volumes` (every
-other disk), whatever case spells them, and also as spelled from the
+other disk), whatever case spells them -- ASCII letters in either case, and the
+characters a Mac's disk takes for ASCII letters: `ſ` (long s) for `s`,
+`K` (Kelvin sign) for `k`, `ß` and `ẞ` for `ss`, and the ligatures `ﬀ`
+`ﬁ` `ﬂ` `ﬃ` `ﬄ` `ﬅ` `ﬆ` for their letters (`protected::AS_ASCII`, found
+by asking the disk for every character); any other letter only as
+spelled -- and also as spelled from the
 volume that holds them, `/System/Volumes/Data` (`/System/Volumes/Data/Users/<you>/Documents`
 is `~/Documents`, through the firmlinks macOS keeps; `protected::DATA_VOLUME`).
 A tool kept in one of them shows no size (`Protected`). It is the same list the command check keeps out
@@ -2588,7 +2604,8 @@ second for all of them together (`kept_data::BUDGET`). A size it stopped
 short of is shown as "or more" (「…以上」), and a path it did not reach,
 or could not read, or that measured 0, is named with no size. A path that leads into one of
 the places disk use never looks into (Disk use, above: the one list in
-`crates/banager-core/src/protected.rs`, whatever case spells them) is
+`crates/banager-core/src/protected.rs`, spelled in any case or with any
+of the characters a Mac's disk takes for ASCII letters, as there) is
 named with no size, and nothing there is read -- also when the link is a
 folder on the way (`~/.ollama`, for `~/.ollama/models`): the path is then
 named without Banager knowing whether it is there inside. A path that is not there,

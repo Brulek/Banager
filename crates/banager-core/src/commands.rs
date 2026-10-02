@@ -122,12 +122,13 @@ struct Folder {
 
 impl Folder {
     /// Whether the folder has an entry a shell would find for `name`:
-    /// on a Mac's disk, whose names do not tell ASCII case apart, typing
-    /// `node` runs `NODE` (the same rule as `protected::same_path`). Where
-    /// it leads is then looked up by `name` itself, so a disk that does
-    /// tell case apart answers that nothing is there.
+    /// on a Mac's disk, whose names do not tell case apart, typing `node`
+    /// runs `NODE` (the same rule as `protected::same_path`). Where it
+    /// leads is then looked up by `name` itself, so a disk that does tell
+    /// case apart answers that nothing is there.
     fn holds(&self, name: &str) -> bool {
-        self.folded.contains(&name.as_bytes().to_ascii_lowercase())
+        self.folded
+            .contains(&protected::folded_name(name.as_bytes()))
     }
 }
 
@@ -337,7 +338,7 @@ fn read_one(
     }
     let folded = names
         .iter()
-        .map(|name| name.as_bytes().to_ascii_lowercase())
+        .map(|name| protected::folded_name(name.as_bytes()))
         .collect();
     Ok(Some(Folder {
         given: dir.to_path_buf(),

@@ -548,6 +548,14 @@ mod tests {
             tree.file(&format!("{place}/bin/tool"), 0o755);
             let lower = place.to_ascii_lowercase();
             let upper = place.to_ascii_uppercase();
+            // Every place has an `s`: a long s is the same letter to the
+            // disk (`protected::AS_ASCII`).
+            let long_s = place.replace(['s', 'S'], "\u{17F}");
+            asked.extend([
+                tree.at(&format!("{long_s}/bin/tool")),
+                tree.on_data_volume(&format!("{long_s}/bin/tool")),
+                tree.link(&format!("bin/long-s{i}"), format!("../{long_s}/bin/tool")),
+            ]);
             asked.extend([
                 tree.at(&format!("{place}/bin/tool")),
                 tree.at(&format!("{lower}/bin/tool")),
@@ -709,11 +717,20 @@ mod tests {
             &items[self.below(items.len())]
         }
 
-        /// `rel` with one of its names, picked at random, in capitals.
+        /// `rel` with one of its names, picked at random, spelled another
+        /// way a Mac's disk takes for the same name: in capitals, or with a
+        /// long s, a Kelvin sign or an `st` ligature (`protected::AS_ASCII`).
         fn shout(&mut self, rel: &str) -> String {
             let mut names: Vec<String> = rel.split('/').map(str::to_string).collect();
             let at = self.below(names.len());
-            names[at] = names[at].to_ascii_uppercase();
+            names[at] = match self.below(4) {
+                0 => names[at].replace(['s', 'S'], "\u{17F}"),
+                1 => names[at].replace(['k', 'K'], "\u{212A}"),
+                2 => names[at]
+                    .replace("st", "\u{FB06}")
+                    .replace("St", "\u{FB05}"),
+                _ => names[at].to_ascii_uppercase(),
+            };
             names.join("/")
         }
     }
@@ -826,6 +843,9 @@ mod tests {
                 "Library",
                 "Mobile Documents",
                 "in",
+                "Document\u{17F}",
+                "Mobile Document\u{17F}",
+                "Des\u{212A}top",
             ]
             .iter()
             .map(|w| w.to_string()),

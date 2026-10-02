@@ -148,6 +148,35 @@ fn spellings(home: &Home, place: &str, n: usize) -> Vec<(String, PathBuf)> {
     if let Some(aliased) = on_data_volume(&exact) {
         all.push((format!("{place} through the data volume"), aliased));
     }
+    // With the characters a Mac's disk takes for its letters
+    // (`protected::AS_ASCII`): the same folder to the disk.
+    for (how, spelled) in apfs_spellings(place) {
+        all.push((format!("{place} with {how}"), home.path.join(&spelled)));
+        all.push((
+            format!("{place} through a link spelled with {how}"),
+            home.link(&format!("via-{n}-{how}"), &home.path.join(&spelled)),
+        ));
+    }
+    all
+}
+
+/// `place` spelled with each kind of character APFS takes for ASCII
+/// letters that its letters allow: every `s` as a long s, every `k` as a
+/// Kelvin sign, every `st` as a ligature.
+fn apfs_spellings(place: &str) -> Vec<(&'static str, String)> {
+    let mut all = Vec::new();
+    if place.contains(['s', 'S']) {
+        all.push(("long s", place.replace(['s', 'S'], "\u{17F}")));
+    }
+    if place.contains(['k', 'K']) {
+        all.push(("a Kelvin sign", place.replace(['k', 'K'], "\u{212A}")));
+    }
+    if place.contains("St") || place.contains("st") {
+        all.push((
+            "an st ligature",
+            place.replace("St", "\u{FB06}").replace("st", "\u{FB05}"),
+        ));
+    }
     all
 }
 
@@ -158,6 +187,10 @@ fn volume_spellings(home: &Home) -> Vec<(String, PathBuf)> {
         (
             "/volumes".to_string(),
             PathBuf::from(NO_SUCH_DISK.to_lowercase()),
+        ),
+        (
+            "/Volumes with a long s".to_string(),
+            PathBuf::from(NO_SUCH_DISK.replace("Volumes", "Volume\u{17F}")),
         ),
         (
             "/Volumes through a link".to_string(),

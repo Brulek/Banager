@@ -27,8 +27,9 @@ pub(crate) use round::Round;
 /// and the folders of apps such as Dropbox that keep files in the cloud
 /// (`Library/CloudStorage`); and other apps' data (`Library/Containers`,
 /// `Library/Group Containers`, App Management's data from other apps).
-/// Compared without regard to case (`starts_with_folded`), as APFS
-/// compares names by default.
+/// Compared as APFS compares names by default (`starts_with_folded`):
+/// without regard to case, and with the characters it takes for ASCII
+/// letters taken for them (`AS_ASCII`).
 pub const PROTECTED_IN_HOME: [&str; 10] = [
     "Desktop",
     "Documents",
@@ -91,36 +92,118 @@ pub fn is_within(path: &Path, places: &[PathBuf]) -> bool {
         .any(|place| starts_with_folded(&path, &without_data_volume(place)))
 }
 
-/// `Path::starts_with`, comparing each component without regard to ASCII
-/// case: on a case-insensitive APFS volume `~/documents` is `~/Documents`,
-/// and `/volumes/Backup` is `/Volumes/Backup`.
+/// The characters an APFS volume that does not tell case apart -- a
+/// Mac's own disk, by default -- takes for ASCII letters, as UTF-8, and
+/// the letters it takes each for: its case folding is Unicode's full one,
+/// so `~/Documentſ` is `~/Documents`, `~/DesKtop` (a Kelvin sign) is
+/// `~/Desktop`, and `~/Library/Cloudﬆorage` is `~/Library/CloudStorage`.
+/// Found by asking this Mac's disk for every code point
+/// (`probe_every_code_point_apfs_takes_for_ascii_letters`): no other
+/// character -- no full-width letter, no accented one, no joiner -- is
+/// taken for an ASCII letter.
+pub const AS_ASCII: [(&str, &str); 11] = [
+    ("\u{00DF}", "ss"),  // ß
+    ("\u{017F}", "s"),   // ſ, long s
+    ("\u{1E9E}", "ss"),  // ẞ
+    ("\u{212A}", "k"),   // K, Kelvin sign
+    ("\u{FB00}", "ff"),  // ﬀ
+    ("\u{FB01}", "fi"),  // ﬁ
+    ("\u{FB02}", "fl"),  // ﬂ
+    ("\u{FB03}", "ffi"), // ﬃ
+    ("\u{FB04}", "ffl"), // ﬄ
+    ("\u{FB05}", "st"),  // ﬅ
+    ("\u{FB06}", "st"),  // ﬆ
+];
+
+/// A name's bytes as APFS compares them, as far as ASCII goes: each ASCII
+/// letter in lower case, each of `AS_ASCII` as its letters, and every
+/// other byte as it is. Other letters are compared as spelled: the names
+/// macOS gives accounts, and so their home folders, are ASCII.
+struct Fold<'a> {
+    rest: &'a [u8],
+    letters: &'static [u8],
+}
+
+impl Iterator for Fold<'_> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<u8> {
+        if let Some((&letter, more)) = self.letters.split_first() {
+            self.letters = more;
+            return Some(letter);
+        }
+        let (&byte, rest) = self.rest.split_first()?;
+        if !byte.is_ascii() {
+            let rest = self.rest;
+            if let Some((utf8, letters)) = AS_ASCII
+                .iter()
+                .find(|(utf8, _)| rest.starts_with(utf8.as_bytes()))
+            {
+                self.rest = &rest[utf8.len()..];
+                let (&first, more) = letters.as_bytes().split_first()?;
+                self.letters = more;
+                return Some(first);
+            }
+        }
+        self.rest = rest;
+        Some(byte.to_ascii_lowercase())
+    }
+}
+
+fn fold(bytes: &[u8]) -> Fold<'_> {
+    Fold {
+        rest: bytes,
+        letters: &[],
+    }
+}
+
+/// Whether `a` and `b` are one name, or one path, as APFS compares names
+/// (`Fold`): `~/documents` is `~/Documents`, and `~/Documentſ` is too.
+pub fn same_name(a: &[u8], b: &[u8]) -> bool {
+    if a.is_ascii() && b.is_ascii() {
+        return a.eq_ignore_ascii_case(b);
+    }
+    fold(a).eq(fold(b))
+}
+
+/// `name` as a key two spellings of it that `same_name` takes as one
+/// share.
+pub fn folded_name(name: &[u8]) -> Vec<u8> {
+    if name.is_ascii() {
+        return name.to_ascii_lowercase();
+    }
+    fold(name).collect()
+}
+
+/// `Path::starts_with`, comparing each component as APFS compares names
+/// (`same_name`): on a case-insensitive APFS volume `~/documents` is
+/// `~/Documents`, so is `~/Documentſ`, and `/volumes/Backup` is
+/// `/Volumes/Backup`.
 pub fn starts_with_folded(path: &Path, prefix: &Path) -> bool {
     let mut components = path.components();
     prefix.components().all(|wanted| {
         components.next().is_some_and(|component| {
-            component
-                .as_os_str()
-                .as_bytes()
-                .eq_ignore_ascii_case(wanted.as_os_str().as_bytes())
+            same_name(
+                component.as_os_str().as_bytes(),
+                wanted.as_os_str().as_bytes(),
+            )
         })
     })
 }
 
-/// Whether `a` and `b` are one path on a Mac's disk, whose names do not
-/// tell ASCII case apart: `resolve` keeps each name as it was given or as
+/// Whether `a` and `b` are one path on a Mac's disk, which compares names
+/// as `same_name` does: `resolve` keeps each name as it was given or as
 /// a link's text spells it, where `realpath` would answer the disk's own
 /// spelling, so `~/.CARGO/bin` and `~/.cargo/bin` must compare equal.
 /// For paths `resolve` built (no `.`, `..` or doubled `/`).
 pub fn same_path(a: &Path, b: &Path) -> bool {
-    a.as_os_str()
-        .as_bytes()
-        .eq_ignore_ascii_case(b.as_os_str().as_bytes())
+    same_name(a.as_os_str().as_bytes(), b.as_os_str().as_bytes())
 }
 
 /// `path` as a key two spellings of it that `same_path` takes as one
 /// share.
 pub fn folded(path: &Path) -> Vec<u8> {
-    path.as_os_str().as_bytes().to_ascii_lowercase()
+    folded_name(path.as_os_str().as_bytes())
 }
 
 /// `Path::strip_prefix`, as `same_path` compares: what is left of `path`
@@ -378,9 +461,181 @@ mod tests {
             "/Users/you/LIBRARY/Mobile documents/com~apple~CloudDocs/bin",
             "/volumes/Backup/bin",
             "/VOLUMES",
+            // The characters APFS takes for ASCII letters (`AS_ASCII`).
+            "/Users/you/Documents/bin",
+            "/Users/you/Document\u{17F}/bin",
+            "/Users/you/DOCUMENT\u{17F}",
+            "/Users/you/De\u{17F}ktop",
+            "/Users/you/Des\u{212A}top/x",
+            "/Users/you/Download\u{17F}",
+            "/Users/you/Picture\u{17F}",
+            "/Users/you/Movie\u{17F}",
+            "/Users/you/Mu\u{17F}ic",
+            "/Users/you/Library/Mobile Document\u{17F}/x",
+            "/Users/you/Library/Cloud\u{FB06}orage/Dropbox",
+            "/Users/you/Library/Cloud\u{FB05}orage",
+            "/Users/you/Library/Cloud\u{17F}torage",
+            "/Users/you/Library/Container\u{17F}/com.example",
+            "/Users/you/Library/Group Container\u{17F}",
+            "/Volume\u{17F}/Backup/bin",
+            "/Sy\u{17F}tem/Volume\u{17F}/Data/Users/you/Documents",
         ] {
             assert!(is_within(Path::new(path), &places), "{path}");
         }
+        // A home folder whose own name has such letters, spelled either
+        // way: `ſtrauß` is `strauss` to the disk.
+        let strauss = super::places(&[PathBuf::from("/Users/strauss")]);
+        for path in [
+            "/Users/\u{17F}trau\u{DF}/Documents",
+            "/Users/STRAU\u{1E9E}/Desktop",
+        ] {
+            assert!(is_within(Path::new(path), &strauss), "{path}");
+        }
+        let protected = Protected {
+            places: super::places(&[PathBuf::from("/Users/\u{17F}trau\u{DF}")])
+                .iter()
+                .map(|place| without_data_volume(place))
+                .collect(),
+        };
+        assert!(protected.contains(Path::new("/Users/strauss/Documents/bin")));
+    }
+
+    #[test]
+    fn test_contains_answers_a_table_written_out_by_hand() {
+        // Each answer written here, not worked out by the code under test:
+        // what a Mac's disk takes for the same folder as a protected one.
+        let protected = Protected {
+            places: places(&[PathBuf::from("/Users/you")])
+                .iter()
+                .map(|place| without_data_volume(place))
+                .collect(),
+        };
+        for (path, inside) in [
+            ("/Users/you/Documents", true),
+            ("/Users/you/Documents/proj/bin/tool", true),
+            ("/users/YOU/documents", true),
+            ("/Users/you/Document\u{17F}", true),
+            ("/Users/you/Des\u{212A}top/bin", true),
+            ("/Users/you/DE\u{17F}\u{212A}TOP", true),
+            ("/Users/you/Library/Cloud\u{FB06}orage", true),
+            ("/Users/you/Library/CLOUD\u{FB05}ORAGE/x", true),
+            ("/Users/you/Library/Mobile Documents", true),
+            (
+                "/Users/you/Library/Mobile Document\u{17F}/com~apple~CloudDocs",
+                true,
+            ),
+            ("/Users/you/Library/Containers/x", true),
+            ("/Users/you/Library/Group Containers", true),
+            ("/Users/you/Pictures", true),
+            ("/Users/you/Movies", true),
+            ("/Users/you/Music", true),
+            ("/Users/you/Downloads", true),
+            ("/Volumes", true),
+            ("/Volumes/Backup/bin", true),
+            ("/Volume\u{17F}/Backup", true),
+            ("/System/Volumes/Data/Users/you/Desktop", true),
+            ("/System/Volumes/Data/Volumes/x", true),
+            ("/Sy\u{17F}tem/Volumes/Data/Users/you/Music/x", true),
+            (
+                "/System/Volumes/Data/System/Volumes/Data/Users/you/Movies",
+                true,
+            ),
+            ("/Users/you", false),
+            ("/Users/you/Library", false),
+            ("/Users/you/Library/Application Support/bin", false),
+            ("/Users/you/DocumentsBackup", false),
+            ("/Users/you/Document", false),
+            // Not the same name to the disk: an extra letter, a full-width
+            // or an accented one.
+            ("/Users/you/Document\u{DF}", false),
+            ("/Users/you/Document\u{FB06}", false),
+            ("/Users/you/\u{FF24}ocuments", false),
+            ("/Users/you/Docume\u{301}nts", false),
+            ("/Users/you/Docum\u{E9}nts", false),
+            ("/Users/you/.cargo/bin", false),
+            ("/Users/someone/Documents", false),
+            ("/VolumesX", false),
+            ("/System/Volumes", false),
+            ("/System/Volumes/Data", false),
+            ("/System/Volumes/Data/Users/you/.local/bin", false),
+            ("/opt/homebrew/bin", false),
+            ("/", false),
+        ] {
+            assert_eq!(protected.contains(Path::new(path)), inside, "{path}");
+        }
+    }
+
+    #[test]
+    fn test_each_character_apfs_takes_for_ascii_letters_names_that_folder() {
+        // On this Mac's own disk, as `AS_ASCII` says: the folder named
+        // with the letters is found under the other spelling. Nothing to
+        // show on a disk that tells case apart.
+        let temp = Temp::new("as-ascii");
+        std::fs::create_dir(temp.0.join("case")).unwrap();
+        if !temp.0.join("CASE").exists() {
+            return;
+        }
+        for (character, letters) in AS_ASCII {
+            // `ss` and `st` are each two characters' letters.
+            let folder = temp.0.join(format!("x{letters}x"));
+            std::fs::create_dir_all(&folder).unwrap();
+            let other = temp.0.join(format!("x{character}x"));
+            use std::os::unix::fs::MetadataExt;
+            assert_eq!(
+                std::fs::symlink_metadata(&other)
+                    .map(|meta| meta.ino())
+                    .ok(),
+                Some(std::fs::symlink_metadata(&folder).unwrap().ino()),
+                "{character:?} is not taken for {letters:?}"
+            );
+            assert!(same_name(
+                other.as_os_str().as_bytes(),
+                folder.as_os_str().as_bytes()
+            ));
+        }
+    }
+
+    /// How `AS_ASCII` was found: every code point, asked of this Mac's
+    /// disk between two `x`s, against folders named by every ASCII letter,
+    /// every two, and `ffi` and `ffl`. About a million lookups, so not run
+    /// by default:
+    /// `cargo test -p banager-core --release --lib probe_every_code_point -- --ignored`.
+    #[test]
+    #[ignore = "probe of this Mac's disk: about a million lookups"]
+    fn probe_every_code_point_apfs_takes_for_ascii_letters() {
+        use std::os::unix::fs::MetadataExt;
+        let temp = Temp::new("every-code-point");
+        let mut by_ino = std::collections::HashMap::new();
+        let letters: Vec<String> = ('a'..='z').map(String::from).collect();
+        let mut names: Vec<String> = letters.clone();
+        for a in &letters {
+            for b in &letters {
+                names.push(format!("{a}{b}"));
+            }
+        }
+        names.extend(["ffi".to_string(), "ffl".to_string()]);
+        for name in &names {
+            let folder = temp.0.join(format!("x{name}x"));
+            std::fs::create_dir(&folder).unwrap();
+            by_ino.insert(
+                std::fs::symlink_metadata(&folder).unwrap().ino(),
+                name.clone(),
+            );
+        }
+        let mut found: Vec<(String, String)> = Vec::new();
+        for code in 0x80..=0x10FFFFu32 {
+            let Some(character) = char::from_u32(code) else {
+                continue;
+            };
+            if let Ok(meta) = std::fs::symlink_metadata(temp.0.join(format!("x{character}x"))) {
+                found.push((character.to_string(), by_ino[&meta.ino()].clone()));
+            }
+        }
+        let table: Vec<(String, String)> = AS_ASCII
+            .iter()
+            .map(|(c, l)| (c.to_string(), l.to_string()))
+            .collect();
+        assert_eq!(found, table);
     }
 
     #[test]

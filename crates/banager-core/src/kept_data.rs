@@ -29,8 +29,8 @@
 //! file opened, nothing written), under a budget
 //! small enough that the preview stays quick (`BUDGET`), and never into
 //! the places macOS asks about (`size::Protected`, built from the one list
-//! in `crate::protected` that the command check uses too, whatever case
-//! spells a place): a path that leads into one is named with no size. Nothing here deletes anything, and nothing
+//! in `crate::protected` that the command check uses too, compared as
+//! APFS compares names, `protected::same_name`): a path that leads into one is named with no size. Nothing here deletes anything, and nothing
 //! offers to.
 
 use crate::families;

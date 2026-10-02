@@ -554,7 +554,7 @@ fn by_name(at: PathBuf, protected: &Protected) -> Option<PathBuf> {
 }
 
 /// Whether `a` and `b` are one place: compared as a Mac's disk compares
-/// names, without regard to ASCII case (`resolve` keeps each name as it is
+/// names, without regard to case (`protected::same_name`; `resolve` keeps each name as it is
 /// spelled, where `realpath` would answer the disk's spelling), and
 /// whichever spelling of the data volume names either
 /// (`protected::without_data_volume`).
