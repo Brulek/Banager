@@ -109,16 +109,25 @@ pub(crate) fn reveal_impl(
 /// scan lists no folder -- so Foundation does not look at it to ask).
 /// Nothing runs and nothing resolves it first. A path that is not UTF-8
 /// is not changed to fit: refused.
+///
+/// In a pool of its own (`autoreleasepool`), drained when the call
+/// returns: the command runs on one of the async runtime's threads, which
+/// has none, and whatever Foundation or AppKit autoreleases would
+/// otherwise be kept until the thread ends -- a little more with each
+/// click.
 #[cfg(target_os = "macos")]
 fn show_in_finder(path: &Path) -> Result<(), String> {
+    use objc2::rc::autoreleasepool;
     use objc2_app_kit::NSWorkspace;
     use objc2_foundation::{NSArray, NSString, NSURL};
     let path = path
         .to_str()
         .ok_or_else(|| "the path is not UTF-8".to_string())?;
-    let url = NSURL::fileURLWithPath_isDirectory(&NSString::from_str(path), false);
-    let urls = NSArray::from_retained_slice(&[url]);
-    NSWorkspace::sharedWorkspace().activateFileViewerSelectingURLs(&urls);
+    autoreleasepool(|_| {
+        let url = NSURL::fileURLWithPath_isDirectory(&NSString::from_str(path), false);
+        let urls = NSArray::from_retained_slice(&[url]);
+        NSWorkspace::sharedWorkspace().activateFileViewerSelectingURLs(&urls);
+    });
     Ok(())
 }
 
