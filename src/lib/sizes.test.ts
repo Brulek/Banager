@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import {
   compareBySize,
+  compareSizes,
   modelsTotalText,
   otherVersionsSizeText,
   saysSize,
@@ -197,6 +198,18 @@ describe("By Size", () => {
     const [a, b, c] = [tool("a"), tool("b"), tool("c")];
     expect([a, c, b].sort((x, y) => compareBySize(order, x, y)).map((t) => t.key.name)).toEqual(["b", "a", "c"]);
     expect(compareBySize(order, c, tool("d"))).toBe(0);
+  });
+
+  it("orders two sizes already looked up as it orders their rows (compareSizes)", () => {
+    const sizes = [10, undefined, 900, 10, undefined];
+    for (const x of sizes) {
+      for (const y of sizes) {
+        const order = new Map<string, number>();
+        if (x !== undefined) order.set("uv|Tool|x", x);
+        if (y !== undefined) order.set("uv|Tool|y", y);
+        expect(Math.sign(compareSizes(x, y))).toBe(Math.sign(compareBySize(order, tool("x"), tool("y"))));
+      }
+    }
   });
 });
 
