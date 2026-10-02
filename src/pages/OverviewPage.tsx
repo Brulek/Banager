@@ -121,6 +121,10 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const action = notice.action;
   const opensOllama = action?.id === "openOllama";
+  // The button's description is the row's title, as on the lists
+  // (`SourceNoticeLine`): several rows can each have a 查看, and a screen
+  // reader's list of buttons tells them apart by what each is about.
+  const titleId = useId();
   // What the button does, as the lists wire theirs (`SourceNotices`), one
   // case per action: one added to `SourceNoticeAction` without a case here
   // fails `tsc` at the `never`. 查看 (`showList`) is the Installed page's
@@ -182,7 +186,9 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           <InfoIcon size={16} className="shrink-0 text-muted" />
         )}
         <div className="min-w-0">
-          <p className="text-body text-foreground">{t(notice.titleKey, notice.values)}</p>
+          <p id={titleId} className="text-body text-foreground">
+            {t(notice.titleKey, notice.values)}
+          </p>
           <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, notice.values)}</p>
           {/* A <div>: the error's own "Details" panel is one. */}
           {error !== null ? (
@@ -197,6 +203,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           type="button"
           onClick={press(action)}
           disabled={action.id === "checkAgain" && checking}
+          aria-describedby={titleId}
           className={BUTTON.regular.grey}
         >
           {t(action.labelKey)}

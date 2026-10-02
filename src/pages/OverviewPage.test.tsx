@@ -1069,15 +1069,35 @@ describe("OverviewPage", () => {
       prefix: "/Users/someone/.local/share/claude",
       status: { unavailable: null, notes: ["ShadowedByNpm"] },
     });
-    served = snapshotWith({ instances: [brew, claude] });
+    // Grok Build's launcher left without its program: a warning with a
+    // Show of its own beside this one.
+    const grok = instance("standalone-grok", "standalone-grok", {
+      exe_path: "/Users/someone/.grok/bin/grok",
+      prefix: "/Users/someone/.grok",
+      status: { unavailable: null, notes: ["LauncherOnly"] },
+    });
+    served = snapshotWith({ instances: [brew, claude, grok] });
     useUiStore.setState({ page: "overview" });
     const { findByRole } = renderOverview();
 
-    // A note alone is folded into the group's one row: unfolded, it shows.
+    // A note is folded behind the warnings: unfolded, it shows.
     const list = await findByRole("list", { name: "Needs attention" });
     fireEvent.click(within(list).getByRole("button", { name: "1 more note" }));
+    // Two buttons named Show, each described by its row's title, so a
+    // screen reader's list of buttons tells them apart.
+    expect(
+      within(list)
+        .getAllByRole("button", { name: "Show" })
+        .map((button) => document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent),
+    ).toEqual([
+      "Grok Build's program files are missing",
+      "Typing claude in Terminal runs a program with that name from npm",
+    ]);
     const lines = within(list).getAllByRole("listitem");
     const line = lines[lines.length - 1];
+    expect(within(line).getByRole("button", { name: "Show" })).toHaveAccessibleDescription(
+      "Typing claude in Terminal runs a program with that name from npm",
+    );
     expect(within(line).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
     expect(
       within(line).getByText(
