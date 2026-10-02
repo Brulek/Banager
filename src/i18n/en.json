@@ -1198,7 +1198,7 @@
       "unknown": "Go to Other Programs",
       "checkAgain": "Check installed tools and updates again",
       "search": "Search Installed",
-      "closeWindow": "Close the window; operations keep running",
+      "closeWindow": "Close the window; operations keep running, and clicking the Dock icon brings it back",
       "quit": "Quit, asking first if an operation hasn't finished",
       "move": "Move to the previous or next item in a list, the sidebar or a menu",
       "page": "Move up or down a page in a list. On a MacBook, press fn with ↑ or ↓.",

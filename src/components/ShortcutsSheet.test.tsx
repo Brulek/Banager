@@ -47,7 +47,7 @@ describe("ShortcutsSheet", () => {
         "Go to Other Programs | ⌘4",
         "Check installed tools and updates again | ⌘R",
         "Search Installed | ⌘F",
-        "Close the window; operations keep running | ⌘W",
+        "Close the window; operations keep running, and clicking the Dock icon brings it back | ⌘W",
         "Quit, asking first if an operation hasn't finished | ⌘Q",
       ],
       [
