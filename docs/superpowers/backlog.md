@@ -31,10 +31,16 @@
 
 **核对后仍开着的**（形状见下文各自条目）：~~npm `prefix -g` 失败时的合成实例 ID；pip 分不清「没带 pip」
 与「pip 坏了」~~（两条都已于 2026-10-02 做了，见下文）；`SUDO_ASKPASS` 透传（作者拍板）；GitHub Actions 的 Node 20 运行时（`@v4`，等额度恢复能跑
-CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要看着界面改）；`releaseDraft`、
-空机器首启（作者拍板或属于阶段 5）。刷新按钮已于 2026-09-28 加上（见下文「整个应用没有刷新按钮」）。另有规格写了、各阶段计划都没排进去的四块：本地快照缓存（spec §3/§5，
-启动时先渲染上次的结果）、历史页与操作日志落盘（§5/§6/§7）、「报告问题」（§6）、菜单栏与后台检查（§8，
-属阶段 6）。
+CI 时再升，升了没法在本地验证）；~~8pt 网格（约 51 处，需要看着界面改）~~（已不适用：2026-09-29 的审美规格
+另定了尺寸——行高 52、内容边距 20、按钮高只有 20/24/28 三档，`docs/superpowers/2026-09-29-aesthetics-spec.md:13`、`:34-35`）；`releaseDraft`、
+空机器首启（作者拍板或属于阶段 5）。刷新按钮已于 2026-09-28 加上（见下文「整个应用没有刷新按钮」）。另有规格写了、各阶段计划都没排进去的四块，
+2026-10-02 核对时各做了一部分，仍开着的只有：本地快照缓存（spec §3/§5，启动时先渲染上次的结果；第一次检查先出清单
+已做，见文末「第一次检查」一条）；操作日志落盘（§5/§6/§7；历史那半已做：`history.json` 记下 Banager 做过的更新与卸载，
+更新页「最近的更新记录」读它，`crates/banager-core/src/history/mod.rs`、`src-tauri/src/history.rs`，日志一行也不落盘，
+见 `docs/what-we-run.md`「Files Banager writes」）；「报告问题」只剩打开问题反馈页那半（「拷贝诊断信息」已做，在帮助菜单与
+设置页，`crates/banager-core/src/diagnostics.rs`、`src/lib/diagnostics.ts`；仓库是私有的，去处待作者定）；菜单栏图标与
+登录时启动（§8，属阶段 6；后台检查与通知已做，`crates/banager-core/src/auto_check.rs`、`src-tauri/src/auto_check.rs`、
+`src-tauri/src/notify.rs`）。
 
 ## 阶段 4 已知缺口（2026-09-25，分支 feat/phase-4-standalone）
 
@@ -68,18 +74,37 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 
 ## 阶段 2（界面 / IPC）之前必须处理
 
-- `crates/banager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。
-- `src-tauri/tauri.conf.json`：`csp` 目前为 `null`；spec §6 要求禁止远程脚本与导航。界面计划的清单项。
-- 清理 create-tauri-app 模板残留：`src/App.tsx`（logo、外链、greet 表单）、`src-tauri/src/lib.rs` 的 `greet` 命令、`index.html` 标题。
-- `OpRecord.cancel` 是 `pub`，调用方可绕过 `cancel()` 的状态簿记；IPC 层接入时改为私有 + `Notify` 替代 `wait()` 的 20 ms 轮询。
-- `detect()` 在 euid 0 时返回空向量，与"未安装 brew"无法区分；界面需要区分显示。
+2026-10-02 核对：本节五条全部早已修掉，逐条划去。
+
+- ~~`crates/banager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。~~
+  —— **已于 2026-09-19 解决**（`b4d6722`）：`adapters/mod.rs:379-396` 拒绝以 `-`、`/`、`.` 开头、以 `.rb` 结尾、含 `..` 段的名字。
+- ~~`src-tauri/tauri.conf.json`：`csp` 目前为 `null`；spec §6 要求禁止远程脚本与导航。界面计划的清单项。~~
+  —— **已于 2026-09-19 解决**（`9e992fc`）：`src-tauri/tauri.conf.json:26` 是 `default-src 'self'`、`connect-src 'self'` 的真 CSP。
+- ~~清理 create-tauri-app 模板残留：`src/App.tsx`（logo、外链、greet 表单）、`src-tauri/src/lib.rs` 的 `greet` 命令、`index.html` 标题。~~
+  —— **已于 2026-09-19 解决**（`9e992fc`）：`src`、`src-tauri/src` 里没有 `greet`，`App.tsx` 是应用外壳，`index.html:11` 标题为 Banager。
+- ~~`OpRecord.cancel` 是 `pub`，调用方可绕过 `cancel()` 的状态簿记；IPC 层接入时改为私有 + `Notify` 替代 `wait()` 的 20 ms 轮询。~~
+  —— **已于 2026-09-19 解决**（`99a7bd7`）：`OpRecord`（`ops/mod.rs:116-121`）不带取消令牌，令牌在私有的 `OpInternal`（`:171-176`）；
+  `wait()`（`:411-419`）等 `done_notify: Notify`，不再轮询。
+- ~~`detect()` 在 euid 0 时返回空向量，与"未安装 brew"无法区分；界面需要区分显示。~~
+  —— **已于 2026-09-22 解决**（`4a7a4c5`）：root 下 brew 的 `detect` 照样列出实例，标 `Unavailable::RefusesAsRoot`，不跑 brew
+  （`adapters/brew/mod.rs:1092-1100`、`:1142-1143`，`model.rs:85`）。
 
 ## 阶段 3（其余来源）/ 存储与刷新层
 
-- Settings 需要一个「包含自更新的应用」开关（阶段 2 计划已把 `greedy_casks` 从 `Settings` 中整体移除：只存不用，Session 从不读取，Homebrew 检查更新固定跑 `outdated --json=v2`）。实现时要把该选项从 Settings 经 Session 传到 Homebrew 的 `check_updates`（对应 `brew outdated --greedy`），届时一并调整 `Adapter` trait 的 `check_updates` 签名（会牵动已合并的阶段 0–1 代码）。
-- `brew/mod.rs` `maybe_update`：`brew update` 失败或超时（离线、首次 tap 同步慢）会让整个 `check_updates` 失败，应退化为"沿用旧索引 + 标记可能过期"（spec §3）；并发调用存在 TOCTOU 双重 `brew update`，需串行化。
-- `AdapterMeta.verified_versions` 从未与 `ManagerInstance.version` 比较（spec §4.1 "未验证版本"角标）。
-- spec §4.2 需更正：brew 7.0.3 的 `installed[]` 只有 `installed_on_request`，没有 `installed_as_dependency`（解析器与其文档注释是对的，spec 过时）。
+2026-10-02 核对：本节四条全部早已修掉，逐条划去。
+
+- ~~Settings 需要一个「包含自更新的应用」开关（阶段 2 计划已把 `greedy_casks` 从 `Settings` 中整体移除：只存不用，Session 从不读取，Homebrew 检查更新固定跑 `outdated --json=v2`）。实现时要把该选项从 Settings 经 Session 传到 Homebrew 的 `check_updates`（对应 `brew outdated --greedy`），届时一并调整 `Adapter` trait 的 `check_updates` 签名（会牵动已合并的阶段 0–1 代码）。~~
+  —— **已于 2026-09-20 解决**（`9f9a43f`、`6d0e38c`）：`Settings.include_self_updating`（`settings.rs:82-89`）经 `CheckOptions`
+  传到 brew 的 `check_updates`，打开时加 `--greedy`（`adapters/brew/mod.rs:1224-1227`）。
+- ~~`brew/mod.rs` `maybe_update`：`brew update` 失败或超时（离线、首次 tap 同步慢）会让整个 `check_updates` 失败，应退化为"沿用旧索引 + 标记可能过期"（spec §3）；并发调用存在 TOCTOU 双重 `brew update`，需串行化。~~
+  —— **已于 2026-09-20 解决**（`e4d10d9`，提醒挂到实例上是 2026-09-22 的 `b1a2ca9`）：失败或超时得 `IndexFreshness::MayBeStale`，
+  照常读 `brew outdated`，实例带 `InstanceNote::IndexMayBeStale`（`adapters/brew/mod.rs:1219-1223`）；每个实例一把更新锁
+  （`update_locks`，`:66`、`:761`）。
+- ~~`AdapterMeta.verified_versions` 从未与 `ManagerInstance.version` 比较（spec §4.1 "未验证版本"角标）。~~
+  —— **已于 2026-09-20 解决**（`eb4b34d`）：`AdapterMeta::unverified_version`（`adapters/mod.rs:113`），上线格式
+  `ManagerInstance.unverified_version`（`model.rs:213`）。
+- ~~spec §4.2 需更正：brew 7.0.3 的 `installed[]` 只有 `installed_on_request`，没有 `installed_as_dependency`（解析器与其文档注释是对的，spec 过时）。~~
+  —— **已于 2026-09-22 解决**（`fd2f180`）：spec 已订正（`docs/superpowers/specs/2026-09-17-banager-design.md:116`）。
 
 ## 阶段 3 终审遗留：分支 feat/phase-3-sources 合并前必做（2026-09-20 立）
 
@@ -111,6 +136,10 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 
 规格 §8 列了明确不在射程的四项（每实例 `refreshed_at`、每包可操作性、`{{message}}` 动态英文透传、
 全新 Mac 的安装引导），都给了正确形状，避免下一轮当新发现重报。
+2026-10-02 核对：其中两项已做——每包可操作性（`UpdateCandidate.blocked`，见下文「每包可操作性」一节）；`{{message}}` 透传
+照 spec §6 的形状做了，原话只在「显示技术细节」打开时出现，关着时认得出原因就说原因、否则只说没做成什么
+（`planErrorMessage`，`src/lib/sources.ts:1274-1293`；设置保存、扫描、载入失败几处同样分开）。仍开着两项：每实例
+`refreshed_at`（`ManagerInstance` 没有这个字段，`crates/banager-core/src/model.rs:202-225`）与全新 Mac 的安装引导（阶段 5 提案待拍板）。
 
 **二～四、已于 2026-09-22 全部清掉**（`829ae63`..`7940893`，300 个 Rust 测试 / 193 个前端测试全绿）
 
