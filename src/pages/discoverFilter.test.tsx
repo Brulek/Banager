@@ -175,7 +175,7 @@ describe("the Installed page's discovery choices", () => {
       ["twins", "Installed More Than Once"],
       ["notOnPath", "Not Found in Terminal (2)"],
       ["brewRetired", "Disabled or Deprecated by Homebrew (2)"],
-      ["otherVersions", "Keeping Other Versions"],
+      ["otherVersions", "Other Versions Kept"],
     ]);
 
     await i18n.changeLanguage("zh-CN");
@@ -223,7 +223,7 @@ describe("the Installed page's discovery choices", () => {
     expect(screen.queryByText(/more component/)).not.toBeInTheDocument();
   });
 
-  it("lists the formulae Homebrew keeps another version of under Keeping Other Versions, components unfolded", async () => {
+  it("lists the formulae Homebrew keeps another version of under Other Versions Kept, components unfolded", async () => {
     const readline: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "readline" };
     const node: ArtifactKey = { instance_id: BREW, kind: "Formula", name: "node@22" };
     artifacts = [
@@ -233,9 +233,9 @@ describe("the Installed page's discovery choices", () => {
     ];
     renderInstalled();
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
-    expect(options()[5]).toEqual(["otherVersions", "Keeping Other Versions (2)"]);
+    expect(options()[5]).toEqual(["otherVersions", "Other Versions Kept (2)"]);
     // No line over 所有工具 points at it: keeping one is common, and the tools work.
-    expect(screen.queryByText(/keep other versions/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/keeps other versions/)).not.toBeInTheDocument();
     show("otherVersions");
     await waitFor(() => expect(rowNames()).toEqual(["node@22", "readline"]));
     expect(useUiStore.getState().installedShow).toBe("otherVersions");
@@ -259,7 +259,7 @@ describe("the Installed page's discovery choices", () => {
     expect(options().slice(3)).toEqual([
       ["notOnPath", "Not Found in Terminal (1)"],
       ["brewRetired", "Disabled or Deprecated by Homebrew"],
-      ["otherVersions", "Keeping Other Versions"],
+      ["otherVersions", "Other Versions Kept"],
     ]);
   });
 
@@ -270,14 +270,14 @@ describe("the Installed page's discovery choices", () => {
     expect(options().slice(3)).toEqual([
       ["notOnPath", "Not Found in Terminal"],
       ["brewRetired", "Disabled or Deprecated by Homebrew"],
-      ["otherVersions", "Keeping Other Versions"],
+      ["otherVersions", "Other Versions Kept"],
     ]);
     show("otherVersions");
-    expect(await screen.findByText("No tools keeping other versions were found")).toBeInTheDocument();
+    expect(await screen.findByText("Homebrew keeps no other versions of your tools")).toBeInTheDocument();
     show("notOnPath");
-    expect(await screen.findByText("No tools missing from Terminal were found")).toBeInTheDocument();
+    expect(await screen.findByText("Terminal finds the commands of all your tools")).toBeInTheDocument();
     show("brewRetired");
-    expect(await screen.findByText("No tools disabled or deprecated by Homebrew were found")).toBeInTheDocument();
+    expect(await screen.findByText("Homebrew hasn't disabled or deprecated any of your tools")).toBeInTheDocument();
     expect(screen.queryByText("Nothing installed")).not.toBeInTheDocument();
 
     await i18n.changeLanguage("zh-CN");
@@ -295,7 +295,7 @@ describe("the Installed page's discovery choices", () => {
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     show("notOnPath");
     expect(await screen.findByText("This check didn't look at the commands in Terminal")).toBeInTheDocument();
-    expect(screen.queryByText("No tools missing from Terminal were found")).not.toBeInTheDocument();
+    expect(screen.queryByText("Terminal finds the commands of all your tools")).not.toBeInTheDocument();
     await i18n.changeLanguage("zh-CN");
     expect(await screen.findByText("这次检查没有判断终端里的命令")).toBeInTheDocument();
     // Homebrew's own choice goes by Homebrew's facts, which are there.
@@ -339,7 +339,7 @@ describe("the Installed page's discovery choices", () => {
     // Homebrew's two as well: the preview's rows carry no Homebrew facts.
     show("brewRetired");
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
-    expect(screen.queryByText(/No tools disabled or deprecated/)).toBeNull();
+    expect(screen.queryByText(/disabled or deprecated any of/)).toBeNull();
     show("otherVersions");
     expect(await screen.findByText("These appear here when the check finishes")).toBeInTheDocument();
     await i18n.changeLanguage("zh-CN");
@@ -350,7 +350,7 @@ describe("the Installed page's discovery choices", () => {
     useUiStore.getState().openInstalled(PIPX);
     useUiStore.getState().setInstalledShow("brewRetired");
     renderInstalled();
-    expect(await screen.findByText(/^No tools disabled or deprecated by Homebrew were found in pipx/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Homebrew hasn't disabled or deprecated any of the tools in pipx/)).toBeInTheDocument();
   });
 
   it("shows every tool again wherever the choice is reset", () => {
@@ -536,7 +536,7 @@ describe("the details and the focus when a choice hides the selected tool", () =
     await screen.findByText("wget", { selector: "[data-tool-row] p" });
     (document.activeElement as HTMLElement | null)?.blur();
     act(() => useUiStore.getState().setInstalledShow("brewRetired"));
-    await screen.findByText("No tools disabled or deprecated by Homebrew were found");
+    await screen.findByText("Homebrew hasn't disabled or deprecated any of your tools");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Installed" })).toHaveFocus());
   });
 });

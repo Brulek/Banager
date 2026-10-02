@@ -157,7 +157,7 @@ describe("ToolSetupSheet", () => {
     ["1 tool can't be found in Terminal", "notOnPath"],
     ["1 tool is installed more than once", "twins"],
     ["1 tool was disabled or deprecated by Homebrew", "brewRetired"],
-    ["1 tool keeps other versions", "otherVersions"],
+    ["Homebrew keeps other versions of 1 tool", "otherVersions"],
   ] as const)("closes on 查看 of “%s” and opens Installed on every source showing that choice", async (line, show) => {
     const { dialog, findByRole, queryByRole } = await openedFromHelp();
     fireEvent.click(within(dialog).getByRole("button", { name: `Show in Installed: ${line}` }));

@@ -144,7 +144,7 @@ describe("discoverNotices", () => {
     }
   });
 
-  it("never points at Keeping Other Versions: the popup and the setup check do", () => {
+  it("never points at Other Versions Kept: the popup and the setup check do", () => {
     expect(discoverNotices("all", { notOnPath: 0, brewRetired: 0, otherVersions: 8 })).toEqual([]);
     expect(discoverNotices("all", { notOnPath: 1, brewRetired: 1, otherVersions: 8 }).map((n) => n.id)).toEqual([
       "discover:notOnPath",

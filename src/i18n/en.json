@@ -105,10 +105,10 @@
     "showNotOnPathCount": "Not Found in Terminal ({{number}})",
     "showBrewRetired": "Disabled or Deprecated by Homebrew",
     "showBrewRetiredCount": "Disabled or Deprecated by Homebrew ({{number}})",
-    "notOnPathNone": "No tools missing from Terminal were found",
-    "notOnPathNoneInSource": "No tools missing from Terminal were found in {{source}}",
-    "brewRetiredNone": "No tools disabled or deprecated by Homebrew were found",
-    "brewRetiredNoneInSource": "No tools disabled or deprecated by Homebrew were found in {{source}}",
+    "notOnPathNone": "Terminal finds the commands of all your tools",
+    "notOnPathNoneInSource": "Terminal finds the commands of all your tools in {{source}}",
+    "brewRetiredNone": "Homebrew hasn't disabled or deprecated any of your tools",
+    "brewRetiredNoneInSource": "Homebrew hasn't disabled or deprecated any of the tools in {{source}}",
     "notOnPathNotice_one": "{{count}} tool can't be found in Terminal",
     "notOnPathNotice_other": "{{count}} tools can't be found in Terminal",
     "brewRetiredNotice_one": "{{count}} tool was disabled or deprecated by Homebrew",
@@ -129,15 +129,15 @@
     "notFoundDetail": "Terminal looks for commands only in certain folders, and this isn't one of them. Open a new Terminal window and try again. If it still isn't found, follow the tool's installation instructions."
   },
   "otherVersionsShow": {
-    "show": "Keeping Other Versions",
-    "showCount": "Keeping Other Versions ({{number}})",
-    "none": "No tools keeping other versions were found",
-    "noneInSource": "No tools keeping other versions were found in {{source}}"
+    "show": "Other Versions Kept",
+    "showCount": "Other Versions Kept ({{number}})",
+    "none": "Homebrew keeps no other versions of your tools",
+    "noneInSource": "Homebrew keeps no other versions of the tools in {{source}}"
   },
   "twinsFilter": {
     "show": "Installed More Than Once",
-    "none": "No tools installed more than once were found",
-    "noneInSource": "No tools installed more than once were found in {{source}}"
+    "none": "Nothing is installed more than once",
+    "noneInSource": "Nothing in {{source}} is installed more than once"
   },
   "twinsFilterMore": {
     "showCount": "Installed More Than Once ({{number}})"
@@ -1164,10 +1164,10 @@
     "homebrew": {
       "fine": "Homebrew hasn't disabled or deprecated any tool, and keeps no other versions",
       "retiredFine": "Homebrew hasn't disabled or deprecated any tool",
-      "otherVersions_one": "{{count}} tool keeps other versions",
-      "otherVersions_other": "{{count}} tools keep other versions",
-      "otherVersionsSize_one": "{{count}} tool keeps other versions, {{size}} in all",
-      "otherVersionsSize_other": "{{count}} tools keep other versions, {{size}} in all",
+      "otherVersions_one": "Homebrew keeps other versions of {{count}} tool",
+      "otherVersions_other": "Homebrew keeps other versions of {{count}} tools",
+      "otherVersionsSize_one": "Homebrew keeps other versions of {{count}} tool, {{size}} in all",
+      "otherVersionsSize_other": "Homebrew keeps other versions of {{count}} tools, {{size}} in all",
       "otherVersionsFine": "No other versions are kept"
     },
     "disk": {

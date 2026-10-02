@@ -404,7 +404,7 @@ describe("toolSetupCheck's Homebrew lines", () => {
     expect(lineOf(check, "homebrew", "otherVersions").detail).toBe(zh("clarity.otherVersionsDetail"));
     expect(shape(toolSetupCheck(en, input({ snapshot, sizes })))["Homebrew"]).toEqual([
       "note 2 tools were disabled or deprecated by Homebrew → installed:brewRetired",
-      "note 2 tools keep other versions, about\u00a0500 MB in all → installed:otherVersions",
+      "note Homebrew keeps other versions of 2 tools, about\u00a0500 MB in all → installed:otherVersions",
     ]);
   });
 
@@ -418,11 +418,11 @@ describe("toolSetupCheck's Homebrew lines", () => {
       "2个工具保留了其他版本，共400 MB以上",
     );
     expect(lineOf(toolSetupCheck(en, input({ snapshot, sizes: null })), "homebrew", "otherVersions").text).toBe(
-      "2 tools keep other versions",
+      "Homebrew keeps other versions of 2 tools",
     );
     expect(
       lineOf(toolSetupCheck(en, input({ snapshot, sizes: { ...sizes, round: 3 } })), "homebrew", "otherVersions").text,
-    ).toBe("2 tools keep other versions");
+    ).toBe("Homebrew keeps other versions of 2 tools");
   });
 
   it("says which half is fine when only the other is not", () => {
