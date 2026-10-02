@@ -411,6 +411,38 @@ impl LookupFailure {
     }
 }
 
+/// The one GET of a lookup that asks a server, whose only good answer is a
+/// 200: a request with no answer fails as `LookupFailure::request(failed,
+/// ..)`, any other status as `"{answerer} returned status {status}"`
+/// (`LookupFailure::status`). Every such lookup -- crates.io, PyPI, the
+/// Ollama registry, the standalone tools' published versions -- goes
+/// through here, so which of its failures a later check can get past is
+/// decided in one place (`lookup_cases` holds each caller to it).
+pub(crate) async fn get_ok(
+    http: &dyn crate::http::HttpClient,
+    url: String,
+    headers: Vec<(String, String)>,
+    failed: &str,
+    answerer: &str,
+) -> Result<crate::http::HttpResponse, LookupFailure> {
+    let resp = http
+        .send(crate::http::HttpRequest {
+            method: "GET",
+            url,
+            headers,
+            timeout: Duration::from_secs(30),
+        })
+        .await
+        .map_err(|e| LookupFailure::request(failed, &e))?;
+    if resp.status != 200 {
+        return Err(LookupFailure::status(
+            format!("{answerer} returned status {}", resp.status),
+            resp.status,
+        ));
+    }
+    Ok(resp)
+}
+
 /// Whether `words` say the network failed: a name that would not resolve,
 /// a connection refused, reset or never made, a network or host out of
 /// reach, a request that timed out -- in the words curl, Node and npm,

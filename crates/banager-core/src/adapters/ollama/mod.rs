@@ -1,8 +1,9 @@
 pub mod parse;
 
 use crate::adapters::{
-    ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, url_path_segment,
-    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
+    ensure_instance_match, get_ok, reconcile_from, run_plan, uncheckable_candidate,
+    url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    LookupFailure,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -452,25 +453,17 @@ impl OllamaAdapter {
             url_path_segment(name)?,
             url_path_segment(tag)?
         );
-        let response = self
-            .http
-            .send(HttpRequest {
-                method: "GET",
-                url: registry_url,
-                headers: vec![(
-                    "Accept".to_string(),
-                    "application/vnd.docker.distribution.manifest.v2+json".to_string(),
-                )],
-                timeout: Duration::from_secs(30),
-            })
-            .await
-            .map_err(|e| LookupFailure::request("registry request failed", &e))?;
-        if response.status != 200 {
-            return Err(LookupFailure::status(
-                format!("registry returned status {}", response.status),
-                response.status,
-            ));
-        }
+        let response = get_ok(
+            self.http.as_ref(),
+            registry_url,
+            vec![(
+                "Accept".to_string(),
+                "application/vnd.docker.distribution.manifest.v2+json".to_string(),
+            )],
+            "registry request failed",
+            "registry",
+        )
+        .await?;
         let registry_digests = layer_digests(&response.body)
             .map_err(|e| format!("could not parse registry manifest: {e}"))?;
         if local_digests == registry_digests {

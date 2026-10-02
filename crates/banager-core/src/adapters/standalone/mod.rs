@@ -27,12 +27,12 @@ pub mod rustup;
 use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall, VersionSource};
 use self::route::Probe;
 use crate::adapters::{
-    ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
-    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
-    LookupFailure,
+    ensure_instance_match, get_ok, lookup_failure_reason, reconcile_from, run_plan,
+    uncheckable_candidate, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
-use crate::http::{HttpClient, HttpRequest};
+use crate::http::HttpClient;
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstallReason, InstalledArtifact, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
@@ -801,66 +801,39 @@ impl StandaloneAdapter {
                     })?,
                     None => latest::CHANNEL_LATEST,
                 };
-                let url = format!("{base}/{channel}");
-                let resp = self
-                    .http
-                    .send(HttpRequest {
-                        method: "GET",
-                        url,
-                        headers: Vec::new(),
-                        timeout: Duration::from_secs(30),
-                    })
-                    .await
-                    .map_err(|e| {
-                        LookupFailure::request("downloads.claude.ai request failed", &e)
-                    })?;
-                if resp.status != 200 {
-                    return Err(LookupFailure::status(
-                        format!("downloads.claude.ai returned status {}", resp.status),
-                        resp.status,
-                    ));
-                }
+                let resp = get_ok(
+                    self.http.as_ref(),
+                    format!("{base}/{channel}"),
+                    Vec::new(),
+                    "downloads.claude.ai request failed",
+                    "downloads.claude.ai",
+                )
+                .await?;
                 Ok(latest::parse_channel_body(&resp.body).map(Published::Version)?)
             }
             Latest::HttpTomlVersion { url } => {
-                let resp = self
-                    .http
-                    .send(HttpRequest {
-                        method: "GET",
-                        url: url.to_string(),
-                        headers: Vec::new(),
-                        timeout: Duration::from_secs(30),
-                    })
-                    .await
-                    .map_err(|e| LookupFailure::request(&format!("request to {url} failed"), &e))?;
-                if resp.status != 200 {
-                    return Err(LookupFailure::status(
-                        format!("{url} returned status {}", resp.status),
-                        resp.status,
-                    ));
-                }
+                let resp = get_ok(
+                    self.http.as_ref(),
+                    url.to_string(),
+                    Vec::new(),
+                    &format!("request to {url} failed"),
+                    url,
+                )
+                .await?;
                 Ok(latest::parse_release_stable_toml(&resp.body).map(Published::Version)?)
             }
             Latest::HttpJsonField { url, field } => {
                 // Only where the manifest URL was verified (Apple silicon);
                 // elsewhere the row says so and nothing is sent.
                 latest::manifest_arch_allowed(self.arch)?;
-                let resp = self
-                    .http
-                    .send(HttpRequest {
-                        method: "GET",
-                        url: url.to_string(),
-                        headers: Vec::new(),
-                        timeout: Duration::from_secs(30),
-                    })
-                    .await
-                    .map_err(|e| LookupFailure::request(&format!("request to {url} failed"), &e))?;
-                if resp.status != 200 {
-                    return Err(LookupFailure::status(
-                        format!("{url} returned status {}", resp.status),
-                        resp.status,
-                    ));
-                }
+                let resp = get_ok(
+                    self.http.as_ref(),
+                    url.to_string(),
+                    Vec::new(),
+                    &format!("request to {url} failed"),
+                    url,
+                )
+                .await?;
                 Ok(latest::parse_json_field(&resp.body, field).map(Published::Version)?)
             }
             Latest::Command {

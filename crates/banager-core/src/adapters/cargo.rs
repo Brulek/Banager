@@ -1,10 +1,10 @@
 use crate::adapters::{
-    ensure_instance_match, reconcile_from, run_plan, second_token, uncheckable_candidate,
+    ensure_instance_match, get_ok, reconcile_from, run_plan, second_token, uncheckable_candidate,
     url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
     CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
-use crate::http::{HttpClient, HttpRequest};
+use crate::http::HttpClient;
 use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
@@ -412,28 +412,21 @@ impl CargoAdapter {
     }
 
     async fn latest_stable_version(&self, name: &str) -> Result<String, LookupFailure> {
-        let resp = self
-            .http
-            .send(HttpRequest {
-                method: "GET",
-                // Percent-encoded: the crate name is a `.crates2.json` key,
-                // i.e. off disk, and raw it could add path segments or a
-                // query string to crates.io's API url.
-                url: format!(
-                    "https://crates.io/api/v1/crates/{}",
-                    url_path_segment(name)?
-                ),
-                headers: Vec::new(),
-                timeout: Duration::from_secs(30),
-            })
-            .await
-            .map_err(|e| LookupFailure::request("crates.io request failed", &e))?;
-        if resp.status != 200 {
-            return Err(LookupFailure::status(
-                format!("crates.io returned status {}", resp.status),
-                resp.status,
-            ));
-        }
+        // Percent-encoded: the crate name is a `.crates2.json` key, i.e.
+        // off disk, and raw it could add path segments or a query string to
+        // crates.io's API url.
+        let url = format!(
+            "https://crates.io/api/v1/crates/{}",
+            url_path_segment(name)?
+        );
+        let resp = get_ok(
+            self.http.as_ref(),
+            url,
+            Vec::new(),
+            "crates.io request failed",
+            "crates.io",
+        )
+        .await?;
         Ok(parse_crates_io_body(&resp.body)?)
     }
 

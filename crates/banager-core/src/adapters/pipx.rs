@@ -1,10 +1,10 @@
 use crate::adapters::{
-    ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
-    uncheckable_from_inventory, url_path_segment, validate_package_name, Adapter, AdapterError,
-    AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
+    ensure_instance_match, get_ok, lookup_failure_reason, reconcile_from, run_plan,
+    uncheckable_candidate, uncheckable_from_inventory, url_path_segment, validate_package_name,
+    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome, LookupFailure,
 };
 use crate::events::{EventSink, OpId};
-use crate::http::{HttpClient, HttpRequest};
+use crate::http::HttpClient;
 use crate::model::{
     ArtifactFacts, ArtifactKey, ArtifactKind, CancelPolicy, CommandInputs, InstallReason,
     InstalledArtifact, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan,
@@ -390,25 +390,18 @@ impl PipxAdapter {
     }
 
     async fn latest_pypi_version(&self, name: &str) -> Result<String, LookupFailure> {
-        let resp = self
-            .http
-            .send(HttpRequest {
-                method: "GET",
-                // Percent-encoded: the package name comes out of `pipx
-                // list --json`, and raw it could re-point the request at a
-                // different path on PyPI.
-                url: format!("https://pypi.org/pypi/{}/json", url_path_segment(name)?),
-                headers: Vec::new(),
-                timeout: Duration::from_secs(30),
-            })
-            .await
-            .map_err(|e| LookupFailure::request("PyPI request failed", &e))?;
-        if resp.status != 200 {
-            return Err(LookupFailure::status(
-                format!("PyPI returned status {}", resp.status),
-                resp.status,
-            ));
-        }
+        // Percent-encoded: the package name comes out of `pipx list
+        // --json`, and raw it could re-point the request at a different
+        // path on PyPI.
+        let url = format!("https://pypi.org/pypi/{}/json", url_path_segment(name)?);
+        let resp = get_ok(
+            self.http.as_ref(),
+            url,
+            Vec::new(),
+            "PyPI request failed",
+            "PyPI",
+        )
+        .await?;
         Ok(parse_pypi_body(&resp.body)?)
     }
 
