@@ -185,9 +185,8 @@ impl InstanceNote {
 /// The state axis of a source: can Banager talk to it at all, and is there
 /// anything about this answer the user has to know to read it correctly.
 ///
-/// When the source last answered is not here but on the instance
-/// (`ManagerInstance::answered_at`): this is what this round found out, and
-/// a source that did not answer this round has no time of its own to say.
+/// When a source last answered is on the instance
+/// (`ManagerInstance::answered_at`), not here.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceStatus {
     /// `None` means the source answered.
@@ -203,13 +202,14 @@ pub struct ManagerInstance {
     pub prefix: PathBuf,
     pub scope: Scope,
     pub version: Option<String>,
-    /// When this source last answered, Unix seconds: the end of the last
-    /// round, this session, in which both its inventory and its update
-    /// check answered (`Session::refresh`). What its rows show is from that
-    /// answer or a later one, so a source that does not answer this round,
-    /// whose rows are carried forward, can say how old they are at most
-    /// (`sourceNoticesFor` in src/lib/sources.ts) -- never newer than
-    /// they are.
+    /// When this source last answered, Unix seconds: the time its refresh
+    /// task began asking it (after taking that source's lock), in the
+    /// latest round this session in which both its inventory and its update
+    /// check answered (`Session::refresh`). Every row of that answer is
+    /// from that moment or later, so a source that does not answer this
+    /// round, whose rows are carried forward, can say when they are from
+    /// (`sourceNoticesFor` in src/lib/sources.ts) -- never newer than they
+    /// are.
     ///
     /// Kept in memory only, like the snapshot it is part of: `None` from
     /// `detect()` -- no adapter knows it, so every one leaves it `None` --

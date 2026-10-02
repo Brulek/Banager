@@ -207,8 +207,9 @@ pub struct InventoryPreview {
     pub round: u64,
     /// Every source this round detected, as detection described it: no
     /// note an update check adds is on them yet, and no `answered_at` --
-    /// no round before this one committed one, and this one's are stamped
-    /// as it commits.
+    /// no round before this one committed one, and this one's are written
+    /// as each source's task is joined, after its update check, before the
+    /// round commits.
     pub instances: Vec<ManagerInstance>,
     /// What each source that read its list this round listed, in the order
     /// the round asked them. A source whose read failed, or declined

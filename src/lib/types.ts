@@ -440,13 +440,13 @@ export interface ManagerInstance {
   version: string | null;
   /**
    * Mirrors `ManagerInstance::answered_at`: when this source last answered
-   * this session, Unix seconds -- the start of the last round in which
-   * both its list and its update check answered, so its rows are from
-   * then or later. `null` until it has: the first check after launch, a
-   * source that has not answered since, one Banager has just found. Not
-   * written anywhere; a round in which only this moved keeps its
-   * `generation`. Said only where a source did not answer
-   * (`sourceNoticesFor` in src/lib/sources.ts).
+   * this session, Unix seconds -- the time its refresh task began asking
+   * it, in the latest round in which both its list and its update check
+   * answered, so its rows are from then or later. `null` until it has:
+   * the first check after launch, a source that has not answered since,
+   * one Banager has just found. Not written anywhere; a round in which
+   * only this moved keeps its `generation`. Said only where a source did
+   * not answer (`sourceNoticesFor` in src/lib/sources.ts).
    */
   answered_at: number | null;
   unverified_version: string | null;
