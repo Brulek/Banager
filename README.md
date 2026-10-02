@@ -57,7 +57,7 @@ a protected place**, and the link is not followed.
 - The **Show** menu in the toolbar of the Updates and Installed pages narrows the list to **AI Tools**:
   Claude Code, Codex, Gemini CLI, Ollama and the other AI tools in a table built into Banager,
   whichever source installed them. On the Installed page it also offers **Installed More Than Once**, **Not Found
-  in Terminal**, **Disabled or Deprecated by Homebrew** and **Keeping Other Versions** (Homebrew formulae with
+  in Terminal**, **Disabled or Deprecated by Homebrew** and **Other Versions Kept** (Homebrew formulae with
   another version kept beside the one in use), each of these four with how many tools it shows.
 - A tool's details say, under **In Terminal**, what typing each of its commands runs — this copy,
   another copy or program, or nothing, when the command sits in a folder Terminal doesn't search —
