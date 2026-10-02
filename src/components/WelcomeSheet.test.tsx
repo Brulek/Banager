@@ -93,9 +93,9 @@ describe("WelcomeSheet", () => {
     const sheet = await findSheet();
     const points = within(sheet).getAllByRole("listitem");
     expect(points.map((point) => point.textContent)).toEqual([
-      "See What's InstalledCommand-line tools from Homebrew, npm, pipx and more, and AI coding tools, all in one list. Programs installed some other way are under Other Programs.",
+      "See What's InstalledTools you use in Terminal, like Claude Code, Codex and Gemini CLI, all in one list. Sources, on the left, are how they were installed, like Homebrew, npm or a tool's own installer; programs installed some other way are under Other Programs.",
       "You Confirm Every Update and UninstallBefore an update or uninstall, you see what it will do and the commands it will run. It starts only when you confirm, and it's checked again when it's done.",
-      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; only rustup's own uninstall does, and it says so first. Collects no usage data and needs no account.",
+      "No Shell Edits, No Data CollectedDoesn't edit your shell's startup files; where a tool's own uninstall does, it says so first. Collects no usage data and needs no account.",
     ]);
     // Each point's symbol is decoration: its title says it.
     for (const point of points) {
@@ -118,10 +118,31 @@ describe("WelcomeSheet", () => {
       within(sheet).getByText("更新或卸载前，先写明要做什么和要运行的命令，确认后才开始；完成后会再检查一遍。"),
     ).toBeInTheDocument();
     expect(
-      within(sheet).getByText("不改终端的配置文件，只有rustup自己的卸载会改，卸载前会写明；不收集使用情况，也不需要账号。"),
+      within(sheet).getByText("不改终端的配置文件；个别工具自己的卸载会改，卸载前会写明。不收集使用情况，也不需要账号。"),
     ).toBeInTheDocument();
-    expect(within(sheet).getByText(/不是它们装的程序，列在“其他程序”里/)).toBeInTheDocument();
+    expect(
+      within(sheet).getByText(
+        "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。左边的“来源”是装它们的方式，比如Homebrew、npm，或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
+      ),
+    ).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "开始使用" })).toBeInTheDocument();
+  });
+
+  it("says what the sidebar's Sources are, by the names the sidebar uses, and names no tool's uninstall", async () => {
+    // Someone who installed Claude Code by pasting a command knows neither
+    // Homebrew nor rustup: the first point says what Sources are -- how
+    // each tool was installed -- under the very headings the sidebar shows,
+    // and the third point's one exception (rustup's own uninstall edits
+    // its startup line, and its preview says so: `EditsShellConfig`) is
+    // said without naming a tool they may never have heard of.
+    for (const language of ["en", "zh-CN"] as const) {
+      await i18n.changeLanguage(language);
+      const listText = i18n.t("welcome.listText");
+      expect(listText, language).toContain(i18n.t("nav.sources"));
+      expect(listText, language).toContain(i18n.t("nav.unknown"));
+      expect(listText, language).toContain("Claude Code");
+      expect(i18n.t("welcome.settingsText"), language).not.toMatch(/rustup/i);
+    }
   });
 
   it("never shows once it has been seen", async () => {

@@ -7,11 +7,11 @@
   "welcome": {
     "title": "欢迎使用{{name}}",
     "listTitle": "看清装了什么",
-    "listText": "用Homebrew、npm、pipx等装的命令行工具和AI编程工具，都列在一处；不是它们装的程序，列在“其他程序”里。",
+    "listText": "Claude Code、Codex、Gemini CLI这类在终端里用的工具，都列在一处。左边的“来源”是装它们的方式，比如Homebrew、npm，或工具自带的安装程序；其他方式装的程序，列在“其他程序”里。",
     "confirmTitle": "更新、卸载都由你确认",
     "confirmText": "更新或卸载前，先写明要做什么和要运行的命令，确认后才开始；完成后会再检查一遍。",
     "settingsTitle": "不改终端配置，不收集数据",
-    "settingsText": "不改终端的配置文件，只有rustup自己的卸载会改，卸载前会写明；不收集使用情况，也不需要账号。",
+    "settingsText": "不改终端的配置文件；个别工具自己的卸载会改，卸载前会写明。不收集使用情况，也不需要账号。",
     "start": "开始使用"
   },
   "inventoryPreview": {
