@@ -290,9 +290,12 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - ~~`Adapter::capabilities()` 七份实现零调用方~~ —— **已于 2026-09-22 在 `e4b13b4` 整体删除**。六个字段里界面唯一需要的「能不能写」是每实例的事实（npm 取决于 prefix 权限），静态的每适配器 trait 方法承载不了，所以移到 `ManagerInstance.read_only_reason`；`search` / `upgrade_all` / `background_check` / `cancel_safe` 四个零调用方直接删。阶段 3 曾因这条砍掉 `needs_network` 标志，该裁决依然正确。
 
-- `crates/banager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
+- ~~`crates/banager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
   修的代价：要给 `ManagerInstance`（或 `Snapshot`）加一条实例级 warnings 通道，连带 TypeScript 镜像、线格式表、界面渲染与测试——本身就是一个完整任务，不该塞进阶段 3 的任何一格。
-  可接受的理由：后果是少说了一句提示，不是做错了动作；一旦真有可更新项，提醒照常显示。**不阻塞 v0.1**，但要在做 `Capabilities` 那条（同样需要实例级字段）时一起做掉——两者是同一个通道。
+  可接受的理由：后果是少说了一句提示，不是做错了动作；一旦真有可更新项，提醒照常显示。**不阻塞 v0.1**，但要在做 `Capabilities` 那条（同样需要实例级字段）时一起做掉——两者是同一个通道。~~
+  —— **已于 2026-09-22 解决**（实例级通道步骤 4，`926fe13`..`b1a2ca9`）：提醒不再挂在候选上，而是 `CheckOutcome.notes` 里的
+  `InstanceNote::IndexMayBeStale`（`adapters/brew/mod.rs:1219-1223`），由 `refresh` 并进实例状态（`session/refresh.rs:563`），
+  没有一个可更新项时照样显示在更新页（`src/lib/sources.ts:417`）；测试 `test_check_updates_reports_a_failed_brew_update_as_a_note_on_the_source`。
 
 ## 阶段 4（独立安装工具）进行中的遗留（2026-09-25 立，分支 feat/phase-4-standalone）
 
@@ -332,11 +335,13 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   手动核一次，结果写进 `docs/what-we-run.md` 的「Moving files to the Trash」）；macOS 27.0 以外的版本与 Intel Mac 没跑过
   （`tests/standalone_uninstall_test.rs` 的 `#[ignore]` 冒烟测试在作者的终端与 CI 上覆盖「移得进去」，悬空链接也在内，
   但那两处都不是无 FDA 的环境，不覆盖「放得回来」）。
-- **检查 1 的「永不」清单挡住了 agy 的 `~/.cache/antigravity`**（2026-09-25，步骤 C）。步骤 C 照 spec §6.3 检查 1
+- ~~**检查 1 的「永不」清单挡住了 agy 的 `~/.cache/antigravity`**（2026-09-25，步骤 C）。步骤 C 照 spec §6.3 检查 1
   括号里的清单执行：路径的 canonical 父目录不得是 `~` 本身，也不得是 `~/.local`、`~/.config`、`~/.cache`、`~/Library`、
   `~/.cargo`（`recipe::SHARED_FOLDERS`；`removal::plan_removal` 按解析后的路径查，`recipes::tests` 按配方的写法查），
   拒绝理由是 `SharedFolder`。claude 与 grok 的清单都通过；spec 给 agy 列的 `~/.cache/antigravity`（父目录 `~/.cache`）过不了。
-  **步骤 D 要做的决定**：给这一条路径一个有测试的明确例外（只对 optional 的 `Cache`），或者改 spec 的清单——不要悄悄放宽整条规则。
+  **步骤 D 要做的决定**：给这一条路径一个有测试的明确例外（只对 optional 的 `Cache`），或者改 spec 的清单——不要悄悄放宽整条规则。~~
+  —— **已于 2026-09-26 解决**（2026-10-02 核对：Antigravity CLI 的配方把它列为保留项 `KeptWhat::InstallerCache`，
+  `crates/banager-core/src/adapters/standalone/recipes.rs:214-217`；`SHARED_FOLDERS` 仍含 `.cache`，`recipe.rs:431`）。
   **步骤 D 定案：改清单，不改规则**（步骤 D 计划裁定 1；`314b093`、`13cf03d` 于 2026-09-26 落地，本条关闭）。
   `~/.cache/antigravity` 不移，列为保留项（新变体 `KeptWhat::InstallerCache`，文案说它是安装器的下载暂存文件夹、通常是空的、
   Banager 不会移动直接放在 `~/.cache` 里的东西、可以自己删），只在它存在时列出；检查 1 与 `SHARED_FOLDERS` 一字未改。
@@ -384,6 +389,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   让 `~/.grok/bin` 不在 PATH 上装一次（安装器只在这时才建回退链接），再 `readlink` 两个候选位置——可以加进步骤 D
   计划「The author's pre-merge verification」的工作流。
 - **grok 的 `~/.grok/bin` 不整目录移动**（2026-09-26，步骤 D 计划裁定 4，与 spec §6.3 的 `~/.grok/bin · Dir` 不同）。
+  （决定记录，不是待办；2026-10-02 核对仍照此实现：`crates/banager-core/src/adapters/standalone/recipes.rs:296-301`。）
   安装器把它加进了 PATH，用户自己的脚本可能放在里面；清单列的是安装器放进去的两条链接（`agent`、最后 `grok`），文件夹本身
   留在被保留的 `~/.grok` 里（用户没往里放东西时是空的；安装器写进 shell 配置文件的 PATH 行照旧指向它，无害）。若日后要连
   文件夹一起移，形状是「文件夹里只剩清单上的条目才移」的检查，不是放宽启动器最后的不变量。
@@ -409,38 +415,64 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
 - 搜索词校验目前套用包名规则，含空格的查询（"json processor"）被拒；spec §4.1 要求独立的 query 规则。
-- 阶段 2 的 Task 16 只做两项 i18n 自动检查：en/zh-CN 键集互比 + 组件里的 JSX 字面量扫描，**不**扫描代码里 `t("…")` 用到的键是否真的存在。若将来要补「静态校验 `t()` 键存在性」，需先把动态键改成静态查表：`Sidebar` 的 `t(\`nav.${p}\`)`、`OperationBar` 的 `operations.kind.${…}` / `operations.status.${…}`、`OperationBar`/`LogDrawer` 的 `operations.outcome.${…}`（改成 `PAGE_LABEL_KEYS` 一类的 `Record` 常量表）。动态键拼错在运行时立刻可见，不是隐蔽 bug，故阶段 2 未做。
-- 阶段 2 的更新页（`src/pages/UpdatesPage.tsx`，Task 12）直接遍历渲染，没接 `useVirtualizer`：只有 Homebrew 一个来源时更新通常只有几条到几十条，虚拟化收益极低而改动不小（每行的 `snapshot.artifacts.find` 已改为 `useMemo` 建 `Map` 的 O(1) 查找，真正的 O(n²) 已除）。接入更多来源后若更新列表可能变长，按已安装页（`InstalledPage`）的写法补 `useVirtualizer`。
+- ~~阶段 2 的 Task 16 只做两项 i18n 自动检查：en/zh-CN 键集互比 + 组件里的 JSX 字面量扫描，**不**扫描代码里 `t("…")` 用到的键是否真的存在。若将来要补「静态校验 `t()` 键存在性」，需先把动态键改成静态查表：`Sidebar` 的 `t(\`nav.${p}\`)`、`OperationBar` 的 `operations.kind.${…}` / `operations.status.${…}`、`OperationBar`/`LogDrawer` 的 `operations.outcome.${…}`（改成 `PAGE_LABEL_KEYS` 一类的 `Record` 常量表）。动态键拼错在运行时立刻可见，不是隐蔽 bug，故阶段 2 未做。~~
+  —— **2026-10-02 核对，大半已解决，改写为只剩的缺口**：`nav.*`、`operations.kind.*`、`operations.status.*` 已改成常量表
+  （`PAGE_LABEL_KEYS`，`src/components/Sidebar.tsx:32`，`a98ba42`；`OP_KIND_KEYS`、`OP_STATUS_KEYS`，`src/lib/operations.ts:27`、`:48`，`e4b57a4`）；
+  反方向「en.json 里有、却没人用的键」由 `src/i18n/completeness.test.ts:242-255` 查，它认得拼接键的固定开头（`51a3e18`、`32e0505`）。
+  仍开着：`operations.outcome.${…}` 仍是拼出来的（`src/lib/operations.ts:147`），靠 `outcomeKey`（`src/lib/format.ts:20-40`）的
+  `never` 穷尽检查保证每种结果都有句子；「`t()` 用到的键在 en.json 里确实存在」仍没有测试。
+- ~~阶段 2 的更新页（`src/pages/UpdatesPage.tsx`，Task 12）直接遍历渲染，没接 `useVirtualizer`：只有 Homebrew 一个来源时更新通常只有几条到几十条，虚拟化收益极低而改动不小（每行的 `snapshot.artifacts.find` 已改为 `useMemo` 建 `Map` 的 O(1) 查找，真正的 O(n²) 已除）。接入更多来源后若更新列表可能变长，按已安装页（`InstalledPage`）的写法补 `useVirtualizer`。~~
+  —— **已于 2026-09-22 解决**（`7a3ab59`）：更新页的列表是 `VirtualList`（`src/pages/UpdatesPage.tsx:1239`），它内部用 `useVirtualizer`（`src/components/VirtualList.tsx:302`），与已安装页同一个组件。
 
 ## Runner 打磨（任意时机）
 
-- `runner/real.rs`：最后的 `child.wait()` 未受剩余超时约束；末尾无换行的半行不会推给 `on_line`；kill 后不排空已缓冲的管道数据；每个字节被复制两次。
-- `RunnerError::NotFound` / `Spawn` 两条错误路径无测试。
-- `lib.rs` 加 `#[cfg(not(unix))] compile_error!("banager-core targets Unix (macOS) in v1")` 与 crate 文档说明；`path_env.rs`（`geteuid`、`HOME`）、`resolve_exe`（无 `.exe`）、`libc` 无条件依赖都隐含 Unix。
-- `crates/banager-core/Cargo.toml`：tokio 的 `rt-multi-thread`、`macros` 只有测试与示例用，应移到 `[dev-dependencies]`，使"core 不创建运行时"成为机械事实。
-- `brew/mod.rs` 的 `SUDO_ASKPASS` 透传与 `needs_password` 无关且子进程本就继承环境，实际只起预览作用；相关测试修改进程全局环境变量，未加串行化，将来可能抖动。
+- ~~`runner/real.rs`：最后的 `child.wait()` 未受剩余超时约束；末尾无换行的半行不会推给 `on_line`；kill 后不排空已缓冲的管道数据；每个字节被复制两次。~~
+  —— **已于 2026-09-22 解决**（`3ccf239`、`6158bba`、`ba80106`，9-23 的 `2ee9244` 又改成先 SIGTERM）：`reap` 受 `POST_KILL_WAIT` 约束
+  （`crates/banager-core/src/runner/real.rs:630-633`）；测试 `test_delivers_a_trailing_line_that_never_got_its_newline`（`:1670`）、
+  `test_delivers_what_was_still_in_the_pipe_when_the_child_was_killed`（`:1712`）。
+- ~~`RunnerError::NotFound` / `Spawn` 两条错误路径无测试。~~ —— **已于 2026-09-22 解决**（`c39dd13`）：`runner/real.rs:1819`、`:1849` 各一个测试。
+- ~~`lib.rs` 加 `#[cfg(not(unix))] compile_error!("banager-core targets Unix (macOS) in v1")` 与 crate 文档说明；`path_env.rs`（`geteuid`、`HOME`）、`resolve_exe`（无 `.exe`）、`libc` 无条件依赖都隐含 Unix。~~
+  —— **已于 2026-09-22 解决**（`e337df2`）：`crates/banager-core/src/lib.rs:44-45` 的 `compile_error!` 与其上的 crate 文档。
+- ~~`crates/banager-core/Cargo.toml`：tokio 的 `rt-multi-thread`、`macros` 只有测试与示例用，应移到 `[dev-dependencies]`，使"core 不创建运行时"成为机械事实。~~
+  —— **已于 2026-09-22 解决**（`08fe468`）：`rt-multi-thread` 只在 `[dev-dependencies]`（`crates/banager-core/Cargo.toml:121`）；`macros` 留在正式依赖
+  （`:23`）是对的，生产代码用 `tokio::select!`（见本文开头 2026-09-24 那张表）。
+- `brew/mod.rs` 的 `SUDO_ASKPASS` 透传与 `needs_password` 无关且子进程本就继承环境，实际只起预览作用（留不留待作者拍板；仍在
+  `crates/banager-core/src/adapters/brew/mod.rs:1714`、`:1826`）。~~相关测试修改进程全局环境变量，未加串行化，将来可能抖动。~~
+  —— 测试那半**已于 2026-09-22 解决**（`51c49ba`）：改用 fn 指针接缝 `with_askpass_fn`（`adapters/brew/mod.rs:375-376`），测试不再碰进程环境。
 
 ## 测试数据
 
 - ~~`parse.rs` 的 `pinned` 分支无覆盖~~ —— **已于 2026-09-24 在分支 feat/per-package-actionability 解决**：`pinned` 现在被读成 `UpdateCandidate.blocked = Some(Pinned)`，有内联 JSON 单元测试，也有 `adapters/fixtures/brew/7.0.6/outdated-pinned.json`（由真实录制改了四个 pin 字段而来，README 写明，`brew_fixtures.rs` 有测试核对只差这四个值）。
-- `adapters/fixtures/brew/7.0.3/uses-jq.txt` 为空；下次为新 brew 版本重录 fixtures 时，选一个有已装依赖者的 formula（如 `openssl@3`）录 `uses-<formula>.txt`，不得伪造。
+- ~~`adapters/fixtures/brew/7.0.3/uses-jq.txt` 为空；下次为新 brew 版本重录 fixtures 时，选一个有已装依赖者的 formula（如 `openssl@3`）录 `uses-<formula>.txt`，不得伪造。~~
+  —— **已于 2026-09-22 解决**（`63aa31c`）：真机录了有依赖者的 `adapters/fixtures/brew/7.0.3/uses-pcre2.txt`（4 行），
+  `crates/banager-core/tests/brew_fixtures.rs:188-203` 读它；`uses-jq.txt` 照旧是空的，作为「没有依赖者」的录制保留。
 
 ## 工作流与发布
 
 - `.github/workflows/release.yml` `releaseDraft: true` 与 `tauri.conf.json` 的 `releases/latest/download/latest.json` 端点冲突：草稿永远不是 latest。终审建议：**先保留草稿**（签名/公证流水线尚未跑过、updater 公钥仍是占位符），在 `release.yml` 加注释并写 `docs/releasing.md` 说明"发布草稿是最后一步，发布后 updater 才能看到"；首个草稿经手工公证验证后再改 `releaseDraft: false`。待作者拍板。
-- `.github/workflows/ci.yml`：`feat/**` 推送触发是本分支验证期的临时加项，PR 会让整套 macOS 作业（含真实 `brew install`）跑两遍；合并后去掉或加 `concurrency` 组与 `timeout-minutes`。
-- `src-tauri/Cargo.toml`：`fix-path-env` 是无 `rev` 的 git 依赖，仅靠 Cargo.lock 钉住；应加 `rev`。
+- `.github/workflows/ci.yml`：`feat/**` 推送触发是本分支验证期的临时加项，PR 会让整套 macOS 作业（含真实 `brew install`）跑两遍；合并后去掉~~或加 `concurrency` 组与 `timeout-minutes`~~。
+  （2026-10-02 核对：`concurrency` 组与 `timeout-minutes: 30` 已于 2026-09-22 在 `6a4005b` 加上，`.github/workflows/ci.yml:14-19`、`:26`；
+  只剩去掉 `feat/**` 触发，`:12`，何时去掉由作者定。）
+- ~~`src-tauri/Cargo.toml`：`fix-path-env` 是无 `rev` 的 git 依赖，仅靠 Cargo.lock 钉住；应加 `rev`。~~ —— **已于 2026-09-22 解决**（`6b8a0af`）：`src-tauri/Cargo.toml:46` 带 `rev`。
 - GitHub Actions 提示 checkout@v4 / setup-node@v4 / pnpm action-setup@v4 使用即将弃用的 Node 20 运行时；GitHub 定下时间表后升级。
 
-- `src-tauri/Cargo.toml` 的 `[profile.release]` 在 workspace 中被 Cargo 忽略（每次 cargo 命令都打印 "profiles for the non root package will be ignored"），意味着 create-tauri-app 给的 release 优化（lto、opt-level、strip 等）目前对发布构建**不生效**；应把该段移到根 `Cargo.toml`。首个正式发布前必须处理，否则体积目标失真。
+- ~~`src-tauri/Cargo.toml` 的 `[profile.release]` 在 workspace 中被 Cargo 忽略（每次 cargo 命令都打印 "profiles for the non root package will be ignored"），意味着 create-tauri-app 给的 release 优化（lto、opt-level、strip 等）目前对发布构建**不生效**；应把该段移到根 `Cargo.toml`。首个正式发布前必须处理，否则体积目标失真。~~
+  —— **已于 2026-09-22 解决**（`64da96b`）：`[profile.release]` 在根 `Cargo.toml:20-24`，`src-tauri/Cargo.toml:134-135` 只留一句说明。
 
 ## Codex 评审（2026-09-18）推迟项
 
 Codex 独立评审发现 3 项 P1 + 9 项 P2，控制者逐条核实属实；其中 10 项已在本分支修复（见 `.superpowers/sdd/codex-fix-report.md`）。以下 4 项推迟：
 
-- **M3**：`adapters/brew/parse.rs` 两个根结构体对 `formulae`/`casks` 都用 `#[serde(default)]`，因此 `{}` 或只含未知字段的对象会被解析成「空集合」而非报错，把格式异常解释为「没装任何东西」或「全部最新」；`installed_on_request` 缺失时默认 false，把未知安装原因归类为依赖（应为 `Unknown`）。改法：对 JSON v2 要求必要顶层字段存在，区分合法空数组与字段缺失；补 `{}`、缺分区、字段类型错误、截断 JSON 的断言。
-- **M4**：`ops/mod.rs` 的 `cancel()` 从不读 `plan.cancel_policy`，执行路径也不按该字段分支，`NoCancel` 计划运行中仍会收到取消令牌。当前 BrewAdapter 只产生 `KillThenReconcile`，故暂不影响；后续适配器用到 `NoCancel` 前必须实现，并补策略矩阵测试。
-- **N1**：`brew/mod.rs` 的 detect 单测虽用 MockRunner，仍查询真实文件系统并硬编码「恰好一个实例且为 /opt/homebrew」；Intel Mac、无 Homebrew、双 Homebrew 环境都会失败。改法：把候选路径与存在性检查抽成可注入依赖，分别测零/一/双实例，真实路径验证移入显式门控的集成测试。
+- ~~**M3**：`adapters/brew/parse.rs` 两个根结构体对 `formulae`/`casks` 都用 `#[serde(default)]`，因此 `{}` 或只含未知字段的对象会被解析成「空集合」而非报错，把格式异常解释为「没装任何东西」或「全部最新」；`installed_on_request` 缺失时默认 false，把未知安装原因归类为依赖（应为 `Unknown`）。改法：对 JSON v2 要求必要顶层字段存在，区分合法空数组与字段缺失；补 `{}`、缺分区、字段类型错误、截断 JSON 的断言。~~
+  —— **已于 2026-09-22 解决**（`34b8fea`）：两个根结构体（`adapters/brew/parse.rs:23-26`、`:435-438`）不再 `serde(default)`，缺分区的
+  回答报错（测试 `parse_info_installed_refuses_a_reply_with_no_partitions`、`parse_outdated_refuses_a_reply_with_no_partitions`，`:872`、`:891`）；
+  `installed_on_request` 缺失时归为 `InstallReason::Unknown`（`:342-346`）。
+- ~~**M4**：`ops/mod.rs` 的 `cancel()` 从不读 `plan.cancel_policy`，执行路径也不按该字段分支，`NoCancel` 计划运行中仍会收到取消令牌。当前 BrewAdapter 只产生 `KillThenReconcile`，故暂不影响；后续适配器用到 `NoCancel` 前必须实现，并补策略矩阵测试。~~
+  —— **已于 2026-09-24 解决**（`17d8ef7`、`99a9d6f`）：运行中的 `NoCancel` 操作拒绝取消（`ops/mod.rs:398`），排队中的仍可取消；
+  测试 `tests/ops_cancel_test.rs:765`、`:802`、`:858`。
+- ~~**N1**：`brew/mod.rs` 的 detect 单测虽用 MockRunner，仍查询真实文件系统并硬编码「恰好一个实例且为 /opt/homebrew」；Intel Mac、无 Homebrew、双 Homebrew 环境都会失败。改法：把候选路径与存在性检查抽成可注入依赖，分别测零/一/双实例，真实路径验证移入显式门控的集成测试。~~
+  —— **已于 2026-09-22 解决**（`8569473`）：路径存在性经可注入的 `path_exists_fn`（`adapters/brew/mod.rs:120`、`:386-387`），
+  零/一/双实例各有测试（`:2124-2194`）。
 - **N2**：`release.yml` 安装两个编译目标并产出 universal 包，但没有 spec §10 要求的 Intel runner 启动冒烟；交叉编译成功不等于 x86_64 半边能跑。发布验收前补 Intel 启动验证，或明确记为未完成的验收项。
 
 ## 阶段 2 终审（2026-09-19）推迟项
