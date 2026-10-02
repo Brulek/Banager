@@ -425,7 +425,8 @@ in 72 ms and 24–32 ms, and scrolls with no task over 8 ms.
 ### About 5,000 tools (`?state=huge`)
 
 The same questions on `?state=huge` (4,892 installed, 753 to update), with
-more steps, timed by `.superpowers/r5/tracks/p3-perf/bench-huge.mjs` in
+more steps, timed by an earlier version of `scripts/perf/bench-huge.mjs`
+(kept outside the repository; the one here runs the same scenario) in
 headless Chrome against a production build of the preview (`vite build
 --mode mock`, served by `vite preview`) in a 1280×800 window on an M5 Pro:
 the median of three runs, and one run with the CPU slowed 4×. Before is
@@ -481,12 +482,13 @@ page 80 ms.
 #### Update All with 754 updates (track p5)
 
 Two more steps for Update All on `?state=huge`, which has 754 updates
-now, timed by `.superpowers/r5/tracks/p5-perf/bench-huge.mjs` -- the
-script above, finding the sheet's Update by its new name 「更新这754个」 and
-counting the `list_operations` the preview answers -- against production
-builds of the preview, as above. Before is 7d1d2724; after, the commits of
-the track p5. Eight runs of each build, taken in turn: the median, and in
-brackets the range.
+now, timed by `scripts/perf/bench-huge.mjs` -- the script above,
+finding the sheet's Update by its new name 「更新这754个」 and counting the
+`list_operations` the preview answers; its header says how to build,
+serve and run it -- against production builds of the preview, as above,
+and summed up by `scripts/perf/summ.mjs`. Before is 7d1d2724; after, the
+commits of the track p5 up to 52a6146a. Eight runs of each build, taken
+in turn: the median, and in brackets the range.
 
 | | Before | After | 4× slower CPU, before → after |
 |---|---|---|---|
