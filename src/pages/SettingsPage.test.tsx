@@ -964,8 +964,12 @@ describe("SettingsPage", () => {
 
   it("says whose the logos are in the icon credits in few words, in Chinese as the review asked", () => {
     expect(zhCN.settings.iconCredits.owners).toBe("各标志归其权利人所有，仅用于识别工具。");
-    // Not 「另有自己的许可」, which read as a translation.
-    expect(zhCN.settings.iconCredits.ownLicense).toBe("以下标志采用其他许可协议：");
+    // Not 「另有自己的许可」, which read as a translation; nor
+    // 「采用其他许可协议」, "other licenses", untrue of the list's CC0
+    // ones, .NET's among them (walk-3 W3-25): each states a license of
+    // its own.
+    expect(zhCN.settings.iconCredits.ownLicense).toBe("以下标志注明了各自的许可协议：");
+    expect(enUS.settings.iconCredits.ownLicense).toBe("These logos come with a license of their own:");
   });
 
   it("offers the language as a popup button: the chosen one's name, then ⌃⌄ in a grey capsule, no border", async () => {
@@ -1422,7 +1426,7 @@ describe("SettingsPage's icon credits", () => {
         "Most of the logos built into Banager come from Simple Icons, which is released under CC0.",
       ),
     ).toBeInTheDocument();
-    const list = within(drawer).getByRole("list", { name: "The following logos use other licenses:" });
+    const list = within(drawer).getByRole("list", { name: "These logos come with a license of their own:" });
     const items = within(list).getAllByRole("listitem");
     // By title, each with its license's name and the site Simple Icons
     // took it from -- never a whole address, which breaks mid-word at this
@@ -1476,7 +1480,7 @@ describe("SettingsPage's icon credits", () => {
 
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
     expect(within(drawer).queryByRole("list")).toBeNull();
-    expect(within(drawer).queryByText("The following logos use other licenses:")).toBeNull();
+    expect(within(drawer).queryByText("These logos come with a license of their own:")).toBeNull();
     expect(within(drawer).getByText(/^Most of the logos built into Banager/)).toBeInTheDocument();
     expect(within(drawer).getByText(/^Built-in logos that do not come from Simple Icons/)).toBeInTheDocument();
   });

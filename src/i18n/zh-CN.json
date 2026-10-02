@@ -955,7 +955,7 @@
       "title": "图标来源",
       "owners": "各标志归其权利人所有，仅用于识别工具。",
       "simpleIcons": "Banager内置的标志大多来自Simple Icons，它以CC0发布。",
-      "ownLicense": "以下标志采用其他许可协议：",
+      "ownLicense": "以下标志注明了各自的许可协议：",
       "license": "许可",
       "source": "出处",
       "avatars": "内置标志中不来自Simple Icons的，都是各项目GitHub组织的头像。"
