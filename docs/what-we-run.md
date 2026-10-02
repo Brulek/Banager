@@ -1330,7 +1330,15 @@ For each pulled model `check_updates` reads the local manifest file
 `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
 (opened without waiting, and read only when `fstat` says it is a regular
 file of at most 16 MiB; otherwise the model is "could not check") and
-compares its layer digests with the registry's. The three name parts
+compares its layer digests with the registry's. The file is looked up one
+step at a time and never in or through a place Banager never looks into
+(How Banager runs anything, above): models kept on another disk through a
+link -- `~/.ollama/models`, or `~/.ollama`, linked to `/Volumes/<disk>/…`,
+as Macs with a small disk often have them -- or in `~/Documents` or iCloud
+Drive are not read there, and each such model is listed as "could not
+check" (the row's chip; with technical details shown, its reason says
+the manifest is in a place Banager never looks into). Their disk use is
+not measured either (Disk use, below). The three name parts
 come out of the daemon's `/api/tags` answer, so before any path is built
 each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
