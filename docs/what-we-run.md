@@ -622,7 +622,17 @@ with no newline after it is not read. Homebrew counts
 `HOMEBREW_NO_AUTOREMOVE` as unset when it is empty, only whitespace, or
 `0`, `false`, `no`, `off` or `nil` in any case (`env_config.rb:871`,
 `:926`), and `HOMEBREW_NO_INSTALL_CLEANUP` only when it is empty or only
-whitespace. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
+whitespace. A file Banager does not read because it is in, or reached
+through, one of the places Banager never looks into (`~/.homebrew` a
+link into iCloud Drive, an `XDG_CONFIG_HOME` in `~/Documents`; How
+Banager runs anything, above) is not taken as absent: `bin/brew`, which
+Banager runs, may still read it, so what it sets is unknown, and an
+unknown variable is taken the way that says more -- `HOMEBREW_NO_AUTOREMOVE`
+and `HOMEBREW_NO_INSTALL_CLEANUP` as unset, `HOMEBREW_NO_CLEANUP_FORMULAE`
+as naming nothing, `HOMEBREW_NO_REQUIRE_TAP_TRUST` as unset -- until a
+later file sets it outright (`brew_env::EnvFile::Unknown`); when the
+folder of the user's file hangs on such a variable, what that file sets is
+unknown too. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
 uninstall preview says that Homebrew will also remove other Homebrew
 packages that were installed only as dependencies and that nothing needs
 any more (`Warning::HomebrewAutoremoves`). When they leave
@@ -956,7 +966,9 @@ uninstall and upgrade preview also reads the `brew.env` files named above
 (`read_brew_env_file`): each is opened without waiting (links followed,
 `O_NONBLOCK`, so a named pipe there cannot stall it), checked with `fstat`
 once open, and read only when that says it is a regular file of at most
-16 MiB (`read_file::LIMIT`) — otherwise it is skipped as unreadable;
+16 MiB (`read_file::LIMIT`) — otherwise it is skipped as unreadable,
+as `bin/brew` skips it, but for one in a protected place, which is not
+looked at and counts as unknown (`brew.env`, above);
 only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
 `HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME`,
 `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, `HOMEBREW_NO_CLEANUP_FORMULAE` or

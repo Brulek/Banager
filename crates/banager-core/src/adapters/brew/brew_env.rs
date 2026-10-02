@@ -69,6 +69,27 @@ pub(crate) const NO_CLEANUP_FORMULAE: &str = "HOMEBREW_NO_CLEANUP_FORMULAE";
 /// method `env_config.rb:916-926` builds).
 pub(crate) const NO_REQUIRE_TAP_TRUST: &str = "HOMEBREW_NO_REQUIRE_TAP_TRUST";
 
+/// One `brew.env` file as Banager found it (`read_brew_env_file`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum EnvFile {
+    /// Its bytes, which `bin/brew` reads as well.
+    Read(Vec<u8>),
+    /// A file `bin/brew` does not read either: none there, not a regular
+    /// file, or one this account may not read -- `[[ -r … ]]` is false for
+    /// `bin/brew` too, run as the same account.
+    Skipped,
+    /// A file in or through a protected place (`protected::look`), which
+    /// Banager never looks into but `bin/brew`, a program Banager runs, may
+    /// still read: what it says is not known.
+    Unknown,
+}
+
+impl From<Option<Vec<u8>>> for EnvFile {
+    fn from(bytes: Option<Vec<u8>>) -> EnvFile {
+        bytes.map_or(EnvFile::Skipped, EnvFile::Read)
+    }
+}
+
 /// The variables the replay follows, in `Vars`' order.
 const FOLLOWED: [&str; 6] = [
     NO_AUTOREMOVE,
@@ -119,7 +140,16 @@ pub(crate) struct HomebrewSwitches {
 ///
 /// `banager_var` reads a variable of Banager's environment, which the
 /// command inherits under `plan_env` (`RealRunner::run` clears nothing);
-/// `read_file` reads one `brew.env` file, `None` when there is none to read.
+/// `read_file` reads one `brew.env` file (`EnvFile`).
+///
+/// A file Banager cannot tell anything of (`EnvFile::Unknown`: one in a
+/// protected place, which `bin/brew` may still read) leaves every followed
+/// variable unknown until a later file sets it again, and an unknown one
+/// is taken the way that says more, never less: autoremove and the
+/// cleanup after an install as back on, no formula left out of them, tap
+/// trust as Homebrew's default, required. When the folder of the user's
+/// file depends on an unknown variable, what that file sets is unknown
+/// too.
 /// The files and their order are `bin/brew`'s: `/etc/homebrew/brew.env`,
 /// then `<prefix>/etc/homebrew/brew.env`, then the user's --
 /// `$XDG_CONFIG_HOME/homebrew/brew.env` when Banager's environment sets
@@ -132,16 +162,18 @@ pub(crate) fn after_brew_env(
     plan_env: &[(String, String)],
     prefix: &Path,
     banager_var: &dyn Fn(&str) -> Option<OsString>,
-    read_file: &dyn Fn(&Path) -> Option<Vec<u8>>,
+    read_file: &dyn Fn(&Path) -> EnvFile,
 ) -> HomebrewSwitches {
     let mut vars = Vars::inherited(plan_env, banager_var);
-    let export = |vars: &mut Vars, path: &Path| {
-        if let Some(bytes) = read_file(path) {
-            vars.export_file(&bytes);
-        }
+    let export = |vars: &mut Vars, path: &Path| match read_file(path) {
+        EnvFile::Read(bytes) => vars.export_file(&bytes),
+        EnvFile::Skipped => {}
+        EnvFile::Unknown => vars.forget_all(),
     };
     export(&mut vars, Path::new(SYSTEM_FILE));
-    let system_takes_priority = vars.non_empty(SYSTEM_TAKES_PRIORITY);
+    // Read again last when it is set -- or may be.
+    let system_takes_priority =
+        vars.non_empty(SYSTEM_TAKES_PRIORITY) || vars.unknown(SYSTEM_TAKES_PRIORITY);
     export(
         &mut vars,
         &concat(prefix.as_os_str(), "/etc/homebrew/brew.env"),
@@ -150,17 +182,28 @@ pub(crate) fn after_brew_env(
     // change it afterwards: it is one of the names `bin/brew` keeps for
     // itself (`BIN_BREW_EXPORTED_VARS`, `bin/brew:117-125`, `:140`).
     let user_config_home = user_config_home(&vars, banager_var);
+    let user_file_unknown = banager_var("XDG_CONFIG_HOME").is_none_or(|v| v.is_empty())
+        && vars.unknown(XDG_CONFIG_FALLBACK);
     if let Some(home) = &user_config_home {
         export(&mut vars, &concat(home.as_os_str(), "/brew.env"));
+    }
+    if user_file_unknown {
+        // Another folder's file may be the one `bin/brew` reads.
+        vars.forget_all();
     }
     if system_takes_priority {
         export(&mut vars, Path::new(SYSTEM_FILE));
     }
+    let known = |name: &str| !vars.unknown(name);
     HomebrewSwitches {
-        no_autoremove: boolean_true(vars.get(NO_AUTOREMOVE)),
-        no_install_cleanup: present(vars.get(NO_INSTALL_CLEANUP)),
-        no_cleanup_formulae: comma_list(vars.get(NO_CLEANUP_FORMULAE)),
-        require_tap_trust: !present(vars.get(NO_REQUIRE_TAP_TRUST)),
+        no_autoremove: known(NO_AUTOREMOVE) && boolean_true(vars.get(NO_AUTOREMOVE)),
+        no_install_cleanup: known(NO_INSTALL_CLEANUP) && present(vars.get(NO_INSTALL_CLEANUP)),
+        no_cleanup_formulae: if known(NO_CLEANUP_FORMULAE) {
+            comma_list(vars.get(NO_CLEANUP_FORMULAE))
+        } else {
+            Vec::new()
+        },
+        require_tap_trust: !known(NO_REQUIRE_TAP_TRUST) || !present(vars.get(NO_REQUIRE_TAP_TRUST)),
         user_config_home,
     }
 }
@@ -206,8 +249,10 @@ fn concat(head: &OsStr, tail: &str) -> PathBuf {
 }
 
 /// The followed variables as `bin/brew` holds them, as bytes: neither a
-/// value in the environment nor one in a file need be UTF-8.
-struct Vars([Option<Vec<u8>>; 6]);
+/// value in the environment nor one in a file need be UTF-8. With, for
+/// each, whether a file Banager could not read may have set it since
+/// (`forget_all`).
+struct Vars([Option<Vec<u8>>; 6], [bool; 6]);
 
 impl Vars {
     /// What `bin/brew` starts from: the plan's own value, which the runner
@@ -216,14 +261,31 @@ impl Vars {
         plan_env: &[(String, String)],
         banager_var: &dyn Fn(&str) -> Option<OsString>,
     ) -> Vars {
-        Vars(FOLLOWED.map(|name| {
-            plan_env
-                .iter()
-                .rev()
-                .find(|(key, _)| key == name)
-                .map(|(_, value)| value.clone().into_bytes())
-                .or_else(|| banager_var(name).map(OsStringExt::into_vec))
-        }))
+        Vars(
+            FOLLOWED.map(|name| {
+                plan_env
+                    .iter()
+                    .rev()
+                    .find(|(key, _)| key == name)
+                    .map(|(_, value)| value.clone().into_bytes())
+                    .or_else(|| banager_var(name).map(OsStringExt::into_vec))
+            }),
+            [false; 6],
+        )
+    }
+
+    /// A file Banager cannot read was exported: any followed variable may
+    /// now hold anything.
+    fn forget_all(&mut self) {
+        self.1 = [true; 6];
+    }
+
+    /// Whether `name` may have been set by a file Banager could not read.
+    fn unknown(&self, name: &str) -> bool {
+        FOLLOWED
+            .iter()
+            .position(|followed| *followed == name)
+            .is_some_and(|index| self.1[index])
     }
 
     fn get(&self, name: &str) -> Option<&[u8]> {
@@ -231,11 +293,10 @@ impl Vars {
         self.0[index].as_deref()
     }
 
-    fn slot(&mut self, name: &[u8]) -> Option<&mut Option<Vec<u8>>> {
-        let index = FOLLOWED
+    fn slot(&mut self, name: &[u8]) -> Option<usize> {
+        FOLLOWED
             .iter()
-            .position(|followed| followed.as_bytes() == name)?;
-        Some(&mut self.0[index])
+            .position(|followed| followed.as_bytes() == name)
     }
 
     /// `[[ -n "${NAME-}" ]]`.
@@ -276,11 +337,16 @@ impl Vars {
             };
             let (name, value) = (&line[..eq], &line[eq + 1..]);
             if let Some(name) = name.strip_suffix(b"+") {
-                if let Some(slot) = self.slot(name) {
-                    slot.get_or_insert_with(Vec::new).extend_from_slice(value);
+                // Appended to: still unknown when it was.
+                if let Some(index) = self.slot(name) {
+                    self.0[index]
+                        .get_or_insert_with(Vec::new)
+                        .extend_from_slice(value);
                 }
-            } else if let Some(slot) = self.slot(name) {
-                *slot = Some(value.to_vec());
+            } else if let Some(index) = self.slot(name) {
+                // Set outright: known again, whatever came before.
+                self.0[index] = Some(value.to_vec());
+                self.1[index] = false;
             }
         }
     }
@@ -322,16 +388,22 @@ fn boolean_true(value: Option<&[u8]>) -> bool {
             .is_none_or(|text| !FALSY_VALUES.contains(&text.to_lowercase().as_str()))
 }
 
-/// One `brew.env` file's bytes, or `None` unless `path` leads, links
-/// followed, to a regular file Banager can read: `bin/brew` reads one only
-/// when `[[ -r … ]]` holds (`bin/brew:131-132`). Nothing but a regular file
-/// is read -- a named pipe would wait for a writer -- and it is opened
-/// without waiting, at most `read_file::LIMIT` bytes of it, as rustup's
-/// startup files are (`read_startup_file` in adapters/standalone/rustup.rs).
-/// Never one in or through a protected place (`read_file`).
-pub(crate) fn read_brew_env_file(path: &Path) -> Option<Vec<u8>> {
-    crate::adapters::read_file::read_bytes(path, &crate::protected::Protected::of_this_process())
-        .ok()
+/// One `brew.env` file's bytes when `path` leads, links followed, to a
+/// regular file Banager can read; `Skipped` when it leads to none Banager
+/// can read, as for `bin/brew`, which reads one only when `[[ -r … ]]`
+/// holds (`bin/brew:131-132`). Nothing but a regular file is read -- a
+/// named pipe would wait for a writer -- and it is opened without waiting,
+/// at most `read_file::LIMIT` bytes of it, as rustup's startup files are
+/// (`read_startup_file` in adapters/standalone/rustup.rs). Never one in or
+/// through a protected place (`read_file`): that one is `Unknown`, since
+/// `bin/brew`, run by Banager, may still read it.
+pub(crate) fn read_brew_env_file(path: &Path) -> EnvFile {
+    let protected = crate::protected::Protected::of_this_process();
+    match crate::adapters::read_file::read_bytes(path, &protected) {
+        Ok(bytes) => EnvFile::Read(bytes),
+        Err(error) if crate::protected::look::is_protected(&error) => EnvFile::Unknown,
+        Err(_) => EnvFile::Skipped,
+    }
 }
 
 #[cfg(test)]
@@ -368,12 +440,126 @@ mod tests {
             &plan_env(),
             Path::new("/opt/homebrew"),
             &|name| env.get(name).cloned(),
-            &|path| files.get(path).cloned(),
+            &|path| files.get(path).cloned().into(),
         )
     }
 
     fn autoremoves(files: &[(&str, &str)], vars: &[(&str, &str)]) -> bool {
         !switches(files, vars).no_autoremove
+    }
+
+    /// `switches`, with the files at `unknown` ones Banager could not read
+    /// (`EnvFile::Unknown`: in a protected place).
+    fn switches_unknown(
+        files: &[(&str, &str)],
+        unknown: &[&str],
+        vars: &[(&str, &str)],
+    ) -> HomebrewSwitches {
+        let files: HashMap<PathBuf, Vec<u8>> = files
+            .iter()
+            .map(|(path, text)| (PathBuf::from(path), text.as_bytes().to_vec()))
+            .collect();
+        let mut env: HashMap<String, OsString> =
+            HashMap::from([("HOME".to_string(), OsString::from("/Users/someone"))]);
+        for (name, value) in vars {
+            env.insert(name.to_string(), OsString::from(value));
+        }
+        after_brew_env(
+            &plan_env(),
+            Path::new("/opt/homebrew"),
+            &|name| env.get(name).cloned(),
+            &|path| {
+                if unknown.iter().any(|at| Path::new(at) == path) {
+                    EnvFile::Unknown
+                } else {
+                    files.get(path).cloned().into()
+                }
+            },
+        )
+    }
+
+    /// Every switch taken the way that says the most.
+    fn assume_the_worst(switches: &HomebrewSwitches) {
+        assert!(!switches.no_autoremove, "{switches:?}");
+        assert!(!switches.no_install_cleanup, "{switches:?}");
+        assert!(switches.no_cleanup_formulae.is_empty(), "{switches:?}");
+        assert!(switches.require_tap_trust, "{switches:?}");
+    }
+
+    #[test]
+    fn test_a_brew_env_banager_cannot_read_takes_the_switches_the_way_that_says_more() {
+        // A `brew.env` in a protected place (`~/.homebrew` a link into
+        // iCloud Drive): `bin/brew` may read it, Banager does not. Whatever
+        // it says, the preview must not promise less than it may do:
+        // autoremove and the cleanup as back on, no formula left out, tap
+        // trust required -- though Banager's own variables say otherwise.
+        assume_the_worst(&switches_unknown(&[], &[HOME_FILE], &[]));
+        // The same once a file read before it named formulae: unknown now.
+        assume_the_worst(&switches_unknown(
+            &[(
+                PREFIX_FILE,
+                "HOMEBREW_NO_CLEANUP_FORMULAE=jq\nHOMEBREW_NO_REQUIRE_TAP_TRUST=1\n",
+            )],
+            &[HOME_FILE],
+            &[],
+        ));
+        // The prefix's file unknown: it may set `HOMEBREW_XDG_CONFIG_HOME`,
+        // so the user's file read afterwards may not be the one `bin/brew`
+        // reads -- what that one sets is unknown too.
+        assume_the_worst(&switches_unknown(
+            &[(
+                HOME_FILE,
+                "HOMEBREW_NO_AUTOREMOVE=1\nHOMEBREW_NO_INSTALL_CLEANUP=1\n",
+            )],
+            &[PREFIX_FILE],
+            &[],
+        ));
+        // ...unless Banager's environment chose the folder itself.
+        let chosen = switches_unknown(
+            &[(
+                "/Users/someone/.config/homebrew/brew.env",
+                "HOMEBREW_NO_AUTOREMOVE=1\nHOMEBREW_NO_INSTALL_CLEANUP=1\n",
+            )],
+            &[PREFIX_FILE],
+            &[("XDG_CONFIG_HOME", "/Users/someone/.config")],
+        );
+        assert!(
+            chosen.no_autoremove && chosen.no_install_cleanup,
+            "{chosen:?}"
+        );
+        // The system file unknown: it may also ask to be read again last.
+        assume_the_worst(&switches_unknown(
+            &[(
+                HOME_FILE,
+                "HOMEBREW_NO_AUTOREMOVE=1\nHOMEBREW_NO_INSTALL_CLEANUP=1\n",
+            )],
+            &[SYSTEM_FILE],
+            &[],
+        ));
+        // A later file that sets a variable outright makes it known again;
+        // one it only appends to stays unknown.
+        let later = switches_unknown(
+            &[(
+                HOME_FILE,
+                "HOMEBREW_NO_AUTOREMOVE=1\nHOMEBREW_NO_INSTALL_CLEANUP+=1\n",
+            )],
+            &[PREFIX_FILE],
+            &[("XDG_CONFIG_HOME", "")],
+        );
+        assert!(!later.no_autoremove, "user folder unknown: {later:?}");
+        let later = switches_unknown(
+            &[(
+                "/Users/someone/.config/homebrew/brew.env",
+                "HOMEBREW_NO_AUTOREMOVE=1\nHOMEBREW_NO_INSTALL_CLEANUP+=1\n",
+            )],
+            &[PREFIX_FILE],
+            &[("XDG_CONFIG_HOME", "/Users/someone/.config")],
+        );
+        assert!(later.no_autoremove, "{later:?}");
+        assert!(!later.no_install_cleanup, "{later:?}");
+        // A file that is only not there changes nothing, as before.
+        let absent = switches_unknown(&[], &[], &[]);
+        assert!(absent.no_autoremove && absent.no_install_cleanup);
     }
 
     #[test]
@@ -712,23 +898,31 @@ mod tests {
         let file = dir.0.join("brew.env");
         std::fs::write(&file, b"HOMEBREW_NO_AUTOREMOVE=0\n").expect("write brew.env");
         assert_eq!(
-            read_brew_env_file(&file).as_deref(),
-            Some(&b"HOMEBREW_NO_AUTOREMOVE=0\n"[..])
+            read_brew_env_file(&file),
+            EnvFile::Read(b"HOMEBREW_NO_AUTOREMOVE=0\n".to_vec())
         );
         let link = dir.0.join("link.env");
         std::os::unix::fs::symlink(&file, &link).expect("link");
         assert!(
-            read_brew_env_file(&link).is_some(),
+            matches!(read_brew_env_file(&link), EnvFile::Read(_)),
             "a link to a file is followed"
         );
-        assert_eq!(read_brew_env_file(&dir.0.join("missing.env")), None);
-        assert_eq!(read_brew_env_file(&dir.0), None, "a folder is not read");
+        assert_eq!(
+            read_brew_env_file(&dir.0.join("missing.env")),
+            EnvFile::Skipped
+        );
+        assert_eq!(
+            read_brew_env_file(&dir.0),
+            EnvFile::Skipped,
+            "a folder is not read"
+        );
     }
 
     #[test]
     fn test_read_brew_env_file_never_reads_one_in_a_protected_place() {
         // `~/.homebrew` a link into `~/Documents`: its `brew.env` is not
-        // read there, by either name, as a file Banager cannot open is not.
+        // read there, by either name -- and it is not taken as absent
+        // either: `bin/brew`, run by Banager, may still read it.
         let dir = TempDir::new();
         let home = std::fs::canonicalize(&dir.0).unwrap();
         std::fs::create_dir_all(home.join("Documents/homebrew")).unwrap();
@@ -737,10 +931,16 @@ mod tests {
         std::os::unix::fs::symlink(home.join("Documents/homebrew"), home.join(".homebrew"))
             .unwrap();
         let as_if = crate::protected::as_if_home(&home);
-        assert_eq!(read_brew_env_file(&kept), None);
-        assert_eq!(read_brew_env_file(&home.join(".homebrew/brew.env")), None);
+        assert_eq!(read_brew_env_file(&kept), EnvFile::Unknown);
+        assert_eq!(
+            read_brew_env_file(&home.join(".homebrew/brew.env")),
+            EnvFile::Unknown
+        );
         // With another home folder, nothing here is protected: both read.
         drop(as_if);
-        assert!(read_brew_env_file(&home.join(".homebrew/brew.env")).is_some());
+        assert!(matches!(
+            read_brew_env_file(&home.join(".homebrew/brew.env")),
+            EnvFile::Read(_)
+        ));
     }
 }

@@ -693,7 +693,7 @@ fn brew_env_files_survive_any_bytes() {
                 &[],
                 std::path::Path::new("/opt/homebrew"),
                 &|name| (name == "HOME").then(|| "/Users/someone".into()),
-                &|_| Some(bytes.clone()),
+                &|_| Some(bytes.clone()).into(),
             )
         },
         |_| Ok(()),

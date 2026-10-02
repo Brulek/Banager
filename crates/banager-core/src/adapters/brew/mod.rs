@@ -143,7 +143,7 @@ pub struct BrewAdapter {
     /// outside this crate's unit tests; inside them there is none unless a
     /// test installs a reader (`with_brew_env_fn`), so that no test answers
     /// differently for the brew.env files of the Mac running it.
-    brew_env_fn: fn(&Path) -> Option<Vec<u8>>,
+    brew_env_fn: fn(&Path) -> brew_env::EnvFile,
     /// How to read what Homebrew recorded at install about a cask's
     /// uninstall, under a prefix, for the cask uninstall preview:
     /// `cask_receipt::read_recorded` outside this crate's unit tests;
@@ -190,9 +190,9 @@ const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |name| std::env::var_os
 #[cfg(test)]
 const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |_| None;
 #[cfg(not(test))]
-const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = brew_env::read_brew_env_file;
+const DEFAULT_BREW_ENV_FN: fn(&Path) -> brew_env::EnvFile = brew_env::read_brew_env_file;
 #[cfg(test)]
-const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = |_| None;
+const DEFAULT_BREW_ENV_FN: fn(&Path) -> brew_env::EnvFile = |_| brew_env::EnvFile::Skipped;
 
 /// `BrewAdapter::recorded_uninstall_fn` as `BrewAdapter::new` sets it: the
 /// real Caskroom in every build but this crate's unit tests, where nothing
@@ -414,7 +414,7 @@ impl BrewAdapter {
     /// Test-only hook to put `brew.env` files on the disk the plan reads
     /// (see `brew_env_fn`).
     #[cfg(test)]
-    fn with_brew_env_fn(mut self, brew_env_fn: fn(&Path) -> Option<Vec<u8>>) -> BrewAdapter {
+    fn with_brew_env_fn(mut self, brew_env_fn: fn(&Path) -> brew_env::EnvFile) -> BrewAdapter {
         self.brew_env_fn = brew_env_fn;
         self
     }
@@ -3570,9 +3570,10 @@ mod plan_execute_tests {
     }
 
     /// A Mac whose `/etc/homebrew/brew.env` turns autoremove back on.
-    fn system_brew_env_autoremoves(path: &Path) -> Option<Vec<u8>> {
+    fn system_brew_env_autoremoves(path: &Path) -> brew_env::EnvFile {
         (path == Path::new("/etc/homebrew/brew.env"))
             .then(|| b"# set by an administrator\nHOMEBREW_NO_AUTOREMOVE=0\n".to_vec())
+            .into()
     }
 
     #[tokio::test]
@@ -3617,6 +3618,7 @@ mod plan_execute_tests {
         let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
             (path == Path::new("/etc/homebrew/brew.env"))
                 .then(|| b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_AUTOREMOVE=off\n".to_vec())
+                .into()
         });
         for plan in every_plan(&runner, &adapter).await {
             let expected = match plan.request.kind {
@@ -3652,6 +3654,7 @@ mod plan_execute_tests {
         let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
             (path == Path::new("/etc/homebrew/brew.env"))
                 .then(|| b"HOMEBREW_NO_INSTALL_CLEANUP=\n".to_vec())
+                .into()
         });
         for plan in every_plan(&runner, &adapter).await {
             let expected = match plan.request.kind {
@@ -3679,18 +3682,21 @@ mod plan_execute_tests {
             old_versions,
             autoremove,
         };
-        type Files = fn(&Path) -> Option<Vec<u8>>;
+        type Files = fn(&Path) -> brew_env::EnvFile;
         let both: Files = |path| {
             (path == Path::new("/etc/homebrew/brew.env")).then(|| {
                 b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_AUTOREMOVE=off\nHOMEBREW_NO_CLEANUP_FORMULAE=python@3.13,node\n"
                     .to_vec()
             })
+            .into()
         };
         let cleanup_only: Files = |path| {
-            (path == Path::new("/etc/homebrew/brew.env")).then(|| {
-                b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_CLEANUP_FORMULAE=python@3.13,node\n"
-                    .to_vec()
-            })
+            (path == Path::new("/etc/homebrew/brew.env"))
+                .then(|| {
+                    b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_CLEANUP_FORMULAE=python@3.13,node\n"
+                        .to_vec()
+                })
+                .into()
         };
         for (files, autoremoves) in [(both, true), (cleanup_only, false)] {
             let runner = Arc::new(MockRunner::new());
@@ -3724,6 +3730,7 @@ mod plan_execute_tests {
         let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
             (path == Path::new("/etc/homebrew/brew.env"))
                 .then(|| b"HOMEBREW_NO_CLEANUP_FORMULAE=python@3.13\n".to_vec())
+                .into()
         });
         for plan in every_plan(&runner, &adapter).await {
             assert!(
@@ -3743,8 +3750,10 @@ mod plan_execute_tests {
         // The prefix's file is this instance's (`<prefix>/etc/homebrew`),
         // and the user's is under `XDG_CONFIG_HOME` when Banager's
         // environment sets it -- then `~/.homebrew/brew.env` is not read.
-        fn off_at(path: &Path, at: &str) -> Option<Vec<u8>> {
-            (path == Path::new(at)).then(|| b"HOMEBREW_NO_AUTOREMOVE=false\n".to_vec())
+        fn off_at(path: &Path, at: &str) -> brew_env::EnvFile {
+            (path == Path::new(at))
+                .then(|| b"HOMEBREW_NO_AUTOREMOVE=false\n".to_vec())
+                .into()
         }
         let with_xdg = |name: &str| match name {
             "HOME" => Some(OsString::from("/Users/someone")),
@@ -3752,7 +3761,7 @@ mod plan_execute_tests {
             _ => None,
         };
         let without_xdg = |name: &str| (name == "HOME").then(|| OsString::from("/Users/someone"));
-        type Files = fn(&Path) -> Option<Vec<u8>>;
+        type Files = fn(&Path) -> brew_env::EnvFile;
         type Env = fn(&str) -> Option<OsString>;
         let cases: [(Files, Env, bool); 4] = [
             (
@@ -4128,16 +4137,17 @@ mod plan_execute_tests {
                 ..TrustList::default()
             })
         }
-        fn no_trust_required(path: &Path) -> Option<Vec<u8>> {
+        fn no_trust_required(path: &Path) -> brew_env::EnvFile {
             (path == Path::new("/etc/homebrew/brew.env"))
                 .then(|| b"HOMEBREW_NO_REQUIRE_TAP_TRUST=1\n".to_vec())
+                .into()
         }
         type Recorder = fn(&Path, &str) -> Option<Recorded>;
         type Lister = fn(&Path) -> Option<TrustList>;
-        type Files = fn(&Path) -> Option<Vec<u8>>;
+        type Files = fn(&Path) -> brew_env::EnvFile;
         let empty: Lister = |_| Some(TrustList::default());
         let unread: Lister = |_| None;
-        let none: Files = |_| None;
+        let none: Files = |_| brew_env::EnvFile::Skipped;
         let cases: [(Recorder, Lister, Files, UninstallScope); 13] = [
             // JSON records: what Homebrew records runs. A tap's plain cask
             // may have an installer beside what Homebrew placed.
@@ -5898,6 +5908,50 @@ mod plan_execute_tests {
             "got {probed:?}"
         );
         let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn test_a_brew_env_in_a_protected_place_keeps_the_autoremove_and_cleanup_warnings() {
+        // `~/.homebrew` a dotfiles link into `~/Documents` (the folder
+        // standing in for the home folder), its `brew.env` turning
+        // autoremove back on: Banager never reads it, and `brew`, which it
+        // runs, may -- so the uninstall preview says Homebrew will
+        // autoremove, and an install's says it will clean up, as they say
+        // when Banager can read the file. Where it can, it reads it.
+        let home = std::fs::canonicalize(scratch_prefix("brew-env-protected")).unwrap();
+        let kept = home.join("Documents/hb");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("brew.env"), b"HOMEBREW_NO_AUTOREMOVE=0\n").unwrap();
+        std::os::unix::fs::symlink(&kept, home.join(".homebrew")).unwrap();
+        let env: Vec<(String, String)> = BrewAdapter::ENV
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let read = |home_var: &std::path::Path| {
+            let home_var = home_var.as_os_str().to_os_string();
+            brew_env::after_brew_env(
+                &env,
+                Path::new("/nonexistent-homebrew-prefix"),
+                &|name| (name == "HOME").then(|| home_var.clone()),
+                &brew_env::read_brew_env_file,
+            )
+        };
+        let readable = read(&home);
+        assert!(!readable.no_autoremove && readable.no_install_cleanup);
+        let _home = crate::protected::as_if_home(&home);
+        let unknown = read(&home);
+        assert_eq!(
+            BrewAdapter::switch_warnings(&unknown, OpKind::Uninstall),
+            vec![Warning::HomebrewAutoremoves]
+        );
+        assert_eq!(
+            BrewAdapter::switch_warnings(&unknown, OpKind::Upgrade),
+            vec![
+                Warning::HomebrewPeriodicCleanup,
+                Warning::HomebrewCleanupAutoremoves
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
