@@ -320,9 +320,23 @@ export type Warning =
   | "HomebrewRustupLosesToolchains"
   | "EditsShellConfig"
   | { LeavesShellConfigLine: { path: string; certain: boolean } }
+  /**
+   * A startup file name rustup's preview could not read: it is in, or
+   * leads into, a protected place, so whether it keeps a line about Cargo
+   * is not known (`ShellConfigUnread` in crates/banager-core/src/model.rs).
+   */
+  | { ShellConfigUnread: { path: string } }
   | "HomebrewAutoremoves"
   | "HomebrewPeriodicCleanup"
   | "HomebrewCleanupAutoremoves"
+  /**
+   * The same three, when a brew.env file Homebrew reads is in a protected
+   * place, which is not read: whether it takes Banager's switches back is
+   * not known, so the preview says what Homebrew may do.
+   */
+  | "HomebrewMayAutoremove"
+  | "HomebrewMayCleanUp"
+  | "HomebrewCleanupMayAutoremove"
   /**
    * The formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names, which the lines
    * before it leave out: their older versions (`old_versions`, after

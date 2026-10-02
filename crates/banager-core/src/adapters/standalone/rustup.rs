@@ -711,7 +711,19 @@ fn startup_files(home: &Path, zdotdir: Option<&Path>) -> Vec<PathBuf> {
 /// file `read_startup_file` opened, links followed.
 type FileIdentity = (u64, u64);
 
-/// A startup file's contents and which file they are, or `None` unless
+/// What `read_startup_file` found at a startup file's name.
+enum StartupFile {
+    /// Its contents and which file they are.
+    Read(FileIdentity, String),
+    /// Nothing to read: not there, not a regular file, not UTF-8, or one
+    /// this account may not open.
+    Skipped,
+    /// In, or reached through, a place Banager never looks into
+    /// (`protected::look`): not read, so what it holds is not known.
+    Unread,
+}
+
+/// A startup file's contents and which file they are, or `Skipped` unless
 /// `path` leads, links followed, to a regular file that reads as UTF-8 --
 /// followed as rustup follows it: its cleanup visits a name only when
 /// `is_file()` (unix.rs:60, :149), reads it with `fs::read_to_string`
@@ -720,21 +732,25 @@ type FileIdentity = (u64, u64);
 /// :158; utils/raw.rs:86-98), which changes the file the name leads to in
 /// place. A name that is not a regular file is not opened (a named pipe
 /// would wait for a writer), and the identity is the opened file's own
-/// (`fstat`), the file whose bytes were read. Read by
-/// `shell_config_leftovers`.
-fn read_startup_file(path: &Path, protected: &Protected) -> Option<(FileIdentity, String)> {
+/// (`fstat`), the file whose bytes were read. One in or through a
+/// protected place is `Unread`. Read by `shell_config_leftovers`.
+fn read_startup_file(path: &Path, protected: &Protected) -> StartupFile {
     // Opened without waiting and read only when `fstat` says it is a
     // regular file, at most `read_file::LIMIT` bytes of it, and never in
     // or through a protected place: a `~/.zshrc` kept in iCloud Drive is
     // a name not read.
-    let (meta, bytes) = crate::adapters::read_file::read_regular(
+    match crate::adapters::read_file::read_regular(
         path,
         crate::adapters::read_file::LIMIT,
         protected,
-    )
-    .ok()?;
-    let contents = String::from_utf8(bytes).ok()?;
-    Some(((meta.dev(), meta.ino()), contents))
+    ) {
+        Ok((meta, bytes)) => match String::from_utf8(bytes) {
+            Ok(contents) => StartupFile::Read((meta.dev(), meta.ino()), contents),
+            Err(_) => StartupFile::Skipped,
+        },
+        Err(error) if look::is_protected(&error) => StartupFile::Unread,
+        Err(_) => StartupFile::Skipped,
+    }
 }
 
 /// One `LeavesShellConfigLine` per startup file name (`startup_files`)
@@ -753,7 +769,11 @@ fn read_startup_file(path: &Path, protected: &Protected) -> Option<(FileIdentity
 /// name of that file, `.zshrc` a link to `.zshenv` included -- and what
 /// is left is classified (`classify_leftover`) and reported under each
 /// name that leads to it. A visit to a name not read (a relative
-/// `$ZDOTDIR`'s) has no copy to act on.
+/// `$ZDOTDIR`'s) has no copy to act on. A name in or through a protected
+/// place (a `~/.zshrc` kept in iCloud Drive) is not read, and is said as
+/// one Banager could not read (`ShellConfigUnread`), in its place in the
+/// order: whether it will still speak of Cargo is not known, and saying
+/// nothing would read as nothing being left.
 pub fn shell_config_leftovers(
     home: &Path,
     zdotdir: Option<&Path>,
@@ -764,10 +784,15 @@ pub fn shell_config_leftovers(
     let protected = Protected::new(home);
     let mut file_of: BTreeMap<PathBuf, FileIdentity> = BTreeMap::new();
     let mut copies: BTreeMap<FileIdentity, String> = BTreeMap::new();
+    let mut unread: Vec<&PathBuf> = Vec::new();
     for path in &ordered {
-        if let Some((identity, contents)) = read_startup_file(path, &protected) {
-            file_of.insert(path.clone(), identity);
-            copies.entry(identity).or_insert(contents);
+        match read_startup_file(path, &protected) {
+            StartupFile::Read(identity, contents) => {
+                file_of.insert(path.clone(), identity);
+                copies.entry(identity).or_insert(contents);
+            }
+            StartupFile::Unread => unread.push(path),
+            StartupFile::Skipped => {}
         }
     }
     for visit in rustup_rc_visits(home, zdotdir, &spelled) {
@@ -782,10 +807,14 @@ pub fn shell_config_leftovers(
     ordered
         .iter()
         .filter_map(|path| {
+            let shown = || crate::scan::display_path(path, home).display().to_string();
+            if unread.contains(&path) {
+                return Some(Warning::ShellConfigUnread { path: shown() });
+            }
             let contents = copies.get(file_of.get(path)?)?;
             let tier = classify_leftover(contents, &patterns)?;
             Some(Warning::LeavesShellConfigLine {
-                path: crate::scan::display_path(path, home).display().to_string(),
+                path: shown(),
                 certain: tier == Leftover::Sources,
             })
         })
@@ -1766,8 +1795,9 @@ mod tests {
     #[test]
     fn test_shell_config_leftovers_never_reads_a_startup_file_kept_in_a_protected_place() {
         // `~/.zshrc` a link to dotfiles kept in `~/Documents` or iCloud
-        // Drive: not read there, so no sentence about it -- as for a file
-        // Banager cannot open. Kept anywhere else, it is read and said.
+        // Drive: not read there, and said as a file Banager could not read
+        // -- rustup, which Banager runs, may still read and edit it. Kept
+        // anywhere else, it is read and said as it is.
         for (keep, protected_place) in [
             ("dotfiles", false),
             ("Documents/dotfiles", true),
@@ -1787,8 +1817,12 @@ mod tests {
             for (call, path) in &made.paths {
                 assert!(!protected.contains(path), "{keep}: {call:?} {path:?}");
             }
+            // Not read there, and not taken as holding nothing: said as
+            // a file Banager could not read.
             let expected = if protected_place {
-                Vec::new()
+                vec![Warning::ShellConfigUnread {
+                    path: "~/.zshrc".to_string(),
+                }]
             } else {
                 vec![Warning::LeavesShellConfigLine {
                     path: "~/.zshrc".to_string(),

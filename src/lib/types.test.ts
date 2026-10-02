@@ -491,6 +491,16 @@ describe("types", () => {
     expect(JSON.stringify([autoremoves, periodicCleanup, cleanupAutoremoves])).toBe(
       '["HomebrewAutoremoves","HomebrewPeriodicCleanup","HomebrewCleanupAutoremoves"]',
     );
+    // z1's review: the same when a brew.env in a protected place wasn't
+    // read, and a startup file rustup's preview could not read. Pinned
+    // against the same Rust test.
+    const may: Warning[] = ["HomebrewMayAutoremove", "HomebrewMayCleanUp", "HomebrewCleanupMayAutoremove"];
+    expect(JSON.stringify(may)).toBe(
+      '["HomebrewMayAutoremove","HomebrewMayCleanUp","HomebrewCleanupMayAutoremove"]',
+    );
+    const shellConfigUnread: Warning = { ShellConfigUnread: { path: "~/.zshrc" } };
+    expect(JSON.stringify(shellConfigUnread)).toBe('{"ShellConfigUnread":{"path":"~/.zshrc"}}');
+    expect(roundTrip(shellConfigUnread)).toEqual(shellConfigUnread);
     // Round 5: what HOMEBREW_NO_CLEANUP_FORMULAE leaves out of them.
     const noCleanup: Warning = {
       HomebrewNoCleanupFormulae: { names: ["python@3.13"], old_versions: true, autoremove: false },

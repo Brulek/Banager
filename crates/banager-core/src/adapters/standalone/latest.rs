@@ -86,16 +86,21 @@ pub fn claude_channel_from_json(json: &str) -> &'static str {
 
 /// `claude_channel_from_json` over `<home>/.claude/settings.json`, the one
 /// file Banager reads for Claude Code (`docs/what-we-run.md`, "Files
-/// Banager reads"): read-only, and `latest` when it cannot be read.
-pub fn claude_channel(home: &Path) -> &'static str {
+/// Banager reads"): read-only, and `latest` when it cannot be read --
+/// Claude Code's own default, which it follows too when it cannot read
+/// the file. `None` when the file is in, or reached through, a protected
+/// place (a `~/.claude` kept in iCloud Drive): Banager does not read it
+/// there, Claude Code does, and which channel it names is not known.
+pub fn claude_channel(home: &Path) -> Option<&'static str> {
     // Bounded (`read_file`): a named pipe there is not waited on, and a
     // `~/.claude` kept in a protected place is not read.
     match crate::adapters::read_file::read_text(
         &home.join(".claude").join("settings.json"),
         &crate::protected::Protected::new(home),
     ) {
-        Ok(json) => claude_channel_from_json(&json),
-        Err(_) => CHANNEL_LATEST,
+        Ok(json) => Some(claude_channel_from_json(&json)),
+        Err(error) if crate::protected::look::is_protected(&error) => None,
+        Err(_) => Some(CHANNEL_LATEST),
     }
 }
 
@@ -275,7 +280,10 @@ mod tests {
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         make_fifo(&home.join(".claude").join("settings.json"));
         let read = home.clone();
-        assert_eq!(finishes(move || claude_channel(&read)), CHANNEL_LATEST);
+        assert_eq!(
+            finishes(move || claude_channel(&read)),
+            Some(CHANNEL_LATEST)
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -464,7 +472,7 @@ mod tests {
         std::fs::create_dir_all(home.join(".claude")).expect("create .claude");
         assert_eq!(
             claude_channel(&home),
-            CHANNEL_LATEST,
+            Some(CHANNEL_LATEST),
             "no settings.json yet"
         );
         std::fs::write(
@@ -472,21 +480,22 @@ mod tests {
             r#"{"autoUpdatesChannel":"stable"}"#,
         )
         .expect("write settings.json");
-        assert_eq!(claude_channel(&home), CHANNEL_STABLE);
+        assert_eq!(claude_channel(&home), Some(CHANNEL_STABLE));
         let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
     fn test_claude_channel_never_reads_a_settings_file_kept_in_a_protected_place() {
         // `~/.claude` a link into `~/Documents` or iCloud Drive: its
-        // settings are not read there, and the channel is the default, as
-        // for a file Banager cannot read. Kept anywhere else, it is read.
+        // settings are not read there, and the channel is not known --
+        // not taken as the default, since Claude Code reads the file and
+        // may follow `stable`. Kept anywhere else, it is read.
         for (keep, expected) in [
-            ("claude-settings", CHANNEL_STABLE),
-            ("Documents/claude-settings", CHANNEL_LATEST),
+            ("claude-settings", Some(CHANNEL_STABLE)),
+            ("Documents/claude-settings", None),
             (
                 "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
-                CHANNEL_LATEST,
+                None,
             ),
         ] {
             let raw = std::env::temp_dir().join(format!(

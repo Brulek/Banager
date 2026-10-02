@@ -257,6 +257,12 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.homebrewPeriodicCleanup";
       case "HomebrewCleanupAutoremoves":
         return "warnings.homebrewCleanupAutoremoves";
+      case "HomebrewMayAutoremove":
+        return "unreadInProtectedPlace.homebrewMayAutoremove";
+      case "HomebrewMayCleanUp":
+        return "unreadInProtectedPlace.homebrewMayCleanUp";
+      case "HomebrewCleanupMayAutoremove":
+        return "unreadInProtectedPlace.homebrewCleanupMayAutoremove";
       default: {
         const unhandled: never = warning;
         return unhandled;
@@ -285,6 +291,7 @@ export function warningKey(warning: Warning): string | null {
       ? "warnings.leavesShellConfigLine"
       : "warnings.leavesShellConfigLineMaybe";
   }
+  if ("ShellConfigUnread" in warning) return "unreadInProtectedPlace.shellConfigUnread";
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrust";
   if ("HomebrewNoCleanupFormulae" in warning) {
     const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
@@ -334,6 +341,7 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
     return { count: names.length, names: names.join(separator) };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
+  if ("ShellConfigUnread" in warning) return { path: warning.ShellConfigUnread.path };
   if ("HomebrewForgetsTrust" in warning) return { name: warning.HomebrewForgetsTrust.name };
   if ("HomebrewNoCleanupFormulae" in warning) {
     const names = warning.HomebrewNoCleanupFormulae.names;
@@ -428,6 +436,12 @@ export function warningDetailKey(warning: Warning): string | null {
         return "warnings.homebrewPeriodicCleanupDetail";
       case "HomebrewCleanupAutoremoves":
         return "warnings.homebrewCleanupAutoremovesDetail";
+      case "HomebrewMayAutoremove":
+        return "unreadInProtectedPlace.homebrewMayAutoremoveDetail";
+      case "HomebrewMayCleanUp":
+        return "unreadInProtectedPlace.homebrewMayCleanUpDetail";
+      case "HomebrewCleanupMayAutoremove":
+        return "unreadInProtectedPlace.homebrewCleanupMayAutoremoveDetail";
       case "DependentsUnknown":
       case "CompilesLocally":
       case "DownloadsModelChanges":
@@ -460,6 +474,7 @@ export function warningDetailKey(warning: Warning): string | null {
       ? "warnings.leavesShellConfigLineDetail"
       : "warnings.leavesShellConfigLineMaybeDetail";
   }
+  if ("ShellConfigUnread" in warning) return "unreadInProtectedPlace.shellConfigUnreadDetail";
   if (
     "WouldBreak" in warning ||
     "NeededBySource" in warning ||
@@ -512,6 +527,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
     "CaskUninstallStep" in warning ||
@@ -557,6 +573,9 @@ export function deletesForGood(warning: Warning): boolean {
       case "HomebrewAutoremoves":
       case "HomebrewPeriodicCleanup":
       case "HomebrewCleanupAutoremoves":
+      case "HomebrewMayAutoremove":
+      case "HomebrewMayCleanUp":
+      case "HomebrewCleanupMayAutoremove":
         return false;
       default: {
         const unhandled: never = warning;
@@ -580,6 +599,7 @@ export function deletesForGood(warning: Warning): boolean {
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
     "UninstallScope" in warning ||
@@ -692,6 +712,9 @@ export function isCaution(warning: Warning): boolean {
       case "HomebrewAutoremoves":
       case "HomebrewPeriodicCleanup":
       case "HomebrewCleanupAutoremoves":
+      case "HomebrewMayAutoremove":
+      case "HomebrewMayCleanUp":
+      case "HomebrewCleanupMayAutoremove":
         return true;
       case "CompilesLocally":
       case "DownloadsModelChanges":
@@ -725,6 +748,7 @@ export function isCaution(warning: Warning): boolean {
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "ShellConfigUnread" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {

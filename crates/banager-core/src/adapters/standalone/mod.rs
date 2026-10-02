@@ -789,7 +789,16 @@ impl StandaloneAdapter {
                     .as_ref()
                     .map(|d| d.home.clone());
                 let channel = match home {
-                    Some(home) => latest::claude_channel(&home),
+                    Some(home) => latest::claude_channel(&home).ok_or_else(|| {
+                        // Claude Code reads its settings there; which
+                        // channel they name is not known: a row that
+                        // could not be checked, not a guess.
+                        LookupFailure::from(
+                            "~/.claude/settings.json is in a place Banager never looks into, \
+                             so which channel Claude Code updates from is not known"
+                                .to_string(),
+                        )
+                    })?,
                     None => latest::CHANNEL_LATEST,
                 };
                 let url = format!("{base}/{channel}");
@@ -2597,6 +2606,45 @@ mod tests {
             .await
             .expect("check_updates");
         assert_eq!(http.calls(), vec![LATEST_URL.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_says_it_cannot_check_when_the_settings_are_in_a_protected_place() {
+        // `~/.claude` a link into iCloud Drive or `~/Documents`, its
+        // settings naming `stable`: Banager does not read them there, and
+        // does not guess `latest` either -- the row is one it could not
+        // check, and no pointer is asked. Kept anywhere else, `stable` is.
+        for keep in [
+            "claude-settings",
+            "Documents/claude-settings",
+            "Library/Mobile Documents/com~apple~CloudDocs/claude-settings",
+        ] {
+            let home = TempHome::new("check-channel-protected");
+            let layout = claude_layout(&home, "2.1.281");
+            let settings = home.dir(keep);
+            std::fs::write(
+                settings.join("settings.json"),
+                r#"{"autoUpdatesChannel":"stable"}"#,
+            )
+            .expect("write settings");
+            home.link(".claude", &settings);
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(STABLE_URL, answer("2.1.273"));
+            http.respond(LATEST_URL, answer("2.1.290"));
+            let (adapter, inst) = refreshed_adapter(&home, &layout, http.clone()).await;
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            if keep == "claude-settings" {
+                assert!(out.candidates.is_empty(), "{keep}");
+                assert_eq!(http.calls(), vec![STABLE_URL.to_string()]);
+            } else {
+                assert_eq!(out.candidates.len(), 1, "{keep}");
+                assert!(!out.candidates[0].checkable, "{keep}");
+                assert!(http.calls().is_empty(), "{keep}: {:?}", http.calls());
+            }
+        }
     }
 
     #[tokio::test]

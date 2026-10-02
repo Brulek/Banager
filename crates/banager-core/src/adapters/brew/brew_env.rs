@@ -126,6 +126,12 @@ pub(crate) struct HomebrewSwitches {
     /// `Homebrew::EnvConfig.require_tap_trust?`: true unless
     /// `HOMEBREW_NO_REQUIRE_TAP_TRUST` is set to something not blank.
     pub(crate) require_tap_trust: bool,
+    /// Whether `no_autoremove` is false only because a file Banager does
+    /// not read may have taken `HOMEBREW_NO_AUTOREMOVE` back
+    /// (`EnvFile::Unknown`): the preview then says "may".
+    pub(crate) autoremove_unknown: bool,
+    /// The same for `no_install_cleanup` and `HOMEBREW_NO_INSTALL_CLEANUP`.
+    pub(crate) install_cleanup_unknown: bool,
     /// `HOMEBREW_USER_CONFIG_HOME` as `bin/brew` sets it
     /// (`bin/brew:165-173`), the folder of the user's `brew.env` and of
     /// Homebrew's trust list (`Homebrew::Trust.trust_file`, `trust.rb:27-42`).
@@ -204,6 +210,8 @@ pub(crate) fn after_brew_env(
             Vec::new()
         },
         require_tap_trust: !known(NO_REQUIRE_TAP_TRUST) || !present(vars.get(NO_REQUIRE_TAP_TRUST)),
+        autoremove_unknown: !known(NO_AUTOREMOVE),
+        install_cleanup_unknown: !known(NO_INSTALL_CLEANUP),
         user_config_home,
     }
 }
@@ -478,10 +486,13 @@ mod tests {
         )
     }
 
-    /// Every switch taken the way that says the most.
+    /// Every switch taken the way that says the most, and said to be
+    /// unknown.
     fn assume_the_worst(switches: &HomebrewSwitches) {
         assert!(!switches.no_autoremove, "{switches:?}");
         assert!(!switches.no_install_cleanup, "{switches:?}");
+        assert!(switches.autoremove_unknown, "{switches:?}");
+        assert!(switches.install_cleanup_unknown, "{switches:?}");
         assert!(switches.no_cleanup_formulae.is_empty(), "{switches:?}");
         assert!(switches.require_tap_trust, "{switches:?}");
     }
@@ -571,6 +582,8 @@ mod tests {
                 no_install_cleanup: true,
                 no_cleanup_formulae: Vec::new(),
                 require_tap_trust: true,
+                autoremove_unknown: false,
+                install_cleanup_unknown: false,
                 user_config_home: Some(PathBuf::from("/Users/someone/.homebrew")),
             }
         );

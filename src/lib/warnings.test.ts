@@ -184,6 +184,48 @@ describe("warningKey", () => {
     expect(warningKey("HomebrewCleanupAutoremoves")).toBe("warnings.homebrewCleanupAutoremoves");
   });
 
+  it("says what Homebrew may do when a brew.env in a protected place wasn't read, as a caution", () => {
+    // z1's review: a brew.env Homebrew reads, in a protected place, is
+    // not read, so whether it takes Banager's switches back isn't known --
+    // the preview says "may", never nothing, and its ⓘ says why.
+    const may: [Warning, string][] = [
+      ["HomebrewMayAutoremove", "homebrewMayAutoremove"],
+      ["HomebrewMayCleanUp", "homebrewMayCleanUp"],
+      ["HomebrewCleanupMayAutoremove", "homebrewCleanupMayAutoremove"],
+    ];
+    for (const [warning, key] of may) {
+      expect(warningKey(warning)).toBe(`unreadInProtectedPlace.${key}`);
+      expect(warningDetailKey(warning)).toBe(`unreadInProtectedPlace.${key}Detail`);
+      expect(isCaution(warning)).toBe(true);
+      expect(warningGroup(warning)).toBe("note");
+      expect(deletesForGood(warning)).toBe(false);
+    }
+    expect(en.unreadInProtectedPlace.homebrewMayAutoremove).toContain("may also remove");
+    expect(zhCN.unreadInProtectedPlace.homebrewMayAutoremove).toContain("可能还会删除");
+    for (const locale of [en, zhCN]) {
+      for (const [, key] of may) {
+        const detail = locale.unreadInProtectedPlace[`${key}Detail` as keyof typeof locale.unreadInProtectedPlace];
+        expect(detail).toContain("brew.env");
+      }
+      expect(locale.unreadInProtectedPlace.homebrewMayCleanUpDetail).toContain("HOMEBREW_NO_INSTALL_CLEANUP=1");
+      expect(locale.unreadInProtectedPlace.homebrewMayAutoremoveDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
+    }
+  });
+
+  it("names a startup file rustup's preview could not read, with its path, as a caution", () => {
+    const unread: Warning = { ShellConfigUnread: { path: "~/.zshrc" } };
+    expect(warningKey(unread)).toBe("unreadInProtectedPlace.shellConfigUnread");
+    expect(warningDetailKey(unread)).toBe("unreadInProtectedPlace.shellConfigUnreadDetail");
+    expect(warningArgs(unread)).toEqual({ path: "~/.zshrc" });
+    expect(isCaution(unread)).toBe(true);
+    expect(warningGroup(unread)).toBe("note");
+    expect(deletesForGood(unread)).toBe(false);
+    for (const locale of [en, zhCN]) {
+      expect(locale.unreadInProtectedPlace.shellConfigUnread).toContain("{{path}}");
+      expect(locale.unreadInProtectedPlace.shellConfigUnreadDetail).toContain("{{path}}");
+    }
+  });
+
   it("says Homebrew's clean-up runs after every install or update, and for all its software when the periodic one is due", () => {
     // Homebrew 7.0.6-70: `Cleanup.install_clean!` after every `brew
     // install` and `brew upgrade` (install.rb:326, cleanup.rb:361-389),
@@ -280,9 +322,13 @@ describe("warningKey", () => {
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+      { ShellConfigUnread: { path: "~/.zshrc" } },
       "HomebrewAutoremoves",
       "HomebrewPeriodicCleanup",
       "HomebrewCleanupAutoremoves",
+      "HomebrewMayAutoremove",
+      "HomebrewMayCleanUp",
+      "HomebrewCleanupMayAutoremove",
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
       { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
       { UninstallScope: { what: "Pipx" } },
@@ -469,9 +515,13 @@ const EVERY_VARIANT: Warning[] = [
   { DeletesCargoHome: { path: "~/.cargo" } },
   { RemovesCargoInstalled: { names: ["hexyl"] } },
   { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+  { ShellConfigUnread: { path: "~/.zshrc" } },
   "HomebrewAutoremoves",
   "HomebrewPeriodicCleanup",
   "HomebrewCleanupAutoremoves",
+  "HomebrewMayAutoremove",
+  "HomebrewMayCleanUp",
+  "HomebrewCleanupMayAutoremove",
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
@@ -588,7 +638,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(20);
+    expect(notes).toHaveLength(24);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {

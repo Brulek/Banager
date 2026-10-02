@@ -637,7 +637,11 @@ and `HOMEBREW_NO_INSTALL_CLEANUP` as unset, `HOMEBREW_NO_CLEANUP_FORMULAE`
 as naming nothing, `HOMEBREW_NO_REQUIRE_TAP_TRUST` as unset -- until a
 later file sets it outright (`brew_env::EnvFile::Unknown`); when the
 folder of the user's file hangs on such a variable, what that file sets is
-unknown too. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
+unknown too. The lines below then say what Homebrew *may* do, and why
+behind their ⓘ: that a `brew.env` Homebrew reads is in a protected
+location and was not read (`Warning::HomebrewMayAutoremove`,
+`HomebrewMayCleanUp`, `HomebrewCleanupMayAutoremove`, in place of the
+three named below). When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
 uninstall preview says that Homebrew will also remove other Homebrew
 packages that were installed only as dependencies and that nothing needs
 any more (`Warning::HomebrewAutoremoves`). When they leave
@@ -1467,7 +1471,9 @@ that number is greater than the installed one, comparing the dot-separated
 integers — the `stable` pointer is usually behind `latest`, so "different"
 would be wrong. A request that fails, answers anything but 200, or answers
 something that is not a version is listed as "could not check", never as
-an error for the source, and so is an installed version that cannot be
+an error for the source, and so is a `~/.claude/settings.json` in or
+through a protected place, which is not read (no pointer is asked: which
+channel it names is not known), and so is an installed version that cannot be
 read at that moment or cannot be compared with the published one (a
 version with a suffix such as `-beta`). Claude Code updates itself in the
 background when its own updater is on; the update listed is compared with
@@ -2040,7 +2046,12 @@ when two names lead to one file (`~/.zshrc` a link or a hard link to
 `~/.zshenv`, say, or a `ZDOTDIR` that is a link to your home) a line
 removed through one name is gone under the other, and a visit through
 each name removes one copy — and names each file that still speaks of
-Cargo's env file, under every one of those names that leads to it. The
+Cargo's env file, under every one of those names that leads to it. A
+name that is, or leads into, one of the places Banager never looks into
+(a `~/.zshrc` that Mackup keeps in iCloud Drive) is not read; rustup, which
+Banager runs, still reads and may edit it, so instead of nothing the
+preview names it as a file it could not read, whose line about Cargo is
+not known (`Warning::ShellConfigUnread`). The
 preview does not say which shells read which file, only what a shell that
 reads it will meet: "will print an error" when what is left is a line in
 the exact form rustup itself writes (in a file rustup does not edit —
@@ -2873,7 +2884,10 @@ not read (`protected::look`; How Banager runs anything, above):
   `PATH` the same way until one does or `PATH` ends;
   `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
   and discarded, only when it is a regular file of at most 16 MiB, opened
-  without waiting; a missing or unreadable file or key means `latest`).
+  without waiting; a missing or unreadable file or key means `latest`,
+  as it does to Claude Code; one in or through a protected place is not
+  read, and since Claude Code still reads it, the channel is not known and
+  the update check lists Claude Code as one it could not check).
   For an uninstall preview, when it is confirmed, and again right before
   each path is moved: `lstat` and the resolved path of each path on the
   uninstall list and of the folder it is in, the resolved home folder and

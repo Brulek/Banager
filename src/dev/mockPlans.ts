@@ -217,6 +217,9 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
         ...(cargoBins.length > 0 ? [{ RemovesCargoInstalled: { names: cargoBins } }] : []),
         "EditsShellConfig",
         { LeavesShellConfigLine: { path: "~/.zprofile", certain: false } },
+        // A `~/.zshrc` kept in iCloud Drive (Mackup): not read, so said as
+        // one whose Cargo line isn't known (z1's review).
+        { ShellConfigUnread: { path: "~/.zshrc" } },
       ];
       return {
         ...rustup,

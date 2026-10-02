@@ -685,16 +685,35 @@ impl BrewAdapter {
                 autoremove,
             })
         };
+        // "May" where a `brew.env` Banager does not read may have taken
+        // the switch back (`brew_env::EnvFile::Unknown`).
+        let autoremoves = |may, will| {
+            if switches.autoremove_unknown {
+                may
+            } else {
+                will
+            }
+        };
         match kind {
             OpKind::Uninstall if !switches.no_autoremove => {
-                let mut warnings = vec![Warning::HomebrewAutoremoves];
+                let mut warnings = vec![autoremoves(
+                    Warning::HomebrewMayAutoremove,
+                    Warning::HomebrewAutoremoves,
+                )];
                 warnings.extend(except(false, true));
                 warnings
             }
             OpKind::Install | OpKind::Upgrade if !switches.no_install_cleanup => {
-                let mut warnings = vec![Warning::HomebrewPeriodicCleanup];
+                let mut warnings = vec![if switches.install_cleanup_unknown {
+                    Warning::HomebrewMayCleanUp
+                } else {
+                    Warning::HomebrewPeriodicCleanup
+                }];
                 if !switches.no_autoremove {
-                    warnings.push(Warning::HomebrewCleanupAutoremoves);
+                    warnings.push(autoremoves(
+                        Warning::HomebrewCleanupMayAutoremove,
+                        Warning::HomebrewCleanupAutoremoves,
+                    ));
                 }
                 warnings.extend(except(true, !switches.no_autoremove));
                 warnings
@@ -5942,13 +5961,13 @@ mod plan_execute_tests {
         let unknown = read(&home);
         assert_eq!(
             BrewAdapter::switch_warnings(&unknown, OpKind::Uninstall),
-            vec![Warning::HomebrewAutoremoves]
+            vec![Warning::HomebrewMayAutoremove]
         );
         assert_eq!(
             BrewAdapter::switch_warnings(&unknown, OpKind::Upgrade),
             vec![
-                Warning::HomebrewPeriodicCleanup,
-                Warning::HomebrewCleanupAutoremoves
+                Warning::HomebrewMayCleanUp,
+                Warning::HomebrewCleanupMayAutoremove
             ]
         );
         let _ = std::fs::remove_dir_all(&home);

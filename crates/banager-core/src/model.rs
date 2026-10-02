@@ -912,6 +912,15 @@ pub enum Warning {
     /// link) share what rustup leaves in it, and each is named
     /// (`rustup::shell_config_leftovers`).
     LeavesShellConfigLine { path: String, certain: bool },
+    /// A startup file name (`path`, `$HOME` spelled `~`) that is, or leads
+    /// into, a place Banager never looks into (`protected::look`): its
+    /// lines are not read, so whether it will still speak of Cargo's env
+    /// file after rustup's cleanup is not known -- and rustup itself, which
+    /// Banager runs, reads and may edit it. Said instead of nothing, which
+    /// would read as "nothing is left" (`rustup::shell_config_leftovers`).
+    /// Read by `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
+    ShellConfigUnread { path: String },
     /// After this `brew uninstall`, formula or cask, Homebrew also runs its
     /// autoremove, which uninstalls the formulae that were installed only as
     /// dependencies and that nothing installed needs any more -- any on the
@@ -959,6 +968,20 @@ pub enum Warning {
     /// `HomebrewPeriodicCleanup`. Produced by `BrewAdapter::plan` for an
     /// `Install` or an `Upgrade`; same readers.
     HomebrewCleanupAutoremoves,
+    /// `HomebrewAutoremoves`, when Banager cannot tell: a `brew.env` file
+    /// `bin/brew` may read is in a place Banager never looks into
+    /// (`brew_env::EnvFile::Unknown`), so whether it takes
+    /// `HOMEBREW_NO_AUTOREMOVE=1` back is not known, and the preview says
+    /// what Homebrew may then do rather than nothing. In its place, from
+    /// the same producer; same readers.
+    HomebrewMayAutoremove,
+    /// `HomebrewPeriodicCleanup`, when whether `HOMEBREW_NO_INSTALL_CLEANUP=1`
+    /// is taken back is not known, for the same cause. In its place.
+    HomebrewMayCleanUp,
+    /// `HomebrewCleanupAutoremoves`, when whether `HOMEBREW_NO_AUTOREMOVE=1`
+    /// is taken back is not known, for the same cause. In its place, right
+    /// after `HomebrewPeriodicCleanup` or `HomebrewMayCleanUp`.
+    HomebrewCleanupMayAutoremove,
     /// What the lines before it say Homebrew deletes leaves out the
     /// formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names (`names`, as
     /// `brew_env::HomebrewSwitches::no_cleanup_formulae` splits it, in its
@@ -2494,6 +2517,26 @@ mod tests {
             serde_json::to_string(&Warning::HomebrewCleanupAutoremoves).unwrap(),
             r#""HomebrewCleanupAutoremoves""#
         );
+        // z1's review: the same three when a brew.env Banager does not read
+        // (in a protected place) may take the switches back, and a startup
+        // file rustup's preview could not read for the same cause.
+        for (warning, json) in [
+            (Warning::HomebrewMayAutoremove, r#""HomebrewMayAutoremove""#),
+            (Warning::HomebrewMayCleanUp, r#""HomebrewMayCleanUp""#),
+            (
+                Warning::HomebrewCleanupMayAutoremove,
+                r#""HomebrewCleanupMayAutoremove""#,
+            ),
+            (
+                Warning::ShellConfigUnread {
+                    path: "~/.zshrc".to_string(),
+                },
+                r#"{"ShellConfigUnread":{"path":"~/.zshrc"}}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&warning).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Warning>(json).unwrap(), warning);
+        }
         // Round 5: what HOMEBREW_NO_CLEANUP_FORMULAE leaves out of them.
         assert_eq!(
             serde_json::to_string(&Warning::HomebrewNoCleanupFormulae {
