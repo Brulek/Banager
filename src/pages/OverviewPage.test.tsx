@@ -615,6 +615,65 @@ describe("OverviewPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
+  it("says how many tools could not be checked in place of when the check was, and why in a row with Check Again", async () => {
+    // Walk-2 W2-1: offline, the line under 「3个工具可以更新」 said
+    // 「上次检查：刚才」 while 21 tools could not be checked, as if the
+    // check had worked, and why was folded away on the Updates page. The
+    // headline's number, what can be updated, is what it was.
+    clockJustAfterTheCheck();
+    const offline = { Message: "pip list --outdated: Failed to establish a new connection: [Errno 8] nodename nor servname provided" };
+    const certifi: ArtifactKey = { instance_id: pip.id, kind: "Package", name: "certifi" };
+    served = snapshotWith({
+      updates: [
+        candidate(formula("glib")),
+        candidate(urllib3, { checkable: false, target: "1.0.0", warnings: [offline] }),
+        candidate(certifi, { checkable: false, target: "1.0.0", warnings: [offline] }),
+        // No check will find a crate not from crates.io: not counted.
+        candidate(formula("jq"), { checkable: false, target: "1.0.0", warnings: ["NonRegistrySource"] }),
+      ],
+    });
+    const { findByRole, getByRole, container } = renderOverview();
+
+    const headline = await findByRole("heading", { level: 2, name: "1 tool can be updated" });
+    expect(headline.nextElementSibling?.textContent).toBe("2 tools couldn't be checked");
+    expect(statusRowOf(container).textContent).not.toMatch(/Checked/);
+    expect(getByRole("button", { name: "Review Updates" }).className).toContain("bg-accent");
+
+    const rows = within(getByRole("list", { name: "Needs attention" })).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("2 tools couldn't be checked: Connection failed")).toBeInTheDocument();
+    expect(
+      within(rows[0]).getByText("Some updates may not be listed. Check your internet connection, then try again."),
+    ).toBeInTheDocument();
+    expect(rows[0].querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    fireEvent.click(within(rows[0]).getByRole("button", { name: "Check Again" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+  });
+
+  it("says nothing to update only of what was checked where tools could not be, and counts them, in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      served = snapshotWith({
+        updates: [
+          candidate(urllib3, {
+            checkable: false,
+            target: "1.0.0",
+            warnings: [{ Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" }],
+          }),
+        ],
+      });
+      const { findByRole, getByRole } = renderOverview();
+
+      const headline = await findByRole("heading", { level: 2, name: "已检查的来源中没有可更新的工具" });
+      expect(headline.nextElementSibling?.textContent).toBe("1个无法在这里更新，其中1个没有检查成功");
+      const rows = within(getByRole("list", { name: "需要查看" })).getAllByRole("listitem");
+      // pip's words name no cause a person knows: none is claimed.
+      expect(within(rows[0]).getByText("1个工具没有检查成功")).toBeInTheDocument();
+      expect(within(rows[0]).getByText("可能还有更新没有列出。可以稍后点按“重新检查”再试。")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says under Nothing to update what the Updates page has instead, in its numbers, and Review updates opens it", async () => {
     // jq is pinned and urllib3's source is read-only: listed, under "Can't
     // update here". glib is never to be reminded about and gh's version is

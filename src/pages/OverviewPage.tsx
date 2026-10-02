@@ -18,6 +18,7 @@ import {
 } from "../lib/sources";
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
+import { failedLookupsNotice, failedLookupsOf } from "../lib/failedLookups";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings } from "../lib/types";
 import { useUiStore } from "../store/ui";
@@ -35,8 +36,13 @@ import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
 
-/** The status's title. A `switch` with no default, so a new summary without words here fails `tsc`. */
-function headlineText(t: Translate, summary: UpdatesSummary): string {
+/**
+ * The status's title. A `switch` with no default, so a new summary without
+ * words here fails `tsc`. Nothing to update says "in the sources checked"
+ * where a source was not checked in full, and where tools could not be
+ * looked up (`lookupsFailed`): either way, no update listed is no news.
+ */
+function headlineText(t: Translate, summary: UpdatesSummary, lookupsFailed: number): string {
   switch (summary.kind) {
     case "updates":
       return t("overview.updatesAvailable", { count: summary.actionable.length });
@@ -45,7 +51,9 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
     case "updating":
       return t("overview.updating", { count: summary.count });
     case "nothingToUpdate":
-      return summary.everyChecked ? t("overview.nothingToUpdate") : t("overview.nothingToUpdateChecked");
+      return summary.everyChecked && lookupsFailed === 0
+        ? t("overview.nothingToUpdate")
+        : t("overview.nothingToUpdateChecked");
   }
 }
 
@@ -73,12 +81,14 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
  * The Updates page lists no hidden update, and Settings lists them all,
  * under 「已跳过的版本」 and 「不再提醒的工具」: their count is the way
  * there (`showHidden`), a link in the line -- the one link on the page.
- * The rest of it is text.
+ * The rest of it is text: of those it can't update here, how many it
+ * could not look up (`lookupsFailed`), as that page's fold says them.
  */
 function nothingToUpdateLine(
   t: Translate,
   summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" }>,
   showHidden: () => void,
+  lookupsFailed: number,
 ): ReactNode {
   const parts: ReactNode[] = [];
   if (summary.hidden > 0) {
@@ -89,7 +99,11 @@ function nothingToUpdateLine(
     );
   }
   if (summary.cantUpdateHere > 0) {
-    parts.push(t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }));
+    parts.push(
+      lookupsFailed > 0
+        ? t("overview.cantUpdateHereUncheckedCount", { number: summary.cantUpdateHere, unchecked: lookupsFailed })
+        : t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }),
+    );
   }
   if (parts.length === 0) return null;
   return parts.map((part, index) => (
@@ -378,7 +392,11 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * program that runs instead), with its own button (`ProblemRow`) -- the
  * warnings first, the notes folded into one row after them
  * (`ProblemsGroup`). The checks that did not finish this round are its
- * first row (`unfinishedChecksNotice`), as they are the lists' first line. What a source lets Banager do at all,
+ * first row (`unfinishedChecksNotice`), as they are the lists' first line;
+ * then the tools the check could not look up (`failedLookupsNotice`), how
+ * many and why, with Check Again -- and the status's line says how many in
+ * place of when the check was, which alone read as a check that had
+ * worked (walk-2 W2-1). What a source lets Banager do at all,
  * pip being read-only, is not news here; both lists say it on each of its
  * rows. The sources themselves are in the sidebar.
  */
@@ -442,8 +460,13 @@ export function OverviewPage() {
   // warning, or else its first notice: a warning must not fold away with
   // the notes (`ProblemsGroup`) behind one of its own.
   const unfinished = unfinishedChecksNotice(t, snapshot.errors, snapshot.instances);
+  // The tools this check could not look up, as the Updates page counts
+  // them: never in the headline's number, which is what can be updated.
+  const lookupsFailed = failedLookupsOf(snapshot.updates, settings);
+  const lookups = failedLookupsNotice(t, lookupsFailed);
   const problems: SourceNoticeSpec[] = [
     ...(unfinished === null ? [] : [unfinished]),
+    ...(lookups === null ? [] : [lookups]),
     ...snapshot.instances.flatMap((instance) => {
       const notices = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
       const notice = notices.find((each) => each.variant === "warning") ?? notices[0];
@@ -493,9 +516,12 @@ export function OverviewPage() {
       </>
     );
   } else if (summary.kind === "nothingToUpdate") {
-    line = nothingToUpdateLine(t, summary, showHiddenUpdates) ?? lastChecked;
+    line = nothingToUpdateLine(t, summary, showHiddenUpdates, lookupsFailed.length) ?? lastChecked;
   } else if (summary.kind !== "updating") {
-    line = lastChecked;
+    // Not when the check was, where part of it failed: 「上次检查：刚才」
+    // alone read as a check that had worked.
+    line =
+      lookupsFailed.length > 0 ? t("updates.lookupsFailedTitle", { count: lookupsFailed.length }) : lastChecked;
   }
 
   const checkAgainButton = (kind: "grey" | "default") => (
@@ -553,7 +579,7 @@ export function OverviewPage() {
             ? t("header.checkFailed")
             : found !== null
               ? t(NOTHING_FOUND_KEYS[found].title)
-              : headlineText(t, summary)
+              : headlineText(t, summary, lookupsFailed.length)
         }
         line={line}
         button={button}

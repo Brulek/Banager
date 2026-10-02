@@ -63,6 +63,7 @@ import {
   updateVersionColumn,
 } from "../components/updateDetails";
 import { FAILURE_CAUSE_KEYS, type FailureCause } from "../lib/failureCause";
+import { failedLookupsNotice, isFailedLookup } from "../lib/failedLookups";
 import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
@@ -180,7 +181,7 @@ type ListItem =
   | { type: "showEmpty" }
   | { type: "justUpdated"; count: number }
   | { type: "update"; candidate: UpdateCandidate; updatable: boolean }
-  | { type: "section"; count: number; expanded: boolean }
+  | { type: "section"; count: number; unchecked: number; expanded: boolean }
   | { type: "summary"; count: number; cause: FailureCause | null };
 
 /**
@@ -239,9 +240,22 @@ function hairlineBefore(next: ListItem): boolean {
  * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png),
  * on the rows' grid, as the notices over them are: the triangle centred in
  * the avatars' column, the words where the names start. One of the rows
- * ↑ and ↓ move between, Space or Enter opening it.
+ * ↑ and ↓ move between, Space or Enter opening it. Where some of them are
+ * tools the check could not look up (`unchecked`, `isFailedLookup`), it
+ * says how many, folded or not: folded, they read as tools Banager can't
+ * manage, not as a check that failed (walk-2 W2-1).
  */
-function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
+function CantUpdateHere({
+  count,
+  unchecked,
+  expanded,
+  onToggle,
+}: {
+  count: number;
+  unchecked: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const { t } = useTranslation();
   const roving = useRovingRow();
   return (
@@ -261,7 +275,9 @@ function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded
         />
       </span>
       <span className={`min-w-0 truncate ${NOTICE_GRID.checkbox.gap}`}>
-        {t("updates.cantUpdateHere", { number: count })}
+        {unchecked > 0
+          ? t("updates.cantUpdateHereUnchecked", { number: count, unchecked })
+          : t("updates.cantUpdateHere", { number: count })}
       </span>
     </button>
   );
@@ -615,12 +631,18 @@ export function UpdatesPage() {
   //
   // First, the checks that did not finish this round, if any
   // (`unfinishedChecksNotice`): a line like the others, once a band of
-  // its own over the page.
+  // its own over the page. Then the tools this check could not look up
+  // (`failedLookupsNotice`): how many and why, up front with Check Again,
+  // not only under the fold of "Can't update here" (walk-2 W2-1) -- of
+  // every row listed, whatever the 「显示」 popup shows, as it is about the
+  // check.
   const notices = useMemo(() => {
     const installed = installedCountByInstance(snapshot?.artifacts ?? []);
     const unfinished = snapshot ? unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) : null;
+    const lookups = failedLookupsNotice(t, visibleUpdates.filter(isFailedLookup));
     return [
       ...(unfinished === null ? [] : [unfinished]),
+      ...(lookups === null ? [] : [lookups]),
       ...(snapshot?.instances ?? []).flatMap((instance) =>
         sourceNoticesFor(instance, sourceLabelFor(instance.id), installed.get(instance.id) ?? 0),
       ),
@@ -670,7 +692,14 @@ export function UpdatesPage() {
         ? [{ type: "showEmpty" } as const]
         : []),
       ...(otherRows.length > 0
-        ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
+        ? [
+            {
+              type: "section",
+              count: otherRows.length,
+              unchecked: otherRows.filter(isFailedLookup).length,
+              expanded: showCantUpdate,
+            } as const,
+          ]
         : []),
       ...(showCantUpdate && hiddenReasonCount > 0
         ? [{ type: "summary", count: hiddenReasonCount, cause: hiddenReasonCause } as const]
@@ -1260,6 +1289,7 @@ export function UpdatesPage() {
           ) : item.type === "section" ? (
             <CantUpdateHere
               count={item.count}
+              unchecked={item.unchecked}
               expanded={item.expanded}
               onToggle={() => setShowCantUpdate((shown) => !shown)}
             />

@@ -305,7 +305,7 @@ async function findRow(name: string): Promise<HTMLElement> {
 
 // Unfolds "N more can't be updated here".
 async function showCantUpdate() {
-  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here$/ });
+  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here(, including \d+ that couldn't be checked)?$/ });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(toggle);
 }
@@ -1475,7 +1475,7 @@ describe("UpdatesPage", () => {
     }));
     const { findByText, queryAllByText } = renderPage();
 
-    await findByText("70 more can't be updated here");
+    await findByText("70 more can't be updated here, including 70 that couldn't be checked");
     await showCantUpdate();
     const summary = queryAllByText(/70 tools couldn't be checked for updates/);
     expect(summary).toHaveLength(1);
@@ -1500,7 +1500,7 @@ describe("UpdatesPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderPage();
-      fireEvent.click(await findByText("另有2个无法在这里更新"));
+      fireEvent.click(await findByText("另有2个无法在这里更新，其中2个没有检查成功"));
       expect((await findByText(/^2个工具无法检查更新。/)).textContent).toBe(
         "2个工具无法检查更新。网络连接失败，请检查网络连接后重试。",
       );
@@ -2442,7 +2442,7 @@ describe("UpdatesPage", () => {
       const { queryByRole } = renderPage();
 
       await findRow("glib");
-      expect(queryByRole("button", { name: /^\d+ more can't be updated here$/ })).toBeNull();
+      expect(queryByRole("button", { name: /^\d+ more can't be updated here(, including \d+ that couldn't be checked)?$/ })).toBeNull();
     });
   });
 
@@ -4050,6 +4050,84 @@ describe("UpdatesPage", () => {
       expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
     });
 
+    it("says up front how many tools could not be checked and why, with Check Again, and counts them in the fold", async () => {
+      // Walk-2 W2-1: offline, the rows that could not be checked sat under
+      // the folded 「另有N个无法在这里更新」, read as tools Banager can't
+      // manage, while the page looked like a check that had worked. A git
+      // crate no check will find is not one of them, nor one the user hid;
+      // and nothing changes what can be updated.
+      const offline = (name: string) => ({
+        key: { instance_id: "npm:/usr/local", kind: "Package" as const, name },
+        current: "1.0.0",
+        target: "1.0.0",
+        channel: "Native" as const,
+        checkable: false,
+        warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+        blocked: null,
+      });
+      settings.ignored_updates = [offline("hidden").key];
+      updates = [
+        snapshot.updates[0],
+        offline("typescript"),
+        offline("prettier"),
+        offline("hidden"),
+        { key: myForkKey, current: "0.1.0", target: "0.1.0", channel: "Registry", checkable: false, warnings: ["NonRegistrySource"], blocked: null },
+      ];
+      const { getByRole, findByText } = renderPage();
+
+      const title = await findByText("2 tools couldn't be checked: Connection failed");
+      const line = title.closest("[data-notice-line]") as HTMLElement;
+      // The list's first row, folded or not.
+      expect(slotOf(title)).toBe(0);
+      expect(line.querySelector("[data-notice-symbol] svg")?.getAttribute("class")).toContain("text-warning");
+      const details = within(line).getByRole("button", {
+        name: "Details: 2 tools couldn't be checked: Connection failed",
+      });
+      fireEvent.click(details);
+      expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "Some updates may not be listed. Check your internet connection, then try again.",
+      );
+      mockInvoke.mockClear();
+      fireEvent.click(within(line).getByRole("button", { name: "Check Again" }));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+      // The fold says how many of its rows are these.
+      expect(
+        getByRole("button", { name: "3 more can't be updated here, including 2 that couldn't be checked" }),
+      ).toHaveAttribute("aria-expanded", "false");
+      // What can be updated is what it was.
+      expect(await findByText("1 update available")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Update All" })).toBeEnabled();
+    });
+
+    it("names no cause in the line when the tools' words give none, and says to check again later", async () => {
+      updates = [
+        {
+          key: myForkKey,
+          current: "0.1.0",
+          target: "0.1.0",
+          channel: "Registry",
+          checkable: false,
+          warnings: [{ Message: "crates.io request failed: status 500" }],
+          blocked: null,
+        },
+      ];
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { findByText, getByRole } = renderPage();
+        const title = await findByText("1个工具没有检查成功");
+        const line = title.closest("[data-notice-line]") as HTMLElement;
+        const details = within(line).getByRole("button", { name: /1个工具没有检查成功/ });
+        fireEvent.click(details);
+        expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+          "可能还有更新没有列出。可以稍后点按“重新检查”再试。",
+        );
+        expect(getByRole("button", { name: "另有1个无法在这里更新，其中1个没有检查成功" })).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
     it("does not say a silent source's check did not finish: its own line says it did not answer", async () => {
       // `refresh` carries a silent source's errors forward while an
       // operation holds it.
@@ -4313,7 +4391,7 @@ describe("UpdatesPage", () => {
     const { findByText, container } = renderPage();
 
     // The list still knows how long it is.
-    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
+    expect(await findByText("400 more can't be updated here, including 400 that couldn't be checked")).toBeInTheDocument();
     await showCantUpdate();
     await findRow("pkg-000");
     const drawn = container.querySelectorAll("[data-index]").length;
