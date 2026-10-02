@@ -374,9 +374,10 @@ export function UnknownPage() {
   const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
   const listWidth = useElementWidth(listBox);
   // Too narrow for a path and the app a link points into on one line, the
-  // path gives way to it (`ToolRow`'s `descriptionNote`), down to the
-  // narrowest window's list; only beside the inspector does the app give
-  // way, the row's tooltip saying it at more length.
+  // note gives way to the path, cut short with its words in its own
+  // tooltip (`ToolRow`'s `descriptionNote`; walk-3 W3-8), down to the
+  // narrowest window's list; only beside the inspector is the note left
+  // out, the row's tooltip saying what it can at more length.
   const fit = rowFitFor(listWidth);
   const roomForNote = fit === "full" || fit === "compact" || fit === "narrow";
   // The headings over the size and the date where the rows draw those

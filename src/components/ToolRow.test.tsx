@@ -317,6 +317,8 @@ describe("ToolRow", () => {
     expect(atRest(path.className)).toEqual(expect.arrayContaining(["max-w-[70%]", "shrink-0", "truncate"]));
     expect(atRest(note.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
     expect(atRest(note.className)).not.toContain("shrink-0");
+    // Cut short, its whole words are its tooltip, as the path's are (walk-3 review 3.2).
+    expect(note).toHaveAttribute("title", "Points into Docker.app");
     // Only the path selects; space sets the note apart, with no dot between them.
     expect([...container.querySelectorAll(".select-text")]).toEqual([path]);
     expect(note.previousElementSibling).toBe(path);

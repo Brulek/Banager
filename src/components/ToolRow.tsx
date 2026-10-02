@@ -685,9 +685,11 @@ export function ToolRow({
             {descriptionText}
             {descriptionNote !== undefined ? (
               // The note gives way to the description, cut short first: the
-              // path keeps its room, up to 70% of the line (walk-3 W3-8).
-              // Space sets the two apart, not a dot between them.
-              <span id={noteId} className="min-w-0 truncate pl-3">
+              // path keeps its room, up to 70% of the line (walk-3 W3-8),
+              // and the note's whole words are its tooltip, as the path's
+              // are (review 3.2). Space sets the two apart, not a dot
+              // between them.
+              <span id={noteId} title={descriptionNote} className="min-w-0 truncate pl-3">
                 {descriptionNote}
               </span>
             ) : null}
