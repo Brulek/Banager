@@ -147,7 +147,8 @@ every production file to this: a path looked up any other way fails it,
 but for the few its `PATH_LOOKUPS_ALLOWED` names with why -- Banager's
 own `settings.json` and `history.json`, `/` itself, the icon drawn for an
 app folder already looked at this way, the Trash call for a path just
-checked, Show in Finder of a path the scan resolved, a command's working
+checked, Show in Finder of a path the scan resolved and just found again
+this way, a command's working
 folder (no command is given one), and a debug build's look at the
 Trash.
 
@@ -2386,15 +2387,28 @@ for it. The window hands the path the scan resolved for that row
 `reveal_in_finder` command (`revealInFinder` in `src/lib/api.ts`,
 `src-tauri/src/reveal.rs`), which accepts only a path the newest scan
 handed to the window resolved, and refuses any other before anything is
-read. It passes that path to the Tauri opener plugin's
-`reveal_item_in_dir` function (tauri-plugin-opener 2.5.5, the version in
-`Cargo.lock`), which resolves it again (`realpath`) and makes one call,
-`NSWorkspace activateFileViewerSelectingURLs:`, with which Finder opens a
-window on the program's folder with the program selected. So for a link
-Finder shows the file the link points to; a broken link's is gone, and on
-its row the item is off, as it is on the row of a link into a protected
-place, which the scan did not follow. The window may call none of the
-plugin's commands itself (Network, below). Copy Path puts the path the row
+read. What a path names can change after the scan -- the program, or a
+folder on its way, replaced by a link into `~/Documents` -- so the
+command then looks the path up again as the scan did, one step at a time
+and never into or through a protected place (`protected::resolve`:
+`lstat` and `readlink` of each step, from the folder before it held
+open), and goes on only when it still leads, with no link anywhere on its
+way, to the very file the scan found there (its device and inode, which
+the scan kept in memory, `UnknownEntry.seen`, never sent to the window;
+`still_found`). Otherwise it refuses, and the page says it could not show
+it; scanning again finds what is there now. It then makes one call,
+`NSWorkspace activateFileViewerSelectingURLs:`, through AppKit directly
+(`show_in_finder`), with a file URL of that path as it is
+(`NSURL fileURLWithPath:isDirectory:`, told it is a file), with which
+Finder opens a window on the program's folder with the program selected:
+nothing resolves the path again first. So for a link Finder shows the
+file the link points to; a broken link's is gone, and on its row the item
+is off, as it is on the row of a link into a protected place, which the
+scan did not follow. The Tauri opener plugin, whose `reveal_item_in_dir`
+the command used to call, followed every link of the path again
+(`std::fs::canonicalize`) before asking Finder, into any place; it is no
+longer called. The window may call none of the plugin's commands itself
+(Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
 
@@ -3296,10 +3310,10 @@ to another address, which that policy does not stop, is refused
 plugin — the one that opens a URL or a path in another application — is
 registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
 call none of its commands: `src-tauri/capabilities/default.json` gives it
-no `opener:` permission. Banager's own `reveal_in_finder`, the Other
-Programs page's Show in Finder, calls the plugin's `reveal_item_in_dir`
-function in Rust for a path the newest scan found, which asks Finder to
-show a file and connects to nothing (Unknown-source scan, above). The
+no `opener:` permission, and nothing in Banager calls it: Banager's own
+`reveal_in_finder`, the Other Programs page's Show in Finder, asks
+Finder through AppKit to show a file the newest scan found, and connects
+to nothing (Unknown-source scan, above). The
 window cannot have it open a URL: there is no homepage link; when one
 ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint

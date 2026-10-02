@@ -53,6 +53,10 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c
 # this version as a dependency of tauri, with these features on, so no new
 # crate and no new feature enters the build -- declared, as banager-core
 # declares its own. macOS only, as the calls are.
+# `reveal::show_in_finder` makes the file URL it hands Finder
+# (`NSURL fileURLWithPath:isDirectory:`) in an `NSArray`: `NSURL` is
+# already on in Cargo.lock's build, switched on by tauri-plugin-opener
+# (with `NSArray` and `NSString`), so no new feature enters the build.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
@@ -61,6 +65,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSNotification",
     "NSOperation",
     "NSString",
+    "NSURL",
     "block2",
 ] }
 # `notify::app_active` asks macOS whether Banager is the app in front
@@ -73,12 +78,18 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # `NSApplicationTerminateReply`. Already in Cargo.lock at this version as
 # a dependency of tauri, with these features on -- tao switches on
 # `NSResponder` -- so no new crate and no new feature enters the build.
+# `reveal::show_in_finder` asks Finder to show a file
+# (`NSWorkspace activateFileViewerSelectingURLs:`), the one call the opener
+# plugin's `reveal_item_in_dir` made, without the plugin resolving the path
+# again first; `NSWorkspace` is already on, switched on by
+# tauri-plugin-opener, so no new feature enters the build either.
 # macOS only, as the calls are.
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
     "NSApplication",
     "NSResponder",
     "NSRunningApplication",
+    "NSWorkspace",
 ] }
 # `quit::guard_quitting` adds `applicationShouldTerminate:` to the class of
 # AppKit's application delegate (`objc2::ffi::class_addMethod`), and its

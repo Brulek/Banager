@@ -220,6 +220,46 @@ fn test_a_two_hop_symlink_resolves_to_its_final_target() {
 }
 
 #[test]
+fn test_each_resolved_path_keeps_which_file_the_scan_found_there_and_never_sends_it() {
+    // What Show in Finder checks the path against before Finder is asked
+    // (`UnknownEntry::seen`): the file at `resolved` -- a link's target,
+    // not the link -- by its device and inode. Absent where `resolved` is,
+    // and never in what the window is sent.
+    let home = Home::new("identity");
+    let bin = home.dir("bin");
+    let lib = home.dir("lib");
+    let file = exe(&bin, "a-file", b"binary");
+    let target = exe(&lib, "target", b"binary");
+    link(&bin, "b-link", &target);
+    link(&bin, "c-broken", Path::new("/nonexistent/tool"));
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+    assert_eq!(scan.entries.len(), 3, "{:?}", scan.entries);
+    let seen = |index: usize| {
+        let entry = &scan.entries[index];
+        entry.seen.map(|stat| (stat.dev(), stat.ino()))
+    };
+    let of = |path: &Path| {
+        let meta = fs::metadata(path).unwrap();
+        Some((meta.dev(), meta.ino()))
+    };
+    assert_eq!(seen(0), of(&file));
+    assert_eq!(seen(1), of(&target));
+    assert_eq!(scan.entries[2].resolved, None);
+    assert_eq!(seen(2), None);
+    let json = serde_json::to_string(&scan).unwrap();
+    assert!(!json.contains(r#""seen""#), "{json}");
+    let back: banager_core::scan::UnknownScan = serde_json::from_str(&json).unwrap();
+    assert!(back.entries.iter().all(|entry| entry.seen.is_none()));
+}
+
+#[test]
 fn test_skips_subdirectories_files_without_an_execute_bit_and_links_to_directories() {
     let home = Home::new("skips");
     let bin = home.dir(".local/bin");

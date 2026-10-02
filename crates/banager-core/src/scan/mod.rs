@@ -40,7 +40,7 @@
 //! deviation).
 
 use crate::commands;
-use crate::dirfd::Dir;
+use crate::dirfd::{Dir, Stat};
 use crate::model::{ArtifactKind, InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};
 use crate::protected::{self, Protected, Resolution};
 use crate::runner::HostEnv;
@@ -211,6 +211,16 @@ pub struct UnknownEntry {
     /// only path a broken link has), then on the entry's path. Renders
     /// "Part of {{app}}".
     pub app_bundle: Option<String>,
+    /// What `fstatat` said, during the scan, of the file at `resolved`:
+    /// its device and inode (`Stat::same_as`) tell that very file from any
+    /// put at the same path since. Show in Finder checks the path still
+    /// leads, with no link on the way, to it before Finder is asked
+    /// (`src-tauri/src/reveal.rs`). `Some` exactly when `resolved` is.
+    /// Kept in memory only, never sent to the window (`serde(skip)`): a
+    /// scan read back from JSON has none, and so nothing Show in Finder
+    /// would show.
+    #[serde(skip)]
+    pub seen: Option<Stat>,
 }
 
 /// The result of one scan. Not the `Snapshot`'s: produced on demand by
@@ -950,6 +960,7 @@ fn examine(
             modified_at,
             owned_by_me: lstat.uid() == env.euid,
             app_bundle,
+            seen: meta,
         },
         leads,
     })
@@ -1181,6 +1192,7 @@ mod tests {
                 modified_at: None,
                 owned_by_me: true,
                 app_bundle: Some("Removed".to_string()),
+                seen: None,
             }],
             attributed: 4,
             stopped: None,

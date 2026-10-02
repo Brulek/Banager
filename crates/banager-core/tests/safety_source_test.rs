@@ -667,8 +667,8 @@ const PATH_LOOKUPS_ALLOWED: [(&str, &str, &str); 14] = [
     ),
     (
         "src-tauri/src/reveal.rs:",
-        "tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())",
-        "Show in Finder of a path the newest scan resolved outside every protected place (`Revealable`); the plugin resolves it again",
+        "let url = NSURL::fileURLWithPath_isDirectory(&NSString::from_str(path), false);",
+        "Show in Finder's URL of a path the newest scan resolved, just found again one step at a time, outside every protected place and with no link on its way, to be the very file the scan found there (`still_found`); nothing resolves it again before Finder is asked",
     ),
     (
         "crates/banager-core/src/icon/real.rs:",

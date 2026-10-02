@@ -110,11 +110,12 @@ export function scanUnknown(): Promise<UnknownScan> {
  * Has Finder show `path` -- a Finder window on its folder, with it
  * selected -- for the Unknown page's Show in Finder, through Banager's own
  * `reveal_in_finder` (src-tauri/src/reveal.rs): only a path the newest
- * `scan_unknown` resolved (`UnknownEntry.resolved`), refused otherwise as
- * `not_revealable`; the opener plugin then resolves it, every link
- * followed, and asks macOS for that and nothing else (`NSWorkspace
+ * `scan_unknown` resolved (`UnknownEntry.resolved`) and that still leads,
+ * with no link on its way and outside every protected place, to the file
+ * the scan found there; refused otherwise as `not_revealable`. Then it
+ * asks macOS for that path and nothing else (`NSWorkspace
  * activateFileViewerSelectingURLs:`): no command runs. The window is given
- * no command of the plugin's own, which would show any path at all.
+ * no command of the opener plugin's own, which would show any path at all.
  */
 export function revealInFinder(path: string): Promise<void> {
   return call<void>("reveal_in_finder", { path });
