@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import type { OpSummary, Outcome } from "../lib/types";
 import { BUTTON } from "./ui/controls";
@@ -383,6 +384,21 @@ describe("LogDrawer", () => {
       }
       act(() => useUiStore.getState().setDrawerOpen(true));
     }
+  });
+
+  it("turns its Close into Done in place, in the sheet already open, as the operation ends (walk-3 review 5.2)", async () => {
+    const { findByRole, queryClient } = renderWithProviders(<LogDrawer />);
+    const dialog = await findByRole("dialog", { name: "jq" });
+    const button = within(dialog).getByRole("button", { name: "Close" });
+
+    operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+
+    // The same open sheet and the same button: only its word changed.
+    await waitFor(() => expect(button).toHaveTextContent(/^Done$/));
+    expect(within(dialog).queryByRole("button", { name: "Close" })).toBeNull();
+    expect(within(dialog).getByText("Installed")).toBeInTheDocument();
+    expect(useUiStore.getState().drawerOpen).toBe(true);
   });
 
   it("is simply the operation log until the list of operations has it", async () => {
