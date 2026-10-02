@@ -41,6 +41,11 @@ describe("answeredWhen", () => {
     );
     // Stamped by a clock a day ahead of this one: no 「今天」 or 「昨天」 for it.
     expect(answeredWhen(zh, seconds(new Date(2026, 9, 3, 9, 12)), NOW, "zh-CN")).toBe("10月3日09:12");
+    // Nor on the same day: at 10:00, a stamp of 12:00 is no 「今天12:00」 (k4 review, finding 3).
+    expect(answeredWhen(zh, seconds(new Date(2026, 9, 2, 12, 0)), NOW, "zh-CN")).toBe("10月2日12:00");
+    expect(answeredWhen(zh, seconds(new Date(2026, 9, 2, 10, 5)), NOW, "zh-CN")).toBe("10月2日10:05");
+    // Within the minute it is now.
+    expect(answeredWhen(zh, seconds(new Date(2026, 9, 2, 10, 0, 30)), NOW, "zh-CN")).toBe("今天10:00");
   });
 });
 
