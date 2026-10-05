@@ -404,6 +404,34 @@ it("prefers Traditional Chinese, then Simplified Chinese, then English per missi
   expect(lookup(key(BREW, "Formula", "git"), "brew")).toBeNull();
 });
 
+it("gives no fallback line while the Traditional Chinese table is still on its way", async () => {
+  // The three tables are read at once; Simplified Chinese and English
+  // arrive first. A row must not show their lines for a moment and then
+  // switch: until its own table is in, it gets no line at all.
+  let arrive: (lines: Record<string, string>) => void = () => {};
+  const traditional = new Promise<Record<string, string>>((resolve) => {
+    arrive = resolve;
+  });
+  renderWithProviders(<Probe />, {
+    toolDescriptions: {
+      "zh-Hant": lazyDescriptionTable(() => traditional),
+      "zh-CN": lazyDescriptionTable(async () => ({ "brew:git": "简体", "brew:python": "解释型编程语言" })),
+      en: lazyDescriptionTable(async () => ({ "npm:prettier": "Code formatter" })),
+    },
+  });
+  await switchTo("zh-Hant");
+  await act(async () => {});
+  expect(lookup(key(BREW, "Formula", "git"), "brew")).toBeNull();
+  expect(lookup(key(BREW, "Formula", "python@3.13"), "brew")).toBeNull();
+  expect(lookup(key(NPM, "Package", "prettier"), "npm")).toBeNull();
+
+  await act(async () => {
+    arrive({ "brew:git": "分散式版本控制系統" });
+  });
+  await waitFor(() => expect(lookup(key(BREW, "Formula", "git"), "brew")).toBe("分散式版本控制系統"));
+  expect(lookup(key(BREW, "Formula", "python@3.13"), "brew")).toBe("解释型编程语言");
+  expect(lookup(key(NPM, "Package", "prettier"), "npm")).toBe("Code formatter");
+});
 
 it.each([
   ["zh-Hant", "en"],

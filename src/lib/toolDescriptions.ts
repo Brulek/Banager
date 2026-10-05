@@ -30,7 +30,8 @@
  * into a chunk apart from the app's script, so a window never in Chinese
  * and never searched never loads the Chinese one, nor one never in English
  * and never searched the English one. Traditional Chinese also loads the
- * two fallback tables (Simplified Chinese, then English). Until
+ * two fallback tables (Simplified Chinese, then English), whose lines are
+ * given only once its own table is in. Until
  * it has arrived, a row says what it would without it: its source's
  * words, or what its source says it is (`toolDescription`,
  * src/lib/sources.ts).
@@ -176,7 +177,14 @@ function useDescriptionIn(language: string | undefined, load: boolean): Translat
   return useCallback(
     (key: ArtifactKey, adapterId: string): string | null => {
       const toolKey = toolIconKey(key, adapterId);
-      const line = toolKey === null ? null : (lines?.get(toolKey) ?? simplifiedLines?.get(toolKey) ?? englishLines?.get(toolKey) ?? null);
+      // The fallbacks wait for the window's own table: the three are read
+      // at once, and a fallback that arrives first would show a row in
+      // Simplified Chinese or English for a moment, then switch. Until the
+      // Traditional table is in, a row says what it says without one --
+      // its source's words, as in every other language before its table
+      // arrives -- and then its own line, once.
+      if (lines === null) return null;
+      const line = toolKey === null ? null : (lines.get(toolKey) ?? simplifiedLines?.get(toolKey) ?? englishLines?.get(toolKey) ?? null);
       return line !== null && (language === "zh-CN" || language === "zh-Hant") && lacksTextAutospace() ? autospace(line) : line;
     },
     [lines, simplifiedLines, englishLines, toolIconKey, language],
