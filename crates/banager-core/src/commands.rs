@@ -415,6 +415,34 @@ impl Look {
         }
     }
 
+    /// `path` spelled as `canonical` spells paths: its longest leading
+    /// part that resolves (every link on it followed, nothing protected
+    /// looked at), with the rest as written. For a path whose own end is
+    /// in or through a protected place, or could not be followed: where it
+    /// is, up to there, in the spelling an ownership root found by
+    /// `canonical` has -- a `node_modules` or `Cellar` that is itself a
+    /// link included.
+    fn canonical_spelling(&mut self, path: &Path) -> PathBuf {
+        let mut head = path.to_path_buf();
+        let mut rest: Vec<OsString> = Vec::new();
+        loop {
+            let Some(name) = head.file_name().map(|name| name.to_os_string()) else {
+                return path.to_path_buf();
+            };
+            rest.push(name);
+            if !head.pop() {
+                return path.to_path_buf();
+            }
+            if let Resolution::Found(real, _) = self.resolve(&head) {
+                let mut spelled = real;
+                for name in rest.iter().rev() {
+                    spelled.push(name);
+                }
+                return spelled;
+            }
+        }
+    }
+
     /// Whether `path` is a file a shell would run (`executable`).
     fn executable(&mut self, path: &Path) -> bool {
         match self.resolve(path) {
@@ -773,6 +801,10 @@ fn linked(
                     .map(|text| lexically_joined(&canonical_dir, &text));
                     match first_step {
                         Ok(step) => {
+                            // In the spelling `own` has: npm and Homebrew
+                            // link through `lib/node_modules` and `Cellar`
+                            // by name, either of which may be a link.
+                            let step = look.canonical_spelling(&step);
                             if let Some(index) = protected::strip_prefix_folded(&step, &own)
                                 .and_then(|inside| owner_of_link(inside, kind))
                                 .and_then(|owner| by_name.get(owner.as_str()))
@@ -1476,6 +1508,130 @@ mod tests {
         let answer = judged(&artifacts);
         assert_eq!(answer.unavailable, HashSet::from([1]));
         assert_eq!(answer.commands[0], vec![runs("jq")]);
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Astra's j2 review, finding 1: npm links through `lib/node_modules`
+    /// and Homebrew through `Cellar` by name, and either may itself be a
+    /// link (to an ordinary, readable folder). A link whose way goes on
+    /// into a protected place inside such a package or formula still marks
+    /// that one: its first step is compared in the spelling the ownership
+    /// root has. A user's own link into Documents still marks none.
+    #[test]
+    fn test_a_protected_link_is_owned_through_a_linked_node_modules_or_cellar() {
+        let raw = std::env::temp_dir().join(format!(
+            "banager-commands-unit-linked-root-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&raw).unwrap();
+        let home = std::fs::canonicalize(&raw).unwrap();
+        let exe = |rel: &str| {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let link = |rel: &str, text: &Path| {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(text, &path).unwrap();
+        };
+        let row = |id: &str, kind: ArtifactKind, name: &str| InstalledArtifact {
+            key: crate::model::ArtifactKey {
+                instance_id: id.to_string(),
+                kind,
+                name: name.to_string(),
+            },
+            display_name: name.to_string(),
+            version: "1".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+            facts: Default::default(),
+        };
+        let judged =
+            |instances: &[ManagerInstance], artifacts: &[InstalledArtifact], bin: PathBuf| {
+                let budget = CommandBudget::default();
+                let folders = read_folders(&[bin], &bin_folders(instances), &home, budget);
+                judge_with(
+                    &folders,
+                    instances,
+                    artifacts,
+                    &home,
+                    true,
+                    Look::new(&home, budget),
+                )
+                .expect("judged")
+            };
+
+        // npm: `lib/node_modules` a link to ~/packages; `foo`'s own `bin/foo`
+        // leads into Documents, `bar`'s is an ordinary file.
+        exe("packages/bar/bin/bar");
+        link("packages/foo/bin/foo", &home.join("Documents/foo"));
+        link("npm/lib/node_modules", &home.join("packages"));
+        link("npm/bin/foo", Path::new("../lib/node_modules/foo/bin/foo"));
+        link("npm/bin/bar", Path::new("../lib/node_modules/bar/bin/bar"));
+        let npm = home.join("npm");
+        let npm_id = format!("npm:{}", npm.display());
+        let instances = vec![ManagerInstance {
+            exe_path: npm.join("bin/npm"),
+            prefix: npm.clone(),
+            ..crate::testing::manager_instance("npm", &npm_id)
+        }];
+        let artifacts = vec![
+            row(&npm_id, ArtifactKind::Package, "foo"),
+            row(&npm_id, ArtifactKind::Package, "bar"),
+        ];
+        let answer = judged(&instances, &artifacts, npm.join("bin"));
+        assert_eq!(answer.unavailable, HashSet::from([0]));
+        assert!(answer.commands[0].is_empty());
+        assert_eq!(answer.commands[1], vec![runs("bar")]);
+
+        // Homebrew: `Cellar` a link to ~/cellar-real; `tool`'s
+        // `tool-config` leads into Documents; a user's script in its `bin`
+        // leads there too, first.
+        exe("cellar-real/tool/1/bin/tool");
+        link(
+            "cellar-real/tool/1/bin/tool-config",
+            &home.join("Documents/tool-config"),
+        );
+        exe("cellar-real/other/2/bin/other");
+        link("brew/Cellar", &home.join("cellar-real"));
+        link("brew/bin/tool", Path::new("../Cellar/tool/1/bin/tool"));
+        link(
+            "brew/bin/tool-config",
+            Path::new("../Cellar/tool/1/bin/tool-config"),
+        );
+        link("brew/bin/other", Path::new("../Cellar/other/2/bin/other"));
+        link(
+            "brew/bin/myscript",
+            &home.join("Documents/scripts/myscript"),
+        );
+        let brew = home.join("brew");
+        let brew_id = format!("brew:{}", brew.display());
+        let instances = vec![ManagerInstance {
+            exe_path: brew.join("bin/brew"),
+            prefix: brew.clone(),
+            ..crate::testing::manager_instance("brew", &brew_id)
+        }];
+        let artifacts = vec![
+            row(&brew_id, ArtifactKind::Formula, "tool"),
+            row(&brew_id, ArtifactKind::Formula, "other"),
+        ];
+        let answer = judged(&instances, &artifacts, brew.join("bin"));
+        assert_eq!(answer.unavailable, HashSet::from([0]));
+        assert_eq!(answer.commands[0], vec![runs("tool")]);
+        assert_eq!(answer.commands[1], vec![runs("other")]);
 
         let _ = std::fs::remove_dir_all(&home);
     }

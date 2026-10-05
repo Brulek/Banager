@@ -3177,7 +3177,11 @@ were dropped. A link in Homebrew's `bin`/`sbin` or npm's `bin` that leads
 into a protected place, or that could not be followed, marks only the
 formula or package whose folder (`Cellar/<name>`, `node_modules/<name>`)
 its own first step goes into: its text is read where it is (`readlink`,
-the step following it starts with), and nothing it names is looked at.
+the step following it starts with), and the folders on the way to where
+that step goes are followed as far as they lead outside any protected
+place — a `lib/node_modules` or `Cellar` that is itself a link, to
+compare it with the folder the formula or package is in — and nothing in
+a protected place is looked at.
 One whose first step goes anywhere else — a user's own script linked into
 Documents from `/usr/local/bin`, Homebrew's prefix on an Intel Mac — is
 no formula's or package's and marks none; one whose text cannot be read,
