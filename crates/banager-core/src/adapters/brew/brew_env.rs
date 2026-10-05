@@ -112,8 +112,18 @@ const FALSY_VALUES: [&str; 5] = ["false", "no", "off", "nil", "0"];
 /// has read the `brew.env` files.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HomebrewSwitches {
-    /// The shell tests non-empty, not Ruby boolean truth. Unknown is unsafe.
+    /// `HOMEBREW_NO_AUTO_UPDATE` as `bin/brew`'s shell tests it -- set to
+    /// anything not empty, not Ruby boolean truth (`utils/auto-update.sh`,
+    /// `[[ -z "${HOMEBREW_NO_AUTO_UPDATE}" ]] || return`): false when a
+    /// `brew.env` sets it to nothing, and when one Banager does not read
+    /// may have (`auto_update_unknown`).
     pub(crate) no_auto_update: bool,
+    /// Whether `no_auto_update` is false only because a `brew.env` file
+    /// Banager does not read (`EnvFile::Unknown`) may have set it to
+    /// nothing: the install and upgrade previews then say Homebrew "may"
+    /// update itself first, and the command runs; a known empty value
+    /// refuses it (`BrewAdapter::require_no_auto_update`).
+    pub(crate) auto_update_unknown: bool,
     /// `Homebrew::EnvConfig.no_autoremove?`: false means Homebrew
     /// autoremoves after an uninstall, and in a cleanup.
     pub(crate) no_autoremove: bool,
@@ -208,6 +218,7 @@ pub(crate) fn after_brew_env(
     let known = |name: &str| !vars.unknown(name);
     HomebrewSwitches {
         no_auto_update: known(NO_AUTO_UPDATE) && vars.non_empty(NO_AUTO_UPDATE),
+        auto_update_unknown: !known(NO_AUTO_UPDATE),
         no_autoremove: known(NO_AUTOREMOVE) && boolean_true(vars.get(NO_AUTOREMOVE)),
         no_install_cleanup: known(NO_INSTALL_CLEANUP) && present(vars.get(NO_INSTALL_CLEANUP)),
         no_cleanup_formulae: if known(NO_CLEANUP_FORMULAE) {
@@ -591,6 +602,7 @@ mod tests {
                 require_tap_trust: true,
                 autoremove_unknown: false,
                 install_cleanup_unknown: false,
+                auto_update_unknown: false,
                 user_config_home: Some(PathBuf::from("/Users/someone/.homebrew")),
             }
         );

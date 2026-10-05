@@ -185,6 +185,23 @@ describe("warningKey", () => {
     expect(warningKey("HomebrewCleanupAutoremoves")).toBe("warnings.homebrewCleanupAutoremoves");
   });
 
+  it("says Homebrew may update itself first when a brew.env in a protected place wasn't read, as a caution", () => {
+    // Opus review finding 7: such a file no longer stops every Homebrew
+    // check and update; the install or upgrade preview says "may", in z1's
+    // protected-place words, and its ⓘ says why.
+    expect(warningKey("HomebrewMayAutoUpdate")).toBe("unreadBrewEnv.homebrewMayAutoUpdate");
+    expect(warningDetailKey("HomebrewMayAutoUpdate")).toBe("unreadBrewEnv.homebrewMayAutoUpdateDetail");
+    expect(isCaution("HomebrewMayAutoUpdate")).toBe(true);
+    expect(warningGroup("HomebrewMayAutoUpdate")).toBe("note");
+    expect(deletesForGood("HomebrewMayAutoUpdate")).toBe(false);
+    for (const locale of [en, zhCN]) {
+      expect(locale.unreadBrewEnv.homebrewMayAutoUpdateDetail).toContain("HOMEBREW_NO_AUTO_UPDATE=1");
+      expect(locale.unreadBrewEnv.homebrewMayAutoUpdateDetail).toContain("brew.env");
+    }
+    expect(en.unreadBrewEnv.homebrewMayAutoUpdateDetail).toContain("is in, or points to, a protected location");
+    expect(zhCN.unreadBrewEnv.homebrewMayAutoUpdateDetail).toContain("在受保护的位置或指向那里");
+  });
+
   it("says what Homebrew may do when a brew.env in a protected place wasn't read, as a caution", () => {
     // z1's review: a brew.env Homebrew reads, in a protected place, is
     // not read, so whether it takes Banager's switches back isn't known --
@@ -343,6 +360,7 @@ describe("warningKey", () => {
       "HomebrewMayAutoremove",
       "HomebrewMayCleanUp",
       "HomebrewCleanupMayAutoremove",
+      "HomebrewMayAutoUpdate",
       { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: false, autoremove: true } },
       { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
       { UninstallScope: { what: "Pipx" } },
@@ -546,6 +564,7 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewMayAutoremove",
   "HomebrewMayCleanUp",
   "HomebrewCleanupMayAutoremove",
+  "HomebrewMayAutoUpdate",
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
@@ -662,7 +681,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(25);
+    expect(notes).toHaveLength(26);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {

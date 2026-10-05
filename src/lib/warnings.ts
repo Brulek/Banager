@@ -263,6 +263,8 @@ export function warningKey(warning: Warning): string | null {
         return "unreadInProtectedPlace.homebrewMayCleanUp";
       case "HomebrewCleanupMayAutoremove":
         return "unreadInProtectedPlace.homebrewCleanupMayAutoremove";
+      case "HomebrewMayAutoUpdate":
+        return "unreadBrewEnv.homebrewMayAutoUpdate";
       default: {
         const unhandled: never = warning;
         return unhandled;
@@ -444,6 +446,8 @@ export function warningDetailKey(warning: Warning): string | null {
         return "unreadInProtectedPlace.homebrewMayCleanUpDetail";
       case "HomebrewCleanupMayAutoremove":
         return "unreadInProtectedPlace.homebrewCleanupMayAutoremoveDetail";
+      case "HomebrewMayAutoUpdate":
+        return "unreadBrewEnv.homebrewMayAutoUpdateDetail";
       case "DependentsUnknown":
       case "CompilesLocally":
       case "DownloadsModelChanges":
@@ -580,6 +584,7 @@ export function deletesForGood(warning: Warning): boolean {
       case "HomebrewMayAutoremove":
       case "HomebrewMayCleanUp":
       case "HomebrewCleanupMayAutoremove":
+      case "HomebrewMayAutoUpdate":
         return false;
       default: {
         const unhandled: never = warning;
@@ -720,6 +725,7 @@ export function isCaution(warning: Warning): boolean {
       case "HomebrewMayAutoremove":
       case "HomebrewMayCleanUp":
       case "HomebrewCleanupMayAutoremove":
+      case "HomebrewMayAutoUpdate":
         return true;
       case "CompilesLocally":
       case "DownloadsModelChanges":

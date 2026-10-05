@@ -611,13 +611,22 @@ including `--version`, `update` and every plan:
     HOMEBREW_NO_INSTALL_CLEANUP=1
     NO_COLOR=1
 
-Before install, upgrade or outdated runs, Banager replays the `brew.env`
-files described below and requires the effective `HOMEBREW_NO_AUTO_UPDATE`
-to be known and non-empty. An empty override or an unreadable file that
-leaves this switch unknown refuses the command, so it cannot start an
-automatic update outside Banager's tracked update task. Install and
-upgrade check this both at preview and immediately before execution.
-The shell treats even `0` and `false` as non-empty here.
+Before install, upgrade or outdated runs — the commands `bin/brew` runs
+`brew update --auto-update` before (`setup-auto-update`,
+`utils/auto-update.sh`) — Banager replays the `brew.env` files described
+below. One that sets `HOMEBREW_NO_AUTO_UPDATE` to nothing refuses the
+command, so it cannot start an automatic update outside Banager's tracked
+update task, where a timeout or a Cancel could stop it halfway. Install
+and upgrade check this both at preview and immediately before execution.
+The shell treats even `0` and `false` as non-empty here. A `brew.env` in,
+or reached through, a protected place is not read, and does not refuse
+anything: the check runs, and an install's or upgrade's preview says
+first that Homebrew may update itself and its list of software before it
+starts, with why (`Warning::HomebrewMayAutoUpdate`). Such a file matters
+only if it sets the switch to nothing, and even then Homebrew updates
+only when its last fetch is more than a day old
+(`HOMEBREW_AUTO_UPDATE_SECS`), which the update a refresh runs every six
+hours (below) normally prevents.
 
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
 already set in Banager's process environment (`askpass_fn`, read per

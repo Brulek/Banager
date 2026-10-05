@@ -348,6 +348,13 @@ export type Warning =
   | "HomebrewMayCleanUp"
   | "HomebrewCleanupMayAutoremove"
   /**
+   * For the same cause, before an install or an upgrade: whether that
+   * brew.env turns Homebrew's own update back on isn't known, so the
+   * preview says Homebrew may update itself first. (One Banager read that
+   * does is refused instead.)
+   */
+  | "HomebrewMayAutoUpdate"
+  /**
    * The formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names, which the lines
    * before it leave out: their older versions (`old_versions`, after
    * `HomebrewPeriodicCleanup`), and they and what they need at run time

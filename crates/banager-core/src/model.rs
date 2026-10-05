@@ -1001,6 +1001,15 @@ pub enum Warning {
     /// the same cause: the line rests on both. In its place, right after
     /// `HomebrewPeriodicCleanup` or `HomebrewMayCleanUp`.
     HomebrewCleanupMayAutoremove,
+    /// Homebrew may update itself and its list of software before it
+    /// installs or upgrades (`brew update --auto-update`), for the same
+    /// cause: whether a `brew.env` Banager does not read sets
+    /// `HOMEBREW_NO_AUTO_UPDATE=1` back to nothing is not known. One that
+    /// Banager read and that does is refused instead
+    /// (`BrewAdapter::require_no_auto_update`). Produced by
+    /// `BrewAdapter::plan` for an `Install` or an `Upgrade`, first; read by
+    /// `warningKey` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewMayAutoUpdate,
     /// What the lines before it say Homebrew deletes leaves out the
     /// formulae `HOMEBREW_NO_CLEANUP_FORMULAE` names (`names`, as
     /// `brew_env::HomebrewSwitches::no_cleanup_formulae` splits it, in its
@@ -2578,6 +2587,7 @@ mod tests {
                 Warning::HomebrewCleanupMayAutoremove,
                 r#""HomebrewCleanupMayAutoremove""#,
             ),
+            (Warning::HomebrewMayAutoUpdate, r#""HomebrewMayAutoUpdate""#),
             (
                 Warning::ShellConfigUnread {
                     path: "~/.zshrc".to_string(),

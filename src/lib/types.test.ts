@@ -517,10 +517,16 @@ describe("types", () => {
     // z1's review: the same when a brew.env in a protected place wasn't
     // read, and a startup file rustup's preview could not read. Pinned
     // against the same Rust test.
-    const may: Warning[] = ["HomebrewMayAutoremove", "HomebrewMayCleanUp", "HomebrewCleanupMayAutoremove"];
+    const may: Warning[] = [
+      "HomebrewMayAutoremove",
+      "HomebrewMayCleanUp",
+      "HomebrewCleanupMayAutoremove",
+      "HomebrewMayAutoUpdate",
+    ];
     expect(JSON.stringify(may)).toBe(
-      '["HomebrewMayAutoremove","HomebrewMayCleanUp","HomebrewCleanupMayAutoremove"]',
+      '["HomebrewMayAutoremove","HomebrewMayCleanUp","HomebrewCleanupMayAutoremove","HomebrewMayAutoUpdate"]',
     );
+    expect(roundTrip("HomebrewMayAutoUpdate" as Warning)).toBe("HomebrewMayAutoUpdate");
     const shellConfigUnread: Warning = { ShellConfigUnread: { path: "~/.zshrc" } };
     expect(JSON.stringify(shellConfigUnread)).toBe('{"ShellConfigUnread":{"path":"~/.zshrc"}}');
     expect(roundTrip(shellConfigUnread)).toEqual(shellConfigUnread);

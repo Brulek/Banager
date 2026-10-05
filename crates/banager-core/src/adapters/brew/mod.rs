@@ -685,6 +685,17 @@ impl BrewAdapter {
                 autoremove,
             })
         };
+        // Before an install or an upgrade, where a `brew.env` Banager does
+        // not read may have set `HOMEBREW_NO_AUTO_UPDATE` to nothing
+        // (`require_no_auto_update` refuses a known one): first, as
+        // Homebrew would do it first.
+        let may_auto_update = || {
+            if switches.auto_update_unknown {
+                vec![Warning::HomebrewMayAutoUpdate]
+            } else {
+                Vec::new()
+            }
+        };
         // "May" where a `brew.env` Banager does not read may have taken
         // the switch back (`brew_env::EnvFile::Unknown`).
         let autoremoves = |may, will| {
@@ -704,11 +715,12 @@ impl BrewAdapter {
                 warnings
             }
             OpKind::Install | OpKind::Upgrade if !switches.no_install_cleanup => {
-                let mut warnings = vec![if switches.install_cleanup_unknown {
+                let mut warnings = may_auto_update();
+                warnings.push(if switches.install_cleanup_unknown {
                     Warning::HomebrewMayCleanUp
                 } else {
                     Warning::HomebrewPeriodicCleanup
-                }];
+                });
                 if !switches.no_autoremove {
                     // "May" when either switch is unknown: the line rests
                     // on both, and the "will" line's detail says a
@@ -724,6 +736,7 @@ impl BrewAdapter {
                 warnings.extend(except(true, !switches.no_autoremove));
                 warnings
             }
+            OpKind::Install | OpKind::Upgrade => may_auto_update(),
             _ => Vec::new(),
         }
     }
@@ -792,16 +805,34 @@ impl BrewAdapter {
             .await?)
     }
 
-    /// Refuse an implicit update outside the separately tracked update task.
+    /// Refuses `install`, `upgrade` and `outdated` -- the commands
+    /// `bin/brew` runs `brew update --auto-update` before
+    /// (`setup-auto-update`, `utils/auto-update.sh`) -- when a `brew.env`
+    /// Banager read sets `HOMEBREW_NO_AUTO_UPDATE` to nothing: that update
+    /// would run outside the one Banager tracks (`maybe_update`), where a
+    /// timeout or a Cancel could stop it halfway and leave Homebrew's git
+    /// checkout locked.
+    ///
+    /// A `brew.env` Banager does not read (`EnvFile::Unknown`, in or
+    /// through a protected place) is not refused, as z1 intended for it:
+    /// the install and upgrade previews say Homebrew "may" update itself
+    /// first (`Warning::HomebrewMayAutoUpdate`), and the check runs. Such a
+    /// file setting `HOMEBREW_NO_AUTO_UPDATE` to nothing is the one way it
+    /// matters -- one that sets it at all sets it to something -- and even
+    /// then Homebrew updates only when its last fetch is a day old
+    /// (`HOMEBREW_AUTO_UPDATE_SECS`), which the update a refresh runs every
+    /// six hours keeps from happening. Refusing every Homebrew check and
+    /// update for that, as the first fix did, cost every user whose
+    /// dotfiles live in iCloud Drive or Documents all of Homebrew.
     fn require_no_auto_update(
         &self,
         prefix: &Path,
         env: &[(String, String)],
     ) -> Result<(), AdapterError> {
         let switches = brew_env::after_brew_env(env, prefix, &self.env_var_fn, &self.brew_env_fn);
-        if !switches.no_auto_update {
+        if !switches.no_auto_update && !switches.auto_update_unknown {
             return Err(AdapterError::Refused(
-                "brew.env overrides HOMEBREW_NO_AUTO_UPDATE, or could not be checked; automatic Homebrew updates must be disabled for this command".into()
+                "a brew.env file sets HOMEBREW_NO_AUTO_UPDATE to nothing; Homebrew would update itself outside Banager's tracked update".into()
             ));
         }
         Ok(())
@@ -3218,11 +3249,40 @@ mod plan_execute_tests {
         assert!(zero
             .require_no_auto_update(&inst.prefix, &zero.env_vec())
             .is_ok());
+        // Opus review finding 7: a brew.env in a protected place, which
+        // Banager does not read, is not refused, as z1 intended -- every
+        // Homebrew check and update stopped for it. The check runs, and an
+        // install's or upgrade's preview says Homebrew may update itself
+        // first, in z1's protected-place words.
         let unknown = BrewAdapter::new(Arc::new(MockRunner::new()))
             .with_brew_env_fn(|_| brew_env::EnvFile::Unknown);
         assert!(unknown
             .require_no_auto_update(&inst.prefix, &unknown.env_vec())
-            .is_err());
+            .is_ok());
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".into(),
+            };
+            let plan = unknown
+                .plan(&inst, &req)
+                .await
+                .expect("planned, not refused");
+            assert_eq!(plan.warnings.first(), Some(&Warning::HomebrewMayAutoUpdate));
+        }
+        // No brew.env at all: nothing said.
+        let none = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_brew_env_fn(|_| brew_env::EnvFile::Skipped);
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".into(),
+        };
+        let plan = none.plan(&inst, &req).await.unwrap();
+        assert!(!plan.warnings.contains(&Warning::HomebrewMayAutoUpdate));
     }
 
     /// (F4 / M2) `plan` must refuse when the request's `instance_id` does not
@@ -6051,9 +6111,12 @@ mod plan_execute_tests {
             !mixed.autoremove_unknown && mixed.install_cleanup_unknown,
             "{mixed:?}"
         );
+        // The user's file, not read, may also set HOMEBREW_NO_AUTO_UPDATE to
+        // nothing: Homebrew "may" update itself first.
         assert_eq!(
             BrewAdapter::switch_warnings(&mixed, OpKind::Upgrade),
             vec![
+                Warning::HomebrewMayAutoUpdate,
                 Warning::HomebrewMayCleanUp,
                 Warning::HomebrewCleanupMayAutoremove
             ]
@@ -6077,6 +6140,7 @@ mod plan_execute_tests {
         assert_eq!(
             BrewAdapter::switch_warnings(&other, OpKind::Upgrade),
             vec![
+                Warning::HomebrewMayAutoUpdate,
                 Warning::HomebrewPeriodicCleanup,
                 Warning::HomebrewCleanupMayAutoremove
             ]
@@ -6127,6 +6191,7 @@ mod plan_execute_tests {
         assert_eq!(
             BrewAdapter::switch_warnings(&unknown, OpKind::Upgrade),
             vec![
+                Warning::HomebrewMayAutoUpdate,
                 Warning::HomebrewMayCleanUp,
                 Warning::HomebrewCleanupMayAutoremove
             ]

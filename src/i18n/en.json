@@ -542,6 +542,10 @@
     "shellConfigUnread": "{{path}} is in, or points to, a protected location and wasn't read, so whether it keeps a line that loads Cargo isn't known.",
     "shellConfigUnreadDetail": "If a terminal shows an error when it starts after uninstalling, delete the line in {{path}} that loads Cargo."
   },
+  "unreadBrewEnv": {
+    "homebrewMayAutoUpdate": "Before it starts, Homebrew may first update itself and its list of software.",
+    "homebrewMayAutoUpdateDetail": "Homebrew is run with HOMEBREW_NO_AUTO_UPDATE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known."
+  },
   "modelDownload": {
     "note": "Downloads the model files that changed, up to about\u00a0{{size}}."
   },

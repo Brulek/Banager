@@ -494,6 +494,10 @@
     "shellConfigUnread": "{{path}}在受保護的位置或指向那裡，沒有讀取，無法得知其中是否有載入Cargo的一行。",
     "shellConfigUnreadDetail": "解除安裝後，如果終端機啟動時顯示錯誤訊息，請刪除{{path}}中載入Cargo的那一行。"
   },
+  "unreadBrewEnv": {
+    "homebrewMayAutoUpdate": "開始前，Homebrew可能會先更新它自己和軟體清單。",
+    "homebrewMayAutoUpdateDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTO_UPDATE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值設成了空值。"
+  },
   "modelDownload": {
     "note": "需要下載已更改的模型檔案，最多約{{size}}。"
   },
