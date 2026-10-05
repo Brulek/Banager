@@ -638,11 +638,28 @@ describe("UnknownPage", () => {
     await waitFor(() => expect(scanCalls()).toBe(2));
   });
 
+  it("keeps the list and the line over it when a scan again fails", async () => {
+    const { findByText, findByRole, getByText, queryClient } = renderWithProviders(<UnknownPage />);
+    await findByText("standalone-tool");
+    expect(getByText(INTRO)).toBeInTheDocument();
+
+    scanFailure = "boom";
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, { ...snapshot, generation: 2 });
+    });
+
+    expect(await findByRole("alert")).toHaveTextContent("Couldn't scan. Try scanning again later.");
+    expect(getByText("standalone-tool")).toBeInTheDocument();
+    expect(getByText(INTRO)).toBeInTheDocument();
+  });
+
   it("says a scan failed and what to do, and the scan's own words only with technical details on", async () => {
     scanFailure = "boom";
     const plain = renderWithProviders(<UnknownPage />);
     expect(await plain.findByRole("alert")).toHaveTextContent("Couldn't scan. Try scanning again later.");
     expect(plain.queryByText(/boom/)).toBeNull();
+    // Nothing was listed, so no 「以下程序」 over the empty page (walk-5 W5-19).
+    expect(plain.queryByText(INTRO)).toBeNull();
     plain.unmount();
 
     settings = { ...settings, show_technical_details: true };
@@ -651,6 +668,10 @@ describe("UnknownPage", () => {
     expect(alert).toHaveTextContent("Couldn't scan: boom");
   });
 });
+
+/** `unknown.intro` in English: the line that heads the list. */
+const INTRO =
+  "Couldn't determine how these programs were installed. They're only listed here, never changed. To find out what one is, show it in Finder.";
 
 /** Opens `row`'s ⋯ menu. */
 function openMenu(row: HTMLElement): HTMLElement {

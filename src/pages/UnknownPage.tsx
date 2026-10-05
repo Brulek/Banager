@@ -437,13 +437,16 @@ export function UnknownPage() {
   return (
     <div className="flex min-h-full flex-col">
       {/* One line over the list: what these are -- 「以下程序」, so not
-          over a list with nothing in it. Scan again is in the page header
-          (`ScanAgain`), where the other pages have Check again. At its
-          right, how a row's Copy path or Show in Finder went, as the other
-          pages say how a Copy command went. */}
+          over a list with nothing in it, nor over a scan that failed before
+          it listed anything, where only its failure stands (walk-5 W5-19).
+          A failed scan again keeps the list it had, and the line over it.
+          Scan again is in the page header (`ScanAgain`), where the other
+          pages have Check again. At its right, how a row's Copy path or
+          Show in Finder went, as the other pages say how a Copy command
+          went. */}
       <div className="flex shrink-0 items-baseline gap-4 px-5 pb-2">
         <p className="min-w-0 flex-1 text-body text-muted">
-          {result !== undefined && result.entries.length === 0 ? null : t("unknown.intro")}
+          {(result === undefined ? scan.isError : result.entries.length === 0) ? null : t("unknown.intro")}
         </p>
         <p role="status" className="shrink-0 text-small text-muted">
           {notice}
