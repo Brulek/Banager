@@ -408,3 +408,96 @@ async fn test_summaries_carry_the_plans_environment_in_its_order_and_on_the_wire
     let back: banager_core::ops::OpSummary = serde_json::from_value(wire).expect("deserialize");
     assert_eq!(back, summary);
 }
+
+/// The completion notification counts a run from the backend's own
+/// records (`ReportedRuns::completed`). Records are capped, and a run
+/// longer than the cap -- or a report that arrives after enough newer
+/// operations -- has its oldest operations evicted before it is told of.
+/// An evicted operation must still be counted, and must never leave the
+/// boundary stuck so that no later run is told of until a restart.
+#[tokio::test]
+async fn regression_an_evicted_operation_never_stops_later_runs_being_told_of() {
+    use banager_core::notify_operations::{report, FinishedRun, ReportedRuns, RunKind, RunNotice};
+    use banager_core::notify_updates::Focus;
+
+    let mut manager = OperationManager::new(Arc::new(VecSink::new())).with_max_records(2);
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+    let run_of = |names: &'static [&'static str]| {
+        let (manager, adapter, inst) = (manager.clone(), adapter.clone(), inst.clone());
+        async move {
+            let mut ids = Vec::new();
+            for name in names {
+                let plan = adapter
+                    .plan(&inst, &make_request(name, "fake:1"))
+                    .await
+                    .unwrap();
+                let id = manager.submit(plan);
+                manager.wait(id).await;
+                ids.push(id);
+            }
+            ids
+        }
+    };
+    let ids = run_of(&["aaa", "bbb", "ccc"]).await;
+    assert!(
+        manager.summaries().iter().all(|s| s.id != ids[0]),
+        "the run's first operation is evicted before the run is reported"
+    );
+
+    let mut reported = ReportedRuns::default();
+    let mut posted = Vec::new();
+    let whole = reported
+        .completed(ids[2], &manager.completions_after(reported.through()))
+        .expect("a run whose first operation was evicted is still counted");
+    assert_eq!(
+        whole,
+        FinishedRun {
+            last_op: ids[2],
+            kind: RunKind::Other,
+            succeeded: 3,
+            failed: 0,
+            attention: 0,
+        }
+    );
+    assert_eq!(
+        report(&mut reported, true, Focus::Away, &whole, |run| {
+            posted.push(*run);
+            Ok(())
+        }),
+        Ok(RunNotice::Post)
+    );
+
+    // A new run, whose submission evicts the second operation too.
+    let id = run_of(&["ddd"]).await[0];
+    let next = reported
+        .completed(id, &manager.completions_after(reported.through()))
+        .expect("eviction never stops a later run being told of");
+    assert_eq!(
+        report(&mut reported, true, Focus::Away, &next, |run| {
+            posted.push(*run);
+            Ok(())
+        }),
+        Ok(RunNotice::Post)
+    );
+    assert_eq!(posted.len(), 2);
+    assert_eq!(posted[1].succeeded, 1);
+
+    // A run the page never reported, evicted before the next run ends:
+    // that next report takes it in, and is told of.
+    run_of(&["eee", "fff"]).await;
+    let last = *run_of(&["ggg"]).await.last().unwrap();
+    assert!(manager.summaries().iter().all(|s| s.id > id + 1));
+    let both = reported
+        .completed(last, &manager.completions_after(reported.through()))
+        .expect("an unreported run evicted since is counted with the next");
+    assert_eq!(both.succeeded, 3);
+    assert_eq!(
+        manager.completions_after(both.last_op).evicted.len(),
+        0,
+        "nothing accepted is kept once the boundary passes it"
+    );
+}

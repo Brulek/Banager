@@ -41,7 +41,8 @@ pub struct OperationRuns(Mutex<ReportedRuns>);
 ///
 /// The page supplies only a boundary hint. Counts and kind are derived
 /// from completed Rust records in the interval since the last accepted
-/// report, under the same mutex as reporting/deduplication.
+/// report -- with what the evicted ones left (`Session::completions_after`)
+/// -- under the same mutex as reporting/deduplication.
 #[tauri::command]
 pub async fn report_finished_run(
     app: AppHandle,
@@ -54,7 +55,8 @@ pub async fn report_finished_run(
     let title = app.package_info().name.clone();
     let reported = {
         let mut records = runs.0.lock().unwrap();
-        let Some(actual) = records.completed(run.last_op, &state.session.operations()) else {
+        let known = state.session.completions_after(records.through());
+        let Some(actual) = records.completed(run.last_op, &known) else {
             return Ok(());
         };
         notify_operations::report(

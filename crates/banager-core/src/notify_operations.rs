@@ -14,7 +14,9 @@
 //! src-tauri/src/notify_ops.rs), words the notification and posts it the
 //! way the update notification is posted (`notify::post`).
 
+use crate::model::{OpKind, OpStatus};
 use crate::notify_updates::Focus;
+use crate::ops::{Completions, Ended};
 use serde::Deserialize;
 
 /// What a run's operations did, as the notification words it.
@@ -90,27 +92,38 @@ pub struct ReportedRuns {
 
 impl ReportedRuns {
     /// The backend-owned interval is (last accepted boundary, last_op].
-    /// Every ID must still exist and be finished. Page-supplied counts and
-    /// kinds are never evidence, and a rejected boundary changes no state.
-    pub fn completed(
-        &self,
-        last_op: u64,
-        operations: &[crate::ops::OpSummary],
-    ) -> Option<FinishedRun> {
-        use crate::model::{OpKind, OpStatus, Outcome};
-        let first = self.through.unwrap_or(0).checked_add(1)?;
+    /// Every ID must be known to have finished: a record that is `Done`,
+    /// or one evicted since (`Completions::evicted`). Page-supplied counts
+    /// and kinds are never evidence, and a rejected boundary changes no
+    /// state. Only an ID evicted and then forgotten
+    /// (`Completions::forgotten_through`) is past proving how it ended:
+    /// the run is accepted telling of nothing, so it cannot hold back the
+    /// runs after it.
+    pub fn completed(&self, last_op: u64, known: &Completions) -> Option<FinishedRun> {
+        let through = self.through();
+        let first = through.checked_add(1)?;
         let count = last_op.checked_sub(first)?.checked_add(1)?;
-        let selected: Vec<_> = operations
+        let mut ended: Vec<(u64, OpKind, Ended)> = Vec::new();
+        for op in known
+            .operations
             .iter()
             .filter(|op| (first..=last_op).contains(&op.id))
-            .collect();
-        if selected.len() as u64 != count {
-            return None;
+        {
+            if op.status != OpStatus::Done {
+                return None;
+            }
+            ended.push((op.id, op.kind, Ended::of(op.outcome.as_ref()?)));
         }
-        let mut ids: Vec<_> = selected.iter().map(|op| op.id).collect();
+        ended.extend(
+            known
+                .evicted
+                .range(first..=last_op)
+                .map(|(id, op)| (*id, op.kind, op.ended)),
+        );
+        let mut ids: Vec<_> = ended.iter().map(|(id, _, _)| *id).collect();
         ids.sort_unstable();
         ids.dedup();
-        if ids.len() != selected.len() {
+        if ids.len() != ended.len() {
             return None;
         }
         let mut run = FinishedRun {
@@ -120,23 +133,37 @@ impl ReportedRuns {
             failed: 0,
             attention: 0,
         };
-        if selected.iter().all(|op| op.kind == OpKind::Upgrade) {
-            run.kind = RunKind::Upgrade;
-        } else if selected.iter().all(|op| op.kind == OpKind::Uninstall) {
-            run.kind = RunKind::Uninstall;
-        }
-        for op in selected {
-            if op.status != OpStatus::Done {
+        if ended.len() as u64 != count {
+            // Some IDs are in neither. Accepted only if every one is at or
+            // below `forgotten_through` -- evicted, and forgotten since;
+            // any other is unfinished, not submitted yet, or no operation.
+            let forgotten = known.forgotten_through;
+            let above = ended.iter().filter(|(id, _, _)| *id > forgotten).count() as u64;
+            if above != last_op.saturating_sub(forgotten.max(through)) {
                 return None;
             }
-            match op.outcome.as_ref()? {
-                Outcome::Succeeded => run.succeeded += 1,
-                Outcome::Failed { .. } | Outcome::BanagerFailed(_) => run.failed += 1,
-                Outcome::NeedsAttention(_) | Outcome::Unconfirmed => run.attention += 1,
-                Outcome::Cancelled => {}
+            return Some(run);
+        }
+        if ended.iter().all(|(_, kind, _)| *kind == OpKind::Upgrade) {
+            run.kind = RunKind::Upgrade;
+        } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Uninstall) {
+            run.kind = RunKind::Uninstall;
+        }
+        for (_, _, how) in ended {
+            match how {
+                Ended::Succeeded => run.succeeded += 1,
+                Ended::Failed => run.failed += 1,
+                Ended::Attention => run.attention += 1,
+                Ended::Cancelled => {}
             }
         }
         Some(run)
+    }
+
+    /// The newest operation of the runs accepted so far, or 0: what the
+    /// next run's interval starts after (`OperationManager::completions_after`).
+    pub fn through(&self) -> u64 {
+        self.through.unwrap_or(0)
     }
 
     /// Whether `run`, or a later one, has been reported: a page loaded
@@ -263,45 +290,150 @@ pub fn post_withheld(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_completed_reports_use_only_finished_backend_outcomes_and_contiguous_membership() {
-        use crate::model::{ArtifactKind, CancelPolicy, OpKind, OpStatus, Outcome};
-        let mut op = crate::ops::OpSummary {
-            id: 1,
-            kind: OpKind::Uninstall,
+    fn summary(id: u64, kind: OpKind, outcome: Option<Outcome>) -> OpSummary {
+        OpSummary {
+            id,
+            kind,
             instance_id: "test".into(),
             artifact_kind: ArtifactKind::Binary,
             name: "tool".into(),
-            status: OpStatus::Running,
-            outcome: None,
+            status: if outcome.is_some() {
+                OpStatus::Done
+            } else {
+                OpStatus::Running
+            },
+            outcome,
             argv_preview: vec![],
             env_preview: vec![],
             cancel_policy: CancelPolicy::KillThenReconcile,
-        };
+        }
+    }
+
+    fn records(operations: &[OpSummary]) -> Completions {
+        Completions {
+            operations: operations.to_vec(),
+            ..Completions::default()
+        }
+    }
+
+    fn evicted(kind: OpKind, ended: Ended) -> EvictedOp {
+        EvictedOp { kind, ended }
+    }
+
+    #[test]
+    fn test_completed_reports_use_only_finished_backend_outcomes_and_contiguous_membership() {
+        let mut op = summary(1, OpKind::Uninstall, None);
         let mut reported = ReportedRuns::default();
-        assert!(reported.completed(1, &[op.clone()]).is_none());
+        assert!(reported.completed(1, &records(&[op.clone()])).is_none());
         op.status = OpStatus::Done;
         op.outcome = Some(Outcome::Unconfirmed);
-        let real = reported.completed(1, &[op.clone()]).unwrap();
+        let real = reported.completed(1, &records(&[op.clone()])).unwrap();
         assert_eq!(real, run(1, RunKind::Uninstall, 0, 0, 1));
-        assert!(reported.completed(2, &[op.clone()]).is_none());
-        assert!(reported.completed(0, &[op.clone()]).is_none());
+        assert!(reported.completed(2, &records(&[op.clone()])).is_none());
+        assert!(reported.completed(0, &records(&[op.clone()])).is_none());
         report(&mut reported, true, Focus::Away, &real, |_| Ok(())).unwrap();
-        assert!(reported.completed(1, &[op.clone()]).is_none());
+        assert_eq!(reported.through(), 1);
+        assert!(reported.completed(1, &records(&[op.clone()])).is_none());
         op.id = 2;
         op.outcome = Some(Outcome::Succeeded);
         assert_eq!(
-            reported.completed(2, &[op.clone()]),
+            reported.completed(2, &records(&[op.clone()])),
             Some(run(2, RunKind::Uninstall, 1, 0, 0))
         );
         op.id = 3;
         assert!(
-            reported.completed(3, &[op]).is_none(),
-            "missing/evicted records cannot prove completion"
+            reported.completed(3, &records(&[op])).is_none(),
+            "a record neither held nor evicted cannot prove completion"
         );
     }
 
+    #[test]
+    fn regression_evicted_operations_are_counted_and_never_hold_back_later_runs() {
+        // Records 1 and 2 evicted, 3 still held: the whole run is counted.
+        let mut reported = ReportedRuns::default();
+        let mut known = records(&[summary(3, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known
+            .evicted
+            .insert(1, evicted(OpKind::Upgrade, Ended::Failed));
+        known
+            .evicted
+            .insert(2, evicted(OpKind::Upgrade, Ended::Attention));
+        let whole = reported.completed(3, &known).unwrap();
+        assert_eq!(whole, run(3, RunKind::Upgrade, 1, 1, 1));
+        let posted = RefCell::new(Vec::new());
+        let post = |run: &FinishedRun| {
+            posted.borrow_mut().push(*run);
+            Ok(())
+        };
+        report(&mut reported, true, Focus::Away, &whole, post).unwrap();
+        // The next run, after more evictions: told of in its turn.
+        known.operations = vec![summary(5, OpKind::Uninstall, Some(Outcome::Succeeded))];
+        known
+            .evicted
+            .insert(4, evicted(OpKind::Uninstall, Ended::Cancelled));
+        let next = reported.completed(5, &known).unwrap();
+        assert_eq!(next, run(5, RunKind::Uninstall, 1, 0, 0));
+        report(&mut reported, true, Focus::Away, &next, post).unwrap();
+        assert_eq!(*posted.borrow(), [whole, next]);
+    }
+
+    #[test]
+    fn regression_a_run_with_a_forgotten_operation_tells_of_nothing_but_lets_the_next_through() {
+        let mut reported = ReportedRuns::default();
+        let mut known = records(&[summary(4, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known
+            .evicted
+            .insert(3, evicted(OpKind::Upgrade, Ended::Succeeded));
+        known.forgotten_through = 2;
+        let never =
+            |_: &FinishedRun| -> Result<(), String> { panic!("told of a run it cannot count") };
+        let unknown = reported.completed(4, &known).unwrap();
+        assert_eq!(unknown.told(), 0, "never a count short of the run");
+        assert_eq!(
+            report(&mut reported, true, Focus::Away, &unknown, never),
+            Ok(RunNotice::Nothing)
+        );
+        assert_eq!(reported.through(), 4, "the boundary moves on all the same");
+        known.operations = vec![summary(5, OpKind::Upgrade, Some(Outcome::Succeeded))];
+        let next = reported.completed(5, &known).unwrap();
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&mut reported, true, Focus::Away, &next, |run| {
+                posted.borrow_mut().push(*run);
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), [run(5, RunKind::Upgrade, 1, 0, 0)]);
+    }
+
+    #[test]
+    fn test_eviction_never_proves_what_is_unfinished_unknown_or_counted_twice() {
+        let reported = ReportedRuns::default();
+        // Still running, whatever was evicted around it.
+        let mut known = records(&[summary(2, OpKind::Upgrade, None)]);
+        known
+            .evicted
+            .insert(1, evicted(OpKind::Upgrade, Ended::Succeeded));
+        known.forgotten_through = 1;
+        assert!(reported.completed(2, &known).is_none());
+        // An id above the forgotten ones that neither holds: not proven.
+        let mut known = records(&[summary(4, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known.forgotten_through = 2;
+        assert!(reported.completed(4, &known).is_none());
+        // A boundary beyond every operation, however far.
+        assert!(reported.completed(u64::MAX, &known).is_none());
+        // One id both held and evicted is a contradiction.
+        let mut known = records(&[summary(1, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known
+            .evicted
+            .insert(1, evicted(OpKind::Upgrade, Ended::Succeeded));
+        assert!(reported.completed(1, &known).is_none());
+    }
+
     use super::*;
+    use crate::model::{ArtifactKind, CancelPolicy, Outcome};
+    use crate::ops::{EvictedOp, OpSummary};
     use std::cell::RefCell;
 
     fn run(

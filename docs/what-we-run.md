@@ -536,8 +536,14 @@ the request for wire compatibility but are ignored. Rust derives them
 from its own completed operation records, over the interval after the
 last accepted boundary through this boundary (initially starting at 1).
 A missing, duplicate, unfinished or already accepted boundary is rejected
-without advancing notification state; evicted records cannot establish a
-complete run. Rust posts one notification only when
+without advancing notification state. Rust keeps at most 200 finished
+operation records (`DEFAULT_MAX_RECORDS` in
+`crates/banager-core/src/ops/mod.rs`); of each one it drops, it keeps,
+in memory only, what the operation did and how it ended, until a run
+that includes it is accepted, so a long run or a late report is still
+counted whole. It keeps at most 10,000 of those (`MAX_EVICTED`); a run
+with an operation dropped past that is accepted telling of nothing, so it
+never holds back the runs after it. Rust posts one notification only when
 the switch is on and another app is in front, not Banager — never for a
 run that finished while the window had the focus, which the user watched
 on the operation bar — and only once for a run

@@ -1257,10 +1257,26 @@ fn test_what_we_run_says_the_notification_when_operations_finish_is_off_by_defau
         "no permission of its own",
         "never for a run that finished while the window had the focus",
         "no command runs, nothing connects, and Banager writes no file for it",
+        "in memory only",
+        "accepted telling of nothing, so it never holds back the runs after it",
     ] {
         assert!(
             folded.contains(phrase),
             "the `## The notification when operations finish` section of docs/what-we-run.md does not say {phrase:?}"
+        );
+    }
+    // The two bounds, as the constants the manager enforces.
+    use banager_core::ops::{DEFAULT_MAX_RECORDS, MAX_EVICTED};
+    for limit in [
+        format!(
+            "at most {} finished operation records",
+            with_commas(DEFAULT_MAX_RECORDS as u64)
+        ),
+        format!("at most {} of those", with_commas(MAX_EVICTED as u64)),
+    ] {
+        assert!(
+            folded.contains(&limit),
+            "the `## The notification when operations finish` section does not state the limit {limit:?}"
         );
     }
 }
