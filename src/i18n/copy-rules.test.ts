@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
 import zhHant from "./zh-Hant.json";
+import zhHantDescriptions from "../assets/tool-descriptions/zh-Hant.json";
 
 /** Every string in a locale file, with its key. */
 function entries(value: unknown, prefix = ""): [string, string][] {
@@ -270,5 +271,59 @@ describe("the polish-3 copy rules, in English", () => {
     expect(strings.get("sourceNotice.more_one")).toBe("{{count}} more note");
     expect(strings.get("sourceNotice.more_other")).toBe("{{count}} more notes");
     expect(strings.get("updates.cantUpdateHere")).toBe("{{number}} more can't be updated here");
+  });
+});
+
+/**
+ * Traditional Chinese as Taiwan and macOS write it, not Simplified Chinese
+ * converted character by character (walk-5): the words macOS's own zh_TW
+ * strings use -- 拷貝, 略過, 一般, 檔案夾, 命令列, 選單列, 核心延伸功能 --
+ * and Taiwan's 列 for a list's row, 透過, 錯誤訊息 and 主要版本.
+ */
+describe("Taiwan's words, in Traditional Chinese", () => {
+  const english = new Map(entries(en));
+
+  it.each([
+    ["複製", "拷貝"],
+    ["跳過", "略過"],
+    ["暫勿", "暫時無法"],
+    ["通用", "一般"],
+    ["資料夾", "檔案夾"],
+    ["指令列", "命令列"],
+    ["錯誤資訊", "錯誤訊息"],
+    ["大版本", "主要版本"],
+    ["核心擴充", "核心延伸功能"],
+    ["跟隨系統", "系統預設值"],
+    ["能否找到", "是否找得到"],
+  ])("says %s nowhere in the interface, %s instead", (word) => {
+    expect(keysWhere(zhHant, (text) => text.includes(word))).toEqual([]);
+  });
+
+  it("calls a list's row 列, and keeps 行 for a line of a file", () => {
+    // 這一行 / 那一行 / 每一行 only where the English says "line".
+    const rows = keysWhere(zhHant, (text) => /[這那每]一行/.test(text)).filter(
+      (key) => !/\bline\b/.test(english.get(key) ?? ""),
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("says 透過 for ‘via’, keeping 通過 for passing a check", () => {
+    const via = keysWhere(zhHant, (text) => text.includes("通過")).filter(
+      (key) => !/\bpass\b/.test(english.get(key) ?? ""),
+    );
+    expect(via).toEqual([]);
+  });
+
+  it.each([
+    ["選單欄", "選單列"],
+    ["工具欄", "工具列"],
+    ["占用", "佔用"],
+    ["郵箱", "郵件帳號"],
+    ["匹配", "比對"],
+    ["線纜", "纜線"],
+    ["資料夾", "檔案夾"],
+  ])("says %s in no tool description, %s instead", (word) => {
+    const lines = Object.entries(zhHantDescriptions as Record<string, string>);
+    expect(lines.filter(([, line]) => line.includes(word)).map(([key]) => key)).toEqual([]);
   });
 });
