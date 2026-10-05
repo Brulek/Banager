@@ -180,12 +180,39 @@ fn upgrade_requirement(artifact: &InstalledArtifact) -> Result<(), String> {
     unconstrained_requirement(&text, &artifact.key.name)
 }
 
+/// The words a tool's row says when something saved in its receipt can
+/// hold the main package below the latest release.
+const SAVED_VERSION_REQUIREMENT: &str =
+    "saved uv version requirements need a compatible-target check";
+
+/// A package name as PEP 503 compares it: any case, and every run of `-`,
+/// `_` and `.` one `-`.
+fn normalized(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut separator = false;
+    for c in name.chars() {
+        if matches!(c, '-' | '_' | '.') {
+            separator = true;
+            continue;
+        }
+        if separator {
+            out.push('-');
+            separator = false;
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    if separator {
+        out.push('-');
+    }
+    out
+}
+
 fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
     let receipt: toml::Value =
         toml::from_str(text).map_err(|_| "could not parse uv tool requirements".to_string())?;
-    let normalize = |name: &str| name.to_ascii_lowercase().replace(['_', '.'], "-");
-    let requirements = receipt
-        .get("tool")
+    let name = normalized(name);
+    let tool = receipt.get("tool");
+    let requirements = tool
         .and_then(|t| t.get("requirements"))
         .and_then(toml::Value::as_array)
         .ok_or_else(|| "uv tool requirements are unknown".to_string())?;
@@ -194,7 +221,7 @@ fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
         .filter(|r| {
             r.get("name")
                 .and_then(toml::Value::as_str)
-                .is_some_and(|n| normalize(n) == normalize(name))
+                .is_some_and(|n| normalized(n) == name)
         })
         .collect();
     if main.len() != 1 {
@@ -211,10 +238,34 @@ fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
         return Err("uv requirement uses an unsupported source or marker".into());
     }
     match table.get("specifier") {
-        None => Ok(()),
-        Some(toml::Value::String(specifier)) if specifier.trim().is_empty() => Ok(()),
-        _ => Err("saved uv version requirements need a compatible-target check".into()),
+        None => {}
+        Some(toml::Value::String(specifier)) if specifier.trim().is_empty() => {}
+        _ => return Err(SAVED_VERSION_REQUIREMENT.into()),
     }
+    // `uv tool upgrade` restores the constraints and overrides saved at
+    // install (`--constraint`, `--override`) while `uv tool list
+    // --outdated` looks for the latest release without them. Any naming
+    // the main package can pin it, bound it or give it another source;
+    // one Banager cannot read may be one of those.
+    for saved in ["constraints", "overrides"] {
+        let Some(entries) = tool.and_then(|t| t.get(saved)) else {
+            continue;
+        };
+        let entries = entries
+            .as_array()
+            .ok_or_else(|| format!("uv tool {saved} are unknown"))?;
+        for entry in entries {
+            let entry_name = entry
+                .as_table()
+                .and_then(|t| t.get("name"))
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| format!("uv tool {saved} are unknown"))?;
+            if normalized(entry_name) == name {
+                return Err(SAVED_VERSION_REQUIREMENT.into());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub struct UvAdapter {
@@ -600,6 +651,86 @@ mod tests {
         assert!(super::unconstrained_requirement("bad receipt", "ruff").is_err());
     }
 
+    /// `uv tool install ruff --constraint c.txt` (or `--override o.txt`)
+    /// saves those beside `requirements` in the receipt's `[tool]` table
+    /// (uv-tool's `Tool::to_toml`), and `uv tool upgrade` restores both
+    /// while `uv tool list --outdated` looks for the latest release without
+    /// them: one naming the main package can hold it below that target.
+    #[test]
+    fn regression_saved_constraints_and_overrides_on_the_main_package_never_promise_latest() {
+        let pinned =
+            Err("saved uv version requirements need a compatible-target check".to_string());
+        for (table, entry) in [
+            ("constraints", "{ name = 'ruff', specifier = '==0.15.0' }"),
+            ("constraints", "{ name = 'ruff', specifier = '<0.16' }"),
+            ("constraints", "{ name = 'ruff' }"),
+            ("overrides", "{ name = 'ruff', specifier = '==0.15.0' }"),
+            (
+                "overrides",
+                "{ name = 'ruff', git = 'https://github.com/astral-sh/ruff' }",
+            ),
+            (
+                "overrides",
+                "{ name = 'ruff', url = 'https://example.invalid/ruff.whl' }",
+            ),
+            // PEP 503: any case, and a run of `-`, `_` and `.` is one `-`.
+            ("constraints", "{ name = 'RUFF', specifier = '==0.15.0' }"),
+        ] {
+            let receipt =
+                format!("[tool]\nrequirements = [{{ name = 'ruff' }}]\n{table} = [{entry}]\n");
+            assert_eq!(
+                super::unconstrained_requirement(&receipt, "ruff"),
+                pinned,
+                "{receipt}"
+            );
+        }
+        assert_eq!(
+            super::unconstrained_requirement(
+                "[tool]\nrequirements = [{ name = 'my-tool' }]\n\
+                 overrides = [{ name = 'My__Tool', specifier = '<2' }]\n",
+                "my-tool"
+            ),
+            pinned
+        );
+        // As uv writes it: one entry per line once there are two, the
+        // entrypoints, and the options table after.
+        let written = "[tool]\n\
+            requirements = [{ name = \"ruff\" }]\n\
+            constraints = [\n    { name = \"pydantic\", specifier = \"<3\" },\n    \
+                { name = \"ruff\", specifier = \">=0.15,<0.16\" },\n]\n\
+            entrypoints = [\n    { name = \"ruff\", install-path = \"/Users/u/.local/bin/ruff\", from = \"ruff\" },\n]\n\
+            \n[tool.options]\nexclude-newer = \"2026-01-01T00:00:00Z\"\n";
+        assert_eq!(super::unconstrained_requirement(written, "ruff"), pinned);
+        // Saved inputs Banager cannot read safely say nothing about the
+        // main package, so they cannot let latest through either.
+        for unknown in [
+            "constraints = 'ruff==0.15.0'",
+            "constraints = ['ruff==0.15.0']",
+            "constraints = [{ specifier = '==0.15.0' }]",
+            "overrides = [{ name = 7 }]",
+            "overrides = [['ruff']]",
+        ] {
+            let receipt = format!("[tool]\nrequirements = [{{ name = 'ruff' }}]\n{unknown}\n");
+            assert!(
+                super::unconstrained_requirement(&receipt, "ruff").is_err(),
+                "{receipt}"
+            );
+        }
+        // Ones naming another package only leave the main one as it was.
+        for other in [
+            "constraints = [{ name = 'pydantic', specifier = '<3' }]",
+            "overrides = [{ name = 'ruff-lsp', specifier = '==0.0.1' }]",
+            "constraints = []",
+        ] {
+            let receipt = format!("[tool]\nrequirements = [{{ name = 'ruff' }}]\n{other}\n");
+            assert_eq!(
+                super::unconstrained_requirement(&receipt, "ruff"),
+                Ok(()),
+                "{receipt}"
+            );
+        }
+    }
+
     fn receipt_runner() -> (tempfile::TempDir, Arc<MockRunner>) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -680,6 +811,53 @@ mod tests {
                 .candidates[0]
                 .checkable
         );
+    }
+
+    #[tokio::test]
+    async fn regression_a_saved_constraint_or_override_keeps_latest_unoffered_and_unplanned() {
+        let (dir, runner) = receipt_runner();
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "ruff v0.15.0 [latest: 0.16.0]\n".into(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = UvAdapter::new(runner);
+        for saved in [
+            "constraints = [{ name = 'ruff', specifier = '==0.15.0' }]",
+            "overrides = [{ name = 'ruff', specifier = '<0.16' }]",
+        ] {
+            std::fs::write(
+                dir.path().join("uv-receipt.toml"),
+                format!("[tool]\nrequirements = [{{ name = 'ruff' }}]\n{saved}\n"),
+            )
+            .unwrap();
+            let result = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap();
+            assert_eq!(result.candidates.len(), 1);
+            let row = &result.candidates[0];
+            assert!(!row.checkable, "{saved}");
+            assert_eq!(row.target, "0.15.0", "never the unreachable 0.16.0");
+            assert_eq!(
+                row.warnings,
+                [Warning::Message(
+                    "saved uv version requirements need a compatible-target check".into()
+                )],
+                "the same row a pinned requirement gets"
+            );
+            assert!(matches!(
+                adapter
+                    .plan(&test_instance(), &request(OpKind::Upgrade))
+                    .await,
+                Err(AdapterError::Refused(_))
+            ));
+        }
     }
 
     #[tokio::test]

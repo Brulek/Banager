@@ -1189,13 +1189,24 @@ check", with the reason — one more process than the table shows, on that
 path. When outdated rows exist, inventory is also read to locate each
 tool's environment. Banager reads `<tool environment>/uv-receipt.toml`
 through the bounded, protected regular-file reader (at most 16 MiB),
-and inspects `[tool].requirements` for the main package. Only an ordinary
-index requirement without a version constraint is currently actionable.
-Pinned, bounded, missing, malformed or unsupported requirements are
+and inspects `[tool].requirements` for the main package, and the
+constraints and overrides saved at install (`[tool].constraints`,
+`[tool].overrides`, from `--constraint` and `--override`) for any entry
+naming it, names compared as PEP 503 normalizes them: `uv tool upgrade`
+restores both, while `uv tool list --outdated` looks for the latest
+release without them. Only an ordinary index requirement without a
+version constraint, with no saved constraint or override naming the main
+package, is currently actionable. Pinned, bounded, missing, malformed or
+unsupported requirements, a saved constraint or override naming the main
+package, and a saved constraint or override Banager cannot read are
 "could not check": Banager cannot prove that the offered latest target
-is compatible. Planning an upgrade repeats the inventory and receipt
-check and refuses a constraint or unknown receipt. It neither edits a
-receipt nor removes a version pin. uv has no tool-search command Banager uses.
+is compatible. Constraints and overrides naming other packages, and the
+requirements `--with` added, are not resolved: should uv keep the version
+it has because of one of them, that upgrade ends as needing attention,
+with the version unchanged. Planning an upgrade repeats the
+inventory and receipt check and refuses a constraint or unknown receipt.
+It neither edits a receipt nor removes a version pin. uv has no
+tool-search command Banager uses.
 
 **Write commands:**
 
@@ -3028,8 +3039,9 @@ not read (`protected::look`; How Banager runs anything, above):
   directory `xcode-select -p` names leads, and whether that is an
   executable file (`realpath`, `stat`).
 - uv: `<tool environment>/uv-receipt.toml`, at the environment path its
-  inventory returns; only the saved main-package requirement is inspected,
-  for update checks and upgrade planning (uv's section).
+  inventory returns; only the saved main-package requirement and the saved
+  constraints and overrides naming the main package are inspected, for
+  update checks and upgrade planning (uv's section).
 - Cargo: `<CARGO_HOME>/.crates2.json`; whether `cargo-binstall` is on
   `PATH`.
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
