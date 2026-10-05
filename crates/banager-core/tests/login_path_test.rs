@@ -17,7 +17,21 @@ async fn test_an_accepted_login_path_reaches_commands_and_discovery_but_not_the_
     // `/usr/bin` and `/bin` so that `env` itself still runs.
     let login = "/opt/test-login/bin:/usr/bin:/bin";
     assert_eq!(login_path::accepted(), None);
+    // Before any read worked, a round goes along the process's own PATH
+    // and knows it is not the login shell's -- one value, one look.
+    let (env, known) = login_path::round_env();
+    assert!(!known);
+    assert_eq!(env, HostEnv::discover_along(before.clone()));
     login_path::accept(login);
+    let (env, known) = login_path::round_env();
+    assert!(known);
+    assert_eq!(
+        env.path_dirs,
+        ["/opt/test-login/bin", "/usr/bin", "/bin"]
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>()
+    );
 
     // Every command gets it as its `PATH`.
     let output = RealRunner::new()

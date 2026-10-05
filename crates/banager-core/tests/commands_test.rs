@@ -953,10 +953,21 @@ struct Fixed {
     meta: AdapterMeta,
     instance: ManagerInstance,
     artifacts: Vec<InstalledArtifact>,
+    /// How long `detect` takes: a round still detecting while a test
+    /// changes what the session was told.
+    detect_delay: Duration,
 }
 
 impl Fixed {
     fn new(instance: ManagerInstance, artifacts: Vec<InstalledArtifact>) -> Arc<Fixed> {
+        Fixed::slow(instance, artifacts, Duration::ZERO)
+    }
+
+    fn slow(
+        instance: ManagerInstance,
+        artifacts: Vec<InstalledArtifact>,
+        detect_delay: Duration,
+    ) -> Arc<Fixed> {
         Arc::new(Fixed {
             meta: AdapterMeta {
                 id: instance.adapter_id.clone(),
@@ -969,6 +980,7 @@ impl Fixed {
             },
             instance,
             artifacts,
+            detect_delay,
         })
     }
 }
@@ -980,6 +992,7 @@ impl Adapter for Fixed {
     }
 
     async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+        tokio::time::sleep(self.detect_delay).await;
         vec![self.instance.clone()]
     }
 
@@ -1129,6 +1142,57 @@ async fn test_a_session_told_the_path_was_not_restored_says_nothing_about_which_
     for artifact in &snapshot.artifacts {
         assert_eq!(artifact.facts.commands, vec![unjudged("claude")]);
     }
+}
+
+/// Astra's j2 review, finding 2: a round begun with Finder's few folders
+/// (the login shell's `PATH` not read) is still detecting when a read of
+/// the login shell works and the session is told so. That round must not
+/// judge which copy runs against the few folders it was begun with: whether
+/// its `PATH` is the login shell's was taken with it, as it arrived.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_round_begun_without_the_login_path_stays_unjudged_when_a_read_works_meanwhile() {
+    let home = Home::new("session-retry-race");
+    let setup = two_claudes(&home);
+    let adapters: Vec<Arc<dyn Adapter>> = setup
+        .instances
+        .iter()
+        .map(|inst| {
+            let rows = setup
+                .artifacts
+                .iter()
+                .filter(|a| a.key.instance_id == inst.id)
+                .cloned()
+                .collect();
+            Fixed::slow(inst.clone(), rows, Duration::from_millis(300)) as Arc<dyn Adapter>
+        })
+        .collect();
+    let session = Session::with_adapters(Arc::new(VecSink::new()), adapters, None);
+    // The launch read failed: the round's PATH is the process's own.
+    session.note_login_path(false);
+    let env = home.env(vec![setup.npm_bin.clone(), setup.local_bin.clone()]);
+    let older = tokio::spawn({
+        let session = session.clone();
+        let env = env.clone();
+        async move { session.refresh(&env, &CheckOptions::default()).await }
+    });
+    // While it detects, Check Again's read works.
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    session.note_login_path(true);
+    let snapshot = older.await.unwrap();
+    for artifact in &snapshot.artifacts {
+        assert_eq!(
+            artifact.facts.commands,
+            vec![unjudged("claude")],
+            "{}",
+            artifact.key.name
+        );
+    }
+    // The next round, begun with the login shell's PATH, judges.
+    let next = session.refresh(&env, &CheckOptions::default()).await;
+    assert_eq!(
+        commands_of(&next.artifacts, "@anthropic-ai/claude-code"),
+        &[runs("claude")]
+    );
 }
 
 #[test]

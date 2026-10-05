@@ -155,9 +155,34 @@ impl Session {
     /// once it has committed, whole. The shell sends it to the window
     /// (`UiEvent::InventoryPreview`); a call that shares a round another
     /// call ran never calls it.
+    ///
+    /// Whether `env`'s `PATH` is the login shell's is what the session was
+    /// last told (`note_login_path`), read as this call arrives, once, and
+    /// never again during the round: `refresh_recording_on` says why.
     pub async fn refresh_recording(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
+        opts: &CheckOptions,
+        record: impl FnOnce(u64, &Snapshot) + Send,
+        preview: impl FnOnce(InventoryPreview) + Send,
+    ) -> (u64, Snapshot) {
+        let path_known = self.login_path.load(Ordering::SeqCst);
+        self.refresh_recording_on(env, path_known, opts, record, preview)
+            .await
+    }
+
+    /// `refresh_recording`, with whether `env`'s `PATH` is the login
+    /// shell's (`path_known`) given with it, as one value: the shell reads
+    /// both from one look at the `PATH` it has read
+    /// (`runner::login_path::round_env`). A round says which copy of a
+    /// command runs only when it holds, and goes by this value throughout:
+    /// a read of the login shell that works while an older round, begun
+    /// with Finder's few folders, is still detecting must not let that
+    /// round judge commands against those folders.
+    pub async fn refresh_recording_on(
+        self: &std::sync::Arc<Self>,
+        env: &HostEnv,
+        path_known: bool,
         opts: &CheckOptions,
         record: impl FnOnce(u64, &Snapshot) + Send,
         preview: impl FnOnce(InventoryPreview) + Send,
@@ -178,7 +203,9 @@ impl Session {
             record(committed, &snapshot);
             return (committed, snapshot);
         }
-        let (round, snapshot) = self.refresh_round(gate, env, opts, record, preview).await;
+        let (round, snapshot) = self
+            .refresh_round(gate, env, path_known, opts, record, preview)
+            .await;
         // Committed, and the gate released: sizes are measured on a thread
         // of their own from here, outside the snapshot (`sizes.rs`).
         self.measure_sizes(round, &snapshot, env);
@@ -196,6 +223,7 @@ impl Session {
         self: &std::sync::Arc<Self>,
         _gate: tokio::sync::MutexGuard<'_, ()>,
         env: &HostEnv,
+        path_known: bool,
         opts: &CheckOptions,
         record: impl FnOnce(u64, &Snapshot) + Send,
         preview: impl FnOnce(InventoryPreview) + Send,
@@ -438,8 +466,9 @@ impl Session {
         // Which copy of each command runs (`commands`): the folders on
         // `PATH` and the Homebrew and npm bin folders are read on the
         // blocking pool while the fan-out below runs, and the verdicts
-        // made once its rows are in, before the commit.
-        let path_known = self.login_path.load(Ordering::SeqCst);
+        // made once its rows are in, before the commit. Against `env`'s
+        // `PATH` only when it is the login shell's (`path_known`, given
+        // with `env`, never read again here).
         let commands = crate::commands::start_reading(
             env,
             &instances,

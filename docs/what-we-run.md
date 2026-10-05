@@ -80,7 +80,11 @@ discovery failed, and the Overview says so ("Couldn't read Terminal's
 settings", with Check Again): sources found only through Terminal's
 `PATH` — npm, pipx, uv, Cargo and the rest — may then be missing. The
 next refresh — Check Again, or any later one — reads the shell once more;
-after a read that worked, none runs again. No other shell variable is
+after a read that worked, none runs again. Each refresh takes the `PATH`
+and whether it is the login shell's together, as one value, as it starts
+(`login_path::round_env`), and keeps it: a read that works while an older
+round is still running changes neither for that round, which says which
+copy of a command runs only when its own `PATH` was the login shell's. No other shell variable is
 imported. The `PATH` read is kept in Banager's memory and handed to every
 command it runs as that command's `PATH` (`RealRunner::run`); Banager's
 own process environment is never changed, since changing it while other

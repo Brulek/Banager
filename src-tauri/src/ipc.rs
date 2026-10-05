@@ -100,12 +100,14 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
     };
     // The login shell's `PATH` first: the read started at launch, waited
     // for, or one more when the last failed (Check Again, the next
-    // refresh) -- the sources are looked for along it.
-    state.read_login_path().await;
+    // refresh) -- the sources are looked for along it. Taken with whether
+    // it is the login shell's, as one value the round keeps.
+    let (env, path_known) = state.round_env().await;
     let (_, snapshot) = state
         .session
-        .refresh_recording(
-            &HostEnv::discover(),
+        .refresh_recording_on(
+            &env,
+            path_known,
             &check_options(state),
             |round, snapshot| {
                 let mut rounds = state.rounds.lock().unwrap();

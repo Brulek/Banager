@@ -99,7 +99,14 @@ impl HostEnv {
     /// login shell's `PATH` to be read (`LoginPath::ensure`), so it sees
     /// the one read, or the inherited one when no read has worked.
     pub fn discover() -> HostEnv {
-        let path_dirs = super::login_path::path()
+        HostEnv::discover_along(super::login_path::path())
+    }
+
+    /// `discover`, with the `PATH` given (`path`) rather than looked up:
+    /// `login_path::round_env` reads it with whether it is the login
+    /// shell's, in one look.
+    pub fn discover_along(path: Option<std::ffi::OsString>) -> HostEnv {
+        let path_dirs = path
             .map(|v| std::env::split_paths(&v).collect())
             .unwrap_or_default();
         let home = std::env::var_os("HOME")

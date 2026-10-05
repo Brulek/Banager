@@ -19,7 +19,7 @@
 use super::{CommandRunner, CommandSpec, OutputUse};
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -68,6 +68,19 @@ pub fn path() -> Option<OsString> {
     accepted().or_else(|| std::env::var_os("PATH"))
 }
 
+/// What a refresh round looks along, and whether its `PATH` is the login
+/// shell's, from one look at what was accepted (`accepted`), so the two can
+/// never disagree: a read that works while an older round runs changes
+/// neither for that round (`Session::refresh_recording_on`).
+pub fn round_env() -> (super::HostEnv, bool) {
+    let accepted = accepted();
+    let known = accepted.is_some();
+    (
+        super::HostEnv::discover_along(accepted.or_else(|| std::env::var_os("PATH"))),
+        known,
+    )
+}
+
 /// What became of the reads so far.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Answer {
@@ -89,6 +102,8 @@ pub struct LoginPath {
     answer: tokio::sync::Mutex<Answer>,
     /// How many reads have ended, however.
     ended: AtomicU64,
+    /// Whether a read has worked: once it has, for good.
+    read: AtomicBool,
 }
 
 impl LoginPath {
@@ -109,7 +124,16 @@ impl LoginPath {
             publish: Box::new(publish),
             answer: tokio::sync::Mutex::new(Answer::NotYet),
             ended: AtomicU64::new(0),
+            read: AtomicBool::new(false),
         }
+    }
+
+    /// Whether a read has worked, without waiting for one under way: what
+    /// the session is told (`Session::note_login_path`), which then never
+    /// goes back to false because a caller that waited on a failed read
+    /// reports after a later read worked.
+    pub fn is_read(&self) -> bool {
+        self.read.load(Ordering::SeqCst)
     }
 
     /// Whether `PATH` is the login shell's: true at once when a read has
@@ -137,6 +161,7 @@ impl LoginPath {
         *answer = match found {
             Some(path) => {
                 (self.publish)(&path);
+                self.read.store(true, Ordering::SeqCst);
                 Answer::Read
             }
             None => Answer::Failed,
@@ -324,9 +349,11 @@ mod tests {
         let (probe, published) = probe(runner.clone());
         // The first read runs out of time: no PATH, nothing published.
         assert!(!probe.ensure().await);
+        assert!(!probe.is_read());
         assert!(published.lock().unwrap().is_empty());
         // Check Again: read again, and this time it works.
         assert!(probe.ensure().await);
+        assert!(probe.is_read());
         assert_eq!(
             *published.lock().unwrap(),
             ["/opt/homebrew/bin:/usr/bin:/bin"]

@@ -2,6 +2,7 @@ use crate::events::ChannelSink;
 use banager_core::auto_check::RoundLog;
 use banager_core::notify_updates::Notified;
 use banager_core::runner::login_path::LoginPath;
+use banager_core::runner::HostEnv;
 use banager_core::session::Session;
 use banager_core::settings::{self, Settings};
 use std::path::PathBuf;
@@ -75,8 +76,25 @@ impl AppState {
         let Some(probe) = self.login_path.get() else {
             return;
         };
-        let read = probe.ensure().await;
-        self.session.note_login_path(read);
+        probe.ensure().await;
+        // Whether any read has worked, not this call's answer: a caller
+        // that waited on a failed read must not take back a later success.
+        self.session.note_login_path(probe.is_read());
+    }
+
+    /// What a refresh round looks along and whether that `PATH` is the
+    /// login shell's, as one value, after `read_login_path`: from one look
+    /// at the `PATH` read (`runner::login_path::round_env`), so a read that
+    /// works while the round runs changes neither for it
+    /// (`Session::refresh_recording_on`). Where nothing set a read up (a
+    /// test), the process's own `PATH` and what the session was told.
+    pub async fn round_env(&self) -> (HostEnv, bool) {
+        self.read_login_path().await;
+        if self.login_path.get().is_some() {
+            banager_core::runner::login_path::round_env()
+        } else {
+            (HostEnv::discover(), self.session.login_path_restored())
+        }
     }
 
     pub fn get_settings(&self) -> Settings {
@@ -167,6 +185,12 @@ mod tests {
         state.read_login_path().await;
         assert!(!state.session.login_path_restored());
         assert!(published.lock().unwrap().is_empty());
+        // A round begun now -- itself a refresh, so it reads once more, and
+        // fails again -- goes along the process's own PATH, taken as not
+        // the login shell's (Astra's j2 review, finding 2).
+        let (_, known) = state.round_env().await;
+        assert!(!known);
+        assert_eq!(runner.calls().len(), 2);
 
         runner.respond(
             argv,
@@ -183,10 +207,10 @@ mod tests {
         state.read_login_path().await;
         assert!(state.session.login_path_restored());
         assert_eq!(*published.lock().unwrap(), ["/opt/homebrew/bin:/usr/bin"]);
-        assert_eq!(runner.calls().len(), 2);
+        assert_eq!(runner.calls().len(), 3);
         // Read: no shell runs again.
         state.read_login_path().await;
-        assert_eq!(runner.calls().len(), 2);
+        assert_eq!(runner.calls().len(), 3);
     }
 
     #[test]
