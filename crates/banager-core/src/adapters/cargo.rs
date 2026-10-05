@@ -147,7 +147,7 @@ const DEFAULT_INSTALL_PROFILE: &str = "release";
 /// `"profile":"release","target":"aarch64-apple-darwin"` for a plain
 /// `cargo install hexyl`), so their mere presence says nothing about
 /// what the user asked for. Only a value that differs from what cargo
-/// would pick by itself is a choice (`args`).
+/// would pick by itself is a choice (`args`, `foreign_target`).
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct BuildChoices {
@@ -163,11 +163,10 @@ struct BuildChoices {
 
 impl BuildChoices {
     /// The flags that repeat what the user chose when installing, empty
-    /// for a crate installed with cargo's defaults -- which may then be
-    /// upgraded by cargo-binstall. Features, `--all-features` and
-    /// `--no-default-features` are always choices; a profile only when
-    /// it is not `release` (`--debug` is saved as `dev`); a target only
-    /// when `chosen_target` says it was asked for.
+    /// for a crate installed with cargo's defaults. Features,
+    /// `--all-features` and `--no-default-features` are always choices;
+    /// a profile only when it is not `release` (`--debug` is saved as
+    /// `dev`). Never `--target`: see `foreign_target`.
     fn args(&self) -> Vec<String> {
         let mut args = Vec::new();
         if !self.features.is_empty() {
@@ -186,26 +185,35 @@ impl BuildChoices {
         {
             args.extend(["--profile".into(), profile.to_string()]);
         }
-        if let Some(target) = self.chosen_target() {
-            args.extend(["--target".into(), target.to_string()]);
-        }
         args
     }
 
-    /// The target the user asked for with `cargo install --target`: the
-    /// saved `target` when it differs from the `host:` of the saved
-    /// `rustc -vV`. Without `--target` cargo builds for, and saves, the
-    /// host of the compiler that ran, so a target equal to that host is
+    /// Whether the upgrade must be built from source by cargo rather than
+    /// downloaded by cargo-binstall: a choice `args` replays, or a binary
+    /// built for another target (`foreign_target`), which cargo, not
+    /// binstall, rebuilds the way the user's own Cargo settings say.
+    fn builds_from_source(&self) -> bool {
+        !self.args().is_empty() || self.foreign_target().is_some()
+    }
+
+    /// The saved target when it differs from the `host:` of the saved
+    /// `rustc -vV`: a binary built for another machine than the compiler
+    /// ran on. Without `--target` or a `build.target` setting cargo builds
+    /// for, and saves, its own host, so a target equal to that host is
     /// cargo's default -- also when it is not this Mac's: a record that
     /// Migration Assistant brought from an Intel Mac says
-    /// `x86_64-apple-darwin` twice, and replaying it on Apple silicon
-    /// would ask for a standard library rustup may not have installed
-    /// ("can't find crate for `std`") and rebuild the Intel binary the
-    /// upgrade could have replaced. Such a record upgrades for this Mac,
-    /// as a fresh `cargo install` would. A record with no host to compare
-    /// with names no choice either: Banager cannot tell, and building for
-    /// this Mac is what cargo does when told nothing.
-    fn chosen_target(&self) -> Option<&str> {
+    /// `x86_64-apple-darwin` twice. A record with no host to compare with
+    /// names no foreign target either.
+    ///
+    /// A foreign target is never replayed as `--target`. Cargo saves the
+    /// target it resolved, not whether `--target` or a `build.target`
+    /// setting chose it (cargo `ops/cargo_install.rs`, `InstallInfo`), and
+    /// replaying it asks for a standard library this Mac's Rust may not
+    /// have ("can't find crate for `std`") or builds a program this Mac
+    /// cannot run (a Linux target). The upgrade is built by `cargo
+    /// install` with no `--target`, which applies the user's own
+    /// `build.target` if there is one and otherwise builds for this Mac.
+    fn foreign_target(&self) -> Option<&str> {
         let target = self.target.as_deref()?;
         let host = self
             .rustc
@@ -651,6 +659,7 @@ impl CargoAdapter {
                 AdapterError::Refused("Cargo install root must be an absolute UTF-8 path".into())
             })?;
         let mut build_args = Vec::new();
+        let mut from_source = false;
         if req.kind == OpKind::Upgrade {
             let json = self.read_crates2(inst)?;
             let entries = parse_crates2_entries(&json)?;
@@ -682,21 +691,22 @@ impl CargoAdapter {
                 serde_json::from_value(records.into_iter().next().unwrap().1)
                     .map_err(|e| AdapterError::Parse(e.to_string()))?;
             build_args = choices.args();
+            from_source = choices.builds_from_source();
         }
         match req.kind {
             OpKind::Install | OpKind::Upgrade => {
                 // The path `detect` resolved through HostEnv, not a fresh
                 // guess: whatever is previewed here is exactly what runs.
-                // A crate installed with build choices of its own is
-                // rebuilt from source with them; one installed with
-                // cargo's defaults (`build_args` empty) may be fetched
-                // as a binary.
+                // A crate installed with build choices of its own, or
+                // built for another target, is rebuilt from source; one
+                // installed with cargo's defaults may be fetched as a
+                // binary.
                 let binstall = self
                     .binstall
                     .lock()
                     .unwrap()
                     .clone()
-                    .filter(|_| build_args.is_empty());
+                    .filter(|_| !from_source);
                 let mut warnings = Vec::new();
                 // Do not inherit registry.default: the checked source is
                 // crates.io. Each program is given crates.io's index in the
@@ -995,17 +1005,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn regression_a_foreign_target_is_rebuilt_by_cargo_without_target() {
+        // Astra's j1 review, finding 3: a record whose target is not its
+        // own compiler's host -- `--target x86_64-apple-darwin` on Apple
+        // silicon, a `build.target` setting, a Linux cross-build -- used
+        // to replay `--target`, which fails on a Mac without that
+        // standard library and builds a Linux program this Mac cannot
+        // run. Never replayed: cargo rebuilds the crate with no
+        // `--target`, applying the user's own `build.target` if any, and
+        // cargo-binstall is not used for it.
+        for foreign in ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu"] {
+            let crates2 = recorded_hexyl_with(|record| {
+                record.insert("target".into(), foreign.into());
+            });
+            for binstall in [true, false] {
+                let (plan, home) = upgrade_plan("foreign-target", &crates2, binstall).await;
+                assert_eq!(
+                    command_program(&plan),
+                    PathBuf::from("/Users/brulek/.cargo/bin/cargo"),
+                    "{foreign}"
+                );
+                assert_eq!(
+                    command_args(&plan),
+                    vec![
+                        "install",
+                        "--force",
+                        "--root",
+                        home.to_str().unwrap(),
+                        "--index",
+                        CRATES_IO_INDEX,
+                        "hexyl"
+                    ],
+                    "{foreign}"
+                );
+                assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn test_upgrade_preserves_build_choices_and_uses_source_build() {
         // A real record of `cargo install hexyl --features pcre2,extra
-        // --all-features --no-default-features --debug --target
-        // x86_64-apple-darwin` on Apple silicon: every choice is replayed,
-        // and the upgrade compiles even with cargo-binstall there.
+        // --all-features --no-default-features --debug` on Apple silicon:
+        // every choice is replayed, and the upgrade compiles even with
+        // cargo-binstall there.
         let chosen = recorded_hexyl_with(|record| {
             record.insert("features".into(), serde_json::json!(["pcre2", "extra"]));
             record.insert("all_features".into(), true.into());
             record.insert("no_default_features".into(), true.into());
             record.insert("profile".into(), "dev".into());
-            record.insert("target".into(), "x86_64-apple-darwin".into());
         });
         let (plan, home) = upgrade_plan("build-choices", &chosen, true).await;
         assert_eq!(
@@ -1027,8 +1075,6 @@ mod tests {
                 "--no-default-features",
                 "--profile",
                 "dev",
-                "--target",
-                "x86_64-apple-darwin",
                 "hexyl"
             ]
         );
@@ -1037,7 +1083,7 @@ mod tests {
 
     #[test]
     fn test_build_choices_count_only_what_differs_from_cargos_defaults() {
-        let choices = |crates2: String| -> Vec<String> {
+        let choices = |crates2: String| -> (Vec<String>, bool) {
             let root: serde_json::Value = serde_json::from_str(&crates2).unwrap();
             let record = root["installs"]
                 .as_object()
@@ -1045,13 +1091,12 @@ mod tests {
                 .values()
                 .next()
                 .unwrap();
-            serde_json::from_value::<BuildChoices>(record.clone())
-                .unwrap()
-                .args()
+            let choices = serde_json::from_value::<BuildChoices>(record.clone()).unwrap();
+            (choices.args(), choices.builds_from_source())
         };
         let none: Vec<String> = Vec::new();
         // The recorded record: release profile, host target -- nothing.
-        assert_eq!(choices(recorded_crates2()), none);
+        assert_eq!(choices(recorded_crates2()), (none.clone(), false));
         for (what, crates2, expected) in [
             (
                 "one feature",
@@ -1081,22 +1126,27 @@ mod tests {
                 }),
                 vec!["--profile", "dist"],
             ),
+        ] {
+            let expected: Vec<String> = expected.into_iter().map(String::from).collect();
+            assert_eq!(choices(crates2), (expected, true), "{what}");
+        }
+        // A target other than the compiler's host: no flag, but a source
+        // build all the same.
+        for (what, crates2) in [
             (
-                "an Intel target asked for on Apple silicon",
+                "an Intel target on Apple silicon",
                 recorded_hexyl_with(|r| {
                     r.insert("target".into(), "x86_64-apple-darwin".into());
                 }),
-                vec!["--target", "x86_64-apple-darwin"],
             ),
             (
-                "an Apple silicon target asked for on an Intel Mac",
+                "an Apple silicon target on an Intel Mac",
                 recorded_hexyl_with(|r| {
                     r.insert("rustc".into(), recorded_rustc_on("x86_64-apple-darwin"));
                 }),
-                vec!["--target", "aarch64-apple-darwin"],
             ),
         ] {
-            assert_eq!(choices(crates2), expected, "{what}");
+            assert_eq!(choices(crates2), (none.clone(), true), "{what}");
         }
         for (what, crates2) in [
             (
@@ -1128,7 +1178,7 @@ mod tests {
                 }),
             ),
         ] {
-            assert_eq!(choices(crates2), none, "{what}");
+            assert_eq!(choices(crates2), (none.clone(), false), "{what}");
         }
     }
 

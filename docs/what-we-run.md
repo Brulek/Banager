@@ -1402,21 +1402,27 @@ Upgrade planning also reads the saved `features`, `all_features`,
 (`BuildChoices` in `adapters/cargo.rs`). Cargo writes a profile and a
 target into every record, also for a plain `cargo install`, so only a
 choice that differs from what cargo picks by itself counts: any feature,
-`all_features`, `no_default_features`, a profile other than `release`
-(`--debug` is saved as `dev`), and a target that differs from the
-`host:` line of the saved `rustc -vV` — the machine the compiler ran on,
-which is what cargo builds for when it is not given `--target`. Those
-choices are replayed as Cargo flags and force a source build with the
-existing "compiles locally" warning, even when cargo-binstall is
-available. A crate installed with cargo's defaults has no build choice,
-and its upgrade uses cargo-binstall when it is found. A record whose
-target is its own compiler's host — a `~/.cargo` that Migration Assistant
-brought from an Intel Mac says `x86_64-apple-darwin` for both — is
-upgraded for this Mac, as a fresh `cargo install` would build it; no
-`--target` is passed, so the upgrade never asks for a standard library
-this Mac's Rust may not have. A record that names no compiler host
-passes no `--target` either. An ambiguous or malformed install record is
-refused.
+`all_features`, `no_default_features`, and a profile other than
+`release` (`--debug` is saved as `dev`). Those choices are replayed as
+Cargo flags and force a source build with the existing "compiles
+locally" warning, even when cargo-binstall is available. A crate
+installed with cargo's defaults has no build choice, and its upgrade
+uses cargo-binstall when it is found.
+
+The saved target is never replayed as `--target`. Cargo saves the target
+it resolved, not whether `--target` or a `build.target` setting chose
+it, and replaying it can ask for a standard library this Mac's Rust does
+not have ("can't find crate for `std`") or build a program this Mac
+cannot run. A target equal to the `host:` line of the saved `rustc -vV`
+is cargo's own default on the machine that built it — a `~/.cargo` that
+Migration Assistant brought from an Intel Mac says
+`x86_64-apple-darwin` for both — and such a crate is upgraded like any
+other, for this Mac. A target that differs from that host (an explicit
+cross-build, a `build.target` setting) forces a source build without
+`--target`: `cargo install` then applies the user's own `build.target`
+if there is one and otherwise builds for this Mac; cargo-binstall is not
+used for it. A record that names no compiler host is treated as cargo's
+default. An ambiguous or malformed install record is refused.
 
 **Write commands:**
 
