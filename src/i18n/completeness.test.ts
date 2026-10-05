@@ -40,6 +40,16 @@ describe("i18n key parity", () => {
       expect(markers(translated).sort(), key).toEqual(markers(value).sort());
     }
   });
+  it("names each language in the language popup by its own name, in every language", () => {
+    // Someone looking for their language finds it written as they write
+    // it, whatever the window is in now (walk-5 W5-8).
+    for (const locale of [en, zhCN, zhHant]) {
+      const { english, chinese, traditionalChinese } = locale.settings.language;
+      expect([english, chinese, traditionalChinese]).toEqual(["English", "简体中文", "繁體中文"]);
+    }
+    // And System Default as macOS's Language & Region says it in Taiwan.
+    expect(zhHant.settings.language.system).toBe("系統預設值");
+  });
   it("has the same set of keys in en.json and zh-CN.json", () => {
     const enKeys = normalizedKeySet(en);
     const zhKeys = normalizedKeySet(zhCN);
