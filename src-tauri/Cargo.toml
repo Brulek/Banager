@@ -37,14 +37,6 @@ banager-core = { path = "../crates/banager-core" }
 # dependency of tauri, and banager-core already switches `time` on, so no
 # new crate and no new feature enters the build.
 tokio = { version = "1", features = ["time"] }
-# Pinned to an explicit rev (not just whatever Cargo.lock happens to resolve
-# to): this is a git dependency with no published version, so without a
-# pinned rev it is the one dependency that could change under us -- on a
-# `cargo update` or a fresh checkout without Cargo.lock -- with no version
-# bump to signal it, which matters for a signed release. The rev below is
-# what Cargo.lock currently resolves to.
-fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c4c45d503ea115a839aae718d02f79e7c7f0f673" }
-
 # `menu::preferred_languages` asks macOS for the user's preferred languages
 # (`NSLocale preferredLanguages`), to build the menu bar in the window's
 # language before the page has said which; `window::observe_activation`
