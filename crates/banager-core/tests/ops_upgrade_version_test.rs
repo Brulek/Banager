@@ -1091,3 +1091,134 @@ async fn test_a_rustup_self_update_stopped_by_the_timeout_is_unconfirmed_whateve
         assert_eq!(outcome, Outcome::Unconfirmed, "{versions:?}");
     }
 }
+
+// --- Cargo ----------------------------------------------------------------
+
+/// `<root>/.crates.toml` as Cargo and cargo-binstall write it: hexyl at
+/// `hexyl`, and cargo-binstall's own entry, which its install script's
+/// self-install leaves.
+fn crates_toml(hexyl: &str) -> String {
+    format!(
+        "[v1]\n\"cargo-binstall 1.17.4 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"cargo-binstall\"]\n\"hexyl {hexyl} (registry+https://github.com/rust-lang/crates.io-index)\" = [\"hexyl\"]\n"
+    )
+}
+
+/// Does to the Cargo root what cargo-binstall's binary install does when
+/// the upgrade command runs: rewrites `.crates.toml` (binstalk-manifests
+/// `crates_manifests.rs`, `Manifests::update`, which also writes its own
+/// `binstall/crates-v1.json`) and leaves `.crates2.json` as it was.
+struct BinstallRunner {
+    inner: Arc<ScriptedRunner>,
+    rewrites: Option<(PathBuf, String)>,
+}
+
+#[async_trait]
+impl CommandRunner for BinstallRunner {
+    async fn run(
+        &self,
+        spec: CommandSpec,
+        on_line: Option<LineCallback>,
+        cancel: CancellationToken,
+    ) -> Result<CommandOutput, RunnerError> {
+        let is_binstall = spec.program.ends_with("cargo-binstall");
+        let output = self.inner.run(spec, on_line, cancel).await?;
+        if let (true, Some((path, contents))) = (is_binstall, &self.rewrites) {
+            std::fs::write(path, contents).expect("binstall rewrote .crates.toml");
+        }
+        Ok(output)
+    }
+}
+
+/// Upgrades hexyl 0.17.0, installed with Cargo (the recorded
+/// `.crates2.json`), through cargo-binstall in a temp Cargo root, the
+/// binstall run rewriting `.crates.toml` to `after` when there is one.
+async fn cargo_binstall_upgrade(after: Option<&str>) -> Outcome {
+    use banager_core::adapters::cargo::CargoAdapter;
+    use std::os::unix::fs::PermissionsExt;
+    static NEXT_ROOT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let root = std::env::temp_dir().join(format!(
+        "banager-ops-cargo-{}-{}-{}",
+        std::process::id(),
+        NEXT_ROOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).expect("cargo bin");
+    for program in ["cargo", "cargo-binstall", "hexyl"] {
+        std::fs::write(bin.join(program), b"#!/bin/sh\n").expect("program");
+        std::fs::set_permissions(bin.join(program), std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+    }
+    std::fs::write(
+        root.join(".crates2.json"),
+        fixture("cargo/1.98.1/crates2.json"),
+    )
+    .expect(".crates2.json");
+    std::fs::write(root.join(".crates.toml"), crates_toml("0.17.0")).expect(".crates.toml");
+    let runner = Arc::new(ScriptedRunner::default());
+    let cargo = bin.join("cargo").to_string_lossy().to_string();
+    runner.script(
+        &[cargo.as_str(), "--version"],
+        vec![exited_0(&fixture("cargo/1.98.1/version.txt"), "")],
+    );
+    let binstall = bin.join("cargo-binstall").to_string_lossy().to_string();
+    let root_arg = root.to_string_lossy().to_string();
+    runner.script(
+        &[
+            binstall.as_str(),
+            "-y",
+            "--force",
+            "--root",
+            root_arg.as_str(),
+            "--index",
+            "sparse+https://index.crates.io/",
+            "hexyl",
+        ],
+        vec![exited_0(
+            "",
+            "INFO resolve: Resolving package: 'hexyl'\nINFO Done in 2.1s\n",
+        )],
+    );
+    let adapter = Arc::new(CargoAdapter::new(
+        Arc::new(BinstallRunner {
+            inner: runner.clone(),
+            rewrites: after.map(|after| (root.join(".crates.toml"), crates_toml(after))),
+        }),
+        Arc::new(MockHttpClient::new()),
+    ));
+    let env = HostEnv {
+        path_dirs: vec![bin],
+        home: root.clone(),
+        euid: 501,
+        cargo_home: Some(root.clone()),
+        rustup_home: None,
+        zdotdir: None,
+        ollama_host: None,
+    };
+    let inst = adapter.detect(&env).await.remove(0);
+    let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "hexyl").await;
+    let _ = std::fs::remove_dir_all(&root);
+    outcome
+}
+
+#[tokio::test]
+async fn test_a_cargo_binstall_upgrade_that_moved_the_version_succeeded() {
+    // Astra's j1 review, finding 1: binstall never writes `.crates2.json`,
+    // so read alone it said 0.17.0 after the upgrade and the op ended as
+    // "unchanged". `.crates.toml` says 0.18.0.
+    assert_eq!(
+        cargo_binstall_upgrade(Some("0.18.0")).await,
+        Outcome::Succeeded
+    );
+}
+
+#[tokio::test]
+async fn test_a_cargo_binstall_upgrade_that_changed_nothing_is_not_reported_as_updated() {
+    assert_eq!(
+        cargo_binstall_upgrade(None).await,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}

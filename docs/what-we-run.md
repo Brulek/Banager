@@ -1385,8 +1385,34 @@ waiting and read only when `fstat` says it is a regular file of at most
 records the program the crate installed, `<CARGO_HOME>/bin/<binary>` (the
 binary named after the crate when there is one, else the first the record
 lists), which the Other Programs page uses to place that program under Cargo
-rather than list it. `check_updates` reads the
-same file and, for each crate installed from crates.io, asks crates.io
+rather than list it.
+
+It also reads `<CARGO_HOME>/.crates.toml`, Cargo's older install
+manifest, the same way (no command; a regular file of at most 16 MiB,
+never in or through a protected place; a missing file means
+`.crates2.json` is read as it is, anything else is an error for the
+source). Cargo rewrites both files on every `cargo install` and `cargo
+uninstall`, but cargo-binstall's binary installs rewrite only
+`.crates.toml` (and a `binstall/crates-v1.json` of its own, which Banager
+does not read), so after cargo-binstall upgrades a crate,
+`.crates2.json` still names the old version. Where the two disagree,
+`.crates.toml` therefore records the newer install, and Banager applies
+the rule Cargo itself applies whenever it loads them (`sync_v1`;
+`merge_crates_v1` in `adapters/cargo.rs`): each `.crates.toml` entry is
+one installed crate, at that entry's version, with that entry's
+programs; a `.crates2.json` record whose entry `.crates.toml` no longer
+has is an install that was replaced or removed, and is left out. Build
+choices (below) come from `.crates2.json` only — `.crates.toml` records
+none: from the record of the same install, else from the one record of
+the same crate and source that the newer install replaced, else none. A
+`.crates.toml` that lists nothing (cargo-binstall creates it empty
+before its first write) leaves `.crates2.json` as it is. A crate that
+only cargo-binstall installed is listed too, as `cargo install --list`
+lists it. `inventory`, the check after an operation, `check_updates` and
+upgrade planning all read this merged record.
+
+`check_updates` reads the
+merged record and, for each crate installed from crates.io, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
 percent-encoded. Crates installed from a git repository or a local path
 or another registry are never looked up; they are listed as "could not
@@ -1428,9 +1454,9 @@ default. An ambiguous or malformed install record is refused.
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
-| Install, cargo-binstall found | `<cargo-binstall> -y --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
+| Install, a usable cargo-binstall found (below) | `<cargo-binstall> -y --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
 | Install, otherwise | `<cargo> install --root {root} --index https://github.com/rust-lang/crates.io-index {name}` (previewed with a "compiles locally" warning) | 1800 s | No |
-| Upgrade, cargo-binstall found and no saved build choices | `<cargo-binstall> -y --force --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
+| Upgrade, a usable cargo-binstall found, no saved build choices and no other target | `<cargo-binstall> -y --force --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
 | Upgrade, otherwise | `<cargo> install --force --root {root} --index https://github.com/rust-lang/crates.io-index [saved build flags] {name}` (same warning) | 1800 s | No |
 | Uninstall | `<cargo> uninstall --root {root} {name}` | 300 s | No |
 
@@ -1451,9 +1477,24 @@ reaches with no flag:
   as it does without the flag. It is never given the github.com address:
   binstall reads any index address without `sparse+` as a git index and
   would download the whole crates.io index from github.com on every run.
-  cargo-binstall 1.1 and 1.2 asked crates.io's API instead by default;
-  versions before 1.1 do not accept `--index` and stop with an error
-  before connecting anywhere.
+
+Which cargo-binstall is usable: cargo-binstall 1.1 and 1.2 asked
+crates.io's API (`crates.io`) by default, and versions before 1.1 do not
+accept `--index` at all, so a binstall older than 1.3.0 could not be
+bound to crates.io's index without moving it to a host it did not use.
+Banager learns a binstall's version without running it only from the
+Cargo root's own records: when the binstall on `PATH` is
+`<CARGO_HOME>/bin/cargo-binstall` and the merged record above holds
+exactly one crates.io entry for the crate `cargo-binstall` — which its
+install script (`--self-install`), `cargo install cargo-binstall` and
+its own self-update all leave. A binstall those records date before 1.3.0 is not used: the
+install or upgrade compiles with `cargo install` instead, previewed with
+the "compiles locally" warning. A binstall installed elsewhere —
+Homebrew's, or a copied file — has no version Banager can read and is
+used with the sparse index; were it older than 1.3.0, it would read
+`index.crates.io` instead of crates.io's API, both crates.io's own
+hosts; 1.3.0 was released in 2023, and Homebrew's formula is the current
+release.
 
 Where each program then downloads the crate or the prebuilt binary from
 is its own choice, unchanged by these flags (the last paragraph of
@@ -3110,8 +3151,9 @@ not read (`protected::look`; How Banager runs anything, above):
   inventory returns; only the saved main-package requirement and the saved
   constraints and overrides naming the main package are inspected, for
   update checks and upgrade planning (uv's section).
-- Cargo: `<CARGO_HOME>/.crates2.json`; whether `cargo-binstall` is on
-  `PATH`.
+- Cargo: `<CARGO_HOME>/.crates2.json` and `<CARGO_HOME>/.crates.toml`
+  (Cargo's two install manifests, merged as the Cargo section says);
+  whether `cargo-binstall` is on `PATH`.
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
   for each pulled model of a daemon identified as on this Mac.

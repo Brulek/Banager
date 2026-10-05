@@ -59,6 +59,40 @@ const CRATES_IO_INDEX: &str = "https://github.com/rust-lang/crates.io-index";
 /// configured an index for it.
 const CRATES_IO_SPARSE_INDEX: &str = "sparse+https://index.crates.io/";
 
+/// The first cargo-binstall whose own default index is
+/// `CRATES_IO_SPARSE_INDEX` (binstalk-registry 1.3.0, `Registry::default`).
+/// 1.1 and 1.2 asked crates.io's API (`crates.io`) instead, so handing
+/// them `--index` would move them to a host they did not use; before 1.1
+/// binstall has no `--index` at all.
+const BINSTALL_SPARSE_DEFAULT_SINCE: semver::Version = semver::Version::new(1, 3, 0);
+
+/// The version of the cargo-binstall at `binstall`, when the Cargo root's
+/// own records say it: the program is `<root>/bin/cargo-binstall` and
+/// `installs` (`CargoAdapter::read_installs`) holds exactly one
+/// crates.io record of the crate `cargo-binstall` -- which the official
+/// install script, `cargo install cargo-binstall` and binstall's own
+/// self-update all leave (binstall `entry.rs` records itself in
+/// `.crates.toml`). `None` for a cargo-binstall anywhere else, Homebrew's
+/// among them, whose version Banager does not learn without running it.
+fn recorded_binstall_version(
+    installs: &str,
+    root: &Path,
+    binstall: &Path,
+) -> Option<semver::Version> {
+    if binstall != root.join("bin").join("cargo-binstall") {
+        return None;
+    }
+    let entries = parse_crates2_entries(installs).ok()?;
+    let mut records = entries
+        .iter()
+        .filter(|(name, _, source)| name == "cargo-binstall" && is_crates_io(source));
+    let (_, version, _) = records.next()?;
+    if records.next().is_some() {
+        return None;
+    }
+    semver::Version::parse(version).ok()
+}
+
 fn is_crates_io(source: &str) -> bool {
     matches!(
         source,
@@ -123,6 +157,81 @@ fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, Ad
         .collect();
     entries.sort();
     Ok(entries)
+}
+
+/// Cargo's older install manifest, `<root>/.crates.toml`: one `[v1]`
+/// table whose keys are the same `"name version (source)"` as
+/// `.crates2.json`'s and whose values are the programs each crate
+/// installed, e.g.
+///
+/// ```toml
+/// [v1]
+/// "hexyl 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)" = ["hexyl"]
+/// ```
+#[derive(Debug, Default, Deserialize)]
+struct CratesV1 {
+    #[serde(default)]
+    v1: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// `.crates2.json` (`crates2`) brought up to date with `.crates.toml`
+/// (`crates_toml`), in `.crates2.json`'s shape, by the rule Cargo itself
+/// applies whenever it loads the two (cargo 1.98.1
+/// `ops/common_for_install_and_uninstall.rs`, `CrateListingV2::sync_v1`):
+/// `.crates.toml` says which crates, at which versions and with which
+/// programs, are installed.
+///
+/// Why `.crates.toml` wins: it is the manifest every installer keeps.
+/// `cargo install` and `cargo uninstall` rewrite both files together;
+/// cargo-binstall's binary installs rewrite `.crates.toml` (and a file of
+/// its own) and never `.crates2.json` (binstalk-manifests
+/// `crates_manifests.rs`, 1.3.0 to 1.25.1; `crates/bin/src/manifests.rs`
+/// before). So where the two disagree, `.crates.toml` records the newer
+/// install: after `cargo-binstall --force hexyl` it names hexyl 0.18.0
+/// while `.crates2.json` still names 0.17.0.
+///
+/// Precisely: each `.crates.toml` entry is one installed crate, with that
+/// entry's programs. Its other fields -- the build choices `BuildChoices`
+/// reads -- come from `.crates2.json` only: from the record under the
+/// same key, else from the one record of the same crate name and source
+/// (the install the newer one replaced, whose choices stand: `.crates.toml`
+/// records none), else none. A `.crates2.json` record whose key
+/// `.crates.toml` does not list is an install that has since been
+/// replaced or removed, and is left out -- as Cargo leaves it out.
+///
+/// A `.crates.toml` that lists nothing leaves `.crates2.json` as it is:
+/// cargo-binstall creates the file empty before its first write, and an
+/// empty one is no evidence that every recorded crate is gone.
+pub(crate) fn merge_crates_v1(crates2: &str, crates_toml: &str) -> Result<String, AdapterError> {
+    let v1: CratesV1 = toml::from_str(crates_toml)
+        .map_err(|e| AdapterError::Parse(format!("parsing .crates.toml: {e}")))?;
+    if v1.v1.is_empty() {
+        return Ok(crates2.to_string());
+    }
+    let v2: Crates2Root =
+        serde_json::from_str(crates2).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    let mut same_crate: HashMap<(String, String), Vec<&serde_json::Value>> = HashMap::new();
+    for (key, record) in &v2.installs {
+        if let Some((name, _, source)) = parse_install_key(key) {
+            same_crate.entry((name, source)).or_default().push(record);
+        }
+    }
+    let mut installs = serde_json::Map::new();
+    for (key, bins) in v1.v1 {
+        let mut record = match v2.installs.get(&key) {
+            Some(record) => record.clone(),
+            None => parse_install_key(&key)
+                .and_then(|(name, _, source)| same_crate.get(&(name, source)))
+                .filter(|records| records.len() == 1)
+                .map(|records| records[0].clone())
+                .unwrap_or_else(|| serde_json::json!({})),
+        };
+        if let Some(fields) = record.as_object_mut() {
+            fields.insert("bins".into(), serde_json::json!(bins));
+        }
+        installs.insert(key, record);
+    }
+    Ok(serde_json::json!({ "installs": installs }).to_string())
 }
 
 /// The one field of an `installs` *value* Banager reads: the programs the
@@ -538,11 +647,44 @@ impl CargoAdapter {
         }
     }
 
+    /// `<root>/.crates.toml`, read as `.crates2.json` is (`read_crates2`:
+    /// a regular file of at most `read_file::LIMIT`, never in or through
+    /// a protected place), or `None` when there is none: nothing was ever
+    /// installed in the root, or the file was removed, and `.crates2.json`
+    /// is then read as it is.
+    fn read_crates_toml(&self, inst: &ManagerInstance) -> Result<Option<String>, AdapterError> {
+        let path = inst.prefix.join(".crates.toml");
+        match crate::adapters::read_file::read_text(
+            &path,
+            &crate::protected::Protected::of_this_process(),
+        ) {
+            Ok(toml) => Ok(Some(toml)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(AdapterError::Parse(format!(
+                "reading {}: {e}",
+                path.display()
+            ))),
+        }
+    }
+
+    /// What is installed under the instance's root, in `.crates2.json`'s
+    /// shape: `.crates2.json` brought up to date with `.crates.toml`
+    /// (`merge_crates_v1`), so that a crate cargo-binstall upgraded reads
+    /// at the version it installed. The one reader of the two files for
+    /// `inventory` (and so `reconcile`), `check_updates` and `plan`.
+    fn read_installs(&self, inst: &ManagerInstance) -> Result<String, AdapterError> {
+        let crates2 = self.read_crates2(inst)?;
+        match self.read_crates_toml(inst)? {
+            Some(crates_toml) => merge_crates_v1(&crates2, &crates_toml),
+            None => Ok(crates2),
+        }
+    }
+
     pub async fn inventory(
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let json = self.read_crates2(inst)?;
+        let json = self.read_installs(inst)?;
         parse_crates2(&json, &inst.id, &inst.prefix)
     }
 
@@ -576,7 +718,7 @@ impl CargoAdapter {
         inst: &ManagerInstance,
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
-        let json = self.read_crates2(inst)?;
+        let json = self.read_installs(inst)?;
         let entries = parse_crates2_entries(&json)?;
         let mut out = Vec::new();
         // The same rows `parse_crates2` lists: a crate without a usable
@@ -660,8 +802,9 @@ impl CargoAdapter {
             })?;
         let mut build_args = Vec::new();
         let mut from_source = false;
+        let mut installs = None;
         if req.kind == OpKind::Upgrade {
-            let json = self.read_crates2(inst)?;
+            let json = self.read_installs(inst)?;
             let entries = parse_crates2_entries(&json)?;
             let matching: Vec<_> = entries
                 .iter()
@@ -692,6 +835,7 @@ impl CargoAdapter {
                     .map_err(|e| AdapterError::Parse(e.to_string()))?;
             build_args = choices.args();
             from_source = choices.builds_from_source();
+            installs = Some(json);
         }
         match req.kind {
             OpKind::Install | OpKind::Upgrade => {
@@ -701,12 +845,27 @@ impl CargoAdapter {
                 // built for another target, is rebuilt from source; one
                 // installed with cargo's defaults may be fetched as a
                 // binary.
+                //
+                // A cargo-binstall the root's records date before 1.3.0
+                // is not used: it cannot be bound to crates.io's index
+                // without moving it off the host it uses by default
+                // (`BINSTALL_SPARSE_DEFAULT_SINCE`). An install reads the
+                // records only for this; when they cannot be read, the
+                // version is unknown, as for a binstall outside the root.
                 let binstall = self
                     .binstall
                     .lock()
                     .unwrap()
                     .clone()
-                    .filter(|_| !from_source);
+                    .filter(|_| !from_source)
+                    .filter(|binstall| {
+                        let installs = installs.clone().or_else(|| self.read_installs(inst).ok());
+                        installs
+                            .and_then(|installs| {
+                                recorded_binstall_version(&installs, &inst.prefix, binstall)
+                            })
+                            .is_none_or(|version| version >= BINSTALL_SPARSE_DEFAULT_SINCE)
+                    });
                 let mut warnings = Vec::new();
                 // Do not inherit registry.default: the checked source is
                 // crates.io. Each program is given crates.io's index in the
@@ -1180,6 +1339,291 @@ mod tests {
         ] {
             assert_eq!(choices(crates2), (none.clone(), false), "{what}");
         }
+    }
+
+    /// `.crates.toml` as cargo 1.98.1 writes it beside the recorded
+    /// `.crates2.json` (`CrateListingV1`, serialised with `toml`): one
+    /// `[v1]` table, the install key quoted, the programs in an array.
+    const CRATES_TOML_HEXYL_0_17: &str = "[v1]\n\"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"hexyl\"]\n";
+
+    /// The same file after `cargo-binstall -y --force hexyl` moved hexyl
+    /// to 0.18.0: binstall (`crates_manifests.rs`, `Manifests::update`)
+    /// replaces the crate's entry here -- crates.io's sparse index is
+    /// recorded under crates.io's git name (`Registry::crate_source`) --
+    /// and leaves `.crates2.json` naming 0.17.0. Its own entry is there
+    /// too, as the official install script's self-install leaves it.
+    const CRATES_TOML_AFTER_BINSTALL: &str = "[v1]\n\"cargo-binstall 1.17.4 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"cargo-binstall\"]\n\"hexyl 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"hexyl\"]\n";
+
+    /// A Cargo root holding the recorded `.crates2.json` and `crates_toml`.
+    fn root_with(tag: &str, crates2: &str, crates_toml: &str) -> PathBuf {
+        let home = temp_cargo_home(tag);
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".crates2.json"), crates2).unwrap();
+        std::fs::write(home.join(".crates.toml"), crates_toml).unwrap();
+        home
+    }
+
+    fn hexyl_key(inst: &ManagerInstance) -> ArtifactKey {
+        ArtifactKey {
+            instance_id: inst.id.clone(),
+            kind: ArtifactKind::Binary,
+            name: "hexyl".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_a_binstall_upgrade_reads_at_the_version_it_installed() {
+        // Astra's j1 review, finding 1: cargo-binstall's binary install
+        // rewrites `.crates.toml`, never `.crates2.json`, so a crate it
+        // upgraded read at its old version: the upgrade reconciled as
+        // "unchanged" and was offered again at the next check.
+        let home = root_with(
+            "binstalled",
+            &recorded_crates2(),
+            CRATES_TOML_AFTER_BINSTALL,
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://crates.io/api/v1/crates/hexyl",
+            HttpResponse {
+                status: 200,
+                body: r#"{"crate":{"max_stable_version":"0.18.0"}}"#.to_string(),
+            },
+        );
+        http.respond(
+            "https://crates.io/api/v1/crates/cargo-binstall",
+            HttpResponse {
+                status: 200,
+                body: r#"{"crate":{"max_stable_version":"1.17.4"}}"#.to_string(),
+            },
+        );
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http);
+        let inst = test_instance(home.clone());
+        let listed = adapter.inventory(&inst).await.unwrap();
+        let hexyl = listed.iter().find(|a| a.key.name == "hexyl").unwrap();
+        assert_eq!(hexyl.version, "0.18.0");
+        assert_eq!(hexyl.path, Some(home.join("bin/hexyl")));
+        // binstall's own record lists it too, as `cargo install --list` does.
+        assert!(listed.iter().any(|a| a.key.name == "cargo-binstall"));
+        assert_eq!(listed.len(), 2);
+        let after = adapter.reconcile(&inst, &hexyl_key(&inst)).await.unwrap();
+        assert!(after.present);
+        assert_eq!(after.version.as_deref(), Some("0.18.0"));
+        let rows = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert!(rows.is_empty(), "{rows:?}");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn test_merge_crates_v1_follows_cargos_own_rule() {
+        let installs = |json: &str| -> serde_json::Map<String, serde_json::Value> {
+            serde_json::from_str::<serde_json::Value>(json).unwrap()["installs"]
+                .as_object()
+                .unwrap()
+                .clone()
+        };
+        let old_key = "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)";
+        let new_key = "hexyl 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)";
+        // The same install in both: `.crates2.json`'s record as it is.
+        let same = merge_crates_v1(&recorded_crates2(), CRATES_TOML_HEXYL_0_17).unwrap();
+        assert_eq!(installs(&same), installs(&recorded_crates2()));
+        // After binstall: the newer version, the record it replaced kept
+        // for its build fields, the old key gone, binstall's own entry with
+        // nothing but its programs.
+        let chosen = recorded_hexyl_with(|r| {
+            r.insert("features".into(), serde_json::json!(["pcre2"]));
+        });
+        let merged = installs(&merge_crates_v1(&chosen, CRATES_TOML_AFTER_BINSTALL).unwrap());
+        assert!(!merged.contains_key(old_key));
+        assert_eq!(merged[new_key]["features"], serde_json::json!(["pcre2"]));
+        assert_eq!(merged[new_key]["profile"], "release");
+        assert_eq!(merged[new_key]["bins"], serde_json::json!(["hexyl"]));
+        assert_eq!(
+            merged["cargo-binstall 1.17.4 (registry+https://github.com/rust-lang/crates.io-index)"],
+            serde_json::json!({"bins": ["cargo-binstall"]})
+        );
+        assert_eq!(merged.len(), 2);
+        // A crate `.crates.toml` no longer lists is gone, as `cargo
+        // uninstall` would have left it if it had written both.
+        let removed = merge_crates_v1(
+            &recorded_crates2(),
+            "[v1]\n\"bat 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"bat\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            installs(&removed).keys().collect::<Vec<_>>(),
+            ["bat 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)"]
+        );
+        // A crate of another source is not the same crate: no choices pass.
+        let git = merge_crates_v1(
+            &chosen,
+            "[v1]\n\"hexyl 0.18.0 (git+https://github.com/sharkdp/hexyl#4a7b2a1c)\" = [\"hexyl\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            installs(&git)["hexyl 0.18.0 (git+https://github.com/sharkdp/hexyl#4a7b2a1c)"],
+            serde_json::json!({"bins": ["hexyl"]})
+        );
+        // A `.crates.toml` that lists nothing -- empty, as binstall creates
+        // it, or an empty table -- leaves `.crates2.json` as it is.
+        for nothing in ["", "[v1]\n"] {
+            assert_eq!(
+                merge_crates_v1(&recorded_crates2(), nothing).unwrap(),
+                recorded_crates2()
+            );
+        }
+        // One that is not Cargo's manifest is an error, as it is to Cargo.
+        for broken in ["[v1\n", "[v1]\n\"hexyl 0.17.0 (x)\" = \"hexyl\"\n"] {
+            assert!(matches!(
+                merge_crates_v1(&recorded_crates2(), broken),
+                Err(AdapterError::Parse(_))
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_binstalled_crate_keeps_the_build_choices_crates2_recorded() {
+        // `.crates2.json` alone says how a crate was built; the version
+        // binstall moved it to does not make those choices go away.
+        let chosen = recorded_hexyl_with(|r| {
+            r.insert("features".into(), serde_json::json!(["pcre2"]));
+        });
+        let home = root_with("binstalled-choices", &chosen, CRATES_TOML_AFTER_BINSTALL);
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+                .with_binstall(Some(PathBuf::from(BINSTALL)));
+        let inst = test_instance(home.clone());
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".into(),
+        };
+        let plan = adapter.plan(&inst, &req).await.unwrap();
+        assert_eq!(command_program(&plan), inst.exe_path);
+        assert!(command_args(&plan)
+            .windows(2)
+            .any(|w| w == ["--features", "pcre2"]));
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_crates_toml_is_read_as_crates2_json_is() {
+        // Bounded and outside protected places, as `.crates2.json`: a pipe
+        // is refused, not waited on, and a link into `~/Documents` is not
+        // followed -- an error for the source, never a guess.
+        let home = std::fs::canonicalize({
+            let raw = temp_cargo_home("crates-toml-read");
+            std::fs::create_dir_all(&raw).unwrap();
+            raw
+        })
+        .unwrap();
+        let root = home.join(".cargo");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(".crates2.json"), recorded_crates2()).unwrap();
+        crate::adapters::read_file::tests::make_fifo(&root.join(".crates.toml"));
+        let inst = test_instance(root.clone());
+        let read = crate::adapters::read_file::tests::finishes({
+            let inst = inst.clone();
+            move || {
+                let adapter =
+                    CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+                adapter.read_installs(&inst)
+            }
+        });
+        assert!(matches!(read, Err(AdapterError::Parse(_))), "{read:?}");
+        std::fs::remove_file(root.join(".crates.toml")).unwrap();
+        let documents = home.join("Documents");
+        std::fs::create_dir_all(&documents).unwrap();
+        std::fs::write(documents.join("crates.toml"), CRATES_TOML_HEXYL_0_17).unwrap();
+        std::os::unix::fs::symlink(documents.join("crates.toml"), root.join(".crates.toml"))
+            .unwrap();
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        {
+            let _home = crate::protected::as_if_home(&home);
+            assert!(adapter.inventory(&inst).await.is_err());
+        }
+        // No `.crates.toml` at all: `.crates2.json` as it is.
+        std::fs::remove_file(root.join(".crates.toml")).unwrap();
+        assert_eq!(adapter.inventory(&inst).await.unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// An upgrade plan of hexyl with cargo-binstall at
+    /// `<root>/bin/cargo-binstall`, the root's `.crates.toml` recording
+    /// binstall at `version`.
+    async fn plan_with_recorded_binstall(tag: &str, version: &str, kind: OpKind) -> Plan {
+        let crates_toml = CRATES_TOML_AFTER_BINSTALL.replace("1.17.4", version);
+        let home = root_with(tag, &recorded_crates2(), &crates_toml);
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+                .with_binstall(Some(home.join("bin/cargo-binstall")));
+        let inst = test_instance(home.clone());
+        let req = OpRequest {
+            kind,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".into(),
+        };
+        let plan = adapter.plan(&inst, &req).await.unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+        plan
+    }
+
+    #[tokio::test]
+    async fn regression_a_binstall_older_than_1_3_is_not_moved_to_the_sparse_index() {
+        // Astra's j1 review, finding 4: cargo-binstall 1.1 and 1.2 ask
+        // crates.io's API by default, so `--index sparse+…` would send
+        // them to index.crates.io. One the root's records date before
+        // 1.3.0 is not used; cargo builds instead.
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            for old in ["1.2.0", "1.1.2", "1.0.0"] {
+                let plan = plan_with_recorded_binstall("old-binstall", old, kind).await;
+                assert_eq!(
+                    command_program(&plan),
+                    PathBuf::from("/Users/brulek/.cargo/bin/cargo"),
+                    "{old} {kind:?}"
+                );
+                assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
+            }
+            for current in ["1.3.0", "1.17.4"] {
+                let plan = plan_with_recorded_binstall("new-binstall", current, kind).await;
+                assert!(
+                    command_program(&plan).ends_with("bin/cargo-binstall"),
+                    "{current} {kind:?}"
+                );
+                assert!(command_args(&plan)
+                    .windows(2)
+                    .any(|w| w == ["--index", CRATES_IO_SPARSE_INDEX]));
+                assert!(plan.warnings.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_recorded_binstall_version_reads_only_the_roots_own_binstall() {
+        let root = Path::new("/Users/brulek/.cargo");
+        let merged = merge_crates_v1(&recorded_crates2(), CRATES_TOML_AFTER_BINSTALL).unwrap();
+        let own = root.join("bin/cargo-binstall");
+        assert_eq!(
+            recorded_binstall_version(&merged, root, &own),
+            Some(semver::Version::new(1, 17, 4))
+        );
+        // Homebrew's, or any other: its version is not in these records.
+        assert_eq!(
+            recorded_binstall_version(&merged, root, Path::new("/opt/homebrew/bin/cargo-binstall")),
+            None
+        );
+        // Not recorded at all.
+        assert_eq!(
+            recorded_binstall_version(&recorded_crates2(), root, &own),
+            None
+        );
     }
 
     // Regressions found by `adapters/robustness.rs`.
