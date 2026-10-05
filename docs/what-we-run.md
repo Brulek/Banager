@@ -1457,15 +1457,22 @@ the rule Cargo itself applies whenever it loads them (`sync_v1`;
 `merge_crates_v1` in `adapters/cargo.rs`): each `.crates.toml` entry is
 one installed crate, at that entry's version, with that entry's
 programs; a `.crates2.json` record whose entry `.crates.toml` no longer
-has is an install that was replaced or removed, and is left out. Build
-choices (below) come from `.crates2.json` only — `.crates.toml` records
-none: from the record of the same install, else from the one record of
-the same crate and source that the newer install replaced, else none. A
-`.crates.toml` that lists nothing (cargo-binstall creates it empty
-before its first write) leaves `.crates2.json` as it is. A crate that
-only cargo-binstall installed is listed too, as `cargo install --list`
-lists it. `inventory`, the check after an operation, `check_updates` and
-upgrade planning all read this merged record.
+has is an install that was replaced or removed, and is left out — every
+one of them when `.crates.toml`'s `[v1]` table lists nothing, as Cargo
+leaves it once the last crate is uninstalled. Build choices (below) come
+from `.crates2.json` only — `.crates.toml` records none — and only from
+the record of the same install: the same name, version and source. A
+version only `.crates.toml` names, such as the one cargo-binstall put in
+place of an older install, has none, as Cargo gives it none: the older
+install's features or profile are never carried over to it. A blank
+`.crates.toml` (Cargo empties it just before writing the new listing,
+and cargo-binstall creates it blank before its first write) beside a
+`.crates2.json` that lists anything is an error for that refresh, which
+the next refresh reads again; one without a `[v1]` table is an error, as
+it is to Cargo. A crate that only cargo-binstall installed is listed
+too, as `cargo install --list` lists it. `inventory`, the check after an
+operation, `check_updates` and upgrade planning all read this merged
+record.
 
 `check_updates` reads the
 merged record and, for each crate installed from crates.io, asks crates.io
