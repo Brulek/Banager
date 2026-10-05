@@ -321,12 +321,15 @@ describe("toolSetupCheck's source lines", () => {
     );
   });
 
-  it("keeps a last response stamped at Unix zero instead of treating it as missing", () => {
+  it("keeps the last response of a Mac whose clock reads before 1970 instead of treating it as missing", () => {
+    // Banager stamps that clock's answers 0 (`Session::clock`,
+    // crates/banager-core/src/session/mod.rs), and the window reads the
+    // same clock, half a minute before 1970.
     const snapshot: Snapshot = {
       ...fineSnapshot(),
       instances: [instance(BREW, { answered_at: 0, status: { unavailable: "NotResponding", notes: [] } })],
     };
-    const check = toolSetupCheck(en, input({ snapshot, nowMs: 0 }));
+    const check = toolSetupCheck(en, input({ snapshot, nowMs: -30_000 }));
     const time = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(0));
     expect(lineOf(check, "sources", `source:${BREW}`).secondary).toBe(`Last responded at ${time} today`);
   });

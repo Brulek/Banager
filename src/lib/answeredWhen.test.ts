@@ -58,10 +58,15 @@ describe("answeredWhen", () => {
 });
 
 describe("noticeValues", () => {
-  it("interpolates a response at Unix zero and preserves the notice's other values", () => {
+  it("interpolates the stamp of a Mac whose clock reads before 1970, and keeps the notice's other values", () => {
+    // Banager cannot count seconds before 1970 and stamps such a clock's
+    // answers 0 (`Session::clock`, crates/banager-core/src/session/mod.rs):
+    // a stamp, not a missing one. The window reads the same clock, here
+    // half a minute before 1970.
     const en = i18n.getFixedT("en");
     const values = { source: "uv", count: 2 };
-    expect(noticeValues(en, { values, answeredAt: 0 }, 0, "en")).toEqual({
+    const clockBefore1970 = -30_000;
+    expect(noticeValues(en, { values, answeredAt: 0 }, clockBefore1970, "en")).toEqual({
       source: "uv",
       count: 2,
       when: `at ${time(new Date(0), "en")} today`,

@@ -396,7 +396,9 @@ describe("sourceNoticesFor", () => {
     );
   });
 
-  it("selects timed notices for a Unix-zero response, with and without carried-forward rows", () => {
+  it("selects timed notices for the stamp of a Mac whose clock reads before 1970, with and without carried-forward rows", () => {
+    // `Session::clock` (crates/banager-core/src/session/mod.rs) stamps
+    // such a clock's answers 0: a time to say, not a missing one.
     const silent = instance({ answered_at: 0, status: { unavailable: "NotResponding", notes: [] } });
     expect(sourceNoticesFor(silent, "Homebrew", 2)[0]).toMatchObject({
       descriptionKey: "sourceNotice.unreachable.descriptionWithRowsAt",
