@@ -1227,6 +1227,9 @@
     "notCheckedDetail": "Couldn't tell which copy of these tools Terminal runs, for example because a folder Terminal looks in for commands couldn't be read.",
     "diagnosticsNotChecked": "Not checked in Terminal: {{number}}"
   },
+  "setupCheckPartial": {
+    "twinsFine": "No tool that was checked is installed more than once"
+  },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
     "groups": {

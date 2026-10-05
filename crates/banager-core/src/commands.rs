@@ -751,25 +751,45 @@ fn linked(
             let Some(command) = name.to_str() else {
                 continue;
             };
-            let Some(target) = look.canonical(&canonical_dir.join(name)) else {
-                continue;
+            let target = match look.resolve(&canonical_dir.join(name)) {
+                Resolution::Found(real, _) => real,
+                Resolution::Missing => continue,
+                // Where it leads is not known: into a protected place, or
+                // through a folder that could not be read. Only the formula
+                // (package) whose folder its own first step goes into can
+                // be missing a command for it -- Homebrew and npm link
+                // straight into it, and never first out of the prefix into
+                // a protected place -- so only that one is said to be not
+                // fully checked (`ArtifactFacts::commands_unavailable`). A
+                // user's link that goes elsewhere first (`/usr/local/bin/
+                // myscript` into Documents, on an Intel Mac whose Homebrew
+                // prefix is `/usr/local`) is no formula's. Where even the
+                // first step cannot be read, any of them could be.
+                Resolution::Protected(_) | Resolution::Refused => {
+                    let first_step = protected::look::link_text(
+                        &canonical_dir.join(name),
+                        look.round.protected(),
+                    )
+                    .map(|text| lexically_joined(&canonical_dir, &text));
+                    match first_step {
+                        Ok(step) => {
+                            if let Some(index) = protected::strip_prefix_folded(&step, &own)
+                                .and_then(|inside| owner_of_link(inside, kind))
+                                .and_then(|owner| by_name.get(owner.as_str()))
+                            {
+                                look.unavailable.insert(*index);
+                            }
+                        }
+                        Err(_) => look.unread = true,
+                    }
+                    continue;
+                }
             };
             let Some(inside) = protected::strip_prefix_folded(&target, &own) else {
                 continue;
             };
-            let mut parts = inside.components().filter_map(|part| match part {
-                Component::Normal(part) => part.to_str(),
-                _ => None,
-            });
-            let Some(first) = parts.next() else {
+            let Some(owner_name) = owner_of_link(inside, kind) else {
                 continue;
-            };
-            let owner_name = match (kind, first.starts_with('@')) {
-                (Linked::Package, true) => match parts.next() {
-                    Some(second) => format!("{first}/{second}"),
-                    None => continue,
-                },
-                _ => first.to_string(),
             };
             if let Some(&index) = by_name.get(owner_name.as_str()) {
                 claims.push(Claim {
@@ -782,6 +802,42 @@ fn linked(
         }
     }
     Some(())
+}
+
+/// Whose folder `inside` -- a path under `Cellar` or `node_modules`, that
+/// folder taken off -- is in: a formula's folder is its short name, a
+/// package's its name, a scoped package's two folders deep (`@scope/name`).
+fn owner_of_link(inside: &Path, kind: Linked) -> Option<String> {
+    let mut parts = inside.components().filter_map(|part| match part {
+        Component::Normal(part) => part.to_str(),
+        _ => None,
+    });
+    let first = parts.next()?;
+    match (kind, first.starts_with('@')) {
+        (Linked::Package, true) => parts.next().map(|second| format!("{first}/{second}")),
+        _ => Some(first.to_string()),
+    }
+}
+
+/// `text`, a link's own text, as a path from `folder`, the folder the link
+/// is in -- canonical, so a `..` in it is taken by name: where the link's
+/// first step goes, nothing on the way looked at.
+fn lexically_joined(folder: &Path, text: &Path) -> PathBuf {
+    let mut at = if text.is_absolute() {
+        PathBuf::from("/")
+    } else {
+        folder.to_path_buf()
+    };
+    for part in text.components() {
+        match part {
+            Component::ParentDir => {
+                at.pop();
+            }
+            Component::Normal(name) => at.push(name),
+            Component::RootDir | Component::CurDir | Component::Prefix(_) => {}
+        }
+    }
+    at
 }
 
 /// A cask's `binary` links (`brew/parse.rs`), each when it leads into the
@@ -1318,5 +1374,109 @@ mod tests {
         .await;
         assert_eq!(rows[0].facts.commands, vec![runs("claude")]);
         assert_eq!(rows[1], carried);
+    }
+
+    /// A link in Homebrew's `bin` that leads into a protected place says
+    /// "not fully checked" of the formula whose folder its own first step
+    /// goes into, and of no other: a user's own link there into Documents
+    /// (an Intel Mac's `/usr/local/bin`, Homebrew's prefix) leaves every
+    /// formula checked. Opus review finding 8.
+    #[test]
+    fn test_a_link_into_a_protected_place_marks_only_the_formula_it_starts_in() {
+        let raw = std::env::temp_dir().join(format!(
+            "banager-commands-unit-scoped-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&raw).unwrap();
+        let home = std::fs::canonicalize(&raw).unwrap();
+        let exe = |rel: &str| {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let link = |rel: &str, text: &str| {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(text, &path).unwrap();
+        };
+        exe("brew/Cellar/jq/1.8.2/bin/jq");
+        link("brew/bin/jq", "../Cellar/jq/1.8.2/bin/jq");
+        exe("brew/Cellar/curl/8.17.0/bin/curl");
+        link("brew/bin/curl", "../Cellar/curl/8.17.0/bin/curl");
+        // A user's script, linked into Documents: no formula's.
+        let documents = home.join("Documents/scripts/myscript");
+        link("brew/bin/myscript", documents.to_str().unwrap());
+        let prefix = home.join("brew");
+        let id = format!("brew:{}", prefix.display());
+        let instances = vec![ManagerInstance {
+            exe_path: prefix.join("bin/brew"),
+            prefix: prefix.clone(),
+            ..crate::testing::manager_instance("brew", &id)
+        }];
+        let row = |name: &str| InstalledArtifact {
+            key: crate::model::ArtifactKey {
+                instance_id: id.clone(),
+                kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            },
+            display_name: name.to_string(),
+            version: "1".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+            facts: Default::default(),
+        };
+        let artifacts = vec![row("jq"), row("curl")];
+        let judged = |artifacts: &[InstalledArtifact]| {
+            let budget = CommandBudget::default();
+            let folders = read_folders(
+                &[prefix.join("bin")],
+                &bin_folders(&instances),
+                &home,
+                budget,
+            );
+            judge_with(
+                &folders,
+                &instances,
+                artifacts,
+                &home,
+                true,
+                Look::new(&home, budget),
+            )
+            .expect("judged")
+        };
+        let answer = judged(&artifacts);
+        assert!(
+            answer.unavailable.is_empty(),
+            "a user's link into Documents is no formula's: {:?}",
+            answer.unavailable
+        );
+        assert_eq!(answer.commands, vec![vec![runs("jq")], vec![runs("curl")]]);
+
+        // A formula's own link whose way goes on into Documents: that
+        // formula, and only it, is not fully checked.
+        link(
+            "brew/Cellar/curl/8.17.0/bin/curl-config",
+            home.join("Documents/curl-config").to_str().unwrap(),
+        );
+        link(
+            "brew/bin/curl-config",
+            "../Cellar/curl/8.17.0/bin/curl-config",
+        );
+        let answer = judged(&artifacts);
+        assert_eq!(answer.unavailable, HashSet::from([1]));
+        assert_eq!(answer.commands[0], vec![runs("jq")]);
+
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

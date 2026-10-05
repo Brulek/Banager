@@ -789,10 +789,26 @@ fn test_unresolved_shared_prefix_claims_preserve_coverage_without_reading_protec
             .unwrap()
         };
         assert!(check().unavailable.is_empty());
-        // An unresolved link cannot be attributed to just one package.
+        // A link whose first step leaves the prefix for Documents is no
+        // formula's or package's (Homebrew and npm link straight into their
+        // own folder): every one stays checked (Opus review finding 8).
         tree.link_keeping_first("prefix/bin/hidden", "../../Documents/launcher");
         let (answer, calls) = calls::measure(check);
-        assert_eq!(answer.unavailable, HashSet::from([0, 1]));
+        assert!(answer.unavailable.is_empty(), "{:?}", answer.unavailable);
+        assert_eq!(answer.commands[0][0].state, Some(CommandState::Runs));
+        assert!(answer.commands[1].is_empty());
+        assert_nothing_protected_looked_at(&calls, &Protected::new(&tree.root));
+        // One whose first step goes into `tool`'s own folder, and on from
+        // there into Documents: `tool` alone may be missing a command.
+        let inside = package_dir.replace("bin/tool", "bin/tool-config");
+        let depth = inside.matches('/').count() + 1;
+        tree.link_keeping_first(
+            &format!("prefix/{inside}"),
+            format!("{}Documents/tool-config", "../".repeat(depth)),
+        );
+        tree.link_keeping_first("prefix/bin/tool-config", format!("../{inside}"));
+        let (answer, calls) = calls::measure(check);
+        assert_eq!(answer.unavailable, HashSet::from([0]));
         assert_eq!(answer.commands[0][0].state, Some(CommandState::Runs));
         assert!(answer.commands[1].is_empty());
         assert_nothing_protected_looked_at(&calls, &Protected::new(&tree.root));

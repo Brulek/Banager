@@ -3146,9 +3146,20 @@ read, nothing runs, nothing is written, and no connection is made for it.
 
 Commands whose ownership paths could not be resolved safely carry
 `ArtifactFacts.commands_unavailable`, even when all their command facts
-were dropped. Check Tool Setup and copied diagnostics count those tools
+were dropped. A link in Homebrew's `bin`/`sbin` or npm's `bin` that leads
+into a protected place, or that could not be followed, marks only the
+formula or package whose folder (`Cellar/<name>`, `node_modules/<name>`)
+its own first step goes into: its text is read where it is (`readlink`,
+the step following it starts with), and nothing it names is looked at.
+One whose first step goes anywhere else — a user's own script linked into
+Documents from `/usr/local/bin`, Homebrew's prefix on an Intel Mac — is
+no formula's or package's and marks none; one whose text cannot be read,
+or a `bin` folder that could not be read, marks every one of that
+prefix's. Check Tool Setup and copied diagnostics count those tools
 as uncheckable, alongside commands with no verdict. When only some tools
-were checked, the positive Terminal sentence refers only to those tools.
+were checked, the positive Terminal sentence refers only to those tools,
+and so does the sentence that no tool is installed more than once when
+some tools' commands could not be listed.
 
 ## Files Banager reads
 

@@ -152,8 +152,8 @@ impl Round {
         }
     }
 
-    /// The places this round never looks into.
-    #[cfg(test)]
+    /// The places this round never looks into: also what a caller reads a
+    /// link's own text against (`commands::linked`).
     pub(crate) fn protected(&self) -> &Protected {
         &self.protected
     }

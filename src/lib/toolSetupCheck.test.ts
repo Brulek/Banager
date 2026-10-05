@@ -458,16 +458,23 @@ describe("toolSetupCheck's command lines", () => {
     const dropped = artifact({ instance_id: pipx.id, kind: "Tool", name: "cowsay" });
     dropped.facts.commands_unavailable = true;
     snapshot.artifacts.push(dropped);
+    // Its commands could not all be listed, so whether it is a second copy
+    // of one is not known: the twins sentence is of the tools checked only
+    // (Opus review finding 8).
     expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
       "fine Terminal finds every tool that was checked",
       "note Couldn't check whether Terminal finds 1 tool",
-      "fine No tool is installed more than once",
+      "fine No tool that was checked is installed more than once",
     ]);
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
       "fine 终端都能找到检查过的工具",
       "note 1个工具无法确认终端能否找到",
-      "fine 没有装了不止一份的工具",
+      "fine 检查过的工具中没有装了不止一份的",
     ]);
+    const hant = toolSetupCheck(i18n.getFixedT("zh-Hant"), input({ snapshot }));
+    expect(hant.sections.find((section) => section.id === "commands")!.lines.map((l) => l.text)).toContain(
+      "檢查過的工具中沒有裝了不止一份的",
+    );
   });
 
   it("says one in the singular, and the count beside the tools Terminal can't find", () => {

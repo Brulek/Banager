@@ -19,7 +19,7 @@
  * settings unread -- has the orange ⚠︎ the Overview gives a warning.
  */
 import { create } from "zustand";
-import { commandsKnown, toolsNotJudged } from "./commandsKnown";
+import { commandsKnown, toolsNamesIncomplete, toolsNotJudged } from "./commandsKnown";
 import { sourceStateWords, toolsInstalledTwice, type Translate } from "./diagnostics";
 import { discoverCounts, keepsOtherVersions, notOnPathDetailKey, type DiscoverShow } from "./families";
 import { modelsTotalText } from "./sizes";
@@ -264,7 +264,10 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const notOnPath = discoverCounts(artifacts).notOnPath;
   const twins = toolsInstalledTwice(artifacts);
   const notJudged = verdicts ? toolsNotJudged(artifacts) : 0;
-  if (verdicts && notJudged === 0 && names && notOnPath === 0 && twins === 0) {
+  // Tools some of whose commands could not be listed: the twins found are
+  // among the others only.
+  const namesIncomplete = names ? toolsNamesIncomplete(artifacts) : 0;
+  if (verdicts && notJudged === 0 && names && namesIncomplete === 0 && notOnPath === 0 && twins === 0) {
     return [line("allFine", "fine", t("setupCheck.commands.allFine"))];
   }
   const lines: SetupLine[] = [];
@@ -304,7 +307,9 @@ function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
       }),
     );
   } else {
-    lines.push(line("twins", "fine", t("setupCheck.commands.twinsFine")));
+    lines.push(
+      line("twins", "fine", t(namesIncomplete === 0 ? "setupCheck.commands.twinsFine" : "setupCheckPartial.twinsFine")),
+    );
   }
   return lines;
 }

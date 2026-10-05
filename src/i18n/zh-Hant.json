@@ -1126,6 +1126,9 @@
     "notCheckedDetail": "無法判斷終端機會執行這些工具的哪一份，例如終端機尋找指令的某個檔案夾無法讀取。",
     "diagnosticsNotChecked": "終端機裡無法確認：{{number}}個"
   },
+  "setupCheckPartial": {
+    "twinsFine": "檢查過的工具中沒有裝了不止一份的"
+  },
   "shortcuts": {
     "title": "鍵盤快速鍵",
     "groups": {

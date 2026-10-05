@@ -65,3 +65,16 @@ export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "rea
       !facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
   ).length;
 }
+
+/**
+ * How many tools' commands could not all be listed: a link in Homebrew's
+ * or npm's `bin` that leads into a protected place, or could not be
+ * followed, where its own first step goes into the tool's folder
+ * (`commands_unavailable`; crates/banager-core/src/commands.rs, `linked`).
+ * Their names may be missing, so 「没有装了不止一份的工具」 is said of the
+ * tools whose commands were listed only. Dependencies count too: a tool
+ * installed twice may be one.
+ */
+export function toolsNamesIncomplete(artifacts: Pick<InstalledArtifact, "facts">[]): number {
+  return artifacts.filter(({ facts }) => facts.commands_unavailable).length;
+}

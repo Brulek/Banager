@@ -1126,6 +1126,9 @@
     "notCheckedDetail": "无法判断终端会运行这些工具的哪一份，例如终端查找命令的某个文件夹无法读取。",
     "diagnosticsNotChecked": "终端里无法确认：{{number}}个"
   },
+  "setupCheckPartial": {
+    "twinsFine": "检查过的工具中没有装了不止一份的"
+  },
   "shortcuts": {
     "title": "键盘快捷键",
     "groups": {
