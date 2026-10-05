@@ -448,4 +448,22 @@ mod tests {
             &listing.lstat("Documents".as_ref()).unwrap_err()
         ));
     }
+
+    #[test]
+    fn test_read_entry_refuses_a_link_but_read_regular_follows_it() {
+        let home = Home::new("entry-link");
+        std::fs::write(home.at("payload"), b"tool").unwrap();
+        symlink("payload", home.at("alias")).unwrap();
+        let protected = home.protected();
+        let error = read_entry(&home.at("alias"), &protected, 4).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            read_regular(&home.at("alias"), &protected, 4).unwrap().1,
+            b"tool"
+        );
+        assert_eq!(
+            read_entry(&home.at("payload"), &protected, 4).unwrap().1,
+            b"tool"
+        );
+    }
 }

@@ -74,7 +74,7 @@ fn instance(adapter_id: &str, exe: &str, prefix: &str) -> ManagerInstance {
     }
 }
 
-fn cases() -> Vec<Case> {
+fn cases(npm_prefix: &str) -> Vec<Case> {
     let mut cases = Vec::new();
     let mut add = |what, adapter: fn(Arc<MockRunner>) -> Arc<dyn Adapter>, inst, kind, name| {
         let runner = Arc::new(MockRunner::new());
@@ -90,7 +90,7 @@ fn cases() -> Vec<Case> {
     add(
         "npm",
         |r| Arc::new(NpmAdapter::new(r)),
-        instance("npm", "/opt/homebrew/bin/npm", "/opt/homebrew"),
+        instance("npm", "/opt/homebrew/bin/npm", npm_prefix),
         ArtifactKind::Package,
         "prettier",
     );
@@ -205,7 +205,10 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/what-we-run.md"),
     )
     .unwrap();
-    for case in cases() {
+    // npm checks prefix writability even with a MockRunner. Use a test-owned
+    // root so this command-safety test does not depend on the Mac's Homebrew.
+    let npm_root = tempfile::tempdir().unwrap();
+    for case in cases(npm_root.path().to_str().unwrap()) {
         let Case {
             what,
             adapter,

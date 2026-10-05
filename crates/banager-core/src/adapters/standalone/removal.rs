@@ -1234,15 +1234,21 @@ pub async fn execute_removal(
         // The turn at the Trash, `settle` after the last move made through
         // `pacing.last_move` -- this run's previous item's or another
         // uninstall's (`wait_for_the_trash`). Cancel first: a run the user
-        // stopped needs no line of Banager's (`run_operation` reports it as
-        // `Cancelled` once it finds the launcher, last, still there). A
+        // stopped before its first move is Cancelled; after any move it
+        // remains Unconfirmed even when the launcher is still there. A
         // spent budget is the stop nobody asked for, so it says which item
         // it stopped before and how much time there was -- otherwise the
         // log ends at the last move and the outcome says only
         // "unconfirmed".
         let mut last_move = match wait_for_the_trash(&pacing, left, &cancel).await {
             Wait::Ready(last_move) => last_move,
-            Wait::Cancelled => return Ok(Outcome::Unconfirmed),
+            Wait::Cancelled => {
+                return Ok(if index == 0 {
+                    Outcome::Cancelled
+                } else {
+                    Outcome::Unconfirmed
+                })
+            }
             Wait::OutOfTime => {
                 sink.emit(OperationEvent::Note {
                     op_id,
@@ -1638,6 +1644,34 @@ mod tests {
         assert!(layout.root.is_dir());
     }
 
+    #[test]
+    fn test_plan_removal_refuses_a_program_inside_a_kept_links_target() {
+        let home = TempHome::new("removal-kept-parent");
+        let layout = claude_layout(&home, "2.1.281");
+        // The kept link leads to the program's parent, not the program
+        // itself. Removing that child would still change what we keep.
+        let kept = home.link(".claude", &home.path().join(".local/share"));
+        let job = claude_job(&detected(home.path()));
+
+        let (path, reason) = refused(plan_removal(&job));
+
+        assert_eq!(
+            (path.as_str(), reason),
+            ("~/.claude", UninstallUnsafeReason::OverlapsKept)
+        );
+        assert!(layout.root.is_dir());
+
+        // A kept link whose target is elsewhere does not block removal.
+        std::fs::remove_file(kept).unwrap();
+        let settings = home.dir("settings");
+        home.link(".claude", &settings);
+        let preview = plan_removal(&job).expect("settings stay elsewhere");
+        assert_eq!(preview.paths, vec![layout.root, layout.launcher]);
+        assert!(preview
+            .warnings
+            .contains(&keep("~/.claude", KeptWhat::SettingsAndHistory)));
+    }
+
     /// Where Mackup (link mode) or a dotfiles folder keeps a home's
     /// dotfiles: anywhere else in the home folder, then iCloud Drive,
     /// Dropbox's folder under `~/Library/CloudStorage`, and `~/Documents`
@@ -1996,6 +2030,28 @@ mod tests {
             );
             assert!(std::fs::canonicalize(&link).is_ok());
         }
+    }
+
+    #[test]
+    fn test_the_way_to_accepts_thirty_two_links_but_refuses_the_next() {
+        let home = TempHome::new("removal-link-boundary");
+        let leaf = home.file("settings.json");
+        let mut target = leaf.clone();
+        // Use the documented limit literally, independently of MOST_LINKS.
+        for index in (0..33).rev() {
+            target = home.link(&format!("link-{index}"), &target);
+        }
+
+        let protected = home.protected();
+        let way = the_way_to(&home.path().join("link-1"), &protected)
+            .expect("exactly 32 links can reach the kept file");
+        assert_eq!(way.last(), Some(&leaf));
+        for index in 1..33 {
+            assert!(way.contains(&home.path().join(format!("link-{index}"))));
+        }
+
+        let error = the_way_to(&target, &protected).expect_err("33 links exceed the limit");
+        assert_eq!(error.raw_os_error(), Some(libc::ELOOP));
     }
 
     #[test]
@@ -3921,7 +3977,7 @@ mod tests {
         )
         .await
         .expect("the cancel ended the wait");
-        assert_eq!(cancelled, (Outcome::Unconfirmed, vec![]));
+        assert_eq!(cancelled, (Outcome::Cancelled, vec![]));
         assert!(mock.calls().is_empty(), "{:?}", mock.calls());
 
         let spent = Pacing {

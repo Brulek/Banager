@@ -1543,3 +1543,26 @@ fn test_a_name_in_another_case_earlier_on_path_is_the_copy_that_runs() {
     );
     assert_eq!(found, vec![vec![runs("claude")]]);
 }
+
+#[test]
+fn test_an_unread_folder_after_a_known_copy_can_hide_the_other_installation() {
+    let home = Home::new("unread-after-known");
+    let setup = two_claudes(&home);
+    let documents = home.dir("Documents/bin");
+    home.link("Documents/bin/claude", &home.at(".local/bin/claude"));
+    let found = verdicts(
+        &home,
+        &[setup.npm_bin.clone(), documents],
+        &setup.instances,
+        &setup.artifacts,
+    );
+    assert_eq!(found, vec![vec![runs("claude")], vec![unjudged("claude")]]);
+    let without_unread = verdicts(&home, &[setup.npm_bin], &setup.instances, &setup.artifacts);
+    assert_eq!(
+        without_unread,
+        vec![
+            vec![runs("claude")],
+            vec![not_on_path("claude", "~/.local/bin")]
+        ]
+    );
+}

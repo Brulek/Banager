@@ -766,6 +766,57 @@ mod tests {
     }
 
     #[test]
+    fn test_equal_inode_numbers_on_different_devices_are_not_the_same_file() {
+        let temp = Temp::new("identity-device");
+        let (_, original) = Dir::open_path(&temp.0, false).unwrap();
+        let mut on_another_device = original;
+        on_another_device.dev = original.dev.wrapping_add(1);
+        assert!(original.same_as(&original));
+        assert!(!original.same_as(&on_another_device));
+    }
+
+    #[test]
+    fn test_a_file_replaced_after_it_was_looked_at_is_not_read() {
+        let temp = Temp::new("file-swap");
+        std::fs::write(temp.0.join("file"), b"old").unwrap();
+        let (parent, _) = Dir::open_path(&temp.0, false).unwrap();
+        let checked = parent.stat_at(OsStr::new("file")).unwrap();
+        assert_eq!(
+            parent
+                .read_file_at_most(OsStr::new("file"), Some(&checked), 3)
+                .unwrap()
+                .1,
+            b"old"
+        );
+        std::fs::rename(temp.0.join("file"), temp.0.join("aside")).unwrap();
+        std::fs::write(temp.0.join("file"), b"new").unwrap();
+        let error = parent
+            .read_file_at_most(OsStr::new("file"), Some(&checked), 3)
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn test_a_link_to_a_regular_file_is_never_opened_or_read() {
+        let temp = Temp::new("regular-link");
+        std::fs::write(temp.0.join("payload"), b"secret").unwrap();
+        symlink("payload", temp.0.join("alias")).unwrap();
+        let (parent, _) = Dir::open_path(&temp.0, false).unwrap();
+        assert_eq!(
+            parent
+                .read_file_at_most(OsStr::new("payload"), None, 6)
+                .unwrap()
+                .1,
+            b"secret"
+        );
+        let error = parent.open_file_at(OsStr::new("alias")).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::ELOOP));
+        assert!(parent
+            .read_file_at_most(OsStr::new("alias"), None, 6)
+            .is_err());
+    }
+
+    #[test]
     fn test_a_folder_is_listed_and_looked_at_from_its_descriptor() {
         let temp = Temp::new("list");
         std::fs::create_dir_all(temp.0.join("a/sub")).unwrap();

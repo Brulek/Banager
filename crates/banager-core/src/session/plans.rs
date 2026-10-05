@@ -631,6 +631,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_issue_listed_plan_refuses_unlisted_requests_before_calling_the_adapter() {
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "wget",
+            None,
+        )]);
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![adapter.clone()], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        for req in [
+            request(OpKind::Upgrade, "unlisted"),
+            request(OpKind::Uninstall, "unlisted"),
+            request(OpKind::Upgrade, "wget"),
+            request(OpKind::Uninstall, "jq"),
+            request(OpKind::Install, "jq"),
+        ] {
+            assert!(
+                matches!(
+                    session.issue_listed_plan(&req).await,
+                    Err(AdapterError::NotListed)
+                ),
+                "{req:?}"
+            );
+        }
+        assert!(session.issued_plans.lock().unwrap().is_empty());
+        assert_eq!(adapter.most_in_flight.load(Ordering::SeqCst), 0);
+        for req in [
+            request(OpKind::Upgrade, "jq"),
+            request(OpKind::Uninstall, "wget"),
+        ] {
+            let issued = session
+                .issue_listed_plan(&req)
+                .await
+                .expect("listed request");
+            assert!(session
+                .issued_plans
+                .lock()
+                .unwrap()
+                .contains_key(&issued.id));
+        }
+        assert_eq!(session.issued_plans.lock().unwrap().len(), 2);
+        assert_eq!(adapter.most_in_flight.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn test_issue_plan_delegates_to_the_owning_adapter() {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
