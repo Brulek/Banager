@@ -983,13 +983,14 @@ describe("SettingsPage", () => {
 
     const popup = await screen.findByRole("combobox", { name: "Language" });
     // A native select, so that WebKit opens the Mac's own menu, with the
-    // three choices in it and the current one chosen.
+    // four choices in it and the current one chosen.
     expect(popup.tagName).toBe("SELECT");
     expect(popup).toHaveValue("En");
     expect(within(popup).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "System Default",
       "English",
       "简体中文",
+      "繁體中文",
     ]);
     // What shows is drawn beside it: the value in the body size, and the
     // 20-wide grey capsule with its chevrons; the select itself is laid
@@ -1014,7 +1015,7 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("radio")).toBeNull();
   });
 
-  it("saves the language chosen from the popup, and shows it", async () => {
+  it.each([["ZhCn", "简体中文"], ["ZhHant", "繁體中文"]])("saves %s chosen from the popup, and shows it", async (language, label) => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ language: "System" });
       if (cmd === "set_settings") return undefined;
@@ -1026,15 +1027,15 @@ describe("SettingsPage", () => {
     const popup = await screen.findByRole("combobox", { name: "Language" });
     expect(popup.parentElement?.firstElementChild).toHaveTextContent("System");
 
-    fireEvent.change(popup, { target: { value: "ZhCn" } });
+    fireEvent.change(popup, { target: { value: language } });
 
     await waitFor(() =>
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
-        settings: expect.objectContaining({ language: "ZhCn" }),
+        settings: expect.objectContaining({ language: language }),
       }),
     );
-    expect(popup).toHaveValue("ZhCn");
-    expect(popup.parentElement?.firstElementChild).toHaveTextContent("简体中文");
+    expect(popup).toHaveValue(language);
+    expect(popup.parentElement?.firstElementChild).toHaveTextContent(label);
   });
 
   it("styles the Remind me again and Stop skipping buttons so they read as controls", async () => {

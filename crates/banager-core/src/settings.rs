@@ -7,6 +7,7 @@ pub enum Language {
     System,
     En,
     ZhCn,
+    ZhHant,
 }
 
 /// One update the user chose to skip with the Updates page's "Skip this
@@ -206,31 +207,12 @@ pub fn load_at(path: &Path, now: i64) -> Settings {
     settings
 }
 
-/// Per-process counter for `save()`'s staging file name. A fixed `<path>.tmp`
-/// would let two concurrent `save()` calls to the same path clobber each
-/// other's staging file (one call's `write` landing in the middle of
-/// another's, or one `rename` picking up the wrong writer's bytes); suffixing
-/// each call's staging file with its own counter value makes that
-/// impossible, regardless of how many callers race.
-static SAVE_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Writes to a `<path>.tmp.<n>` staging file, `n` unique to this call within
-/// this process, then renames it over `path`, so a crash mid-write can never
-/// leave a half-written, corrupt settings file in `path`'s place, and two
-/// concurrent calls can never collide on the same staging file.
+/// Writes through an exclusively created staging file beside `path`, then
+/// atomically replaces it. Concurrent processes cannot share a staging file.
 pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let seq = SAVE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut tmp_os = path.as_os_str().to_os_string();
-    tmp_os.push(format!(".tmp.{seq}"));
-    let tmp_path = std::path::PathBuf::from(tmp_os);
-    std::fs::write(&tmp_path, json)?;
-    std::fs::rename(&tmp_path, path)?;
-    Ok(())
+    crate::atomic_file::write(path, &json)
 }
 
 #[cfg(test)]
@@ -257,6 +239,21 @@ mod tests {
             kind: ArtifactKind::Formula,
             name: name.to_string(),
         }
+    }
+
+    #[test]
+    fn test_traditional_chinese_settings_round_trip() {
+        let settings = Settings {
+            language: Language::ZhHant,
+            ..Settings::default()
+        };
+        let wire = serde_json::to_value(&settings).unwrap();
+        assert_eq!(wire["language"], "ZhHant");
+        assert_eq!(serde_json::from_value::<Settings>(wire).unwrap(), settings);
+        let path = temp_settings_path("zh-hant");
+        save(&path, &settings).unwrap();
+        assert_eq!(load(&path), settings);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

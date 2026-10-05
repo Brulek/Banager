@@ -58,6 +58,7 @@ describe("lacksTextAutospace", () => {
 describe("the autospace post-processor", () => {
   it("spaces Chinese only", () => {
     const run = (lng: string) => autospacePostProcessor.process("有12个工具", "k", { lng }, {});
+    expect(run("zh-Hant")).toBe(`有${gap}12${gap}个工具`);
     expect(run("zh-CN")).toBe(`有${gap}12${gap}个工具`);
     expect(run("en")).toBe("有12个工具");
   });

@@ -27,7 +27,7 @@ import type {
 import { NO_SIZES } from "../lib/types";
 import { checkEvery } from "../lib/checkFrequency";
 import { adapterIdOf } from "../lib/sources";
-import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
+import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, withUnavailableCommands, type World } from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
 import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
@@ -179,6 +179,7 @@ interface Operation {
  */
 function judgedFor(path: ScenarioPath, artifacts: InstalledArtifact[]): InstalledArtifact[] {
   if (path === "read") return artifacts;
+  if (path === "unread") artifacts = withUnavailableCommands(artifacts);
   const unjudged = (state: CommandFact["state"]) =>
     path === "default" || (typeof state === "object" && state !== null && "NotOnPath" in state);
   return artifacts.map((artifact) =>
@@ -818,8 +819,8 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // No menu bar to build: the browser has none of Banager's, and the
       // one `pnpm tauri:mock` shows is Rust's, which this page never
       // reaches (./mockTauriEvent.ts). Like the real command, it takes
-      // only the window's two languages; Tauri turns any other away.
-      if (args.language !== "en" && args.language !== "zh-CN") {
+      // only the window's three languages; Tauri turns any other away.
+      if (args.language !== "en" && args.language !== "zh-CN" && args.language !== "zh-Hant") {
         throw `invalid args \`language\` for command \`set_menu_language\`: ${JSON.stringify(args.language)}`;
       }
     },

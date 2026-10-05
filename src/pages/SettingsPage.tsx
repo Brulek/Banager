@@ -28,11 +28,12 @@ import {
   SMALL_WRAPPING,
 } from "../components/ui/group";
 
-const LANGUAGES: Language[] = ["System", "En", "ZhCn"];
+const LANGUAGES: Language[] = ["System", "En", "ZhCn", "ZhHant"];
 
 function languageLabelKey(lang: Language): string {
   if (lang === "System") return "settings.language.system";
   if (lang === "En") return "settings.language.english";
+  if (lang === "ZhHant") return "settings.language.traditionalChinese";
   return "settings.language.chinese";
 }
 

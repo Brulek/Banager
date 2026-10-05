@@ -102,7 +102,7 @@ Programs page's Show in Finder reach this Mac's Finder: the mock backend's
   a logo for shows it here as it does in the app. A cask's app icon still
   comes first: iTerm2 and Visual Studio Code show the generated one
   described below.
-- Nor are the tools' lines in Chinese: with `lang=zh-CN`, the rows read
+- Nor are the tools' lines in Chinese: with `lang=zh-CN` or `lang=zh-Hant`, the rows read
   the table built into the app (`src/assets/tool-descriptions/zh-CN.json`,
   through `src/lib/toolDescriptions.ts`), so git, ffmpeg and jq say what
   they are in Chinese, git's details show Homebrew's own description under
@@ -361,7 +361,7 @@ value falls back to the default and logs a warning in the console.
 | | `huge` | About 5,000 things installed (4,892), as on a Mac whose owner has several thousand formulae and casks: `many`'s Mac, and about 4,100 more tools made from its names the way sources name a tool's relatives (`src/dev/mockHugeNames.ts`) -- a versioned formula (`hugo@2`), a `-cli` or `-utils` beside it, a library (`libuv`), a cask's `@beta`, an npm `create-` package (`@google/create-gemini-cli`), a `cargo-` subcommand -- 3,893 of them Homebrew's (335 casks), the rest npm, pipx, uv and Cargo. About one in seven has an update. Each new tool puts a command on the Mac, about one in forty in a folder Terminal does not search, so 「终端里找不到」 has rows at this size too. Their names are none the logo pack or the description tables know: the rows show their source's avatar and line. For timing the long lists ("Large list" below). |
 | | `preview` | The first refresh lists what is installed and then never finishes checking for updates, as a real launch looks while `brew update` runs: the Installed page lists the Mac above -- less uv, which is not answering and so is never asked for its list -- with every Uninstall off and "Found N tools · Checking for updates…" in its toolbar; the sidebar counts them, the Overview says how many with See Tools, and the Updates page keeps its spinner. (The other states that have tools to list -- all but `loading`, `error`, `refresh-error`, `empty` and `nothing` -- send this list on their first refresh too, 300 ms in, and still answer at 900 ms.) |
 | | `refused` | Two sources Banager did not ask, each saying why: an Ollama whose `OLLAMA_HOST` is an `https://` address ("Connecting to Ollama over https isn't supported", no button, none of its models listed), and a second Python, in `/opt/local`, with no pip ("python3.13 doesn't include pip", a note and no warning; its page in Installed says the same). And two lookups that end the same way every time, shown as Can't check rows under "N more can't be updated here" and not counted as tools that couldn't be checked (no notice, no Check Again): tokei's, which met a certificate Banager does not trust ("Couldn't establish a secure connection to crates.io."), and rustup's, whose release file answered with a redirect Banager does not follow ("Couldn't find its latest version." only). Both have an update to offer without `state`, so the Updates count is two lower than there. |
-| `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
+| `lang` | `system` (default), `en`, `zh-CN`, `zh-Hant` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
 | `welcome` | `1` | The welcome sheet of a first launch, over the first page. Closing it saves that it was seen, until the page is loaded again. Without it the preview never shows the sheet. |
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on; `unknown` is Other Programs. |
@@ -369,6 +369,11 @@ value falls back to the default and logs a warning in the console.
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Other Programs page's scan returns. |
 | `path` | `read` (default), `unread`, `default` | What the last refresh made of the login shell's folders, which Check Tool Setup says: every one read; one in `~/Documents` that couldn't be; or the login shell's settings never read -- the system's four folders, and no command judged. With `unread`, a command no folder read leads to has no verdict either, as `commands::judge` leaves it (the unread folder might hold its link): Check Tool Setup says how many tools it couldn't check, the copied diagnostics add 「终端里无法确认」, and the Installed page's 「终端里找不到」 lists none, saying none was found. |
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
+
+With `?path=unread`, pipx's Poetry also has its environment under
+`~/Documents/venvs/poetry`. Its command claims were dropped, but the snapshot
+retains `commands_unavailable: true`, so it contributes to the couldn't-check
+count even with an empty command list. Open Help → Check Tool Setup to see it.
 
 ## Uninstalling several tools at once
 
@@ -533,3 +538,10 @@ which is most of the 2.7 s and the 20 s; in a profile at full speed (of
 this track's first build), about a tenth of it is `useStartableUpdates` (src/components/UpdateProgress.tsx)
 going through all 754 updates again in each of its callers, as the new
 target changes `useUpdateOperationFor`'s lookup at every start.
+
+Traditional Chinese preview: <http://localhost:1430/?lang=zh-Hant&page=settings>.
+The picker shows 繁體中文; tool rows load the Taiwan Traditional Chinese descriptions,
+falling back to Simplified Chinese and then English if a line is missing.
+
+In a Traditional Chinese window, searching also matches the English descriptions.
+Search loads no description table until a query is entered; rows load the tables they need.

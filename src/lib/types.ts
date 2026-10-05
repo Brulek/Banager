@@ -79,9 +79,11 @@ export interface ArtifactFacts {
    * when Banager found none, or could not look this round.
    */
   commands: CommandFact[];
+  /** Some command ownership paths could not be checked safely. */
+  commands_unavailable: boolean;
 }
 /** Shared by every artifact with nothing more to say: never mutate it. */
-export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null, commands: [] };
+export const NO_FACTS: ArtifactFacts = { family: null, homebrew: null, commands: [], commands_unavailable: false };
 /**
  * Homebrew's own state for one formula or cask, copied from `brew info
  * --installed --json=v2`. Mirrors `HomebrewFacts` in
@@ -659,7 +661,7 @@ export interface UnknownScan {
   attributed: number;
   stopped: ScanStop | null;
 }
-export type Language = "System" | "En" | "ZhCn";
+export type Language = "System" | "En" | "ZhCn" | "ZhHant";
 /**
  * One update the user skipped with "Skip this version": `key`'s update to
  * `version`, the `UpdateCandidate.target` its row offered. Mirrors

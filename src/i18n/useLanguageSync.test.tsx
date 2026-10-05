@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { menuLanguageOf, useLanguageSync } from "./useLanguageSync";
 import i18n from "./index";
+import { systemLanguage } from "./language";
 import { queryKeys, useSettings } from "../lib/queries";
 import type { Language, Settings } from "../lib/types";
 
@@ -44,6 +45,39 @@ function menuLanguagesSent(): unknown[] {
 }
 
 describe("useLanguageSync", () => {
+  it.each([
+    ["zh-TW", "zh-Hant"], ["zh-HK", "zh-Hant"], ["zh-MO", "zh-Hant"],
+    ["zh-Hant", "zh-Hant"], ["zh-Hant-TW", "zh-Hant"], ["zh-Hant-CN", "zh-Hant"],
+    ["ZH_tw", "zh-Hant"], ["zh-CN", "zh-CN"], ["zh-SG", "zh-CN"],
+    ["zh-Hans", "zh-CN"], ["zh-Hans-HK", "zh-CN"], ["zh-Hans-CN", "zh-CN"],
+    ["zh", "zh-CN"], ["en-US", "en"], ["ja-JP", "en"], ["zha", "en"],
+  ])("detects %s as %s through the registered detector", async (system, expected) => {
+    expect(systemLanguage(system)).toBe(expected);
+    const languages = vi.spyOn(navigator, "languages", "get").mockReturnValue([system, "en-US"]);
+    try {
+      await i18n.changeLanguage();
+      expect(i18n.resolvedLanguage).toBe(expected);
+      expect(document.documentElement.lang).toBe(expected);
+    } finally {
+      languages.mockRestore();
+    }
+  });
+
+  it("loads a Traditional Chinese override, tells the native menu and returns to the system language", async () => {
+    let language: Language = "ZhHant";
+    vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+      cmd === "get_settings" ? baseSettings({ language }) : undefined,
+    );
+    const { queryClient } = renderWithProviders(<Probe />);
+    await waitFor(() => expect(i18n.t("nav.settings")).toBe("設定"));
+    expect(document.documentElement.lang).toBe("zh-Hant");
+    await waitFor(() => expect(menuLanguagesSent()).toEqual(["en", "zh-Hant"]));
+    language = "System";
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+    await waitFor(() => expect(i18n.resolvedLanguage).toBe("en"));
+    await waitFor(() => expect(menuLanguagesSent()).toEqual(["en", "zh-Hant", "en"]));
+  });
+
   it("switches i18next to Simplified Chinese, resources included, when Settings overrides the language", async () => {
     vi.mocked(invoke).mockResolvedValue(baseSettings({ language: "ZhCn" }));
 
@@ -140,8 +174,9 @@ describe("useLanguageSync", () => {
     logged.mockRestore();
   });
 
-  it("names the menu bar's language as the window's two", () => {
+  it("names the menu bar's language as the window's three", () => {
     expect(menuLanguageOf("zh-CN")).toBe("zh-CN");
+    expect(menuLanguageOf("zh-Hant")).toBe("zh-Hant");
     expect(menuLanguageOf("en")).toBe("en");
     // Before i18next has resolved one, English, as it falls back to.
     expect(menuLanguageOf(undefined)).toBe("en");

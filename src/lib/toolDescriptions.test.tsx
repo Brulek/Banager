@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import i18n from "../i18n";
 import { renderWithProviders } from "../test/setup";
 import { toolIconKey } from "./toolIcons";
-import { lazyDescriptionTable, useTranslatedDescription, type TranslatedDescription } from "./toolDescriptions";
+import { otherLanguage, lazyDescriptionTable, useTranslatedDescription, type TranslatedDescription } from "./toolDescriptions";
 import type { ArtifactKey, ArtifactKind } from "./types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +77,7 @@ afterEach(async () => {
 describe.each([
   // Homebrew's formulae and casks, and npm, PyPI and crates.io packages.
   { file: "zh-CN.json", prefixes: ["brew", "cask", "npm", "pypi", "cargo"] },
+  { file: "zh-Hant.json", prefixes: ["brew", "cask", "npm", "pypi", "cargo"] },
   // Only the packages whose sources give Banager no description: npm's,
   // PyPI's (pip, pipx and uv) and crates.io's. Homebrew gives its own
   // words in English.
@@ -375,4 +376,41 @@ describe("useTranslatedDescription", () => {
       }
     },
   );
+});
+
+
+it("keeps every current description key in Traditional Chinese", () => {
+  expect(Object.keys(builtIn("zh-Hant.json").lines)).toEqual(Object.keys(builtIn("zh-CN.json").lines));
+});
+
+it("reads the built-in Traditional Chinese table", async () => {
+  render(<Probe />);
+  await switchTo("zh-Hant");
+  await waitFor(() => expect(lookup(key(BREW, "Formula", "git"), "brew")).toBe(builtIn("zh-Hant.json").lines["brew:git"]));
+});
+
+it("prefers Traditional Chinese, then Simplified Chinese, then English per missing description", async () => {
+  renderWithProviders(<Probe />, { toolDescriptions: {
+    "zh-Hant": lazyDescriptionTable(async () => ({ "brew:git": "分散式版本控制系統" })),
+    "zh-CN": lazyDescriptionTable(async () => ({ "brew:git": "简体", "brew:python": "解释型编程语言" })),
+    en: lazyDescriptionTable(async () => ({ "npm:prettier": "Code formatter" })),
+  } });
+  await switchTo("zh-Hant");
+  await waitFor(() => expect(lookup(key(BREW, "Formula", "git"), "brew")).toBe("分散式版本控制系統"));
+  await waitFor(() => expect(lookup(key(BREW, "Formula", "python@3.13"), "brew")).toBe("解释型编程语言"));
+  await waitFor(() => expect(lookup(key(NPM, "Package", "prettier"), "npm")).toBe("Code formatter"));
+  expect(lookup(key(NPM, "Package", "missing"), "npm")).toBeNull();
+  await switchTo("en");
+  expect(lookup(key(BREW, "Formula", "git"), "brew")).toBeNull();
+});
+
+
+it.each([
+  ["zh-Hant", "en"],
+  ["zh-CN", "en"],
+  ["en", "zh-CN"],
+  [undefined, null],
+  ["fr", null],
+])("selects %s's other search language as %s", (language, expected) => {
+  expect(otherLanguage(language)).toBe(expected);
 });

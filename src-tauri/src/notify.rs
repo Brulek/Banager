@@ -176,6 +176,7 @@ pub fn body(language: MenuLanguage, count: usize) -> String {
         MenuLanguage::En if count == 1 => "1 tool can be updated".to_string(),
         MenuLanguage::En => format!("{count} tools can be updated"),
         MenuLanguage::ZhCn => format!("{count}个工具可以更新"),
+        MenuLanguage::ZhHant => format!("{count}個工具可以更新"),
     }
 }
 
@@ -646,6 +647,8 @@ mod tests {
         assert_eq!(body(MenuLanguage::En, 3), "3 tools can be updated");
         assert_eq!(body(MenuLanguage::ZhCn, 1), "1个工具可以更新");
         assert_eq!(body(MenuLanguage::ZhCn, 12), "12个工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhHant, 1), "1個工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhHant, 12), "12個工具可以更新");
     }
 
     #[test]

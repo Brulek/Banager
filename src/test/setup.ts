@@ -102,6 +102,7 @@ export function renderWithProviders(
   const descriptionTables: DescriptionTables = {
     en: toolDescriptions.en ?? NO_DESCRIPTIONS,
     "zh-CN": toolDescriptions["zh-CN"] ?? NO_DESCRIPTIONS,
+    "zh-Hant": toolDescriptions["zh-Hant"] ?? NO_DESCRIPTIONS,
   };
   const queryClient = new QueryClient({
     defaultOptions: {

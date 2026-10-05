@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
+import zhHant from "./zh-Hant.json";
 
 /** Every string in a locale file, with its key. */
 function entries(value: unknown, prefix = ""): [string, string][] {
@@ -26,9 +27,9 @@ function keysWhere(locale: unknown, test: (text: string) => boolean): string[] {
  * row, at most two sentences behind an ⓘ, and above all that a shorter
  * sentence stays true -- is the table's, string by string.
  */
-describe("the copy rules, over every string in both languages", () => {
+describe.each([["zh-CN", zhCN], ["zh-Hant", zhHant]])("the copy rules, for %s and English", (_name, chinese) => {
   it("never hedges with 多半 or 也可能, and never says PATH, pin or 实例 in Chinese", () => {
-    const offenders = entries(zhCN).filter(([, text]) => /多半|也可能|PATH|pin|实例/.test(text));
+    const offenders = entries(chinese).filter(([, text]) => /多半|也可能|PATH|pin|实例|實例/.test(text));
     expect(offenders).toEqual([]);
   });
 
@@ -37,7 +38,7 @@ describe("the copy rules, over every string in both languages", () => {
     // Installed pages' status words (`StatusChip`), a model's skipped
     // version, and the Unknown page's broken link. A version or a name in a
     // placeholder does not count.
-    const statusKeys = entries(zhCN)
+    const statusKeys = entries(chinese)
       .map(([key]) => key)
       .filter(
         (key) =>
@@ -57,7 +58,7 @@ describe("the copy rules, over every string in both languages", () => {
           ].includes(key),
       );
     expect(statusKeys.length).toBeGreaterThanOrEqual(13);
-    const strings = new Map(entries(zhCN));
+    const strings = new Map(entries(chinese));
     const tooLong = statusKeys.filter((key) => {
       const text = (strings.get(key) ?? "").replace(/\{\{\w+\}\}/g, "");
       return (text.match(/\p{Script=Han}/gu) ?? []).length > 6;
@@ -74,7 +75,7 @@ describe("the copy rules, over every string in both languages", () => {
     const count = /[（(]\{\{number\}\}[）)]/g;
     const shortcut = /[（(]⌘[A-Z,]+[）)]/g;
     const place = /^\{\{source\}\} ?[（(]\{\{place\}\}[）)]$/g;
-    const offenders = [...entries(zhCN), ...entries(en)].filter(([, text]) =>
+    const offenders = [...entries(chinese), ...entries(en)].filter(([, text]) =>
       /[（(]/.test(text.replace(count, "").replace(shortcut, "").replace(place, "")),
     );
     expect(offenders).toEqual([]);
@@ -91,24 +92,25 @@ describe("the copy rules, over every string in both languages", () => {
  * and 4.3): Chinese written the way macOS's own strings are, and an app
  * that is not the subject of its own sentences.
  */
-describe("the polish-3 copy rules, in Chinese", () => {
+describe.each([["zh-CN", zhCN], ["zh-Hant", zhHant]])("the polish-3 copy rules, in %s", (name, chinese) => {
   it("puts no space between Chinese and a Latin letter, a digit or an interpolation", () => {
     // text-autospace draws the gap (1/8 em, as AppKit does); a typed space
     // on top of it is twice the gap. Spaces between two Latin words, or a
     // number and a Latin unit, are not Chinese ones and stay.
     const hanThenLatin = /\p{Script=Han} [A-Za-z0-9{]/u;
     const latinThenHan = /[A-Za-z0-9}] \p{Script=Han}/u;
-    expect(keysWhere(zhCN, (text) => hanThenLatin.test(text) || latinThenHan.test(text))).toEqual([]);
+    expect(keysWhere(chinese, (text) => hanThenLatin.test(text) || latinThenHan.test(text))).toEqual([]);
   });
 
-  it("quotes with “ ” and trails off with … only", () => {
-    expect(keysWhere(zhCN, (text) => /[「」]/.test(text))).toEqual([]);
-    expect(keysWhere(zhCN, (text) => text.includes('"'))).toEqual([]);
-    expect(keysWhere(zhCN, (text) => text.includes("...") || text.includes("……"))).toEqual([]);
+  it("uses the locale’s quotes and trails off with … only", () => {
+    const foreignQuotes = name === "zh-Hant" ? /[“”]/ : /[「」]/;
+    expect(keysWhere(chinese, (text) => foreignQuotes.test(text))).toEqual([]);
+    expect(keysWhere(chinese, (text) => text.includes('"'))).toEqual([]);
+    expect(keysWhere(chinese, (text) => text.includes("...") || text.includes("……"))).toEqual([]);
   });
 
-  it.each(["您", "我们", "！", "请注意", "需要留意", "加载中", "其它"])("never says %s", (word) => {
-    expect(keysWhere(zhCN, (text) => text.includes(word))).toEqual([]);
+  it.each(["您", "我们", "我們", "！", "请注意", "請注意", "需要留意", "加载中", "載入中", "其它"])("never says %s", (word) => {
+    expect(keysWhere(chinese, (text) => text.includes(word))).toEqual([]);
   });
 
   it("names Banager only where it is the one doing the work, the one to quit, or the name itself", () => {
@@ -124,14 +126,14 @@ describe("the polish-3 copy rules, in Chinese", () => {
       "settings.notifyUpdates.refused",
       "settings.iconCredits.simpleIcons",
     ];
-    const naming = keysWhere(zhCN, (text) => text.includes("Banager"));
+    const naming = keysWhere(chinese, (text) => text.includes("Banager"));
     expect(naming.length).toBeLessThanOrEqual(6);
     expect(naming.filter((key) => !allowed.includes(key))).toEqual([]);
   });
 
   it("says 没有改动 only of an operation that had started", () => {
     // A refusal stops before anything runs; 无法… already says nothing was done.
-    expect(keysWhere(zhCN, (text) => text.includes("没有改动")).filter((key) => !key.startsWith("operations."))).toEqual(
+    expect(keysWhere(chinese, (text) => /没有改动|沒有改動/.test(text)).filter((key) => !key.startsWith("operations."))).toEqual(
       [],
     );
   });

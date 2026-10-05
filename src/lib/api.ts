@@ -174,10 +174,10 @@ export function clearHistory(): Promise<HistoryView> {
 }
 
 /**
- * The languages the menu bar is written in: the window's two, by the names
+ * The languages the menu bar is written in: the window's three, by the names
  * its i18n gives them (`MenuLanguage` in src-tauri/src/menu.rs).
  */
-export type MenuLanguage = "en" | "zh-CN";
+export type MenuLanguage = "en" | "zh-CN" | "zh-Hant";
 
 /**
  * Tells Rust the language the window uses, which the menu bar follows: it

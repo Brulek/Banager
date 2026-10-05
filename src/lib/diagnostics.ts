@@ -336,7 +336,9 @@ export function useDiagnosticsText(): (includeTools: boolean) => string {
       appName: APP_NAME,
       appVersion: __APP_VERSION__,
       languageName: t(
-        i18n.resolvedLanguage === "zh-CN" ? "settings.language.chinese" : "settings.language.english",
+        i18n.resolvedLanguage === "zh-Hant"
+          ? "settings.language.traditionalChinese"
+          : i18n.resolvedLanguage === "zh-CN" ? "settings.language.chinese" : "settings.language.english",
       ),
       facts: facts ?? null,
       snapshot: snapshot ?? null,

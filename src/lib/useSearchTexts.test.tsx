@@ -4,7 +4,7 @@ import i18n from "../i18n";
 import { renderWithProviders } from "../test/setup";
 import { lazyDescriptionTable } from "./toolDescriptions";
 import { useSearchTexts } from "./useSearchTexts";
-import type { SearchText } from "./searchMatch";
+import { searchMatch, type SearchText } from "./searchMatch";
 import { NO_FACTS, type InstalledArtifact, type ManagerInstance } from "./types";
 
 const brew: ManagerInstance = {
@@ -73,4 +73,34 @@ describe("useSearchTexts", () => {
     expect(readEnglish).toHaveBeenCalledTimes(1);
     expect(readChinese).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it("searches English lines in a Traditional Chinese window and defers all three tables until searching", async () => {
+  await i18n.changeLanguage("zh-Hant");
+  const readTraditional = vi.fn(async () => ({ "brew:jq": "處理資料的工具" }));
+  const readChinese = vi.fn(async () => ({ "brew:jq": "处理数据的工具" }));
+  const readEnglish = vi.fn(async () => ({ "brew:jq": "Structured data processor" }));
+  const { rerender } = renderWithProviders(<Probe searching={false} />, {
+    toolDescriptions: {
+      "zh-Hant": lazyDescriptionTable(readTraditional),
+      "zh-CN": lazyDescriptionTable(readChinese),
+      en: lazyDescriptionTable(readEnglish),
+    },
+  });
+  await act(async () => {});
+  expect(texts).toBeNull();
+  for (const read of [readTraditional, readChinese, readEnglish]) expect(read).not.toHaveBeenCalled();
+
+  rerender(<Probe searching />);
+  await waitFor(() => expect([...(texts?.values() ?? [])][0]).toMatchObject({
+    line: "處理資料的工具",
+    otherLine: "structured data processor",
+  }));
+  const text = [...(texts?.values() ?? [])][0];
+  expect(searchMatch(jq, "structured", text)).toEqual({ by: "text" });
+  expect(searchMatch(jq, "處理", text)).toEqual({ by: "text" });
+  for (const read of [readTraditional, readChinese, readEnglish]) expect(read).toHaveBeenCalledTimes(1);
+  rerender(<Probe searching={false} />);
+  expect(texts).toBeNull();
 });

@@ -35,8 +35,8 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::window;
 
-/// The languages the menu bar is written in: the window's two. The page
-/// names them as its i18n does, "en" and "zh-CN"; Tauri refuses any other
+/// The languages the menu bar is written in: the window's three. The page
+/// names them as its i18n does, "en", "zh-CN" and "zh-Hant"; Tauri refuses any other
 /// value for `set_menu_language` before the command runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum MenuLanguage {
@@ -44,6 +44,8 @@ pub enum MenuLanguage {
     En,
     #[serde(rename = "zh-CN")]
     ZhCn,
+    #[serde(rename = "zh-Hant")]
+    ZhHant,
 }
 
 /// What an item of the menu bar asks of the page. The page handles each
@@ -348,6 +350,42 @@ const SIMPLIFIED_CHINESE: Words = Words {
     copy_diagnostics: "拷贝诊断信息…",
 };
 
+const TRADITIONAL_CHINESE: Words = Words {
+    common_questions: "常見問題",
+    about: "關於{app}",
+    settings: "設定…",
+    services: "服務",
+    hide: "隱藏{app}",
+    hide_others: "隱藏其他",
+    show_all: "顯示全部",
+    quit: "結束{app}",
+    file: "檔案",
+    close_window: "關閉視窗",
+    edit: "編輯",
+    undo: "還原",
+    redo: "重做",
+    cut: "剪下",
+    copy: "複製",
+    paste: "貼上",
+    select_all: "全選",
+    view: "顯示方式",
+    overview: "概覽",
+    updates: "更新",
+    installed: "已安裝",
+    unknown: "其他程式",
+    check_again: "重新檢查",
+    search: "搜尋",
+    window: "視窗",
+    minimize: "縮到最小",
+    zoom: "縮放",
+    bring_all_to_front: "將此程式所有視窗移至最前",
+    help: "輔助說明",
+    welcome: "歡迎使用{app}",
+    keyboard_shortcuts: "鍵盤快速鍵",
+    check_tool_setup: "檢查工具環境…",
+    copy_diagnostics: "複製診斷資訊…",
+};
+
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
 /// Settings…, Services, the three Hide items and Quit, each group apart;
 /// File, with Close Window; the Edit menu a text field needs; View with the
@@ -361,6 +399,7 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
         MenuLanguage::ZhCn => &SIMPLIFIED_CHINESE,
+        MenuLanguage::ZhHant => &TRADITIONAL_CHINESE,
     };
     let named = |template: &str| template.replace("{app}", app_name);
     let mac = |item: MacItem, label: &str| Item::Mac(item, label.to_string());
@@ -443,7 +482,8 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
 /// one it is about to choose. Settings' language when it names one;
 /// following the system, the page's i18n takes the language WebKit
 /// reports, the first of the user's preferred languages, and reads any
-/// Chinese as Simplified Chinese and anything else as English. Should the
+/// Chinese script or region as Simplified or Traditional Chinese, and
+/// anything else as English. Should the
 /// two ever differ, the page's word wins as soon as it arrives
 /// (`set_menu_language`); this only spares a Chinese Mac an English menu
 /// bar while the window loads.
@@ -451,10 +491,24 @@ pub fn initial_language(setting: Language, preferred: &[String]) -> MenuLanguage
     match setting {
         Language::En => MenuLanguage::En,
         Language::ZhCn => MenuLanguage::ZhCn,
-        Language::System => match preferred.first() {
-            Some(first) if first == "zh" || first.starts_with("zh-") => MenuLanguage::ZhCn,
-            _ => MenuLanguage::En,
-        },
+        Language::ZhHant => MenuLanguage::ZhHant,
+        Language::System => {
+            let first = preferred
+                .first()
+                .map(|s| s.to_ascii_lowercase().replace('_', "-"));
+            let parts: Vec<&str> = first.as_deref().unwrap_or("").split('-').collect();
+            if parts.first() != Some(&"zh") {
+                MenuLanguage::En
+            } else if parts.contains(&"hant") {
+                MenuLanguage::ZhHant
+            } else if parts.contains(&"hans") {
+                MenuLanguage::ZhCn
+            } else if parts.iter().any(|part| ["tw", "hk", "mo"].contains(part)) {
+                MenuLanguage::ZhHant
+            } else {
+                MenuLanguage::ZhCn
+            }
+        }
     }
 }
 
@@ -767,11 +821,43 @@ mod tests {
     }
 
     #[test]
-    fn test_only_the_words_differ_between_the_two_languages() {
+    fn test_traditional_chinese_menu_uses_taiwan_words() {
+        let bar = menu_bar(MenuLanguage::ZhHant, "Banager");
+        let words = labels(&bar);
+        assert_eq!(words[1], ("檔案".into(), vec!["關閉視窗".into()]));
+        assert_eq!(
+            words[2],
+            (
+                "編輯".into(),
+                ["還原", "重做", "—", "剪下", "複製", "貼上", "全選"]
+                    .map(String::from)
+                    .to_vec()
+            )
+        );
+        assert_eq!(words[3].0, "顯示方式");
+        assert_eq!(
+            words[4],
+            (
+                "視窗".into(),
+                ["縮到最小", "縮放", "—", "將此程式所有視窗移至最前"]
+                    .map(String::from)
+                    .to_vec()
+            )
+        );
+        assert_eq!(words[5].0, "輔助說明");
+        assert!(words[5].1.contains(&"常見問題".to_owned()));
+    }
+
+    #[test]
+    fn test_only_the_words_differ_between_the_three_languages() {
         let english = menu_bar(MenuLanguage::En, "Banager");
         assert_eq!(
             shape(&english),
             shape(&menu_bar(MenuLanguage::ZhCn, "Banager"))
+        );
+        assert_eq!(
+            shape(&english),
+            shape(&menu_bar(MenuLanguage::ZhHant, "Banager"))
         );
         assert_eq!(
             english.iter().map(|menu| menu.id).collect::<Vec<_>>(),
@@ -920,6 +1006,10 @@ mod tests {
         for (words, locale) in [
             (&ENGLISH, include_str!("../../src/i18n/en.json")),
             (
+                &TRADITIONAL_CHINESE,
+                include_str!("../../src/i18n/zh-Hant.json"),
+            ),
+            (
                 &SIMPLIFIED_CHINESE,
                 include_str!("../../src/i18n/zh-CN.json"),
             ),
@@ -979,10 +1069,11 @@ mod tests {
     }
 
     #[test]
-    fn test_the_page_can_name_only_the_two_languages() {
+    fn test_the_page_can_name_only_the_three_languages() {
         let parse = |value: &str| serde_json::from_value::<MenuLanguage>(serde_json::json!(value));
         assert_eq!(parse("en").unwrap(), MenuLanguage::En);
         assert_eq!(parse("zh-CN").unwrap(), MenuLanguage::ZhCn);
+        assert_eq!(parse("zh-Hant").unwrap(), MenuLanguage::ZhHant);
         for other in [
             "", "EN", "zh", "zh-cn", "zh-TW", "fr", "En", "ZhCn", "System",
         ] {
@@ -999,6 +1090,10 @@ mod tests {
             MenuLanguage::En
         );
         assert_eq!(initial_language(Language::ZhCn, &[]), MenuLanguage::ZhCn);
+        assert_eq!(
+            initial_language(Language::ZhHant, &chinese_mac),
+            MenuLanguage::ZhHant
+        );
     }
 
     #[test]
@@ -1008,7 +1103,20 @@ mod tests {
             initial_language(Language::System, &languages)
         };
         assert_eq!(system(&["zh-Hans-CN", "en-CN"]), MenuLanguage::ZhCn);
-        assert_eq!(system(&["zh-Hant-TW"]), MenuLanguage::ZhCn);
+        for locale in [
+            "zh-TW",
+            "zh-HK",
+            "zh-MO",
+            "zh-Hant",
+            "zh-Hant-TW",
+            "zh-Hant-CN",
+            "ZH_tw",
+        ] {
+            assert_eq!(system(&[locale]), MenuLanguage::ZhHant, "{locale}");
+        }
+        for locale in ["zh-CN", "zh-SG", "zh-Hans", "zh-Hans-HK", "zh-Hans-CN"] {
+            assert_eq!(system(&[locale]), MenuLanguage::ZhCn, "{locale}");
+        }
         assert_eq!(system(&["zh"]), MenuLanguage::ZhCn);
         assert_eq!(system(&["en-US", "zh-Hans-CN"]), MenuLanguage::En);
         assert_eq!(system(&["ja-JP", "zh-Hans-CN"]), MenuLanguage::En);

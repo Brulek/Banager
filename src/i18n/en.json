@@ -298,6 +298,8 @@
     "count_one": "{{count}} update available",
     "count_other": "{{count}} updates available",
     "noneActionable": "Nothing to update here",
+    "needPasswordCount_one": "{{count}} needs your password",
+    "needPasswordCount_other": "{{count}} need your password",
     "alsoCount_one": "{{count}} more can be updated",
     "alsoCount_other": "{{count}} more can be updated",
     "cantUpdateHere": "{{number}} more can't be updated here",
@@ -330,8 +332,8 @@
     "lookupsFailedTitleCause_other": "{{count}} tools couldn't be checked: {{cause}}",
     "lookupsFailedDescription": "Some updates may not be listed. {{next}}",
     "lookupsFailedProblemTitle": "Some updates may not be listed",
-    "cannotCheckSummary_one": "{{count}} tool couldn't be checked for updates.",
-    "cannotCheckSummary_other": "{{count}} tools couldn't be checked for updates.",
+    "cannotCheckSummary_one": "Check details are hidden for {{count}} of these tools.",
+    "cannotCheckSummary_other": "Check details are hidden for {{count}} of these tools.",
     "showReasons": "Show Reasons",
     "showReasonsHint": "Turns on “{{setting}}” in Settings",
     "sourceUnavailable": "Can't update now",
@@ -1061,7 +1063,8 @@
       "label": "Language",
       "system": "System Default",
       "english": "English",
-      "chinese": "简体中文"
+      "chinese": "简体中文",
+      "traditionalChinese": "繁體中文"
     },
     "skippedVersions": {
       "title": "Skipped versions",
@@ -1483,6 +1486,8 @@
     "bar": {
       "updatesFailed_one": "{{count}} update failed",
       "updatesFailed_other": "{{count}} updates failed",
+      "needPassword_one": "{{count}} needs your password",
+      "needPassword_other": "{{count}} need your password",
       "failed_one": "{{count}} failed",
       "failed_other": "{{count}} failed",
       "succeeded_one": "{{count}} succeeded",

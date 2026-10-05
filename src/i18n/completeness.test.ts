@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import * as ts from "typescript";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
+import zhHant from "./zh-Hant.json";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,16 @@ function normalizedKeySet(resource: unknown): Set<string> {
 }
 
 describe("i18n key parity", () => {
+  it("keeps every current Simplified Chinese key, plural suffix and marker in Traditional Chinese", () => {
+    expect(flattenKeys(zhHant).sort()).toEqual(flattenKeys(zhCN).sort());
+    const traditional = new Map(flattenEntries(zhHant));
+    const markers = (text: string) => text.match(/\{\{[^}]+\}\}|<[^>]+>/g) ?? [];
+    for (const [key, value] of flattenEntries(zhCN)) {
+      const translated = traditional.get(key)!;
+      expect(translated.trim(), key).not.toBe("");
+      expect(markers(translated).sort(), key).toEqual(markers(value).sort());
+    }
+  });
   it("has the same set of keys in en.json and zh-CN.json", () => {
     const enKeys = normalizedKeySet(en);
     const zhKeys = normalizedKeySet(zhCN);
@@ -398,7 +409,7 @@ const CJK = "\\u4e00-\\u9fff";
 // contains, and only a CJK character on *both* sides marks Chinese prose.
 const ASCII_PUNCT_BETWEEN_CJK = new RegExp(`[${CJK}][,:()][${CJK}]`);
 
-describe("zh-CN uses full-width punctuation in Chinese prose", () => {
+describe.each([["zh-CN", zhCN], ["zh-Hant", zhHant]])("%s uses full-width punctuation in Chinese prose", (_name, locale) => {
   /**
    * The Chinese translation drifted back toward untouched machine
    * translation over several review rounds: half-width ， ： （ ） creeping
@@ -407,7 +418,7 @@ describe("zh-CN uses full-width punctuation in Chinese prose", () => {
    * silently string by string.
    */
   it("has no half-width , : ( ) sitting between two CJK characters", () => {
-    const offenders = flattenEntries(zhCN)
+    const offenders = flattenEntries(locale)
       .filter(([, value]) => ASCII_PUNCT_BETWEEN_CJK.test(value))
       .map(([key, value]) => `${key}: ${value}`);
 

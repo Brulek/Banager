@@ -106,6 +106,7 @@ const LANGUAGES: Record<string, Language> = {
   system: "System",
   en: "En",
   "zh-cn": "ZhCn",
+  "zh-hant": "ZhHant",
 };
 
 export interface Scenario {

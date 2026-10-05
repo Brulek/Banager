@@ -35,18 +35,18 @@ describe("the app bundle's Info.plist", () => {
     expect(existsSync(path.join(ROOT, "src-tauri/Info.plist"))).toBe(true);
   });
 
-  it("declares the app in English and in Simplified Chinese, so macOS's own menu items follow a Mac in Chinese", () => {
+  it("declares the app in English, Simplified Chinese and Traditional Chinese, so macOS's own menu items follow a Mac in Chinese", () => {
     // Without CFBundleLocalizations macOS takes the app for English only:
     // Edit's Start Dictation and Emoji & Symbols, the Window menu's tiling
     // items and the About panel stayed in English on a Mac in Chinese.
     const plist = infoPlist();
     expect(plist.CFBundleDevelopmentRegion).toBe("en");
-    expect(plist.CFBundleLocalizations).toEqual(["en", "zh-Hans"]);
+    expect(plist.CFBundleLocalizations).toEqual(["en", "zh-Hans", "zh-Hant"]);
   });
 
   it("declares one localization for each language of the window, by macOS's name for it", () => {
     // i18next's zh-CN is Simplified Chinese: zh-Hans to macOS.
-    const macOSName: Record<string, string> = { en: "en", "zh-CN": "zh-Hans" };
+    const macOSName: Record<string, string> = { en: "en", "zh-CN": "zh-Hans", "zh-Hant": "zh-Hant" };
     const windowLanguages = Object.keys(i18n.options.resources ?? {});
     expect(windowLanguages.map((language) => macOSName[language])).toEqual(infoPlist().CFBundleLocalizations);
   });

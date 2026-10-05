@@ -1,6 +1,6 @@
 /**
  * Each tool's line in the window's language, which a row shows under the
- * tool's name (`toolDescription`, src/lib/sources.ts). Two tables, each one
+ * tool's name (`toolDescription`, src/lib/sources.ts). Three tables, each one
  * object from a tool's key to its line, made at development time and
  * committed: nothing is fetched to show a line, so no server learns what
  * is installed.
@@ -11,6 +11,9 @@
  *   it (Homebrew's, npm's, PyPI's, crates.io's). It takes the place of the
  *   description its source gives in English, or of what the row says when
  *   the source gives none.
+ * - src/assets/tool-descriptions/zh-Hant.json, for Taiwan Traditional Chinese:
+ *   the same keys as zh-CN, using Taiwan terminology; a missing line falls
+ *   back to zh-CN, then en.
  * - src/assets/tool-descriptions/en.json, for a window in English: npm,
  *   PyPI and crates.io packages only, each line rewritten, shorter, from
  *   the description the package's own registry gives it. npm's, pip's,
@@ -26,7 +29,8 @@
  * and then from a file of its own: a dynamic `import`, which Vite builds
  * into a chunk apart from the app's script, so a window never in Chinese
  * and never searched never loads the Chinese one, nor one never in English
- * and never searched the English one. Until
+ * and never searched the English one. Traditional Chinese also loads the
+ * two fallback tables (Simplified Chinese, then English). Until
  * it has arrived, a row says what it would without it: its source's
  * words, or what its source says it is (`toolDescription`,
  * src/lib/sources.ts).
@@ -83,7 +87,7 @@ export function lazyDescriptionTable(read: () => Promise<Readonly<Record<string,
 }
 
 /** The languages a window can be in (src/i18n/index.ts), each with a table of its own. */
-export type DescriptionLanguage = "en" | "zh-CN";
+export type DescriptionLanguage = "en" | "zh-CN" | "zh-Hant";
 
 /** A table for each language, read only once the window is in it. */
 export type DescriptionTables = Readonly<Record<DescriptionLanguage, DescriptionTable>>;
@@ -93,6 +97,9 @@ const BUILT_IN: DescriptionTables = {
   en: lazyDescriptionTable(() => import("../assets/tool-descriptions/en.json").then((module) => module.default)),
   "zh-CN": lazyDescriptionTable(() =>
     import("../assets/tool-descriptions/zh-CN.json").then((module) => module.default),
+  ),
+  "zh-Hant": lazyDescriptionTable(() =>
+    import("../assets/tool-descriptions/zh-Hant.json").then((module) => module.default),
   ),
 };
 
@@ -135,7 +142,7 @@ export function useTranslatedDescription(load = true): TranslatedDescription {
 
 /** The language a window in `language` is not in, or `null` for none: the one whose lines a search looks through too. */
 export function otherLanguage(language: string | undefined): DescriptionLanguage | null {
-  return language === "en" ? "zh-CN" : language === "zh-CN" ? "en" : null;
+  return language === "en" ? "zh-CN" : language === "zh-CN" || language === "zh-Hant" ? "en" : null;
 }
 
 /**
@@ -154,18 +161,24 @@ export function useOtherLanguageDescription(load: boolean): TranslatedDescriptio
 function useDescriptionIn(language: string | undefined, load: boolean): TranslatedDescription {
   const tables = useContext(DescriptionTablesContext);
   const { toolIconKey } = useToolIcons();
-  const table = language === "en" || language === "zh-CN" ? tables[language] : NO_TABLE;
+  const table = language === "en" || language === "zh-CN" || language === "zh-Hant" ? tables[language] : NO_TABLE;
+  const simplifiedFallback = language === "zh-Hant" ? tables["zh-CN"] : NO_TABLE;
+  const englishFallback = language === "zh-Hant" ? tables.en : NO_TABLE;
   const lines = useSyncExternalStore(table.subscribe, table.lines);
+  const simplifiedLines = useSyncExternalStore(simplifiedFallback.subscribe, simplifiedFallback.lines);
+  const englishLines = useSyncExternalStore(englishFallback.subscribe, englishFallback.lines);
   useEffect(() => {
-    if (load) table.load();
-  }, [table, load]);
+    if (!load) return;
+    table.load();
+    simplifiedFallback.load();
+    englishFallback.load();
+  }, [table, simplifiedFallback, englishFallback, load]);
   return useCallback(
     (key: ArtifactKey, adapterId: string): string | null => {
-      if (lines === null) return null;
       const toolKey = toolIconKey(key, adapterId);
-      const line = toolKey === null ? null : (lines.get(toolKey) ?? null);
-      return line !== null && language === "zh-CN" && lacksTextAutospace() ? autospace(line) : line;
+      const line = toolKey === null ? null : (lines?.get(toolKey) ?? simplifiedLines?.get(toolKey) ?? englishLines?.get(toolKey) ?? null);
+      return line !== null && (language === "zh-CN" || language === "zh-Hant") && lacksTextAutospace() ? autospace(line) : line;
     },
-    [lines, toolIconKey, language],
+    [lines, simplifiedLines, englishLines, toolIconKey, language],
   );
 }

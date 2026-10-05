@@ -150,7 +150,7 @@ describe("types", () => {
     // The literal `test_homebrew_facts_spell_every_field_on_the_wire_and_read_back`
     // in crates/banager-core/src/model.rs asserts, byte for byte.
     const wire =
-      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]},"commands":[]}';
+      '{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \\"Launch at login\\".\\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false}';
     const facts = {
       family: null,
       homebrew: {
@@ -160,10 +160,19 @@ describe("types", () => {
         other_versions: ["3.6.3"],
       },
       commands: [],
+      commands_unavailable: false,
     } satisfies ArtifactFacts;
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip<ArtifactFacts>(JSON.parse(wire) as ArtifactFacts)).toEqual(facts);
-    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[]}');
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}');
+  });
+
+  it("round-trips unavailable command coverage even when all claims were dropped", () => {
+    // Same literal as Rust's test_unavailable_commands_round_trip_even_when_every_claim_was_dropped.
+    const wire = '{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true}';
+    const facts: ArtifactFacts = { ...NO_FACTS, commands_unavailable: true };
+    expect(JSON.stringify(facts)).toBe(wire);
+    expect(roundTrip<ArtifactFacts>(JSON.parse(wire))).toEqual(facts);
   });
 
   it("reads Snapshot.next_auto_check_at as ipc.rs's wire test sends it: Unix seconds, or null before any check", () => {
@@ -284,6 +293,7 @@ describe("types", () => {
         { name: "rg", state: { ShadowedBy: { by: null } } },
         { name: "curl", state: null },
       ],
+      commands_unavailable: false,
     };
     const wire =
       '{"family":null,"homebrew":null,"commands":[' +
@@ -292,11 +302,11 @@ describe("types", () => {
       '{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},' +
       '{"name":"rg","state":{"ShadowedBy":{"by":null}}},' +
       '{"name":"curl","state":null}' +
-      "]}";
+      '],"commands_unavailable":false}';
     expect(JSON.stringify(facts)).toBe(wire);
     expect(roundTrip(facts)).toEqual(facts);
     // `ArtifactFacts::default()`.
-    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[]}');
+    expect(JSON.stringify(NO_FACTS)).toBe('{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}');
     const states: CommandState[] = facts.commands.flatMap((command) => (command.state === null ? [] : [command.state]));
     expect(states).toHaveLength(4);
   });
@@ -948,4 +958,19 @@ describe("types", () => {
     expect(JSON.stringify(read).endsWith('"path_folders":{"read":9,"unread":["~/Documents/bin"]}}')).toBe(true);
     expect(roundTrip(read)).toEqual(read);
   });
+});
+
+
+it("round-trips the Traditional Chinese settings wire value", () => {
+  const settings: Settings = {
+    language: "ZhHant",
+    show_technical_details: false,
+    ignored_updates: [],
+    skipped_versions: [],
+    include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
+  };
+  expect(JSON.parse(JSON.stringify(settings)).language).toBe("ZhHant");
+  expect(roundTrip(settings)).toEqual(settings);
 });

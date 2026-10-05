@@ -4,9 +4,9 @@ import { setMenuLanguage, type MenuLanguage } from "../lib/api";
 import { useSettings } from "../lib/queries";
 import i18n from "./index";
 
-/** The menu bar's language for the one i18next resolved: the window's two. */
+/** The menu bar's language for the one i18next resolved. */
 export function menuLanguageOf(resolved: string | undefined): MenuLanguage {
-  return resolved === "zh-CN" ? "zh-CN" : "en";
+  return resolved === "zh-CN" || resolved === "zh-Hant" ? resolved : "en";
 }
 
 /**
@@ -36,7 +36,7 @@ export function useLanguageSync(): void {
       void i18n.changeLanguage();
       return;
     }
-    const target = settings.language === "ZhCn" ? "zh-CN" : "en";
+    const target = settings.language === "ZhHant" ? "zh-Hant" : settings.language === "ZhCn" ? "zh-CN" : "en";
     if (i18n.language !== target) {
       void i18n.changeLanguage(target);
     }

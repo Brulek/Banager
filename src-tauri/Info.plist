@@ -7,8 +7,7 @@
   items macOS adds itself (Edit's Start Dictation and Emoji & Symbols, the
   Window menu's tiling items, the About panel's words) stay in English on
   a Mac in Chinese. One entry for each language of the window
-  (src/i18n/index.ts): en, and zh-Hans, the name macOS gives the window's
-  zh-CN. Checked by src/test/infoPlist.test.ts.
+  (src/i18n/index.ts): en, zh-Hans (the window's zh-CN), and zh-Hant. Checked by src/test/infoPlist.test.ts.
 -->
 <plist version="1.0">
 <dict>
@@ -18,6 +17,7 @@
 	<array>
 		<string>en</string>
 		<string>zh-Hans</string>
+		<string>zh-Hant</string>
 	</array>
 </dict>
 </plist>

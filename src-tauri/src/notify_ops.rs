@@ -39,12 +39,9 @@ pub struct OperationRuns(Mutex<ReportedRuns>);
 /// handed off is logged; the page is told nothing. A run withheld is
 /// looked at again on the main thread (`look_again_on_main_thread`).
 ///
-/// A run that cannot be one of the operations this Banager has started
-/// (`plausible`) is dropped first, with nothing posted: its newest
-/// operation is one Banager has not started, or it tells of more
-/// operations than Banager has started. Each notification then stands for
-/// an operation that ran, and a page that went wrong cannot post one for
-/// every number it counts up to.
+/// The page supplies only a boundary hint. Counts and kind are derived
+/// from completed Rust records in the interval since the last accepted
+/// report, under the same mutex as reporting/deduplication.
 #[tauri::command]
 pub async fn report_finished_run(
     app: AppHandle,
@@ -52,17 +49,22 @@ pub async fn report_finished_run(
     runs: State<'_, OperationRuns>,
     run: FinishedRun,
 ) -> Result<(), String> {
-    let newest = state.session.operations().iter().map(|op| op.id).max();
-    if !plausible(&run, newest) {
-        eprintln!("[banager] dropped a report of operations Banager has not started");
-        return Ok(());
-    }
     let focus = notify::focus(&app);
     let language = notify::language(&app, &state);
     let title = app.package_info().name.clone();
-    let reported = report(&runs, &state.get_settings(), focus, &run, |run| {
-        notify::post(&app, &title, &body(language, run), Answer::ShowWindow)
-    });
+    let reported = {
+        let mut records = runs.0.lock().unwrap();
+        let Some(actual) = records.completed(run.last_op, &state.session.operations()) else {
+            return Ok(());
+        };
+        notify_operations::report(
+            &mut records,
+            state.get_settings().notify_operations,
+            focus,
+            &actual,
+            |run| notify::post(&app, &title, &body(language, run), Answer::ShowWindow),
+        )
+    };
     match reported {
         Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
         Ok(RunNotice::Withheld) => look_again_on_main_thread(&app),
@@ -72,16 +74,6 @@ pub async fn report_finished_run(
         }
     }
     Ok(())
-}
-
-/// Whether `run` can be a run of the operations this Banager has started,
-/// the newest of which is `newest` (`None` before the first): its newest
-/// operation is one of them, and it tells of no more operations than there
-/// are up to that one (ids count from 1, `OperationManager::submit_with`).
-pub(crate) fn plausible(run: &FinishedRun, newest: Option<u64>) -> bool {
-    newest.is_some_and(|newest| {
-        (1..=newest).contains(&run.last_op) && u64::from(run.told()) <= run.last_op
-    })
 }
 
 /// A run `report_finished_run` has just withheld, looked at again on the
@@ -196,6 +188,7 @@ pub(crate) fn post_withheld(
 /// A report's whole effect: `notify_operations::report` over the runs
 /// reported so far, whether 「操作完成时通知」 is on as `settings` are
 /// saved, and `focus`, with `post` to post the notification.
+#[cfg(test)]
 pub(crate) fn report(
     runs: &OperationRuns,
     settings: &Settings,
@@ -213,17 +206,20 @@ pub(crate) fn report(
 /// 更新」. Cancelled operations are not told of. With no space around a
 /// number in Chinese: macOS spaces Chinese from digits itself.
 pub fn body(language: MenuLanguage, run: &FinishedRun) -> String {
-    let zh = language == MenuLanguage::ZhCn;
+    let zh = language != MenuLanguage::En;
     let only_succeeded = run.failed == 0 && run.attention == 0;
     if only_succeeded {
         let n = run.succeeded;
-        return match (zh, run.kind) {
-            (true, RunKind::Upgrade) => format!("已更新{n}个工具"),
-            (true, RunKind::Uninstall) => format!("已卸载{n}个工具"),
-            (true, RunKind::Other) => format!("已完成{n}项操作"),
-            (false, RunKind::Upgrade) => format!("Updated {n} {}", tools(n)),
-            (false, RunKind::Uninstall) => format!("Uninstalled {n} {}", tools(n)),
-            (false, RunKind::Other) => {
+        return match (language, run.kind) {
+            (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("已更新{n}个工具"),
+            (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("已更新{n}個工具"),
+            (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("已卸载{n}个工具"),
+            (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("已解除安裝{n}個工具"),
+            (MenuLanguage::ZhCn, RunKind::Other) => format!("已完成{n}项操作"),
+            (MenuLanguage::ZhHant, RunKind::Other) => format!("已完成{n}項操作"),
+            (MenuLanguage::En, RunKind::Upgrade) => format!("Updated {n} {}", tools(n)),
+            (MenuLanguage::En, RunKind::Uninstall) => format!("Uninstalled {n} {}", tools(n)),
+            (MenuLanguage::En, RunKind::Other) => {
                 format!(
                     "Completed {n} {}",
                     if n == 1 { "operation" } else { "operations" }
@@ -234,33 +230,41 @@ pub fn body(language: MenuLanguage, run: &FinishedRun) -> String {
     let mut parts = Vec::new();
     if run.succeeded > 0 {
         let n = run.succeeded;
-        parts.push(match (zh, run.kind) {
-            (true, RunKind::Upgrade) => format!("{n}个已更新"),
-            (true, RunKind::Uninstall) => format!("{n}个已卸载"),
-            (true, RunKind::Other) => format!("{n}项已完成"),
-            (false, RunKind::Upgrade) => format!("{n} updated"),
-            (false, RunKind::Uninstall) => format!("{n} uninstalled"),
-            (false, RunKind::Other) => format!("{n} completed"),
+        parts.push(match (language, run.kind) {
+            (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("{n}个已更新"),
+            (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個已更新"),
+            (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个已卸载"),
+            (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個已解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项已完成"),
+            (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項已完成"),
+            (MenuLanguage::En, RunKind::Upgrade) => format!("{n} updated"),
+            (MenuLanguage::En, RunKind::Uninstall) => format!("{n} uninstalled"),
+            (MenuLanguage::En, RunKind::Other) => format!("{n} completed"),
         });
     }
     if run.failed > 0 {
         let n = run.failed;
-        parts.push(match (zh, run.kind) {
-            (true, RunKind::Upgrade) => format!("{n}个未能更新"),
-            (true, RunKind::Uninstall) => format!("{n}个未能卸载"),
-            (true, RunKind::Other) => format!("{n}项未能完成"),
-            (false, RunKind::Upgrade) => format!("{n} couldn't be updated"),
-            (false, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
-            (false, RunKind::Other) => format!("{n} couldn't be completed"),
+        parts.push(match (language, run.kind) {
+            (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("{n}个未能更新"),
+            (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個未能更新"),
+            (MenuLanguage::ZhCn, RunKind::Uninstall) => format!("{n}个未能卸载"),
+            (MenuLanguage::ZhHant, RunKind::Uninstall) => format!("{n}個未能解除安裝"),
+            (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项未能完成"),
+            (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項未能完成"),
+            (MenuLanguage::En, RunKind::Upgrade) => format!("{n} couldn't be updated"),
+            (MenuLanguage::En, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
+            (MenuLanguage::En, RunKind::Other) => format!("{n} couldn't be completed"),
         });
     }
     if run.attention > 0 {
         let n = run.attention;
-        parts.push(match (zh, run.kind) {
-            (true, RunKind::Other) => format!("{n}项需要查看"),
-            (true, _) => format!("{n}个需要查看"),
-            (false, _) if n == 1 => "1 needs attention".to_string(),
-            (false, _) => format!("{n} need attention"),
+        parts.push(match (language, run.kind) {
+            (MenuLanguage::ZhCn, RunKind::Other) => format!("{n}项需要查看"),
+            (MenuLanguage::ZhHant, RunKind::Other) => format!("{n}項需要查看"),
+            (MenuLanguage::ZhCn, _) => format!("{n}个需要查看"),
+            (MenuLanguage::ZhHant, _) => format!("{n}個需要查看"),
+            (MenuLanguage::En, _) if n == 1 => "1 needs attention".to_string(),
+            (MenuLanguage::En, _) => format!("{n} need attention"),
         });
     }
     parts.join(if zh { "，" } else { ", " })
@@ -315,24 +319,6 @@ mod tests {
             Ok(RunNotice::Nothing)
         );
         assert_eq!(*posted.borrow(), ["已更新3个工具"]);
-    }
-
-    #[test]
-    fn test_a_run_is_reported_only_as_one_of_the_operations_banager_started() {
-        // Three operations started: a run of them is reported.
-        assert!(plausible(&run(RunKind::Upgrade, 3, 0, 0), Some(3)));
-        assert!(plausible(&run(RunKind::Uninstall, 1, 0, 0), Some(5)));
-        // Before any operation, none.
-        assert!(!plausible(&run(RunKind::Upgrade, 1, 0, 0), None));
-        // An operation not started yet, or none at all.
-        let mut later = run(RunKind::Upgrade, 1, 0, 0);
-        later.last_op = 4;
-        assert!(!plausible(&later, Some(3)));
-        later.last_op = 0;
-        assert!(!plausible(&later, Some(3)));
-        // More operations than have been started up to its newest.
-        assert!(!plausible(&run(RunKind::Upgrade, 3, 1, 0), Some(3)));
-        assert!(!plausible(&run(RunKind::Upgrade, u32::MAX, 0, 0), Some(3)));
     }
 
     #[test]
@@ -534,6 +520,29 @@ mod tests {
         for (finished, zh, en) in cases {
             assert_eq!(body(ZhCn, &finished), zh);
             assert_eq!(body(En, &finished), en);
+        }
+    }
+
+    #[test]
+    fn test_traditional_chinese_operation_notifications() {
+        for (finished, expected) in [
+            (run(RunKind::Upgrade, 3, 0, 0), "已更新3個工具"),
+            (
+                run(RunKind::Upgrade, 2, 1, 1),
+                "2個已更新，1個未能更新，1個需要查看",
+            ),
+            (run(RunKind::Uninstall, 2, 0, 0), "已解除安裝2個工具"),
+            (
+                run(RunKind::Uninstall, 1, 1, 1),
+                "1個已解除安裝，1個未能解除安裝，1個需要查看",
+            ),
+            (run(RunKind::Other, 3, 0, 0), "已完成3項操作"),
+            (
+                run(RunKind::Other, 1, 1, 1),
+                "1項已完成，1項未能完成，1項需要查看",
+            ),
+        ] {
+            assert_eq!(body(MenuLanguage::ZhHant, &finished), expected);
         }
     }
 

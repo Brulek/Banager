@@ -19,6 +19,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { toolsNotJudged } from "../lib/commandsKnown";
 import { outcomeCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
@@ -116,6 +117,7 @@ describe("the browser preview's mock backend", () => {
     const { backend } = backendFor();
     await expect(backend.invoke("set_menu_language", { language: "en" })).resolves.toBeUndefined();
     await expect(backend.invoke("set_menu_language", { language: "zh-CN" })).resolves.toBeUndefined();
+    await expect(backend.invoke("set_menu_language", { language: "zh-Hant" })).resolves.toBeUndefined();
     await expect(backend.invoke("set_menu_language", { language: "fr" })).rejects.toMatch(/^invalid args/);
     await expect(backend.invoke("set_menu_language")).rejects.toMatch(/^invalid args/);
   });
@@ -885,13 +887,13 @@ describe("the preview's commands, and which copy runs", () => {
     const notices = await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
     const npmClaude = notices.artifacts.find((a) => a.key.name === "@anthropic-ai/claude-code");
     expect(npmClaude?.facts).toEqual({
+      ...NO_FACTS,
       family: "claude-code",
-      homebrew: null,
       commands: [{ name: "claude", state: "Runs" }],
     });
     expect(factsOf(notices, "standalone-claude", "claude")).toEqual({
+      ...NO_FACTS,
       family: "claude-code",
-      homebrew: null,
       commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude?.key } } }],
     });
     // The launcher with no program: nothing to name.
@@ -913,7 +915,7 @@ describe("the preview's commands, and which copy runs", () => {
 
   it("gives each row facts of its own, and leaves the shared empty ones alone", async () => {
     await answer<Snapshot>(backendFor({ state: "notices" }).backend.invoke("refresh"));
-    expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [] });
+    expect(NO_FACTS).toEqual({ family: null, homebrew: null, commands: [], commands_unavailable: false });
   });
 });
 
@@ -1087,5 +1089,16 @@ describe("the mock backend's facts for the diagnostic text (get_system_facts)", 
       expect(withoutVerdict.map((a) => a.key)).toContainEqual(artifact.key);
     }
     expect(unread.artifacts.some((artifact) => artifact.facts.commands.some(({ state }) => state === "Runs"))).toBe(true);
+    const dropped = unread.artifacts.find((artifact) => artifact.key.instance_id === "pipx" && artifact.key.name === "poetry")!;
+    expect(dropped.path).toBe("/Users/you/Documents/venvs/poetry");
+    expect(dropped.facts.commands).toEqual([]);
+    expect(dropped.facts.commands_unavailable).toBe(true);
+    expect(toolsNotJudged([dropped])).toBe(1);
   });
+});
+
+it("starts the browser mock in Traditional Chinese", async () => {
+  const { scenario, problems } = parseScenario("?lang=zh-Hant");
+  expect(problems).toEqual([]);
+  expect(scenario.language).toBe("ZhHant");
 });
