@@ -381,8 +381,8 @@
     "needsPassword": "部分App在這一步會要求輸入Mac密碼，這裡無法輸入；需要時會告訴你在終端機裡怎麼完成。"
   },
   "majorVersion": {
-    "tag": "大版本更新",
-    "tagLabel": "大版本更新：{{name}}",
+    "tag": "主要版本更新",
+    "tagLabel": "主要版本更新：{{name}}",
     "detail": "從{{from}}升到{{to}}，用法或設定可能會變。不確定的話，可以點按這一列右邊的「⋯」，選擇「{{skip}}」，下個版本發佈時再提醒你。"
   },
   "nextAutoCheck": {
@@ -407,7 +407,7 @@
     },
     "willKeep": {
       "Settings": "設定：{{path}}",
-      "SettingsAndHistory": "設定、登入和歷史記錄：{{path}}",
+      "SettingsAndHistory": "設定、登入資訊和歷史記錄：{{path}}",
       "ToolState": "對話和歷史記錄：{{path}}",
       "ToolStateDetail": "保留整個檔案夾，包括其中的程式檔案。",
       "ShellConfigLines": "終端機設定檔：{{path}}",
@@ -469,7 +469,7 @@
       "RunsOwnSteps": "解除安裝前後還會執行Homebrew為它記下的其他步驟。",
       "RemovesServices_other": "還會停止並刪除{{count}}個背景服務。",
       "RemovesServicesMatching": "還會停止並刪除背景服務，包括名稱符合某個規則、正在執行的全部服務。",
-      "RemovesKexts_other": "還會停用並刪除核心擴充：{{items}}。",
+      "RemovesKexts_other": "還會停用並刪除核心延伸功能：{{items}}。",
       "DeletesCertificates_other": "還會刪除鑰匙圈中名稱含有下列任一文字的所有憑證：{{items}}。",
       "RemovesLoginItems_other": "還會刪除登入項目：{{items}}。",
       "QuitsApps_other": "還會結束{{count}}個正在執行的App。",
@@ -1208,7 +1208,7 @@
         "answer": "這些數字是按磁碟上的檔案算出來的，顯示時取概數，所以寫作「約」。有檔案無法讀取時會寫明「部分無法讀取」，計算中途停止時會寫作「以上」，這兩種情況實際佔用的都更多；受保護的位置不計算。合計時，同一個檔案出現在幾個工具裡只算一次，快取不算在內。uv安裝的工具有些檔案和它的快取佔用同一塊磁碟空間，但仍會算進去，所以單獨佔用的可能更少。"
       },
       "majorUpdate": {
-        "question": "為什麼有些更新標著「大版本更新」？",
+        "question": "為什麼有些更新標著「主要版本更新」？",
         "answer": "這表示版本號碼的第一個數字變大了，例如從3.x升到4.0，用法或設定可能會變。版本號碼以0開頭的工具、Ollama模型和用日期作版本號碼的工具不標示。不確定時，可以先選「略過此版本」，下個版本發佈時再提醒你。"
       },
       "autoCheck": {
@@ -1249,7 +1249,7 @@
     "totalNoteAtLeast": "實測大小的合計，含其他版本，不含快取。幾個工具共用的檔案只算一次。有些工具沒有大小，或部分檔案無法讀取，所以實際佔用的更多。",
     "willKeepWhat": {
       "Settings": "設定",
-      "SettingsAndHistory": "設定、登入和歷史記錄",
+      "SettingsAndHistory": "設定、登入資訊和歷史記錄",
       "ToolState": "對話和歷史記錄",
       "ShellConfigLines": "終端機設定檔",
       "OutsideHome": "會失效的連結",
@@ -1265,7 +1265,7 @@
       "Uv": "刪除uv為「{{name}}」單獨建立的Python環境和uv記下的指令。"
     },
     "freesModel": "會騰出約{{size}}，與其他模型共用的部分除外。",
-    "majorNote": "這是大版本更新，用法可能會變。"
+    "majorNote": "這是主要版本更新，用法可能會變。"
   },
   "clarityMore": {
     "notUsedUpdateNote": "終端機執行的是另一份，更新這一份不會改變終端機裡的「{{command}}」。"
