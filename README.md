@@ -12,8 +12,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Banager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1614 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2385
+> **Status: pre-release.** The core and the UI work and are covered by 1650 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 2469
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -238,8 +238,9 @@ This app runs package managers on your behalf, so the boundary matters more than
 
 Being honest about this is part of the point:
 
-- **No search and no catalogue, and no way to install something new.** You can manage what you
-  already have; you cannot yet discover or add new things through Banager.
+- **No catalogue or search for new tools, and no way to install something new.** The Installed
+  page searches the tools you already have by name, command or description; you cannot yet
+  discover or add new things through Banager.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -293,11 +294,12 @@ cargo test -p banager-core --lib icon::real -- --ignored
 
 ## Language
 
-English by default, with a full Simplified Chinese translation. Every label, heading, button and
-message frame in the window goes through i18n, and a test keeps the two locales in step — a sentence
+The interface supports English, Simplified Chinese and Traditional Chinese in Taiwan usage. It follows
+the system language unless overridden in Settings. Every label, heading, button and
+message frame in the window goes through i18n, and a test keeps the three locales in step — a sentence
 a Chinese user cannot read is treated as a bug. The menu bar follows the window's language, Settings'
 choice included. Its words are Rust's (`src-tauri/src/menu.rs`), macOS's own for the items every Mac
-app has, and a test there keeps its two languages in step too.
+app has, and a test there keeps its three languages in step too.
 
 Rust's refusals are translated too, not just the frames around them. A plan built against a source
 that is read-only, unavailable or gone, an operation Banager can't prepare (a name it won't pass to
@@ -380,14 +382,15 @@ the app nor the tests run it.
 Under a tool's name, its row says in one line what the tool is: the description the tool's source
 gives it, such as Homebrew's for a formula or a cask; where the source gives none, what kind of
 thing that source lists ("npm package"); and for a tool with its own installer, a line of Banager's
-own, in both languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
-or crates.io package says a line in English instead wherever Banager has one: about 600 of them,
+own, in all three languages. npm, pip, pipx, uv and Cargo give none, so in English a row for an npm, PyPI
+or crates.io package says a line in English instead wherever Banager has one: 640 of them,
 each rewritten, shorter, from the description the package's own registry gives it. In Chinese, a
-row says a line in Chinese instead wherever Banager has one: about 2,000 of them, for Homebrew's
+row says a line in Chinese instead wherever Banager has one: 3,390 in each Chinese language, for Homebrew's
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
-the tool's own source gives it. Both are built into the app, in
-`src/assets/tool-descriptions/en.json` and `zh-CN.json`, each read only once the window is in its
-language, and fetched from nowhere: showing one makes no network request. A tool's details show that
+the tool's own source gives it. The three tables are built into the app, in
+`src/assets/tool-descriptions/en.json`, `zh-CN.json` and `zh-Hant.json`. A table loads when needed
+for rows or search; Traditional Chinese also loads its Simplified Chinese and English fallbacks.
+Showing a description makes no network request. A tool's details show that
 one line too, without its source's own description beside it; a tool Banager has no line for in the
 window's language reads as it did before.
 
@@ -413,13 +416,14 @@ Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1614 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2385 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1650 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 2469 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
-界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
+界面支持英文、简体中文和台湾用语的繁体中文，跟随系统语言，也可以在设置中选择。
+窗口里所有标签、标题、按钮和提示框都走 i18n，三种语言由测试保证同步——
 中文用户读不懂的句子算 bug。菜单栏跟着窗口的语言走，设置里选的语言也算。它的文字写在 Rust 里
-（`src-tauri/src/menu.rs`），每个 Mac 应用都有的菜单项用 macOS 自己的叫法，那里也有测试保证两种语言同步。
+（`src-tauri/src/menu.rs`），每个 Mac 应用都有的菜单项用 macOS 自己的叫法，那里也有测试保证三种语言同步。
 
 Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所针对的来源只读、连不上或已不存在，操作无法
 准备（某个名字 Banager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、
@@ -456,15 +460,15 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 
 每个软件名下那一行简介，默认是它所在来源自己给的说明（比如 Homebrew 给 formula 和 cask 写的那句英文）；
 来源没给的，写这个来源列出的是什么（“npm软件包”）；自带安装器的工具，是 Banager 自己写的一句，
-中英文都有。npm、pip、pipx、uv 和 Cargo 都不给说明，所以英文界面里，npm、PyPI、crates.io 上的包只要
-Banager 有它的英文说明，就改显示这一句：约 600 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
-更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：约 2,000 条，涵盖 Homebrew 的
+英文、简体中文和繁体中文都有。npm、pip、pipx、uv 和 Cargo 都不给说明，所以英文界面里，npm、PyPI、crates.io 上的包只要
+Banager 有它的英文说明，就改显示这一句：640 条，每条都由该包在 npm、PyPI 或 crates.io 上自己的说明改写而来，
+更简短。中文界面里，只要 Banager 有这个软件的中文说明，就改显示中文：简体中文和繁体中文各 3,390 条，涵盖 Homebrew 的
 formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
-（`src/assets/tool-descriptions/en.json` 与 `zh-CN.json`），界面是哪种语言才读取哪一份，不从任何地方下载，
-显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
+（`src/assets/tool-descriptions/en.json`、`zh-CN.json` 与 `zh-Hant.json`），列表或搜索需要时才读取，
+繁体中文还会读取简体中文和英文作为缺少条目时的备用。显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
 说明的软件，照旧显示原来那一行。
 
-尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
+“已安装”页可以按名称、命令或说明搜索已有工具。尚未支持：查找新工具的软件目录与搜索、安装新东西、macOS 以外的平台。
 
 它还会告诉你每个工具的这些事：
 
