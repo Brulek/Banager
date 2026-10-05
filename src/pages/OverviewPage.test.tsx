@@ -713,6 +713,40 @@ describe("OverviewPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
+  // Opus review finding 2: a login shell too slow to read left PATH as
+  // Finder's four folders, and only Check Tool Setup said so.
+  it("says first among the problems that Terminal's settings couldn't be read, with Check Again", async () => {
+    let facts = { login_path: false };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      if (cmd === "get_system_facts") return Promise.resolve(facts);
+      if (cmd === "refresh") return Promise.resolve(served);
+      return Promise.resolve(undefined);
+    });
+    served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("Couldn't read Terminal's settings")).toBeInTheDocument();
+    expect(
+      within(rows[0]).getByText(
+        "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo.",
+      ),
+    ).toBeInTheDocument();
+    expect(rows[0].querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    expect(within(rows[1]).getByText("Ollama isn't running")).toBeInTheDocument();
+    // Check Again reads the shell once more (`AppState::read_login_path`);
+    // this time it is read, and the row goes with the round's new facts.
+    facts = { login_path: true };
+    served = snapshotWith({ instances: [brew, pip, stoppedOllama], generation: 8, round: 8 });
+    fireEvent.click(within(rows[0]).getByRole("button", { name: "Check Again" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+    await waitFor(() => expect(within(list).queryByText("Couldn't read Terminal's settings")).toBeNull());
+  });
+
   it("says how many tools could not be checked in place of when the check was, and why in a row with Check Again", async () => {
     // Walk-2 W2-1: offline, the line under 「3个工具可以更新」 said
     // 「上次检查：刚才」 while 21 tools could not be checked, as if the

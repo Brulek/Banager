@@ -20,6 +20,8 @@ import {
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
 import { failedLookupsOf, failedLookupsProblem } from "../lib/failedLookups";
+import { useSystemFacts } from "../lib/diagnostics";
+import { loginPathNotice } from "../lib/loginPathNotice";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -438,6 +440,9 @@ export function OverviewPage() {
   // updates: how many, and the way to them -- never a word on updates.
   const preview = useInventoryPreview();
   const openPage = useUiStore((s) => s.openPage);
+  // Whether the login shell's `PATH` was read: where it was not, sources
+  // Terminal finds may be missing, said first among the problems.
+  const { data: facts } = useSystemFacts();
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
     const seeTools =
@@ -490,7 +495,9 @@ export function OverviewPage() {
   );
   const nothingChecked =
     snapshot.artifacts.length > 0 && snapshot.artifacts.every((artifact) => unchecked.has(artifactKeyId(artifact.key)));
+  const loginPath = loginPathNotice(facts);
   const problems: SourceNoticeSpec[] = [
+    ...(loginPath === null ? [] : [loginPath]),
     ...(unfinished === null ? [] : [unfinished]),
     ...(lookups === null ? [] : [lookups]),
     ...snapshot.instances.flatMap((instance) => {

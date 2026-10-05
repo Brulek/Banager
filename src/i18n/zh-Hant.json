@@ -662,6 +662,10 @@
       "setupLine": "上次回應：{{when}}"
     }
   },
+  "loginPathNotice": {
+    "title": "無法讀取終端機的設定",
+    "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"
+  },
   "planRefused": {
     "sourceGone": "無法開始，因為找不到管理它的工具。請點按「重新檢查」。",
     "expired": "確認視窗已開啟超過10分鐘，因此未執行。請重新開啟並確認。",

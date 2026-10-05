@@ -716,6 +716,10 @@
       "setupLine": "Last responded {{when}}"
     }
   },
+  "loginPathNotice": {
+    "title": "Couldn't read Terminal's settings",
+    "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."
+  },
   "planRefused": {
     "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
     "expired": "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
