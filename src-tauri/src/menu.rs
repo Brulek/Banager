@@ -902,6 +902,9 @@ mod tests {
             )
         );
         assert_eq!(words[3].0, "顯示方式");
+        // Bring All to Front as AppKit's own zh_TW MenuCommands table, and
+        // Finder's and TextEdit's Window menus, say it: not the shorter
+        // 將全部移至最前 a walkthrough asked for (walk-5 W5-11).
         assert_eq!(
             words[4],
             (
