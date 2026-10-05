@@ -1258,6 +1258,7 @@ fn test_what_we_run_says_the_notification_when_operations_finish_is_off_by_defau
         "never for a run that finished while the window had the focus",
         "no command runs, nothing connects, and Banager writes no file for it",
         "in memory only",
+        "a target, not a bound, since the record of an operation not yet finished is never dropped",
         "accepted telling of nothing, so it never holds back the runs after it",
     ] {
         assert!(
@@ -1269,7 +1270,7 @@ fn test_what_we_run_says_the_notification_when_operations_finish_is_off_by_defau
     use banager_core::ops::{DEFAULT_MAX_RECORDS, MAX_EVICTED};
     for limit in [
         format!(
-            "at most {} finished operation records",
+            "drops its oldest finished operation records until it holds {} (`DEFAULT_MAX_RECORDS`",
             with_commas(DEFAULT_MAX_RECORDS as u64)
         ),
         format!("at most {} of those", with_commas(MAX_EVICTED as u64)),
