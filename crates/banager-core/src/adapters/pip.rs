@@ -346,10 +346,25 @@ impl PipAdapter {
     /// answers, a 404 from an extra index among them (finding 3). Both
     /// are counts in pip, and `0` is a count it accepts from the
     /// environment (`cli/parser.py`, `_update_defaults`).
+    ///
+    /// And pip's own default of five retries (`cli/cmdoptions.py`,
+    /// `retries`), whatever a `pip.conf` sets: with `retries = 0` urllib3
+    /// gives up on an index it cannot reach without the warning
+    /// `lookups_given_up` reads (`Retry.increment` raises before
+    /// `urlopen` logs it), and at this verbosity pip says nothing else,
+    /// so every package would read as up to date (Astra's j1 review,
+    /// finding 2; seen with pip 26.2.1 against a refused address: exit 0,
+    /// `[]`, an empty stderr, and with `PIP_RETRIES` set, one `total=0`
+    /// warning per package). The environment outranks a `pip.conf`
+    /// (`_update_defaults` applies it last).
+    ///
     /// `tests/what_we_run_test.rs` checks that pip's section of
     /// `docs/what-we-run.md` shows each entry.
-    pub const OUTDATED_ENV: [(&'static str, &'static str); 2] =
-        [("PIP_QUIET", "0"), ("PIP_VERBOSE", "0")];
+    pub const OUTDATED_ENV: [(&'static str, &'static str); 3] = [
+        ("PIP_QUIET", "0"),
+        ("PIP_VERBOSE", "0"),
+        ("PIP_RETRIES", "5"),
+    ];
 
     pub fn new(runner: Arc<dyn CommandRunner>) -> PipAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/pip.toml"))
@@ -692,11 +707,12 @@ impl PipAdapter {
         let checked = parse_outdated_stdout(&output.stdout, &inst.id)?;
         // Exit 0 is not "every package was looked up": a lookup pip gave
         // up on is left out of stdout as if it were up to date (round-5
-        // review finding 7). Its retry warnings on stderr say which, and
-        // a certificate failure says so on stdout. A lookup that failed
-        // with retries turned off, or that an index answered with an
-        // HTTP error, is printed only at `-vv` (`final_fetch_failures`)
-        // and still reads as up to date.
+        // review finding 7). Its retry warnings on stderr say which --
+        // retries are never off here (`OUTDATED_ENV`) -- and a
+        // certificate failure says so on stdout. An index that answered a
+        // lookup with an HTTP error is printed only at `-vv`
+        // (`final_fetch_failures`), and that package still reads as up
+        // to date.
         let mut gave_up = lookups_given_up(&output.stderr);
         gave_up.extend(final_fetch_failures(&output.stdout));
         gave_up.extend(final_fetch_failures(&output.stderr));
@@ -953,6 +969,51 @@ mod tests {
         assert!(!row.contains("user") && !row.contains("****"), "{row}");
     }
 
+    /// urllib3's words, as pip 26.2.1 printed them for an index address
+    /// that refused the connection (run 2026-10-05 against
+    /// `http://127.0.0.1:1/simple` with `PIP_RETRIES` set).
+    const REFUSED: &str = "NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=1): Failed to establish a new connection: [Errno 61] Connection refused\")";
+
+    #[tokio::test]
+    async fn regression_an_unreachable_index_with_retries_configured_off_is_not_up_to_date() {
+        // Astra's j1 review, finding 2. With `retries = 0` in pip.conf
+        // pip 26.2.1 printed nothing at all for a refused index: exit 0,
+        // `[]`, empty stderr -- every package read as up to date. The
+        // check pins pip's default five retries (`OUTDATED_ENV`), and
+        // then the same run warns before each package's final try, as
+        // recorded here, and each package reads as not checked, for the
+        // network, so Check Again is offered.
+        let stderr = ["pymupdf", "pyyaml"]
+            .iter()
+            .map(|project| retry_warning(0, REFUSED, &format!("/simple/{project}/")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, "[]\n", &stderr));
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(
+                0,
+                r#"[{"name": "pymupdf", "version": "1.28.2"}, {"name": "PyYAML", "version": "6.0.3"}]"#,
+                "",
+            ),
+        );
+        let rows = PipAdapter::new(runner)
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(rows.len(), 2);
+        for row in &rows {
+            assert!(!row.checkable, "{row:?}");
+            assert!(
+                row.warnings.contains(&Warning::TransientLookupFailure),
+                "{row:?}"
+            );
+        }
+        assert!(PipAdapter::OUTDATED_ENV.contains(&("PIP_RETRIES", "5")));
+    }
+
     #[tokio::test]
     async fn regression_an_extra_index_without_the_project_is_not_a_failed_lookup() {
         // opus-int finding 3. With `extra-index-url` (PyTorch's, a
@@ -1101,7 +1162,8 @@ mod tests {
             specs[0].env,
             [
                 ("PIP_QUIET".to_string(), "0".to_string()),
-                ("PIP_VERBOSE".to_string(), "0".to_string())
+                ("PIP_VERBOSE".to_string(), "0".to_string()),
+                ("PIP_RETRIES".to_string(), "5".to_string())
             ]
         );
     }

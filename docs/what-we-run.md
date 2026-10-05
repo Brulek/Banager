@@ -1259,12 +1259,18 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 (`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
 two names for one interpreter count once, and runs `<python> -m pip
 --version` (30 s). Every pip instance is read-only by design. Only the
-outdated check is given environment variables, `PIP_QUIET=0` and
-`PIP_VERBOSE=0` (`PipAdapter::OUTDATED_ENV`): they hold pip at its normal
-verbosity whatever a `pip.conf` or the environment sets — not quieter,
-which would hide the warnings Banager reads below, and not louder, which
-prints a line for every file pip skips (thousands for one project) and
-every index's answer. Banager makes no network request of its own for
+outdated check is given environment variables, `PIP_QUIET=0`,
+`PIP_VERBOSE=0` and `PIP_RETRIES=5` (`PipAdapter::OUTDATED_ENV`), which
+outrank a `pip.conf`. The first two hold pip at its normal verbosity —
+not quieter, which would hide the warnings Banager reads below, and not
+louder, which prints a line for every file pip skips (thousands for one
+project) and every index's answer. The third is pip's own default number
+of retries: with retries turned off (`retries = 0`), pip gives up on an
+index it cannot reach without printing anything at that verbosity, and
+every package would read as up to date (seen with pip 26.2.1 on
+2026-10-05: exit 0, `[]`, nothing on stderr). Offline, five retries take
+pip about 7.5 seconds a package, so a large environment runs into the
+60-second limit and every package is listed as "could not check". Banager makes no network request of its own for
 pip: `pip list --outdated` reaches PyPI itself.
 
 When that command fails, the interpreter is still listed as a source,
@@ -1300,7 +1306,7 @@ are installed, its pip is listed.
 | Version | `<python> -m pip --version` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
+| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` with `PIP_QUIET=0`, `PIP_VERBOSE=0` and `PIP_RETRIES=5` | 60 s |
 
 If `pip list --outdated` exits non-zero, `<python> -m pip list
 --format=json` is run once more so every installed package can be listed
@@ -1332,11 +1338,20 @@ An index's answer that it does not have a project — HTTP 404 (PyPI's),
 2026-10-05) — is never a failed lookup, even if pip prints it: with an
 extra index (`extra-index-url`), pip asks every index about every
 package, and the one that does not host a package answers that way
-while PyPI answers with it. What pip prints only at `-vv`, which
-Banager does not pass, is not seen: a lookup that failed with pip's
-retries turned off (`retries = 0`), or that an index answered with a
-server error, leaves that package out of the JSON list with nothing on
-either stream, and it reads as up to date.
+while PyPI answers with it.
+
+What is still not seen: an index that answers a lookup with an error
+status other than those three — a server error, say (pip retries 500,
+502, 503, 520 and 527 without printing anything, then gives up). pip
+reports those only at `-vv`, as `Could not fetch URL` lines at its
+debug level; at its normal verbosity it prints nothing, leaves the
+package out of the JSON list, and exits 0, so that package reads as up
+to date. Banager cannot tell it from a package that is up to date
+without pip's debug output, which it does not request: `-vv` makes the
+output grow by thousands of lines a project, and `--log` would write a
+file. A package whose index could not be reached at all — refused,
+timed out, a certificate or proxy failure — is always shown as not
+checked.
 
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command
