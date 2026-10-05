@@ -370,6 +370,9 @@ pub struct ArtifactFacts {
     /// and for sources whose commands Banager does not look for (Ollama
     /// models, pip).
     pub commands: Vec<CommandFact>,
+    /// Command ownership could not be fully checked, including commands
+    /// omitted because their paths could not be resolved safely.
+    pub commands_unavailable: bool,
     /// What the inventory read about this artifact's commands, for
     /// `commands::judge`: never on the wire (the window has `commands`,
     /// which is the answer), so not in the TypeScript mirror either.
@@ -2077,7 +2080,7 @@ mod tests {
         let facts = ArtifactFacts::default();
         assert_eq!(
             serde_json::to_string(&facts).unwrap(),
-            r#"{"family":null,"homebrew":null,"commands":[]}"#
+            r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":false}"#
         );
         // A payload written before a fact existed still reads.
         assert_eq!(
@@ -2090,7 +2093,24 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&claude).unwrap(),
-            r#"{"family":"claude-code","homebrew":null,"commands":[]}"#
+            r#"{"family":"claude-code","homebrew":null,"commands":[],"commands_unavailable":false}"#
+        );
+    }
+
+    #[test]
+    fn test_unavailable_commands_round_trip_even_when_every_claim_was_dropped() {
+        // Same literal as src/lib/types.test.ts; old payloads default to false.
+        let wire = r#"{"family":null,"homebrew":null,"commands":[],"commands_unavailable":true}"#;
+        let facts = ArtifactFacts {
+            commands_unavailable: true,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_string(&facts).unwrap(), wire);
+        assert_eq!(serde_json::from_str::<ArtifactFacts>(wire).unwrap(), facts);
+        let old = r#"{"family":null,"homebrew":null,"commands":[]}"#;
+        assert_eq!(
+            serde_json::from_str::<ArtifactFacts>(old).unwrap(),
+            ArtifactFacts::default()
         );
     }
 
@@ -2116,7 +2136,7 @@ mod tests {
         let json = serde_json::to_string(&facts).unwrap();
         assert_eq!(
             json,
-            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[]}"#
+            r#"{"family":null,"homebrew":{"deprecated":null,"disabled":{"date":"2026-09-01","reason":"fails_gatekeeper_check","replacement":"onyx"},"caveats":"Turn on \"Launch at login\".\n","other_versions":["3.6.3"]},"commands":[],"commands_unavailable":false}"#
         );
         assert_eq!(serde_json::from_str::<ArtifactFacts>(&json).unwrap(), facts);
         // Fields a payload leaves out read as empty.
@@ -2169,6 +2189,7 @@ mod tests {
                     state: None,
                 },
             ],
+            commands_unavailable: false,
             command_inputs: CommandInputs {
                 provided: vec![ProvidedCommand {
                     name: "claude".to_string(),
@@ -2188,7 +2209,7 @@ mod tests {
                 r#"{"name":"grok","state":{"NotOnPath":{"dir":"~/.grok/bin"}}},"#,
                 r#"{"name":"rg","state":{"ShadowedBy":{"by":null}}},"#,
                 r#"{"name":"curl","state":null}"#,
-                "]}"
+                "],\"commands_unavailable\":false}"
             )
         );
         // The inputs stay behind: what comes back is the answer alone.

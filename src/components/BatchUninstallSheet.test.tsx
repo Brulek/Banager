@@ -101,14 +101,14 @@ const vscode = artifact(brew, "Cask", "visual-studio-code", { display_name: "Mic
 const llama = artifact(ollama, "Model", "llama3.2:3b", { size_bytes: 2_000_000_000 });
 const httpie = artifact(pipx, "Tool", "httpie");
 const npmClaude = artifact(npm, "Package", "@anthropic-ai/claude-code", {
-  facts: { family: "claude-code", homebrew: null, commands: runs("claude") },
+  facts: { ...NO_FACTS, family: "claude-code", commands: runs("claude") },
 });
-const codex = artifact(npm, "Package", "@openai/codex", { facts: { family: "codex", homebrew: null, commands: [] } });
+const codex = artifact(npm, "Package", "@openai/codex", { facts: { ...NO_FACTS, family: "codex" } });
 const claudeCode = artifact(claude, "Binary", "claude", {
   display_name: "Claude Code",
   facts: {
+    ...NO_FACTS,
     family: "claude-code",
-    homebrew: null,
     commands: [{ name: "claude", state: { ShadowedBy: { by: npmClaude.key } } }],
   },
 });

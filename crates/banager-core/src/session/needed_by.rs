@@ -404,6 +404,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_unresolved_aliases_keep_dependents_unknown_in_the_uninstall_preview() {
+        // Neither launcher basename occurs in the formula's conventional bin.
+        // Resolve before refresh, then reroute through Documents or a refused
+        // loop before preview, as an install changing between rounds can do.
+        for (adapter, launcher, target) in [
+            ("pip", "python3", "bin/python3.13"),
+            ("uv", "uv", "libexec/vendor-launcher"),
+        ] {
+            for refused in [false, true] {
+                let root = Root::new("renamed-source");
+                let prefix = root.path("opt/homebrew");
+                let real = prefix.join("Cellar/python@3.13/3.13.9").join(target);
+                std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+                std::fs::write(&real, b"#!/bin/sh\n").unwrap();
+                std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).unwrap();
+                root.link(
+                    "opt/homebrew/opt/python@3.13",
+                    "../Cellar/python@3.13/3.13.9",
+                );
+                let relative = format!("home/bin/{launcher}");
+                root.link(&relative, real.to_str().unwrap());
+                let source_path = root.path(&relative);
+                let adapters = vec![
+                    fake(
+                        "brew",
+                        BREW,
+                        prefix.join("bin/brew"),
+                        prefix.clone(),
+                        vec![(ArtifactKind::Formula, "python@3.13")],
+                    ),
+                    fake(
+                        adapter,
+                        "source",
+                        source_path.clone(),
+                        root.path("home/bin"),
+                        vec![(ArtifactKind::Package, "requests")],
+                    ),
+                ];
+                let session =
+                    Session::with_adapters_and_sizes(Arc::new(VecSink::new()), adapters, None);
+                let env = HostEnv {
+                    path_dirs: vec![root.path("home/bin")],
+                    home: root.path("home"),
+                    euid: 501,
+                    cargo_home: None,
+                    rustup_home: None,
+                    zdotdir: None,
+                    ollama_host: None,
+                };
+                session.refresh(&env, &CheckOptions::default()).await;
+                let known = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
+                assert_eq!(needed(&known.plan).len(), 1);
+                assert!(!known.plan.warnings.contains(&Warning::DependentsUnknown));
+                std::fs::remove_file(&source_path).unwrap();
+                if refused {
+                    root.link(&relative, launcher); // Refused: a link loop.
+                } else {
+                    root.link("home/Documents/launcher", real.to_str().unwrap());
+                    root.link(
+                        &relative,
+                        root.path("home/Documents/launcher").to_str().unwrap(),
+                    );
+                }
+                let unknown = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
+                assert!(needed(&unknown.plan).is_empty());
+                assert!(
+                    unknown.plan.warnings.contains(&Warning::DependentsUnknown),
+                    "{adapter} refused={refused}"
+                );
+                // A known missing launcher is not an unresolved one.
+                std::fs::remove_file(&source_path).unwrap();
+                let gone = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
+                if adapter == "pip" {
+                    // uv's unknown tool environment remains uncertain.
+                    assert!(!gone.plan.warnings.contains(&Warning::DependentsUnknown));
+                }
+                assert!(
+                    session.operations().is_empty(),
+                    "no uninstall was submitted"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn test_the_preview_of_the_node_npm_runs_on_names_npm_and_submit_refuses_it() {
         let root = Root::new("linked");
         root.link_into_bin("node@22/22.23.3");

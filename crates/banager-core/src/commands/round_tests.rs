@@ -45,7 +45,7 @@ fn judged(
 ) -> Option<Vec<Vec<CommandFact>>> {
     let mut look = Look::new(home, CommandBudget::default());
     look.reference = reference;
-    judge_with(folders, instances, artifacts, home, path_known, look)
+    judge_with(folders, instances, artifacts, home, path_known, look).map(|answer| answer.commands)
 }
 
 /// No call `calls` saw looked at a protected place, or through one.
@@ -666,4 +666,135 @@ fn bench_judge_on_a_mac_like_the_probes() {
             ..new
         }
     );
+}
+
+#[tokio::test]
+async fn test_finish_carries_dropped_command_coverage_to_the_window() {
+    let tree = Tree::new("dropped-claims");
+    tree.file("brew/Cellar/jq/1/bin/jq", 0o755);
+    tree.link_keeping_first("brew/bin/jq", "../Cellar/jq/1/bin/jq");
+    let instances = vec![
+        instance("brew", tree.at("brew")),
+        instance("pipx", tree.at("pipx")),
+        instance("cargo", tree.at(".cargo")),
+    ];
+    let mut pipx = artifact("pipx", "cowsay", ArtifactKind::Tool);
+    pipx.facts.command_inputs.provided = vec![provided(
+        "cowsay",
+        tree.at("Documents/venvs/cowsay/bin/cowsay"),
+        vec![],
+    )];
+    // Refused resolution also loses the claim: a link loop, not a missing file.
+    tree.link_keeping_first(".cargo/bin/loop", "loop");
+    let mut refused = artifact("cargo", "loop", ArtifactKind::Package);
+    refused.facts.command_inputs.provided =
+        vec![provided("loop", tree.at(".cargo/bin/loop"), vec![])];
+    let mut missing = artifact("cargo", "gone", ArtifactKind::Package);
+    missing.facts.command_inputs.provided =
+        vec![provided("gone", tree.at(".cargo/bin/gone"), vec![])];
+    let mut rows = vec![
+        artifact("brew", "jq", ArtifactKind::Formula),
+        pipx,
+        refused,
+        missing,
+    ];
+    let env = HostEnv {
+        path_dirs: vec![tree.at("brew/bin")],
+        home: tree.root.clone(),
+        euid: 501,
+        cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
+        ollama_host: None,
+    };
+    let in_flight = Arc::new(AtomicBool::new(false));
+    let budget = CommandBudget::default();
+    let reading = start_reading(&env, &instances, true, &in_flight, budget);
+    finish(
+        reading, &instances, &mut rows, &env.home, true, &in_flight, budget,
+    )
+    .await;
+    assert_eq!(rows[0].facts.commands[0].state, Some(CommandState::Runs));
+    assert!(!rows[0].facts.commands_unavailable);
+    for row in &rows[1..3] {
+        assert!(row.facts.commands.is_empty());
+        assert!(row.facts.commands_unavailable);
+        let wire = serde_json::to_string(row).unwrap();
+        let back: InstalledArtifact = serde_json::from_str(&wire).unwrap();
+        assert!(back.facts.commands_unavailable);
+    }
+    assert!(rows[3].facts.commands.is_empty());
+    assert!(
+        !rows[3].facts.commands_unavailable,
+        "missing is not unreadable"
+    );
+
+    // A carried empty row retains its unavailable marker; a fresh inventory
+    // can clear it once the path can be checked again.
+    let carried = rows[1].clone();
+    rows[1].facts.command_inputs.provided.clear();
+    let reading = start_reading(&env, &instances, true, &in_flight, budget);
+    finish(
+        reading, &instances, &mut rows, &env.home, true, &in_flight, budget,
+    )
+    .await;
+    assert_eq!(
+        rows[1].facts.commands_unavailable,
+        carried.facts.commands_unavailable
+    );
+    rows[1].facts.commands_unavailable = false;
+    let reading = start_reading(&env, &instances, true, &in_flight, budget);
+    finish(
+        reading, &instances, &mut rows, &env.home, true, &in_flight, budget,
+    )
+    .await;
+    assert!(!rows[1].facts.commands_unavailable);
+}
+
+#[test]
+fn test_unresolved_shared_prefix_claims_preserve_coverage_without_reading_protected_paths() {
+    for (adapter, kind, package_dir) in [
+        ("brew", ArtifactKind::Formula, "Cellar/tool/1/bin/tool"),
+        (
+            "npm",
+            ArtifactKind::Package,
+            "lib/node_modules/tool/bin/tool",
+        ),
+    ] {
+        let tree = Tree::new("shared-claims");
+        tree.file(&format!("prefix/{package_dir}"), 0o755);
+        tree.link_keeping_first("prefix/bin/tool", format!("../{package_dir}"));
+        let instances = vec![instance(adapter, tree.at("prefix"))];
+        let rows = vec![
+            artifact(adapter, "tool", kind),
+            artifact(adapter, "other", kind),
+            artifact(adapter, "app", ArtifactKind::Cask),
+        ];
+        let check = || {
+            let budget = CommandBudget::default();
+            let folders = read_folders(
+                &[tree.at("prefix/bin")],
+                &bin_folders(&instances),
+                &tree.root,
+                budget,
+            );
+            judge_with(
+                &folders,
+                &instances,
+                &rows,
+                &tree.root,
+                true,
+                Look::new(&tree.root, budget),
+            )
+            .unwrap()
+        };
+        assert!(check().unavailable.is_empty());
+        // An unresolved link cannot be attributed to just one package.
+        tree.link_keeping_first("prefix/bin/hidden", "../../Documents/launcher");
+        let (answer, calls) = calls::measure(check);
+        assert_eq!(answer.unavailable, HashSet::from([0, 1]));
+        assert_eq!(answer.commands[0][0].state, Some(CommandState::Runs));
+        assert!(answer.commands[1].is_empty());
+        assert_nothing_protected_looked_at(&calls, &Protected::new(&tree.root));
+    }
 }

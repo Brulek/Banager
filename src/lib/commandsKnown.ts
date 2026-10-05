@@ -42,7 +42,8 @@ export const COMMANDS_UNKNOWN_KEYS: Record<Exclude<CommandsKnown, "known">, stri
 
 /**
  * How many tools a round that judged the commands still said nothing about
- * for at least one of theirs (`CommandFact.state: null`): a folder Terminal
+ * for at least one of theirs (`CommandFact.state: null` or
+ * `commands_unavailable`, including dropped claims): a folder Terminal
  * looks in that could not be read comes first or might hold it, its link
  * was replaced, where its command was put is not known, or it is a
  * keg-only formula linked by hand that Terminal does not find
@@ -60,7 +61,7 @@ export function toolsNotJudged(artifacts: Pick<InstalledArtifact, "facts" | "rea
   return artifacts.filter(
     ({ facts, reason }) =>
       reason !== "Dependency" &&
-      facts.commands.some(({ state }) => state === null) &&
+      (facts.commands_unavailable || facts.commands.some(({ state }) => state === null)) &&
       !facts.commands.some(({ state }) => typeof state === "object" && state !== null && "NotOnPath" in state),
   ).length;
 }

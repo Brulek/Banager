@@ -973,6 +973,19 @@ export function buildWorld(state: ScenarioState): World {
   return world;
 }
 
+/** A listed pipx tool whose venv is protected: ownership claims were dropped. */
+export function withUnavailableCommands(artifacts: InstalledArtifact[]): InstalledArtifact[] {
+  return artifacts.map((row) =>
+    row.key.instance_id === IDS.pipx && row.key.name === "poetry"
+      ? {
+          ...row,
+          path: inHome("Documents/venvs/poetry"),
+          facts: { ...row.facts, commands: [], commands_unavailable: true },
+        }
+      : row,
+  );
+}
+
 /**
  * Only Homebrew says when a tool was installed (`brew/parse.rs`); npm,
  * pipx, uv, Cargo, pip, Ollama and the standalone installers say nothing,

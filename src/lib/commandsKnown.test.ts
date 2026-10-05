@@ -50,6 +50,22 @@ describe("toolsNotJudged", () => {
     ).toBe(2);
   });
 
+  it("counts dropped claims once, excluding dependencies and tools already not found", () => {
+    const unavailable = (commands: CommandFact[], reason: InstallReason = "Requested") => ({
+      reason,
+      facts: { ...NO_FACTS, commands, commands_unavailable: true },
+    });
+    expect(toolsNotJudged([
+      tool([{ name: "jq", state: "Runs" }]),
+      unavailable([]),
+      unavailable([{ name: "ruff", state: null }]),
+      unavailable([{ name: "eslint", state: "Runs" }]),
+      unavailable([], "Dependency"),
+      unavailable([{ name: "tsx", state: { NotOnPath: { dir: "~/bin" } } }]),
+      tool([]),
+    ])).toBe(3);
+  });
+
   it("leaves out a Homebrew dependency, never judged, and a tool already counted as not found", () => {
     expect(
       toolsNotJudged([

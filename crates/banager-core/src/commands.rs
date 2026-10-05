@@ -357,6 +357,11 @@ fn read_one(
 /// rather than once per path, and is dropped with it.
 struct Look {
     resolved: HashMap<PathBuf, Resolution>,
+    /// Reset for each claim owner (or shared prefix); a path could not
+    /// be followed, so empty claims cannot mean complete coverage.
+    unread: bool,
+    /// Artifacts whose command ownership could not be fully checked.
+    unavailable: HashSet<usize>,
     round: protected::Round,
     /// A test's switch to `protected::resolve` itself, to hold the round's
     /// verdicts to it.
@@ -370,6 +375,8 @@ impl Look {
     fn new(home: &Path, budget: CommandBudget) -> Look {
         Look {
             resolved: HashMap::new(),
+            unread: false,
+            unavailable: HashSet::new(),
             round: protected::Round::new(Protected::new(home)),
             #[cfg(test)]
             reference: false,
@@ -400,7 +407,11 @@ impl Look {
     fn canonical(&mut self, path: &Path) -> Option<PathBuf> {
         match self.resolve(path) {
             Resolution::Found(real, _) => Some(real),
-            _ => None,
+            Resolution::Protected(_) | Resolution::Refused => {
+                self.unread = true;
+                None
+            }
+            Resolution::Missing => None,
         }
     }
 
@@ -482,6 +493,12 @@ pub fn judge(
         path_known,
         Look::new(home, budget),
     )
+    .map(|answer| answer.commands)
+}
+
+struct Judgement {
+    commands: Vec<Vec<CommandFact>>,
+    unavailable: HashSet<usize>,
 }
 
 /// `judge`, with where each path leads looked up by `look`.
@@ -492,7 +509,7 @@ fn judge_with(
     home: &Path,
     path_known: bool,
     mut look: Look,
-) -> Option<Vec<Vec<CommandFact>>> {
+) -> Option<Judgement> {
     let claims = claims(folders, instances, artifacts, home, &mut look)?;
     // The artifact each file is, for `ShadowedBy`: the first claim wins.
     let mut owner: HashMap<Vec<u8>, usize> = HashMap::new();
@@ -587,7 +604,10 @@ fn judge_with(
     for commands in &mut out {
         commands.sort_by(|a, b| a.name.cmp(&b.name));
     }
-    Some(out)
+    Some(Judgement {
+        commands: out,
+        unavailable: look.unavailable,
+    })
 }
 
 /// Every command every artifact provides (the module doc's list), each
@@ -612,47 +632,41 @@ fn claims(
         let Some(indices) = by_instance.get(inst.id.as_str()) else {
             continue;
         };
-        match inst.adapter_id.as_str() {
-            "brew" => {
-                linked(
-                    folders,
-                    inst,
-                    indices,
-                    artifacts,
-                    Linked::Formula,
-                    look,
-                    &mut claims,
-                )?;
-                for &index in indices {
-                    if artifacts[index].key.kind == ArtifactKind::Cask {
-                        cask(inst, index, &artifacts[index], look, &mut claims);
-                    }
-                }
+        if matches!(inst.adapter_id.as_str(), "brew" | "npm") {
+            look.unread = false;
+            let kind = if inst.adapter_id == "brew" {
+                Linked::Formula
+            } else {
+                Linked::Package
+            };
+            linked(folders, inst, indices, artifacts, kind, look, &mut claims)?;
+            if look.unread {
+                // A link whose owner cannot be resolved could belong to any
+                // formula/package in this prefix. Do not infer full coverage.
+                look.unavailable
+                    .extend(indices.iter().copied().filter(|&i| {
+                        artifacts[i].key.kind
+                            == if kind == Linked::Formula {
+                                ArtifactKind::Formula
+                            } else {
+                                ArtifactKind::Package
+                            }
+                    }));
             }
-            "npm" => linked(
-                folders,
-                inst,
-                indices,
-                artifacts,
-                Linked::Package,
-                look,
-                &mut claims,
-            )?,
-            "pipx" => {
-                for &index in indices {
-                    pipx(index, &artifacts[index], home, look, &mut claims);
+        }
+        for &index in indices {
+            look.unread = false;
+            match inst.adapter_id.as_str() {
+                "brew" if artifacts[index].key.kind == ArtifactKind::Cask => {
+                    cask(inst, index, &artifacts[index], look, &mut claims)
                 }
+                "brew" | "npm" => {}
+                "pipx" => pipx(index, &artifacts[index], home, look, &mut claims),
+                id if id.starts_with("standalone-") => standalone(inst, index, look, &mut claims),
+                _ => named(index, &artifacts[index], &[], look, &mut claims),
             }
-            id if id.starts_with("standalone-") => {
-                for &index in indices {
-                    standalone(inst, index, look, &mut claims);
-                }
-            }
-            // uv, Cargo, and whatever else names its commands itself.
-            _ => {
-                for &index in indices {
-                    named(index, &artifacts[index], &[], look, &mut claims);
-                }
+            if look.unread {
+                look.unavailable.insert(index);
             }
         }
         if look.over() {
@@ -724,8 +738,12 @@ fn linked(
             continue;
         };
         let Some(folder) = folders.find(&canonical_dir) else {
+            look.unread = true;
             continue;
         };
+        if !folder.read {
+            look.unread = true;
+        }
         for name in &folder.names {
             if look.over() {
                 return None;
@@ -984,8 +1002,9 @@ pub(crate) fn start_reading(
 /// A row carried from an earlier round -- its source did not answer, its
 /// inventory failed, an operation holds it (`Session::refresh`) -- is that
 /// round's row, and keeps the verdicts it had, as it keeps its version:
-/// those are the rows whose `commands` are not empty here, since an
-/// inventory never fills them. Every row still counts as the owner of its
+/// those are the rows whose `commands` are not empty or whose
+/// `commands_unavailable` is set, since an inventory never fills either.
+/// Every row still counts as the owner of its
 /// files. With no answer this round (the budget, a read that did not come
 /// back, one still stuck from an earlier round), the rows the inventories
 /// listed have no verdicts.
@@ -1012,9 +1031,10 @@ pub(crate) async fn finish(
         folders, instances, artifacts, home, path_known, in_flight, budget,
     )
     .await;
-    if let Some(commands) = answer {
-        for (artifact, commands) in artifacts.iter_mut().zip(commands) {
-            if artifact.facts.commands.is_empty() {
+    if let Some(answer) = answer {
+        for (index, (artifact, commands)) in artifacts.iter_mut().zip(answer.commands).enumerate() {
+            if artifact.facts.commands.is_empty() && !artifact.facts.commands_unavailable {
+                artifact.facts.commands_unavailable = answer.unavailable.contains(&index);
                 artifact.facts.commands = commands;
             }
         }
@@ -1042,7 +1062,7 @@ async fn judged_in_background(
     path_known: bool,
     in_flight: &Arc<AtomicBool>,
     budget: CommandBudget,
-) -> Option<Vec<Vec<CommandFact>>> {
+) -> Option<Judgement> {
     if in_flight.swap(true, Ordering::SeqCst) {
         return None;
     }
@@ -1052,7 +1072,17 @@ async fn judged_in_background(
     let home = home.to_path_buf();
     let handle = tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        judge(&folders, &instances, &artifacts, &home, path_known, budget)
+        if !folders.complete {
+            return None;
+        }
+        judge_with(
+            &folders,
+            &instances,
+            &artifacts,
+            &home,
+            path_known,
+            Look::new(&home, budget),
+        )
     });
     tokio::time::timeout(budget.max_duration + GRACE, handle)
         .await

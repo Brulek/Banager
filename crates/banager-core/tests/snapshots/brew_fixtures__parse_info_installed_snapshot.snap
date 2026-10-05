@@ -22,7 +22,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -44,7 +45,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -66,7 +68,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -88,7 +91,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -110,7 +114,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -132,7 +137,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -159,7 +165,8 @@ expression: result
         "caveats": "ffmpeg-full includes additional tools and libraries that are not included in the regular ffmpeg formula.",
         "other_versions": []
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -181,7 +188,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -203,7 +211,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -225,7 +234,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -247,7 +257,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -269,7 +280,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -291,7 +303,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -313,7 +326,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -335,7 +349,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -364,7 +379,8 @@ expression: result
           "2.5.21"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -391,7 +407,8 @@ expression: result
         "caveats": "Guile bindings are now in the `guile-gnutls` formula.",
         "other_versions": []
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -413,7 +430,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -442,7 +460,8 @@ expression: result
           "2.1.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -464,7 +483,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -486,7 +506,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -508,7 +529,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -530,7 +552,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -552,7 +575,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -574,7 +598,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -596,7 +621,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -618,7 +644,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -640,7 +667,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -669,7 +697,8 @@ expression: result
           "1.12.3"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -691,7 +720,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -713,7 +743,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -735,7 +766,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -764,7 +796,8 @@ expression: result
           "1.69.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -793,7 +826,8 @@ expression: result
           "1.17.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -822,7 +856,8 @@ expression: result
           "1.24.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -844,7 +879,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -866,7 +902,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -888,7 +925,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -910,7 +948,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -932,7 +971,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -954,7 +994,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -976,7 +1017,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -998,7 +1040,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1027,7 +1070,8 @@ expression: result
           "1.16.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1049,7 +1093,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1071,7 +1116,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1093,7 +1139,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1115,7 +1162,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1137,7 +1185,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1159,7 +1208,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1181,7 +1231,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1203,7 +1254,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1225,7 +1277,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1254,7 +1307,8 @@ expression: result
           "0.32.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1283,7 +1337,8 @@ expression: result
           "0.6.0_3"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1305,7 +1360,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1327,7 +1383,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1349,7 +1406,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1371,7 +1429,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1393,7 +1452,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1415,7 +1475,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1444,7 +1505,8 @@ expression: result
           "3.128"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1466,7 +1528,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1488,7 +1551,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1510,7 +1574,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1539,7 +1604,8 @@ expression: result
           "3.6.3"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1561,7 +1627,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1583,7 +1650,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1605,7 +1673,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1627,7 +1696,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1649,7 +1719,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1671,7 +1742,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1698,7 +1770,8 @@ expression: result
         "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.11\n\nUnversioned and major-versioned symlinks `python`, `python3`, `python-config`, `python3-config`, `pip`, `pip3`, etc. pointing to\n`python3.11`, `python3.11-config`, `pip3.11` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.11/libexec/bin\n\nYou can install Python packages with\n  pip3.11 install <package>\nThey will install into the site-package directory\n  $HOMEBREW_PREFIX/lib/python3.11/site-packages\n\n`idle3.11` requires tkinter, which is available separately:\n  brew install python-tk@3.11\n\ngdbm (`dbm.gnu`) is no longer included in this formula, but it is available separately:\n  brew install python-gdbm@3.11\n`dbm.ndbm` changed database backends in Homebrew Python 3.11.\nIf you need to read a database from a previous Homebrew Python created via `dbm.ndbm`,\nyou'll need to read your database using the older version of Homebrew Python and convert to another format.\n`dbm` still defaults to `dbm.gnu` when it is installed.\n\nIf you do not need a specific version of Python, and always want Homebrew's `python3` in your PATH:\n  brew install python3\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python",
         "other_versions": []
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1727,7 +1800,8 @@ expression: result
           "3.14.6"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1756,7 +1830,8 @@ expression: result
           "8.3.3"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1785,7 +1860,8 @@ expression: result
           "2.32.70"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1814,7 +1890,8 @@ expression: result
           "3.4.14"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1843,7 +1920,8 @@ expression: result
           "4.6.4"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1872,7 +1950,8 @@ expression: result
           "9.0.0"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1894,7 +1973,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1916,7 +1996,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1938,7 +2019,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1960,7 +2042,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -1982,7 +2065,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2011,7 +2095,8 @@ expression: result
           "4.2"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2033,7 +2118,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2055,7 +2141,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2084,7 +2171,8 @@ expression: result
           "5.8.3"
         ]
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2106,7 +2194,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2128,7 +2217,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2155,7 +2245,8 @@ expression: result
         "caveats": "Turn on \"Launch at login\" from the popover if you want it.",
         "other_versions": []
       },
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2177,7 +2268,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   },
   {
@@ -2199,7 +2291,8 @@ expression: result
     "facts": {
       "family": null,
       "homebrew": null,
-      "commands": []
+      "commands": [],
+      "commands_unavailable": false
     }
   }
 ]

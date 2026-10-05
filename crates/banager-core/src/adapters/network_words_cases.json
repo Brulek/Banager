@@ -251,5 +251,29 @@
     "transient": false,
     "network": true,
     "why": "npm puts an E-code line beside it, which both read; alone it is read as the network only for the cause"
+  },
+  {
+    "name": "pip: aborted connection",
+    "text": "ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "Python: remote disconnected alone",
+    "text": "RemoteDisconnected('Remote end closed connection without response')",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "connection abort without inner exception",
+    "text": "Connection aborted.",
+    "transient": true,
+    "network": true
+  },
+  {
+    "name": "package name is not connection failure",
+    "text": "No matching distribution found for remote-disconnected",
+    "transient": false,
+    "network": false
   }
 ]
