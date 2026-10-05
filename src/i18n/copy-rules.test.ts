@@ -281,8 +281,6 @@ describe("the polish-3 copy rules, in English", () => {
  * and Taiwan's 列 for a list's row, 透過, 錯誤訊息 and 主要版本.
  */
 describe("Taiwan's words, in Traditional Chinese", () => {
-  const english = new Map(entries(en));
-
   it.each([
     ["複製", "拷貝"],
     ["跳過", "略過"],
@@ -299,19 +297,44 @@ describe("Taiwan's words, in Traditional Chinese", () => {
     expect(keysWhere(zhHant, (text) => text.includes(word))).toEqual([]);
   });
 
+  /**
+   * The keys of `locale` that say `pattern` anywhere but in the phrases
+   * `allowed` names for that key.
+   */
+  const sayingOutside = (locale: unknown, pattern: RegExp, allowed: Record<string, string[]>) =>
+    entries(locale)
+      .filter(([key, text]) => {
+        const rest = (allowed[key] ?? []).reduce((left, phrase) => left.split(phrase).join(""), text);
+        return pattern.test(rest);
+      })
+      .map(([key]) => key);
+
+  // 一行 as a line of a Terminal settings file, phrase by phrase; any
+  // other 這一行 / 那一行 / 每一行 is a list's row, 列 (walk-5 W5-3).
+  const linesOfAFile: Record<string, string[]> = {
+    "warnings.editsShellConfig": ["加入的那一行"],
+    "warnings.leavesShellConfigLineDetail": ["刪除那一行"],
+    "warnings.leavesShellConfigLineMaybeDetail": ["檢查這一行"],
+    "unreadInProtectedPlace.shellConfigUnreadDetail": ["Cargo的那一行"],
+    "faq.questions.changesMac.answer": ["加入的那一行"],
+  };
+  const rowsAs行 = (locale: unknown) => sayingOutside(locale, /[這那每]一行/, linesOfAFile);
+
   it("calls a list's row 列, and keeps 行 for a line of a file", () => {
-    // 這一行 / 那一行 / 每一行 only where the English says "line".
-    const rows = keysWhere(zhHant, (text) => /[這那每]一行/.test(text)).filter(
-      (key) => !/\bline\b/.test(english.get(key) ?? ""),
-    );
-    expect(rows).toEqual([]);
+    expect(rowsAs行(zhHant)).toEqual([]);
+    // The FAQ's 「有一行寫著」 is a line, and its 「每一列都標出了原因」 a row,
+    // in the one answer: the second turned back into 行 is caught (review
+    // H5-A1).
+    const turnedBack = structuredClone(zhHant);
+    const answer = turnedBack.faq.questions.cantUpdate;
+    expect(answer.answer).toContain("有一行寫著");
+    answer.answer = answer.answer.replace("每一列", "每一行");
+    expect(rowsAs行(turnedBack)).toEqual(["faq.questions.cantUpdate.answer"]);
   });
 
   it("says 透過 for ‘via’, keeping 通過 for passing a check", () => {
-    const via = keysWhere(zhHant, (text) => text.includes("通過")).filter(
-      (key) => !/\bpass\b/.test(english.get(key) ?? ""),
-    );
-    expect(via).toEqual([]);
+    const passing = { "brewStatus.reason.fails_gatekeeper_check": ["通過macOS的安全性檢查"] };
+    expect(sayingOutside(zhHant, /通過/, passing)).toEqual([]);
   });
 
   it.each([
@@ -322,6 +345,15 @@ describe("Taiwan's words, in Traditional Chinese", () => {
     ["匹配", "比對"],
     ["線纜", "纜線"],
     ["資料夾", "檔案夾"],
+    ["核心擴充", "核心延伸功能"],
+    ["觸控欄", "觸控列"],
+    ["語音識別", "語音辨識"],
+    ["字元識別", "字元辨識"],
+    ["結對", "配對"],
+    ["劉海", "瀏海"],
+    ["幀", "影格"],
+    ["轉發", "轉送"],
+    ["類函式庫", "類別函式庫"],
   ])("says %s in no tool description, %s instead", (word) => {
     const lines = Object.entries(zhHantDescriptions as Record<string, string>);
     expect(lines.filter(([, line]) => line.includes(word)).map(([key]) => key)).toEqual([]);
