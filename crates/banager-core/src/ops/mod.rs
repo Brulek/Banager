@@ -12,9 +12,12 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
-/// Default cap on how many finished (`Done`) operations `records` keeps at
-/// once; an operation still in flight is never evicted regardless of this
-/// bound. Bounds a long-running session's memory use -- without it, every
+/// Default target for how many operations `records` holds, applied as
+/// each operation is submitted (`evict_oldest_done_records`): the oldest
+/// finished (`Done`) ones are evicted down to it. An operation still in
+/// flight is never evicted, so `records` can sit above it -- and stays
+/// there, once those finish, until the next submission. Bounds a
+/// long-running session's memory use -- without it, every
 /// operation ever submitted in the process's lifetime stays in `records`
 /// (and therefore in `summaries()`) forever.
 pub const DEFAULT_MAX_RECORDS: usize = 200;
@@ -239,8 +242,11 @@ pub struct OperationManager {
     /// `DEFAULT_MAX_RECORDS`'s doc comment and `with_max_records`.
     max_records: usize,
     /// What the records evicted leave for the completion notification
-    /// (`EvictedOp`). Locked only with `records` held.
+    /// (`EvictedOp`). Locked only with `records` held (and `queue` before
+    /// both, in `completions_after`).
     evicted: Mutex<EvictedLedger>,
+    /// Caps `evicted`: `MAX_EVICTED`, smaller in this module's tests.
+    max_evicted: usize,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -310,11 +316,16 @@ pub struct EvictedOp {
 
 /// Every operation the completion notification may count, read at one
 /// instant (`OperationManager::completions_after`), so that none is
-/// evicted from `operations` without being in `evicted` yet.
+/// evicted from `operations` without being in `evicted` yet, and none
+/// submitted is missing from all three.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Completions {
     /// The records, newest first, as `summaries` gives them.
     pub operations: Vec<OpSummary>,
+    /// The ids a submission has taken whose record is not in yet
+    /// (`reserve` done, `record_and_run` to come): unfinished, though in
+    /// neither `operations` nor `evicted`, and never one forgotten.
+    pub unrecorded: Vec<OpId>,
     /// The evicted operations still kept (`MAX_EVICTED`), by id.
     pub evicted: BTreeMap<OpId, EvictedOp>,
     /// The newest id dropped from `evicted` past `MAX_EVICTED`, or 0: an
@@ -401,6 +412,7 @@ impl OperationManager {
             done_notify: Arc::new(Notify::new()),
             max_records: DEFAULT_MAX_RECORDS,
             evicted: Mutex::new(EvictedLedger::default()),
+            max_evicted: MAX_EVICTED,
         }
     }
 
@@ -445,11 +457,20 @@ impl OperationManager {
     /// manager kept of evicted operations at or below `after` is dropped
     /// here, never to be asked for again.
     pub fn completions_after(&self, after: OpId) -> Completions {
+        // The queue first, as everywhere: no id can be taken meanwhile, and
+        // one taken before is in the queue until its op takes its locks or
+        // finishes -- both after its record is in.
+        let queue = self.queue.lock().unwrap();
         let records = self.records.lock().unwrap();
         let mut evicted = self.evicted.lock().unwrap();
         evicted.forget_through(after);
         Completions {
             operations: Self::summaries_of(&records),
+            unrecorded: queue
+                .keys()
+                .filter(|id| !records.contains_key(id))
+                .copied()
+                .collect(),
             evicted: evicted.ops.clone(),
             forgotten_through: evicted.forgotten_through,
         }
@@ -561,15 +582,25 @@ impl OperationManager {
     /// `submit`, with a callback for when the operation finishes
     /// (`OnFinish`).
     pub fn submit_with(self: &Arc<Self>, plan: Plan, on_finish: Option<OnFinish>) -> OpId {
-        // The id is taken and the op joins the queue in one step, so ids
-        // enter it in order: an op can never find the queue missing an
-        // earlier op that has its id but has not joined yet.
-        let op_id = {
-            let mut queue = self.queue.lock().unwrap();
-            let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
-            queue.insert(op_id, plan.locks.clone());
-            op_id
-        };
+        let op_id = self.reserve(&plan);
+        self.record_and_run(op_id, plan, on_finish);
+        op_id
+    }
+
+    /// Takes the next id, and the op joins the queue, in one step, so ids
+    /// enter it in order: an op can never find the queue missing an
+    /// earlier op that has its id but has not joined yet. Its record comes
+    /// after (`record_and_run`), outside the queue's lock.
+    fn reserve(&self, plan: &Plan) -> OpId {
+        let mut queue = self.queue.lock().unwrap();
+        let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        queue.insert(op_id, plan.locks.clone());
+        op_id
+    }
+
+    /// The second half of `submit_with`: the record of the op `reserve`
+    /// queued, and the task that runs it.
+    fn record_and_run(self: &Arc<Self>, op_id: OpId, plan: Plan, on_finish: Option<OnFinish>) {
         let cancel = CancellationToken::new();
         let record = OpInternal {
             id: op_id,
@@ -591,6 +622,7 @@ impl OperationManager {
                 &mut records,
                 self.max_records,
                 &mut self.evicted.lock().unwrap(),
+                self.max_evicted,
             );
         }
         self.sink.emit(OperationEvent::Status {
@@ -618,8 +650,6 @@ impl OperationManager {
                 }
             }
         });
-
-        op_id
     }
 
     /// Evicts the oldest (lowest op id) `Done` records, oldest first, until
@@ -633,6 +663,7 @@ impl OperationManager {
         records: &mut HashMap<OpId, OpInternal>,
         max_records: usize,
         evicted: &mut EvictedLedger,
+        max_evicted: usize,
     ) {
         if records.len() <= max_records {
             return;
@@ -649,7 +680,7 @@ impl OperationManager {
                 break;
             }
             if let Some(r) = records.remove(&id) {
-                evicted.keep(id, r.plan.request.kind, r.outcome.as_ref(), MAX_EVICTED);
+                evicted.keep(id, r.plan.request.kind, r.outcome.as_ref(), max_evicted);
             }
             overflow -= 1;
         }
@@ -1271,5 +1302,136 @@ mod evicted_tests {
         assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [4]);
         ledger.forget_through(OpId::MAX);
         assert!(ledger.ops.is_empty());
+    }
+
+    /// An adapter whose every operation succeeds at once: enough to put
+    /// operations through `run_operation` to `Done`.
+    struct Instant(crate::adapters::AdapterMeta);
+
+    #[async_trait::async_trait]
+    impl Adapter for Instant {
+        fn meta(&self) -> &crate::adapters::AdapterMeta {
+            &self.0
+        }
+        async fn detect(&self, _env: &crate::runner::HostEnv) -> Vec<ManagerInstance> {
+            Vec::new()
+        }
+        async fn inventory(
+            &self,
+            _inst: &ManagerInstance,
+        ) -> Result<Vec<crate::model::InstalledArtifact>, AdapterError> {
+            Ok(Vec::new())
+        }
+        async fn check_updates(
+            &self,
+            _inst: &ManagerInstance,
+            _opts: &crate::adapters::CheckOptions,
+        ) -> Result<crate::adapters::CheckOutcome, AdapterError> {
+            Ok(Default::default())
+        }
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<crate::model::SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+        async fn plan(
+            &self,
+            _inst: &ManagerInstance,
+            _req: &crate::model::OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Err(AdapterError::Unsupported("not here".into()))
+        }
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            _cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            Ok(Outcome::Succeeded)
+        }
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            Ok(Reconciled {
+                present: true,
+                version: None,
+            })
+        }
+    }
+
+    fn install(inst: &ManagerInstance, name: &str, lock: &str) -> Plan {
+        Plan {
+            request: crate::model::OpRequest {
+                kind: OpKind::Install,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Formula,
+                name: name.into(),
+            },
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec!["install".into(), name.into()],
+                env: vec![],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock(lock.into())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            timeout_secs: 60,
+        }
+    }
+
+    /// A submission that has taken its id and joined the queue but whose
+    /// record is not in yet (`reserve` without `record_and_run`, the seam
+    /// `submit_with` is made of), while later operations on another
+    /// resource finish and overflow the evicted ledger past its id. The
+    /// overflow proves nothing about it: no report may cross it until it
+    /// has finished, and then it is told of.
+    #[tokio::test]
+    async fn regression_overflow_recovery_never_crosses_an_id_reserved_but_not_recorded() {
+        use crate::notify_operations::ReportedRuns;
+        let mut manager =
+            OperationManager::new(Arc::new(crate::events::VecSink::new())).with_max_records(1);
+        manager.max_evicted = 1;
+        manager.register_adapter(Arc::new(Instant(crate::adapters::AdapterMeta {
+            id: "fake".into(),
+            name: "fake".into(),
+            kind: "fake".into(),
+            platforms: vec!["macos".into()],
+            homepage: "https://example.invalid".into(),
+            schema_version: 1,
+            verified_versions: vec![],
+        })));
+        let manager = Arc::new(manager);
+        let inst = crate::testing::manager_instance("fake", "fake:1");
+        manager.register_instance(inst.clone());
+
+        let held_back = install(&inst, "aaa", "a");
+        let first = manager.reserve(&held_back);
+        let mut last = first;
+        for name in ["bbb", "ccc", "ddd"] {
+            last = manager.submit(install(&inst, name, "b"));
+            manager.wait(last).await;
+        }
+        let known = manager.completions_after(0);
+        assert!(
+            known.forgotten_through >= first,
+            "the ledger has overflowed past the reserved id"
+        );
+        let reported = ReportedRuns::default();
+        assert_eq!(reported.completed(first, &known), None);
+        assert_eq!(reported.completed(last, &known), None);
+
+        manager.record_and_run(first, held_back, None);
+        assert_eq!(manager.wait(first).await, Some(Outcome::Succeeded));
+        let told = reported
+            .completed(first, &manager.completions_after(reported.through()))
+            .expect("told of once it has finished");
+        assert_eq!(told.succeeded, 1);
     }
 }

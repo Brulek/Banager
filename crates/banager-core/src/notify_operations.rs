@@ -98,11 +98,20 @@ impl ReportedRuns {
     /// state. Only an ID evicted and then forgotten
     /// (`Completions::forgotten_through`) is past proving how it ended:
     /// the run is accepted telling of nothing, so it cannot hold back the
-    /// runs after it.
+    /// runs after it. An ID taken by a submission whose record is not in
+    /// yet (`Completions::unrecorded`) is unfinished, wherever the
+    /// forgotten ones reach.
     pub fn completed(&self, last_op: u64, known: &Completions) -> Option<FinishedRun> {
         let through = self.through();
         let first = through.checked_add(1)?;
         let count = last_op.checked_sub(first)?.checked_add(1)?;
+        if known
+            .unrecorded
+            .iter()
+            .any(|id| (first..=last_op).contains(id))
+        {
+            return None;
+        }
         let mut ended: Vec<(u64, OpKind, Ended)> = Vec::new();
         for op in known
             .operations
@@ -405,6 +414,22 @@ mod tests {
             Ok(RunNotice::Post)
         );
         assert_eq!(*posted.borrow(), [run(5, RunKind::Upgrade, 1, 0, 0)]);
+    }
+
+    #[test]
+    fn regression_an_id_reserved_but_not_recorded_is_never_taken_for_a_forgotten_one() {
+        let reported = ReportedRuns::default();
+        let mut known = records(&[summary(4, OpKind::Upgrade, Some(Outcome::Succeeded))]);
+        known
+            .evicted
+            .insert(3, evicted(OpKind::Upgrade, Ended::Succeeded));
+        known.forgotten_through = 2;
+        known.unrecorded = vec![1];
+        assert!(reported.completed(1, &known).is_none());
+        assert!(reported.completed(4, &known).is_none());
+        // Without it, the same interval is forgotten, and accepted silently.
+        known.unrecorded.clear();
+        assert_eq!(reported.completed(4, &known).map(|run| run.told()), Some(0));
     }
 
     #[test]
