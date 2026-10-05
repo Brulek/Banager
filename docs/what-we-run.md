@@ -42,8 +42,9 @@ states the two limits a round of measuring keeps to, names every place it
 never looks into and says nothing is written, and that the section on the
 data an uninstall leaves behind names every path it looks at, states its
 two limits and says nothing is written or deleted.
-`src-tauri/src/notify.rs`'s tests check that the section quotes what a
-notification says in both languages, and `src-tauri/src/ipc.rs`'s that
+`src-tauri/src/notify.rs`'s and `src-tauri/src/notify_ops.rs`'s tests
+check that the sections quote what each notification says in all three
+languages, and `src-tauri/src/ipc.rs`'s that
 the never-list says the window cannot ask for an install.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
@@ -480,7 +481,8 @@ Dock posts nothing and marks nothing, so its updates are still news to
 the next daily check that finds them.
 
 The notification is titled Banager and says "N tools can be updated"
-(「N个工具可以更新」) in the window's language, N being every update
+(「N个工具可以更新」, in Traditional Chinese 「N個工具可以更新」) in the
+window's language, N being every update
 Update All would take. It is handed to macOS's Notification Center
 (`NSUserNotificationCenter`) through notify-rust, the crate the plugin
 posts through, on a thread of its own (`post` and `hand_off` in
@@ -568,11 +570,21 @@ thread, in order with AppKit telling of Banager leaving the front
 Banager left the front is still posted, and never twice.
 
 It is titled Banager and says how the run went in the window's language:
-"Updated N tools" (「已更新N个工具」) when every one worked, and otherwise
-each way they ended, "N updated, N couldn't be updated"
-(「N个已更新，N个未能更新」), with "N need attention" (「N个需要查看」)
-for one the tool said worked and Banager could not confirm; uninstalls
-say "Uninstalled" and "couldn't be uninstalled" (「已卸载」, 「未能卸载」).
+"Updated N tools" (「已更新N个工具」; in Traditional Chinese
+「已更新N個工具」) when every one worked, and otherwise each way they
+ended, "N updated, N couldn't be updated" (「N个已更新，N个未能更新」;
+「N個已更新，N個未能更新」), with "N need attention" (「N个需要查看」;
+「N個需要查看」) for one the tool said worked and Banager could not
+confirm. An update that stopped where `sudo` wanted the Mac's password,
+which Banager cannot ask for, is told of as the operation bar and the
+Updates page tell of it, not as one that couldn't be updated: "N updated,
+N need your password" (「N个已更新，N个需要输入密码」;
+「N個已更新，N個需要輸入密碼」). Rust reads that cause off the last
+lines the update wrote to stderr, as the history does
+(`history::failure_cause`), and counts it beside the run
+(`password_stops` in `src-tauri/src/notify_ops.rs`). Uninstalls say
+"Uninstalled" and "couldn't be uninstalled" (「已卸载」, 「未能卸载」;
+「已解除安裝」, 「未能解除安裝」).
 It is handed to macOS the way the update notification is (`notify::post`):
 no command runs, nothing connects, and Banager writes no file for it. A
 click on it brings Banager to the front, and with the window closed or in

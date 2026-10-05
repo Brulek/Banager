@@ -19,16 +19,76 @@ use crate::menu::MenuLanguage;
 use crate::notify::{self, Answer};
 use crate::state::AppState;
 use crate::window::NotificationPending;
+use banager_core::history::{failure_cause, FailureCause};
+use banager_core::model::{OpKind, OpStatus, Outcome};
 use banager_core::notify_operations::{self, FinishedRun, ReportedRuns, RunKind, RunNotice};
 use banager_core::notify_updates::Focus;
+use banager_core::ops::OpSummary;
 use banager_core::settings::Settings;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime, State};
 
-/// The runs reported in this run of Banager (`ReportedRuns`), managed on
-/// the builder in `run()`. In memory only.
+/// The runs reported in this run of Banager (`ReportedRuns`), and of their
+/// failed updates, how many stopped where sudo wanted the Mac's password
+/// (`Passwords`), managed on the builder in `run()`. In memory only.
 #[derive(Debug, Default)]
-pub struct OperationRuns(Mutex<ReportedRuns>);
+pub struct OperationRuns(Mutex<Runs>);
+
+/// `OperationRuns`' contents: the runs, and the password stops beside them.
+#[derive(Debug, Default)]
+pub(crate) struct Runs {
+    reported: ReportedRuns,
+    passwords: Passwords,
+}
+
+/// What `FinishedRun` does not count and the notification says: of the
+/// updates that failed, those that stopped where sudo wanted the Mac's
+/// password with no way to ask (`FailureCause::NeedsPassword`) -- the
+/// rows that say 「需要输入密码」, which the operation bar and the Updates
+/// page's headline count apart (`failedRunWords` in src/lib/runResult.ts,
+/// `updatesHeadline`). Kept step for step with `ReportedRuns`: the newest
+/// operation counted, which is `ReportedRuns`' own boundary -- a run is
+/// counted exactly when `completed` accepts it, and every accepted run is
+/// marked reported -- and how many of the run withheld stopped there,
+/// taken when it is posted or seen, as `ReportedRuns` takes the run.
+#[derive(Debug, Default)]
+struct Passwords {
+    through: u64,
+    withheld: u32,
+}
+
+impl Runs {
+    /// The run withheld, if one is (`ReportedRuns::withheld`).
+    fn withheld(&self) -> Option<&FinishedRun> {
+        self.reported.withheld()
+    }
+
+    /// The window has taken the focus (`ReportedRuns::seen`).
+    fn seen(&mut self) {
+        self.reported.seen();
+        self.passwords.withheld = 0;
+    }
+}
+
+/// How many updates among `operations` numbered after `after` and up to
+/// `through` ended where sudo wanted the Mac's password with no way to ask
+/// (`FailureCause::NeedsPassword`, read off the last lines the tool wrote
+/// to stderr, as the history and the window read them). Only updates:
+/// the operation bar says it of updates alone.
+fn password_stops(operations: &[OpSummary], after: u64, through: u64) -> u32 {
+    let stopped = operations
+        .iter()
+        .filter(|op| op.id > after && op.id <= through)
+        .filter(|op| op.kind == OpKind::Upgrade && op.status == OpStatus::Done)
+        .filter(|op| match &op.outcome {
+            Some(Outcome::Failed { summary, .. }) => {
+                failure_cause(summary) == Some(FailureCause::NeedsPassword)
+            }
+            _ => false,
+        })
+        .count();
+    u32::try_from(stopped).unwrap_or(u32::MAX)
+}
 
 /// The page's report of a run of operations that has finished
 /// (`useOperationsNotification` in src/lib/operationsNotification.ts).
@@ -55,16 +115,27 @@ pub async fn report_finished_run(
     let title = app.package_info().name.clone();
     let reported = {
         let mut records = runs.0.lock().unwrap();
-        let known = state.session.completions_after(records.through());
-        let Some(actual) = records.completed(run.last_op, &known) else {
+        let known = state.session.completions_after(records.reported.through());
+        let Some(actual) = records.reported.completed(run.last_op, &known) else {
             return Ok(());
         };
-        notify_operations::report(
+        let operations = state.session.operations();
+        let password = password_stops(&operations, records.passwords.through, actual.last_op);
+        records.passwords.through = actual.last_op;
+        report_counted(
             &mut records,
             state.get_settings().notify_operations,
             focus,
             &actual,
-            |run| notify::post(&app, &title, &body(language, run), Answer::ShowWindow),
+            password,
+            |run, password| {
+                notify::post(
+                    &app,
+                    &title,
+                    &body(language, run, password),
+                    Answer::ShowWindow,
+                )
+            },
         )
     };
     match reported {
@@ -129,8 +200,13 @@ fn settle_withheld<R: Runtime>(app: &AppHandle<R>, focus: Focus) {
     let state = app.state::<AppState>();
     let language = notify::language(app, &state);
     let title = app.package_info().name.clone();
-    let settled = recheck(&runs, &state.get_settings(), focus, |run| {
-        notify::post(app, &title, &body(language, run), Answer::ShowWindow)
+    let settled = recheck(&runs, &state.get_settings(), focus, |run, password| {
+        notify::post(
+            app,
+            &title,
+            &body(language, run, password),
+            Answer::ShowWindow,
+        )
     });
     match settled {
         Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
@@ -159,7 +235,7 @@ pub(crate) fn recheck(
     runs: &OperationRuns,
     settings: &Settings,
     focus: Focus,
-    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+    post: impl FnOnce(&FinishedRun, u32) -> Result<(), String>,
 ) -> Result<RunNotice, String> {
     match focus {
         Focus::Away => post_withheld(runs, settings, post),
@@ -177,38 +253,88 @@ pub(crate) fn recheck(
 
 /// What Banager leaving the front does: `notify_operations::post_withheld`
 /// over the runs reported so far, whether 「操作完成时通知」 is on as
-/// `settings` are saved, with `post` to post the notification.
+/// `settings` are saved, with `post` to post the notification -- handed
+/// the run withheld and how many of its updates stopped for the password.
 pub(crate) fn post_withheld(
     runs: &OperationRuns,
     settings: &Settings,
-    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+    post: impl FnOnce(&FinishedRun, u32) -> Result<(), String>,
 ) -> Result<RunNotice, String> {
-    let mut reported = runs.0.lock().unwrap();
-    notify_operations::post_withheld(&mut reported, settings.notify_operations, post)
+    let mut runs = runs.0.lock().unwrap();
+    // Taken with the run, whether or not it is posted: the run no longer
+    // waits either way.
+    let password = std::mem::take(&mut runs.passwords.withheld);
+    notify_operations::post_withheld(&mut runs.reported, settings.notify_operations, |run| {
+        post(run, password)
+    })
 }
 
-/// A report's whole effect: `notify_operations::report` over the runs
-/// reported so far, whether 「操作完成时通知」 is on as `settings` are
-/// saved, and `focus`, with `post` to post the notification.
+/// `notify_operations::report` over `runs`, with `password` -- how many of
+/// `run`'s updates stopped for the password (`password_stops`) -- kept
+/// as `ReportedRuns` keeps the run: added to the run withheld, and handed
+/// to `post` with a run withheld before told of in the same notification.
+/// `decide` is asked first, with the same runs `report` asks it with, so
+/// that what happens to the run withheld is known even when `post` fails.
+fn report_counted(
+    runs: &mut Runs,
+    on: bool,
+    focus: Focus,
+    run: &FinishedRun,
+    password: u32,
+    post: impl FnOnce(&FinishedRun, u32) -> Result<(), String>,
+) -> Result<RunNotice, String> {
+    let notice = notify_operations::decide(on, focus, run, &runs.reported);
+    let withheld = runs.passwords.withheld;
+    let reported = notify_operations::report(&mut runs.reported, on, focus, run, |whole| {
+        post(whole, withheld.saturating_add(password))
+    });
+    match notice {
+        RunNotice::Post | RunNotice::Watched => runs.passwords.withheld = 0,
+        RunNotice::Withheld => runs.passwords.withheld = withheld.saturating_add(password),
+        RunNotice::Nothing => {}
+    }
+    reported
+}
+
+/// A report's whole effect: `report_counted` over the runs reported so
+/// far, whether 「操作完成时通知」 is on as `settings` are saved, and
+/// `focus`, with `post` to post the notification.
 #[cfg(test)]
 pub(crate) fn report(
     runs: &OperationRuns,
     settings: &Settings,
     focus: Focus,
     run: &FinishedRun,
-    post: impl FnOnce(&FinishedRun) -> Result<(), String>,
+    password: u32,
+    post: impl FnOnce(&FinishedRun, u32) -> Result<(), String>,
 ) -> Result<RunNotice, String> {
-    let mut reported = runs.0.lock().unwrap();
-    notify_operations::report(&mut reported, settings.notify_operations, focus, run, post)
+    let mut runs = runs.0.lock().unwrap();
+    report_counted(
+        &mut runs,
+        settings.notify_operations,
+        focus,
+        run,
+        password,
+        post,
+    )
 }
 
 /// What the notification says under its title: how the run went, in the
 /// words the operation bar uses -- 「已更新3个工具」 when every one it tells
 /// of worked, else each way they ended that any did, 「2个已更新，1个未能
-/// 更新」. Cancelled operations are not told of. With no space around a
-/// number in Chinese: macOS spaces Chinese from digits itself.
-pub fn body(language: MenuLanguage, run: &FinishedRun) -> String {
+/// 更新」. Of a run of updates, those of its failed ones that stopped
+/// where sudo wanted the Mac's password (`password`, `password_stops`) are
+/// said as the bar and the Updates page say them, 「13个需要输入密码」, not
+/// as failures: Terminal finishes them, with the steps their logs give.
+/// Cancelled operations are not told of. With no space around a number in
+/// Chinese: macOS spaces Chinese from digits itself.
+pub fn body(language: MenuLanguage, run: &FinishedRun, password: u32) -> String {
     let zh = language != MenuLanguage::En;
+    let password = if run.kind == RunKind::Upgrade {
+        password.min(run.failed)
+    } else {
+        0
+    };
     let only_succeeded = run.failed == 0 && run.attention == 0;
     if only_succeeded {
         let n = run.succeeded;
@@ -244,8 +370,8 @@ pub fn body(language: MenuLanguage, run: &FinishedRun) -> String {
             (MenuLanguage::En, RunKind::Other) => format!("{n} completed"),
         });
     }
-    if run.failed > 0 {
-        let n = run.failed;
+    if run.failed > password {
+        let n = run.failed - password;
         parts.push(match (language, run.kind) {
             (MenuLanguage::ZhCn, RunKind::Upgrade) => format!("{n}个未能更新"),
             (MenuLanguage::ZhHant, RunKind::Upgrade) => format!("{n}個未能更新"),
@@ -256,6 +382,15 @@ pub fn body(language: MenuLanguage, run: &FinishedRun) -> String {
             (MenuLanguage::En, RunKind::Upgrade) => format!("{n} couldn't be updated"),
             (MenuLanguage::En, RunKind::Uninstall) => format!("{n} couldn't be uninstalled"),
             (MenuLanguage::En, RunKind::Other) => format!("{n} couldn't be completed"),
+        });
+    }
+    if password > 0 {
+        let n = password;
+        parts.push(match language {
+            MenuLanguage::ZhCn => format!("{n}个需要输入密码"),
+            MenuLanguage::ZhHant => format!("{n}個需要輸入密碼"),
+            MenuLanguage::En if n == 1 => "1 needs your password".to_string(),
+            MenuLanguage::En => format!("{n} need your password"),
         });
     }
     if run.attention > 0 {
@@ -308,14 +443,16 @@ mod tests {
         let posted = RefCell::new(Vec::new());
         let finished = run(RunKind::Upgrade, 3, 0, 0);
         assert_eq!(
-            report(&runs, &on(), Focus::Away, &finished, |run| {
-                posted.borrow_mut().push(body(MenuLanguage::ZhCn, run));
+            report(&runs, &on(), Focus::Away, &finished, 0, |run, password| {
+                posted
+                    .borrow_mut()
+                    .push(body(MenuLanguage::ZhCn, run, password));
                 Ok(())
             }),
             Ok(RunNotice::Post)
         );
         assert_eq!(
-            report(&runs, &on(), Focus::Away, &finished, |_| panic!(
+            report(&runs, &on(), Focus::Away, &finished, 0, |_, _| panic!(
                 "posted twice"
             )),
             Ok(RunNotice::Nothing)
@@ -328,9 +465,14 @@ mod tests {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Upgrade, 3, 0, 0);
         assert_eq!(
-            report(&runs, &Settings::default(), Focus::Away, &finished, |_| {
-                panic!("posted with the setting off")
-            }),
+            report(
+                &runs,
+                &Settings::default(),
+                Focus::Away,
+                &finished,
+                0,
+                |_, _| { panic!("posted with the setting off") }
+            ),
             Ok(RunNotice::Nothing)
         );
     }
@@ -340,7 +482,7 @@ mod tests {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Uninstall, 1, 0, 0);
         assert_eq!(
-            report(&runs, &on(), Focus::Window, &finished, |_| {
+            report(&runs, &on(), Focus::Window, &finished, 0, |_, _| {
                 panic!("posted a run the user watched")
             }),
             Ok(RunNotice::Watched)
@@ -353,22 +495,24 @@ mod tests {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Upgrade, 3, 0, 0);
         assert_eq!(
-            report(&runs, &on(), Focus::App, &finished, |_| panic!(
+            report(&runs, &on(), Focus::App, &finished, 0, |_, _| panic!(
                 "posted while Banager was in front"
             )),
             Ok(RunNotice::Withheld)
         );
         let posted = RefCell::new(Vec::new());
         assert_eq!(
-            post_withheld(&runs, &on(), |run| {
-                posted.borrow_mut().push(body(MenuLanguage::ZhCn, run));
+            post_withheld(&runs, &on(), |run, password| {
+                posted
+                    .borrow_mut()
+                    .push(body(MenuLanguage::ZhCn, run, password));
                 Ok(())
             }),
             Ok(RunNotice::Post)
         );
         assert_eq!(*posted.borrow(), ["已更新3个工具"]);
         assert_eq!(
-            post_withheld(&runs, &on(), |_| panic!("posted twice")),
+            post_withheld(&runs, &on(), |_, _| panic!("posted twice")),
             Ok(RunNotice::Nothing)
         );
     }
@@ -377,10 +521,10 @@ mod tests {
     fn test_a_withheld_run_is_not_posted_once_the_window_has_had_the_focus() {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Uninstall, 2, 0, 0);
-        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        report(&runs, &on(), Focus::App, &finished, 0, |_, _| Ok(())).unwrap();
         runs.0.lock().unwrap().seen();
         assert_eq!(
-            post_withheld(&runs, &on(), |_| panic!("posted a run the user saw")),
+            post_withheld(&runs, &on(), |_, _| panic!("posted a run the user saw")),
             Ok(RunNotice::Nothing)
         );
     }
@@ -395,27 +539,29 @@ mod tests {
         let finished = run(RunKind::Upgrade, 3, 0, 0);
         // Banager leaves the front: nothing is withheld yet.
         assert_eq!(
-            post_withheld(&runs, &on(), |_| panic!("nothing was withheld")),
+            post_withheld(&runs, &on(), |_, _| panic!("nothing was withheld")),
             Ok(RunNotice::Nothing)
         );
         // The report, with the focus asked before Banager left.
         assert_eq!(
-            report(&runs, &on(), Focus::App, &finished, |_| panic!(
+            report(&runs, &on(), Focus::App, &finished, 0, |_, _| panic!(
                 "posted while Banager was in front"
             )),
             Ok(RunNotice::Withheld)
         );
         let posted = RefCell::new(Vec::new());
         assert_eq!(
-            recheck(&runs, &on(), Focus::Away, |run| {
-                posted.borrow_mut().push(body(MenuLanguage::ZhCn, run));
+            recheck(&runs, &on(), Focus::Away, |run, password| {
+                posted
+                    .borrow_mut()
+                    .push(body(MenuLanguage::ZhCn, run, password));
                 Ok(())
             }),
             Ok(RunNotice::Post)
         );
         assert_eq!(*posted.borrow(), ["已更新3个工具"]);
         assert_eq!(
-            post_withheld(&runs, &on(), |_| panic!("posted twice")),
+            post_withheld(&runs, &on(), |_, _| panic!("posted twice")),
             Ok(RunNotice::Nothing),
             "the next time Banager leaves the front"
         );
@@ -428,27 +574,27 @@ mod tests {
     fn test_a_run_looked_at_again_with_banager_still_in_front_is_posted_once_when_it_leaves() {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Uninstall, 2, 0, 0);
-        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        report(&runs, &on(), Focus::App, &finished, 0, |_, _| Ok(())).unwrap();
         assert_eq!(
-            recheck(&runs, &on(), Focus::App, |_| panic!(
+            recheck(&runs, &on(), Focus::App, |_, _| panic!(
                 "posted while Banager was in front"
             )),
             Ok(RunNotice::Withheld)
         );
         let posted = RefCell::new(0);
         assert_eq!(
-            post_withheld(&runs, &on(), |_| {
+            post_withheld(&runs, &on(), |_, _| {
                 *posted.borrow_mut() += 1;
                 Ok(())
             }),
             Ok(RunNotice::Post)
         );
         assert_eq!(
-            recheck(&runs, &on(), Focus::Away, |_| panic!("posted twice")),
+            recheck(&runs, &on(), Focus::Away, |_, _| panic!("posted twice")),
             Ok(RunNotice::Nothing)
         );
         assert_eq!(
-            recheck(&runs, &on(), Focus::App, |_| panic!("posted twice")),
+            recheck(&runs, &on(), Focus::App, |_, _| panic!("posted twice")),
             Ok(RunNotice::Nothing)
         );
         assert_eq!(*posted.borrow(), 1);
@@ -461,15 +607,15 @@ mod tests {
     fn test_a_run_looked_at_again_with_the_window_focused_is_seen_and_never_posted() {
         let runs = OperationRuns::default();
         let finished = run(RunKind::Upgrade, 1, 0, 0);
-        report(&runs, &on(), Focus::App, &finished, |_| Ok(())).unwrap();
+        report(&runs, &on(), Focus::App, &finished, 0, |_, _| Ok(())).unwrap();
         assert_eq!(
-            recheck(&runs, &on(), Focus::Window, |_| panic!(
+            recheck(&runs, &on(), Focus::Window, |_, _| panic!(
                 "posted a run the user saw"
             )),
             Ok(RunNotice::Watched)
         );
         assert_eq!(
-            post_withheld(&runs, &on(), |_| panic!("posted a run the user saw")),
+            post_withheld(&runs, &on(), |_, _| panic!("posted a run the user saw")),
             Ok(RunNotice::Nothing)
         );
     }
@@ -520,8 +666,8 @@ mod tests {
             ),
         ];
         for (finished, zh, en) in cases {
-            assert_eq!(body(ZhCn, &finished), zh);
-            assert_eq!(body(En, &finished), en);
+            assert_eq!(body(ZhCn, &finished, 0), zh);
+            assert_eq!(body(En, &finished, 0), en);
         }
     }
 
@@ -544,27 +690,166 @@ mod tests {
                 "1項已完成，1項未能完成，1項需要查看",
             ),
         ] {
-            assert_eq!(body(MenuLanguage::ZhHant, &finished), expected);
+            assert_eq!(body(MenuLanguage::ZhHant, &finished, 0), expected);
         }
     }
 
     #[test]
-    fn test_what_we_run_quotes_what_the_notification_says_in_both_languages() {
+    fn test_what_we_run_quotes_what_the_notification_says_in_every_language() {
         // docs/what-we-run.md, "The notification when operations finish":
-        // the plain update case in both languages, its count as N.
+        // the plain update case, one with failures, and one with updates
+        // that stopped for the password, in all three languages, its
+        // count as N.
         let doc = include_str!("../../docs/what-we-run.md");
         let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
-        for language in [MenuLanguage::En, MenuLanguage::ZhCn] {
-            for finished in [
-                run(RunKind::Upgrade, 7, 0, 0),
-                run(RunKind::Upgrade, 7, 7, 0),
+        for language in [MenuLanguage::En, MenuLanguage::ZhCn, MenuLanguage::ZhHant] {
+            for (finished, password) in [
+                (run(RunKind::Upgrade, 7, 0, 0), 0),
+                (run(RunKind::Upgrade, 7, 7, 0), 0),
+                (run(RunKind::Upgrade, 7, 7, 0), 7),
             ] {
-                let quoted = body(language, &finished).replace('7', "N");
+                let quoted = body(language, &finished, password).replace('7', "N");
                 assert!(
                     folded.contains(&quoted),
                     "docs/what-we-run.md does not quote {quoted:?}, which a notification says"
                 );
             }
         }
+    }
+
+    /// Walk-4 W4-1's words, in the notification too: an Update all that
+    /// stopped where sudo wanted the password says 「13个需要输入密码」, as
+    /// the operation bar and the Updates page's headline do, never
+    /// 「13个未能更新」. Other failures keep their words beside it; a run
+    /// that is not all updates says what it says of failures.
+    #[test]
+    fn test_updates_that_stopped_for_the_password_are_said_as_the_window_says_them() {
+        use MenuLanguage::{En, ZhCn, ZhHant};
+        let all = run(RunKind::Upgrade, 0, 13, 0);
+        assert_eq!(body(ZhCn, &all, 13), "13个需要输入密码");
+        assert_eq!(body(ZhHant, &all, 13), "13個需要輸入密碼");
+        assert_eq!(body(En, &all, 13), "13 need your password");
+        assert_eq!(
+            body(En, &run(RunKind::Upgrade, 0, 1, 0), 1),
+            "1 needs your password"
+        );
+        let mixed = run(RunKind::Upgrade, 2, 3, 1);
+        assert_eq!(
+            body(ZhCn, &mixed, 2),
+            "2个已更新，1个未能更新，2个需要输入密码，1个需要查看"
+        );
+        assert_eq!(
+            body(ZhHant, &mixed, 2),
+            "2個已更新，1個未能更新，2個需要輸入密碼，1個需要查看"
+        );
+        assert_eq!(
+            body(En, &mixed, 2),
+            "2 updated, 1 couldn't be updated, 2 need your password, 1 needs attention"
+        );
+        // Never more than failed, and only of a run of updates.
+        assert_eq!(
+            body(En, &run(RunKind::Upgrade, 1, 1, 0), 5),
+            "1 updated, 1 needs your password"
+        );
+        assert_eq!(
+            body(En, &run(RunKind::Other, 1, 2, 0), 2),
+            "1 completed, 2 couldn't be completed"
+        );
+    }
+
+    fn op(id: u64, kind: OpKind, outcome: Option<Outcome>) -> OpSummary {
+        OpSummary {
+            id,
+            kind,
+            instance_id: "brew:/opt/homebrew".into(),
+            artifact_kind: banager_core::model::ArtifactKind::Cask,
+            name: "tool".into(),
+            status: if outcome.is_some() {
+                OpStatus::Done
+            } else {
+                OpStatus::Running
+            },
+            outcome,
+            argv_preview: vec![],
+            env_preview: vec![],
+            cancel_policy: banager_core::model::CancelPolicy::KillThenReconcile,
+        }
+    }
+
+    fn failed(summary: &str) -> Option<Outcome> {
+        Some(Outcome::Failed {
+            exit_code: Some(1),
+            summary: summary.into(),
+        })
+    }
+
+    #[test]
+    fn test_password_stops_counts_only_finished_updates_sudo_stopped_in_the_interval() {
+        let sudo = "==> Installing tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
+        let operations = [
+            op(1, OpKind::Upgrade, failed(sudo)),
+            op(2, OpKind::Upgrade, failed(sudo)),
+            op(3, OpKind::Upgrade, failed("Error: Download failed")),
+            op(4, OpKind::Uninstall, failed(sudo)),
+            op(5, OpKind::Upgrade, Some(Outcome::Succeeded)),
+            op(6, OpKind::Upgrade, failed(sudo)),
+            op(7, OpKind::Upgrade, None),
+        ];
+        assert_eq!(password_stops(&operations, 0, 7), 3);
+        assert_eq!(password_stops(&operations, 1, 5), 1, "after 1, through 5");
+        assert_eq!(password_stops(&operations, 6, 7), 0);
+    }
+
+    /// A run withheld keeps its password stops until it is posted, with
+    /// the run after it told of in the same notification; seen, they go
+    /// with it.
+    #[test]
+    fn test_a_withheld_runs_password_stops_are_told_of_with_it_or_dropped_with_it() {
+        let runs = OperationRuns::default();
+        let first = FinishedRun {
+            last_op: 2,
+            ..run(RunKind::Upgrade, 0, 2, 0)
+        };
+        let second = FinishedRun {
+            last_op: 4,
+            ..run(RunKind::Upgrade, 1, 1, 0)
+        };
+        assert_eq!(
+            report(&runs, &on(), Focus::App, &first, 2, |_, _| panic!(
+                "posted while in front"
+            )),
+            Ok(RunNotice::Withheld)
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&runs, &on(), Focus::Away, &second, 1, |run, password| {
+                posted
+                    .borrow_mut()
+                    .push(body(MenuLanguage::ZhCn, run, password));
+                Ok(())
+            }),
+            Ok(RunNotice::Post)
+        );
+        assert_eq!(*posted.borrow(), ["1个已更新，3个需要输入密码"]);
+        // Withheld again, then seen: nothing of it is told of later.
+        let third = FinishedRun {
+            last_op: 5,
+            ..run(RunKind::Upgrade, 0, 1, 0)
+        };
+        let fourth = FinishedRun {
+            last_op: 6,
+            ..run(RunKind::Upgrade, 0, 1, 0)
+        };
+        report(&runs, &on(), Focus::App, &third, 1, |_, _| Ok(())).unwrap();
+        runs.0.lock().unwrap().seen();
+        let later = RefCell::new(Vec::new());
+        report(&runs, &on(), Focus::Away, &fourth, 0, |run, password| {
+            later
+                .borrow_mut()
+                .push(body(MenuLanguage::En, run, password));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(*later.borrow(), ["1 couldn't be updated"]);
     }
 }

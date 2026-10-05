@@ -652,13 +652,13 @@ mod tests {
     }
 
     #[test]
-    fn test_what_we_run_quotes_what_the_notification_says_in_both_languages() {
+    fn test_what_we_run_quotes_what_the_notification_says_in_every_language() {
         // docs/what-we-run.md, "The daily check": what `body` writes, its
-        // count as N, and the title. Hard-wrapped prose: compared with the
-        // line breaks folded away.
+        // count as N, in all three languages, and the title. Hard-wrapped
+        // prose: compared with the line breaks folded away.
         let doc = include_str!("../../docs/what-we-run.md");
         let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
-        for language in [MenuLanguage::En, MenuLanguage::ZhCn] {
+        for language in [MenuLanguage::En, MenuLanguage::ZhCn, MenuLanguage::ZhHant] {
             let quoted = body(language, 7).replace('7', "N");
             assert!(
                 folded.contains(&quoted),
