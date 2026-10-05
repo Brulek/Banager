@@ -93,11 +93,13 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
 }
 
 impl HostEnv {
-    /// Reads `PATH`/`HOME` from the process environment. The shell calls it
-    /// before login PATH discovery to obtain HOME, then again after the
-    /// bounded discovery so the session sees the accepted or inherited PATH.
+    /// Reads `PATH` -- the login shell's once a read has found it, else the
+    /// process's own (`login_path::path`) -- and `HOME` and the rest from
+    /// the process environment. A refresh calls it after waiting for the
+    /// login shell's `PATH` to be read (`LoginPath::ensure`), so it sees
+    /// the one read, or the inherited one when no read has worked.
     pub fn discover() -> HostEnv {
-        let path_dirs = std::env::var_os("PATH")
+        let path_dirs = super::login_path::path()
             .map(|v| std::env::split_paths(&v).collect())
             .unwrap_or_default();
         let home = std::env::var_os("HOME")
@@ -319,8 +321,8 @@ mod tests {
     #[test]
     fn test_discover_reads_rustup_home_and_zdotdir_like_cargo_home() {
         // Both are read the way `cargo_home` is: raw, from the process
-        // environment `fix_path_env` left (only PATH is restored from the
-        // login shell), `None` when unset. Interpreting them -- empty means
+        // environment (only PATH is taken from the login shell, and kept
+        // apart from it: `login_path::accept`), `None` when unset. Interpreting them -- empty means
         // default, relative means unsupported -- is `tool_home`'s and the
         // rustup recipe's job, not this reader's. The test does not set
         // the variables (a test must not change the process environment

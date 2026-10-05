@@ -25,35 +25,6 @@ use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Complete this before any application threads start. RealRunner
-    // bounds the shell and its pipe drain, and terminates its process group
-    // on timeout. A late/partial result never mutates the inherited PATH.
-    let inherited = banager_core::runner::HostEnv::discover();
-    let shell = std::env::var_os("SHELL")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| "/bin/zsh".into());
-    let path = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .ok()
-        .and_then(|runtime| {
-            runtime.block_on(banager_core::runner::login_path::read(
-                &banager_core::runner::RealRunner::new(),
-                shell,
-                inherited.home,
-                std::time::Duration::from_secs(3),
-            ))
-        });
-    let login_path = path.is_some();
-    if let Some(path) = path {
-        std::env::set_var("PATH", path);
-    }
-    if !login_path {
-        eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
-    }
-    let host_env = banager_core::runner::HostEnv::discover();
-    println!("[banager] discovered PATH dirs: {:?}", host_env.path_dirs);
-
     tauri::Builder::default()
         // The window never leaves Banager's own page (navigation.rs).
         .plugin(navigation::stay_on_the_page())
@@ -102,7 +73,35 @@ pub fn run() {
             // `settings.json` (history.rs; docs/what-we-run.md, "Files
             // Banager writes").
             history::attach(&app.state::<AppState>(), &data_dir);
-            app.state::<AppState>().session.note_login_path(login_path);
+            // The login shell's `PATH` (runner::login_path), read in the
+            // background from now on -- `$SHELL` (`/bin/zsh` when unset)
+            // from the home folder, within `login_path::TIMEOUT` -- so a
+            // slow shell never holds the window back. Every refresh waits
+            // for it, and reads again when it failed (`read_login_path`).
+            let shell = std::env::var_os("SHELL")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| "/bin/zsh".into());
+            let probe = std::sync::Arc::new(banager_core::runner::login_path::LoginPath::new(
+                std::sync::Arc::new(banager_core::runner::RealRunner::new()),
+                shell,
+                banager_core::runner::HostEnv::discover().home,
+                banager_core::runner::login_path::TIMEOUT,
+                |path| {
+                    banager_core::runner::login_path::accept(path);
+                    println!("[banager] read the login shell's PATH: {path}");
+                },
+            ));
+            let _ = app.state::<AppState>().login_path.set(probe);
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = handle.state::<AppState>();
+                state.read_login_path().await;
+                if !state.session.login_path_restored() {
+                    eprintln!(
+                        "[banager] could not read the login shell's PATH; using the process's own until a check reads it"
+                    );
+                }
+            });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 ipc::refresh_on_background_change(&handle.state::<AppState>()).await

@@ -668,6 +668,12 @@ impl CommandRunner for RealRunner {
 
         let mut cmd = Command::new(&spec.program);
         cmd.args(&spec.args);
+        // The login shell's `PATH`, once read (`login_path::accept`): kept
+        // out of the process environment, so handed to each command here.
+        // A `PATH` the spec sets itself still wins, set after it.
+        if let Some(path) = super::login_path::accepted() {
+            cmd.env("PATH", path);
+        }
         cmd.envs(spec.env.iter().cloned());
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);

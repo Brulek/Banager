@@ -25,9 +25,9 @@
 //   (src-tauri/src/menu.rs), which runs nothing either: its items are
 //   macOS's own -- Hide, Quit, Copy -- or bring the window back and tell
 //   the page, which does not listen here (src/dev/mockTauriEvent.ts).
-// - What runs at every launch runs here too: the login shell
-//   `fix-path-env` asks for `PATH`, which runs no command
-//   (docs/what-we-run.md, "How Banager runs anything").
+// - What runs at every launch runs here too: the login shell read for
+//   `PATH`, in the background (`runner::login_path`), which runs no
+//   package manager (docs/what-we-run.md, "How Banager runs anything").
 // - Its own identifier, so its own folder: the mock window never reads
 //   the app's settings.json, and keeps its size and position apart from
 //   the app's.

@@ -114,10 +114,12 @@ pub fn system_facts(
     }
 }
 
-/// `SystemFacts` for this process: the kernel's two strings, its own
-/// `PATH` and `HOME` -- no other variable -- and `instances`.
+/// `SystemFacts` for this process: the kernel's two strings, the `PATH`
+/// its commands get -- the login shell's once read, else its own
+/// (`runner::login_path::path`) -- and its `HOME`, no other variable, and
+/// `instances`.
 pub fn current(login_path: bool, instances: &[ManagerInstance]) -> SystemFacts {
-    let path = std::env::var_os("PATH");
+    let path = crate::runner::login_path::path();
     let home = std::env::var_os("HOME").map(PathBuf::from);
     system_facts(
         read_os(),

@@ -98,6 +98,10 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
         Asker::Window | Asker::FollowUp => RoundTrigger::Window,
         Asker::Daily { .. } => RoundTrigger::Automatic,
     };
+    // The login shell's `PATH` first: the read started at launch, waited
+    // for, or one more when the last failed (Check Again, the next
+    // refresh) -- the sources are looked for along it.
+    state.read_login_path().await;
     let (_, snapshot) = state
         .session
         .refresh_recording(
@@ -1215,6 +1219,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         };
         (state, execute_calls, check_options_calls)
     }
@@ -1259,6 +1264,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         })
     }
 
@@ -1315,6 +1321,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         });
         (state, check_options_calls)
     }
@@ -2272,6 +2279,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         };
         (state, plan_calls)
     }
@@ -2789,6 +2797,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         }
     }
 
@@ -3112,6 +3121,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         }
     }
 

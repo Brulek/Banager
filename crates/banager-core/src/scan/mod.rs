@@ -265,8 +265,8 @@ pub struct UnknownScan {
 /// Only `PATH` entries under `home` are taken. The rest --
 /// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
 /// not what this page is for. Which `PATH` that is depends on how Banager
-/// was launched (`fix_path_env` restores a login shell's for a Finder
-/// launch; a terminal launch inherits that terminal's, temporary agent
+/// was launched (a login shell's is read for a Finder launch,
+/// `runner::login_path`; a terminal launch inherits that terminal's, temporary agent
 /// directories and all); the research machine's `PATH` held 23 entries
 /// that did not exist a session later, which is why missing directories
 /// are silently skipped rather than reported.

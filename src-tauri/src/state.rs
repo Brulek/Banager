@@ -1,6 +1,7 @@
 use crate::events::ChannelSink;
 use banager_core::auto_check::RoundLog;
 use banager_core::notify_updates::Notified;
+use banager_core::runner::login_path::LoginPath;
 use banager_core::session::Session;
 use banager_core::settings::{self, Settings};
 use std::path::PathBuf;
@@ -38,6 +39,10 @@ pub struct AppState {
     /// update notification, or that the user saw in the window: what
     /// `notify::report` goes by. In memory only.
     pub notified: Mutex<Notified>,
+    /// The login shell's `PATH`, read in the background (`LoginPath`):
+    /// set by `run()` as the app starts, which starts the first read; never
+    /// in a test, whose refreshes then read nothing (`read_login_path`).
+    pub login_path: std::sync::OnceLock<std::sync::Arc<LoginPath>>,
 }
 
 impl AppState {
@@ -55,7 +60,23 @@ impl AppState {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(RoundLog::default()),
             notified: Mutex::new(Notified::default()),
+            login_path: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Waits for the login shell's `PATH` -- the read the app started as
+    /// it opened, or, when the last read failed or ran out of time, one
+    /// more (`LoginPath::ensure`) -- and tells the session whether `PATH`
+    /// is now the login shell's (`Session::note_login_path`). Every
+    /// refresh does this before it looks for sources (`ipc::refresh_for`),
+    /// so Check Again reads a shell that failed again. Nothing to wait for
+    /// where nothing set one up (a test).
+    pub async fn read_login_path(&self) {
+        let Some(probe) = self.login_path.get() else {
+            return;
+        };
+        let read = probe.ensure().await;
+        self.session.note_login_path(read);
     }
 
     pub fn get_settings(&self) -> Settings {
@@ -104,6 +125,68 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    /// Opus review finding 2: a read that ran out of time leaves the
+    /// session told so, and the next refresh -- Check Again -- reads again
+    /// and tells it the PATH is the login shell's. Through a mock runner:
+    /// no shell runs, and the read `PATH` goes nowhere but the test.
+    #[tokio::test]
+    async fn test_a_refresh_after_a_failed_read_reads_the_login_shell_again() {
+        use banager_core::runner::{CommandOutput, MockRunner};
+        let state = AppState::new(temp_settings_path("login-path"), ChannelSink::new());
+        // No read set up (a test's state): nothing to wait for.
+        state.read_login_path().await;
+        assert!(state.session.login_path_restored());
+
+        let runner = Arc::new(MockRunner::new());
+        let argv = vec![
+            "/test-shell",
+            "-ilc",
+            "echo -n \"_SHELL_ENV_DELIMITER_\"; env; echo -n \"_SHELL_ENV_DELIMITER_\"; exit",
+        ];
+        runner.respond(
+            argv.clone(),
+            CommandOutput {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: true,
+                cancelled: false,
+            },
+        );
+        let published = Arc::new(Mutex::new(Vec::new()));
+        let to = published.clone();
+        let _ = state.login_path.set(Arc::new(LoginPath::new(
+            runner.clone(),
+            "/test-shell".into(),
+            "/tmp".into(),
+            banager_core::runner::login_path::TIMEOUT,
+            move |path| to.lock().unwrap().push(path.to_string()),
+        )));
+        state.read_login_path().await;
+        assert!(!state.session.login_path_restored());
+        assert!(published.lock().unwrap().is_empty());
+
+        runner.respond(
+            argv,
+            CommandOutput {
+                exit_code: Some(0),
+                stdout:
+                    "_SHELL_ENV_DELIMITER_PATH=/opt/homebrew/bin:/usr/bin\n_SHELL_ENV_DELIMITER_"
+                        .to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        state.read_login_path().await;
+        assert!(state.session.login_path_restored());
+        assert_eq!(*published.lock().unwrap(), ["/opt/homebrew/bin:/usr/bin"]);
+        assert_eq!(runner.calls().len(), 2);
+        // Read: no shell runs again.
+        state.read_login_path().await;
+        assert_eq!(runner.calls().len(), 2);
     }
 
     #[test]

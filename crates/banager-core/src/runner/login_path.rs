@@ -1,8 +1,26 @@
-//! Bounded login-shell PATH discovery. The shell command is the existing
-//! fix-path-env command; only PATH is accepted, and no process environment
-//! is changed until the entire command has completed successfully.
+//! The login shell's `PATH`: an app opened from Finder starts with
+//! macOS's four system folders, and nearly every tool lives elsewhere.
+//!
+//! One read (`read`) runs the user's login shell with the command
+//! fix-path-env ran, bounded by `TIMEOUT`; only `PATH` is taken from it,
+//! and only from a complete, successful run. It never blocks the window:
+//! the Tauri shell starts the first read as the app starts, in the
+//! background (`LoginPath::ensure`), and every refresh waits for that one
+//! before it looks for sources -- the window says it is checking meanwhile
+//! -- and reads again, once, when the last read failed or ran out of time
+//! (Check Again, the next refresh).
+//!
+//! What a read found is kept here (`accept`), never put in the process
+//! environment: setting a variable while other threads may read the
+//! environment is unsound, and the window's threads do. Every command
+//! Banager runs is handed it as its `PATH` (`RealRunner::run`), and
+//! `HostEnv::discover` and the diagnostics read it in place of the
+//! process's own (`path`).
 use super::{CommandRunner, CommandSpec, OutputUse};
+use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -10,6 +28,128 @@ const DELIMITER: &str = "_SHELL_ENV_DELIMITER_";
 const COMMAND: &str =
     "echo -n \"_SHELL_ENV_DELIMITER_\"; env; echo -n \"_SHELL_ENV_DELIMITER_\"; exit";
 
+/// How long a login shell gets to start and print its environment.
+///
+/// fix-path-env, which ran the same command before, waited as long as the
+/// shell took: a shell that never finished kept the window from opening at
+/// all. The 3 seconds that replaced it cut off shells that do finish:
+/// startup files that set up nvm, conda, pyenv or rbenv, or oh-my-zsh with
+/// plugins, each run their own programs, commonly taking a second or more
+/// apiece once warm, and several times that on the first launch after
+/// login, when nothing is in the disk cache yet. Cut off, `PATH` stays
+/// Finder's four folders and npm, pipx, uv and Cargo are not found. 15
+/// seconds covers such a shell several times over, and is short enough to
+/// give up on one that is stuck (waiting on a network mount, say). It
+/// costs little now: the read runs in the background, so a slow shell
+/// delays only the first check, which says it is checking, and never the
+/// window. The runner's stop adds up to 5 seconds of grace to a shell
+/// that has to be stopped (`RealRunner`).
+pub const TIMEOUT: Duration = Duration::from_secs(15);
+
+/// The `PATH` a read of the login shell found (`accept`), for the rest of
+/// this run of Banager; `None` until one has.
+static ACCEPTED: RwLock<Option<OsString>> = RwLock::new(None);
+
+/// Keeps `path`, a `PATH` a read of the login shell found, for every
+/// command Banager runs from now on (`accepted`). The process environment
+/// is left as it is.
+pub fn accept(path: &str) {
+    *ACCEPTED.write().unwrap_or_else(|e| e.into_inner()) = Some(OsString::from(path));
+}
+
+/// The login shell's `PATH`, once a read found it (`accept`).
+pub fn accepted() -> Option<OsString> {
+    ACCEPTED.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// The `PATH` Banager looks for programs along and hands every command it
+/// runs: the login shell's, once read, else the process's own.
+pub fn path() -> Option<OsString> {
+    accepted().or_else(|| std::env::var_os("PATH"))
+}
+
+/// What became of the reads so far.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Answer {
+    NotYet,
+    Read,
+    Failed,
+}
+
+/// The login shell's `PATH`, read in the background once, and again
+/// whenever it is asked for after a read that did not work (`ensure`).
+pub struct LoginPath {
+    runner: Arc<dyn CommandRunner>,
+    shell: PathBuf,
+    home: PathBuf,
+    timeout: Duration,
+    /// Where a `PATH` read is put: `accept`, outside a test.
+    publish: Box<dyn Fn(&str) + Send + Sync>,
+    /// Held for the length of a read, so two never run at once.
+    answer: tokio::sync::Mutex<Answer>,
+    /// How many reads have ended, however.
+    ended: AtomicU64,
+}
+
+impl LoginPath {
+    /// Reads `shell`'s `PATH` from `home`, within `timeout`, through
+    /// `runner`; each one found goes to `publish`.
+    pub fn new(
+        runner: Arc<dyn CommandRunner>,
+        shell: PathBuf,
+        home: PathBuf,
+        timeout: Duration,
+        publish: impl Fn(&str) + Send + Sync + 'static,
+    ) -> LoginPath {
+        LoginPath {
+            runner,
+            shell,
+            home,
+            timeout,
+            publish: Box::new(publish),
+            answer: tokio::sync::Mutex::new(Answer::NotYet),
+            ended: AtomicU64::new(0),
+        }
+    }
+
+    /// Whether `PATH` is the login shell's: true at once when a read has
+    /// worked. Otherwise reads it -- unless a read ended while this one
+    /// waited for its turn, whose answer it gives: the read the app
+    /// started as it opened answers the first refresh, which waits for it,
+    /// and is not run twice. A read that failed or ran out of time is
+    /// tried again by the next call that did not wait on it: Check Again,
+    /// or the next refresh.
+    pub async fn ensure(&self) -> bool {
+        let before = self.ended.load(Ordering::SeqCst);
+        let mut answer = self.answer.lock().await;
+        match *answer {
+            Answer::Read => return true,
+            Answer::Failed if self.ended.load(Ordering::SeqCst) != before => return false,
+            Answer::NotYet | Answer::Failed => {}
+        }
+        let found = read(
+            self.runner.as_ref(),
+            self.shell.clone(),
+            self.home.clone(),
+            self.timeout,
+        )
+        .await;
+        *answer = match found {
+            Some(path) => {
+                (self.publish)(&path);
+                Answer::Read
+            }
+            None => Answer::Failed,
+        };
+        self.ended.fetch_add(1, Ordering::SeqCst);
+        *answer == Answer::Read
+    }
+}
+
+/// One read: `shell -ilc <COMMAND>` from `home`, with
+/// `DISABLE_AUTO_UPDATE=true` for oh-my-zsh, within `timeout`. The `PATH`
+/// it printed, only from a complete, successful, framed run; `None` for a
+/// timeout, a failed spawn or exit, or output that is not whole.
 pub async fn read(
     runner: &dyn CommandRunner,
     shell: PathBuf,
@@ -92,6 +232,136 @@ mod tests {
                 expected
             );
         }
+    }
+
+    /// A runner that answers the login shell's command with each output
+    /// in turn, after `delay`, and records the timeout it was given.
+    struct Turns {
+        outputs: std::sync::Mutex<Vec<CommandOutput>>,
+        delay: Duration,
+        timeouts: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    impl Turns {
+        fn new(outputs: Vec<CommandOutput>, delay: Duration) -> Arc<Turns> {
+            Arc::new(Turns {
+                outputs: std::sync::Mutex::new(outputs),
+                delay,
+                timeouts: std::sync::Mutex::new(Vec::new()),
+            })
+        }
+
+        fn reads(&self) -> usize {
+            self.timeouts.lock().unwrap().len()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CommandRunner for Turns {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            self.timeouts.lock().unwrap().push(spec.timeout);
+            tokio::time::sleep(self.delay).await;
+            let mut outputs = self.outputs.lock().unwrap();
+            Ok(if outputs.len() > 1 {
+                outputs.remove(0)
+            } else {
+                outputs[0].clone()
+            })
+        }
+    }
+
+    fn timed_out() -> CommandOutput {
+        CommandOutput {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: true,
+            cancelled: false,
+        }
+    }
+
+    fn printed(path: &str) -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(0),
+            stdout: format!("{DELIMITER}PATH={path}\nHOME=/Users/someone\n{DELIMITER}"),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    fn probe(runner: Arc<Turns>) -> (LoginPath, Arc<std::sync::Mutex<Vec<String>>>) {
+        let published = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let to = published.clone();
+        let probe = LoginPath::new(
+            runner,
+            "/test-shell".into(),
+            "/tmp".into(),
+            TIMEOUT,
+            move |path| to.lock().unwrap().push(path.to_string()),
+        );
+        (probe, published)
+    }
+
+    #[test]
+    fn test_the_login_shell_gets_long_enough_for_nvm_and_conda() {
+        // Opus review finding 2: 3 seconds cut off shells that finish.
+        assert!(TIMEOUT >= Duration::from_secs(10), "{TIMEOUT:?}");
+        assert!(TIMEOUT <= Duration::from_secs(30), "{TIMEOUT:?}");
+    }
+
+    #[tokio::test]
+    async fn test_a_read_that_timed_out_is_tried_again_and_one_that_worked_is_kept() {
+        let runner = Turns::new(
+            vec![timed_out(), printed("/opt/homebrew/bin:/usr/bin:/bin")],
+            Duration::ZERO,
+        );
+        let (probe, published) = probe(runner.clone());
+        // The first read runs out of time: no PATH, nothing published.
+        assert!(!probe.ensure().await);
+        assert!(published.lock().unwrap().is_empty());
+        // Check Again: read again, and this time it works.
+        assert!(probe.ensure().await);
+        assert_eq!(
+            *published.lock().unwrap(),
+            ["/opt/homebrew/bin:/usr/bin:/bin"]
+        );
+        // Every refresh after that: no shell run again.
+        assert!(probe.ensure().await);
+        assert!(probe.ensure().await);
+        assert_eq!(runner.reads(), 2);
+        assert_eq!(
+            *runner.timeouts.lock().unwrap(),
+            [TIMEOUT, TIMEOUT],
+            "each read gets the whole timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_waiting_on_the_launch_read_takes_its_answer_and_runs_no_second_shell() {
+        // The read the app starts as it opens has not ended when the first
+        // refresh asks: that refresh waits for it, and takes its answer --
+        // even a failure -- rather than starting the shell a second time.
+        let runner = Turns::new(vec![timed_out()], Duration::from_millis(100));
+        let (probe, _) = probe(runner.clone());
+        let probe = Arc::new(probe);
+        let launch = tokio::spawn({
+            let probe = probe.clone();
+            async move { probe.ensure().await }
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let first_refresh = probe.ensure().await;
+        assert!(!launch.await.unwrap());
+        assert!(!first_refresh);
+        assert_eq!(runner.reads(), 1);
+        // A later refresh, not waiting on it: tries again.
+        assert!(!probe.ensure().await);
+        assert_eq!(runner.reads(), 2);
     }
 
     #[cfg(unix)]

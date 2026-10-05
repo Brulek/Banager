@@ -59,24 +59,36 @@ array run directly against an absolute program path by `RealRunner::run`
 the arguments appended one by one. No string is ever handed to `sh`, and
 nothing Banager downloads is ever piped into one.
 
-**One shell run, at launch, to read PATH.** An app opened from
-Finder starts with a minimal `PATH`. At startup (`run()` in
-`src-tauri/src/lib.rs`), `runner::login_path::read` runs the user's login
-shell once — `$SHELL` (`/bin/zsh` when unset) with the arguments
-`-ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
+**One shell run, at launch, to read PATH — and again only when that
+failed.** An app opened from Finder starts with a minimal `PATH`. As it
+starts (`run()` in `src-tauri/src/lib.rs`), Banager runs the user's login
+shell once, in the background — `$SHELL` (`/bin/zsh` when unset) with the
+arguments `-ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
 "_SHELL_ENV_DELIMITER_"; exit'`, `DISABLE_AUTO_UPDATE=true`, and the home
-folder as its working directory. This is the same shell command formerly
-run by `fix-path-env`. Login-shell startup files may run their own commands.
-`RealRunner` now gives the shell a 3-second deadline, followed by its
+folder as its working directory (`runner::login_path::read`). This is the
+same shell command formerly run by `fix-path-env`. Login-shell startup
+files may run their own commands. `RealRunner` gives the shell 15 seconds
+(`login_path::TIMEOUT`: enough for startup files that set up nvm, conda,
+pyenv or oh-my-zsh, even on the first launch after login), followed by its
 bounded process-group termination and pipe-drain handling described below
-(including up to 5 seconds of termination grace). Only a complete,
-successful, framed result can replace Banager's `PATH`. A timeout, failed
-spawn/exit or malformed output leaves the inherited `PATH` in place; the
-session records that login PATH discovery failed. No other shell variable
-is imported, and a late result never changes the process environment.
+(including up to 5 seconds of termination grace). The window opens
+meanwhile; every refresh waits for that read before it looks for sources,
+and the window says it is checking. Only a complete, successful, framed
+result is used. A timeout, failed spawn/exit or malformed output leaves
+the inherited `PATH` in place, the session records that login PATH
+discovery failed, and the Overview says so ("Couldn't read Terminal's
+settings", with Check Again): sources found only through Terminal's
+`PATH` — npm, pipx, uv, Cargo and the rest — may then be missing. The
+next refresh — Check Again, or any later one — reads the shell once more;
+after a read that worked, none runs again. No other shell variable is
+imported. The `PATH` read is kept in Banager's memory and handed to every
+command it runs as that command's `PATH` (`RealRunner::run`); Banager's
+own process environment is never changed, since changing it while other
+threads may read it is unsafe.
 
 **What a command inherits.** A child gets Banager's own environment — the
-`PATH` above, which is the only variable taken from the login shell, and
+`PATH` above, which is the only variable taken from the login shell (set
+on each command, not in Banager's own environment), and
 whatever else Banager itself was started with — plus the variables listed
 in each source's section below (`RealRunner::run` adds them with `envs` and
 never clears the environment). Opened from Finder or the Dock, Banager
@@ -95,7 +107,8 @@ a grace period, and then `SIGKILL` for whatever is left.
 `src-tauri/src/lib.rs`), at the start of every refresh, when the Open
 Ollama button is pressed, and at the start of every Other Programs scan,
 `HostEnv::discover`
-(`crates/banager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
+(`crates/banager-core/src/runner/path_env.rs`) reads `PATH` (the login
+shell's, once read), `HOME`,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Banager's
 environment and the effective user id from the process. Homebrew's
 install, uninstall and upgrade previews read six more, four to find its

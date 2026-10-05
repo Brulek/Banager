@@ -405,6 +405,7 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(Default::default()),
             notified: Mutex::new(Default::default()),
+            login_path: std::sync::OnceLock::new(),
         };
         {
             let mut rounds = state.rounds.lock().unwrap();

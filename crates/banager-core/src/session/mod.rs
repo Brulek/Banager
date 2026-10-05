@@ -555,10 +555,11 @@ impl Session {
         }
     }
 
-    /// Says whether restoring the login shell's `PATH` worked at launch
-    /// (`fix_path_env::fix()` in the Tauri shell's `run()`), which falls
-    /// back to the process's own small `PATH` without a word when it does
-    /// not. While it has not, no refresh says which copy of a command runs
+    /// Says whether the login shell's `PATH` has been read
+    /// (`runner::login_path::LoginPath::ensure`, which the Tauri shell asks
+    /// before every refresh, `AppState::read_login_path`); the process's
+    /// own small `PATH` stands in while it has not. While it has not, no
+    /// refresh says which copy of a command runs
     /// (`commands::judge`): against the `PATH` an app opened from Finder
     /// starts with, nearly every tool would read as "not found". Until a
     /// host says otherwise, the `PATH` is taken to be the login shell's --
