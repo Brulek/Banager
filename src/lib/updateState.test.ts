@@ -381,6 +381,7 @@ describe("updatesSummary", () => {
     expect(updatesSummary({ instances: [brew], updates: [pinned, glib], errors: [] }, hiding())).toEqual({
       kind: "updates",
       actionable: [glib],
+      password: 0,
     });
   });
 
@@ -390,11 +391,16 @@ describe("updatesSummary", () => {
     const wget = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "wget" }, blocked: "Pinned" });
     const snapshot = { instances: [brew], updates: [glib, jq, wget], errors: [] };
     // glib's update is under way: jq alone is left for Review updates.
-    expect(updatesSummary(snapshot, hiding(), (u) => u === glib)).toEqual({ kind: "updates", actionable: [jq] });
+    expect(updatesSummary(snapshot, hiding(), (u) => u === glib)).toEqual({
+      kind: "updates",
+      actionable: [jq],
+      password: 0,
+    });
     // Both taken and glib still going: updating one, not "Nothing to update".
     expect(updatesSummary(snapshot, hiding(), (u) => u !== wget, (u) => u === glib)).toEqual({
       kind: "updating",
       count: 1,
+      password: 0,
     });
     // Both taken and both done, waiting for the refresh that drops them:
     // nothing to start, and wget alone is under "Can't update here".
@@ -404,6 +410,42 @@ describe("updatesSummary", () => {
       cantUpdateHere: 1,
       hidden: 0,
     });
+  });
+
+  it("says the updates that wait for the password, never \"Nothing to update\" over them (walk-4 W4-1)", () => {
+    const glib = candidate();
+    const jq = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "jq" } });
+    const gh = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "gh" } });
+    const wget = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "wget" }, blocked: "Pinned" });
+    const snapshot = { instances: [brew], updates: [glib, jq, gh, wget], errors: [] };
+    // glib and jq stopped where sudo wanted the password: their rows have
+    // no checkbox (`holdsRow`), and no update is under way.
+    const password = (u: typeof glib) => u === glib || u === jq;
+    // gh still has its checkbox: an update to review, and two waiting.
+    expect(updatesSummary(snapshot, hiding(), password, () => false, password)).toEqual({
+      kind: "updates",
+      actionable: [gh],
+      password: 2,
+    });
+    // gh is under way: updating one, and two waiting.
+    expect(updatesSummary(snapshot, hiding(), (u) => u !== wget, (u) => u === gh, password)).toEqual({
+      kind: "updating",
+      count: 1,
+      password: 2,
+    });
+    // gh has just been updated: nothing to start, nothing under way, two
+    // waiting -- not "Nothing to update"; wget is under "Can't update here".
+    expect(updatesSummary(snapshot, hiding(), (u) => u !== wget, () => false, password)).toEqual({
+      kind: "needsPassword",
+      count: 2,
+      cantUpdateHere: 1,
+      hidden: 0,
+    });
+    // A hidden one waiting for the password is not counted: the Updates
+    // page does not list it.
+    expect(
+      updatesSummary(snapshot, hiding({ ignored_updates: [glib.key] }), (u) => u !== wget, () => false, password),
+    ).toEqual({ kind: "needsPassword", count: 1, cantUpdateHere: 1, hidden: 1 });
   });
 
   it("is up to date only with no update at all and every source checked", () => {
@@ -495,7 +537,7 @@ describe("updatesSummary", () => {
     const glib = candidate();
     expect(
       updatesSummary({ instances: [brew], updates: [glib], errors: [failed] }, hiding()),
-    ).toEqual({ kind: "updates", actionable: [glib] });
+    ).toEqual({ kind: "updates", actionable: [glib], password: 0 });
   });
 });
 

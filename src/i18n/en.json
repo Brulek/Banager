@@ -178,6 +178,10 @@
     "toolSetupLine": "Whether Terminal finds your tools, and how each source is doing.",
     "autoCheckLabel": "Check for updates"
   },
+  "overviewPassword": {
+    "title_one": "{{count}} update needs your password",
+    "title_other": "{{count}} updates need your password"
+  },
   "adapters": {
     "brew": "Homebrew",
     "npm": "npm",

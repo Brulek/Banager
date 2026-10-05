@@ -159,6 +159,9 @@
     "toolSetupLine": "終端機是否找得到這些工具，以及各來源是否正常。",
     "autoCheckLabel": "檢查更新的頻率"
   },
+  "overviewPassword": {
+    "title_other": "{{count}}個更新需要輸入密碼"
+  },
   "adapters": {
     "brew": "Homebrew",
     "npm": "npm",

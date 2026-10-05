@@ -84,6 +84,15 @@ export function passwordStepsOpId(progress: RowProgress | null): number | null {
 }
 
 /**
+ * Whether a row's update stopped where sudo wanted the Mac's password
+ * (`passwordStepsOpId`): what the Overview counts as 「需要输入密码」
+ * (`updatesSummary`), as the Updates page's headline does.
+ */
+export function waitsForPassword(op: OpSummary | null): boolean {
+  return op !== null && passwordStepsOpId(progressOf(op)) !== null;
+}
+
+/**
  * Whether an update takes its row: one still under way, one that worked
  * and stands in the row as "Updated" until the next refresh drops it, or
  * one that needs a password Banager cannot ask for (`isRetryable`). Such

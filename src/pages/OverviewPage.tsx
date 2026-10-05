@@ -23,7 +23,7 @@ import { failedLookupsOf, failedLookupsProblem } from "../lib/failedLookups";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance, Settings } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
-import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
+import { holdsRow, isUnderway, useUpdateOperationFor, waitsForPassword } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
 import { useNoticeValues, useSearchCommand, useShowSourceTool } from "../components/SourceNotices";
@@ -59,6 +59,8 @@ function headlineText(
       return t("overview.upToDate");
     case "updating":
       return t("overview.updating", { count: summary.count });
+    case "needsPassword":
+      return t("overviewPassword.title", { count: summary.count });
     case "nothingToUpdate":
       if (lookupsFailed > 0 && nothingChecked) return t("overview.nothingChecked");
       return summary.everyChecked && lookupsFailed === 0
@@ -76,13 +78,17 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
       return "upToDate";
     case "updating":
       return "busy";
+    // The warning glyph: updates are waiting on the user, in Terminal.
+    case "needsPassword":
+      return "failed";
     case "nothingToUpdate":
       return "quiet";
   }
 }
 
 /**
- * The line under "Nothing to update": what there is instead, in the
+ * The line under "Nothing to update", and under "N updates need your
+ * password": what there is besides, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
  * hid, the ones under its "Can't update here" -- or null when there is
  * none of that. A source not checked in full, and a check that did not
@@ -96,7 +102,7 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
  */
 function nothingToUpdateLine(
   t: Translate,
-  summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" }>,
+  summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" | "needsPassword" }>,
   showHidden: () => void,
   lookupsFailed: number,
 ): ReactNode {
@@ -465,6 +471,7 @@ export function OverviewPage() {
     settings,
     (candidate) => holdsRow(operationFor(candidate)),
     (candidate) => isUnderway(operationFor(candidate)),
+    (candidate) => waitsForPassword(operationFor(candidate)),
   );
 
   // First, the checks that did not finish this round, as the lists' first
@@ -534,13 +541,23 @@ export function OverviewPage() {
         </Popover>
       </>
     );
-  } else if (summary.kind === "nothingToUpdate") {
+  } else if (summary.kind === "nothingToUpdate" || summary.kind === "needsPassword") {
     line = nothingToUpdateLine(t, summary, showHiddenUpdates, lookupsFailed.length) ?? lastChecked;
-  } else if (summary.kind !== "updating") {
-    // Not when the check was, where part of it failed: 「上次检查：刚才」
-    // alone read as a check that had worked.
-    line =
-      lookupsFailed.length > 0 ? t("updates.lookupsFailedTitle", { count: lookupsFailed.length }) : lastChecked;
+  } else if (summary.kind === "updating") {
+    // How many wait for the password, as the Updates page's headline goes
+    // on after its "Updating N tools": 「13个需要输入密码」.
+    line = summary.password > 0 ? t("updates.needPasswordCount", { count: summary.password }) : null;
+  } else {
+    // Those waiting for the password, as the Updates page's headline says
+    // them after its count; then, where part of the check failed, how many
+    // were not looked up -- not when the check was: 「上次检查：刚才」 alone
+    // read as a check that had worked.
+    const parts: string[] = [];
+    if (summary.kind === "updates" && summary.password > 0) {
+      parts.push(t("updates.needPasswordCount", { count: summary.password }));
+    }
+    if (lookupsFailed.length > 0) parts.push(t("updates.lookupsFailedTitle", { count: lookupsFailed.length }));
+    line = parts.length > 0 ? parts.join(t("overview.listSeparator")) : lastChecked;
   }
 
   const checkAgainButton = (kind: "grey" | "default") => (
@@ -567,6 +584,13 @@ export function OverviewPage() {
         }}
         className={BUTTON.regular.default}
       >
+        {t("overview.reviewUpdates")}
+      </button>
+    );
+  } else if (summary.kind === "needsPassword") {
+    // Each row has the steps for Terminal (「查看步骤」): the Updates page.
+    button = (
+      <button type="button" onClick={() => setPage("updates")} className={BUTTON.regular.default}>
         {t("overview.reviewUpdates")}
       </button>
     );

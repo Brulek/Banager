@@ -372,11 +372,23 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   Not "Nothing to update" while that page shows them updating. An update
  *   that has finished and waits for the refresh that drops its row is not
  *   counted.
+ * - `needsPassword`: none left to start and none under way, and some
+ *   stopped where sudo wanted the Mac's password with no way to ask
+ *   (`waitsForPassword`) -- `count` of them: rows that still offer their
+ *   update, with no checkbox, as Terminal has to finish them. Never
+ *   "Nothing to update" over them (walk-4 W4-1), as the Updates page's
+ *   headline and the operation bar say 「13个需要输入密码」 of the same
+ *   rows. It carries `cantUpdateHere` and `hidden` as `nothingToUpdate`
+ *   does, for the line under the headline.
+ *
+ * `updates` and `updating` carry how many wait for the password too
+ * (`password`), which the Overview says under its headline.
  */
 export type UpdatesSummary =
-  | { kind: "updates"; actionable: UpdateCandidate[] }
+  | { kind: "updates"; actionable: UpdateCandidate[]; password: number }
   | { kind: "upToDate" }
-  | { kind: "updating"; count: number }
+  | { kind: "updating"; count: number; password: number }
+  | { kind: "needsPassword"; count: number; cantUpdateHere: number; hidden: number }
   | {
       kind: "nothingToUpdate";
       everyChecked: boolean;
@@ -389,21 +401,21 @@ export function updatesSummary(
   settings: HidingSettings,
   holdsRow: (candidate: UpdateCandidate) => boolean = () => false,
   underway: (candidate: UpdateCandidate) => boolean = () => false,
+  waitsForPassword: (candidate: UpdateCandidate) => boolean = () => false,
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
+  const password = actionable.filter(waitsForPassword).length;
   const startable = actionable.filter((candidate) => !holdsRow(candidate));
-  if (startable.length > 0) return { kind: "updates", actionable: startable };
+  if (startable.length > 0) return { kind: "updates", actionable: startable, password };
   const updating = actionable.filter(underway).length;
-  if (updating > 0) return { kind: "updating", count: updating };
+  if (updating > 0) return { kind: "updating", count: updating, password };
+  const listed = notHidden(snapshot.updates, settings).length;
+  const cantUpdateHere = listed - actionable.length;
+  const hidden = snapshot.updates.length - listed;
+  if (password > 0) return { kind: "needsPassword", count: password, cantUpdateHere, hidden };
   const everyChecked = everySourceChecked(snapshot.instances, snapshot.errors);
   if (snapshot.updates.length === 0 && everyChecked) return { kind: "upToDate" };
-  const listed = notHidden(snapshot.updates, settings).length;
-  return {
-    kind: "nothingToUpdate",
-    everyChecked,
-    cantUpdateHere: listed - actionable.length,
-    hidden: snapshot.updates.length - listed,
-  };
+  return { kind: "nothingToUpdate", everyChecked, cantUpdateHere, hidden };
 }
 
 /**

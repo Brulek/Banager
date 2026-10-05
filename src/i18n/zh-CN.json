@@ -159,6 +159,9 @@
     "toolSetupLine": "终端能否找到这些工具，各来源是否正常。",
     "autoCheckLabel": "检查更新的频率"
   },
+  "overviewPassword": {
+    "title_other": "{{count}}个更新需要输入密码"
+  },
   "adapters": {
     "brew": "Homebrew",
     "npm": "npm",

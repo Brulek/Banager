@@ -400,6 +400,72 @@ describe("OverviewPage", () => {
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
 
+  // walk-4 W4-1, on the Overview: after Update All, updates stopped where
+  // sudo wanted the Mac's password. The Updates page and the operation
+  // bar say 「2个需要输入密码」; the Overview said "Nothing to update".
+  describe("updates that stopped for the password", () => {
+    const SUDO_NO_TERMINAL =
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required";
+    const stopped = (id: number, name: string): OpSummary => ({
+      id,
+      kind: "Upgrade",
+      instance_id: brew.id,
+      artifact_kind: "Formula",
+      name,
+      status: "Done",
+      outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } },
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+    });
+    beforeEach(() => {
+      operations = [stopped(10, "jq"), stopped(9, "glib")];
+      useUiStore.setState({ page: "overview", selectedUpdates: [], updateTargets: { 9: "1.1.0", 10: "1.1.0" } });
+    });
+
+    it("says how many need the password, with a warning and Review Updates, never Nothing to update", async () => {
+      served = snapshotWith({ updates: [candidate(formula("glib")), candidate(formula("jq"))] });
+      const { findByRole, queryByRole, container } = renderOverview();
+
+      const headline = await findByRole("heading", { level: 2, name: "2 updates need your password" });
+      expect(queryByRole("heading", { level: 2, name: "Nothing to update" })).toBeNull();
+      expect(symbolOf(container).getAttribute("data-symbol")).toBe("failed");
+      expect(statusRowOf(container)).toContainElement(headline);
+      // The one thing to do: the Updates page, where each row has the steps.
+      const review = await findByRole("button", { name: "Review Updates" });
+      expect(review.className).toContain("bg-accent");
+      fireEvent.click(review);
+      expect(useUiStore.getState().page).toBe("updates");
+      // Nothing to select: Terminal finishes them.
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+    });
+
+    it("says them under the headline beside an update still to review", async () => {
+      served = snapshotWith({
+        updates: [candidate(formula("glib")), candidate(formula("jq")), candidate(formula("wget"))],
+      });
+      const { findByRole } = renderOverview();
+
+      const headline = await findByRole("heading", { level: 2, name: "1 tool can be updated" });
+      expect(headline.nextElementSibling).toHaveTextContent("2 need your password");
+    });
+
+    it.each([
+      ["zh-CN", "2个更新需要输入密码", "没有要更新的工具"],
+      ["zh-Hant", "2個更新需要輸入密碼", "沒有要更新的工具"],
+    ])("says it in %s too", async (language, title, nothing) => {
+      await i18n.changeLanguage(language);
+      try {
+        served = snapshotWith({ updates: [candidate(formula("glib")), candidate(formula("jq"))] });
+        const { findByRole, queryByRole } = renderOverview();
+
+        expect(await findByRole("heading", { level: 2, name: title })).toBeInTheDocument();
+        expect(queryByRole("heading", { level: 2, name: nothing })).toBeNull();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+  });
+
   it("keeps a row the user had already selected when Review updates adds the rest", async () => {
     served = snapshotWith({
       updates: [candidate(formula("glib")), candidate(formula("wget"))],
