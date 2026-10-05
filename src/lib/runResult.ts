@@ -20,6 +20,7 @@
 import type { OpSummary } from "./types";
 import type { Translate } from "./diagnostics";
 import { outcomeTone } from "./operations";
+import { outcomeCause } from "./failureCause";
 
 /** How many of `ops` ended each way, by `outcomeTone`. */
 export function runTally(ops: readonly OpSummary[]) {
@@ -52,9 +53,21 @@ export function failedRunWords(t: Translate, ops: readonly OpSummary[]): string 
       : t("batchUninstall.bar.notUninstalled", { count: notUninstalled });
   }
   const updates = ops.every((op) => op.kind === "Upgrade");
-  const parts = [
-    updates ? t("failureSteps.bar.updatesFailed", { count: failed }) : t("failureSteps.bar.failed", { count: failed }),
-  ];
+  // Updates that stopped where sudo wanted the Mac's password, with no
+  // way to ask (`needsPassword`), said as that -- 「13个需要输入密码」, as
+  // their rows say it -- not as failures (walk-4 W4-1): Terminal finishes
+  // them, with the steps their logs give.
+  const password = updates ? ops.filter((op) => outcomeCause(op.outcome) === "needsPassword").length : 0;
+  const otherFailed = failed - password;
+  const parts: string[] = [];
+  if (otherFailed > 0) {
+    parts.push(
+      updates
+        ? t("failureSteps.bar.updatesFailed", { count: otherFailed })
+        : t("failureSteps.bar.failed", { count: otherFailed }),
+    );
+  }
+  if (password > 0) parts.push(t("failureSteps.bar.needPassword", { count: password }));
   if (succeeded > 0) parts.push(t("failureSteps.bar.succeeded", { count: succeeded }));
   if (attention > 0) parts.push(t("failureSteps.bar.needsAttention", { count: attention }));
   if (cancelled > 0) parts.push(t("failureSteps.bar.cancelled", { count: cancelled }));

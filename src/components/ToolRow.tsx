@@ -517,12 +517,31 @@ export function ToolRow({
   // What the description's line says before the description, in order,
   // set apart from it and from each other by a dot: the status word, then
   // an update's versions (beside the inspector).
+  const hasLeading = statusInline || versionInline;
+  // Whether the description keeps its place on the line (measured below).
+  const descriptionShown = !hasLeading || descriptionFits;
   const leading: Array<{ key: string; node: ReactNode }> = [];
   if (statusInline) {
     leading.push({
       key: "status",
+      // Whole while the description is there to give way to it. Once the
+      // description has left the line, a word still wider than the line
+      // -- "Updates when run", "Not Found in Terminal" beside the inspector
+      // at 800 -- is cut short, its ⓘ kept, rather than run on under the
+      // button after it (walk-4 W4-2): the word's tooltip and the ⓘ's
+      // name say it whole. Alone on the line, it may take all but 1 of
+      // the 16 between the line and the button's column, as the words
+      // that fitted before ("Installed twice ⓘ") did, so only the words
+      // that ran under the button are cut.
       node: (
-        <span data-status="" className="relative z-10 flex shrink-0 items-center">
+        <span
+          data-status=""
+          className={`relative z-10 flex items-center ${
+            descriptionShown
+              ? "shrink-0"
+              : `min-w-0 [&>*]:min-w-0 ${versionInline || descriptionNote !== undefined ? "" : "-mr-[15px]"}`
+          }`}
+        >
           {status}
         </span>
       ),
@@ -552,7 +571,6 @@ export function ToolRow({
   // it stays, for its box to cut. A line with nothing before its
   // description -- every row but in a narrow list -- is not measured at
   // all: nothing on it can crowd the description out.
-  const hasLeading = leading.length > 0;
   // A model's path, before its description (`namePath`): what it says in
   // sight; a screen reader has heard it in the name.
   const lineText = namePath ? `${namePath.from} · ${description}` : description;
@@ -574,7 +592,6 @@ export function ToolRow({
     // still draw the row once more.
     if (fits !== descriptionFits) setDescriptionFits(fits);
   });
-  const descriptionShown = !hasLeading || descriptionFits;
   const descriptionText = (
     <span
       title={lineText}

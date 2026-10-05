@@ -73,6 +73,7 @@ import type {
   InstanceNote,
   InstalledArtifact,
   ManagerInstance,
+  OpSummary,
   Settings,
   UpdateCandidate,
 } from "../lib/types";
@@ -109,15 +110,35 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * the window's toolbar under its title (`useUpdatesHeadline`): 「10个可更新」.
  * With none, not "0 updates": the rows under "Can't update here" are real,
  * and simply not Banager's to update. While some are updating, how many,
- * and how many more have a checkbox.
+ * and how many more have a checkbox. After them, how many stopped where
+ * sudo wanted the Mac's password (`passwordStepsOpId`) -- rows that still
+ * offer their update, with no checkbox, as Terminal has to finish them --
+ * 「13个需要输入密码」, never "nothing to update" over them (walk-4 W4-1).
  */
-export function updatesHeadline(t: Translate, updatingCount: number, startableCount: number): string {
+export function updatesHeadline(
+  t: Translate,
+  updatingCount: number,
+  startableCount: number,
+  passwordCount = 0,
+): string {
+  const parts: string[] = [];
   if (updatingCount > 0) {
-    return startableCount > 0
-      ? `${t("overview.updating", { count: updatingCount })}${t("overview.listSeparator")}${t("updates.alsoCount", { count: startableCount })}`
-      : t("overview.updating", { count: updatingCount });
+    parts.push(t("overview.updating", { count: updatingCount }));
+    if (startableCount > 0) parts.push(t("updates.alsoCount", { count: startableCount }));
+  } else if (startableCount > 0) {
+    parts.push(t("updates.count", { count: startableCount }));
   }
-  return startableCount === 0 ? t("updates.noneActionable") : t("updates.count", { count: startableCount });
+  if (passwordCount > 0) parts.push(t("updates.needPasswordCount", { count: passwordCount }));
+  return parts.length === 0 ? t("updates.noneActionable") : parts.join(t("overview.listSeparator"));
+}
+
+/**
+ * Whether a row's update stopped where sudo wanted the Mac's password
+ * with no way to ask (`passwordStepsOpId`): the row keeps its update and
+ * the steps for Terminal, and no checkbox.
+ */
+function waitsForPassword(op: OpSummary | null): boolean {
+  return op !== null && passwordStepsOpId(progressOf(op)) !== null;
 }
 
 /**
@@ -154,12 +175,18 @@ export function useUpdatesHeadline(): string | null {
     (candidate) => inView(candidate) && isUnderway(operationFor(candidate)),
   ).length;
   const shown = startable.filter(inView).length;
+  const password = listed.actionable.filter(
+    (candidate) => inView(candidate) && waitsForPassword(operationFor(candidate)),
+  ).length;
   // Of only some: how many of how many, 「5个可更新，共13个」, so the
   // sidebar's 13 beside it does not read as wrong.
   if (show !== "all" && updating === 0 && shown > 0 && shown < startable.length) {
-    return t("clarity.updatesOfAll", { count: shown, total: startable.length });
+    const ofAll = t("clarity.updatesOfAll", { count: shown, total: startable.length });
+    return password > 0
+      ? `${ofAll}${t("overview.listSeparator")}${t("updates.needPasswordCount", { count: password })}`
+      : ofAll;
   }
-  return updatesHeadline(t, updating, shown);
+  return updatesHeadline(t, updating, shown, password);
 }
 
 /**
@@ -648,7 +675,7 @@ export function UpdatesPage() {
   // tool's own words being hidden while "Show technical details" is off:
   // an uncheckable row with a `Message` (`saysWhyInToolWords`, which the
   // count of tools that could not be checked starts from too). The page says once, over those
-  // rows, where to see why, counting these rows and no others -- a
+  // rows, how many have hidden check details and where to see them -- a
   // `NonRegistrySource` row already says its own reason. It claims a
   // diagnosis only where the tool's own words give one a person knows, the
   // same for every one of these rows (`sharedCannotCheckCause`): no

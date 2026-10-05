@@ -9,6 +9,7 @@ import type { Snapshot } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { CheckAgain } from "./PageHeader";
 import { SourceNotices, useNoticeFold } from "./SourceNotices";
+import { ListWidthProvider } from "./VirtualList";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -92,6 +93,38 @@ describe("SourceNotices, folded", () => {
     const more = screen.getByRole("button", { name: "2 more notes" });
     // Last in that line, after its own "Details".
     expect(screen.getByText("Homebrew is updating its software list").parentElement?.lastElementChild).toBe(more);
+  });
+
+  // walk-4 W4-3: beside the inspector at 800 the folded line read
+  // "uv i… ⓘ Check Again 2 more notes ▸".
+  it("in a list narrower than a row's status column, puts how many more on a line of its own, so the title keeps its room", () => {
+    renderWithProviders(
+      <ListWidthProvider value={332}>
+        <Folded notices={[uvSilent, brewStale, claudeUntested]} />
+      </ListWidthProvider>,
+    );
+
+    expect(linesShown()).toEqual(["uv isn't responding"]);
+    const line = screen.getByText("uv isn't responding").closest("[data-notice-line]") as HTMLElement;
+    const more = screen.getByRole("button", { name: "2 more notes" });
+    expect(line).not.toContainElement(more);
+    // On the grid 「收起」 is on once they show: the triangle in the icons'
+    // column, the words where the titles start.
+    expect(more.querySelector("[data-notice-symbol] svg")).not.toBeNull();
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(more);
+    expect(linesShown()).toEqual(["uv isn't responding", "Couldn't update Homebrew's software list", "Claude Code 2.1.290 not tested"]);
+    expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
+  });
+
+  it("keeps how many more at the end of the line in a list as wide as the narrowest window's", () => {
+    renderWithProviders(
+      <ListWidthProvider value={592}>
+        <Folded notices={[uvSilent, brewStale]} />
+      </ListWidthProvider>,
+    );
+    const line = screen.getByText("uv isn't responding").closest("[data-notice-line]") as HTMLElement;
+    expect(line.lastElementChild).toBe(screen.getByRole("button", { name: "1 more note" }));
   });
 
   it("shows the first warning, ahead of information that comes before it", () => {

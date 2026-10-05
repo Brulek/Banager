@@ -1,6 +1,7 @@
-import type { MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { batchSizeOf, MAX_BATCH_UNINSTALL, selectAllAction } from "../lib/batchUninstall";
+import { textMeasurer } from "../lib/middleCut";
 import { sizeText } from "../lib/sizes";
 import type { InstalledArtifact, Sizes } from "../lib/types";
 import { useUiStore } from "../store/ui";
@@ -20,13 +21,17 @@ export interface InstalledSelectionHeaderProps {
  * are ticked and about how much they take together -- 「已选择3个 · 约1.2
  * GB」 -- or, past the most one batch takes, that limit; while nothing is
  * ticked, what ticking is for: 「选择要一起卸载的工具」, with the limit where
- * the rows shown are more than one batch takes.
+ * the rows shown are more than one batch takes and the whole sentence has
+ * room (`limitFits`): beside the inspector at 800 it was cut mid-clause,
+ * "…together, up to…" (walk-4 W4-3), so there it says what ticking is for
+ * alone.
  */
 function statusOf(
   t: ReturnType<typeof useTranslation>["t"],
   shown: number,
   counted: readonly InstalledArtifact[],
   sizes: Sizes | undefined,
+  limitFits = true,
 ): string | null {
   const max = MAX_BATCH_UNINSTALL;
   if (counted.length > max) return t("batchUninstall.overLimit", { count: counted.length, max });
@@ -39,7 +44,7 @@ function statusOf(
   // Nothing ticked: what ticking is for, as the box's own 「全选」 says
   // nothing of it, and the Updates page's same box selects to update.
   if (shown === 0) return null;
-  return shown > max ? t("reviewFixes.selectHintLimit", { max }) : t("reviewFixes.selectHint");
+  return shown > max && limitFits ? t("reviewFixes.selectHintLimit", { max }) : t("reviewFixes.selectHint");
 }
 
 /**
@@ -56,14 +61,38 @@ export function InstalledSelectionHeader({ shown, counted, sizes }: InstalledSel
   const selectUninstalls = useUiStore((s) => s.selectUninstalls);
   const deselectUninstalls = useUiStore((s) => s.deselectUninstalls);
   const all = shown.length > 0 && counted.length === shown.length;
+  // Whether the hint with the limit in it has room on the line: measured
+  // from the words and the room the line leaves it, which is the same
+  // whichever it shows, again whenever that room changes. Nothing
+  // measured (jsdom): it does.
+  const said = useRef<HTMLParagraphElement>(null);
+  const [limitFits, setLimitFits] = useState(true);
+  const limitHint =
+    counted.length === 0 && shown.length > MAX_BATCH_UNINSTALL
+      ? t("reviewFixes.selectHintLimit", { max: MAX_BATCH_UNINSTALL })
+      : null;
+  useLayoutEffect(() => {
+    const line = said.current;
+    if (limitHint === null || line === null) return;
+    const measure = () => {
+      const room = line.clientWidth;
+      const width = room === 0 ? null : textMeasurer(line);
+      setLimitFits(width === null || width(limitHint) <= room);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [limitHint]);
   const toggleAll = () => {
     const keys = shown.map((artifact) => artifact.key);
     if (selectAllAction(shown.length, counted.length) === "select") selectUninstalls(keys);
     else deselectUninstalls(keys);
   };
   return (
-    <div data-selection-header="" className="flex h-7 shrink-0 items-center gap-3 border-b border-separator px-5">
-      <label className="flex min-w-0 items-center gap-3 text-body text-foreground">
+    <div data-selection-header="" className="flex min-h-7 shrink-0 items-center gap-3 border-b border-separator px-5">
+      {/* Whole, on one line: the hint after it gives way (walk-4 W4-3). */}
+      <label className="flex shrink-0 items-center gap-3 whitespace-nowrap text-body text-foreground">
         <input
           type="checkbox"
           ref={(box) => {
@@ -79,8 +108,8 @@ export function InstalledSelectionHeader({ shown, counted, sizes }: InstalledSel
           {t("batchUninstall.selectAll")}
         </span>
       </label>
-      <p role="status" data-selection-status="" className="ml-auto truncate text-small text-muted">
-        {statusOf(t, shown.length, counted, sizes)}
+      <p ref={said} role="status" data-selection-status="" className="min-w-0 flex-1 py-1 text-right text-small text-muted">
+        {statusOf(t, shown.length, counted, sizes, limitFits)}
       </p>
     </div>
   );

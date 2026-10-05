@@ -137,7 +137,7 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
 }
 
 /**
- * The same notice as one line of a list, 32 high (spec §3.8; the
+ * The same notice as one line of a list, at least 32 high (spec §3.8; the
  * disclosed rows in cork-outdated.png), in one kind of control: the icon
  * in the column the rows start with, the short title where their names
  * start, a muted ⓘ that shows the description in a popover -- no accent
@@ -165,11 +165,11 @@ export function SourceNoticeLine({
   const titleId = useId();
   return (
     <div className="flex flex-col">
-      <div data-notice-line="" className="flex h-8 min-w-0 items-center text-body">
+      <div data-notice-line="" className="flex min-h-8 min-w-0 items-center py-1 text-body">
         <span data-notice-symbol="" className={`flex shrink-0 justify-center ${columns.symbol}`}>
           <NoticeIcon variant={variant} />
         </span>
-        <span id={titleId} title={title} className={`min-w-0 truncate text-foreground ${columns.gap}`}>
+        <span id={titleId} title={title} className={`min-w-0 break-words text-foreground ${columns.gap}`}>
           {title}
         </span>
         {description ? (

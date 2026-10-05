@@ -25,7 +25,7 @@ describe("SourceNotice", () => {
 });
 
 describe("SourceNotice's look (spec §3.8)", () => {
-  it("draws a warning's line 32 high in one kind of control: a 16pt filled orange ⚠︎, the title, a muted ⓘ, and one small grey button", () => {
+  it("draws a warning's line at least 32 high in one kind of control: a 16pt filled orange ⚠︎, the title, a muted ⓘ, and one small grey button", () => {
     const { container, getByRole, getByText } = renderWithProviders(
       <SourceNoticeLine
         variant="warning"
@@ -37,13 +37,13 @@ describe("SourceNotice's look (spec §3.8)", () => {
       />,
     );
     const line = container.querySelector("[data-notice-line]") as HTMLElement;
-    expect(line).toHaveClass("h-8", "items-center", "text-body");
+    expect(line).toHaveClass("min-h-8", "items-center", "text-body");
     const icon = line.querySelector("[data-notice-symbol] > svg") as SVGElement;
     expect(icon.getAttribute("width")).toBe("16");
     expect(icon.getAttribute("class")).toContain("text-warning");
     // Filled, with the mark cut out in white: not an outline.
     expect(icon.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
-    expect(getByText("Ollama isn't running")).toHaveClass("text-foreground", "truncate");
+    expect(getByText("Ollama isn't running")).toHaveClass("text-foreground", "break-words");
     // The description behind a muted ⓘ, named for its notice -- no words,
     // no accent: not a link.
     const details = getByRole("button", { name: "Details: Ollama isn't running" });

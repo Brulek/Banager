@@ -14,6 +14,7 @@ import { NOTICE_GRID, SourceNotice, SourceNoticeLine, type NoticeGrid } from "./
 import { DisclosureIcon } from "./icons";
 import { useMinuteClock } from "./PageHeader";
 import { InfoDetail } from "./InfoDetail";
+import { useRowFit } from "./VirtualList";
 
 /**
  * The look of the fold's own buttons, 「还有N条提示」 and 「收起」: a
@@ -177,6 +178,11 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   // because their number changed leave the focus where it was.
   const toggled = useRef(false);
   const expanded = fold?.expanded ?? false;
+  // The list this is the first line of, where it is one (`VirtualList`):
+  // narrower than a row's status column, the fold's toggle takes a line of
+  // its own (below).
+  const fit = useRowFit();
+  const foldOnOwnLine = fit === "minimal" || fit === "slim" || fit === "tiny";
   useEffect(() => {
     if (!toggled.current) return;
     toggled.current = false;
@@ -289,6 +295,34 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
 
   if (!expanded) {
     const shown = notices.find((notice) => notice.variant === "warning") ?? notices[0];
+    if (foldOnOwnLine) {
+      // A list narrower than a row's status column (`narrow`), as beside
+      // the inspector: 「还有N条提示」 on its own line under the notice, as
+      // 「收起」 is once they show, so the title keeps the room to say what
+      // is wrong -- not 「uv没有…」 (walk-4 W4-3).
+      return lines(
+        <>
+          <div id={linesId} className="flex flex-col">
+            {noticeView(shown)}
+          </div>
+          <div className="flex h-8 items-center">
+            <button
+              ref={toggleRef}
+              type="button"
+              aria-expanded={false}
+              aria-controls={linesId}
+              onClick={() => toggle(true)}
+              className={FOLD_TOGGLE_CLASS}
+            >
+              <span data-notice-symbol="" className={`flex shrink-0 justify-center ${columns.symbol}`}>
+                <FoldTriangle expanded={false} />
+              </span>
+              <span className={columns.gap}>{t("sourceNotice.more", { count: notices.length - 1 })}</span>
+            </button>
+          </div>
+        </>,
+      );
+    }
     return lines(
       <div id={linesId} className="flex flex-col">
         {noticeView(

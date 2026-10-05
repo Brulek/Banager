@@ -28,8 +28,13 @@ export interface StatusChipProps {
   tone?: "neutral" | "danger" | "warning";
 }
 
-/** The word's look: 11/14 in the regular weight, on one line, no fill and no outline (spec §3.4). */
-const WORD_BASE = "inline-flex items-center gap-1 whitespace-nowrap text-small font-normal";
+/**
+ * The word's look: 11/14 in the regular weight, on one line, no fill and
+ * no outline (spec §3.4). Where its place is narrower than the word (a
+ * row's description line beside the inspector, `ToolRow`), the word is
+ * cut short and its symbols kept.
+ */
+const WORD_BASE = "inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-small font-normal";
 const WORD_TONES = {
   neutral: "text-muted",
   warning: "text-muted",
@@ -50,7 +55,9 @@ export function StatusChip({ label, detail, ariaLabel, align = "end", tone = "ne
   const content = (
     <>
       {tone === "warning" ? <WarningFilledIcon size={12} className="shrink-0 text-warning" /> : null}
-      {label}
+      <span data-status-label="" title={label} className="min-w-0 truncate">
+        {label}
+      </span>
     </>
   );
   if (detail === undefined) {

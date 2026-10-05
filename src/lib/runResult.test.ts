@@ -64,6 +64,32 @@ describe("failedRunWords", () => {
     ).toBe("1个更新失败，1个已成功，1个需要查看，1个已取消");
   });
 
+  // walk-4 W4-1: an update that stopped at sudo's password is not said
+  // as a failure; its row says 「需要输入密码」 and keeps its update.
+  const password: Outcome = {
+    Failed: {
+      exit_code: 1,
+      summary:
+        "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+    },
+  };
+
+  it("says updates that stopped at the Mac password as needing it, apart from the ones that failed", async () => {
+    expect(failedRunWords(t, [op(1, password), op(2, password), op(3, password)])).toBe("3 need your password");
+    expect(failedRunWords(t, [op(1, password)])).toBe("1 needs your password");
+    expect(failedRunWords(t, [op(1, failed), op(2, password), op(3, password), op(4, "Succeeded")])).toBe(
+      "1 update failed, 2 need your password, 1 succeeded",
+    );
+    // A run of other kinds keeps its plain failures.
+    expect(failedRunWords(t, [op(1, password, "Uninstall")])).toBe("1 wasn't uninstalled");
+
+    await i18n.changeLanguage("zh-CN");
+    expect(failedRunWords(t, [op(1, password), op(2, password), op(3, password)])).toBe("3个需要输入密码");
+    expect(failedRunWords(t, [op(1, failed), op(2, password), op(3, password), op(4, "Succeeded")])).toBe(
+      "1个更新失败，2个需要输入密码，1个已成功",
+    );
+  });
+
   it("says uninstalls in the result block's words, and a run of several kinds as plain failures", async () => {
     const uninstalls = [op(1, failed, "Uninstall"), op(2, "Succeeded", "Uninstall"), op(3, "Succeeded", "Uninstall")];
     expect(failedRunWords(t, uninstalls)).toBe("Uninstalled 2; 1 wasn't uninstalled");

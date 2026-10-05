@@ -708,6 +708,49 @@ describe("ToolRow", () => {
       }
     });
 
+    // walk-4 W4-2: at 800 beside the inspector, "Updates when run ⓘ" was
+    // wider than its line and ran on under the Uninstall… button after it.
+    it("beside the inspector, cuts short a status word wider than its line once the description has gone, rather than run under the button", () => {
+      const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        const width =
+          this.querySelector(":scope > [data-description]") !== null
+            ? 93
+            : this.hasAttribute("data-status")
+              ? 112
+              : this.hasAttribute("data-line-dot")
+                ? (this.textContent?.length ?? 0) * 7
+                : 0;
+        return new DOMRect(0, 0, width, 16);
+      });
+      try {
+        const { getByText, getByRole } = renderWithProviders(
+          <ListWidthProvider value={332}>
+            <ToolRow
+              adapterId="antigravity"
+              sourceLabel="Antigravity CLI"
+              name="Antigravity CLI"
+              description="Google's coding agent"
+              status={<StatusChip label="Updates when run" detail={<p>Why.</p>} />}
+              action={<button type="button">Uninstall…</button>}
+            />
+          </ListWidthProvider>,
+        );
+        expect(getByText("Google's coding agent").className).toBe("sr-only");
+        const status = getByText("Updates when run").closest("[data-status]") as HTMLElement;
+        // Free to be narrower than the word, and so is what it holds.
+        expect(status.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "[&>*]:min-w-0"]));
+        expect(status.className).not.toContain("shrink-0");
+        // Alone on the line, it may run 15 into the 16 before the button's
+        // column, as the words that fitted before did.
+        expect(status.className.split(" ")).toContain("-mr-[15px]");
+        expect(getByText("Updates when run").className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+        // The button keeps its column.
+        expect(getByRole("button", { name: "Uninstall…" }).parentElement?.className).toContain("shrink-0");
+      } finally {
+        box.mockRestore();
+      }
+    });
+
     it("in a list too narrow for the button, gives it up as well and keeps the ⋯ and the status word", () => {
       const { container, getByText, getByRole, queryByRole } = renderWithProviders(
         <ListWidthProvider value={291}>

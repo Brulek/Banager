@@ -1260,6 +1260,10 @@ function placeName(t: Translate, instance: ManagerInstance): string {
   if (instance.adapter_id === "brew" && Object.prototype.hasOwnProperty.call(HOMEBREW_PLACE_KEYS, prefix)) {
     return t(HOMEBREW_PLACE_KEYS[prefix]);
   }
+  // A known installation location, not a guess from any folder named homebrew.
+  if (instance.adapter_id === "pip" && (prefix === "/opt/homebrew" || prefix.startsWith("/opt/homebrew/"))) {
+    return t("adapters.brew");
+  }
   const shown = withHomeAsTilde(prefix);
   return lastTellingPart(shown) ?? shown;
 }

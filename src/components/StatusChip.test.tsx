@@ -11,7 +11,7 @@ function atRest(className: string): string[] {
 describe("StatusChip", () => {
   it("is a word, 11 muted in the regular weight: no pill, no fill, no outline", () => {
     const { getByText } = renderWithProviders(<StatusChip label="Pinned" />);
-    const word = getByText("Pinned");
+    const word = getByText("Pinned").closest("[data-status-word]") as HTMLElement;
     expect(atRest(word.className)).toEqual(expect.arrayContaining(["text-small", "font-normal", "text-muted"]));
     expect(word.className).not.toMatch(/rounded-full|\bbg-|border|px-|font-medium/);
   });
@@ -35,18 +35,34 @@ describe("StatusChip", () => {
 
   it("says a failure in the red that reads as text", () => {
     const { getByText } = renderWithProviders(<StatusChip label="Couldn't update" tone="danger" />);
-    expect(atRest(getByText("Couldn't update").className)).toContain("text-danger-text");
-    expect(getByText("Couldn't update").className).not.toContain("text-muted");
+    const word = getByText("Couldn't update").closest("[data-status-word]") as HTMLElement;
+    expect(atRest(word.className)).toContain("text-danger-text");
+    expect(word.className).not.toContain("text-muted");
   });
 
   it("marks a warning with a 12pt filled orange ⚠︎ before a muted word", () => {
     const { getByText } = renderWithProviders(<StatusChip label="Result differs" tone="warning" />);
-    const word = getByText("Result differs");
+    const word = getByText("Result differs").closest("[data-status-word]") as HTMLElement;
     expect(atRest(word.className)).toContain("text-muted");
     const mark = word.firstElementChild as SVGElement;
     expect(mark.tagName.toLowerCase()).toBe("svg");
     expect(mark.getAttribute("width")).toBe("12");
     expect(mark.getAttribute("class")).toContain("text-warning");
     expect(mark.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+  });
+
+  // walk-4 W4-2: in a place narrower than it, the word is cut short with
+  // its symbols kept, and says itself whole in its tooltip.
+  it("can be cut short, the word alone, and keeps its whole words in a tooltip", () => {
+    const { getByText, getByRole } = renderWithProviders(
+      <StatusChip label="Updates when run" detail={<p>Why.</p>} tone="warning" />,
+    );
+    const label = getByText("Updates when run");
+    expect(label.getAttribute("title")).toBe("Updates when run");
+    expect(atRest(label.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    const button = getByRole("button", { name: "Updates when run" });
+    expect(atRest(button.className)).toContain("min-w-0");
+    // The ⚠︎ and the ⓘ are not cut.
+    for (const mark of Array.from(button.querySelectorAll("svg"))) expect(mark.getAttribute("class")).toContain("shrink-0");
   });
 });

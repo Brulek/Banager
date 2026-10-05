@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { InstalledSelectionHeader, UninstallSelectedButton } from "./InstalledSelectionHeader";
@@ -92,6 +92,44 @@ describe("the Installed list's header", () => {
 
     rerender(<InstalledSelectionHeader shown={rows(23)} counted={rows(23)} sizes={undefined} />);
     expect(status()).toBe("23 selected. Up to 20 can be uninstalled at a time");
+  });
+
+  // walk-4 W4-3: beside the inspector at 800, "Select All" took two lines
+  // and the hint was cut mid-clause: "…together, up to…".
+  it("keeps Select All on one line, and says the hint without the limit where the whole sentence has no room", async () => {
+    // A font 6 wide a character; the line 200 wide: the hint with the
+    // limit does not fit. The shorter hint may wrap rather than lose words.
+    const measurer = await import("../lib/middleCut");
+    const measure = vi.spyOn(measurer, "textMeasurer").mockReturnValue((text: string) => text.length * 6);
+    const room = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-selection-status") ? 200 : 0;
+    });
+    let resize = () => {};
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) { resize = callback; }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const many = rows(MAX_BATCH_UNINSTALL + 1);
+      renderWithProviders(<InstalledSelectionHeader shown={many} counted={[]} sizes={undefined} />);
+      expect(status()).toBe("Select tools to uninstall together");
+      const label = box().closest("label") as HTMLElement;
+      expect(label.className.split(" ")).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap"]));
+
+      // Room for all of it again: the limit comes back.
+      room.mockImplementation(function (this: HTMLElement) {
+        return this.hasAttribute("data-selection-status") ? 400 : 0;
+      });
+      act(() => resize());
+      expect(status()).toBe("Select tools to uninstall together, up to 20 at a time");
+    } finally {
+      measure.mockRestore();
+      room.mockRestore();
+      globalThis.ResizeObserver = Observer;
+    }
   });
 
   it("says about how much the ticked rows take, hedged by the weakest", () => {

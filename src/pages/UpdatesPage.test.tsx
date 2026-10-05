@@ -21,6 +21,7 @@ import type {
   OpSummary,
   Settings,
   Snapshot,
+  UpdateCandidate,
   Warning,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
@@ -884,7 +885,7 @@ describe("UpdatesPage", () => {
       "Couldn't find its latest version.",
     ]);
     // Not counted as tools a later check could get to: no notice up front
-    // (the line over the rows, "2 tools couldn't be checked for updates.",
+    // (the line over the rows, "Check details are hidden for 2 of these tools.",
     // counts every row whose why is in the tools' words).
     expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
   });
@@ -1554,7 +1555,7 @@ describe("UpdatesPage", () => {
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
     expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
     // ...and, once for the page, a button that shows the rest.
-    const summary = queryAllByText(/3 tools couldn't be checked for updates/);
+    const summary = queryAllByText(/Check details are hidden for 3 of these tools/);
     expect(summary).toHaveLength(1);
     expect(within(summary[0].parentElement as HTMLElement).getByRole("button", { name: "Show Reasons" })).toBeEnabled();
   });
@@ -1579,12 +1580,12 @@ describe("UpdatesPage", () => {
 
     await findByText("70 more can't be updated here");
     await showCantUpdate();
-    const summary = queryAllByText(/70 tools couldn't be checked for updates/);
+    const summary = queryAllByText(/Check details are hidden for 70 of these tools/);
     expect(summary).toHaveLength(1);
     // The sentence says what happened, and a button next to it shows why,
     // rather than a sentence saying which setting to find where.
     expect(summary[0].textContent).toBe(
-      "70 tools couldn't be checked for updates. The connection failed. Check your internet connection, then try again.",
+      "Check details are hidden for 70 of these tools. The connection failed. Check your internet connection, then try again.",
     );
     expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
   });
@@ -1603,8 +1604,8 @@ describe("UpdatesPage", () => {
     try {
       const { findByText } = renderPage();
       fireEvent.click(await findByText("另有2个无法在这里更新"));
-      expect((await findByText(/^2个工具无法检查更新。/)).textContent).toBe(
-        "2个工具无法检查更新。网络连接失败，请检查网络连接后重试。",
+      expect((await findByText(/^其中2个工具的检查详情已隐藏。/)).textContent).toBe(
+        "其中2个工具的检查详情已隐藏。网络连接失败，请检查网络连接后重试。",
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -1630,8 +1631,8 @@ describe("UpdatesPage", () => {
     ];
     const first = renderPage();
     await showCantUpdate();
-    expect((await first.findByText(/2 tools couldn't be checked for updates/)).textContent).toBe(
-      "2 tools couldn't be checked for updates.",
+    expect((await first.findByText(/Check details are hidden for 2 of these tools/)).textContent).toBe(
+      "Check details are hidden for 2 of these tools.",
     );
     first.unmount();
 
@@ -1641,8 +1642,8 @@ describe("UpdatesPage", () => {
     ];
     const second = renderPage();
     await showCantUpdate();
-    expect((await second.findByText(/2 tools couldn't be checked for updates/)).textContent).toBe(
-      "2 tools couldn't be checked for updates.",
+    expect((await second.findByText(/Check details are hidden for 2 of these tools/)).textContent).toBe(
+      "Check details are hidden for 2 of these tools.",
     );
   });
 
@@ -1680,7 +1681,7 @@ describe("UpdatesPage", () => {
     const { findByText, getByRole, queryByText } = renderPage();
 
     await showCantUpdate();
-    await findByText(/^2 tools couldn't be checked for updates\./);
+    await findByText(/^Check details are hidden for 2 of these tools\./);
     const showReasons = getByRole("button", { name: "Show Reasons" });
     // Where it goes, in its tooltip: the setting it turns on.
     expect(showReasons).toHaveAttribute("title", "Turns on “Show technical details” in Settings");
@@ -1694,11 +1695,34 @@ describe("UpdatesPage", () => {
       ...before,
       show_technical_details: true,
     });
-    await waitFor(() => expect(queryByText(/couldn't be checked for updates/)).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument());
     const detail = chipDetail(await findRow("requests"), "Can't check");
     expect(detail).toHaveTextContent("npm outdated -g: npm error code ENOTFOUND");
     // The cause in a person's words stays, before the tool's own.
     expect(detail).toHaveTextContent("The connection failed.");
+  });
+
+  it.each(["en", "zh-CN"])("counts hidden check details, not every Can't check row, in %s", async (lang) => {
+    updates = [
+      { key: myForkKey, current: "1", target: "1", channel: "Registry", checkable: false, warnings: ["NonRegistrySource"], blocked: null },
+      ...["rustup", "tokei"].map((name): UpdateCandidate => ({
+        key: { ...myForkKey, name }, current: "1", target: "1", channel: "Registry", checkable: false,
+        warnings: [{ Message: "TLS certificate refused" }], blocked: null,
+      })),
+    ];
+    await i18n.changeLanguage(lang);
+    try {
+      const { findByText, getAllByText, getByRole } = renderPage();
+      fireEvent.click(await findByText(lang === "en" ? "3 more can't be updated here" : "另有3个无法在这里更新"));
+      expect(await findByText(lang === "en"
+        ? "Check details are hidden for 2 of these tools."
+        : "其中2个工具的检查详情已隐藏。")).toBeInTheDocument();
+      expect(getAllByText(lang === "en" ? "Can't check" : "无法检查")).toHaveLength(3);
+      fireEvent.click(getByRole("button", { name: lang === "en" ? "Show Reasons" : "显示原因" }));
+      await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("does not count a row with its own reason in the page's cannot-check line", async () => {
@@ -1720,7 +1744,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     await findRow("my-fork");
-    expect(queryByText(/of these for updates/)).not.toBeInTheDocument();
+    expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument();
   });
 
   it("shows the tool's own error text once Show technical details is on, under the plain sentence", async () => {
@@ -1750,7 +1774,7 @@ describe("UpdatesPage", () => {
     ]);
     // The rows already carry the tools' words, so the page's line --
     // which exists to point at this switch -- has nothing to add.
-    expect(queryByText(/of these for updates/)).not.toBeInTheDocument();
+    expect(queryByText(/Check details are hidden/)).not.toBeInTheDocument();
   });
 
   it("gives a reason that was written for this audience with technical details off", async () => {
@@ -3248,10 +3272,50 @@ describe("UpdatesPage", () => {
       expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
       expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
       expect(within(glib).queryByRole("checkbox")).toBeNull();
-      // Out of the count, Select all and Update all: a retry could only stop at sudo again.
-      expect(await findByText("1 update available")).toBeInTheDocument();
+      // Out of the count, Select all and Update all: a retry could only
+      // stop at sudo again. Said after the count, as still to be done.
+      expect(await findByText("1 update available, 1 needs your password")).toBeInTheDocument();
       fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+    });
+
+    // walk-4 W4-1: after Update All, every update stopped at sudo's
+    // password. The rows still offer their updates; the header said
+    // "Nothing to update here" over them.
+    const SUDO_NO_TERMINAL =
+      "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required";
+    function everyUpdateStoppedAtThePassword() {
+      operations = [
+        operation(onyxKey, { id: 10, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } } }),
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } } }),
+      ];
+      started(9, "2.90.0");
+      started(10, "5.1.0");
+    }
+
+    it("says how many need the password, never that nothing is left to update, when every update stopped there", async () => {
+      everyUpdateStoppedAtThePassword();
+      const { findByText, queryByText, getByRole } = renderPage();
+
+      expect(await findByText("2 need your password")).toBeInTheDocument();
+      expect(queryByText("Nothing to update here")).toBeNull();
+      expect(within(rowOf("glib")).getByText("Needs your password")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Needs your password")).toBeInTheDocument();
+      // Still nothing Update All could start: Terminal has to finish them.
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
+    });
+
+    it("says it in Chinese too", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        everyUpdateStoppedAtThePassword();
+        const { findByText, queryByText } = renderPage();
+
+        expect(await findByText("2个需要输入密码")).toBeInTheDocument();
+        expect(queryByText("这里没有可更新的工具")).toBeNull();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
     });
 
     it("keeps Retry where a password window asked and got no password: it can ask again", async () => {
@@ -4184,7 +4248,7 @@ describe("UpdatesPage", () => {
   });
 
   describe("source notices", () => {
-    it("puts a silent source's notice in the list's first row, 32 high, with its button in the line", async () => {
+    it("puts a silent source's notice in the list's first row, at least 32 high, with its button in the line", async () => {
       instances = [...snapshot.instances, stoppedOllama];
       const { findByText, getByRole, queryByText } = renderPage();
 
@@ -4195,11 +4259,11 @@ describe("UpdatesPage", () => {
       expect(slotOf(await findRow("glib"))).toBe(1);
       const header = getByRole("checkbox", { name: SELECT_ALL });
       expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      // A line of the list: 32 high, 20 in from the edge as the rows are,
+      // A line of the list: at least 32 high, 20 in from the edge as the rows are,
       // on their grid -- the ⚠︎ in the avatars' column, the title where
       // the names start -- over a hairline as a row's.
       const line = notice.closest("[data-notice-line]") as HTMLElement;
-      expect(line.className.split(" ")).toContain("h-8");
+      expect(line.className.split(" ")).toContain("min-h-8");
       expect((line.closest("[data-list-slot] > div") as HTMLElement).className.split(" ")).toContain("px-5");
       expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
         expect.arrayContaining(["ml-7", "w-8"]),
@@ -4237,7 +4301,7 @@ describe("UpdatesPage", () => {
       const header = getByRole("checkbox", { name: SELECT_ALL });
       expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       const line = notice.closest("[data-notice-line]") as HTMLElement;
-      expect(line.className.split(" ")).toContain("h-8");
+      expect(line.className.split(" ")).toContain("min-h-8");
       expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
         expect.arrayContaining(["ml-7", "w-8"]),
       );
