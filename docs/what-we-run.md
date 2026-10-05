@@ -1383,23 +1383,60 @@ replaces a newer prerelease. Versions that cannot be compared are "could
 not check". Cargo has no search command Banager uses.
 
 Upgrade planning also reads the saved `features`, `all_features`,
-`no_default_features`, `profile` and `target`. Any saved build choice is
-replayed as Cargo flags, and forces a source build with the existing
-"compiles locally" warning, even when cargo-binstall is available. An
-ambiguous or malformed install record is refused.
+`no_default_features`, `profile`, `target` and `rustc`
+(`BuildChoices` in `adapters/cargo.rs`). Cargo writes a profile and a
+target into every record, also for a plain `cargo install`, so only a
+choice that differs from what cargo picks by itself counts: any feature,
+`all_features`, `no_default_features`, a profile other than `release`
+(`--debug` is saved as `dev`), and a target that differs from the
+`host:` line of the saved `rustc -vV` — the machine the compiler ran on,
+which is what cargo builds for when it is not given `--target`. Those
+choices are replayed as Cargo flags and force a source build with the
+existing "compiles locally" warning, even when cargo-binstall is
+available. A crate installed with cargo's defaults has no build choice,
+and its upgrade uses cargo-binstall when it is found. A record whose
+target is its own compiler's host — a `~/.cargo` that Migration Assistant
+brought from an Intel Mac says `x86_64-apple-darwin` for both — is
+upgraded for this Mac, as a fresh `cargo install` would build it; no
+`--target` is passed, so the upgrade never asks for a standard library
+this Mac's Rust may not have. A record that names no compiler host
+passes no `--target` either. An ambiguous or malformed install record is
+refused.
 
 **Write commands:**
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
-| Install, cargo-binstall found | `<cargo-binstall> -y --root {root} --index https://github.com/rust-lang/crates.io-index {name}` | 1800 s | No |
+| Install, cargo-binstall found | `<cargo-binstall> -y --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
 | Install, otherwise | `<cargo> install --root {root} --index https://github.com/rust-lang/crates.io-index {name}` (previewed with a "compiles locally" warning) | 1800 s | No |
-| Upgrade, cargo-binstall found and no saved build choices | `<cargo-binstall> -y --force --root {root} --index https://github.com/rust-lang/crates.io-index {name}` | 1800 s | No |
+| Upgrade, cargo-binstall found and no saved build choices | `<cargo-binstall> -y --force --root {root} --index sparse+https://index.crates.io/ {name}` | 1800 s | No |
 | Upgrade, otherwise | `<cargo> install --force --root {root} --index https://github.com/rust-lang/crates.io-index [saved build flags] {name}` (same warning) | 1800 s | No |
 | Uninstall | `<cargo> uninstall --root {root} {name}` | 300 s | No |
 
 The explicit index binds installation to the crates.io identity checked
-above even when `registry.default` selects another registry.
+above even when `registry.default` selects another registry. Each program
+is given crates.io's index in the form that keeps it on the index host it
+reaches with no flag:
+
+- `cargo` is given `https://github.com/rust-lang/crates.io-index`,
+  crates.io's own name for its index. Cargo takes that address for its
+  built-in crates-io source, so it reads the index where it reads it
+  without the flag: `index.crates.io` (cargo's default sparse protocol),
+  or the mirror a `[source.crates-io]` replacement names. It contacts
+  github.com for the index only when the user's own Cargo settings choose
+  the git protocol for crates.io (`registries.crates-io.protocol`).
+- `cargo-binstall` is given `sparse+https://index.crates.io/`, the index
+  it uses by default since version 1.3.0, so it reads `index.crates.io`
+  as it does without the flag. It is never given the github.com address:
+  binstall reads any index address without `sparse+` as a git index and
+  would download the whole crates.io index from github.com on every run.
+  cargo-binstall 1.1 and 1.2 asked crates.io's API instead by default;
+  versions before 1.1 do not accept `--index` and stop with an error
+  before connecting anywhere.
+
+Where each program then downloads the crate or the prebuilt binary from
+is its own choice, unchanged by these flags (the last paragraph of
+"Network: Banager only connects to these hosts", below).
 
 `--force` here is cargo's own flag, meaning "reinstall even though a
 version of this crate is already installed" — it is how cargo upgrades a
@@ -3478,7 +3515,12 @@ The tools Banager runs make their own connections — `brew`, `npm`, `pip`,
 `rustup self update`, `grok update --check --json` and `grok update` each
 reach whatever index, registry or release server they are configured to
 use. Those are the tools' connections, under the tools' configuration;
-Banager neither chooses nor sees them.
+Banager neither chooses nor sees them. One flag narrows them: Cargo's
+install and upgrade commands name crates.io's index, so that a
+`registry.default` naming another registry cannot swap the crate for a
+namesake. Each is given the index it reads when nothing else is
+configured, `index.crates.io`, and cargo still follows a
+`[source.crates-io]` mirror (Cargo section).
 
 ## What Banager never does
 

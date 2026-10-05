@@ -35,7 +35,29 @@ fn parse_install_key(key: &str) -> Option<(String, String, String)> {
     Some((name, version, source.to_string()))
 }
 
+/// crates.io's index as cargo names it, passed to `cargo install
+/// --index` so a `registry.default` naming another registry cannot
+/// swap the crate Banager checked against crates.io for a namesake.
+/// Cargo takes this URL for its own crates-io source (cargo 1.98.1
+/// `SourceId::for_registry` makes the id `SourceId::crates_io` makes:
+/// same kind, same canonical URL), so the user's `[source.crates-io]`
+/// replacement and the sparse protocol still apply, and cargo reaches
+/// the hosts it reaches with no flag -- `index.crates.io` by default.
 const CRATES_IO_INDEX: &str = "https://github.com/rust-lang/crates.io-index";
+
+/// crates.io's sparse index, passed to `cargo-binstall --index` for the
+/// same reason. Not `CRATES_IO_INDEX`: binstall reads any `--index`
+/// without `sparse+` as a git registry and shallow-clones the whole
+/// index from github.com on every run (binstalk-registry
+/// `GitRegistry::new`). This URL is binstall's own default since 1.3.0
+/// (`Registry::default`, `crates_io_sparse_registry`), the index it
+/// reaches with no flag and no `registry.default`, so the flag adds no
+/// host. (1.1 and 1.2 defaulted to crates.io's API instead; before 1.1
+/// there is no `--index`, and binstall stops on the unknown flag before
+/// connecting anywhere.) Not `--registry crates-io`: binstall 1.4-1.10
+/// fail on that name with "unknown registry name" unless the user has
+/// configured an index for it.
+const CRATES_IO_SPARSE_INDEX: &str = "sparse+https://index.crates.io/";
 
 fn is_crates_io(source: &str) -> bool {
     matches!(
@@ -111,8 +133,21 @@ struct Crates2Install {
     bins: Vec<String>,
 }
 
+/// The profile `cargo install` builds with when it is given no
+/// `--profile` or `--debug` (cargo 1.98.1 `commands/install.rs`: the
+/// `install.profile` setting, else `release`). Cargo writes the profile
+/// into every `.crates2.json` record, so this one is no choice.
+const DEFAULT_INSTALL_PROFILE: &str = "release";
+
 /// Build choices saved by Cargo. Replayed only for upgrades; a binary
 /// installer cannot promise to preserve these source-build options.
+///
+/// Cargo writes `profile` and `target` into *every* record (the recorded
+/// fixture `adapters/fixtures/cargo/1.98.1/crates2.json`:
+/// `"profile":"release","target":"aarch64-apple-darwin"` for a plain
+/// `cargo install hexyl`), so their mere presence says nothing about
+/// what the user asked for. Only a value that differs from what cargo
+/// would pick by itself is a choice (`args`).
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct BuildChoices {
@@ -121,9 +156,18 @@ struct BuildChoices {
     no_default_features: bool,
     profile: Option<String>,
     target: Option<String>,
+    /// `rustc -vV` of the compiler that built the crate, as cargo saves
+    /// it; its `host:` line is what the build was for by default.
+    rustc: Option<String>,
 }
 
 impl BuildChoices {
+    /// The flags that repeat what the user chose when installing, empty
+    /// for a crate installed with cargo's defaults -- which may then be
+    /// upgraded by cargo-binstall. Features, `--all-features` and
+    /// `--no-default-features` are always choices; a profile only when
+    /// it is not `release` (`--debug` is saved as `dev`); a target only
+    /// when `chosen_target` says it was asked for.
     fn args(&self) -> Vec<String> {
         let mut args = Vec::new();
         if !self.features.is_empty() {
@@ -135,13 +179,41 @@ impl BuildChoices {
         if self.no_default_features {
             args.push("--no-default-features".into());
         }
-        if let Some(profile) = &self.profile {
-            args.extend(["--profile".into(), profile.clone()]);
+        if let Some(profile) = self
+            .profile
+            .as_deref()
+            .filter(|profile| *profile != DEFAULT_INSTALL_PROFILE)
+        {
+            args.extend(["--profile".into(), profile.to_string()]);
         }
-        if let Some(target) = &self.target {
-            args.extend(["--target".into(), target.clone()]);
+        if let Some(target) = self.chosen_target() {
+            args.extend(["--target".into(), target.to_string()]);
         }
         args
+    }
+
+    /// The target the user asked for with `cargo install --target`: the
+    /// saved `target` when it differs from the `host:` of the saved
+    /// `rustc -vV`. Without `--target` cargo builds for, and saves, the
+    /// host of the compiler that ran, so a target equal to that host is
+    /// cargo's default -- also when it is not this Mac's: a record that
+    /// Migration Assistant brought from an Intel Mac says
+    /// `x86_64-apple-darwin` twice, and replaying it on Apple silicon
+    /// would ask for a standard library rustup may not have installed
+    /// ("can't find crate for `std`") and rebuild the Intel binary the
+    /// upgrade could have replaced. Such a record upgrades for this Mac,
+    /// as a fresh `cargo install` would. A record with no host to compare
+    /// with names no choice either: Banager cannot tell, and building for
+    /// this Mac is what cargo does when told nothing.
+    fn chosen_target(&self) -> Option<&str> {
+        let target = self.target.as_deref()?;
+        let host = self
+            .rustc
+            .as_deref()?
+            .lines()
+            .find_map(|line| line.strip_prefix("host:"))?
+            .trim();
+        (!host.is_empty() && target != host).then_some(target)
     }
 }
 
@@ -615,6 +687,10 @@ impl CargoAdapter {
             OpKind::Install | OpKind::Upgrade => {
                 // The path `detect` resolved through HostEnv, not a fresh
                 // guess: whatever is previewed here is exactly what runs.
+                // A crate installed with build choices of its own is
+                // rebuilt from source with them; one installed with
+                // cargo's defaults (`build_args` empty) may be fetched
+                // as a binary.
                 let binstall = self
                     .binstall
                     .lock()
@@ -622,19 +698,25 @@ impl CargoAdapter {
                     .clone()
                     .filter(|_| build_args.is_empty());
                 let mut warnings = Vec::new();
-                let (program, mut args) = match binstall {
-                    Some(path) => (path, vec!["-y".to_string()]),
+                // Do not inherit registry.default: the checked source is
+                // crates.io. Each program is given crates.io's index in the
+                // form that keeps it on the hosts it reaches by default.
+                let (program, mut args, index) = match binstall {
+                    Some(path) => (path, vec!["-y".to_string()], CRATES_IO_SPARSE_INDEX),
                     None => {
                         warnings.push(Warning::CompilesLocally);
-                        (inst.exe_path.clone(), vec!["install".to_string()])
+                        (
+                            inst.exe_path.clone(),
+                            vec!["install".to_string()],
+                            CRATES_IO_INDEX,
+                        )
                     }
                 };
                 if matches!(req.kind, OpKind::Upgrade) {
                     args.push("--force".to_string());
                 }
                 args.extend(["--root".to_string(), root.to_string()]);
-                // Do not inherit registry.default: the checked source is crates.io.
-                args.extend(["--index".to_string(), CRATES_IO_INDEX.to_string()]);
+                args.extend(["--index".to_string(), index.to_string()]);
                 args.extend(build_args);
                 args.push(req.name.clone());
                 Ok(Plan {
@@ -763,44 +845,292 @@ impl Adapter for CargoAdapter {
 
 #[cfg(test)]
 mod tests {
-    #[tokio::test]
-    async fn test_upgrade_preserves_build_choices_and_uses_source_build() {
-        let home = temp_cargo_home("build-choices");
+    use super::*;
+
+    /// The recorded `.crates2.json` (cargo 1.98.1, Apple silicon, after a
+    /// plain `cargo install hexyl`): one record, with the `profile`,
+    /// `target` and `rustc` cargo writes into every record.
+    const RECORDED_CRATES2: &str = "../../adapters/fixtures/cargo/1.98.1/crates2.json";
+
+    /// The recorded fixture, byte for byte.
+    fn recorded_crates2() -> String {
+        std::fs::read_to_string(RECORDED_CRATES2).expect("read cargo crates2.json fixture")
+    }
+
+    /// A `.crates2.json` whose one record is the recorded fixture's value
+    /// -- every field cargo writes -- under the install key `key`, with
+    /// `change` applied to it. The shape of a real record, never `{}`.
+    fn recorded_record_as(
+        key: &str,
+        change: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+    ) -> String {
+        let root: serde_json::Value = serde_json::from_str(&recorded_crates2()).unwrap();
+        let mut record = root["installs"]
+            .as_object()
+            .and_then(|installs| installs.values().next())
+            .and_then(|record| record.as_object())
+            .expect("the fixture holds one record")
+            .clone();
+        change(&mut record);
+        serde_json::json!({ "installs": { key: record } }).to_string()
+    }
+
+    /// The fixture's hexyl record with `change` applied.
+    fn recorded_hexyl_with(
+        change: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+    ) -> String {
+        recorded_record_as(
+            "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            change,
+        )
+    }
+
+    /// The fixture's `rustc -vV` with its `host:` line naming `host`, as
+    /// a compiler on that machine would have written it.
+    fn recorded_rustc_on(host: &str) -> serde_json::Value {
+        let root: serde_json::Value = serde_json::from_str(&recorded_crates2()).unwrap();
+        let rustc = root["installs"]
+            .as_object()
+            .and_then(|installs| installs.values().next())
+            .and_then(|record| record["rustc"].as_str())
+            .expect("the fixture's record names its rustc");
+        assert!(rustc.contains("\nhost: aarch64-apple-darwin\n"));
+        rustc
+            .replace(
+                "\nhost: aarch64-apple-darwin\n",
+                &format!("\nhost: {host}\n"),
+            )
+            .into()
+    }
+
+    /// The plan an upgrade of hexyl gets from `crates2`, with or without
+    /// cargo-binstall on the Mac.
+    async fn upgrade_plan(tag: &str, crates2: &str, binstall: bool) -> (Plan, PathBuf) {
+        let home = temp_cargo_home(tag);
         std::fs::create_dir_all(&home).unwrap();
-        let record = serde_json::json!({"installs": {
-            "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)": {
-                "features": ["pcre2", "extra"], "all_features": true,
-                "no_default_features": true, "profile": "release", "target": "aarch64-apple-darwin"
-            }
-        }});
-        std::fs::write(home.join(".crates2.json"), record.to_string()).unwrap();
+        std::fs::write(home.join(".crates2.json"), crates2).unwrap();
         let inst = test_instance(home.clone());
         let adapter =
             CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
-                .with_binstall(Some(PathBuf::from("/bin/cargo-binstall")));
+                .with_binstall(binstall.then(|| PathBuf::from(BINSTALL)));
         let req = OpRequest {
             kind: OpKind::Upgrade,
             instance_id: inst.id.clone(),
             artifact_kind: ArtifactKind::Binary,
             name: "hexyl".into(),
         };
-        let plan = adapter.plan(&inst, &req).await.unwrap();
-        assert_eq!(command_program(&plan), inst.exe_path);
-        let args = command_args(&plan);
-        for pair in [
-            ["--features", "pcre2,extra"],
-            ["--profile", "release"],
-            ["--target", "aarch64-apple-darwin"],
-        ] {
-            assert!(args.windows(2).any(|w| w == pair));
-        }
-        assert!(args.contains(&"--all-features".into()));
-        assert!(args.contains(&"--no-default-features".into()));
-        assert!(plan.warnings.contains(&Warning::CompilesLocally));
-        std::fs::remove_dir_all(home).unwrap();
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        std::fs::remove_dir_all(&home).unwrap();
+        (plan, home)
     }
 
-    use super::*;
+    const BINSTALL: &str = "/Users/brulek/.cargo/bin/cargo-binstall";
+
+    #[tokio::test]
+    async fn regression_a_plain_cargo_install_record_upgrades_through_cargo_binstall() {
+        // opus-int finding 1: cargo writes `"profile":"release"` and the
+        // host triple into every record, and reading those as saved
+        // choices sent every upgrade to a local compile, never to
+        // cargo-binstall, with a "compiles locally" warning. The recorded
+        // record of a plain `cargo install hexyl` holds no choice.
+        let (plan, home) = upgrade_plan("recorded-binstall", &recorded_crates2(), true).await;
+        assert_eq!(command_program(&plan), PathBuf::from(BINSTALL));
+        assert_eq!(
+            command_args(&plan),
+            vec![
+                "-y",
+                "--force",
+                "--root",
+                home.to_str().unwrap(),
+                "--index",
+                "sparse+https://index.crates.io/",
+                "hexyl"
+            ]
+        );
+        assert!(plan.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn regression_a_plain_cargo_install_record_rebuilds_with_no_profile_or_target() {
+        // Without cargo-binstall the same record compiles, as before
+        // b59d3b8d: no `--profile release`, no `--target <triple>`.
+        let (plan, home) = upgrade_plan("recorded-cargo", &recorded_crates2(), false).await;
+        assert_eq!(
+            command_program(&plan),
+            PathBuf::from("/Users/brulek/.cargo/bin/cargo")
+        );
+        assert_eq!(
+            command_args(&plan),
+            vec![
+                "install",
+                "--force",
+                "--root",
+                home.to_str().unwrap(),
+                "--index",
+                CRATES_IO_INDEX,
+                "hexyl"
+            ]
+        );
+        assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
+    }
+
+    #[tokio::test]
+    async fn regression_a_record_from_an_intel_mac_upgrades_for_this_mac() {
+        // Migration Assistant carries `~/.cargo` over from an Intel Mac:
+        // the record says `x86_64-apple-darwin` as target and as the
+        // compiler's host -- cargo's default there, no choice. Replaying
+        // `--target x86_64-apple-darwin` on Apple silicon needs a
+        // standard library rustup may not have, so it never is.
+        let migrated = recorded_hexyl_with(|record| {
+            record.insert("target".into(), "x86_64-apple-darwin".into());
+            record.insert("rustc".into(), recorded_rustc_on("x86_64-apple-darwin"));
+        });
+        for binstall in [true, false] {
+            let (plan, _) = upgrade_plan("migrated", &migrated, binstall).await;
+            let args = command_args(&plan);
+            assert!(!args.iter().any(|a| a == "--target"), "{args:?}");
+            assert!(!args.iter().any(|a| a.contains("x86_64")), "{args:?}");
+            assert_eq!(command_program(&plan) == Path::new(BINSTALL), binstall);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_preserves_build_choices_and_uses_source_build() {
+        // A real record of `cargo install hexyl --features pcre2,extra
+        // --all-features --no-default-features --debug --target
+        // x86_64-apple-darwin` on Apple silicon: every choice is replayed,
+        // and the upgrade compiles even with cargo-binstall there.
+        let chosen = recorded_hexyl_with(|record| {
+            record.insert("features".into(), serde_json::json!(["pcre2", "extra"]));
+            record.insert("all_features".into(), true.into());
+            record.insert("no_default_features".into(), true.into());
+            record.insert("profile".into(), "dev".into());
+            record.insert("target".into(), "x86_64-apple-darwin".into());
+        });
+        let (plan, home) = upgrade_plan("build-choices", &chosen, true).await;
+        assert_eq!(
+            command_program(&plan),
+            PathBuf::from("/Users/brulek/.cargo/bin/cargo")
+        );
+        assert_eq!(
+            command_args(&plan),
+            vec![
+                "install",
+                "--force",
+                "--root",
+                home.to_str().unwrap(),
+                "--index",
+                CRATES_IO_INDEX,
+                "--features",
+                "pcre2,extra",
+                "--all-features",
+                "--no-default-features",
+                "--profile",
+                "dev",
+                "--target",
+                "x86_64-apple-darwin",
+                "hexyl"
+            ]
+        );
+        assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
+    }
+
+    #[test]
+    fn test_build_choices_count_only_what_differs_from_cargos_defaults() {
+        let choices = |crates2: String| -> Vec<String> {
+            let root: serde_json::Value = serde_json::from_str(&crates2).unwrap();
+            let record = root["installs"]
+                .as_object()
+                .unwrap()
+                .values()
+                .next()
+                .unwrap();
+            serde_json::from_value::<BuildChoices>(record.clone())
+                .unwrap()
+                .args()
+        };
+        let none: Vec<String> = Vec::new();
+        // The recorded record: release profile, host target -- nothing.
+        assert_eq!(choices(recorded_crates2()), none);
+        for (what, crates2, expected) in [
+            (
+                "one feature",
+                recorded_hexyl_with(|r| {
+                    r.insert("features".into(), serde_json::json!(["pcre2"]));
+                }),
+                vec!["--features", "pcre2"],
+            ),
+            (
+                "--no-default-features alone",
+                recorded_hexyl_with(|r| {
+                    r.insert("no_default_features".into(), true.into());
+                }),
+                vec!["--no-default-features"],
+            ),
+            (
+                "--debug, saved as the dev profile",
+                recorded_hexyl_with(|r| {
+                    r.insert("profile".into(), "dev".into());
+                }),
+                vec!["--profile", "dev"],
+            ),
+            (
+                "a custom profile",
+                recorded_hexyl_with(|r| {
+                    r.insert("profile".into(), "dist".into());
+                }),
+                vec!["--profile", "dist"],
+            ),
+            (
+                "an Intel target asked for on Apple silicon",
+                recorded_hexyl_with(|r| {
+                    r.insert("target".into(), "x86_64-apple-darwin".into());
+                }),
+                vec!["--target", "x86_64-apple-darwin"],
+            ),
+            (
+                "an Apple silicon target asked for on an Intel Mac",
+                recorded_hexyl_with(|r| {
+                    r.insert("rustc".into(), recorded_rustc_on("x86_64-apple-darwin"));
+                }),
+                vec!["--target", "aarch64-apple-darwin"],
+            ),
+        ] {
+            assert_eq!(choices(crates2), expected, "{what}");
+        }
+        for (what, crates2) in [
+            (
+                "the Intel Mac's own default",
+                recorded_hexyl_with(|r| {
+                    r.insert("target".into(), "x86_64-apple-darwin".into());
+                    r.insert("rustc".into(), recorded_rustc_on("x86_64-apple-darwin"));
+                }),
+            ),
+            (
+                "no compiler to compare the target with",
+                recorded_hexyl_with(|r| {
+                    r.remove("rustc");
+                    r.insert("target".into(), "x86_64-apple-darwin".into());
+                }),
+            ),
+            (
+                "a compiler that names no host",
+                recorded_hexyl_with(|r| {
+                    r.insert("rustc".into(), "rustc 1.98.1 (48a229cea 2026-09-01)".into());
+                    r.insert("target".into(), "x86_64-apple-darwin".into());
+                }),
+            ),
+            (
+                "a null profile and target",
+                recorded_hexyl_with(|r| {
+                    r.insert("profile".into(), serde_json::Value::Null);
+                    r.insert("target".into(), serde_json::Value::Null);
+                }),
+            ),
+        ] {
+            assert_eq!(choices(crates2), none, "{what}");
+        }
+    }
 
     // Regressions found by `adapters/robustness.rs`.
 
@@ -832,7 +1162,9 @@ mod tests {
         ] {
             std::fs::write(
                 home.join(".crates2.json"),
-                format!(r#"{{"installs":{{"foo 1.0.0 ({source})":{{}}}}}}"#),
+                recorded_record_as(&format!("foo 1.0.0 ({source})"), |record| {
+                    record.insert("bins".into(), serde_json::json!(["foo"]));
+                }),
             )
             .unwrap();
             let rows = adapter
@@ -1556,18 +1888,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plan_upgrade_with_binstall_skips_the_compile_warning() {
+    async fn test_plan_install_with_binstall_skips_the_compile_warning() {
+        // The upgrade's twin is
+        // `regression_a_plain_cargo_install_record_upgrades_through_cargo_binstall`,
+        // planned from the recorded record. cargo-binstall is given
+        // crates.io's sparse index, its own default, never the git URL
+        // cargo is given: with that one it clones the index from github.com.
         let adapter =
             CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
-                .with_binstall(Some(PathBuf::from(
-                    "/Users/brulek/.cargo/bin/cargo-binstall",
-                )));
-        let home = temp_cargo_home("plan-upgrade");
-        std::fs::create_dir_all(&home).unwrap();
-        std::fs::write(home.join(".crates2.json"), r#"{"installs":{"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)":{}}}"#).unwrap();
-        let inst = test_instance(home.clone());
+                .with_binstall(Some(PathBuf::from(BINSTALL)));
+        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
         let req = OpRequest {
-            kind: OpKind::Upgrade,
+            kind: OpKind::Install,
             instance_id: inst.id.clone(),
             artifact_kind: ArtifactKind::Binary,
             name: "hexyl".to_string(),
@@ -1575,24 +1907,20 @@ mod tests {
         let plan = CargoAdapter::plan(&adapter, &inst, &req)
             .await
             .expect("plan");
-        assert_eq!(
-            command_program(&plan),
-            PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")
-        );
+        assert_eq!(command_program(&plan), PathBuf::from(BINSTALL));
         assert_eq!(
             command_args(&plan),
             vec![
                 "-y",
-                "--force",
                 "--root",
-                home.to_str().unwrap(),
+                "/Users/brulek/.cargo",
                 "--index",
-                CRATES_IO_INDEX,
+                CRATES_IO_SPARSE_INDEX,
                 "hexyl"
             ]
         );
+        assert!(!command_args(&plan).iter().any(|a| a.contains("github.com")));
         assert!(plan.warnings.is_empty());
-        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]
@@ -1644,12 +1972,11 @@ mod tests {
         // `cargo` or `rustc` cargo-binstall starts inherits it.
         let home = temp_cargo_home("plan-upgrade");
         std::fs::create_dir_all(&home).unwrap();
-        std::fs::write(home.join(".crates2.json"), r#"{"installs":{"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)":{}}}"#).unwrap();
+        // The recorded record, so that with cargo-binstall the upgrade is
+        // binstall's (it holds no build choice) and both programs are seen.
+        std::fs::write(home.join(".crates2.json"), recorded_crates2()).unwrap();
         let inst = test_instance(home.clone());
-        for binstall in [
-            None,
-            Some(PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")),
-        ] {
+        for binstall in [None, Some(PathBuf::from(BINSTALL))] {
             let adapter =
                 CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
                     .with_binstall(binstall.clone());
