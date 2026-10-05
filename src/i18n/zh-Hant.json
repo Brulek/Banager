@@ -223,8 +223,8 @@
     "uninstalling": "正在解除安裝…",
     "uninstallingLabel": "正在解除安裝{{name}}…",
     "uninstallHold": {
-      "label": "暫勿解除安裝",
-      "ariaLabel": "暫時不能解除安裝{{name}}",
+      "label": "暫時無法解除安裝",
+      "ariaLabel": "暫時無法解除安裝{{name}}",
       "IndexUpdating": "Homebrew正在更新軟體清單，完成後才能解除安裝。"
     },
     "upToDate": "已是最新",
