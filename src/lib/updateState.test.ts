@@ -13,6 +13,7 @@ import {
   shownSkippedVersion,
   updatesSummary,
   updateStateOf,
+  upToDateIsKnown,
   withSkippedVersion,
 } from "./updateState";
 import type { HidingSettings } from "./updateState";
@@ -93,6 +94,20 @@ describe("updateStateOf", () => {
 function hiding(over: Partial<HidingSettings> = {}): HidingSettings {
   return { ignored_updates: [], skipped_versions: [], ...over };
 }
+
+describe("upToDateIsKnown", () => {
+  it("attributes an unfinished check to its own instance, even between two Homebrews", () => {
+    const error = { instance_id: "brew:/usr/local", message: "check timed out" };
+    expect(upToDateIsKnown(brew, [error])).toBe(true);
+    expect(upToDateIsKnown(brew, [{ ...error, instance_id: brew.id }])).toBe(false);
+    expect(
+      upToDateIsKnown({ ...brew, status: { unavailable: "NotResponding", notes: [] } }, []),
+    ).toBe(false);
+    expect(
+      upToDateIsKnown({ ...brew, status: { unavailable: null, notes: ["IndexMayBeStale"] } }, []),
+    ).toBe(false);
+  });
+});
 
 const qwenKey: ArtifactKey = {
   instance_id: "ollama:127.0.0.1:11434",

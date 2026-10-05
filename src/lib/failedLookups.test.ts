@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import {
   failedLookupsNotice,
@@ -29,6 +29,22 @@ const noHiding = { ignored_updates: [], skipped_versions: [], snoozed_updates: [
 describe("isFailedLookup", () => {
   it("is a row the check could not look up, with a tool's own words for why", () => {
     expect(isFailedLookup(row("a"))).toBe(true);
+  });
+
+  it("counts pip's empty successful reply with an exhausted connection-abort warning", () => {
+    const failed = row("cowsay", {
+      key: { instance_id: "pip:python3", kind: "Package", name: "cowsay" },
+      warnings: [
+        { Message: "pip list --outdated: ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))" },
+        "TransientLookupFailure",
+      ],
+    });
+    expect(isFailedLookup(failed)).toBe(true);
+    expect(failedLookupsOf([failed], noHiding)).toEqual([failed]);
+    expect(failedLookupsNotice(i18n.getFixedT("en"), [failed])).toMatchObject({
+      values: { count: 1 },
+      action: { id: "checkAgain", labelKey: "header.checkAgain" },
+    });
   });
 
   it("is not a row no later check will mend, nor one that was checked", () => {
@@ -64,6 +80,20 @@ describe("isFailedLookup", () => {
 });
 
 describe("failedLookupsOf", () => {
+  it("uses the caller's clock to reveal a failed lookup exactly when its snooze expires", () => {
+    const failed = row("snoozed");
+    const until = 1_800_000_000;
+    const settings = { ...noHiding, snoozed_updates: [{ key: failed.key, until }] };
+    // A view may still be rendering an earlier minute than the wall clock.
+    const clock = vi.spyOn(Date, "now").mockReturnValue((until + 60) * 1000);
+    try {
+      expect(failedLookupsOf([failed], settings, until * 1000 - 1)).toEqual([]);
+      expect(failedLookupsOf([failed], settings, until * 1000)).toEqual([failed]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("counts the rows the Updates page lists, not one the user hid, nor one no check will mend", () => {
     const rows = [
       row("a"),

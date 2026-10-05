@@ -321,6 +321,16 @@ describe("toolSetupCheck's source lines", () => {
     );
   });
 
+  it("keeps a last response stamped at Unix zero instead of treating it as missing", () => {
+    const snapshot: Snapshot = {
+      ...fineSnapshot(),
+      instances: [instance(BREW, { answered_at: 0, status: { unavailable: "NotResponding", notes: [] } })],
+    };
+    const check = toolSetupCheck(en, input({ snapshot, nowMs: 0 }));
+    const time = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(0));
+    expect(lineOf(check, "sources", `source:${BREW}`).secondary).toBe(`Last responded at ${time} today`);
+  });
+
   it("says so when no source was found", () => {
     const snapshot: Snapshot = { ...fineSnapshot(), instances: [], artifacts: [] };
     expect(shape(toolSetupCheck(zh, input({ snapshot })))["来源"]).toEqual(["note 没有找到可以管理的来源"]);
@@ -437,6 +447,26 @@ describe("toolSetupCheck's command lines", () => {
     }
   });
 
+  it("counts a pipx tool whose protected command claim was dropped beside a running jq", () => {
+    const snapshot = fineSnapshot();
+    snapshot.artifacts = snapshot.artifacts.slice(0, 1);
+    const pipx = instance("pipx:home");
+    snapshot.instances.push(pipx);
+    const dropped = artifact({ instance_id: pipx.id, kind: "Tool", name: "cowsay" });
+    dropped.facts.commands_unavailable = true;
+    snapshot.artifacts.push(dropped);
+    expect(shape(toolSetupCheck(en, input({ snapshot })))["Commands"]).toEqual([
+      "fine Terminal finds every tool that was checked",
+      "note Couldn't check whether Terminal finds 1 tool",
+      "fine No tool is installed more than once",
+    ]);
+    expect(shape(toolSetupCheck(zh, input({ snapshot })))["命令"]).toEqual([
+      "fine 终端都能找到检查过的工具",
+      "note 1个工具无法确认终端能否找到",
+      "fine 没有装了不止一份的工具",
+    ]);
+  });
+
   it("says one in the singular, and the count beside the tools Terminal can't find", () => {
     const snapshot = partlyCheckedSnapshot();
     snapshot.artifacts.pop();
@@ -497,6 +527,27 @@ describe("toolSetupCheck's Homebrew lines", () => {
     );
     return snapshot;
   }
+
+  it("excludes old-version measurements for a different installed version from the total", () => {
+    const snapshot = brewSnapshot();
+    const sizes = sizesFor(snapshot);
+    sizes.artifacts = sizes.artifacts.map((size) =>
+      size.key.name === "node@22"
+        ? { ...size, old_versions: { bytes: 400_000_000, partial: false, at_least: false } }
+        : size.key.name === "python@3.13"
+          ? { ...size, version: "3.13.6", old_versions: { bytes: 100_000_000, partial: false, at_least: false } }
+          : size,
+    );
+    expect(lineOf(toolSetupCheck(zh, input({ snapshot, sizes })), "homebrew", "otherVersions").text).toBe(
+      "2个工具保留了其他版本，共400 MB以上",
+    );
+    // Once the measured version matches, both amounts can be claimed.
+    const python = sizes.artifacts.find((size) => size.key.name === "python@3.13")!;
+    python.version = "3.13.7";
+    expect(lineOf(toolSetupCheck(zh, input({ snapshot, sizes })), "homebrew", "otherVersions").text).toBe(
+      "2个工具保留了其他版本，共约500 MB",
+    );
+  });
 
   it("counts what every Homebrew disabled or deprecated, with 查看, and what keeps other versions with their size", () => {
     const snapshot = brewSnapshot();

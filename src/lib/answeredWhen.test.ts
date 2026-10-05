@@ -10,6 +10,14 @@ const seconds = (date: Date) => date.getTime() / 1000;
 const time = (date: Date, language: string) => new Intl.DateTimeFormat(language, { timeStyle: "short" }).format(date);
 
 describe("answeredWhen", () => {
+  it("includes exactly one minute of clock skew but dates a stamp one millisecond further ahead", () => {
+    const zh = i18n.getFixedT("zh-CN");
+    const at = seconds(new Date(2026, 9, 3, 0, 0));
+    const minuteBefore = new Date(2026, 9, 2, 23, 59).getTime();
+    expect(answeredWhen(zh, at, minuteBefore, "zh-CN")).toBe("今天00:00");
+    expect(answeredWhen(zh, at, minuteBefore - 1, "zh-CN")).toBe("10月3日00:00");
+  });
+
   it("says today, yesterday or the date, with the time in the Mac's own style", () => {
     const en = i18n.getFixedT("en");
     const zh = i18n.getFixedT("zh-CN");
@@ -50,6 +58,17 @@ describe("answeredWhen", () => {
 });
 
 describe("noticeValues", () => {
+  it("interpolates a response at Unix zero and preserves the notice's other values", () => {
+    const en = i18n.getFixedT("en");
+    const values = { source: "uv", count: 2 };
+    expect(noticeValues(en, { values, answeredAt: 0 }, 0, "en")).toEqual({
+      source: "uv",
+      count: 2,
+      when: `at ${time(new Date(0), "en")} today`,
+    });
+    expect(values).toEqual({ source: "uv", count: 2 });
+  });
+
   it("adds `when` only to a notice that says when its source last answered", () => {
     const en = i18n.getFixedT("en");
     const values = { source: "uv", count: 2 };

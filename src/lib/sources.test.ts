@@ -396,6 +396,19 @@ describe("sourceNoticesFor", () => {
     );
   });
 
+  it("selects timed notices for a Unix-zero response, with and without carried-forward rows", () => {
+    const silent = instance({ answered_at: 0, status: { unavailable: "NotResponding", notes: [] } });
+    expect(sourceNoticesFor(silent, "Homebrew", 2)[0]).toMatchObject({
+      descriptionKey: "sourceNotice.unreachable.descriptionWithRowsAt",
+      answeredAt: 0,
+      values: { source: "Homebrew", count: 2 },
+    });
+    expect(sourceNoticesFor(silent, "Homebrew", 0)[0]).toMatchObject({
+      descriptionKey: "sourceNotice.unreachable.detailAt",
+      answeredAt: 0,
+    });
+  });
+
   it("says a time only for a source that did not answer: what it said, and how it is, are this round's", () => {
     const at = new Date(2026, 9, 2, 9, 12).getTime() / 1000;
     const states: ManagerInstance["status"][] = [
@@ -1143,6 +1156,20 @@ describe("instanceLabels", () => {
       'common.sourceWithPlace({"source":"adapters.npm","place":"homebrew"})',
       'common.sourceWithPlace({"source":"adapters.npm","place":"/usr/local"})',
     ]);
+  });
+
+  it.each(["en", "zh-CN"])("uses Homebrew for pip under its known prefix in %s", (lang) => {
+    const t = i18n.getFixedT(lang);
+    const brewPip = instance({ id: "pip:brew", adapter_id: "pip", prefix: "/opt/homebrew/bin/" });
+    const other = instance({ id: "pip:other", adapter_id: "pip", prefix: "/opt/local/bin" });
+    expect(instanceNames(t, [brewPip, other]).get(brewPip.id)?.place).toBe("Homebrew");
+    expect(instanceLabels(t, [brewPip, other]).get(brewPip.id)).toBe(
+      lang === "en" ? "pip (Homebrew)" : "pip（Homebrew）",
+    );
+    expect(instanceNames(t, [brewPip, other]).get(other.id)?.place).toBe("/opt/local/bin");
+    // A similarly named custom folder is not identified as Homebrew.
+    const custom = { ...brewPip, prefix: "/opt/homebrew-custom" };
+    expect(instanceNames(t, [custom, other]).get(custom.id)?.place).toBe("homebrew-custom");
   });
 
   it("falls back to whole prefixes where two places' names would read the same", () => {

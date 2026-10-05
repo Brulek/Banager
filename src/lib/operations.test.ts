@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../i18n";
 import {
   OP_FAILED_KEYS,
   OP_KIND_KEYS,
@@ -9,7 +10,9 @@ import {
   isWaitingForBrewUpdate,
   operationWords,
   outcomeTone,
+  outcomeWords,
   runsToItsEnd,
+  statusKey,
   trackRun,
   type OperationRun,
 } from "./operations";
@@ -140,6 +143,56 @@ describe("isWaitingForBrewUpdate", () => {
     expect(isWaitingForBrewUpdate(op(1, "Running"), [waiting, printed])).toBe(false);
     expect(isWaitingForBrewUpdate(op(1, "CancelRequested"), [waiting])).toBe(false);
     expect(isWaitingForBrewUpdate(op(1, "Running"), [])).toBe(false);
+  });
+});
+
+describe("statusKey", () => {
+  it("names the running operation's kind, then its actual phase instead of an old wait note", () => {
+    const waiting: LogLine = { opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } }, seq: 1 };
+    for (const [kind, key] of [
+      ["Install", "operations.running.Install"],
+      ["Uninstall", "operations.running.Uninstall"],
+      ["Upgrade", "updates.progress.running"],
+    ] as const) {
+      expect(statusKey(op(1, "Running", { kind }), [])).toBe(key);
+      expect(statusKey(op(1, "Running", { kind }), [waiting])).toBe("operations.status.waitingForBrewUpdate");
+      expect(statusKey(op(1, "Running", { kind }), [{ ...waiting, opId: 2 }])).toBe(key);
+    }
+    for (const status of ["Queued", "CancelRequested", "Cancelling", "Verifying"] as const) {
+      expect(statusKey(op(1, status), [waiting])).toBe(`operations.status.${status}`);
+    }
+    expect(statusKey(op(1, "Done"), [waiting])).toBeNull();
+  });
+});
+
+describe("outcomeWords", () => {
+  const en = i18n.getFixedT("en");
+
+  it("shows the tool's failure only with technical details on, including a recognised cause", () => {
+    for (const [kind, plain] of [
+      ["Install", "Couldn't install"],
+      ["Uninstall", "Couldn't uninstall"],
+      ["Upgrade", "Couldn't update"],
+    ] as const) {
+      const summary = "Error: something odd happened";
+      const failed: Outcome = { Failed: { exit_code: 1, summary } };
+      expect(outcomeWords(en, failed, kind, false)).toBe(plain);
+      expect(outcomeWords(en, failed, kind, true)).toBe(`Couldn't finish: ${summary}`);
+      const network = "curl: (6) Could not resolve host: ghcr.io";
+      const unreachable: Outcome = { Failed: { exit_code: 1, summary: network } };
+      expect(outcomeWords(en, unreachable, kind, false)).toBe("Connection failed");
+      expect(outcomeWords(en, unreachable, kind, true)).toBe(`Couldn't finish: ${network}`);
+    }
+  });
+
+  it("says the program gave no reason when its failure summary contains only whitespace", () => {
+    for (const summary of ["", " \t\n "]) {
+      for (const technical of [false, true]) {
+        expect(outcomeWords(en, { Failed: { exit_code: 1, summary } }, "Upgrade", technical)).toBe(
+          "Couldn't finish, and the program didn't say why",
+        );
+      }
+    }
   });
 });
 

@@ -10,6 +10,14 @@ const en = i18n.getFixedT("en");
 const zh = i18n.getFixedT("zh-CN");
 
 describe("downloadBytesWorthSaying", () => {
+  it("leaves infinite sizes unknown, including the note shown to the user", () => {
+    for (const bytes of [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(downloadBytesWorthSaying(bytes)).toBeNull();
+      expect(modelDownloadNote(en, bytes)).toBeNull();
+      expect(modelDownloadNote(zh, bytes)).toBeNull();
+    }
+  });
+
   it("is a known number of bytes above 0, and null for anything else", () => {
     expect(downloadBytesWorthSaying(4_683_087_520)).toBe(4_683_087_520);
     expect(downloadBytesWorthSaying(1)).toBe(1);
