@@ -230,7 +230,9 @@ pub struct TopMenu {
 /// menus use in that language -- Finder's, Safari's: 拷贝 and 拷貝, not
 /// 复制 or 複製, and 显示 or 顯示方式 for View. The four pages are named as
 /// the sidebar names them (`nav.*` in src/i18n/en.json and zh-CN.json),
-/// which a test checks.
+/// which a test checks. Chinese and the app's name are a typed space
+/// apart: the page's text-autospace draws that gap in the window, and a
+/// menu on a macOS that draws none of its own would run them together.
 struct Words {
     about: &'static str,
     settings: &'static str,
@@ -263,7 +265,8 @@ struct Words {
     help: &'static str,
     /// Help's first item of Banager's, `{app}` for the app's name, named
     /// as the sheet's title names it (`welcome.title` in src/i18n, whose
-    /// `{{name}}` is the app's name), which a test checks.
+    /// `{{name}}` is the app's name) with the typed space a menu needs,
+    /// which a test checks.
     welcome: &'static str,
     /// Help's second, named as the sheet's title names it (`faq.title` in
     /// src/i18n), which a test checks.
@@ -344,7 +347,7 @@ const SIMPLIFIED_CHINESE: Words = Words {
     zoom: "缩放",
     bring_all_to_front: "前置全部窗口",
     help: "帮助",
-    welcome: "欢迎使用{app}",
+    welcome: "欢迎使用 {app}",
     common_questions: "常见问题",
     keyboard_shortcuts: "键盘快捷键",
     check_tool_setup: "检查工具环境…",
@@ -353,13 +356,13 @@ const SIMPLIFIED_CHINESE: Words = Words {
 
 const TRADITIONAL_CHINESE: Words = Words {
     common_questions: "常見問題",
-    about: "關於{app}",
+    about: "關於 {app}",
     settings: "設定…",
     services: "服務",
-    hide: "隱藏{app}",
+    hide: "隱藏 {app}",
     hide_others: "隱藏其他",
     show_all: "顯示全部",
-    quit: "結束{app}",
+    quit: "結束 {app}",
     file: "檔案",
     close_window: "關閉視窗",
     edit: "編輯",
@@ -381,7 +384,7 @@ const TRADITIONAL_CHINESE: Words = Words {
     zoom: "縮放",
     bring_all_to_front: "將此程式所有視窗移至最前",
     help: "輔助說明",
-    welcome: "歡迎使用{app}",
+    welcome: "歡迎使用 {app}",
     keyboard_shortcuts: "鍵盤快速鍵",
     check_tool_setup: "檢查工具環境…",
     copy_diagnostics: "拷貝診斷資訊…",
@@ -809,7 +812,7 @@ mod tests {
                 (
                     "帮助",
                     &[
-                        "欢迎使用Banager",
+                        "欢迎使用 Banager",
                         "常见问题",
                         "键盘快捷键",
                         "—",
@@ -818,6 +821,69 @@ mod tests {
                     ]
                 ),
             ])
+        );
+    }
+
+    /// Whether `c` is a Chinese character.
+    fn is_han(c: char) -> bool {
+        matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}')
+    }
+
+    /// `text` with a space typed wherever a Chinese character meets a
+    /// Latin letter or a digit: the gap the page's text-autospace draws.
+    fn spaced(text: &str) -> String {
+        let mut out = String::new();
+        let mut previous: Option<char> = None;
+        for c in text.chars() {
+            if let Some(p) = previous {
+                if (is_han(p) && c.is_ascii_alphanumeric())
+                    || (p.is_ascii_alphanumeric() && is_han(c))
+                {
+                    out.push(' ');
+                }
+            }
+            out.push(c);
+            previous = Some(c);
+        }
+        out
+    }
+
+    #[test]
+    fn test_no_menu_item_runs_chinese_into_the_apps_name() {
+        // The window's text-autospace never reaches a menu, so there the
+        // gap between Chinese and Latin is typed: without it, a macOS that
+        // draws no gap of its own shows 關於Banager.
+        for language in [MenuLanguage::En, MenuLanguage::ZhCn, MenuLanguage::ZhHant] {
+            for (menu, items) in labels(&menu_bar(language, "Banager")) {
+                for label in std::iter::once(&menu).chain(&items) {
+                    assert_eq!(label, &spaced(label), "{language:?}");
+                }
+            }
+        }
+        let bar = menu_bar(MenuLanguage::ZhHant, "Banager");
+        let words = labels(&bar);
+        assert_eq!(
+            words[0].1,
+            [
+                "關於 Banager",
+                "—",
+                "設定…",
+                "—",
+                "服務",
+                "—",
+                "隱藏 Banager",
+                "隱藏其他",
+                "顯示全部",
+                "—",
+                "結束 Banager",
+            ]
+            .map(String::from)
+            .to_vec()
+        );
+        assert_eq!(words[5].1[0], "歡迎使用 Banager");
+        assert_eq!(
+            labels(&menu_bar(MenuLanguage::ZhCn, "Banager"))[5].1[0],
+            "欢迎使用 Banager"
         );
     }
 
@@ -1043,13 +1109,16 @@ mod tests {
                 words.copy_diagnostics,
                 format!("{}…", locale["diagnostics"]["copy"].as_str().unwrap())
             );
-            // Welcome to Banager as the sheet's title names it.
+            // Welcome to Banager as the sheet's title names it, with the
+            // space the page's text-autospace draws typed in.
             assert_eq!(
                 words.welcome.replace("{app}", "Banager"),
-                locale["welcome"]["title"]
-                    .as_str()
-                    .unwrap()
-                    .replace("{{name}}", "Banager")
+                spaced(
+                    &locale["welcome"]["title"]
+                        .as_str()
+                        .unwrap()
+                        .replace("{{name}}", "Banager")
+                )
             );
             // Common Questions as the sheet's title names it.
             assert_eq!(
