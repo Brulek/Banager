@@ -230,8 +230,8 @@
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
     "updateIgnored": "已關閉提醒",
-    "updateSkipped": "已跳過{{version}}",
-    "updateSkippedNewBuild": "已跳過新版本",
+    "updateSkipped": "已略過{{version}}",
+    "updateSkippedNewBuild": "已略過新版本",
     "showDependencies_other": "另有{{count}}個隨其他軟體安裝的元件",
     "hideDependencies_other": "收起{{count}}個元件",
     "unverifiedVersion": "{{source}} {{version}}版未經測試",
@@ -288,7 +288,7 @@
     "retry": "再試一次",
     "retryLabel": "再次嘗試更新{{name}}",
     "selectRow": "選擇要更新的「{{name}}」",
-    "skipVersion": "跳過此版本",
+    "skipVersion": "略過此版本",
     "skipVersionHint": "下個版本發佈時再提醒你。",
     "neverRemind": "不再提醒此工具",
     "neverRemindHint": "以後不再提醒此工具的任何更新。可以在「設定」中還原。",
@@ -972,11 +972,11 @@
       "traditionalChinese": "繁體中文"
     },
     "skippedVersions": {
-      "title": "已跳過的版本",
+      "title": "已略過的版本",
       "newBuild": "新版本",
-      "unskip": "取消跳過",
-      "unskipAriaLabel": "取消跳過「{{name}}」的{{version}}",
-      "unskipNewBuildAriaLabel": "取消跳過「{{name}}」的新版本"
+      "unskip": "取消略過",
+      "unskipAriaLabel": "取消略過「{{name}}」的{{version}}",
+      "unskipNewBuildAriaLabel": "取消略過「{{name}}」的新版本"
     },
     "ignoredUpdates": {
       "title": "不再提醒的工具",
@@ -1209,7 +1209,7 @@
       },
       "majorUpdate": {
         "question": "為什麼有些更新標著「大版本更新」？",
-        "answer": "這表示版本號碼的第一個數字變大了，例如從3.x升到4.0，用法或設定可能會變。版本號碼以0開頭的工具、Ollama模型和用日期作版本號碼的工具不標示。不確定時，可以先選「跳過此版本」，下個版本發佈時再提醒你。"
+        "answer": "這表示版本號碼的第一個數字變大了，例如從3.x升到4.0，用法或設定可能會變。版本號碼以0開頭的工具、Ollama模型和用日期作版本號碼的工具不標示。不確定時，可以先選「略過此版本」，下個版本發佈時再提醒你。"
       },
       "autoCheck": {
         "question": "自動檢查什麼時候會停止？",
