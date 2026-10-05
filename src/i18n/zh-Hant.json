@@ -567,7 +567,7 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "pip安裝的內容只能在這裡查看。如果其中有你在終端機裡使用的指令列工具，可以用pipx或uv重新安裝它，之後就能在這裡更新和解除安裝。"
+      "description": "pip安裝的內容只能在這裡查看。如果其中有你在終端機裡使用的命令列工具，可以用pipx或uv重新安裝它，之後就能在這裡更新和解除安裝。"
     },
     "prefixNotWritable": {
       "description": "npm把它們安裝在目前帳號無法修改的資料夾中，因此只能查看。用Homebrew安裝Node後，再用它安裝的npm套件就能在這裡管理。"
@@ -639,7 +639,7 @@
     "more_other": "還有{{count}}條提示",
     "showFewer": "收起",
     "httpsHostRefused": {
-      "title": "不支援通過https連線Ollama",
+      "title": "不支援透過https連線Ollama",
       "description": "OLLAMA_HOST設定的是https://開頭的網址，而連線Ollama只支援http，因此無法檢查{{source}}。如果那裡的Ollama也能透過http存取，請把OLLAMA_HOST改為它的http://網址，然後結束並重新開啟此App。",
       "statusWord": "不支援https"
     },
@@ -705,7 +705,7 @@
     "logNote": {
       "waitingForBrewUpdate": "Homebrew正在更新軟體清單，完成後開始，最多等待{{minutes}}分鐘。現在取消不會有任何改動。",
       "readFailedStdout": "無法讀取後續輸出：{{error}}",
-      "readFailedStderr": "無法讀取後續錯誤資訊：{{error}}",
+      "readFailedStderr": "無法讀取後續錯誤訊息：{{error}}",
       "movedToTrash": "{{path}}已移到垃圾桶：{{trashedTo}}",
       "trashFailed": "未能將{{path}}移到垃圾桶，解除安裝已停止：{{error}}",
       "outOfTime": "超過{{seconds}}秒，已在移動{{path}}之前停止。已移走的在垃圾桶中，再解除安裝一次可移走其餘的。",
@@ -949,7 +949,7 @@
     },
     "showTechnicalDetails": {
       "label": "顯示技術細節",
-      "description": "顯示原始錯誤資訊和檔案位置，並在確認視窗中展開指令。"
+      "description": "顯示原始錯誤訊息和檔案位置，並在確認視窗中展開指令。"
     },
     "includeSelfUpdating": {
       "label": "顯示內建更新功能的Homebrew App",
@@ -1096,7 +1096,7 @@
       "state": "{{source}}：{{state}}",
       "checkUnfinished": "這次沒有檢查完",
       "none": "沒有找到可以管理的來源",
-      "otherPrograms": "不屬於這些來源的指令列程式，可以在「其他程式」裡找"
+      "otherPrograms": "不屬於這些來源的命令列程式，可以在「其他程式」裡找"
     },
     "commands": {
       "allFine": "終端機都能找到已安裝的工具，也沒有裝了不止一份的",
@@ -1126,7 +1126,7 @@
   "shortcuts": {
     "title": "鍵盤快速鍵",
     "groups": {
-      "window": "通用",
+      "window": "一般",
       "list": "清單",
       "dialog": "對話框"
     },
