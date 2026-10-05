@@ -156,7 +156,7 @@
     "checkFailedTryLater": "請稍後再試。"
   },
   "overviewMore": {
-    "toolSetupLine": "終端機能否找到這些工具，各來源是否正常。",
+    "toolSetupLine": "終端機是否找得到這些工具，以及各來源是否正常。",
     "autoCheckLabel": "檢查更新的頻率"
   },
   "adapters": {
@@ -1085,7 +1085,7 @@
       "noFacts": "無法讀取終端機的設定",
       "allFine_other": "終端機設定讀取正常，尋找指令的{{count}}個資料夾也都能讀取",
       "foldersSomeUnread": "終端機尋找指令的資料夾中，{{read}}個已讀取，{{unread}}個無法讀取",
-      "foldersUnreadDetail": "無法讀取的資料夾在受保護的位置，或者不允許列出內容。裡面有哪些指令無法得知，所以可能受它影響的指令，這次不判斷終端機能否找到。",
+      "foldersUnreadDetail": "無法讀取的資料夾在受保護的位置，或者不允許列出內容。裡面有哪些指令無法得知，所以可能受它影響的指令，這次不判斷終端機是否找得到。",
       "foldersCount": "終端機尋找指令的資料夾：{{number}}個",
       "unreadFolders": "無法讀取：{{folders}}"
     },
@@ -1119,7 +1119,7 @@
   },
   "setupCheckCoverage": {
     "notOnPathFine": "終端機都能找到檢查過的工具",
-    "notChecked_other": "{{count}}個工具無法確認終端機能否找到",
+    "notChecked_other": "{{count}}個工具無法確認終端機是否找得到",
     "notCheckedDetail": "無法判斷終端機會執行這些工具的哪一份，例如終端機尋找指令的某個資料夾無法讀取。",
     "diagnosticsNotChecked": "終端機裡無法確認：{{number}}個"
   },
