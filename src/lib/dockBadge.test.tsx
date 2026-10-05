@@ -205,9 +205,15 @@ describe("the Dock's badge", () => {
   });
 
   it("counts a snoozed tool again once its snooze runs out, with Banager left open", async () => {
+    // A fake clock that still moves on its own (so promises and waitFor run),
+    // and that the test can jump forward: the snooze runs out only when the
+    // test says so, however slow the machine is. Before, a real one-second
+    // snooze could run out before the page had drawn its first count.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
     const dock = watchDock();
-    // wget snoozed until a moment from now; the page left alone after.
-    const until = Math.ceil(Date.now() / 1000) + 1;
+    // wget snoozed for ten minutes (under the page's one-hour longest wait); the page left alone after.
+    const until = Math.ceil(Date.now() / 1000) + 600;
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_snapshot") return Promise.resolve(served);
       if (cmd === "get_settings")
@@ -223,12 +229,16 @@ describe("the Dock's badge", () => {
 
     await waitFor(() => expect(dock.badge()).toBe(1));
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
-    // Real time: the snooze runs out about a second from now. The wait is
-    // generous because a busy machine (several builds at once) has made a
-    // 3 s wait time out before the page's own timer fired.
-    await waitFor(() => expect(dock.badge()).toBe(2), { timeout: 10_000 });
+    // Ten minutes pass: the page's own timer fires and wget counts again.
+    await act(async () => {
+      vi.advanceTimersByTime(602_000);
+    });
+    await waitFor(() => expect(dock.badge()).toBe(2));
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
-  }, 15_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("leaves the page as it is when the Dock cannot be badged", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
