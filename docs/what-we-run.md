@@ -636,10 +636,11 @@ or reached through, a protected place is not read, and does not refuse
 anything: the check runs, and an install's or upgrade's preview says
 first that Homebrew may update itself and its list of software before it
 starts, with why (`Warning::HomebrewMayAutoUpdate`). Such a file matters
-only if it sets the switch to nothing, and even then Homebrew updates
-only when its last fetch is more than a day old
-(`HOMEBREW_AUTO_UPDATE_SECS`), which the update a refresh runs every six
-hours (below) normally prevents.
+only if it sets the switch to nothing, and even then Homebrew, by
+default, updates only when its last fetch is more than a day old
+(`HOMEBREW_AUTO_UPDATE_SECS`; less with `HOMEBREW_NO_INSTALL_FROM_API` or
+a tap-qualified name), which the update a refresh runs every six hours
+(below) normally prevents.
 
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
 already set in Banager's process environment (`askpass_fn`, read per

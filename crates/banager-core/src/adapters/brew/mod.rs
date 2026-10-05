@@ -819,9 +819,10 @@ impl BrewAdapter {
     /// first (`Warning::HomebrewMayAutoUpdate`), and the check runs. Such a
     /// file setting `HOMEBREW_NO_AUTO_UPDATE` to nothing is the one way it
     /// matters -- one that sets it at all sets it to something -- and even
-    /// then Homebrew updates only when its last fetch is a day old
-    /// (`HOMEBREW_AUTO_UPDATE_SECS`), which the update a refresh runs every
-    /// six hours keeps from happening. Refusing every Homebrew check and
+    /// then Homebrew, by default, updates only when its last fetch is a day
+    /// old (`HOMEBREW_AUTO_UPDATE_SECS`; 5 minutes with
+    /// `HOMEBREW_NO_INSTALL_FROM_API` or a tap-qualified name), which the
+    /// update a refresh runs every six hours normally keeps from happening. Refusing every Homebrew check and
     /// update for that, as the first fix did, cost every user whose
     /// dotfiles live in iCloud Drive or Documents all of Homebrew.
     fn require_no_auto_update(
