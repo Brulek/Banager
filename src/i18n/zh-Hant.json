@@ -111,9 +111,9 @@
     }
   },
   "notOnPathMore": {
-    "detailOne": "它至少有一個指令在終端機不會尋找的資料夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。",
-    "detailMany": "每個工具至少有一個指令在終端機不會尋找的資料夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。",
-    "notFoundDetail": "終端機只在幾個固定的資料夾裡尋找指令，這個資料夾不在其中。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。"
+    "detailOne": "它至少有一個指令在終端機不會尋找的檔案夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。",
+    "detailMany": "每個工具至少有一個指令在終端機不會尋找的檔案夾裡，所以在終端機裡輸入這個指令不會執行這一份：可能什麼也找不到，或者執行另一個同名程式。請新開一個終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。",
+    "notFoundDetail": "終端機只在幾個固定的檔案夾裡尋找指令，這個檔案夾不在其中。請新開一個終端機視窗再試；如果仍然找不到，請按照它的安裝說明操作。"
   },
   "otherVersionsShow": {
     "show": "保留了其他版本",
@@ -256,7 +256,7 @@
       },
       "UvToolDirSet": {
         "badge": "手動解除安裝",
-        "description": "設定了UV_TOOL_DIR時，uv解除安裝最後一個工具會連帶刪除UV_TOOL_DIR的上一層資料夾及其中的所有檔案，只要那一層中沒有其他資料夾。因此這時無法在這裡解除安裝任何uv工具。",
+        "description": "設定了UV_TOOL_DIR時，uv解除安裝最後一個工具會連帶刪除UV_TOOL_DIR的上一層檔案夾及其中的所有檔案，只要那一層中沒有其他檔案夾。因此這時無法在這裡解除安裝任何uv工具。",
         "refused": "無法解除安裝，因為設定了UV_TOOL_DIR。"
       }
     },
@@ -409,14 +409,14 @@
       "Settings": "設定：{{path}}",
       "SettingsAndHistory": "設定、登入和歷史記錄：{{path}}",
       "ToolState": "對話和歷史記錄：{{path}}",
-      "ToolStateDetail": "保留整個資料夾，包括其中的程式檔案。",
+      "ToolStateDetail": "保留整個檔案夾，包括其中的程式檔案。",
       "ShellConfigLines": "終端機設定檔：{{path}}",
       "ShellConfigLinesDetail": "不會修改此檔案，安裝程式加入的設定也保留。",
       "OutsideHome": "會失效的連結：{{path}}",
       "OutsideHomeDetail": "它在個人專屬檔案夾之外，因此保留不動。解除安裝後可以自行刪除。",
       "NotOurs": "無法確認歸屬：{{path}}",
       "NotOursDetail": "無法確認它屬於此工具，因此保留不動。",
-      "InstallerCache": "安裝程式暫存資料夾：{{path}}",
+      "InstallerCache": "安裝程式暫存檔案夾：{{path}}",
       "InstallerCacheDetail": "它在多個工具共用的~/.cache中，因此保留不動。可以自行刪除。"
     },
     "alreadyGone": "已不存在：{{path}}",
@@ -426,7 +426,7 @@
     "deletesCargoHome": "永久刪除{{path}}及其中的所有檔案，包括Cargo的快取、設定和登入資訊。不會移到垃圾桶。",
     "removesCargoInstalled_other": "還會永久刪除Cargo中的{{count}}個程式：{{names}}。",
     "removesCargoInstalledDetail": "它們是用「cargo install」安裝的，重裝Rust後可以再裝回來。",
-    "homebrewRustupLosesToolchains": "Homebrew安裝的rustup共用這些資料夾，它的工具鏈也會被刪除。",
+    "homebrewRustupLosesToolchains": "Homebrew安裝的rustup共用這些檔案夾，它的工具鏈也會被刪除。",
     "editsShellConfig": "rustup會從終端機設定檔中刪除它加入的那一行。",
     "leavesShellConfigLine": "{{path}}中會留下用來載入Cargo的一行，讀取此檔案的終端機每次啟動都會顯示錯誤訊息。",
     "leavesShellConfigLineDetail": "刪除那一行即可。",
@@ -448,7 +448,7 @@
       "HomebrewCaskStepsOnly": "執行Homebrew為「{{name}}」記下的解除安裝步驟；安裝程式安裝的其他檔案不刪除。",
       "HomebrewCaskStepsOnlyUnseen": "執行Homebrew為「{{name}}」記下的解除安裝步驟；其中部分步驟還會刪除什麼，無法事先得知。",
       "HomebrewCask": "無法從Homebrew的記錄中讀出解除安裝「{{name}}」會刪除什麼。",
-      "Npm": "刪除npm全域資料夾中的「{{name}}」資料夾和指令，不執行它的程式碼；它在別處的設定和資料不刪除。",
+      "Npm": "刪除npm全域檔案夾中的「{{name}}」檔案夾和指令，不執行它的程式碼；它在別處的設定和資料不刪除。",
       "Pipx": "刪除pipx為「{{name}}」單獨建立的Python環境和指向該環境的指令；它在環境以外的設定和資料不刪除。",
       "Uv": "刪除uv為「{{name}}」單獨建立的Python環境和uv記下的指令；它在環境以外的設定和資料不刪除。",
       "Cargo": "刪除cargo為「{{name}}」安裝的程式檔案；下載快取、Cargo的設定和此程式自己的設定都保留不動。",
@@ -503,7 +503,7 @@
     "runsNamesakeFrom": "執行的是{{source}}裝的另一個同名程式",
     "runsNamesake": "執行的是另一個同名程式",
     "behindDetail": "終端機先找到那一個，這一份排在它後面。",
-    "notFound": "終端機找不到它：它在{{dir}}，終端機不在這個資料夾裡尋找指令",
+    "notFound": "終端機找不到它：它在{{dir}}，終端機不在這個檔案夾裡尋找指令",
     "copyPath": "拷貝路徑",
     "copyPathLabel": "拷貝路徑：{{dir}}",
     "twin": "裝了兩份",
@@ -570,7 +570,7 @@
       "description": "pip安裝的內容只能在這裡查看。如果其中有你在終端機裡使用的命令列工具，可以用pipx或uv重新安裝它，之後就能在這裡更新和解除安裝。"
     },
     "prefixNotWritable": {
-      "description": "npm把它們安裝在目前帳號無法修改的資料夾中，因此只能查看。用Homebrew安裝Node後，再用它安裝的npm套件就能在這裡管理。"
+      "description": "npm把它們安裝在目前帳號無法修改的檔案夾中，因此只能查看。用Homebrew安裝Node後，再用它安裝的npm套件就能在這裡管理。"
     },
     "unreachable": {
       "title": "{{source}}沒有回應",
@@ -668,12 +668,12 @@
     "refused": "發生內部錯誤，無法繼續。",
     "notListed": "無法開始，因為它已不在清單中。請點按「重新檢查」。",
     "uninstallUnsafe": {
-      "outsideHome": "無法移動{{path}}，因為它所在的資料夾通向個人專屬檔案夾以外。",
-      "sharedFolder": "無法移動{{path}}，因為它在多個App共用的資料夾中。",
+      "outsideHome": "無法移動{{path}}，因為它所在的檔案夾通向個人專屬檔案夾以外。",
+      "sharedFolder": "無法移動{{path}}，因為它在多個App共用的檔案夾中。",
       "missing": "無法繼續，因為{{path}}已不存在。",
       "notOwnedByYou": "無法移動{{path}}，因為它屬於另一個使用者。",
       "notWhatInstructionsExpect": "無法移動{{path}}，因為它和預期的不一樣。",
-      "notWhatInstructionsExpectDetail": "它或它所在的資料夾連結到了別處，或者類型不對、無法讀取。",
+      "notWhatInstructionsExpectDetail": "它或它所在的檔案夾連結到了別處，或者類型不對、無法讀取。",
       "overlapsKept": "無法解除安裝，因為不能確認移走檔案時不會碰到要保留的{{path}}。"
     }
   },
@@ -910,7 +910,7 @@
     "passwordNamed_other": "{{names}}可能會要求輸入Mac的密碼。",
     "selectAgain_other": "重新選擇這些工具",
     "setupAttention_other": "{{count}}項需要查看",
-    "protectedFoldersIn_other": "有{{count}}個資料夾在受保護的位置，沒有讀取：{{places}}。",
+    "protectedFoldersIn_other": "有{{count}}個檔案夾在受保護的位置，沒有讀取：{{places}}。",
     "places": {
       "documents": "文件",
       "desktop": "桌面",
@@ -1014,7 +1014,7 @@
     }
   },
   "settingsSaveFailed": {
-    "permissionDenied": "沒有權限寫入設定資料夾",
+    "permissionDenied": "沒有權限寫入設定檔案夾",
     "diskFull": "磁碟已滿",
     "readOnly": "設定所在的磁碟是唯讀的",
     "other": "{{detail}}"
@@ -1049,7 +1049,7 @@
         "readOnly": "僅供查看",
         "unverified": "未經測試的版本"
       },
-      "searchPath": "尋找指令的資料夾：{{number}}個",
+      "searchPath": "尋找指令的檔案夾：{{number}}個",
       "loginRead": "已讀取登入時的設定",
       "loginNotRead": "無法讀取登入時的設定，用的是預設值，終端機用的可能不同",
       "lastCheck": "上次檢查：{{time}}",
@@ -1083,10 +1083,10 @@
       "loginNotRead": "無法讀取終端機登入時的設定，所以這次沒有判斷終端機裡執行的是哪一份",
       "loginNotReadDetail": "從Finder開啟的App只帶有系統預設的指令尋找位置。用這些位置來判斷，幾乎每個工具都會顯示為終端機裡找不到。",
       "noFacts": "無法讀取終端機的設定",
-      "allFine_other": "終端機設定讀取正常，尋找指令的{{count}}個資料夾也都能讀取",
-      "foldersSomeUnread": "終端機尋找指令的資料夾中，{{read}}個已讀取，{{unread}}個無法讀取",
-      "foldersUnreadDetail": "無法讀取的資料夾在受保護的位置，或者不允許列出內容。裡面有哪些指令無法得知，所以可能受它影響的指令，這次不判斷終端機是否找得到。",
-      "foldersCount": "終端機尋找指令的資料夾：{{number}}個",
+      "allFine_other": "終端機設定讀取正常，尋找指令的{{count}}個檔案夾也都能讀取",
+      "foldersSomeUnread": "終端機尋找指令的檔案夾中，{{read}}個已讀取，{{unread}}個無法讀取",
+      "foldersUnreadDetail": "無法讀取的檔案夾在受保護的位置，或者不允許列出內容。裡面有哪些指令無法得知，所以可能受它影響的指令，這次不判斷終端機是否找得到。",
+      "foldersCount": "終端機尋找指令的檔案夾：{{number}}個",
       "unreadFolders": "無法讀取：{{folders}}"
     },
     "sources": {
@@ -1120,7 +1120,7 @@
   "setupCheckCoverage": {
     "notOnPathFine": "終端機都能找到檢查過的工具",
     "notChecked_other": "{{count}}個工具無法確認終端機是否找得到",
-    "notCheckedDetail": "無法判斷終端機會執行這些工具的哪一份，例如終端機尋找指令的某個資料夾無法讀取。",
+    "notCheckedDetail": "無法判斷終端機會執行這些工具的哪一份，例如終端機尋找指令的某個檔案夾無法讀取。",
     "diagnosticsNotChecked": "終端機裡無法確認：{{number}}個"
   },
   "shortcuts": {
@@ -1177,11 +1177,11 @@
     "questions": {
       "notFound": {
         "question": "終端機裡說找不到指令，怎麼辦？",
-        "answer": "有的工具把指令放在終端機不搜尋的資料夾裡，輸入指令時可能找不到，或執行另一個同名程式。請開啟新的終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。指令名稱不一定和工具名稱相同，可以在「已安裝」中按指令名稱搜尋。這裡是按開啟此App時讀到的終端機設定判斷的。"
+        "answer": "有的工具把指令放在終端機不搜尋的檔案夾裡，輸入指令時可能找不到，或執行另一個同名程式。請開啟新的終端機視窗再試；如果仍然找不到，請按照那個工具的安裝說明操作。指令名稱不一定和工具名稱相同，可以在「已安裝」中按指令名稱搜尋。這裡是按開啟此App時讀到的終端機設定判斷的。"
       },
       "cantUpdate": {
         "question": "為什麼有的工具不能在這裡更新？",
-        "answer": "在「更新」頁面，可以更新的工具下方有一行寫著另有幾個無法在這裡更新，點按就能看到這些工具。每一列都標出了原因，例如「僅供查看」「已固定」「開啟它來更新」。pip安裝的工具，以及npm安裝在目前帳號無法修改的資料夾裡的工具，只能查看。固定了版本的，要先在終端機解除固定；標著「開啟它來更新」的工具會自行更新，開啟它一次就會檢查新版本。"
+        "answer": "在「更新」頁面，可以更新的工具下方有一行寫著另有幾個無法在這裡更新，點按就能看到這些工具。每一列都標出了原因，例如「僅供查看」「已固定」「開啟它來更新」。pip安裝的工具，以及npm安裝在目前帳號無法修改的檔案夾裡的工具，只能查看。固定了版本的，要先在終端機解除固定；標著「開啟它來更新」的工具會自行更新，開啟它一次就會檢查新版本。"
       },
       "twins": {
         "question": "「裝了兩份」是什麼意思，該怎麼辦？",
@@ -1193,15 +1193,15 @@
       },
       "leftBehind": {
         "question": "解除安裝後哪些東西會留下，在哪裡？",
-        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的資料夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
+        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的檔案夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
       },
       "changesMac": {
         "question": "此App會更動我的Mac嗎？",
-        "answer": "更新或解除安裝之前，確認視窗裡可以查看要執行的指令或要移走的檔案，確認後才會開始。此App自己只寫入三個檔案：設定、更新和解除安裝記錄、視窗的大小和位置，都在它自己的資料夾裡；它不修改終端機的設定檔。尋找指令、計算佔用空間和掃描「其他程式」時，不讀取「文件」「桌面」「下載項目」、iCloud雲碟和其他磁碟等受保護的位置。它執行的工具會更動自己的檔案，有時不止於此：例如檢查更新時，Homebrew可能會先更新它自己和它的軟體清單；解除安裝rustup時，它會從終端機的設定檔中刪除自己加入的那一行，確認視窗會事先說明。"
+        "answer": "更新或解除安裝之前，確認視窗裡可以查看要執行的指令或要移走的檔案，確認後才會開始。此App自己只寫入三個檔案：設定、更新和解除安裝記錄、視窗的大小和位置，都在它自己的檔案夾裡；它不修改終端機的設定檔。尋找指令、計算佔用空間和掃描「其他程式」時，不讀取「文件」「桌面」「下載項目」、iCloud雲碟和其他磁碟等受保護的位置。它執行的工具會更動自己的檔案，有時不止於此：例如檢查更新時，Homebrew可能會先更新它自己和它的軟體清單；解除安裝rustup時，它會從終端機的設定檔中刪除自己加入的那一行，確認視窗會事先說明。"
       },
       "otherPrograms": {
         "question": "「其他程式」裡的是什麼？",
-        "answer": "是在~/.local/bin、/usr/local/bin等常放指令的資料夾裡找到、但無法確定由哪個來源安裝的程式。這裡只列出它們，不會更動；不認識的，可以在Finder中顯示，或拷貝路徑。清單下方寫著搜尋了哪些資料夾；受保護的位置不讀取。"
+        "answer": "是在~/.local/bin、/usr/local/bin等常放指令的檔案夾裡找到、但無法確定由哪個來源安裝的程式。這裡只列出它們，不會更動；不認識的，可以在Finder中顯示，或拷貝路徑。清單下方寫著搜尋了哪些檔案夾；受保護的位置不讀取。"
       },
       "sizes": {
         "question": "佔用空間的數字準嗎？",
@@ -1218,7 +1218,7 @@
     }
   },
   "clarity": {
-    "diagnosticsDetail": "其中有macOS版本、各來源的位置和狀態，以及尋找指令的資料夾。個人專屬檔案夾寫成「~」，除這些資料夾外不含其他環境變數的值。",
+    "diagnosticsDetail": "其中有macOS版本、各來源的位置和狀態，以及尋找指令的檔案夾。個人專屬檔案夾寫成「~」，除這些檔案夾外不含其他環境變數的值。",
     "keptLeftOut": "不含{{path}}，那裡是另一份單獨安裝的程式。",
     "keptLeftOutLabel": "大小說明：{{path}}",
     "ownInstaller": "{{source}}內附的安裝程式",
@@ -1254,13 +1254,13 @@
       "ShellConfigLines": "終端機設定檔",
       "OutsideHome": "會失效的連結",
       "NotOurs": "無法確認歸屬",
-      "InstallerCache": "安裝程式暫存資料夾"
+      "InstallerCache": "安裝程式暫存檔案夾"
     },
     "scopeWithKept": {
       "HomebrewFormulaOnly": "只刪除Homebrew安裝的這一版「{{name}}」和指向它的連結。",
       "HomebrewFormula": "刪除Homebrew安裝的這一版「{{name}}」和指向它的連結。",
       "HomebrewCaskPlain": "刪除Homebrew為「{{name}}」安裝的檔案。",
-      "Npm": "刪除npm全域資料夾中的「{{name}}」資料夾和指令，不執行它的程式碼。",
+      "Npm": "刪除npm全域檔案夾中的「{{name}}」檔案夾和指令，不執行它的程式碼。",
       "Pipx": "刪除pipx為「{{name}}」單獨建立的Python環境和指向該環境的指令。",
       "Uv": "刪除uv為「{{name}}」單獨建立的Python環境和uv記下的指令。"
     },
@@ -1308,7 +1308,7 @@
     "protectedLink": "指向受保護的位置",
     "protectedLinkWhy": "不讀取「文件」「桌面」「下載項目」、iCloud雲碟、其他磁碟等受保護的位置，所以沒有查看此連結指向哪裡。",
     "protectedLinkHint": "此連結指向受保護的位置，沒有讀取那裡。",
-    "protectedFolders_other": "有{{count}}個資料夾在受保護的位置，沒有讀取。"
+    "protectedFolders_other": "有{{count}}個檔案夾在受保護的位置，沒有讀取。"
   },
   "unknownReveal": {
     "changedSinceScan": "它在上次掃描後有變動。請重新掃描。"
