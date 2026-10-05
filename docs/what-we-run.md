@@ -1259,9 +1259,13 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 (`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
 two names for one interpreter count once, and runs `<python> -m pip
 --version` (30 s). Every pip instance is read-only by design. Only the
-outdated check adds an environment variable, `PIP_QUIET=0`, to retain its
-verbose diagnostics. Banager makes no network request of its own for pip:
-`pip list --outdated` reaches PyPI itself.
+outdated check is given environment variables, `PIP_QUIET=0` and
+`PIP_VERBOSE=0` (`PipAdapter::OUTDATED_ENV`): they hold pip at its normal
+verbosity whatever a `pip.conf` or the environment sets — not quieter,
+which would hide the warnings Banager reads below, and not louder, which
+prints a line for every file pip skips (thousands for one project) and
+every index's answer. Banager makes no network request of its own for
+pip: `pip list --outdated` reaches PyPI itself.
 
 When that command fails, the interpreter is still listed as a source,
 and Banager reads the command's error output to say which failure it was
@@ -1296,32 +1300,43 @@ are installed, its pip is listed.
 | Version | `<python> -m pip --version` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json -vv` with `PIP_QUIET=0` | 60 s |
+| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` with `PIP_QUIET=0` and `PIP_VERBOSE=0` | 60 s |
 
 If `pip list --outdated` exits non-zero, `<python> -m pip list
 --format=json` is run once more so every installed package can be listed
 as "could not check", with the reason — one more process than the table
 shows, on that path only. It is run too when the command exits 0 but gave
 up on reaching the index for some package: pip then leaves that package
-out as if it were up to date. Banager reads both verbose output streams
-for the final `Could not fetch URL ... - skipping` diagnostic, including
-when retries are disabled or the server returns an HTTP error. The JSON
-result is read separately from those diagnostics. The saved reason never
-includes the index URL or its credentials. Banager also reads
-the warning urllib3 prints after the fifth failure in a row, before one
-final try — `Retrying (Retry(total=0, …)) after connection broken by
-'…': /simple/<project>/` (`lookups_given_up` in `adapters/pip.rs`). Each
-such package that is not listed is "could not check", with the error
-from that warning; where the address names no installed package (a
+out as if it were up to date. Banager reads two things pip prints at its
+normal verbosity to tell. On stderr, the warning urllib3 prints after the
+fifth failure in a row, before one final try — `Retrying
+(Retry(total=0, …)) after connection broken by '…': /simple/<project>/`
+(`lookups_given_up` in `adapters/pip.rs`). On stdout, ahead of the JSON
+list, pip's `Could not fetch URL <address>: <reason> - skipping` line,
+which it prints at that verbosity only for an index whose certificate
+could not be verified (`final_fetch_failures`); the reason saved for such
+a line is a fixed sentence that never includes the index URL or its
+credentials. The JSON list is read past those lines. Each such package
+that is not listed is "could not check", with the error from that
+warning or line; where the address names no installed package (a
 `--find-links` page, say), every package not listed is. What was listed
 is kept — also when that second list fails, and then the packages pip
 gave up on cannot be named and read as up to date, as before. Nothing is
 printed when that final try answers, so a package
 whose sixth try worked and that is up to date is still shown as not
 checked — counted, where the words name the network, among the tools to
-check again, until the next check that reaches the index. Verbosity two
-and the explicit quiet-level override keep final fetch failures visible
-even when pip's usual output would contain only an empty JSON list.
+check again, until the next check that reaches the index.
+
+An index's answer that it does not have a project — HTTP 404 (PyPI's),
+410, or 403 (what PyTorch's `download.pytorch.org` answers, checked
+2026-10-05) — is never a failed lookup, even if pip prints it: with an
+extra index (`extra-index-url`), pip asks every index about every
+package, and the one that does not host a package answers that way
+while PyPI answers with it. What pip prints only at `-vv`, which
+Banager does not pass, is not seen: a lookup that failed with pip's
+retries turned off (`retries = 0`), or that an index answered with a
+server error, leaves that package out of the JSON list with nothing on
+either stream, and it reads as up to date.
 
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command

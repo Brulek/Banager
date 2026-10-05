@@ -717,6 +717,33 @@ fn test_what_we_run_shows_the_question_pip_asks_before_running_a_usr_bin_shim() 
 }
 
 #[test]
+fn test_what_we_run_shows_the_environment_of_pips_outdated_check_and_no_verbosity_flag() {
+    // `PipAdapter::check_updates` runs `pip list --outdated` with
+    // `PipAdapter::OUTDATED_ENV` and no `-v` (opus-int findings 3 and 4:
+    // `-vv` counted an extra index's 404s as failed lookups and printed a
+    // line for every file pip skipped). pip's section has to show each
+    // variable in the outdated row of its table, and that row must not
+    // show a verbosity flag the check no longer passes.
+    let doc = read_doc();
+    let body =
+        section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
+    let row = body
+        .lines()
+        .find(|line| line.starts_with('|') && line.contains("pip list --outdated --format=json"))
+        .expect("pip's table in docs/what-we-run.md has no `pip list --outdated` row");
+    for (name, value) in PipAdapter::OUTDATED_ENV {
+        assert!(
+            row.contains(&format!("`{name}={value}`")),
+            "pip's outdated row in docs/what-we-run.md does not show {name}={value}, which PipAdapter::OUTDATED_ENV holds: {row}"
+        );
+    }
+    assert!(
+        !row.contains("-v"),
+        "pip's outdated row in docs/what-we-run.md shows a verbosity flag check_updates does not pass: {row}"
+    );
+}
+
+#[test]
 fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_itself() {
     // A `Latest::Command` recipe runs the tool's own subcommand on every
     // refresh (grok's `update --check --json`, which its --help calls a

@@ -197,14 +197,31 @@ fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
         .collect()
 }
 
-/// At verbosity two pip emits its final fetch failures even with retries
-/// disabled. These diagnostics may be on stdout alongside the JSON result.
-/// Keep only the project and a fixed reason, never an index URL's credentials.
+/// The lookups pip says it could not fetch, from its `Could not fetch URL
+/// <address>: <reason> - skipping` lines (pip 26.2.1
+/// `index/collector.py`, `_handle_get_simple_fail`). At pip's normal
+/// verbosity -- the one `check_updates` pins with `OUTDATED_ENV` -- only
+/// a certificate failure is said this way: pip logs it at INFO, so it is
+/// printed on stdout ahead of the JSON. Every other failure is logged at
+/// DEBUG and printed only at `-vv`, which Banager does not pass: its
+/// output grows by a line per file pip skips, thousands for one project
+/// (opus-int finding 4).
+///
+/// An HTTP answer that says the index does not have the project is no
+/// failed lookup (`index_lacks_project`), whatever the verbosity: with an
+/// extra index, pip asks every index about every project, and the one
+/// that does not host it answers 404 -- or 403, as PyTorch's
+/// `download.pytorch.org` does -- while another index answers with the
+/// project (opus-int finding 3). Keep only the project and a fixed
+/// reason, never an index URL's credentials.
 fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
     text.lines()
         .filter_map(|line| {
             let (_, tail) = line.split_once("Could not fetch URL ")?;
             let (address, reason) = tail.split_once(": ")?;
+            if index_lacks_project(reason) {
+                return None;
+            }
             let project = url::Url::parse(address)
                 .ok()
                 .and_then(|u| {
@@ -228,9 +245,23 @@ fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
         .collect()
 }
 
-/// `pip list --format=json -vv` prints one JSON line after its diagnostics.
-/// Preserve support for a plain/pretty JSON result, used by older versions.
-fn parse_verbose_outdated(
+/// Whether the reason of a `Could not fetch URL` line is an index's answer
+/// that it has no such project: pip's own wording of a 403, 404 or 410
+/// status (`network/utils.py`, `raise_for_status`: `"<status> Client
+/// Error: <reason> for url: <url>"`). A 401 (credentials needed), a 407
+/// (proxy credentials) and a 5xx stay failures.
+fn index_lacks_project(reason: &str) -> bool {
+    ["403 Client Error", "404 Client Error", "410 Client Error"]
+        .iter()
+        .any(|answer| reason.trim_start().starts_with(answer))
+}
+
+/// The JSON list `pip list --outdated --format=json` prints on stdout,
+/// also when INFO lines precede it there: a certificate failure's `Could
+/// not fetch URL` line comes first (`final_fetch_failures`), and a pip run
+/// with more verbosity prints its diagnostics before the one JSON line.
+/// A plain or pretty-printed result alone is read as a whole.
+fn parse_outdated_stdout(
     stdout: &str,
     instance_id: &str,
 ) -> Result<Vec<UpdateCandidate>, AdapterError> {
@@ -304,6 +335,21 @@ impl PipAdapter {
     /// TN2339 gives `--print-path` as the way to see which Xcode the tools
     /// use.
     pub const XCODE_SELECT_ARGV: [&'static str; 2] = ["/usr/bin/xcode-select", "-p"];
+
+    /// The environment of `check_updates`' `pip list --outdated`: pip's
+    /// normal verbosity, whatever the user's `pip.conf` or environment
+    /// set. Not quieter: at `quiet = 2` pip hides the urllib3 warnings
+    /// `lookups_given_up` reads, and the lookups it gave up on would read
+    /// as up to date. Not louder: `verbose = 2` prints a line per file
+    /// pip skips, thousands for one project, toward the runner's 64 MiB
+    /// and 60-second limits (opus-int finding 4) -- and its index
+    /// answers, a 404 from an extra index among them (finding 3). Both
+    /// are counts in pip, and `0` is a count it accepts from the
+    /// environment (`cli/parser.py`, `_update_defaults`).
+    /// `tests/what_we_run_test.rs` checks that pip's section of
+    /// `docs/what-we-run.md` shows each entry.
+    pub const OUTDATED_ENV: [(&'static str, &'static str); 2] =
+        [("PIP_QUIET", "0"), ("PIP_VERBOSE", "0")];
 
     pub fn new(runner: Arc<dyn CommandRunner>) -> PipAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/pip.toml"))
@@ -591,7 +637,6 @@ impl PipAdapter {
             "list".to_string(),
             "--outdated".to_string(),
             "--format=json".to_string(),
-            "-vv".to_string(),
         ];
         let output = self
             .runner
@@ -599,7 +644,10 @@ impl PipAdapter {
                 CommandSpec {
                     program: inst.exe_path.clone(),
                     args,
-                    env: vec![("PIP_QUIET".to_string(), "0".to_string())],
+                    env: Self::OUTDATED_ENV
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
                     cwd: None,
                     timeout: Duration::from_secs(60),
                     output_use: OutputUse::Parsed,
@@ -641,10 +689,14 @@ impl PipAdapter {
                 .collect::<Vec<_>>()
                 .into());
         }
-        let checked = parse_verbose_outdated(&output.stdout, &inst.id)?;
+        let checked = parse_outdated_stdout(&output.stdout, &inst.id)?;
         // Exit 0 is not "every package was looked up": a lookup pip gave
         // up on is left out of stdout as if it were up to date (round-5
-        // review finding 7). Its retry warnings on stderr say which.
+        // review finding 7). Its retry warnings on stderr say which, and
+        // a certificate failure says so on stdout. A lookup that failed
+        // with retries turned off, or that an index answered with an
+        // HTTP error, is printed only at `-vv` (`final_fetch_failures`)
+        // and still reads as up to date.
         let mut gave_up = lookups_given_up(&output.stderr);
         gave_up.extend(final_fetch_failures(&output.stdout));
         gave_up.extend(final_fetch_failures(&output.stderr));
@@ -832,33 +884,226 @@ mod tests {
 
     // Regressions found by `adapters/robustness.rs`.
 
+    /// pip 26.2.1's words for an index certificate it could not verify,
+    /// as `ssl` gives them on macOS (`SSLVerificationError` around
+    /// urllib3's `SSLError`).
+    const BAD_CERTIFICATE: &str = "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)";
+
+    /// The INFO line pip 26.2.1 prints on stdout, at its normal
+    /// verbosity, for an index page it gave up on over its certificate
+    /// (`index/collector.py`: `_handle_get_simple_fail(..., meth=
+    /// logger.info)`). The address is the link as pip prints it, its
+    /// password already `****` (`Link.__str__`, `redacted_url`).
+    fn certificate_failure(address: &str) -> String {
+        format!(
+            "Could not fetch URL {address}: There was a problem confirming the ssl certificate: {BAD_CERTIFICATE} - skipping"
+        )
+    }
+
+    /// The DEBUG line pip prints, only at `-vv`, for an index that
+    /// answered a project's page with an HTTP error status: the reason is
+    /// pip's `raise_for_status` wording (`network/utils.py`).
+    fn http_status_failure(address: &str, status: &str) -> String {
+        format!(
+            "Could not fetch URL {address}: {status} Client Error: {} for url: {address} - skipping",
+            match status {
+                "401" => "Unauthorized",
+                "403" => "Forbidden",
+                "404" => "Not Found",
+                "407" => "Proxy Authentication Required",
+                "410" => "Gone",
+                _ => "Error",
+            }
+        )
+    }
+
     #[tokio::test]
-    async fn regression_zero_retry_and_http_failures_are_not_successful_empty_checks() {
-        for reason in [
-            "connection refused",
-            "401 Client Error: Unauthorized",
-            "403 Client Error: Forbidden",
+    async fn regression_a_certificate_failure_is_not_a_successful_empty_check() {
+        // fixrev's F8 at pip's normal verbosity: the index's certificate
+        // cannot be verified, every try fails, and pip exits 0 with `[]`.
+        // urllib3 warned on stderr before each retry, and pip says it
+        // skipped the page on stdout, ahead of the JSON.
+        let address = "https://user:****@index.example/simple/cowsay/";
+        let ssl = format!("SSLError(SSLCertVerificationError(1, '{BAD_CERTIFICATE}'))");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            OUTDATED_ARGV.to_vec(),
+            exited_with(
+                0,
+                &format!("{}\n[]\n", certificate_failure(address)),
+                &gave_up_on(&ssl, "/simple/cowsay/"),
+            ),
+        );
+        runner.respond(
+            LIST_ARGV.to_vec(),
+            exited_with(0, r#"[{"name":"cowsay","version":"5.0"}]"#, ""),
+        );
+        let adapter = PipAdapter::new(runner);
+        let rows = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key.name, "cowsay");
+        assert!(!rows[0].checkable);
+        // A certificate is not the network: Check Again does not fix it.
+        assert!(!rows[0].warnings.contains(&Warning::TransientLookupFailure));
+        let row = format!("{:?}", rows[0]);
+        assert!(!row.contains("user") && !row.contains("****"), "{row}");
+    }
+
+    #[tokio::test]
+    async fn regression_an_extra_index_without_the_project_is_not_a_failed_lookup() {
+        // opus-int finding 3. With `extra-index-url` (PyTorch's, a
+        // company's), pip asks every index for every project; the one that
+        // does not host it answers 404 -- or 403, as PyTorch's does -- and PyPI
+        // answers with the project. At pip's normal verbosity none of that
+        // is printed: stdout is the JSON alone, stderr is empty.
+        // cowsay is out of date on PyPI; six is up to date there, and so
+        // not in the JSON at all.
+        let outdated = r#"[{"name": "cowsay", "version": "5.0", "latest_version": "6.1", "latest_filetype": "wheel"}]"#;
+        let extra = |project: &str| format!("https://download.pytorch.org/whl/cpu/{project}/");
+        for stdout in [
+            format!("{outdated}\n"),
+            // A pip that prints the index's answers anyway, as at `-vv`.
+            format!(
+                "{}\n{}\n{outdated}\n",
+                http_status_failure(&extra("cowsay"), "404"),
+                http_status_failure(&extra("six"), "404")
+            ),
+            format!(
+                "{}\n{}\n{outdated}\n",
+                http_status_failure(&extra("cowsay"), "403"),
+                http_status_failure(&extra("six"), "403")
+            ),
         ] {
             let runner = Arc::new(MockRunner::new());
-            runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0,
-                &format!("Could not fetch URL https://user:secret@index.example/simple/cowsay/: {reason} - skipping\n[]\n"), ""));
+            runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0, &stdout, ""));
             runner.respond(
                 LIST_ARGV.to_vec(),
-                exited_with(0, r#"[{"name":"cowsay","version":"5.0"}]"#, ""),
+                exited_with(
+                    0,
+                    r#"[{"name":"cowsay","version":"5.0"},{"name":"six","version":"1.17.0"}]"#,
+                    "",
+                ),
             );
-            let adapter = PipAdapter::new(runner);
+            let adapter = PipAdapter::new(runner.clone());
             let rows = adapter
                 .check_updates(&test_instance(), &CheckOptions::default())
                 .await
                 .unwrap()
                 .candidates;
-            assert_eq!(rows.len(), 1);
-            assert!(!rows[0].checkable);
-            assert!(!format!("{:?}", rows[0]).contains("secret"));
+            // six reads as up to date, not as "could not check".
+            assert_eq!(rows.len(), 1, "{stdout}");
+            assert_eq!(rows[0].key.name, "cowsay", "{stdout}");
+            assert!(rows[0].checkable, "{stdout}");
+            assert_eq!(rows[0].target, "6.1");
+            // No lookup was given up on, so no second list was needed.
+            assert_eq!(runner.calls(), vec![OUTDATED_ARGV.to_vec()], "{stdout}");
         }
-        let rows = parse_verbose_outdated("Fetched page\n[]\n", "pip:/x").unwrap();
+    }
+
+    #[test]
+    fn test_final_fetch_failures_count_failures_but_not_an_index_without_the_project() {
+        let address = "https://index.example/simple/cowsay/";
+        for status in ["403", "404", "410"] {
+            assert_eq!(
+                final_fetch_failures(&http_status_failure(address, status)),
+                vec![],
+                "{status}"
+            );
+        }
+        let failed = |line: String| {
+            let found = final_fetch_failures(&line);
+            assert_eq!(found.len(), 1, "{line}");
+            assert_eq!(found[0].project, "cowsay", "{line}");
+            found[0].words.clone()
+        };
+        for status in ["401", "407"] {
+            assert_eq!(
+                failed(http_status_failure(address, status)),
+                "pip could not fetch the package index"
+            );
+        }
+        assert_eq!(
+            failed(format!(
+                "Could not fetch URL {address}: 503 Server Error: Service Unavailable for url: {address} - skipping"
+            )),
+            "pip could not fetch the package index"
+        );
+        assert_eq!(
+            failed(certificate_failure(address)),
+            "pip could not fetch the package index"
+        );
+        assert_eq!(
+            failed(format!(
+                "Could not fetch URL {address}: connection error: HTTPSConnectionPool(host='index.example', port=443): Max retries exceeded with url: /simple/cowsay/ (Caused by NewConnectionError('Failed to establish a new connection: [Errno 61] Connection refused')) - skipping"
+            )),
+            "network error: pip could not fetch the package index"
+        );
+    }
+
+    #[test]
+    fn test_parse_outdated_stdout_reads_the_json_after_pips_info_lines() {
+        let address = "https://pypi.org/simple/cowsay/";
+        let rows =
+            parse_outdated_stdout(&format!("{}\n[]\n", certificate_failure(address)), "pip:/x")
+                .unwrap();
         assert!(rows.is_empty());
-        assert!(parse_verbose_outdated("fetch failed but no JSON", "pip:/x").is_err());
+        let fixture =
+            std::fs::read_to_string("../../adapters/fixtures/pip/26.2.1/list-outdated.json")
+                .expect("read pip list-outdated.json fixture");
+        assert_eq!(parse_outdated_stdout(&fixture, "pip:/x").unwrap().len(), 3);
+        assert!(parse_outdated_stdout("fetch failed but no JSON", "pip:/x").is_err());
+    }
+
+    /// Records each command it is given and answers the outdated check
+    /// with an empty list.
+    struct SpecRecordingRunner {
+        specs: std::sync::Mutex<Vec<CommandSpec>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CommandRunner for SpecRecordingRunner {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            self.specs.lock().unwrap().push(spec);
+            Ok(exited_with(0, "[]\n", ""))
+        }
+    }
+
+    #[tokio::test]
+    async fn regression_the_outdated_check_runs_at_pips_normal_verbosity() {
+        // opus-int finding 4: `-vv` printed a line per file pip skipped,
+        // thousands for numpy alone. The check passes no `-v`, and pins
+        // pip's verbosity against a `pip.conf` that sets it either way.
+        let runner = Arc::new(SpecRecordingRunner {
+            specs: std::sync::Mutex::new(Vec::new()),
+        });
+        let adapter = PipAdapter::new(runner.clone());
+        adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap();
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(
+            specs[0].args,
+            ["-m", "pip", "list", "--outdated", "--format=json"]
+        );
+        assert!(!specs[0].args.iter().any(|a| a.starts_with("-v")));
+        assert_eq!(
+            specs[0].env,
+            [
+                ("PIP_QUIET".to_string(), "0".to_string()),
+                ("PIP_VERBOSE".to_string(), "0".to_string())
+            ]
+        );
     }
 
     #[test]
@@ -1489,7 +1734,6 @@ mod tests {
                 "list",
                 "--outdated",
                 "--format=json",
-                "-vv",
             ],
             CommandOutput {
                 exit_code: Some(0),
@@ -1526,7 +1770,6 @@ mod tests {
                 "list",
                 "--outdated",
                 "--format=json",
-                "-vv",
             ],
             CommandOutput {
                 exit_code: Some(1),
@@ -1594,14 +1837,13 @@ mod tests {
             .join("\n")
     }
 
-    const OUTDATED_ARGV: [&str; 7] = [
+    const OUTDATED_ARGV: [&str; 6] = [
         "/opt/homebrew/bin/python3.14",
         "-m",
         "pip",
         "list",
         "--outdated",
         "--format=json",
-        "-vv",
     ];
     const LIST_ARGV: [&str; 5] = [
         "/opt/homebrew/bin/python3.14",
