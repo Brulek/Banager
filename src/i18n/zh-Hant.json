@@ -44,9 +44,9 @@
     "firstCheckDetail": "首次檢查需要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
     "details": "詳細資訊",
     "detailsLabel": "詳細資訊：{{title}}",
-    "copyCommand": "複製指令",
-    "copied": "已複製",
-    "copyFailed": "無法複製",
+    "copyCommand": "拷貝指令",
+    "copied": "已拷貝",
+    "copyFailed": "無法拷貝",
     "moreActions": "「{{name}}」的更多操作",
     "sourceWithPlace": "{{source}}（{{place}}）",
     "place": {
@@ -205,7 +205,7 @@
     "replacement": "Homebrew建議改用「{{name}}」。",
     "caveatsTitle": "Homebrew的英文原文說明",
     "homepage": "首頁",
-    "copyLink": "複製連結",
+    "copyLink": "拷貝連結",
     "otherVersionsTerm": "其他版本"
   },
   "installed": {
@@ -504,8 +504,8 @@
     "runsNamesake": "執行的是另一個同名程式",
     "behindDetail": "終端機先找到那一個，這一份排在它後面。",
     "notFound": "終端機找不到它：它在{{dir}}，終端機不在這個資料夾裡尋找指令",
-    "copyPath": "複製路徑",
-    "copyPathLabel": "複製路徑：{{dir}}",
+    "copyPath": "拷貝路徑",
+    "copyPathLabel": "拷貝路徑：{{dir}}",
     "twin": "裝了兩份",
     "twinMany": "裝了{{number}}份",
     "twinLabel": "{{word}}：{{name}}",
@@ -764,7 +764,7 @@
         "Internal": "未能完成：發生內部錯誤，沒有改動"
       }
     },
-    "copyLog": "複製記錄"
+    "copyLog": "拷貝記錄"
   },
   "operationsMore": {
     "runningSeveral": "正在同時處理{{running}}個",
@@ -935,11 +935,11 @@
       "ToolData": "這個工具的設定和資料",
       "Models": "下載的模型"
     },
-    "copyPath": "複製路徑",
-    "copyPathLabel": "複製路徑：{{path}}",
+    "copyPath": "拷貝路徑",
+    "copyPathLabel": "拷貝路徑：{{path}}",
     "notCounting": "{{path}}是{{tool}}的資料，不算在內",
-    "findInFinder": "要在Finder中查看，可以複製路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。",
-    "findInFinderHome": "路徑開頭的「~」是你的個人專屬檔案夾。要在Finder中查看，可以複製路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。"
+    "findInFinder": "要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。",
+    "findInFinderHome": "路徑開頭的「~」是你的個人專屬檔案夾。要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。"
   },
   "settings": {
     "groups": {
@@ -1021,7 +1021,7 @@
   },
   "diagnostics": {
     "label": "診斷資訊",
-    "copy": "複製診斷資訊",
+    "copy": "拷貝診斷資訊",
     "includeTools": "包括工具清單",
     "footnote": "可以貼上給幫你看問題的人。不含個人檔案的內容；勾選後才包括工具清單。",
     "text": {
@@ -1189,11 +1189,11 @@
       },
       "password": {
         "question": "為什麼要輸入Mac的密碼？這裡能代我輸入嗎？",
-        "answer": "Homebrew安裝的App，有些在更新或解除安裝時會要求輸入Mac的登入密碼，確認視窗會事先說明。這裡無法輸入密碼，也不會儲存密碼。如果因此沒有完成，它的「查看記錄」裡會給出一條指令，複製到終端機裡執行，按提示輸入密碼；輸入時螢幕上不顯示任何字元，這是正常的。完成後回到這裡，按⌘R重新檢查。"
+        "answer": "Homebrew安裝的App，有些在更新或解除安裝時會要求輸入Mac的登入密碼，確認視窗會事先說明。這裡無法輸入密碼，也不會儲存密碼。如果因此沒有完成，它的「查看記錄」裡會給出一條指令，拷貝到終端機裡執行，按提示輸入密碼；輸入時螢幕上不顯示任何字元，這是正常的。完成後回到這裡，按⌘R重新檢查。"
       },
       "leftBehind": {
         "question": "解除安裝後哪些東西會留下，在哪裡？",
-        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以複製路徑。Claude Code、Antigravity CLI、Grok Build內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的資料夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
+        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的資料夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
       },
       "changesMac": {
         "question": "此App會更動我的Mac嗎？",
@@ -1201,7 +1201,7 @@
       },
       "otherPrograms": {
         "question": "「其他程式」裡的是什麼？",
-        "answer": "是在~/.local/bin、/usr/local/bin等常放指令的資料夾裡找到、但無法確定由哪個來源安裝的程式。這裡只列出它們，不會更動；不認識的，可以在Finder中顯示，或複製路徑。清單下方寫著搜尋了哪些資料夾；受保護的位置不讀取。"
+        "answer": "是在~/.local/bin、/usr/local/bin等常放指令的資料夾裡找到、但無法確定由哪個來源安裝的程式。這裡只列出它們，不會更動；不認識的，可以在Finder中顯示，或拷貝路徑。清單下方寫著搜尋了哪些資料夾；受保護的位置不讀取。"
       },
       "sizes": {
         "question": "佔用空間的數字準嗎？",
@@ -1294,7 +1294,7 @@
     "showsLinkTarget": "顯示此連結指向的檔案。",
     "targetGone": "找不到此連結指向的檔案。",
     "showInFinderFailed": "無法在Finder中顯示",
-    "copyPath": "複製路徑",
+    "copyPath": "拷貝路徑",
     "scanAgain": "重新掃描",
     "scanning": "正在掃描…",
     "scannedJustNow": "上次掃描：剛才",
@@ -1358,7 +1358,7 @@
       "passwordNotAccepted": "密碼未被接受，請在密碼視窗輸入Mac的登入密碼後再試一次。"
     },
     "toolWords": {
-      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「查看記錄」，再點按「複製記錄」，傳給懂的人看。",
+      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「查看記錄」，再點按「拷貝記錄」，傳給懂的人看。",
       "withCause": "上面是{{program}}自己顯示的錯誤訊息。{{line}}",
       "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。{{line}}可以點按「查看記錄」，在終端機裡執行那裡給出的指令。",
       "noLog": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就把這段錯誤訊息告訴懂的人。"
@@ -1385,10 +1385,10 @@
       "Install": "重新安裝"
     },
     "log": {
-      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「複製記錄」，傳給懂的人看。",
-      "afterStep": "上面是{{program}}自己顯示的錯誤訊息。照上面說的做了還是失敗，就點按「複製記錄」，傳給懂的人看。",
-      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。在終端機裡執行上面那條指令還是失敗，就點按「複製記錄」，傳給懂的人看。",
-      "copyOnly": "上面是{{program}}自己顯示的錯誤訊息。可以點按「複製記錄」，傳給懂的人看。"
+      "generic": "上面是{{program}}自己顯示的錯誤訊息。可以稍後{{again}}；還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "afterStep": "上面是{{program}}自己顯示的錯誤訊息。照上面說的做了還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "inTerminal": "上面是{{program}}自己顯示的錯誤訊息。在終端機裡執行上面那條指令還是失敗，就點按「拷貝記錄」，傳給懂的人看。",
+      "copyOnly": "上面是{{program}}自己顯示的錯誤訊息。可以點按「拷貝記錄」，傳給懂的人看。"
     }
   },
   "needsPassword": {

@@ -227,9 +227,10 @@ pub struct TopMenu {
 
 /// The menu bar's words in one language. `{app}` is the app's name.
 /// Where a Mac app's menu has the item, the words are the ones macOS's own
-/// menus use in that language -- Finder's, Safari's: 拷贝, not 复制, and
-/// 显示 for View. The four pages are named as the sidebar names them
-/// (`nav.*` in src/i18n/en.json and zh-CN.json), which a test checks.
+/// menus use in that language -- Finder's, Safari's: 拷贝 and 拷貝, not
+/// 复制 or 複製, and 显示 or 顯示方式 for View. The four pages are named as
+/// the sidebar names them (`nav.*` in src/i18n/en.json and zh-CN.json),
+/// which a test checks.
 struct Words {
     about: &'static str,
     settings: &'static str,
@@ -365,7 +366,7 @@ const TRADITIONAL_CHINESE: Words = Words {
     undo: "還原",
     redo: "重做",
     cut: "剪下",
-    copy: "複製",
+    copy: "拷貝",
     paste: "貼上",
     select_all: "全選",
     view: "顯示方式",
@@ -383,7 +384,7 @@ const TRADITIONAL_CHINESE: Words = Words {
     welcome: "歡迎使用{app}",
     keyboard_shortcuts: "鍵盤快速鍵",
     check_tool_setup: "檢查工具環境…",
-    copy_diagnostics: "複製診斷資訊…",
+    copy_diagnostics: "拷貝診斷資訊…",
 };
 
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
@@ -829,7 +830,7 @@ mod tests {
             words[2],
             (
                 "編輯".into(),
-                ["還原", "重做", "—", "剪下", "複製", "貼上", "全選"]
+                ["還原", "重做", "—", "剪下", "拷貝", "貼上", "全選"]
                     .map(String::from)
                     .to_vec()
             )
