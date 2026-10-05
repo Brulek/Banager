@@ -25,11 +25,29 @@ use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Whether `PATH` is now the login shell's. `fix()` leaves the process's
-    // own small one in place when it fails, and says nothing else; the
-    // session is told below (`Session::note_login_path`), so that no
-    // refresh says which copy of a command runs against that one.
-    let login_path = fix_path_env::fix().is_ok();
+    // Complete this before any application threads start. RealRunner
+    // bounds the shell and its pipe drain, and terminates its process group
+    // on timeout. A late/partial result never mutates the inherited PATH.
+    let inherited = banager_core::runner::HostEnv::discover();
+    let shell = std::env::var_os("SHELL")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| "/bin/zsh".into());
+    let path = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()
+        .and_then(|runtime| {
+            runtime.block_on(banager_core::runner::login_path::read(
+                &banager_core::runner::RealRunner::new(),
+                shell,
+                inherited.home,
+                std::time::Duration::from_secs(3),
+            ))
+        });
+    let login_path = path.is_some();
+    if let Some(path) = path {
+        std::env::set_var("PATH", path);
+    }
     if !login_path {
         eprintln!("[banager] failed to fix PATH; falling back to the process's default PATH");
     }

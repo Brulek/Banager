@@ -153,6 +153,70 @@ pub(crate) fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<Upd
     crate::adapters::sanity::candidates(candidates)
 }
 
+/// A successful command with an unknown format is not an empty inventory.
+fn require_parsed_tools(text: &str, count: usize) -> Result<(), AdapterError> {
+    if count == 0 && !matches!(text.trim(), "" | "No tools installed") {
+        return Err(AdapterError::Parse(
+            "unrecognized uv tool list output".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Until compatible-target resolution is available, a saved constraint
+/// must never be advertised as an unconstrained upgrade. Unknown receipts
+/// are equally unable to prove that `uv tool upgrade` can install latest.
+fn upgrade_requirement(artifact: &InstalledArtifact) -> Result<(), String> {
+    let path = artifact
+        .path
+        .as_ref()
+        .filter(|p| p.is_absolute())
+        .ok_or_else(|| "uv tool environment path is unknown".to_string())?;
+    let text = crate::adapters::read_file::read_text(
+        &path.join("uv-receipt.toml"),
+        &crate::protected::Protected::of_this_process(),
+    )
+    .map_err(|_| "could not read uv tool requirements".to_string())?;
+    unconstrained_requirement(&text, &artifact.key.name)
+}
+
+fn unconstrained_requirement(text: &str, name: &str) -> Result<(), String> {
+    let receipt: toml::Value =
+        toml::from_str(text).map_err(|_| "could not parse uv tool requirements".to_string())?;
+    let normalize = |name: &str| name.to_ascii_lowercase().replace(['_', '.'], "-");
+    let requirements = receipt
+        .get("tool")
+        .and_then(|t| t.get("requirements"))
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "uv tool requirements are unknown".to_string())?;
+    let main: Vec<_> = requirements
+        .iter()
+        .filter(|r| {
+            r.get("name")
+                .and_then(toml::Value::as_str)
+                .is_some_and(|n| normalize(n) == normalize(name))
+        })
+        .collect();
+    if main.len() != 1 {
+        return Err("uv main-package requirement is unknown".into());
+    }
+    let table = main[0]
+        .as_table()
+        .ok_or_else(|| "uv requirement is unknown".to_string())?;
+    // URL, git, path and future source forms are not ordinary index upgrades.
+    if table
+        .keys()
+        .any(|key| !matches!(key.as_str(), "name" | "extras" | "specifier"))
+    {
+        return Err("uv requirement uses an unsupported source or marker".into());
+    }
+    match table.get("specifier") {
+        None => Ok(()),
+        Some(toml::Value::String(specifier)) if specifier.trim().is_empty() => Ok(()),
+        _ => Err("saved uv version requirements need a compatible-target check".into()),
+    }
+}
+
 pub struct UvAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
@@ -264,7 +328,7 @@ impl UvAdapter {
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
             args,
-            env: Vec::new(),
+            env: vec![("NO_COLOR".into(), "1".into())],
             cwd: None,
             timeout,
             // Every caller of this helper hands the result to a parser.
@@ -298,7 +362,9 @@ impl UvAdapter {
             });
         }
         let uninstall_blocked = self.uninstall_blocked();
-        Ok(parse_tool_list_show_paths(&output.stdout, &inst.id)
+        let artifacts = parse_tool_list_show_paths(&output.stdout, &inst.id);
+        require_parsed_tools(&output.stdout, artifacts.len())?;
+        Ok(artifacts
             .into_iter()
             .map(|artifact| InstalledArtifact {
                 uninstall_blocked,
@@ -337,7 +403,27 @@ impl UvAdapter {
                 uncheckable_from_inventory(&installed, UpdateChannel::Native, &failure).into(),
             );
         }
-        Ok(parse_tool_list_outdated(&output.stdout, &inst.id).into())
+        let mut candidates = parse_tool_list_outdated(&output.stdout, &inst.id);
+        require_parsed_tools(&output.stdout, candidates.len())?;
+        if !candidates.is_empty() {
+            let installed = self.inventory(inst).await?;
+            for candidate in &mut candidates {
+                let requirement = installed
+                    .iter()
+                    .find(|a| a.key == candidate.key)
+                    .ok_or_else(|| "uv tool is absent from inventory".to_string())
+                    .and_then(upgrade_requirement);
+                if let Err(reason) = requirement {
+                    *candidate = crate::adapters::uncheckable_candidate(
+                        candidate.key.clone(),
+                        candidate.current.clone(),
+                        UpdateChannel::Native,
+                        reason,
+                    );
+                }
+            }
+        }
+        Ok(candidates.into())
     }
 
     pub async fn search(
@@ -365,6 +451,14 @@ impl UvAdapter {
             if let Some(reason) = self.uninstall_blocked() {
                 return Err(AdapterError::UninstallBlocked { reason });
             }
+        }
+        if req.kind == OpKind::Upgrade {
+            let installed = self.inventory(inst).await?;
+            let artifact = installed
+                .iter()
+                .find(|a| a.key.name == req.name)
+                .ok_or_else(|| AdapterError::Refused("uv tool is absent from inventory".into()))?;
+            upgrade_requirement(artifact).map_err(AdapterError::Refused)?;
         }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
@@ -481,6 +575,189 @@ impl Adapter for UvAdapter {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_saved_uv_constraints_and_unknown_receipts_never_promise_latest() {
+        for specifier in ["==0.5.0", ">=0.5,<0.6", "~=0.5.0", "!=0.6"] {
+            let receipt =
+                format!("[tool]\nrequirements = [{{ name = 'ruff', specifier = '{specifier}' }}]");
+            assert!(super::unconstrained_requirement(&receipt, "ruff").is_err());
+        }
+        assert!(super::unconstrained_requirement(
+            "[tool]\nrequirements = [{ name = 'ruff' }]",
+            "ruff"
+        )
+        .is_ok());
+        assert!(super::unconstrained_requirement(
+            "[tool]\nrequirements = [{ name = 'ruff', git = 'remote' }]",
+            "ruff"
+        )
+        .is_err());
+        assert!(super::unconstrained_requirement(
+            "[tool]\nrequirements = [{ name = 'other' }]",
+            "ruff"
+        )
+        .is_err());
+        assert!(super::unconstrained_requirement("bad receipt", "ruff").is_err());
+    }
+
+    fn receipt_runner() -> (tempfile::TempDir, Arc<MockRunner>) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("uv-receipt.toml"),
+            "[tool]\nrequirements = [{name = 'ruff'}]\n",
+        )
+        .unwrap();
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: format!("ruff v0.15.0 ({})\n", dir.path().display()),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        (dir, runner)
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_plan_rechecks_saved_constraints() {
+        let (dir, runner) = receipt_runner();
+        let adapter = UvAdapter::new(runner);
+        assert!(adapter
+            .plan(&test_instance(), &request(OpKind::Upgrade))
+            .await
+            .is_ok());
+        std::fs::write(
+            dir.path().join("uv-receipt.toml"),
+            "[tool]\nrequirements = [{name = 'ruff', specifier = '==0.15.0'}]\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            adapter
+                .plan(&test_instance(), &request(OpKind::Upgrade))
+                .await,
+            Err(AdapterError::Refused(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_check_never_offers_a_target_outside_saved_requirements() {
+        let (dir, runner) = receipt_runner();
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "ruff v0.15.0 [latest: 0.16.0]\n".into(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = UvAdapter::new(runner);
+        for requirement in ["", "==0.15.0", ">=0.15,<0.16"] {
+            std::fs::write(
+                dir.path().join("uv-receipt.toml"),
+                format!(
+                    "[tool]\nrequirements = [{{ name = 'ruff', specifier = '{requirement}' }}]\n"
+                ),
+            )
+            .unwrap();
+            let result = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap();
+            assert_eq!(result.candidates.len(), 1);
+            assert_eq!(result.candidates[0].checkable, requirement.is_empty());
+        }
+        std::fs::remove_file(dir.path().join("uv-receipt.toml")).unwrap();
+        assert!(
+            !adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates[0]
+                .checkable
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unknown_nonempty_output_is_not_a_successful_empty_list() {
+        for text in [
+            "\x1b[1mruff v1.0 (path)\x1b[0m",
+            "new output format",
+            "- orphan",
+            "",
+            "No tools installed",
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            for option in ["--show-paths", "--outdated"] {
+                runner.respond(
+                    vec!["/opt/homebrew/bin/uv", "tool", "list", option],
+                    CommandOutput {
+                        exit_code: Some(0),
+                        stdout: text.into(),
+                        stderr: String::new(),
+                        timed_out: false,
+                        cancelled: false,
+                    },
+                );
+            }
+            let adapter = UvAdapter::new(runner.clone());
+            let inventory = adapter.inventory(&test_instance()).await;
+            let updates = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await;
+            if matches!(text, "" | "No tools installed") {
+                assert!(inventory.unwrap().is_empty());
+                assert!(updates.unwrap().candidates.is_empty());
+            } else {
+                assert!(matches!(inventory, Err(AdapterError::Parse(_))), "{text:?}");
+                assert!(matches!(updates, Err(AdapterError::Parse(_))), "{text:?}");
+            }
+            assert_eq!(runner.calls().len(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inventory_and_update_commands_disable_forced_color() {
+        struct ColorRunner;
+        #[async_trait]
+        impl CommandRunner for ColorRunner {
+            async fn run(
+                &self,
+                spec: CommandSpec,
+                _on_line: Option<crate::runner::LineCallback>,
+                _cancel: CancellationToken,
+            ) -> Result<CommandOutput, crate::runner::RunnerError> {
+                assert!(
+                    spec.env.contains(&("NO_COLOR".into(), "1".into())),
+                    "parsed output must stay plain even with inherited FORCE_COLOR"
+                );
+                Ok(CommandOutput {
+                    exit_code: Some(0),
+                    stdout: "No tools installed".into(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                })
+            }
+        }
+        let adapter = UvAdapter::new(Arc::new(ColorRunner));
+        assert!(adapter
+            .inventory(&test_instance())
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates
+            .is_empty());
+    }
+
     use super::*;
 
     // Regressions found by `adapters/robustness.rs`.
@@ -682,7 +959,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         let text =
             std::fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-outdated.txt")
                 .expect("read uv tool-list-outdated.txt fixture");
-        let runner = Arc::new(MockRunner::new());
+        let (_dir, runner) = receipt_runner();
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
             CommandOutput {
@@ -766,7 +1043,8 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
 
     #[tokio::test]
     async fn test_plan_install_uninstall_upgrade_build_the_expected_argv() {
-        let adapter = UvAdapter::new(Arc::new(MockRunner::new()));
+        let (_dir, runner) = receipt_runner();
+        let adapter = UvAdapter::new(runner);
         let inst = test_instance();
         for (kind, expected) in [
             (OpKind::Install, vec!["tool", "install", "ruff"]),
@@ -863,7 +1141,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         // The gate refuses the row from the snapshot; the plan refuses it
         // too, for a snapshot older than the environment it reads. Install
         // and upgrade delete no folder, so they still plan.
-        let runner = Arc::new(MockRunner::new());
+        let (_dir, runner) = receipt_runner();
         let adapter = UvAdapter::new(runner.clone())
             .with_tool_dir_fn(|| Some(OsString::from("/Users/someone/work/uv-tools")));
         let inst = test_instance();
@@ -881,7 +1159,11 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
                 .unwrap_or_else(|e| panic!("{kind:?} still plans: {e}"));
             assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
         }
-        assert!(runner.calls().is_empty(), "planning runs no uv command");
+        assert_eq!(
+            runner.calls().len(),
+            1,
+            "upgrade rereads inventory requirements"
+        );
     }
 
     #[tokio::test]

@@ -769,6 +769,12 @@ impl BrewAdapter {
         timeout: Duration,
     ) -> Result<CommandOutput, AdapterError> {
         self.refuse_if_root()?;
+        if matches!(
+            args.first().map(String::as_str),
+            Some("install" | "upgrade" | "outdated")
+        ) {
+            self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
+        }
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
             args,
@@ -784,6 +790,21 @@ impl BrewAdapter {
             .runner
             .run(spec, None, CancellationToken::new())
             .await?)
+    }
+
+    /// Refuse an implicit update outside the separately tracked update task.
+    fn require_no_auto_update(
+        &self,
+        prefix: &Path,
+        env: &[(String, String)],
+    ) -> Result<(), AdapterError> {
+        let switches = brew_env::after_brew_env(env, prefix, &self.env_var_fn, &self.brew_env_fn);
+        if !switches.no_auto_update {
+            return Err(AdapterError::Refused(
+                "brew.env overrides HOMEBREW_NO_AUTO_UPDATE, or could not be checked; automatic Homebrew updates must be disabled for this command".into()
+            ));
+        }
+        Ok(())
     }
 
     fn update_lock_for(&self, inst_id: &InstanceId) -> Arc<tokio::sync::Mutex<()>> {
@@ -1735,6 +1756,9 @@ impl BrewAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        if matches!(req.kind, OpKind::Install | OpKind::Upgrade) {
+            self.require_no_auto_update(&inst.prefix, &self.env_vec())?;
+        }
         let lock = ResourceLock(inst.id.clone());
         match req.kind {
             OpKind::Install => {
@@ -1904,6 +1928,12 @@ impl BrewAdapter {
                 }));
             }
         };
+        // Recheck immediately before execution: brew.env can change since preview.
+        if matches!(plan.request.kind, OpKind::Install | OpKind::Upgrade) {
+            if let PlanAction::Command { program, env, .. } = &plan.action {
+                self.require_no_auto_update(&Self::prefix_for(program), env)?;
+            }
+        }
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -3142,6 +3172,57 @@ mod plan_execute_tests {
             version: Some("7.0.3".to_string()),
             ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
         }
+    }
+
+    #[tokio::test]
+    async fn regression_brew_env_cannot_reenable_an_untracked_auto_update() {
+        let runner = Arc::new(MockRunner::new());
+        let safe = BrewAdapter::new(runner.clone());
+        let blocked = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
+            if path == Path::new(brew_env::SYSTEM_FILE) {
+                brew_env::EnvFile::Read(b"HOMEBREW_NO_AUTO_UPDATE=\n".to_vec())
+            } else {
+                brew_env::EnvFile::Skipped
+            }
+        });
+        let inst = test_instance();
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".into(),
+            };
+            assert!(matches!(
+                blocked.plan(&inst, &req).await,
+                Err(AdapterError::Refused(_))
+            ));
+            let plan = safe.plan(&inst, &req).await.unwrap();
+            assert!(matches!(
+                blocked
+                    .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                    .await,
+                Err(AdapterError::Refused(_))
+            ));
+        }
+        assert!(matches!(
+            blocked
+                .run_brew(&inst, vec!["outdated".into()], Duration::from_secs(1))
+                .await,
+            Err(AdapterError::Refused(_))
+        ));
+        assert!(runner.calls().is_empty());
+        // Shell non-empty values such as "0" still disable auto-update.
+        let zero = BrewAdapter::new(runner)
+            .with_brew_env_fn(|_| brew_env::EnvFile::Read(b"HOMEBREW_NO_AUTO_UPDATE=0\n".to_vec()));
+        assert!(zero
+            .require_no_auto_update(&inst.prefix, &zero.env_vec())
+            .is_ok());
+        let unknown = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_brew_env_fn(|_| brew_env::EnvFile::Unknown);
+        assert!(unknown
+            .require_no_auto_update(&inst.prefix, &unknown.env_vec())
+            .is_err());
     }
 
     /// (F4 / M2) `plan` must refuse when the request's `instance_id` does not

@@ -440,29 +440,32 @@ fn test_nothing_writes_a_file_but_banagers_own_two_and_the_move_to_the_trash() {
             "writeToURL",
             "createDirectoryAt",
             "createFileAtPath",
+            ".tempfile_in(",
+            ".persist(",
+            ".write_all(",
+            "atomic_file::write(",
         ],
     );
     // Each allowed write, by file: what it writes.
-    let allowed: [(&str, &[&str]); 3] = [
-        // settings.json: the folder made if missing, a temp file beside
-        // it renamed into place.
+    let allowed: [(&str, &[&str]); 4] = [
+        // Only settings and history may call the shared atomic writer.
         (
             "crates/banager-core/src/settings.rs:",
-            &[
-                "create_dir_all(",
-                "fs::write(&tmp_path",
-                "fs::rename(&tmp_path",
-            ],
+            &["atomic_file::write(path, &json)"],
         ),
-        // history.json, the same way, the temp file removed when the
-        // rename failed.
         (
             "crates/banager-core/src/history/mod.rs:",
+            &["atomic_file::write(path, bytes)"],
+        ),
+        // Exclusive temporary regular file beside either destination;
+        // tempfile cleans up the owned staging file on failure.
+        (
+            "crates/banager-core/src/atomic_file.rs:",
             &[
-                "create_dir_all(",
-                "fs::write(&tmp_path",
-                "fs::rename(&tmp_path",
-                "remove_file(&tmp_path",
+                "create_dir_all(parent)",
+                ".tempfile_in(parent)",
+                "staging.write_all(bytes)",
+                "staging.persist(path)",
             ],
         ),
         // A previewed path moved to the Trash.

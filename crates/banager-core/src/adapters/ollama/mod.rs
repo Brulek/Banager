@@ -532,6 +532,20 @@ impl OllamaAdapter {
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
         let installed = self.inventory(inst).await?;
+        if !models_on_this_mac(inst) {
+            return Ok(installed
+                .iter()
+                .map(|artifact| {
+                    uncheckable_candidate(
+                        artifact.key.clone(),
+                        artifact.version.clone(),
+                        UpdateChannel::Digest,
+                        "remote daemon manifests cannot be checked from this Mac".to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into());
+        }
         let manifests_root = inst.prefix.join("models/manifests/registry.ollama.ai");
         let mut out = Vec::new();
         for artifact in &installed {
@@ -606,7 +620,7 @@ impl OllamaAdapter {
             action: PlanAction::Command {
                 program: inst.exe_path.clone(),
                 args,
-                env: Vec::new(),
+                env: vec![("OLLAMA_HOST".to_string(), host_of(inst).to_string())],
             },
             needs_password: false,
             locks: vec![lock],
@@ -695,6 +709,90 @@ impl Adapter for OllamaAdapter {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn test_remote_models_are_uncheckable_without_reading_local_manifests() {
+        // A real, readable manifest is essential: with a missing file the
+        // local comparison also returns uncheckable without a registry call,
+        // so that setup cannot detect a missing remote-daemon guard.
+        let home = tempfile::tempdir().unwrap();
+        let model_dir = home
+            .path()
+            .join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::write(
+            model_dir.join("27b-mlx"),
+            std::fs::read(
+                "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let tags =
+            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json").unwrap();
+        let http = Arc::new(MockHttpClient::new());
+        for host in ["http://server:11434", "http://127.0.0.1:11434"] {
+            http.respond(
+                &format!("{host}/api/tags"),
+                HttpResponse {
+                    status: 200,
+                    body: tags.clone(),
+                },
+            );
+        }
+        let registry = "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx";
+        let mut registry_manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                "../../adapters/fixtures/ollama/0.34.1/registry-manifest-qwen3.8-27b-mlx.json",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        registry_manifest["layers"][0]["digest"] = format!("sha256:{}", "a".repeat(64)).into();
+        http.respond(
+            registry,
+            HttpResponse {
+                status: 200,
+                body: registry_manifest.to_string(),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance("http://server:11434", home.path().into());
+        let rows = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].checkable);
+        assert_eq!(rows[0].current, rows[0].target);
+        assert_eq!(
+            rows[0].warnings,
+            vec![Warning::Message(
+                "remote daemon manifests cannot be checked from this Mac".into()
+            )]
+        );
+        assert_eq!(http.calls(), vec!["http://server:11434/api/tags"]);
+
+        // The same local files and registry response must be actionable
+        // for a local daemon, proving that neither fixture is vacuous.
+        let local = test_instance("http://127.0.0.1:11434", home.path().into());
+        let rows = adapter
+            .check_updates(&local, &CheckOptions::default())
+            .await
+            .unwrap()
+            .candidates;
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].checkable);
+        assert_eq!(
+            http.calls(),
+            vec![
+                "http://server:11434/api/tags",
+                "http://127.0.0.1:11434/api/tags",
+                registry,
+            ]
+        );
+    }
+
     use super::*;
     use crate::events::VecSink;
     use crate::http::{HttpResponse, MockHttpClient};
@@ -1203,6 +1301,10 @@ mod tests {
                 .await
                 .expect("plan");
             assert_eq!(command_args(&plan), expected);
+            assert_eq!(
+                crate::testing::command_env(&plan),
+                vec![("OLLAMA_HOST".to_string(), host_of(&inst).to_string())]
+            );
             assert!(!plan.needs_password);
         }
     }

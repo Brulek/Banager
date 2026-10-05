@@ -430,14 +430,14 @@ impl Trasher for CancellingTrasher {
 }
 
 #[tokio::test]
-async fn test_an_uninstall_cancelled_between_items_is_reported_cancelled_and_a_second_uninstall_finishes(
-) {
+async fn test_an_uninstall_cancelled_between_items_needs_attention_and_a_second_uninstall_finishes()
+{
     // Review Focus 4, the other half, and the retry Astra's finding 6 asked
     // for: the user's Cancel lands after the program directory went to the
     // Trash. The launcher is still there -- one link into its root, so
     // launcher-only rather than gone -- so the reading after the uninstall
-    // says the item is present and the cancel is what happened
-    // (`Cancelled`; never `Succeeded`: Task 2's reading), the next refresh
+    // says the item is present but cannot prove it is intact
+    // (`Unconfirmed`; never plain `Cancelled`), the next refresh
     // shows the launcher-only row, and pressing Uninstall again finishes
     // the job.
     let home = Home::new("cancelled");
@@ -456,7 +456,7 @@ async fn test_an_uninstall_cancelled_between_items_is_reported_cancelled_and_a_s
         .set((Arc::downgrade(&session), op_id))
         .expect("named once");
 
-    assert_eq!(outcome_of(&session, op_id).await, Outcome::Cancelled);
+    assert_eq!(outcome_of(&session, op_id).await, Outcome::Unconfirmed);
     assert_eq!(
         trasher.inner.calls(),
         vec![home.path().join(".local/share/claude")]

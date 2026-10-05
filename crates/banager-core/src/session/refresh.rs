@@ -292,10 +292,9 @@ impl Session {
         // to write them again. The operation's own reading afterwards
         // (`run_operation`'s reconcile, under its locks) and the refresh
         // the front end runs when it finishes replace these rows. Read
-        // once, so an operation submitted after this line may start while
-        // a detect it would have skipped is running its one `--version`:
-        // that window is the command's duration.
-        let held = self.ops.locks_held();
+        // once for each detection, and hold the acquired resources until
+        // its subprocess finishes. The same atomic acquisition as operations
+        // closes both orderings of the detection/self-update race.
         let mut under_operation: HashSet<InstanceId> = HashSet::new();
         let mut adapters: Vec<_> = self.adapters.values().collect();
         adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
@@ -308,25 +307,38 @@ impl Session {
                 .filter(|i| i.adapter_id == adapter_id)
                 .cloned()
                 .collect();
-            let held_here: Vec<InstanceId> = carried
-                .iter()
-                .filter(|i| held.contains(&ResourceLock(i.id.clone())))
-                .map(|i| i.id.clone())
-                .collect();
-            if !held_here.is_empty() {
+            let mut locks: Vec<_> = carried.iter().map(|i| ResourceLock(i.id.clone())).collect();
+            // Detection must be excluded even on the first refresh, before
+            // there is an instance to carry. rustup operations lock both.
+            if adapter_id == "cargo" {
+                if let Some(home) = crate::adapters::cargo::cargo_home_of(env) {
+                    locks.push(ResourceLock(crate::adapters::cargo::instance_id_for(&home)));
+                }
+            } else if adapter_id == "standalone-rustup" {
+                locks.push(ResourceLock("standalone-rustup".into()));
+            }
+            locks.sort_by(|a, b| a.0.cmp(&b.0));
+            locks.dedup();
+            let Some(detection_guard) = self.ops.try_detection_locks(locks) else {
+                let held = self.ops.locks_held();
                 let carried = carried
                     .into_iter()
                     .map(|mut inst| {
-                        if !held_here.contains(&inst.id) {
+                        if !held.contains(&ResourceLock(inst.id.clone())) {
                             inst.status.notes.retain(|n| !n.is_from_update_check());
                         }
                         inst
                     })
-                    .collect();
-                under_operation.extend(held_here);
+                    .collect::<Vec<_>>();
+                under_operation.extend(
+                    carried
+                        .iter()
+                        .filter(|i| held.contains(&ResourceLock(i.id.clone())))
+                        .map(|i| i.id.clone()),
+                );
                 detections.push((adapter_id, Detection::Skipped(carried)));
                 continue;
-            }
+            };
             // Cloned into the task because `tokio::spawn` needs a 'static
             // future: iterating `values()` by reference would tie it to
             // `&self`. (Written as an explicit clone rather than
@@ -337,6 +349,7 @@ impl Session {
             detections.push((
                 adapter_id,
                 Detection::Spawned(AbortOnDropHandle::new(tokio::spawn(async move {
+                    let _guard = detection_guard;
                     adapter.detect(&env).await
                 }))),
             ));
@@ -1067,6 +1080,7 @@ mod tests {
         declining_inventory: Vec<InstanceId>,
         declining_updates: Vec<InstanceId>,
         detect_delay: Duration,
+        detect_gate: Option<Arc<tokio::sync::Semaphore>>,
         /// How long every `inventory` sleeps before answering: a slow
         /// source (cargo's per-crate lookups, pipx's PyPI calls) that keeps
         /// a refresh in flight after a quick one has returned.
@@ -1122,6 +1136,7 @@ mod tests {
                 declining_inventory: Vec::new(),
                 declining_updates: Vec::new(),
                 detect_delay: Duration::from_millis(0),
+                detect_gate: None,
                 inventory_delay: Duration::ZERO,
                 detect_calls: 0,
                 block_execute: false,
@@ -1146,11 +1161,15 @@ mod tests {
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            let gate = self.state.lock().unwrap().detect_gate.clone();
             let delay = {
                 let mut s = self.state.lock().unwrap();
                 s.detect_calls += 1;
                 s.detect_delay
             };
+            if let Some(gate) = gate {
+                let _permit = gate.acquire().await.unwrap();
+            }
             if !delay.is_zero() {
                 tokio::time::sleep(delay).await;
             }
@@ -2978,6 +2997,88 @@ mod tests {
             "and so is cargo: {after:?}"
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_first_detection_excludes_a_later_rustup_operation_and_releases_on_abort() {
+        use crate::model::ResourceLock;
+        // No previous snapshot: even the very first Cargo/rustup detect
+        // must own the resources before a concurrently submitted update.
+        for adapter_id in ["cargo", "standalone-rustup"] {
+            for abort in [false, true] {
+                let (home, env) = rustup_home();
+                let cargo_id = format!("cargo:{}", home.join(".cargo").display());
+                let id = if adapter_id == "cargo" {
+                    cargo_id.as_str()
+                } else {
+                    "standalone-rustup"
+                };
+                let inst = make_instance(adapter_id, id);
+                let (adapter, state) = FakeAdapter::new(adapter_id);
+                let gate = Arc::new(tokio::sync::Semaphore::new(0));
+                {
+                    let mut state = state.lock().unwrap();
+                    state.instances = vec![inst.clone()];
+                    state.detect_gate = Some(gate.clone());
+                }
+                let session = Arc::new(Session::with_adapters(
+                    Arc::new(VecSink::new()),
+                    vec![adapter.clone()],
+                    None,
+                ));
+                session.ops.register_instance(inst.clone());
+                let refresh = {
+                    let session = session.clone();
+                    tokio::spawn(
+                        async move { session.refresh(&env, &CheckOptions::default()).await },
+                    )
+                };
+                tokio::time::timeout(Duration::from_secs(2), async {
+                    while state.lock().unwrap().detect_calls == 0 {
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .expect("detection starts");
+                let req = OpRequest {
+                    kind: OpKind::Upgrade,
+                    instance_id: id.into(),
+                    artifact_kind: ArtifactKind::Binary,
+                    name: "rustup".into(),
+                };
+                let mut plan = adapter.plan(&inst, &req).await.unwrap();
+                plan.locks = vec![
+                    ResourceLock("standalone-rustup".into()),
+                    ResourceLock(cargo_id),
+                ];
+                let op_id = session.ops.submit(plan);
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(150), session.ops.wait(op_id))
+                        .await
+                        .is_err(),
+                    "operation cannot enter while detection owns a lock"
+                );
+                assert_eq!(session.operations()[0].status, OpStatus::Queued);
+                if abort {
+                    refresh.abort();
+                    assert!(refresh.await.unwrap_err().is_cancelled());
+                } else {
+                    gate.add_permits(1);
+                    tokio::time::timeout(Duration::from_secs(2), refresh)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                }
+                assert!(
+                    tokio::time::timeout(Duration::from_secs(2), session.ops.wait(op_id))
+                        .await
+                        .expect("operation proceeds once detection ends")
+                        .is_some()
+                );
+                assert!(session.ops.locks_held().is_empty());
+                std::fs::remove_dir_all(home).unwrap();
+            }
+        }
     }
 
     /// Dropping a refresh future mid-flight must cancel its workers, not

@@ -575,11 +575,31 @@ async fn test_a_pipx_uninstall_ended_by_a_signal_the_run_did_not_send_is_unconfi
 const UV: &str = "/opt/homebrew/bin/uv";
 
 async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcome {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("uv-receipt.toml"),
+        "[tool]\nrequirements = [{ name = 'ruff' }]\n",
+    )
+    .unwrap();
+    let lists: Vec<_> = lists
+        .iter()
+        .map(|list| {
+            list.replace(
+                "/Users/brulek/.local/share/uv/tools/ruff",
+                dir.path().to_str().unwrap(),
+            )
+        })
+        .collect();
     let runner = Arc::new(ScriptedRunner::default());
     runner.script(&[UV, "tool", "upgrade", "ruff"], vec![upgrade_output]);
     runner.script(
         &[UV, "tool", "list", "--show-paths"],
-        lists.iter().map(|l| exited_0(l, "")).collect(),
+        // Planning now reads the receipt's environment before the
+        // operation's own before/after reconciliation readings.
+        std::iter::once(&lists[0])
+            .chain(lists.iter())
+            .map(|l| exited_0(l, ""))
+            .collect(),
     );
     let inst = ManagerInstance {
         exe_path: PathBuf::from(UV),
@@ -596,10 +616,9 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
 }
 
 #[tokio::test]
-async fn test_a_uv_tool_installed_with_an_exact_pin_is_not_reported_as_updated() {
-    // uv 0.12.17 re-resolves a tool installed as `ruff==X` to `X`, prints
-    // "Nothing to upgrade" and a hint, and returns `ExitStatus::Success`
-    // (`upgrade.rs:189-191`, `:217`; see .superpowers/actionability-facts.md).
+async fn test_a_uv_upgrade_that_changes_nothing_is_not_reported_as_updated() {
+    // Even an unconstrained upgrade can leave the version unchanged.
+    // Exact pins are refused before execution by the adapter's plan test.
     let recorded = fixture("uv/0.12.17/tool-list-show-paths.txt");
     let outcome = uv_upgrade(
         exited_0("", "Nothing to upgrade\n"),

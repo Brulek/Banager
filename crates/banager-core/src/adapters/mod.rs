@@ -1,3 +1,4 @@
+mod python_version;
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
@@ -452,12 +453,14 @@ pub(crate) async fn get_ok(
 /// a certificate or TLS error, which a proxy can make permanent, nor a
 /// status the registry answered with: those say something else.
 pub(crate) fn says_network_failed(words: &str) -> bool {
-    const PHRASES: [&str; 14] = [
+    const PHRASES: [&str; 16] = [
         "could not resolve host",
         "couldn't resolve host",
         "timed out",
         "connection refused",
         "connection reset",
+        "connection aborted",
+        "remote end closed connection without response",
         "network is unreachable",
         "no route to host",
         "temporary failure in name resolution",

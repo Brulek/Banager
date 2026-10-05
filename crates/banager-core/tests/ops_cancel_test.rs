@@ -378,7 +378,7 @@ async fn test_cancelled_uninstall_reports_succeeded_when_absent() {
 }
 
 #[tokio::test]
-async fn test_cancelled_uninstall_reports_cancelled_when_still_present() {
+async fn test_cancelled_uninstall_stays_unconfirmed_when_still_present() {
     let (outcome, _trace) = run_cancelled_mid_execute(
         OpKind::Uninstall,
         Reconciled {
@@ -387,7 +387,7 @@ async fn test_cancelled_uninstall_reports_cancelled_when_still_present() {
         },
     )
     .await;
-    assert_eq!(outcome, Outcome::Cancelled);
+    assert_eq!(outcome, Outcome::Unconfirmed);
 }
 
 #[tokio::test]

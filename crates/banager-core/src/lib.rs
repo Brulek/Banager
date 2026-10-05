@@ -51,6 +51,7 @@ compile_error!(
 );
 
 pub mod adapters;
+mod atomic_file;
 /// The daily check's decision -- whether a tick starts a refresh round --
 /// and the record of who asked for each round. Pure: the shell runs the
 /// task and the round.

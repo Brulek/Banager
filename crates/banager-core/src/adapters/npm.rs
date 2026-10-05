@@ -601,23 +601,41 @@ pub(crate) fn parse_outdated_global(
     }
     let root: HashMap<String, OutdatedEntry> = serde_json::from_str(json)
         .map_err(|e| crate::adapters::AdapterError::Parse(e.to_string()))?;
-    let mut out: Vec<UpdateCandidate> = root
-        .into_iter()
-        .map(|(name, entry)| UpdateCandidate {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Package,
-                name: name.clone(),
-            },
-            current: entry.current,
-            target: entry.latest,
-            channel: UpdateChannel::Native,
-            checkable: true,
-            warnings: Vec::new(),
-            blocked: None,
-            download_bytes: None,
-        })
-        .collect();
+    let mut out = Vec::new();
+    for (name, entry) in root {
+        if !crate::adapters::sanity::is_name(&entry.latest) {
+            continue;
+        }
+        let key = ArtifactKey {
+            instance_id: instance_id.to_string(),
+            kind: ArtifactKind::Package,
+            name,
+        };
+        match (
+            semver::Version::parse(&entry.latest),
+            semver::Version::parse(&entry.current),
+        ) {
+            (Ok(latest), Ok(current)) if latest.cmp_precedence(&current).is_gt() => {
+                out.push(UpdateCandidate {
+                    key,
+                    current: entry.current,
+                    target: entry.latest,
+                    channel: UpdateChannel::Native,
+                    checkable: true,
+                    warnings: Vec::new(),
+                    blocked: None,
+                    download_bytes: None,
+                });
+            }
+            (Ok(_), Ok(_)) => {}
+            _ => out.push(crate::adapters::uncheckable_candidate(
+                key,
+                entry.current,
+                UpdateChannel::Native,
+                "could not compare npm versions".to_string(),
+            )),
+        }
+    }
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
     Ok(crate::adapters::sanity::candidates(out))
 }
@@ -651,6 +669,24 @@ pub(crate) fn parse_search(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_outdated_requires_strict_semver_increase() {
+        for (current, latest, count, checkable) in [
+            ("2.0.0-beta.1", "1.9.0", 0, false),
+            ("2.0.0", "1.9.0", 0, false),
+            ("1.0.0+local", "1.0.0+registry", 0, false),
+            ("2.0.0-beta.1", "2.0.0", 1, true),
+            ("unknown", "2.0.0", 1, false),
+        ] {
+            let json = serde_json::json!({"tool": {"current": current, "latest": latest}});
+            let rows = super::parse_outdated_global(&json.to_string(), "npm").unwrap();
+            assert_eq!(rows.len(), count, "{current} -> {latest}");
+            if let Some(row) = rows.first() {
+                assert_eq!(row.checkable, checkable);
+            }
+        }
+    }
+
     use super::*;
 
     // Regressions found by `adapters/robustness.rs`.

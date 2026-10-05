@@ -60,6 +60,10 @@ base64 = "0.22"
 # as a dependency of tauri (through tauri-utils), so no new crate enters
 # the build.
 regex = "1"
+# Already locked transitively; compare Cargo versions by SemVer precedence.
+semver = "1"
+# Exclusive same-directory staging files for settings and history.
+tempfile = "3"
 
 # `RealTrasher` (src/trash/real.rs) is one call: `NSFileManager
 # trashItemAtURL:resultingItemURL:error:`, the call Finder makes to move an

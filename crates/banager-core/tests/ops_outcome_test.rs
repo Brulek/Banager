@@ -523,8 +523,8 @@ async fn run_split(kind: OpKind, adapter: SplitReadingAdapter) -> (Outcome, Vec<
 async fn test_an_uninstall_is_verified_by_reconcile_after_uninstall_alone() {
     // After an uninstall the only question is "is it still there?". An
     // adapter whose version reading cannot answer must still be able to
-    // say "yes, the launcher is there" -- otherwise a stopped uninstall
-    // would read as `Unconfirmed` instead of what it is.
+    // say "yes, the launcher is there". That proves presence, not that
+    // an interrupted uninstall left every program file intact.
     let (outcome, calls) = run_split(
         OpKind::Uninstall,
         SplitReadingAdapter::new(Some(true), Outcome::Succeeded, false),
@@ -543,14 +543,14 @@ async fn test_an_uninstall_is_verified_by_reconcile_after_uninstall_alone() {
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
 
-    // Stopped by the user's Cancel partway: still there means the cancel
-    // is what happened; gone means the work finished anyway.
+    // Stopped partway: presence cannot rule out partial removal; gone
+    // means the work finished anyway.
     let (outcome, _) = run_split(
         OpKind::Uninstall,
         SplitReadingAdapter::new(Some(true), Outcome::Unconfirmed, true),
     )
     .await;
-    assert_eq!(outcome, Outcome::Cancelled);
+    assert_eq!(outcome, Outcome::Unconfirmed);
     let (outcome, _) = run_split(
         OpKind::Uninstall,
         SplitReadingAdapter::new(Some(false), Outcome::Unconfirmed, true),

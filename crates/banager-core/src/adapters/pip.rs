@@ -197,6 +197,58 @@ fn lookups_given_up(stderr: &str) -> Vec<GaveUp> {
         .collect()
 }
 
+/// At verbosity two pip emits its final fetch failures even with retries
+/// disabled. These diagnostics may be on stdout alongside the JSON result.
+/// Keep only the project and a fixed reason, never an index URL's credentials.
+fn final_fetch_failures(text: &str) -> Vec<GaveUp> {
+    text.lines()
+        .filter_map(|line| {
+            let (_, tail) = line.split_once("Could not fetch URL ")?;
+            let (address, reason) = tail.split_once(": ")?;
+            let project = url::Url::parse(address)
+                .ok()
+                .and_then(|u| {
+                    u.path()
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .map(canonical_project)
+                })
+                .unwrap_or_default();
+            Some(GaveUp {
+                project,
+                words: if super::says_network_failed(reason) {
+                    "network error: pip could not fetch the package index"
+                } else {
+                    "pip could not fetch the package index"
+                }
+                .into(),
+            })
+        })
+        .collect()
+}
+
+/// `pip list --format=json -vv` prints one JSON line after its diagnostics.
+/// Preserve support for a plain/pretty JSON result, used by older versions.
+fn parse_verbose_outdated(
+    stdout: &str,
+    instance_id: &str,
+) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    if let Ok(rows) = parse_pip_outdated(stdout, instance_id) {
+        return Ok(rows);
+    }
+    for line in stdout.lines().rev() {
+        if line.trim_start().starts_with('[') {
+            if let Ok(rows) = parse_pip_outdated(line, instance_id) {
+                return Ok(rows);
+            }
+        }
+    }
+    Err(AdapterError::Parse(
+        "pip did not return its outdated JSON list".into(),
+    ))
+}
+
 /// Whether `stderr` is Python's own answer to `-m pip` when it has no
 /// module named `pip`: `<python>: No module named pip`, alone on its line.
 /// Not `No module named pip.__main__; 'pip' is a package and cannot be
@@ -539,6 +591,7 @@ impl PipAdapter {
             "list".to_string(),
             "--outdated".to_string(),
             "--format=json".to_string(),
+            "-vv".to_string(),
         ];
         let output = self
             .runner
@@ -546,7 +599,7 @@ impl PipAdapter {
                 CommandSpec {
                     program: inst.exe_path.clone(),
                     args,
-                    env: Vec::new(),
+                    env: vec![("PIP_QUIET".to_string(), "0".to_string())],
                     cwd: None,
                     timeout: Duration::from_secs(60),
                     output_use: OutputUse::Parsed,
@@ -588,11 +641,13 @@ impl PipAdapter {
                 .collect::<Vec<_>>()
                 .into());
         }
-        let checked = parse_pip_outdated(&output.stdout, &inst.id)?;
+        let checked = parse_verbose_outdated(&output.stdout, &inst.id)?;
         // Exit 0 is not "every package was looked up": a lookup pip gave
         // up on is left out of stdout as if it were up to date (round-5
         // review finding 7). Its retry warnings on stderr say which.
-        let gave_up = lookups_given_up(&output.stderr);
+        let mut gave_up = lookups_given_up(&output.stderr);
+        gave_up.extend(final_fetch_failures(&output.stdout));
+        gave_up.extend(final_fetch_failures(&output.stderr));
         if gave_up.is_empty() {
             return Ok(checked.into());
         }
@@ -776,6 +831,35 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     // Regressions found by `adapters/robustness.rs`.
+
+    #[tokio::test]
+    async fn regression_zero_retry_and_http_failures_are_not_successful_empty_checks() {
+        for reason in [
+            "connection refused",
+            "401 Client Error: Unauthorized",
+            "403 Client Error: Forbidden",
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(OUTDATED_ARGV.to_vec(), exited_with(0,
+                &format!("Could not fetch URL https://user:secret@index.example/simple/cowsay/: {reason} - skipping\n[]\n"), ""));
+            runner.respond(
+                LIST_ARGV.to_vec(),
+                exited_with(0, r#"[{"name":"cowsay","version":"5.0"}]"#, ""),
+            );
+            let adapter = PipAdapter::new(runner);
+            let rows = adapter
+                .check_updates(&test_instance(), &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            assert_eq!(rows.len(), 1);
+            assert!(!rows[0].checkable);
+            assert!(!format!("{:?}", rows[0]).contains("secret"));
+        }
+        let rows = parse_verbose_outdated("Fetched page\n[]\n", "pip:/x").unwrap();
+        assert!(rows.is_empty());
+        assert!(parse_verbose_outdated("fetch failed but no JSON", "pip:/x").is_err());
+    }
 
     #[test]
     fn regression_parse_pip_list_drops_a_nameless_package_and_reads_a_broken_version_as_unknown() {
@@ -1405,6 +1489,7 @@ mod tests {
                 "list",
                 "--outdated",
                 "--format=json",
+                "-vv",
             ],
             CommandOutput {
                 exit_code: Some(0),
@@ -1441,6 +1526,7 @@ mod tests {
                 "list",
                 "--outdated",
                 "--format=json",
+                "-vv",
             ],
             CommandOutput {
                 exit_code: Some(1),
@@ -1508,13 +1594,14 @@ mod tests {
             .join("\n")
     }
 
-    const OUTDATED_ARGV: [&str; 6] = [
+    const OUTDATED_ARGV: [&str; 7] = [
         "/opt/homebrew/bin/python3.14",
         "-m",
         "pip",
         "list",
         "--outdated",
         "--format=json",
+        "-vv",
     ];
     const LIST_ARGV: [&str; 5] = [
         "/opt/homebrew/bin/python3.14",
@@ -1691,11 +1778,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_updates_marks_a_lookup_given_up_for_words_that_are_not_the_network_as_lasting(
-    ) {
-        // A server that hung up five times: not checked, but nothing in
-        // the words says the network failed, so not counted as one to
-        // check again (`says_network_failed`).
+    async fn test_check_updates_marks_a_connection_aborted_after_retries_as_transient() {
+        // A server that hung up five times left no answer, even when pip
+        // exits successfully with []. The window must offer Check Again.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             OUTDATED_ARGV.to_vec(),
@@ -1715,7 +1800,10 @@ mod tests {
         assert!(!candidates[0].checkable);
         assert_eq!(
             candidates[0].warnings,
-            vec![Warning::Message(format!("pip list --outdated: {HUNG_UP}"))]
+            vec![
+                Warning::Message(format!("pip list --outdated: {HUNG_UP}")),
+                Warning::TransientLookupFailure,
+            ]
         );
     }
 

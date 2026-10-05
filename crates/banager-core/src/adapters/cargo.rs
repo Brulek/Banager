@@ -25,16 +25,37 @@ use tokio_util::sync::CancellationToken;
 /// github.com/rust-lang/crates.io-index)"` — not in the value, which only
 /// has `bins`/`features`/`profile`/`rustc`/`target`/`version_req` (this
 /// phase's documented trap for cargo). Splits that key into
-/// `(name, version, source_kind)`, where `source_kind` is the part before
-/// the first `+` inside the parens (`"registry"`, `"git"` or `"path"`).
+/// `(name, version, source)`, preserving the complete registry identity.
 fn parse_install_key(key: &str) -> Option<(String, String, String)> {
     let mut parts = key.splitn(3, ' ');
     let name = parts.next()?.to_string();
     let version = parts.next()?.to_string();
     let source = parts.next()?;
     let source = source.strip_prefix('(')?.strip_suffix(')')?;
-    let kind = source.split('+').next().unwrap_or(source).to_string();
-    Some((name, version, kind))
+    Some((name, version, source.to_string()))
+}
+
+const CRATES_IO_INDEX: &str = "https://github.com/rust-lang/crates.io-index";
+
+fn is_crates_io(source: &str) -> bool {
+    matches!(
+        source,
+        "registry+https://github.com/rust-lang/crates.io-index"
+            | "registry+sparse+https://index.crates.io/"
+            | "sparse+https://index.crates.io/"
+    )
+}
+
+/// SemVer precedence ignores build metadata. Invalid versions are unknown,
+/// never evidence for replacing a binary.
+fn newer_stable(latest: &str, current: &str) -> Result<bool, LookupFailure> {
+    let parse = |text: &str| {
+        semver::Version::parse(text)
+            .map_err(|_| LookupFailure::from("could not compare Cargo versions".to_string()))
+    };
+    let latest = parse(latest)?;
+    let current = parse(current)?;
+    Ok(latest.pre.is_empty() && latest.cmp_precedence(&current).is_gt())
 }
 
 #[derive(Deserialize)]
@@ -88,6 +109,40 @@ fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, Ad
 struct Crates2Install {
     #[serde(default)]
     bins: Vec<String>,
+}
+
+/// Build choices saved by Cargo. Replayed only for upgrades; a binary
+/// installer cannot promise to preserve these source-build options.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct BuildChoices {
+    features: Vec<String>,
+    all_features: bool,
+    no_default_features: bool,
+    profile: Option<String>,
+    target: Option<String>,
+}
+
+impl BuildChoices {
+    fn args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if !self.features.is_empty() {
+            args.extend(["--features".into(), self.features.join(",")]);
+        }
+        if self.all_features {
+            args.push("--all-features".into());
+        }
+        if self.no_default_features {
+            args.push("--no-default-features".into());
+        }
+        if let Some(profile) = &self.profile {
+            args.extend(["--profile".into(), profile.clone()]);
+        }
+        if let Some(target) = &self.target {
+            args.extend(["--target".into(), target.clone()]);
+        }
+        args
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -458,7 +513,7 @@ impl CargoAdapter {
                 kind: ArtifactKind::Binary,
                 name: name.clone(),
             };
-            if source_kind != "registry" {
+            if !is_crates_io(&source_kind) {
                 out.push(UpdateCandidate {
                     key,
                     current: version.clone(),
@@ -471,8 +526,12 @@ impl CargoAdapter {
                 });
                 continue;
             }
-            match self.latest_stable_version(&name).await {
-                Ok(latest) if latest != version => out.push(UpdateCandidate {
+            match self
+                .latest_stable_version(&name)
+                .await
+                .and_then(|latest| newer_stable(&latest, &version).map(|newer| (latest, newer)))
+            {
+                Ok((latest, true)) => out.push(UpdateCandidate {
                     key,
                     current: version,
                     target: latest,
@@ -512,11 +571,56 @@ impl CargoAdapter {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
+        let root = inst
+            .prefix
+            .to_str()
+            .filter(|_| inst.prefix.is_absolute())
+            .ok_or_else(|| {
+                AdapterError::Refused("Cargo install root must be an absolute UTF-8 path".into())
+            })?;
+        let mut build_args = Vec::new();
+        if req.kind == OpKind::Upgrade {
+            let json = self.read_crates2(inst)?;
+            let entries = parse_crates2_entries(&json)?;
+            let matching: Vec<_> = entries
+                .iter()
+                .filter(|(name, _, _)| name == &req.name)
+                .collect();
+            if matching.is_empty() || matching.iter().any(|(_, _, source)| !is_crates_io(source)) {
+                return Err(AdapterError::Refused(
+                    "only installed crates.io packages can be upgraded".into(),
+                ));
+            }
+            // Ambiguous duplicate install records are not a safe upgrade.
+            let root: Crates2Root =
+                serde_json::from_str(&json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+            let records: Vec<_> = root
+                .installs
+                .into_iter()
+                .filter(|(key, _)| {
+                    parse_install_key(key).is_some_and(|(name, _, _)| name == req.name)
+                })
+                .collect();
+            if records.len() != 1 {
+                return Err(AdapterError::Refused(
+                    "ambiguous Cargo install records".into(),
+                ));
+            }
+            let choices: BuildChoices =
+                serde_json::from_value(records.into_iter().next().unwrap().1)
+                    .map_err(|e| AdapterError::Parse(e.to_string()))?;
+            build_args = choices.args();
+        }
         match req.kind {
             OpKind::Install | OpKind::Upgrade => {
                 // The path `detect` resolved through HostEnv, not a fresh
                 // guess: whatever is previewed here is exactly what runs.
-                let binstall = self.binstall.lock().unwrap().clone();
+                let binstall = self
+                    .binstall
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .filter(|_| build_args.is_empty());
                 let mut warnings = Vec::new();
                 let (program, mut args) = match binstall {
                     Some(path) => (path, vec!["-y".to_string()]),
@@ -528,6 +632,10 @@ impl CargoAdapter {
                 if matches!(req.kind, OpKind::Upgrade) {
                     args.push("--force".to_string());
                 }
+                args.extend(["--root".to_string(), root.to_string()]);
+                // Do not inherit registry.default: the checked source is crates.io.
+                args.extend(["--index".to_string(), CRATES_IO_INDEX.to_string()]);
+                args.extend(build_args);
                 args.push(req.name.clone());
                 Ok(Plan {
                     request: req.clone(),
@@ -552,7 +660,12 @@ impl CargoAdapter {
                 request: req.clone(),
                 action: PlanAction::Command {
                     program: inst.exe_path.clone(),
-                    args: vec!["uninstall".to_string(), req.name.clone()],
+                    args: vec![
+                        "uninstall".to_string(),
+                        "--root".to_string(),
+                        root.to_string(),
+                        req.name.clone(),
+                    ],
                     // Removing one program must not start with a toolchain
                     // download (RUSTUP_AUTO_INSTALL_OFF).
                     env: self.env_vec(),
@@ -650,9 +763,99 @@ impl Adapter for CargoAdapter {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn test_upgrade_preserves_build_choices_and_uses_source_build() {
+        let home = temp_cargo_home("build-choices");
+        std::fs::create_dir_all(&home).unwrap();
+        let record = serde_json::json!({"installs": {
+            "hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)": {
+                "features": ["pcre2", "extra"], "all_features": true,
+                "no_default_features": true, "profile": "release", "target": "aarch64-apple-darwin"
+            }
+        }});
+        std::fs::write(home.join(".crates2.json"), record.to_string()).unwrap();
+        let inst = test_instance(home.clone());
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+                .with_binstall(Some(PathBuf::from("/bin/cargo-binstall")));
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".into(),
+        };
+        let plan = adapter.plan(&inst, &req).await.unwrap();
+        assert_eq!(command_program(&plan), inst.exe_path);
+        let args = command_args(&plan);
+        for pair in [
+            ["--features", "pcre2,extra"],
+            ["--profile", "release"],
+            ["--target", "aarch64-apple-darwin"],
+        ] {
+            assert!(args.windows(2).any(|w| w == pair));
+        }
+        assert!(args.contains(&"--all-features".into()));
+        assert!(args.contains(&"--no-default-features".into()));
+        assert!(plan.warnings.contains(&Warning::CompilesLocally));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
     use super::*;
 
     // Regressions found by `adapters/robustness.rs`.
+
+    #[test]
+    fn regression_semver_updates_never_downgrade_or_change_only_metadata() {
+        for (current, latest, newer) in [
+            ("2.0.0-rc.1", "1.9.0", false),
+            ("2.0.0-rc.1", "2.0.0", true),
+            ("1.0.0+local", "1.0.0+remote", false),
+            ("1.9.0", "1.10.0", true),
+            ("1.0.0", "1.1.0-rc.1", false),
+        ] {
+            assert_eq!(newer_stable(latest, current).unwrap(), newer);
+        }
+        assert!(newer_stable("latest", "1.0.0").is_err());
+        assert!(newer_stable("1.0.0", "unknown").is_err());
+    }
+
+    #[tokio::test]
+    async fn regression_private_registry_is_never_queried_or_upgraded_as_crates_io() {
+        let home = temp_cargo_home("private-registry");
+        std::fs::create_dir_all(&home).unwrap();
+        let http = Arc::new(MockHttpClient::new());
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance(home.clone());
+        for source in [
+            "registry+https://company.example/index",
+            "git+https://example.test/repo",
+        ] {
+            std::fs::write(
+                home.join(".crates2.json"),
+                format!(r#"{{"installs":{{"foo 1.0.0 ({source})":{{}}}}}}"#),
+            )
+            .unwrap();
+            let rows = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .unwrap()
+                .candidates;
+            assert_eq!(rows.len(), 1);
+            assert!(!rows[0].checkable);
+            let req = OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Binary,
+                name: "foo".into(),
+            };
+            assert!(matches!(
+                adapter.plan(&inst, &req).await,
+                Err(AdapterError::Refused(_))
+            ));
+        }
+        assert!(http.calls().is_empty());
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn regression_parse_crates2_reads_sixty_thousand_crates_in_linear_time() {
@@ -721,7 +924,7 @@ mod tests {
             Some((
                 "hexyl".to_string(),
                 "0.17.0".to_string(),
-                "registry".to_string()
+                "registry+https://github.com/rust-lang/crates.io-index".to_string()
             ))
         );
     }
@@ -733,7 +936,7 @@ mod tests {
             Some((
                 "my-fork".to_string(),
                 "0.1.0".to_string(),
-                "git".to_string()
+                "git+https://github.com/example/my-fork#abc123".to_string()
             ))
         );
         assert_eq!(
@@ -741,7 +944,7 @@ mod tests {
             Some((
                 "local-tool".to_string(),
                 "0.1.0".to_string(),
-                "path".to_string()
+                "path+file:///Users/brulek/dev/local-tool".to_string()
             ))
         );
     }
@@ -1338,7 +1541,17 @@ mod tests {
             command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
-        assert_eq!(command_args(&plan), vec!["install", "hexyl"]);
+        assert_eq!(
+            command_args(&plan),
+            vec![
+                "install",
+                "--root",
+                "/Users/brulek/.cargo",
+                "--index",
+                CRATES_IO_INDEX,
+                "hexyl"
+            ]
+        );
         assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
     }
 
@@ -1349,7 +1562,10 @@ mod tests {
                 .with_binstall(Some(PathBuf::from(
                     "/Users/brulek/.cargo/bin/cargo-binstall",
                 )));
-        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        let home = temp_cargo_home("plan-upgrade");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".crates2.json"), r#"{"installs":{"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)":{}}}"#).unwrap();
+        let inst = test_instance(home.clone());
         let req = OpRequest {
             kind: OpKind::Upgrade,
             instance_id: inst.id.clone(),
@@ -1363,8 +1579,20 @@ mod tests {
             command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")
         );
-        assert_eq!(command_args(&plan), vec!["-y", "--force", "hexyl"]);
+        assert_eq!(
+            command_args(&plan),
+            vec![
+                "-y",
+                "--force",
+                "--root",
+                home.to_str().unwrap(),
+                "--index",
+                CRATES_IO_INDEX,
+                "hexyl"
+            ]
+        );
         assert!(plan.warnings.is_empty());
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]
@@ -1388,7 +1616,10 @@ mod tests {
             command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
-        assert_eq!(command_args(&plan), vec!["uninstall", "hexyl"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["uninstall", "--root", "/Users/brulek/.cargo", "hexyl"]
+        );
         // Said under the tool: cargo deletes the binaries its install
         // record lists for the crate, and nothing else.
         assert_eq!(
@@ -1411,7 +1642,10 @@ mod tests {
         // toolchain download its preview never named, so every plan
         // carries the switch -- the cargo-binstall ones too, so that a
         // `cargo` or `rustc` cargo-binstall starts inherits it.
-        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        let home = temp_cargo_home("plan-upgrade");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".crates2.json"), r#"{"installs":{"hexyl 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)":{}}}"#).unwrap();
+        let inst = test_instance(home.clone());
         for binstall in [
             None,
             Some(PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")),
@@ -1436,6 +1670,7 @@ mod tests {
                 );
             }
         }
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]
@@ -1474,7 +1709,10 @@ mod tests {
             specs[0].program,
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
-        assert_eq!(specs[0].args, vec!["uninstall", "hexyl"]);
+        assert_eq!(
+            specs[0].args,
+            vec!["uninstall", "--root", "/Users/brulek/.cargo", "hexyl"]
+        );
         assert_eq!(
             specs[0].env,
             vec![("RUSTUP_AUTO_INSTALL".to_string(), "0".to_string())]
@@ -1485,7 +1723,15 @@ mod tests {
     async fn test_execute_streams_log_events_and_succeeds() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/Users/brulek/.cargo/bin/cargo", "install", "hexyl"],
+            vec![
+                "/Users/brulek/.cargo/bin/cargo",
+                "install",
+                "--root",
+                "/Users/brulek/.cargo",
+                "--index",
+                CRATES_IO_INDEX,
+                "hexyl",
+            ],
             CommandOutput {
                 exit_code: Some(0),
                 stdout: "Installing hexyl\n".to_string(),

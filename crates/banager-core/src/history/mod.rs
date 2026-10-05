@@ -383,27 +383,9 @@ fn load(path: &Path, now: i64) -> Loaded {
     }
 }
 
-/// Per-process counter for the staging file's name, as `settings::save`
-/// has: two writes never share one.
-static WRITE_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// `bytes` into `path`: written to `<path>.tmp.<n>` beside it, then renamed
-/// over it, so a crash mid-write leaves the old file or the new one, never
-/// half of one. The directory is made if it is missing. A staging file
-/// left by a failed write is removed.
+/// Exclusive same-directory staging, shared with settings.
 fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let seq = WRITE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut tmp_os = path.as_os_str().to_os_string();
-    tmp_os.push(format!(".tmp.{seq}"));
-    let tmp_path = PathBuf::from(tmp_os);
-    let written = std::fs::write(&tmp_path, bytes).and_then(|()| std::fs::rename(&tmp_path, path));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-    written
+    crate::atomic_file::write(path, bytes)
 }
 
 fn system_now_ms() -> i64 {

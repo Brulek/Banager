@@ -69,7 +69,21 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
     } else {
         format!("http://{trimmed}")
     };
-    let url = Url::parse(&candidate).ok()?;
+    let mut url = Url::parse(&candidate).ok()?;
+    // Ollama uses 11434 for a schemeless host, but the scheme's default
+    // (80/443) for an explicitly supplied http(s) URL. Preserve an explicit
+    // port 80 too: url::Url elides it, so inspect the original authority.
+    let authority = trimmed.split('/').next().unwrap_or(trimmed);
+    let explicit_port = if authority.starts_with('[') {
+        authority
+            .split_once(']')
+            .is_some_and(|(_, tail)| tail.starts_with(':'))
+    } else {
+        authority.contains(':')
+    };
+    if !trimmed.contains("://") && !explicit_port {
+        url.set_port(Some(11434)).ok()?;
+    }
     if !matches!(url.scheme(), "http" | "https") {
         return None;
     }
@@ -79,10 +93,9 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
 }
 
 impl HostEnv {
-    /// Reads `PATH`/`HOME` from the process environment. Call this only
-    /// after `fix_path_env::fix()` has already run (in the Tauri shell's
-    /// `run()`), since apps launched from Finder start with a minimal
-    /// default `PATH` that doesn't include Homebrew's `bin` directories.
+    /// Reads `PATH`/`HOME` from the process environment. The shell calls it
+    /// before login PATH discovery to obtain HOME, then again after the
+    /// bounded discovery so the session sees the accepted or inherited PATH.
     pub fn discover() -> HostEnv {
         let path_dirs = std::env::var_os("PATH")
             .map(|v| std::env::split_paths(&v).collect())
@@ -159,6 +172,25 @@ pub fn resolve_exe(name: &str, env: &HostEnv) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn regression_bare_ollama_hosts_use_the_daemons_default_port() {
+        for (raw, expected) in [
+            ("localhost", "http://localhost:11434"),
+            ("127.0.0.1", "http://127.0.0.1:11434"),
+            ("[::1]", "http://[::1]:11434"),
+            ("localhost:80", "http://localhost"),
+            ("http://localhost", "http://localhost"),
+            ("https://localhost", "https://localhost"),
+            ("localhost:1234", "http://localhost:1234"),
+        ] {
+            assert_eq!(
+                normalize_ollama_host(raw).as_deref(),
+                Some(expected),
+                "{raw}"
+            );
+        }
+    }
 
     #[test]
     fn test_discover_reads_a_nonempty_path() {

@@ -7,8 +7,8 @@
 //! goes on, hidden with the window, and hears it finish (src-tauri/src/window.rs).
 //!
 //! What is decided here is pure -- the setting, where the focus is
-//! ([`Focus`], as the update notification has it), the run as the page
-//! reports it ([`FinishedRun`]) and the runs already reported -- so every
+//! ([`Focus`], as the update notification has it), the run derived from completed backend
+//! records ([`FinishedRun`]) and the runs already reported -- so every
 //! case is tested without a notification. The shell hands them in when the
 //! page reports a run (`report_finished_run` in
 //! src-tauri/src/notify_ops.rs), words the notification and posts it the
@@ -33,7 +33,7 @@ pub enum RunKind {
 /// number of its newest operation (`OpSummary::id`; the backend numbers
 /// them in the order they were submitted), what they did, and how many
 /// ended each way. An operation the user cancelled is in none of the three:
-/// the user was there to cancel it, and it changed nothing to tell of.
+/// interrupted removals with possible partial changes are Unconfirmed.
 ///
 /// `FinishedRun` in src/lib/types.ts mirrors it; a shape test on each side
 /// pins the JSON.
@@ -89,6 +89,56 @@ pub struct ReportedRuns {
 }
 
 impl ReportedRuns {
+    /// The backend-owned interval is (last accepted boundary, last_op].
+    /// Every ID must still exist and be finished. Page-supplied counts and
+    /// kinds are never evidence, and a rejected boundary changes no state.
+    pub fn completed(
+        &self,
+        last_op: u64,
+        operations: &[crate::ops::OpSummary],
+    ) -> Option<FinishedRun> {
+        use crate::model::{OpKind, OpStatus, Outcome};
+        let first = self.through.unwrap_or(0).checked_add(1)?;
+        let count = last_op.checked_sub(first)?.checked_add(1)?;
+        let selected: Vec<_> = operations
+            .iter()
+            .filter(|op| (first..=last_op).contains(&op.id))
+            .collect();
+        if selected.len() as u64 != count {
+            return None;
+        }
+        let mut ids: Vec<_> = selected.iter().map(|op| op.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        if ids.len() != selected.len() {
+            return None;
+        }
+        let mut run = FinishedRun {
+            last_op,
+            kind: RunKind::Other,
+            succeeded: 0,
+            failed: 0,
+            attention: 0,
+        };
+        if selected.iter().all(|op| op.kind == OpKind::Upgrade) {
+            run.kind = RunKind::Upgrade;
+        } else if selected.iter().all(|op| op.kind == OpKind::Uninstall) {
+            run.kind = RunKind::Uninstall;
+        }
+        for op in selected {
+            if op.status != OpStatus::Done {
+                return None;
+            }
+            match op.outcome.as_ref()? {
+                Outcome::Succeeded => run.succeeded += 1,
+                Outcome::Failed { .. } | Outcome::BanagerFailed(_) => run.failed += 1,
+                Outcome::NeedsAttention(_) | Outcome::Unconfirmed => run.attention += 1,
+                Outcome::Cancelled => {}
+            }
+        }
+        Some(run)
+    }
+
     /// Whether `run`, or a later one, has been reported: a page loaded
     /// again, or a report sent twice, posts nothing twice.
     pub fn has(&self, run: &FinishedRun) -> bool {
@@ -213,6 +263,44 @@ pub fn post_withheld(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_completed_reports_use_only_finished_backend_outcomes_and_contiguous_membership() {
+        use crate::model::{ArtifactKind, CancelPolicy, OpKind, OpStatus, Outcome};
+        let mut op = crate::ops::OpSummary {
+            id: 1,
+            kind: OpKind::Uninstall,
+            instance_id: "test".into(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "tool".into(),
+            status: OpStatus::Running,
+            outcome: None,
+            argv_preview: vec![],
+            env_preview: vec![],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+        };
+        let mut reported = ReportedRuns::default();
+        assert!(reported.completed(1, &[op.clone()]).is_none());
+        op.status = OpStatus::Done;
+        op.outcome = Some(Outcome::Unconfirmed);
+        let real = reported.completed(1, &[op.clone()]).unwrap();
+        assert_eq!(real, run(1, RunKind::Uninstall, 0, 0, 1));
+        assert!(reported.completed(2, &[op.clone()]).is_none());
+        assert!(reported.completed(0, &[op.clone()]).is_none());
+        report(&mut reported, true, Focus::Away, &real, |_| Ok(())).unwrap();
+        assert!(reported.completed(1, &[op.clone()]).is_none());
+        op.id = 2;
+        op.outcome = Some(Outcome::Succeeded);
+        assert_eq!(
+            reported.completed(2, &[op.clone()]),
+            Some(run(2, RunKind::Uninstall, 1, 0, 0))
+        );
+        op.id = 3;
+        assert!(
+            reported.completed(3, &[op]).is_none(),
+            "missing/evicted records cannot prove completion"
+        );
+    }
+
     use super::*;
     use std::cell::RefCell;
 

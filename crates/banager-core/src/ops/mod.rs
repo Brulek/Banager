@@ -925,7 +925,8 @@ impl OperationManager {
                     },
                     OpKind::Uninstall => match reconciled {
                         Ok(r) if !r.present => Outcome::Succeeded,
-                        Ok(_) if user_cancelled => Outcome::Cancelled,
+                        // Presence cannot prove that an interrupted removal
+                        // left the package intact (e.g. cask metadata remains).
                         _ => Outcome::Unconfirmed,
                     },
                 }
@@ -1032,7 +1033,39 @@ impl Drop for ResourceLockGuard {
     }
 }
 
+/// A detection owns every resource it may execute, atomically acquired
+/// against operations and released even when the detection is aborted.
+pub(crate) struct DetectionGuard {
+    held: Arc<Mutex<HashSet<ResourceLock>>>,
+    locks: Vec<ResourceLock>,
+}
+
+impl Drop for DetectionGuard {
+    fn drop(&mut self) {
+        let mut held = self.held.lock().unwrap();
+        for lock in &self.locks {
+            held.remove(lock);
+        }
+    }
+}
+
 impl OperationManager {
+    pub(crate) fn try_detection_locks(&self, locks: Vec<ResourceLock>) -> Option<DetectionGuard> {
+        let queue = self.queue.lock().unwrap();
+        let mut held = self.held.lock().unwrap();
+        if locks
+            .iter()
+            .any(|lock| held.contains(lock) || queue.values().any(|q| q.contains(lock)))
+        {
+            return None;
+        }
+        held.extend(locks.iter().cloned());
+        Some(DetectionGuard {
+            held: self.held.clone(),
+            locks,
+        })
+    }
+
     /// The resource locks held this instant: by operations from the
     /// moment `run_operation` acquires theirs until `finish` releases
     /// them, and by a refresh's per-instance fetches

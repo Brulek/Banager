@@ -308,24 +308,10 @@ fn never_list_bullets(doc: &str) -> Vec<String> {
 }
 
 #[test]
-fn test_what_we_run_never_list_states_the_window_in_which_a_refresh_can_still_read_rustup_during_its_update(
-) {
-    // `Session::refresh_round` reads the set of held locks once, before its
-    // detection fan-out, and runs each adapter's `detect` under no lock
-    // (session/refresh.rs, the comment above its `locks_held()` call). A
-    // refresh whose read found rustup's update or uninstall holding
-    // rustup's and cargo's locks runs neither `rustup --version` nor
-    // `cargo --version`, which
-    // `test_a_refresh_during_rustups_self_update_runs_neither_rustup_nor_cargo`
-    // in session/refresh.rs keeps true for the update (the uninstall holds
-    // the same two locks); an operation that acquires those locks after
-    // that read can overlap the version reads that refresh is already
-    // making, which the `## rustup` section discloses. The
-    // never-list used to say Banager never runs rustup at all while its
-    // update or uninstall is under way, which that window makes false: the
-    // bullet that speaks of rustup's update or uninstall being under way
-    // has to make the promise the refresh test keeps and state the overlap
-    // the section states, in the same breath.
+fn test_what_we_run_states_detection_and_rustup_operations_share_locks() {
+    // The refresh tests cover both orderings, including first detection
+    // and detection cancellation. The trust document must describe the
+    // actual exclusion instead of the old snapshot-only race window.
     let doc = read_doc();
     let bullets = never_list_bullets(&doc);
     let about_rustup: Vec<&String> = bullets
@@ -342,15 +328,15 @@ fn test_what_we_run_never_list_states_the_window_in_which_a_refresh_can_still_re
             "this never-list bullet does not say a refresh that finds rustup's update or uninstall under way runs neither `rustup` nor `cargo`, which test_a_refresh_during_rustups_self_update_runs_neither_rustup_nor_cargo keeps true for the update, whose two locks the uninstall holds too: {bullet:?}"
         );
         assert!(
-            bullet.contains("overlap"),
-            "this never-list bullet does not state that an update or uninstall starting after a refresh's one look at the held locks can overlap that refresh's version reads, which Session::refresh_round's one read of locks_held() leaves possible: {bullet:?}"
+            bullet.contains("Detection holds") && bullet.contains("waits"),
+            "the never-list must state detection owns locks and a later operation waits: {bullet:?}"
         );
     }
     let rustup = section_body(&doc, "rustup")
         .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## rustup` section"));
     assert!(
-        rustup.contains("overlap"),
-        "the `## rustup` section of docs/what-we-run.md no longer discloses the overlap the never-list's bullet points at"
+        rustup.contains("atomically acquires") && rustup.contains("first snapshot"),
+        "the rustup section must document atomic exclusion including first detection"
     );
 }
 

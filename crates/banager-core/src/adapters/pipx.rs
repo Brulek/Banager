@@ -415,8 +415,19 @@ impl PipxAdapter {
     ) -> Vec<UpdateCandidate> {
         let mut out = Vec::new();
         for artifact in installed {
-            match self.latest_pypi_version(&artifact.key.name).await {
-                Ok(latest) if latest != artifact.version => out.push(UpdateCandidate {
+            match self
+                .latest_pypi_version(&artifact.display_name)
+                .await
+                .and_then(|latest| {
+                    super::python_version::strictly_newer(&latest, &artifact.version)
+                        .map(|newer| (latest, newer))
+                        .ok_or_else(|| {
+                            LookupFailure::from(
+                                "could not compare Python package versions".to_string(),
+                            )
+                        })
+                }) {
+                Ok((latest, true)) => out.push(UpdateCandidate {
                     key: artifact.key.clone(),
                     current: artifact.version.clone(),
                     target: latest,
@@ -604,6 +615,51 @@ impl Adapter for PipxAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn regression_legacy_pipx_queries_project_but_keeps_alias_for_operations() {
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://pypi.org/pypi/ruff/json",
+            HttpResponse {
+                status: 200,
+                body: r#"{"info":{"version":"1.9"}}"#.into(),
+            },
+        );
+        let adapter = PipxAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance();
+        for (current, actionable) in [
+            ("1.0", true),
+            ("2.0rc1", false),
+            ("1.9.0", false),
+            ("1.9+local", false),
+            ("1!1.0", false),
+        ] {
+            let json = format!(
+                r#"{{"venvs":{{"ruff-alt":{{"metadata":{{"main_package":{{"package":"ruff","package_version":"{current}"}}}}}}}}}}"#
+            );
+            let installed = parse_list(&json, &inst.id).unwrap();
+            let rows = adapter.check_outdated_via_pypi(&installed).await;
+            assert_eq!(!rows.is_empty(), actionable, "{current}");
+            if actionable {
+                assert_eq!(rows[0].key.name, "ruff-alt");
+            }
+        }
+        assert!(http
+            .calls()
+            .iter()
+            .all(|url| url == "https://pypi.org/pypi/ruff/json"));
+        for kind in [OpKind::Upgrade, OpKind::Uninstall] {
+            let req = OpRequest {
+                kind,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Tool,
+                name: "ruff-alt".into(),
+            };
+            let plan = adapter.plan(&inst, &req).await.unwrap();
+            assert_eq!(command_args(&plan).last().unwrap(), "ruff-alt");
+        }
+    }
 
     // Regressions found by `adapters/robustness.rs`.
 

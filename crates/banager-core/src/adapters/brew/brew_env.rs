@@ -40,6 +40,8 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
+/// The auto-update shell guard tests non-empty, including `0` and `false`.
+pub(crate) const NO_AUTO_UPDATE: &str = "HOMEBREW_NO_AUTO_UPDATE";
 /// Homebrew's autoremove switch: a `boolean: true` variable
 /// (`env_config.rb:540-544`), so `0` or `false` reads as unset.
 pub(crate) const NO_AUTOREMOVE: &str = "HOMEBREW_NO_AUTOREMOVE";
@@ -91,13 +93,14 @@ impl From<Option<Vec<u8>>> for EnvFile {
 }
 
 /// The variables the replay follows, in `Vars`' order.
-const FOLLOWED: [&str; 6] = [
+const FOLLOWED: [&str; 7] = [
     NO_AUTOREMOVE,
     NO_INSTALL_CLEANUP,
     XDG_CONFIG_FALLBACK,
     SYSTEM_TAKES_PRIORITY,
     NO_CLEANUP_FORMULAE,
     NO_REQUIRE_TAP_TRUST,
+    NO_AUTO_UPDATE,
 ];
 
 /// `Homebrew::EnvConfig`'s `FALSY_VALUES` (`env_config.rb:871`): a
@@ -109,6 +112,8 @@ const FALSY_VALUES: [&str; 5] = ["false", "no", "off", "nil", "0"];
 /// has read the `brew.env` files.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HomebrewSwitches {
+    /// The shell tests non-empty, not Ruby boolean truth. Unknown is unsafe.
+    pub(crate) no_auto_update: bool,
     /// `Homebrew::EnvConfig.no_autoremove?`: false means Homebrew
     /// autoremoves after an uninstall, and in a cleanup.
     pub(crate) no_autoremove: bool,
@@ -202,6 +207,7 @@ pub(crate) fn after_brew_env(
     }
     let known = |name: &str| !vars.unknown(name);
     HomebrewSwitches {
+        no_auto_update: known(NO_AUTO_UPDATE) && vars.non_empty(NO_AUTO_UPDATE),
         no_autoremove: known(NO_AUTOREMOVE) && boolean_true(vars.get(NO_AUTOREMOVE)),
         no_install_cleanup: known(NO_INSTALL_CLEANUP) && present(vars.get(NO_INSTALL_CLEANUP)),
         no_cleanup_formulae: if known(NO_CLEANUP_FORMULAE) {
@@ -260,7 +266,7 @@ fn concat(head: &OsStr, tail: &str) -> PathBuf {
 /// value in the environment nor one in a file need be UTF-8. With, for
 /// each, whether a file Banager could not read may have set it since
 /// (`forget_all`).
-struct Vars([Option<Vec<u8>>; 6], [bool; 6]);
+struct Vars([Option<Vec<u8>>; 7], [bool; 7]);
 
 impl Vars {
     /// What `bin/brew` starts from: the plan's own value, which the runner
@@ -278,14 +284,14 @@ impl Vars {
                     .map(|(_, value)| value.clone().into_bytes())
                     .or_else(|| banager_var(name).map(OsStringExt::into_vec))
             }),
-            [false; 6],
+            [false; 7],
         )
     }
 
     /// A file Banager cannot read was exported: any followed variable may
     /// now hold anything.
     fn forget_all(&mut self) {
-        self.1 = [true; 6];
+        self.1 = [true; 7];
     }
 
     /// Whether `name` may have been set by a file Banager could not read.
@@ -578,6 +584,7 @@ mod tests {
         assert_eq!(
             switches(&[], &[]),
             HomebrewSwitches {
+                no_auto_update: true,
                 no_autoremove: true,
                 no_install_cleanup: true,
                 no_cleanup_formulae: Vec::new(),

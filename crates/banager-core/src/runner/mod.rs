@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod login_path;
 pub mod mock;
 pub mod path_env;
 pub mod real;

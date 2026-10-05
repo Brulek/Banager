@@ -58,17 +58,21 @@ array run directly against an absolute program path by `RealRunner::run`
 the arguments appended one by one. No string is ever handed to `sh`, and
 nothing Banager downloads is ever piped into one.
 
-**One shell run, at launch, that runs no command.** An app opened from
-Finder starts with a minimal `PATH`, so at startup (`run()` in
-`src-tauri/src/lib.rs`) the `fix-path-env` crate runs the user's login
-shell once — `$SHELL` (`/bin/zsh` on a Mac when `SHELL` is unset) with the
-arguments `-ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
-"_SHELL_ENV_DELIMITER_"; exit'`, with `DISABLE_AUTO_UPDATE=true` in its
-environment and the home folder as its working directory — reads the
-`PATH` that shell exports, and sets it on Banager's own process
-(`fix_vars` in `fix-path-env-rs` at the pinned commit `c4c45d5`). That is
-the only time a shell is involved, and all it does is print the
-environment.
+**One shell run, at launch, to read PATH.** An app opened from
+Finder starts with a minimal `PATH`. At startup (`run()` in
+`src-tauri/src/lib.rs`), `runner::login_path::read` runs the user's login
+shell once — `$SHELL` (`/bin/zsh` when unset) with the arguments
+`-ilc 'echo -n "_SHELL_ENV_DELIMITER_"; env; echo -n
+"_SHELL_ENV_DELIMITER_"; exit'`, `DISABLE_AUTO_UPDATE=true`, and the home
+folder as its working directory. This is the same shell command formerly
+run by `fix-path-env`. Login-shell startup files may run their own commands.
+`RealRunner` now gives the shell a 3-second deadline, followed by its
+bounded process-group termination and pipe-drain handling described below
+(including up to 5 seconds of termination grace). Only a complete,
+successful, framed result can replace Banager's `PATH`. A timeout, failed
+spawn/exit or malformed output leaves the inherited `PATH` in place; the
+session records that login PATH discovery failed. No other shell variable
+is imported, and a late result never changes the process environment.
 
 **What a command inherits.** A child gets Banager's own environment — the
 `PATH` above, which is the only variable taken from the login shell, and
@@ -274,8 +278,12 @@ cancelled or timed out, or that a signal Banager did not send ended
 (killed from Activity Monitor, say), is reported as unconfirmed unless
 the reading after settles it: an install after which the package is
 present, or an uninstall after which it is gone, is reported as
-succeeded, and one the user cancelled that did not take effect as
-cancelled; an upgrade stopped partway is never settled either way
+succeeded. An interrupted uninstall whose package still appears present
+remains unconfirmed: metadata or a launcher can survive partial removal.
+A path-list uninstall cancelled before its first move is cancelled;
+after a move it remains unconfirmed unless absence is verified. An
+interrupted install still absent can be cancelled; an upgrade stopped
+partway is never settled either way
 (`run_plan` in `crates/banager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
@@ -522,9 +530,14 @@ hidden with the window and hears the operation finish (`window.rs`). Once
 every operation of a run has finished — an Update All, one update or
 uninstall, and whatever was started while those were under way, as the
 operation bar groups them (`trackRun` in `src/lib/operations.ts`) — the
-page tells Rust how many of it worked, failed or need a look, what kind
-they were, and the number of its newest operation (`report_finished_run`
-in `src-tauri/src/notify_ops.rs`). Rust posts one notification only when
+page sends the number of its newest operation (`report_finished_run`
+in `src-tauri/src/notify_ops.rs`). The legacy kind/count fields remain in
+the request for wire compatibility but are ignored. Rust derives them
+from its own completed operation records, over the interval after the
+last accepted boundary through this boundary (initially starting at 1).
+A missing, duplicate, unfinished or already accepted boundary is rejected
+without advancing notification state; evicted records cannot establish a
+complete run. Rust posts one notification only when
 the switch is on and another app is in front, not Banager — never for a
 run that finished while the window had the focus, which the user watched
 on the operation bar — and only once for a run
@@ -573,6 +586,14 @@ including `--version`, `update` and every plan:
     HOMEBREW_NO_ENV_HINTS=1
     HOMEBREW_NO_INSTALL_CLEANUP=1
     NO_COLOR=1
+
+Before install, upgrade or outdated runs, Banager replays the `brew.env`
+files described below and requires the effective `HOMEBREW_NO_AUTO_UPDATE`
+to be known and non-empty. An empty override or an unreadable file that
+leaves this switch unknown refuses the command, so it cannot start an
+automatic update outside Banager's tracked update task. Install and
+upgrade check this both at preview and immediately before execution.
+The shell treats even `0` and `false` as non-empty here.
 
 Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
 already set in Banager's process environment (`askpass_fn`, read per
@@ -1116,6 +1137,11 @@ tell it from one, and reads no pipx log to find out.
 On a pipx older than 1.16, which has no `list --outdated`, Banager
 instead asks PyPI about each installed tool: `GET
 https://pypi.org/pypi/{name}/json` (30 s each), the name percent-encoded.
+This is the recorded main-package name, not a suffixed environment alias;
+upgrade and uninstall still address that environment alias. Only a strictly
+newer PEP 440 version produces an update: equivalent spellings, older
+stable versions than an installed prerelease, and lower epochs do not.
+An invalid or numerically unrepresentable version is "could not check".
 A tool PyPI does not answer for is listed as "could not check", never as
 an error for the whole source. pipx has no search command Banager uses.
 
@@ -1143,8 +1169,10 @@ Adapter: `UvAdapter` in `crates/banager-core/src/adapters/uv.rs`.
 Verified against uv 0.12.17 (`adapters/meta/uv.toml`).
 
 **Detect.** `uv` is the first `uv` on `PATH`; `<uv> --version` (30 s). No
-environment variables are added to any uv command, and Banager makes no
-network request of its own for uv: `uv tool list --outdated` reaches PyPI
+additional environment is needed for detection. Parsed `tool list`
+commands explicitly set `NO_COLOR=1`, including when the process inherits
+`FORCE_COLOR`. Unrecognized nonempty output is a parse error rather than
+a successful empty inventory. Banager makes no network request of its own for uv: `uv tool list --outdated` reaches PyPI
 itself, under uv's own configuration.
 
 **Read-only commands:**
@@ -1158,7 +1186,16 @@ itself, under uv's own configuration.
 If `uv tool list --outdated` exits non-zero, `<uv> tool list --show-paths`
 is run once more so every installed tool can be listed as "could not
 check", with the reason — one more process than the table shows, on that
-path only. uv has no tool-search command Banager uses.
+path. When outdated rows exist, inventory is also read to locate each
+tool's environment. Banager reads `<tool environment>/uv-receipt.toml`
+through the bounded, protected regular-file reader (at most 16 MiB),
+and inspects `[tool].requirements` for the main package. Only an ordinary
+index requirement without a version constraint is currently actionable.
+Pinned, bounded, missing, malformed or unsupported requirements are
+"could not check": Banager cannot prove that the offered latest target
+is compatible. Planning an upgrade repeats the inventory and receipt
+check and refuses a constraint or unknown receipt. It neither edits a
+receipt nor removes a version pin. uv has no tool-search command Banager uses.
 
 **Write commands:**
 
@@ -1200,9 +1237,10 @@ Verified against pip 26.2.1 (`adapters/meta/pip.toml`).
 `python3.11`, `python3.10`, `python3` and `python` found on `PATH`
 (`PipAdapter::CANDIDATE_INTERPRETERS`), Banager canonicalises the path so
 two names for one interpreter count once, and runs `<python> -m pip
---version` (30 s). Every pip instance is read-only by design. No
-environment variables are added, and Banager makes no network request of
-its own for pip: `pip list --outdated` reaches PyPI itself.
+--version` (30 s). Every pip instance is read-only by design. Only the
+outdated check adds an environment variable, `PIP_QUIET=0`, to retain its
+verbose diagnostics. Banager makes no network request of its own for pip:
+`pip list --outdated` reaches PyPI itself.
 
 When that command fails, the interpreter is still listed as a source,
 and Banager reads the command's error output to say which failure it was
@@ -1237,14 +1275,18 @@ are installed, its pip is listed.
 | Version | `<python> -m pip --version` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
-| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json` | 60 s |
+| List outdated packages (`check_updates`) | `<python> -m pip list --outdated --format=json -vv` with `PIP_QUIET=0` | 60 s |
 
 If `pip list --outdated` exits non-zero, `<python> -m pip list
 --format=json` is run once more so every installed package can be listed
 as "could not check", with the reason — one more process than the table
 shows, on that path only. It is run too when the command exits 0 but gave
 up on reaching the index for some package: pip then leaves that package
-out as if it were up to date, and says so only in its error output, as
+out as if it were up to date. Banager reads both verbose output streams
+for the final `Could not fetch URL ... - skipping` diagnostic, including
+when retries are disabled or the server returns an HTTP error. The JSON
+result is read separately from those diagnostics. The saved reason never
+includes the index URL or its credentials. Banager also reads
 the warning urllib3 prints after the fifth failure in a row, before one
 final try — `Retrying (Retry(total=0, …)) after connection broken by
 '…': /simple/<project>/` (`lookups_given_up` in `adapters/pip.rs`). Each
@@ -1256,10 +1298,9 @@ gave up on cannot be named and read as up to date, as before. Nothing is
 printed when that final try answers, so a package
 whose sixth try worked and that is up to date is still shown as not
 checked — counted, where the words name the network, among the tools to
-check again, until the next check that reaches the index. At pip's usual
-level of detail nothing is printed for a server error (5xx) pip gave up
-on, nor for a lookup with `--retries 0`, so those still read as up to
-date.
+check again, until the next check that reaches the index. Verbosity two
+and the explicit quiet-level override keep final fetch failures visible
+even when pip's usual output would contain only an empty JSON list.
 
 **Write commands: none.** `PipAdapter::plan` refuses every install,
 uninstall and upgrade before building an argv, so no pip write command
@@ -1278,6 +1319,12 @@ reads it: unset or an empty value means the default `~/.cargo`; an
 absolute value is the Cargo home; a relative value names a folder
 relative to cargo's own working directory, which Banager cannot know, so
 Banager then lists no Cargo source rather than guess.
+The managed install root remains that Cargo home; discovering additional
+roots selected by `CARGO_INSTALL_ROOT` or `install.root` is not supported.
+Every write explicitly passes `--root` with the instance's inventory
+root, so inherited Cargo root settings cannot redirect an operation to
+another installation. Inventory, reconciliation and the instance lock
+all refer to the same root.
 
 **Environment applied to every invocation** (`CargoAdapter::ENV`),
 including `--version` and every plan, cargo-binstall's among them:
@@ -1303,21 +1350,35 @@ records the program the crate installed, `<CARGO_HOME>/bin/<binary>` (the
 binary named after the crate when there is one, else the first the record
 lists), which the Other Programs page uses to place that program under Cargo
 rather than list it. `check_updates` reads the
-same file and, for each crate installed from the registry, asks crates.io
+same file and, for each crate installed from crates.io, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
 percent-encoded. Crates installed from a git repository or a local path
-are never looked up; they are listed as "could not check" with that
-reason. Cargo has no search command Banager uses.
+or another registry are never looked up; they are listed as "could not
+check" with that reason. The complete source identity is retained and
+checked again when planning an upgrade; an unsupported source is refused.
+Only a stable version with strictly greater SemVer precedence is offered;
+build metadata alone is not an update, and an older stable release never
+replaces a newer prerelease. Versions that cannot be compared are "could
+not check". Cargo has no search command Banager uses.
+
+Upgrade planning also reads the saved `features`, `all_features`,
+`no_default_features`, `profile` and `target`. Any saved build choice is
+replayed as Cargo flags, and forces a source build with the existing
+"compiles locally" warning, even when cargo-binstall is available. An
+ambiguous or malformed install record is refused.
 
 **Write commands:**
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
-| Install, cargo-binstall found | `<cargo-binstall> -y {name}` | 1800 s | No |
-| Install, otherwise | `<cargo> install {name}` (previewed with a "compiles locally" warning) | 1800 s | No |
-| Upgrade, cargo-binstall found | `<cargo-binstall> -y --force {name}` | 1800 s | No |
-| Upgrade, otherwise | `<cargo> install --force {name}` (same warning) | 1800 s | No |
-| Uninstall | `<cargo> uninstall {name}` | 300 s | No |
+| Install, cargo-binstall found | `<cargo-binstall> -y --root {root} --index https://github.com/rust-lang/crates.io-index {name}` | 1800 s | No |
+| Install, otherwise | `<cargo> install --root {root} --index https://github.com/rust-lang/crates.io-index {name}` (previewed with a "compiles locally" warning) | 1800 s | No |
+| Upgrade, cargo-binstall found and no saved build choices | `<cargo-binstall> -y --force --root {root} --index https://github.com/rust-lang/crates.io-index {name}` | 1800 s | No |
+| Upgrade, otherwise | `<cargo> install --force --root {root} --index https://github.com/rust-lang/crates.io-index [saved build flags] {name}` (same warning) | 1800 s | No |
+| Uninstall | `<cargo> uninstall --root {root} {name}` | 300 s | No |
+
+The explicit index binds installation to the crates.io identity checked
+above even when `registry.default` selects another registry.
 
 `--force` here is cargo's own flag, meaning "reinstall even though a
 version of this crate is already installed" — it is how cargo upgrades a
@@ -1334,14 +1395,18 @@ Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 effect, and a background refresh must never launch an application. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
-http(s) URL (a bare `host:port` gets `http://` in front; a value that
+http(s) URL (a bare `host:port` gets `http://` in front; a bare host without
+a port gets port 11434, while explicit http/https schemes retain their
+80/443 defaults; a value that
 does not make an http(s) URL is ignored and the default used), or
 Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
 checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
 is a directory: a daemon on this Mac that does not answer while the app
 is there is reported as not running, with an Open Ollama button; anything
 else that does not answer is reported as not responding, with no button.
-No environment variables are added to any ollama command.
+Every pull and rm plan explicitly sets `OLLAMA_HOST` to that normalized
+instance endpoint, matching inventory and reconciliation. The version
+command has no added environment variables.
 
 One `OLLAMA_HOST` survives that normalisation and is then never asked:
 an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
@@ -1365,7 +1430,10 @@ still does not connect to such an address; recorded in
 | List pulled models (`inventory`) | `GET {host}/api/tags` | 30 s |
 | Is a model current (`check_updates`, per model) | `GET https://registry.ollama.ai/v2/{namespace}/{name}/manifests/{tag}` with `Accept: application/vnd.docker.distribution.manifest.v2+json` | 30 s |
 
-For each pulled model `check_updates` reads the local manifest file
+For a remote daemon, every model is "could not check": this Mac's local
+manifests do not establish the selected daemon's model state. No local
+manifest is read or registry request made for that comparison. For a
+daemon identified as on this Mac, `check_updates` reads the local manifest file
 `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
 (opened without waiting, and read only when `fstat` says it is a regular
 file of at most 16 MiB; otherwise the model is "could not check") and
@@ -1979,9 +2047,12 @@ Both write commands hold rustup's own lock and the Cargo source's (the
 arrives while an operation holds a source's lock skips that source
 entirely — neither `rustup --version` nor `cargo --version` runs — and
 keeps the rows it has until the operation ends (`Session::refresh_round`).
-The check is made once, at the start of a refresh; an operation that
-starts in the seconds after it may overlap one version read that was
-already under way.
+Detection atomically acquires its resource locks against the operation
+queue before scheduling the adapter, and holds them until detection
+finishes or is aborted. Cargo and rustup reserve their known lock names
+even before the first snapshot exists. An operation submitted after
+detection starts waits for those same locks; a pending operation also
+prevents a later detection from taking its resources.
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):
@@ -2867,24 +2938,20 @@ stopped answering), then goes on without it; a look that did not finish
 says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what
 else needs this. Check yourself before you uninstall.",
 `Warning::DependentsUnknown`), never that nothing runs on it. Nor did a
-look that met a path it may not or cannot follow (`needed_by::Doubt`) --
+look that met a path it may not or cannot follow --
 a source's program, a pipx or uv tool's environment (a venv kept in
 `~/Documents`, say, whose `bin/python` may be a Homebrew Python's) or a
 `PATH` folder passed over on the way to `node` that is, or leads into,
 one of those places; one on the way to which a folder could not be
-searched; and a pipx tool with no environment Banager knows of -- when
-the package could be what that path leads to (`Look::could_be`): when it
-has, of its own, a program of the name the path would have to end at --
-`node` for the `PATH` folder; for an environment a Python, `python3` or,
-for `python@3.N`, whose keg has no `python3` unless it is Homebrew's
-default Python, `python3.N`; the source's own program's name for its
-program -- in its `opt/<name>/bin` for a formula, linked or keg-only, or
-in `<prefix>/bin`, where its `binary` links go, for a cask. What is there
-may run on such a package, so its preview says it could not check, and
-still names whatever it did find running on it. jq, a font, or any other
-package with no such program cannot be what it leads to, and its preview
-says nothing of it. A path that is not there at all is known not to run
-on any package.
+searched; and a pipx or uv tool with no environment Banager knows of.
+A link can change the program's name and point anywhere inside a keg:
+`python3` may lead to `bin/python3.13`, or a launcher to a file in
+`libexec`. Absence of a same-named program in `opt/<name>/bin` does not
+prove the source is unrelated. Such unresolved paths keep the check
+incomplete, including for packages that may in fact be unrelated.
+The preview still names any dependencies actually found; uncertainty
+alone never invents a dependency or blocks uninstall. A path known not
+to be there does not introduce this uncertainty.
 
 ## Diagnostic info: read-only, no command runs
 
@@ -2928,6 +2995,12 @@ made of the `PATH` folders when it read them to say which copy of a
 command runs (`Session::path_folders`, `commands::finish`). Nothing more is
 read, nothing runs, nothing is written, and no connection is made for it.
 
+Commands whose ownership paths could not be resolved safely carry
+`ArtifactFacts.commands_unavailable`, even when all their command facts
+were dropped. Check Tool Setup and copied diagnostics count those tools
+as uncheckable, alongside commands with no verdict. When only some tools
+were checked, the positive Terminal sentence refers only to those tools.
+
 ## Files Banager reads
 
 All read-only, none saved anywhere else, none uploaded, and each path
@@ -2954,11 +3027,14 @@ not read (`protected::look`; How Banager runs anything, above):
   for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
   directory `xcode-select -p` names leads, and whether that is an
   executable file (`realpath`, `stat`).
+- uv: `<tool environment>/uv-receipt.toml`, at the environment path its
+  inventory returns; only the saved main-package requirement is inspected,
+  for update checks and upgrade planning (uv's section).
 - Cargo: `<CARGO_HOME>/.crates2.json`; whether `cargo-binstall` is on
   `PATH`.
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
-  for each pulled model.
+  for each pulled model of a daemon identified as on this Mac.
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each
@@ -3097,8 +3173,11 @@ not read (`protected::look`; How Banager runs anything, above):
 
 Three, all in Banager's application data directory
 (`~/Library/Application Support/com.brulek.banager`). `settings.json`
-(`settings::save`, written to a `settings.json.tmp.<n>` beside it and
-renamed into place, so a crash mid-write cannot leave it corrupt; the
+(`settings::save`, written to an exclusively created random
+`settings.json.tmp.<random>` regular file beside it and renamed into
+place, so overlapping processes do not share staging files and an existing
+temporary symlink is not followed; a failed write removes its own staging
+file, and a crash mid-write cannot leave the destination half-written; the
 directory is created if it is missing). It holds the Settings page's
 choices, among them the updates hidden from the Updates page: versions
 skipped (`skipped_versions`), tools never to remind about
@@ -3149,7 +3228,8 @@ the next record. A file from before these two times were kept starts
 trusting from now, or from its newest record when that is earlier.
 「最近的更新记录」 lists none older
 than 180 days by the Mac's clock (`HistoryStore::view`). It is written whole to
-a `history.json.tmp.<n>` beside it and renamed into place, on a thread of
+a random, exclusively created `history.json.tmp.<random>` beside it by the
+same atomic writer as settings and renamed into place, on a thread of
 its own, after each operation finishes and after Clear. A missing,
 unreadable or malformed file is an empty history and is replaced at the
 next record; a file a newer Banager wrote is left exactly as it is. To
@@ -3386,10 +3466,10 @@ Banager neither chooses nor sees them.
 - Never runs `rustup update`: rustup's own update of its toolchains, which
   an interruption leaves half installed. Only `rustup self update`, which
   replaces rustup alone. A refresh that begins while an update or uninstall
-  of rustup is under way runs neither `rustup` nor `cargo`. It looks once,
-  as it begins, so an update or uninstall that starts after that look can
-  overlap the version reads of rustup and cargo that refresh is making
-  (rustup's section); its other reads of either source run under that
+  of rustup is under way runs neither `rustup` nor `cargo`. Detection holds
+  the same resource locks, including on the first refresh; an update or
+  uninstall submitted afterwards waits until detection ends or is aborted
+  (rustup's section). Other reads of either source also run under that
   source's lock, which the operation holds until it ends. Never lets a
   version read of rustup or cargo, or a Cargo install, upgrade or
   uninstall, set off rustup's automatic install of a missing toolchain
