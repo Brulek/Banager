@@ -47,7 +47,7 @@ use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpStatus, Plan, ReadOnlyReason,
     Unavailable, UninstallBlocked, UpdateBlocked, UpdateCandidate,
 };
-use crate::ops::{CancelRefused, OpSummary, OperationManager};
+use crate::ops::{CancelRefused, Completions, OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
 use crate::trash::RealTrasher;
 use serde::{Deserialize, Serialize};
@@ -629,6 +629,12 @@ impl Session {
 
     pub fn operations(&self) -> Vec<OpSummary> {
         self.ops.summaries()
+    }
+
+    /// What the completion notification may count past the operations it
+    /// has accepted, `after` (`OperationManager::completions_after`).
+    pub fn completions_after(&self, after: OpId) -> Completions {
+        self.ops.completions_after(after)
     }
 
     /// Whether a refresh or an operation is under way: a `refresh` call

@@ -17,7 +17,15 @@ use tokio_util::sync::CancellationToken;
 /// bound. Bounds a long-running session's memory use -- without it, every
 /// operation ever submitted in the process's lifetime stays in `records`
 /// (and therefore in `summaries()`) forever.
-const DEFAULT_MAX_RECORDS: usize = 200;
+pub const DEFAULT_MAX_RECORDS: usize = 200;
+
+/// Cap on how many evicted operations' `EvictedOp` the manager keeps for
+/// the completion notification at once (`Completions::evicted`). Each is
+/// a few bytes; they are dropped as the notification accepts the runs
+/// that include them (`completions_after`), so this is only ever reached
+/// by thousands of operations with no run accepted between them. Past it
+/// the oldest are dropped, and `Completions::forgotten_through` says so.
+pub const MAX_EVICTED: usize = 10_000;
 
 /// The `Outcome` for an `Err` out of `Adapter::execute`.
 ///
@@ -230,6 +238,9 @@ pub struct OperationManager {
     /// Caps `records` at this many total entries (Task 13); see
     /// `DEFAULT_MAX_RECORDS`'s doc comment and `with_max_records`.
     max_records: usize,
+    /// What the records evicted leave for the completion notification
+    /// (`EvictedOp`). Locked only with `records` held.
+    evicted: Mutex<EvictedLedger>,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -258,6 +269,100 @@ pub struct OpSummary {
     /// offer no Cancel button for a Running `NoCancel` op
     /// (`OperationBar.tsx`), the one op `cancel` below refuses by policy.
     pub cancel_policy: CancelPolicy,
+}
+
+/// How a finished operation ended, as the completion notification counts
+/// it (`notify_operations::ReportedRuns::completed`): `Outcome` without
+/// what it carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// `Outcome::Succeeded`.
+    Succeeded,
+    /// `Outcome::Failed` and `Outcome::BanagerFailed`: did not happen.
+    Failed,
+    /// `Outcome::NeedsAttention` and `Outcome::Unconfirmed`.
+    Attention,
+    /// `Outcome::Cancelled`.
+    Cancelled,
+}
+
+impl Ended {
+    pub fn of(outcome: &Outcome) -> Ended {
+        match outcome {
+            Outcome::Succeeded => Ended::Succeeded,
+            Outcome::Failed { .. } | Outcome::BanagerFailed(_) => Ended::Failed,
+            Outcome::NeedsAttention(_) | Outcome::Unconfirmed => Ended::Attention,
+            Outcome::Cancelled => Ended::Cancelled,
+        }
+    }
+}
+
+/// What the manager keeps of a finished operation `records` evicts
+/// (`evict_oldest_done_records`): enough for the completion notification
+/// to count it all the same. A run longer than `DEFAULT_MAX_RECORDS`, or
+/// one told of after that many newer operations, has lost its oldest
+/// records by then.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EvictedOp {
+    pub kind: OpKind,
+    pub ended: Ended,
+}
+
+/// Every operation the completion notification may count, read at one
+/// instant (`OperationManager::completions_after`), so that none is
+/// evicted from `operations` without being in `evicted` yet.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Completions {
+    /// The records, newest first, as `summaries` gives them.
+    pub operations: Vec<OpSummary>,
+    /// The evicted operations still kept (`MAX_EVICTED`), by id.
+    pub evicted: BTreeMap<OpId, EvictedOp>,
+    /// The newest id dropped from `evicted` past `MAX_EVICTED`, or 0: an
+    /// id at or below it that is in neither `operations` nor `evicted`
+    /// finished and was evicted, and how it ended is no longer known.
+    pub forgotten_through: OpId,
+}
+
+/// `Completions::evicted` and `forgotten_through` as the manager keeps
+/// them, behind `records`' lock (taken first wherever both are held).
+#[derive(Debug, Default)]
+struct EvictedLedger {
+    ops: BTreeMap<OpId, EvictedOp>,
+    forgotten_through: OpId,
+}
+
+impl EvictedLedger {
+    /// Keeps `id`, dropping the oldest past `max`. A record with no
+    /// outcome to keep -- never one `Done` -- is dropped as forgotten.
+    fn keep(&mut self, id: OpId, kind: OpKind, outcome: Option<&Outcome>, max: usize) {
+        match outcome {
+            Some(outcome) => {
+                self.ops.insert(
+                    id,
+                    EvictedOp {
+                        kind,
+                        ended: Ended::of(outcome),
+                    },
+                );
+            }
+            None => self.forgotten_through = self.forgotten_through.max(id),
+        }
+        while self.ops.len() > max {
+            let Some((oldest, _)) = self.ops.pop_first() else {
+                break;
+            };
+            self.forgotten_through = self.forgotten_through.max(oldest);
+        }
+    }
+
+    /// Drops every operation at or below `through`, which the completion
+    /// notification has accepted and never counts again.
+    fn forget_through(&mut self, through: OpId) {
+        self.ops = match through.checked_add(1) {
+            Some(next) => self.ops.split_off(&next),
+            None => BTreeMap::new(),
+        };
+    }
 }
 
 /// Why `OperationManager::cancel` changed nothing. The IPC layer
@@ -295,6 +400,7 @@ impl OperationManager {
             semaphore: Arc::new(Semaphore::new(3)),
             done_notify: Arc::new(Notify::new()),
             max_records: DEFAULT_MAX_RECORDS,
+            evicted: Mutex::new(EvictedLedger::default()),
         }
     }
 
@@ -330,7 +436,26 @@ impl OperationManager {
 
     /// Newest first (descending op id).
     pub fn summaries(&self) -> Vec<OpSummary> {
+        Self::summaries_of(&self.records.lock().unwrap())
+    }
+
+    /// What the completion notification may count once it has accepted
+    /// every operation through `after` (`ReportedRuns::through`): the
+    /// records and what evicted ones left, read under one lock. What the
+    /// manager kept of evicted operations at or below `after` is dropped
+    /// here, never to be asked for again.
+    pub fn completions_after(&self, after: OpId) -> Completions {
         let records = self.records.lock().unwrap();
+        let mut evicted = self.evicted.lock().unwrap();
+        evicted.forget_through(after);
+        Completions {
+            operations: Self::summaries_of(&records),
+            evicted: evicted.ops.clone(),
+            forgotten_through: evicted.forgotten_through,
+        }
+    }
+
+    fn summaries_of(records: &HashMap<OpId, OpInternal>) -> Vec<OpSummary> {
         let mut summaries: Vec<OpSummary> = records
             .values()
             .map(|r| {
@@ -462,7 +587,11 @@ impl OperationManager {
         {
             let mut records = self.records.lock().unwrap();
             records.insert(op_id, record);
-            Self::evict_oldest_done_records(&mut records, self.max_records);
+            Self::evict_oldest_done_records(
+                &mut records,
+                self.max_records,
+                &mut self.evicted.lock().unwrap(),
+            );
         }
         self.sink.emit(OperationEvent::Status {
             op_id,
@@ -497,8 +626,14 @@ impl OperationManager {
     /// either the cap is met or no `Done` record remains. Work that is still
     /// Queued/Running/CancelRequested/Cancelling/Verifying is never evicted,
     /// so `max_records` is a target, not a hard bound: with enough operations
-    /// in flight at once, `records` can legitimately sit above it.
-    fn evict_oldest_done_records(records: &mut HashMap<OpId, OpInternal>, max_records: usize) {
+    /// in flight at once, `records` can legitimately sit above it. Each
+    /// one evicted leaves its kind and how it ended in `evicted`
+    /// (`EvictedOp`), for the completion notification.
+    fn evict_oldest_done_records(
+        records: &mut HashMap<OpId, OpInternal>,
+        max_records: usize,
+        evicted: &mut EvictedLedger,
+    ) {
         if records.len() <= max_records {
             return;
         }
@@ -513,7 +648,9 @@ impl OperationManager {
             if overflow == 0 {
                 break;
             }
-            records.remove(&id);
+            if let Some(r) = records.remove(&id) {
+                evicted.keep(id, r.plan.request.kind, r.outcome.as_ref(), MAX_EVICTED);
+            }
             overflow -= 1;
         }
     }
@@ -1103,5 +1240,36 @@ impl OperationManager {
             held: self.held.clone(),
             lock,
         }
+    }
+}
+
+#[cfg(test)]
+mod evicted_tests {
+    use super::*;
+
+    #[test]
+    fn test_evicted_operations_are_kept_until_accepted_and_past_the_cap_are_forgotten() {
+        let mut ledger = EvictedLedger::default();
+        let failed = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "no".into(),
+        };
+        ledger.keep(1, OpKind::Upgrade, Some(&Outcome::Succeeded), 3);
+        ledger.keep(2, OpKind::Uninstall, Some(&failed), 3);
+        ledger.keep(3, OpKind::Upgrade, Some(&Outcome::Unconfirmed), 3);
+        assert_eq!(
+            ledger.ops.values().map(|op| op.ended).collect::<Vec<_>>(),
+            [Ended::Succeeded, Ended::Failed, Ended::Attention]
+        );
+        assert_eq!(ledger.forgotten_through, 0);
+        ledger.keep(4, OpKind::Upgrade, Some(&Outcome::Cancelled), 3);
+        assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [2, 3, 4]);
+        assert_eq!(ledger.forgotten_through, 1, "the oldest, past the cap");
+        ledger.keep(5, OpKind::Upgrade, None, 3);
+        assert_eq!(ledger.forgotten_through, 5, "nothing to keep is forgotten");
+        ledger.forget_through(3);
+        assert_eq!(ledger.ops.keys().copied().collect::<Vec<_>>(), [4]);
+        ledger.forget_through(OpId::MAX);
+        assert!(ledger.ops.is_empty());
     }
 }
