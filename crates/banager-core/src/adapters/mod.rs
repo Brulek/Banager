@@ -747,6 +747,17 @@ pub async fn run_plan(
         // better shortened than turned into a failed operation.
         output_use: OutputUse::Transcript,
     };
+    // The user's Cancel landed before the command started (between the
+    // operation turning `Running` and here): nothing was started, so
+    // nothing on the Mac changed, and the cancel is the whole story --
+    // `Cancelled`, which `run_operation` lets stand. Once the command has
+    // started, a cancel ends in `Unconfirmed` below, as the runner cannot
+    // say how far the command got. (`RealRunner::run` checks the token
+    // again before it spawns; a cancel landing between the two checks is
+    // reported the cautious way, `Unconfirmed`.)
+    if cancel.is_cancelled() {
+        return Ok(Outcome::Cancelled);
+    }
     let output = runner.run(spec, Some(on_line), cancel).await?;
     if output.cancelled || output.timed_out {
         return Ok(Outcome::Unconfirmed);
@@ -1267,6 +1278,31 @@ mod tests {
                 summary: "l3\nl4\nl5\nl6\nl7".to_string(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_plan_answers_cancelled_and_starts_nothing_for_a_cancel_before_the_command() {
+        // The user's Cancel landed after the operation turned Running but
+        // before its command was started: nothing ran, so nothing changed,
+        // and the outcome is the cancel itself -- also for an uninstall,
+        // whose interrupted run is otherwise never `Cancelled`.
+        use crate::events::VecSink;
+        use crate::runner::MockRunner;
+        use tokio_util::sync::CancellationToken;
+
+        let runner_raw = Arc::new(MockRunner::new());
+        let runner: Arc<dyn CommandRunner> = runner_raw.clone();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let mut plan = plan_for(vec!["uninstall"]);
+        plan.request.kind = crate::model::OpKind::Uninstall;
+        assert_eq!(
+            run_plan(&runner, &plan, Arc::new(VecSink::new()), 1, cancel)
+                .await
+                .expect("run_plan"),
+            Outcome::Cancelled
+        );
+        assert!(runner_raw.calls().is_empty(), "nothing is started");
     }
 
     #[tokio::test]

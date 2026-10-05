@@ -280,7 +280,9 @@ the reading after settles it: an install after which the package is
 present, or an uninstall after which it is gone, is reported as
 succeeded. An interrupted uninstall whose package still appears present
 remains unconfirmed: metadata or a launcher can survive partial removal.
-A path-list uninstall cancelled before its first move is cancelled;
+A Cancel pressed before the command started — the operation already
+running, its command not yet begun — is reported as cancelled whatever
+the operation: nothing ran. A path-list uninstall cancelled before its first move is cancelled;
 after a move it remains unconfirmed unless absence is verified. An
 interrupted install still absent can be cancelled; an upgrade stopped
 partway is never settled either way

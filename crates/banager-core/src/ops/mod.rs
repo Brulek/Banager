@@ -1014,8 +1014,9 @@ impl OperationManager {
             // (adapters/mod.rs) turns a run the runner cancelled or timed
             // out, or one a signal the run did not send ended (Activity
             // Monitor, `kill`, a crash), into this; a path-list uninstall
-            // (adapters/standalone/removal.rs) returns it for a Cancel or
-            // a spent budget before an item and for an item whose move
+            // (adapters/standalone/removal.rs) returns it for a Cancel
+            // after its first move or a spent budget before an item, and
+            // for an item whose move
             // panicked -- and also once every item moved, when its last
             // look cannot tell whether a listed path is there; brew's
             // own Cancel, while it waits for a `brew update`, is
@@ -1027,13 +1028,22 @@ impl OperationManager {
             //
             // When the run was stopped by the user's own Cancel (the token
             // is only ever fired by `cancel()`; neither a timeout nor a
-            // signal from outside touches it) and reconcile shows the
-            // install or uninstall did *not* take effect, the cancel is
-            // what happened, and the user is told so. If the work finished
-            // anyway, the arms below report `Succeeded`, not `Cancelled`:
-            // the race goes to whatever reconcile actually found. A run a
-            // signal ended with the token unfired stays `Unconfirmed`
-            // here, never `Cancelled`: nobody pressed Cancel.
+            // signal from outside touches it) and reconcile shows an
+            // install did *not* take effect, the cancel is what happened,
+            // and the user is told so: an install that left nothing behind
+            // changed nothing that matters. An uninstall is different:
+            // finding the package still there does not prove the command
+            // removed nothing (a cask's app can be gone while its saved
+            // metadata still lists it), so an interrupted uninstall that
+            // reads as present stays `Unconfirmed`. A Cancel that landed
+            // before the command started never reaches this arm:
+            // `run_plan` answers `Cancelled` itself, which the `Ok(other)`
+            // arm lets stand, and so does a path-list uninstall stopped
+            // before its first move. If the work finished anyway, the arms
+            // below report `Succeeded`, not `Cancelled`: the race goes to
+            // whatever reconcile actually found. A run a signal ended with
+            // the token unfired stays `Unconfirmed` here, never
+            // `Cancelled`: nobody pressed Cancel.
             //
             // An upgrade stopped here is `Unconfirmed`, whatever its two
             // version readings say. Do not let the comparison turn it into
@@ -1102,8 +1112,10 @@ impl OperationManager {
             // Anything else `execute` answered stands as it is, whatever
             // the reading after says -- a tool's own `Failed`, Banager's
             // `BanagerFailed`, brew's `Cancelled` before its command starts,
-            // and a path-list uninstall's `NeedsAttention(BackAfterUninstall)`,
-            // which its own last look found (adapters/standalone/removal.rs).
+            // `run_plan`'s `Cancelled` for a Cancel before its command
+            // started, a path-list uninstall's `Cancelled` before its first
+            // move, and its `NeedsAttention(BackAfterUninstall)`, which its
+            // own last look found (adapters/standalone/removal.rs).
             Ok(other) => other,
             Err(e) => execute_error_outcome(e),
         };

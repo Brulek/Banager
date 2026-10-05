@@ -11,14 +11,16 @@
 //! CI runner.
 
 use async_trait::async_trait;
-use banager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
+use banager_core::adapters::{
+    run_plan, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+};
 use banager_core::events::{EventSink, OpId, OperationEvent, VecSink};
 use banager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
     OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
 };
 use banager_core::ops::{CancelRefused, OperationManager};
-use banager_core::runner::HostEnv;
+use banager_core::runner::{CommandRunner, HostEnv, MockRunner};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -43,6 +45,10 @@ enum ExecuteBehavior {
     /// op must actually run to completion (or must still be queued while a
     /// sibling op runs).
     Work(Duration),
+    /// Waits for the op's cancellation token, then hands the plan to the
+    /// real `run_plan` with this runner -- the user's Cancel landing after
+    /// the op turned Running but before its command was started.
+    CancelBeforeCommand(Arc<MockRunner>),
 }
 
 struct FakeAdapter {
@@ -146,9 +152,9 @@ impl Adapter for FakeAdapter {
 
     async fn execute(
         &self,
-        _plan: &Plan,
-        _sink: Arc<dyn EventSink>,
-        _op_id: OpId,
+        plan: &Plan,
+        sink: Arc<dyn EventSink>,
+        op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         self.execute_calls.fetch_add(1, Ordering::SeqCst);
@@ -161,6 +167,11 @@ impl Adapter for FakeAdapter {
             ExecuteBehavior::Work(duration) => {
                 tokio::time::sleep(*duration).await;
                 Ok(Outcome::Succeeded)
+            }
+            ExecuteBehavior::CancelBeforeCommand(runner) => {
+                cancel.cancelled().await;
+                let runner: Arc<dyn CommandRunner> = runner.clone();
+                run_plan(&runner, plan, sink, op_id, cancel).await
             }
         }
     }
@@ -388,6 +399,54 @@ async fn test_cancelled_uninstall_stays_unconfirmed_when_still_present() {
     )
     .await;
     assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+/// A Cancel that lands before the command starts changed nothing: the
+/// uninstall is `Cancelled`, not "needs a look", and its command never
+/// ran -- while one cancelled with its command under way stays
+/// `Unconfirmed` (above), as presence proves nothing was removed.
+#[tokio::test]
+async fn test_uninstall_cancelled_before_its_command_started_is_cancelled() {
+    let runner = Arc::new(MockRunner::new());
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
+    let adapter = Arc::new(FakeAdapter::new(
+        ExecuteBehavior::CancelBeforeCommand(runner.clone()),
+        Reconciled {
+            present: true,
+            version: None,
+        },
+    ));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/before-command");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Uninstall, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+    let op_id = manager.submit(plan);
+    wait_for_status(
+        &manager,
+        op_id,
+        OpStatus::Running,
+        Duration::from_millis(1000),
+    )
+    .await;
+    let start = Instant::now();
+    while adapter.execute_calls() == 0 {
+        assert!(
+            start.elapsed() < Duration::from_millis(1000),
+            "execute never started"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    manager
+        .cancel(op_id)
+        .expect("a Running op accepts a cancel");
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    assert_eq!(outcome, Outcome::Cancelled);
+    assert!(runner.calls().is_empty(), "the command never started");
 }
 
 #[tokio::test]
