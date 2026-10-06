@@ -1265,7 +1265,7 @@
     "notUsedAria": "终端用另一份：{{name}}",
     "previewHold": "检查完成后才能卸载",
     "previewHoldDetail": "首次检查要联网查询每个工具的新版本，有时要一两分钟。",
-    "otherVersionsDetail": "Homebrew还留着的其他版本，不是上面列出的这一版。目前不能在这里清理它们。",
+    "otherVersionsDetail": "Homebrew还留着的其他版本，不是上面列出的这一版。更新或卸载它时通常会一并删除，确认窗口里会写明；目前不能单独清理。",
     "listedOnly": "只列出",
     "notUsedUpdate": "更新这一份不会改变终端里运行的那一份。",
     "selfUpdatingDetail": "它运行时会自行安装新版本，也可以在这里更新。",

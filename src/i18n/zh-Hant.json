@@ -1265,7 +1265,7 @@
     "notUsedAria": "終端機用另一份：{{name}}",
     "previewHold": "檢查完成後才能解除安裝",
     "previewHoldDetail": "首次檢查要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
-    "otherVersionsDetail": "Homebrew還留著的其他版本，不是上面列出的這一版。目前不能在這裡清理它們。",
+    "otherVersionsDetail": "Homebrew還留著的其他版本，不是上面列出的這一版。更新或解除安裝它時通常會一併刪除，確認視窗裡會寫明；目前不能單獨清理。",
     "listedOnly": "只列出",
     "notUsedUpdate": "更新這一份不會改變終端機裡執行的那一份。",
     "selfUpdatingDetail": "它執行時會自行安裝新版本，也可以在這裡更新。",

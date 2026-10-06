@@ -295,8 +295,14 @@ describe("otherVersionsFact", () => {
     renderWithProviders(<>{otherVersionsFact(enT, openssl, undefined)?.value}</>);
     fireEvent.click(screen.getByRole("button", { name: "Details: Other versions" }));
     expect(
-      screen.getByText("Other versions Homebrew still keeps, besides the one listed above. They can't be cleaned up here yet."),
+      screen.getByText(
+        "Other versions Homebrew still keeps, besides the one listed above. Updating or uninstalling it usually removes them too, as its confirmation says. They can't be cleaned up on their own here yet.",
+      ),
     ).toBeInTheDocument();
+    // Since U9 an update or an uninstall deletes them: not 「目前不能在这里清理它们」.
+    expect(zh("clarity.otherVersionsDetail")).toBe(
+      "Homebrew还留着的其他版本，不是上面列出的这一版。更新或卸载它时通常会一并删除，确认窗口里会写明；目前不能单独清理。",
+    );
   });
 
   it("names the versions alone while they are measured, or when no size came", () => {

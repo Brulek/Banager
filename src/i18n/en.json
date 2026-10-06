@@ -1370,7 +1370,7 @@
     "notUsedAria": "Not used in Terminal: {{name}}",
     "previewHold": "You can uninstall once the check is done",
     "previewHoldDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
-    "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. They can't be cleaned up here yet.",
+    "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. Updating or uninstalling it usually removes them too, as its confirmation says. They can't be cleaned up on their own here yet.",
     "listedOnly": "Listed only",
     "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
     "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
