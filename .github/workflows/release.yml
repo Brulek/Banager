@@ -46,3 +46,96 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: true
           args: --target universal-apple-darwin
+
+      # The universal .dmg just built and uploaded to the draft release, kept
+      # for the Intel launch check below, which starts the app from it.
+      - name: keep the .dmg for the Intel launch check
+        uses: actions/upload-artifact@v4
+        with:
+          name: banager-universal-dmg
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # The release is a universal app (minimum macOS 13.3), built on an Apple
+  # Silicon runner: the x86_64 half compiles there but never runs there.
+  # This job starts it on a real Intel Mac, from the .dmg users download,
+  # and fails the run if it does not stay up -- the author's decision R6,
+  # 2026-10-06. `macos-15-intel` is a standard x86_64 runner (GitHub's
+  # actions/runner-images README, checked 2026-10-06, lists it and
+  # `macos-26-intel`); macOS 15 is the oldest Intel image offered, so macOS
+  # 13.3 to 14 are not covered. The draft release the job above made stays
+  # a draft either way: publish it only when this job is green.
+  intel-launch:
+    needs: release
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: banager-universal-dmg
+          path: dmg
+
+      - name: start the x86_64 half on an Intel Mac
+        run: |
+          set -euo pipefail
+          # An Apple Silicon Mac says x86_64 too, under Rosetta: ask the
+          # hardware, not uname.
+          if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then
+            echo "::error::this runner is an Apple Silicon Mac, not an Intel one"
+            exit 1
+          fi
+          sysctl -n machdep.cpu.brand_string
+          sw_vers
+
+          dmg=$(find dmg -name '*.dmg' | head -n 1)
+          mount="$RUNNER_TEMP/banager-dmg"
+          mkdir -p "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg"
+          ditto "$mount/Banager.app" "$RUNNER_TEMP/Banager.app"
+          hdiutil detach "$mount"
+
+          app="$RUNNER_TEMP/Banager.app"
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          archs=$(lipo -archs "$exe")
+          echo "halves: $archs"
+          case " $archs " in
+            *" x86_64 "*) ;;
+            *) echo "::error::$exe has no x86_64 half"; exit 1 ;;
+          esac
+
+          # Started as a Mac app is, with its window; still running after
+          # 30 seconds counts as started. A crash at launch -- a missing
+          # symbol, a library newer than the Mac, a panic while setting up --
+          # ends it well before that.
+          log="$RUNNER_TEMP/banager.log"
+          arch -x86_64 "$exe" > "$log" 2>&1 &
+          pid=$!
+          sleep 30
+          if ! kill -0 "$pid" 2>/dev/null; then
+            status=0
+            wait "$pid" || status=$?
+            cat "$log"
+            echo "::error::Banager quit within 30 seconds of starting on an Intel Mac (exit status $status)"
+            exit 1
+          fi
+          cat "$log"
+          if grep -q "panicked" "$log"; then
+            echo "::error::Banager panicked while starting on an Intel Mac"
+            exit 1
+          fi
+          kill "$pid" || true
+          sleep 5
+          kill -9 "$pid" 2>/dev/null || true
+          echo "Banager started on an Intel Mac and was still running after 30 seconds."
+
+      # Said on the draft itself, where it is published from.
+      - name: say on the draft release that the Intel launch check failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          --title "Banager $GITHUB_REF_NAME (Intel launch check failed: do not publish)"

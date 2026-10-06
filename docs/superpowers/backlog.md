@@ -484,7 +484,10 @@ Codex 独立评审发现 3 项 P1 + 9 项 P2，控制者逐条核实属实；其
 - ~~**N1**：`brew/mod.rs` 的 detect 单测虽用 MockRunner，仍查询真实文件系统并硬编码「恰好一个实例且为 /opt/homebrew」；Intel Mac、无 Homebrew、双 Homebrew 环境都会失败。改法：把候选路径与存在性检查抽成可注入依赖，分别测零/一/双实例，真实路径验证移入显式门控的集成测试。~~
   —— **已于 2026-09-22 解决**（`8569473`）：路径存在性经可注入的 `path_exists_fn`（`adapters/brew/mod.rs:120`、`:386-387`），
   零/一/双实例各有测试（`:2124-2194`）。
-- **N2**：`release.yml` 安装两个编译目标并产出 universal 包，但没有 spec §10 要求的 Intel runner 启动冒烟；交叉编译成功不等于 x86_64 半边能跑。发布验收前补 Intel 启动验证，或明确记为未完成的验收项。
+- ~~**N2**：`release.yml` 安装两个编译目标并产出 universal 包，但没有 spec §10 要求的 Intel runner 启动冒烟；交叉编译成功不等于 x86_64 半边能跑。发布验收前补 Intel 启动验证，或明确记为未完成的验收项。~~
+  —— **已于 2026-10-06 加上**（作者决定 R6）：`release.yml` 的 `intel-launch` 作业在 `macos-15-intel`（真 Intel 机器）上从刚出的 .dmg 启动 x86_64 半边，
+  30 秒内退出或日志里有 panic 就让这次运行失败，并在草稿 Release 的标题上写明不要发布。还没在 CI 上跑过（要等第一次打 `v*` 标签）；
+  GitHub 提供的 Intel 镜像最老是 macOS 15，13.3–14 没有覆盖。
 
 ## 阶段 2 终审（2026-09-19）推迟项
 
