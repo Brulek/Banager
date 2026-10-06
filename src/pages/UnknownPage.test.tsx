@@ -180,6 +180,10 @@ describe("UnknownPage", () => {
     expect(avatar.className).toContain("h-8");
     expect(avatar.querySelector("svg")).not.toBeNull();
     expect(avatar.textContent).toBe("");
+    // The tile a tool with no logo has on the Installed page (`ToolAvatar`)
+    // and the sidebar's Other Programs mark: in dark mode a 12% white edge,
+    // so the dark grey keeps its outline on the selected row's fill.
+    expect(avatar.className.split(" ")).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-white/12"]));
   });
 
   it("keeps what a broken link pointed at behind its word's ⓘ, and what else there is to say of a row in its tooltip", async () => {
