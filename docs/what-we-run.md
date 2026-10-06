@@ -147,7 +147,7 @@ prints reaches the operation's log, and before its stderr becomes a
 failure's summary or a source's error, Banager masks the login in it
 (`runner::redact`, which `RealRunner::run` applies to everything it hands
 on), putting `****` where the secret was and leaving the rest of the line,
-the user name included, as the tool wrote it:
+a proxy's user name included, as the tool wrote it:
 
 - for each setting the command was handed -- those read from the login
   shell, and the same names in Banager's own environment, which a command
@@ -155,12 +155,31 @@ the user name included, as the tool wrote it:
   a tool is known to print it: as written, percent-decoded, percent-encoded
   (with upper- or lowercase hex digits), and the `user:password` pair as
   the HTTP Basic credential `curl -v` shows for a proxy
-  (`> Proxy-Authorization: Basic …`, curl 8.7.1); for an http(s) address
-  whose login is a token alone, the token, in the same forms. A
-  password of fewer than four characters is masked only where it stands
-  as a login (`:abc@`), not everywhere it appears in a log. A name alone
-  before the `@` of anything but an http(s) address (`git@github.com:…`)
-  names an ssh user, not a secret, and is not masked;
+  (`> Proxy-Authorization: Basic …`, curl 8.7.1). A proxy's login is all
+  before the last `@` of its value, as a proxy's address has no path, and
+  a mirror's all before the last `@` that a host follows, so a password
+  with a `/`, `?` or `#` written into it, not percent-encoded, is masked
+  whole: curl cannot read such a setting and prints it back as written
+  (`Unsupported proxy syntax in 'http://user:pass/word@…'`, curl 8.7.1).
+  On a mirror's or a remote's http(s) address the name before the
+  password, or alone, is masked too, in the same forms, since it may be a
+  token: GitHub's `https://TOKEN:x-oauth-basic@github.com/…`, a mirror's
+  `https://token@…`. A proxy's user name is not: it is the account's, and
+  a proxy given a user name alone (NTLM or Kerberos style) has nothing
+  masked. Nor is a name alone before the `@` of anything but an http(s)
+  address (`git@github.com:…`), which names an ssh user;
+- a password is masked wherever it appears only when it is four
+  characters or longer and not letters alone or digits alone. One of
+  fewer than four characters, or a plain word or number (`password`,
+  `2026`), is masked only where it stands as a login (`:abc@`), which is
+  where tools print it: masked everywhere, it would turn sudo's "a
+  password is required", which Banager reads to say an operation needs
+  Terminal (`needsPassword` in `src/lib/failureCause.ts`), and the dates
+  in a log into `****`. A mirror's name is masked wherever it appears
+  only when it looks like a token -- 16 characters or more, not letters
+  alone or digits alone, with no `.` or `@` -- and otherwise only where
+  it stands in the address (`//name@`, `//name:`): it may be the Mac
+  account's name, which is in every path a tool prints;
 - besides, the password of any `scheme://user:password@` in the output,
   whatever setting or file it came from.
 
@@ -169,9 +188,13 @@ masked whole. A transcript for a person keeps at most its first and its
 last MiB (`HEAD_CAP`, `TAIL_CAP` in `runner/real.rs`), so a runaway build
 log does not fill memory; where Banager drops the middle of one, the word
 on each side of the cut is masked too, up to 1 KiB of it, since it may be
-half a login. What a parser reads -- a command's JSON on stdout, and the login shell's
-`env` output the settings come from -- is not masked: it is never shown,
-and masking it would hand every command `****` as its proxy's password.
+half a login. What a parser reads -- a command's JSON on stdout, and the
+login shell's `env` output the settings come from -- is not masked:
+masking it would hand every command `****` as its proxy's password. Where
+a reason quotes it -- a standalone tool's update check whose answer
+Banager cannot read, shown on the source's row and in the diagnostic
+info -- the quote is masked first, then cut to length
+(`parse_update_check` in `adapters/standalone/latest.rs`).
 The settings are handed to the commands unchanged; only what they print is
 masked. Masking works on the text: a login a tool printed in some other
 form -- broken across two lines, or encoded some way not listed here --

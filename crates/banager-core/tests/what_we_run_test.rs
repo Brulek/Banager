@@ -1613,7 +1613,7 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
 /// longer promises Banager never shows one without saying how.
 #[test]
 fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
-    use banager_core::runner::redact::{MASK, SHORTEST_MASKED_ANYWHERE};
+    use banager_core::runner::redact::{MASK, SHORTEST_MASKED_ANYWHERE, SHORTEST_TOKEN};
     let doc = read_doc();
     let body = section_body(&doc, "How Banager runs anything")
         .expect("docs/what-we-run.md has a `## How Banager runs anything` section");
@@ -1621,6 +1621,10 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
     assert_eq!(
         SHORTEST_MASKED_ANYWHERE, 4,
         "the document says a password of fewer than four characters is masked only as a login"
+    );
+    assert_eq!(
+        SHORTEST_TOKEN, 16,
+        "the document says a mirror's name is masked wherever it appears from 16 characters"
     );
     for phrase in [
         "**What a tool prints about a login.**",
@@ -1637,12 +1641,30 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "the word on each side of the cut",
         "What a parser reads",
         "handed to the commands unchanged",
+        // The F2 review's fixes: a password with a `/`, `?` or `#`, a
+        // token in the name slot, a proxy's name and plain words left be,
+        // and a quoted reason masked.
+        "all before the last `@` of its value",
+        "`/`, `?` or `#` written into it",
+        "x-oauth-basic",
+        "A proxy's user name is not",
+        "not letters alone or digits alone",
+        "16 characters or more",
+        "the quote is masked first",
     ] {
         assert!(
             folded.contains(phrase),
             "the `## How Banager runs anything` section of docs/what-we-run.md does not say {phrase:?} about masking a login in what tools print"
         );
     }
+    assert!(
+        !folded.contains("the user name included, as the tool wrote it"),
+        "the section still says every user name is left as written, but a mirror's may be a token and is masked"
+    );
+    assert!(
+        !folded.contains("it is never shown, and masking it"),
+        "the section still says what a parser reads is never shown, but a standalone update check's reason quotes it"
+    );
     assert!(
         !folded.contains("and never shows or records it"),
         "the Passwords paragraph still says Banager never shows or records a proxy's login without saying it is masked in what tools print"

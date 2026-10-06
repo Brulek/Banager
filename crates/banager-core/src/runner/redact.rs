@@ -18,15 +18,23 @@
 //!   every form a tool may print them: the password as written, decoded
 //!   and percent-encoded, and the `user:password` pair as an HTTP Basic
 //!   credential (base64), which is how `curl -v` prints a proxy's login.
-//!   An http(s) address whose login is a token alone (`https://token@…`)
-//!   has the token masked the same way. This is what catches a setting
-//!   printed in a shape no pattern knows: curl prints a proxy written
-//!   without a scheme (`user:password@host:port`) just as it was written.
+//!   A proxy's login is all before the last `@` of its value, a mirror's
+//!   all before the last `@` a host follows, so a `/`, `?` or `#` written
+//!   into a password does not cut it short (`Login::in_setting`). On a
+//!   mirror's or a remote's http(s) address the name before the password,
+//!   or alone (`https://token@…`), may be a token, and is masked too; a
+//!   proxy's name is the account's and is not. This is what catches a
+//!   setting printed in a shape no pattern knows: curl prints a proxy
+//!   written without a scheme (`user:password@host:port`), or one it
+//!   cannot read, just as it was written.
 //! - Any `scheme://user:password@` in the text (`mask_url_logins`),
 //!   whatever setting or file it came from.
 //!
 //! Both put [`MASK`] where the secret was and leave the rest of the line,
-//! the user name included, as the tool wrote it.
+//! a proxy's user name included, as the tool wrote it. A secret is masked
+//! wherever it appears only when it cannot be a tool's own word
+//! ([`worth_masking_anywhere`], [`looks_like_a_token`]); otherwise only
+//! where it stands in an address.
 use crate::runner::login_path::{LoginEnv, IMPORTED};
 use base64::Engine;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
