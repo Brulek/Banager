@@ -598,8 +598,11 @@ Updates page tell of it, not as one that couldn't be updated: "N updated,
 N need your password" (「N个已更新，N个需要输入密码」;
 「N個已更新，N個需要輸入密碼」). Rust reads that cause off the last
 lines the update wrote to stderr, as the history does
-(`history::failure_cause`), and counts it beside the run
-(`password_stops` in `src-tauri/src/notify_ops.rs`). Uninstalls say
+(`history::failure_cause`), and counts it beside the run, from the
+same records the run is counted from
+(`ReportedRuns::accepted` in `crates/banager-core/src/notify_operations.rs`);
+what Banager keeps of an operation whose record it no longer holds keeps
+that cause too (`ops::Ended::NeedsPassword`). Uninstalls say
 "Uninstalled" and "couldn't be uninstalled" (「已卸载」, 「未能卸载」;
 「已解除安裝」, 「未能解除安裝」).
 It is handed to macOS the way the update notification is (`notify::post`):
