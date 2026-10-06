@@ -2952,7 +2952,9 @@ search path, `export PATH="$HOME/<folder>:$PATH"`, which the row under it
 says to add to a shell startup file such as `~/.zshrc` (*Copy Line*,
 `PathLineRow` in `src/components/PathLine.tsx`; the author's decision
 U15 a). Banager only shows and copies that line: nothing edits a shell
-file.
+file. Since the login shell's `PATH` is read once per run (above: no
+read runs again after one that worked), the row also says to quit and
+reopen the app to see the change there; no new read is run for it.
 
 ## App icons: read through macOS, no command runs
 

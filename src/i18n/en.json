@@ -591,7 +591,7 @@
     "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy."
   },
   "pathLine": {
-    "sentence": "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window.",
+    "sentence": "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window. To see the change here, quit and reopen this app.",
     "copy": "Copy Line",
     "copyLabel": "Copy line for {{dir}}"
   },

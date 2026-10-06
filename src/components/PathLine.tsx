@@ -12,8 +12,11 @@ import { COMMAND_CODE } from "./withCommand";
  * that does it -- `export PATH="$HOME/.grok/bin:$PATH"` (`exportPathLine`).
  * The author's decision U15 (a), 2026-10-06: Banager knows the folder
  * exactly, and a line someone adds can be taken out again; it shows and
- * copies the line and never writes it anywhere itself. Nothing for a
- * folder no line can name.
+ * copies the line and never writes it anywhere itself. It also says to
+ * reopen the app to see the change here: the login shell's `PATH` the
+ * group judges by is read once per run (crates/banager-core/src/runner/
+ * login_path.rs), so Refresh alone would still say Terminal can't find
+ * it. Nothing for a folder no line can name.
  */
 export function PathLineRow({ dir }: { dir: string }) {
   const { t } = useTranslation();

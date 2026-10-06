@@ -171,7 +171,9 @@ describe("CommandsGroup", () => {
       // A row of its own, right under the folder's.
       expect(row.previousElementSibling?.hasAttribute("data-command-line")).toBe(true);
       expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
-        "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window.",
+        // The PATH Banager goes by is read once each time it opens: a line
+        // added now shows here only after it is reopened.
+        "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window. To see the change here, quit and reopen this app.",
       );
       const code = row.querySelector("code") as HTMLElement;
       expect(code.textContent).toBe('export PATH="$HOME/.grok/bin:$PATH"');
@@ -216,9 +218,13 @@ describe("CommandsGroup", () => {
         expect(getByRole("button", { name: "拷贝路径：~/.local/bin" })).toHaveTextContent(/^拷贝路径$/);
         const row = container.querySelector("[data-path-line]") as HTMLElement;
         expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
-          "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。",
+          "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。要在这里看到变化，请退出并重新打开此App。",
         );
         expect(within(row).getByRole("button", { name: "拷贝这一行：~/.local/bin" })).toHaveTextContent(/^拷贝这一行$/);
+        await i18n.changeLanguage("zh-Hant");
+        expect(await within(row).findByText(/^若要讓終端機找到它/)).toHaveTextContent(
+          "若要讓終端機找到它，可以把這一行加到~/.zshrc等終端機設定檔的結尾，再新開一個終端機視窗。若要在這裡看到變化，請結束並重新開啟此App。",
+        );
       } finally {
         await i18n.changeLanguage("en");
       }
