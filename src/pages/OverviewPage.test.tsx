@@ -502,14 +502,11 @@ describe("OverviewPage", () => {
     expect(queryByRole("list", { name: "Needs attention" })).toBeNull();
   });
 
-  // Each of these has nothing to install and is not up to date: the
-  // Overview must say so exactly when the Updates page does, and never
-  // "Everything is up to date" over any of them. Under the headline, the
-  // line that says what there is instead, or none; and Review updates
+  // Each of these has nothing to install and is not up to date: a source
+  // was not checked this time, and the Overview names it (decision I22),
+  // never "Everything is up to date" over any of them. Under the headline,
+  // the line that says what there is instead, or none; and Review updates
   // only where the Updates page lists a row.
-  // The headline says nothing to update only of the sources Banager could
-  // check where one was not checked in full, as the Updates page does.
-  const NOT_CHECKED = "No updates in the sources checked";
   const notUpToDate: Array<[string, () => void, string | null, boolean, string]> = [
     [
       "a source that is not running",
@@ -519,7 +516,7 @@ describe("OverviewPage", () => {
       // "Needs attention" says it.
       null,
       false,
-      NOT_CHECKED,
+      "Ollama wasn't checked this time; everything else is up to date",
     ],
     [
       "Homebrew still updating its list of software",
@@ -531,29 +528,7 @@ describe("OverviewPage", () => {
       },
       null,
       false,
-      NOT_CHECKED,
-    ],
-    [
-      "only updates Banager cannot install",
-      () => {
-        served = snapshotWith({
-          updates: [candidate(formula("jq"), { blocked: "Pinned" }), candidate(urllib3)],
-        });
-      },
-      "2 can't be updated here",
-      true,
-      "Nothing to update",
-    ],
-    [
-      "only updates the user hid",
-      () => {
-        served = snapshotWith({ updates: [candidate(formula("glib"))] });
-        settings.ignored_updates = [formula("glib")];
-      },
-      // The Updates page lists no row of it: nothing there to review.
-      "1 hidden",
-      false,
-      "Nothing to update",
+      "Homebrew wasn't checked this time; everything else is up to date",
     ],
     // Homebrew still reads as answering, with no note: `refresh` keeps a
     // source whose update check failed as it was, and carries its last
@@ -569,7 +544,7 @@ describe("OverviewPage", () => {
       // "Needs attention" says it, as the lists' first line does.
       null,
       false,
-      NOT_CHECKED,
+      "Homebrew wasn't fully checked this time; everything else is up to date",
     ],
     [
       "a source whose detection failed this round",
@@ -581,9 +556,62 @@ describe("OverviewPage", () => {
       },
       null,
       false,
-      NOT_CHECKED,
+      "npm wasn't checked this time; everything else is up to date",
     ],
   ];
+
+  // Every source checked this time, nothing to install, and the Updates
+  // page lists something besides: the all good, its green check, and what
+  // is listed besides under it (decision I22). The Updates page, which
+  // lists those rows, still does not say "Everything is up to date".
+  const allGoodBesides: Array<[string, () => void, string, boolean]> = [
+    [
+      "only updates Banager cannot install",
+      () => {
+        served = snapshotWith({
+          updates: [candidate(formula("jq"), { blocked: "Pinned" }), candidate(urllib3)],
+        });
+      },
+      "2 can't be updated here",
+      true,
+    ],
+    [
+      "only updates the user hid",
+      () => {
+        served = snapshotWith({ updates: [candidate(formula("glib"))] });
+        settings.ignored_updates = [formula("glib")];
+      },
+      // The Updates page lists no row of it: nothing there to review.
+      "1 hidden",
+      false,
+    ],
+  ];
+
+  it.each(allGoodBesides)("says what can be updated here is up to date, with %s", async (_name, arrange, line, review) => {
+    arrange();
+    const { getByRole, queryByRole, queryByText, container } = renderWithProviders(
+      <>
+        <SnapshotStatus showsFirstCheck>
+          <OverviewPage />
+        </SnapshotStatus>
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
+      </>,
+    );
+    const title = "Everything you can update here is up to date";
+    await waitFor(() => expect(getByRole("heading", { level: 2, name: title })).toBeInTheDocument());
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("upToDate");
+    expect(getByRole("heading", { level: 2, name: title }).nextElementSibling?.textContent).toBe(line);
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    const [button, ...more] = within(statusRowOf(container)).getAllByRole("button").filter(
+      (element) => element.closest("h2, [data-status-line]") === null,
+    );
+    expect(more).toEqual([]);
+    expect(button.className).toContain("bg-fill");
+    expect(button).toHaveAccessibleName(review ? "Review Updates" : "Check Again");
+    if (!review) expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
+  });
 
   it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange, line, review, title) => {
     arrange();
@@ -705,7 +733,12 @@ describe("OverviewPage", () => {
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(queryByText(/^\d+ checks? didn't finish$/)).toBeNull();
     expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
-    expect(getByRole("heading", { level: 2, name: NOT_CHECKED }).nextElementSibling?.textContent).toMatch(/^Checked /);
+    // The headline names them (I22): both Homebrews as one, as the row does.
+    const headline = getByRole("heading", {
+      level: 2,
+      name: "Homebrew and Ollama weren't fully checked this time; everything else is up to date",
+    });
+    expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
     // Its button checks again, as the toolbar's does.
     const again = within(rows[0]).getByRole("button", { name: "Check Again" });
     expect(again.className).toBe(BUTTON.regular.grey);
@@ -900,10 +933,10 @@ describe("OverviewPage", () => {
         </>,
       );
 
-      // The stopped Ollama was not checked: the headline says so.
+      // The stopped Ollama was not checked: the headline names it (I22).
       const headline = await findByRole("heading", {
         level: 2,
-        name: "No updates in the sources checked",
+        name: "Ollama wasn't checked this time; everything else is up to date",
       });
       expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
       // The same number the Updates page gives its folded rows.
@@ -931,10 +964,11 @@ describe("OverviewPage", () => {
       served = snapshotWith({ instances: [{ ...brew, status: { unavailable: null, notes: [note] } }] });
       const { findByRole, queryByRole } = renderOverview();
 
-      const headline = await findByRole("heading", { level: 2, name: "已检查的来源中没有可更新的工具" });
+      // Homebrew is the only source, and was not checked: named, and no 「其余」 (I22).
+      const headline = await findByRole("heading", { level: 2, name: "Homebrew这次没检查" });
       // Nothing instead to say: when the sources were last checked.
       expect(headline.nextElementSibling?.textContent).toMatch(/^上次检查：/);
-      expect(queryByRole("heading", { level: 2, name: "没有要更新的工具" })).not.toBeInTheDocument();
+      expect(queryByRole("heading", { level: 2, name: "所有工具都是最新的" })).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -953,7 +987,8 @@ describe("OverviewPage", () => {
       settings.ignored_updates = [formula("glib"), formula("wget")];
       const { findByRole } = renderOverview();
 
-      const headline = await findByRole("heading", { level: 2, name: "没有要更新的工具" });
+      // Every source checked: the all good, and the rest under it (I22).
+      const headline = await findByRole("heading", { level: 2, name: "能在这里更新的都已是最新" });
       expect(headline.nextElementSibling?.textContent).toBe("2个已隐藏，1个无法在这里更新");
       expect(await findByRole("button", { name: "查看更新" })).toBeInTheDocument();
       expect(within(headline.nextElementSibling as HTMLElement).getByRole("button")).toHaveAccessibleName(
@@ -977,7 +1012,7 @@ describe("OverviewPage", () => {
     useUiStore.setState({ page: "overview" });
     const { findByRole } = renderOverview();
 
-    const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+    const headline = await findByRole("heading", { level: 2, name: "Everything you can update here is up to date" });
     const line = headline.nextElementSibling as HTMLElement;
     expect(line.textContent).toBe("2 hidden, 1 can't be updated here");
     // One control in the line, and it is the count of hidden ones.
@@ -994,7 +1029,7 @@ describe("OverviewPage", () => {
     served = snapshotWith({ updates: [candidate(formula("jq"), { blocked: "Pinned" })] });
     const { findByRole } = renderOverview();
 
-    const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+    const headline = await findByRole("heading", { level: 2, name: "Everything you can update here is up to date" });
     const line = headline.nextElementSibling as HTMLElement;
     expect(line.textContent).toBe("1 can't be updated here");
     expect(within(line).queryByRole("button")).toBeNull();
@@ -1004,7 +1039,7 @@ describe("OverviewPage", () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
     const { findByRole, queryByRole, container } = renderOverview();
 
-    await findByRole("heading", { level: 2, name: "No updates in the sources checked" });
+    await findByRole("heading", { level: 2, name: "Ollama wasn't checked this time; everything else is up to date" });
     const column = container.firstElementChild as HTMLElement;
     // Settings' column: min(560, the page less 40), centred, 20 under the
     // toolbar -- not centred in the window's height.
@@ -1248,8 +1283,9 @@ describe("OverviewPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
+    // The headline names both sources not checked (I22).
     expect(
-      getByRole("heading", { level: 2, name: "No updates in the sources checked" }),
+      getByRole("heading", { level: 2, name: "Homebrew and Ollama weren't checked this time; everything else is up to date" }),
     ).toBeInTheDocument();
   });
 

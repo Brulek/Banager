@@ -632,7 +632,7 @@ describe("App", () => {
     };
     try {
       const { findByRole, getByRole } = renderWithProviders(<App />);
-      const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+      const headline = await findByRole("heading", { level: 2, name: "Everything you can update here is up to date" });
 
       fireEvent.click(within(headline.nextElementSibling as HTMLElement).getByRole("button", { name: "1 hidden" }));
 

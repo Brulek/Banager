@@ -142,7 +142,6 @@
     "updatesAvailable_other": "{{count}}個工具可以更新",
     "reviewUpdates": "查看更新",
     "upToDate": "所有工具都是最新的",
-    "nothingToUpdate": "沒有要更新的工具",
     "updating_other": "正在更新{{count}}個工具",
     "seeProgress": "查看進度",
     "autoCheckRowLabel": "{{label}}：{{value}}",
@@ -164,6 +163,13 @@
   },
   "overviewPassword": {
     "title_other": "{{count}}個更新需要輸入密碼"
+  },
+  "overviewAllGood": {
+    "upToDateHere": "能在這裡更新的都已是最新",
+    "notCheckedRest_other": "{{sources}}這次沒檢查，其餘都是最新的",
+    "notFinishedRest_other": "{{sources}}這次沒檢查完，其餘都是最新的",
+    "notChecked_other": "{{sources}}這次沒檢查",
+    "notFinished_other": "{{sources}}這次沒檢查完"
   },
   "adapters": {
     "brew": "Homebrew",

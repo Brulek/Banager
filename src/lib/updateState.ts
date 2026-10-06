@@ -342,6 +342,74 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
 }
 
 /**
+ * Of the notes that leave a source's updates unchecked
+ * (`NOTE_LEAVES_UPDATES_UNCHECKED`), those after which it was still
+ * checked in part: against a copy of Homebrew's list of software that may
+ * be out of date (`IndexMayBeStale`). A list still downloading
+ * (`IndexUpdating`) and a launcher without its program (`LauncherOnly`)
+ * leave nothing checked. A `Record`, so a note added to `InstanceNote`
+ * without an answer here fails `tsc`.
+ */
+const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
+  IndexMayBeStale: true,
+  IndexUpdating: false,
+  NotOnPath: false,
+  ShadowedByHomebrew: false,
+  ShadowedByNpm: false,
+  ShadowedByOther: false,
+  LauncherOnly: false,
+};
+
+/**
+ * The sources this check did not check in full this time, for the
+ * Overview to name them (decision I22: 「uv这次没检查，其余都是最新的」).
+ *
+ * - `ids`: what each goes by, each once -- the instances, in the
+ *   snapshot's order, that did not answer, whose note says their updates
+ *   went unchecked (`NOTE_LEAVES_UPDATES_UNCHECKED`), or that an error of
+ *   this round names; then the ids errors name that the snapshot does not
+ *   list (a bare adapter id, when its `detect` failed, or an instance
+ *   dropped as a duplicate: `failedSourceAdapters` in src/lib/sources.ts).
+ * - `partly`: one of them answered and was checked in part -- a step of
+ *   its check failed, or it was checked against a list that may be out of
+ *   date (`NOTE_LEAVES_UPDATES_CHECKED_IN_PART`) -- so 「没检查完」, not
+ *   「没检查」.
+ * - `rest`: some other source was checked in full (`checkedInFull`), so
+ *   「其余都是最新的」 is about something. Codex's own install, whose updates
+ *   Banager never checks (`updatesUnchecked`), is neither named nor rest:
+ *   that is so every time, not news of this check.
+ *
+ * Null when every source was checked in full this time, but for those
+ * Banager never checks.
+ */
+export interface NotChecked {
+  ids: string[];
+  partly: boolean;
+  rest: boolean;
+}
+
+export function notCheckedThisTime(instances: ManagerInstance[], errors: SourceError[]): NotChecked | null {
+  const failed = new Set(errors.map((error) => error.instance_id));
+  const ids: string[] = [];
+  let partly = false;
+  let rest = false;
+  for (const instance of instances) {
+    const notes = instance.status.notes;
+    const unchecked = !isAvailable(instance) || notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]);
+    if (!unchecked && !failed.has(instance.id)) {
+      if (!updatesUnchecked(instance)) rest = true;
+      continue;
+    }
+    ids.push(instance.id);
+    if (isAvailable(instance) && (failed.has(instance.id) || notes.some((note) => NOTE_LEAVES_UPDATES_CHECKED_IN_PART[note]))) {
+      partly = true;
+    }
+  }
+  for (const id of failed) if (!ids.includes(id) && !instances.some((instance) => instance.id === id)) ids.push(id);
+  return ids.length === 0 ? null : { ids, partly, rest };
+}
+
+/**
  * Whether Homebrew's update check leaves `artifact` out while Settings'
  * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
@@ -370,27 +438,6 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   row (`holdsRow` in src/components/UpdateProgress.tsx) -- the rows
  *   "Review updates" selects and the Updates page's "N updates" counts.
  *   `artifacts` says which copies those are; without it, none is.
- * - `upToDate`: no update listed at all and every source checked in full
- *   (`everySourceChecked`) -- exactly when the Updates page says
- *   "Everything is up to date".
- * - `nothingToUpdate`: none to install, and not that either. Some are
- *   listed that Banager cannot install (pinned, read-only, not checkable,
- *   from a source not answering), the user hid the rest, a source was not
- *   checked in full, or a check failed this round. Calling that up to date
- *   is the lie the Updates page stopped telling; the Overview does not
- *   start. It carries whether every source was checked in full
- *   (`everyChecked`): where one was not, the headline says nothing to
- *   update only of the sources Banager could check, as the Updates page's
- *   "No updates in the sources Banager could check" does. And it carries
- *   what the Overview says under its headline, in the
- *   Updates page's own numbers: `cantUpdateHere`, the updates under its
- *   "Can't update here (N)" -- every one it lists but those an update is
- *   installing or has just installed -- and `hidden`, the updates it
- *   leaves out because the user hid them (`hidingRule`; a skip or a
- *   never-remind that hides no update this check found is not counted).
- *   A source not checked in full, and a check that did not finish
- *   (`unfinishedChecksNotice`), say so in the Overview's group of
- *   problems, a row each, and are not counted here: said once.
  * - `updating`: none left to start, and some are being installed right
  *   now (`underway`: queued, running, being cancelled or read back) --
  *   `count` of them, in the words the Updates page's header uses for them.
@@ -403,23 +450,42 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   update, with no checkbox, as Terminal has to finish them. Never
  *   "Nothing to update" over them (walk-4 W4-1), as the Updates page's
  *   headline and the operation bar say 「13个需要输入密码」 of the same
- *   rows. It carries `cantUpdateHere` and `hidden` as `nothingToUpdate`
- *   does, for the line under the headline.
+ *   rows.
+ * - `upToDate`: none of those, and every source answered this check and
+ *   was checked in full this time (`notCheckedThisTime` is null) -- the
+ *   Overview's 「都好了」, its green check (decision I22). What the Updates
+ *   page lists besides is said under it, not held against it: the user hid
+ *   it, Banager cannot update it here, or it is a copy Terminal does not
+ *   run. `everyChecked` (`everySourceChecked`) is false where a source
+ *   Banager never checks is there too (Codex's own install): then, as
+ *   with anything listed besides, the headline says that what can be
+ *   updated here is up to date, not that everything is.
+ * - `nothingToUpdate`: none to install, and a source was not checked in
+ *   full this time: `notChecked` names it, for the headline to say
+ *   (「uv这次没检查，其余都是最新的」). Calling that up to date is the lie
+ *   the Updates page stopped telling; the Overview does not start. Its
+ *   group of problems says why, a row each.
+ *
+ * The last three carry what the Overview says under the headline, in the
+ * Updates page's own numbers: `cantUpdateHere`, the updates under its
+ * "Can't update here (N)" -- every one it lists but those an update is
+ * installing or has just installed; `hidden`, the updates it leaves out
+ * because the user hid them (`hidingRule`; a skip or a never-remind that
+ * hides no update this check found is not counted); and `notUsed`, the
+ * rows of a copy Terminal does not run that have a checkbox and that no
+ * number counts (decision U4). A check that could not look a tool up
+ * (`failedLookupsOf`) is the Overview's to weigh: such a row is among
+ * `cantUpdateHere`.
  *
  * `updates` and `updating` carry how many wait for the password too
  * (`password`), which the Overview says under its headline.
  */
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[]; password: number }
-  | { kind: "upToDate" }
   | { kind: "updating"; count: number; password: number }
-  | { kind: "needsPassword"; count: number; cantUpdateHere: number; hidden: number }
-  | {
-      kind: "nothingToUpdate";
-      everyChecked: boolean;
-      cantUpdateHere: number;
-      hidden: number;
-    };
+  | { kind: "needsPassword"; count: number; cantUpdateHere: number; hidden: number; notUsed: number }
+  | { kind: "upToDate"; everyChecked: boolean; cantUpdateHere: number; hidden: number; notUsed: number }
+  | { kind: "nothingToUpdate"; notChecked: NotChecked; cantUpdateHere: number; hidden: number; notUsed: number };
 
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors"> & Partial<Pick<Snapshot, "artifacts">>,
@@ -431,19 +497,22 @@ export function updatesSummary(
   const actionable = actionableUpdatesOf(snapshot, settings);
   const password = actionable.filter(waitsForPassword).length;
   const unused = unusedCopies(snapshot.artifacts ?? []);
-  const startable = actionable.filter(
-    (candidate) => !holdsRow(candidate) && !unused.has(artifactKeyId(candidate.key)),
-  );
+  const free = actionable.filter((candidate) => !holdsRow(candidate));
+  const startable = free.filter((candidate) => !unused.has(artifactKeyId(candidate.key)));
   if (startable.length > 0) return { kind: "updates", actionable: startable, password };
   const updating = actionable.filter(underway).length;
   if (updating > 0) return { kind: "updating", count: updating, password };
   const listed = notHidden(snapshot.updates, settings).length;
-  const cantUpdateHere = listed - actionable.length;
-  const hidden = snapshot.updates.length - listed;
-  if (password > 0) return { kind: "needsPassword", count: password, cantUpdateHere, hidden };
-  const everyChecked = everySourceChecked(snapshot.instances, snapshot.errors);
-  if (snapshot.updates.length === 0 && everyChecked) return { kind: "upToDate" };
-  return { kind: "nothingToUpdate", everyChecked, cantUpdateHere, hidden };
+  const besides = {
+    cantUpdateHere: listed - actionable.length,
+    hidden: snapshot.updates.length - listed,
+    // None of the free rows is counted by now: each is a copy Terminal does not run.
+    notUsed: free.length,
+  };
+  if (password > 0) return { kind: "needsPassword", count: password, ...besides };
+  const notChecked = notCheckedThisTime(snapshot.instances, snapshot.errors);
+  if (notChecked !== null) return { kind: "nothingToUpdate", notChecked, ...besides };
+  return { kind: "upToDate", everyChecked: everySourceChecked(snapshot.instances, snapshot.errors), ...besides };
 }
 
 /**

@@ -19,6 +19,7 @@ import {
 } from "../lib/sources";
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
+import { notCheckedHeadline } from "../lib/allGood";
 import { failedLookupsOf, failedLookupsProblem } from "../lib/failedLookups";
 import { useSystemFacts } from "../lib/diagnostics";
 import { loginPathNotice } from "../lib/loginPathNotice";
@@ -41,43 +42,53 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
 
 /**
  * The status's title. A `switch` with no default, so a new summary without
- * words here fails `tsc`. Nothing to update says "in the sources checked"
- * where a source was not checked in full, and where tools could not be
- * looked up (`lookupsFailed`): either way, no update listed is no news.
- * Where no tool was checked at all (`nothingChecked`: every one installed
- * is a row that could not be), it claims nothing was: 「所有工具都没有检查
- * 成功」, not "in the sources checked" (walk-2 review 1.2).
+ * words here fails `tsc`. With nothing to install and every source checked
+ * this time, the all good (decision I22): 「所有工具都是最新的」 where
+ * nothing else is listed and every source is one Banager checks, else
+ * 「能在这里更新的都已是最新」, what is listed besides said under it. A source
+ * not checked this time is named (`notCheckedHeadline`): 「uv这次没检查，其余
+ * 都是最新的」. Where tools could not be looked up (`lookupsFailed`), no
+ * update listed is no news, and nothing is called up to date: 「已检查的
+ * 来源中没有可更新的工具」; where no tool was checked at all
+ * (`nothingChecked`: every one installed is a row that could not be), it
+ * claims nothing was: 「所有工具都没有检查成功」 (walk-2 review 1.2).
  */
 function headlineText(
   t: Translate,
   summary: UpdatesSummary,
   lookupsFailed: number,
   nothingChecked: boolean,
+  instances: readonly ManagerInstance[],
 ): string {
   switch (summary.kind) {
     case "updates":
       return t("overview.updatesAvailable", { count: summary.actionable.length });
-    case "upToDate":
-      return t("overview.upToDate");
     case "updating":
       return t("overview.updating", { count: summary.count });
     case "needsPassword":
       return t("overviewPassword.title", { count: summary.count });
+    case "upToDate":
+      if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
+      return summary.everyChecked && summary.cantUpdateHere + summary.hidden + summary.notUsed === 0
+        ? t("overview.upToDate")
+        : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
-      if (lookupsFailed > 0 && nothingChecked) return t("overview.nothingChecked");
-      return summary.everyChecked && lookupsFailed === 0
-        ? t("overview.nothingToUpdate")
-        : t("overview.nothingToUpdateChecked");
+      if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
+      return notCheckedHeadline(t, summary.notChecked, instances);
   }
 }
 
-/** The status's symbol for a verdict. A `switch` with no default, as `headlineText`. */
-function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
+/**
+ * The status's symbol for a verdict. A `switch` with no default, as
+ * `headlineText`. The green check only for the all good: not over tools
+ * that could not be looked up.
+ */
+function symbolOf(summary: UpdatesSummary, lookupsFailed: number): StatusSymbolKind {
   switch (summary.kind) {
     case "updates":
       return "updates";
     case "upToDate":
-      return "upToDate";
+      return lookupsFailed > 0 ? "quiet" : "upToDate";
     case "updating":
       return "busy";
     // The warning glyph: updates are waiting on the user, in Terminal.
@@ -89,12 +100,14 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
 }
 
 /**
- * The line under "Nothing to update", and under "N updates need your
- * password": what there is besides, in the
+ * The line under the all good, under a source named as not checked, and
+ * under "N updates need your password": what there is besides, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
- * hid, the ones under its "Can't update here" -- or null when there is
- * none of that. A source not checked in full, and a check that did not
- * finish, say so in the problems group under the status instead.
+ * hid, the ones under its "Can't update here", the rows of a copy
+ * Terminal does not run that no number counts (「1个终端用不到」, decision
+ * U4) -- or null when there is none of that. A source not checked in
+ * full, and a check that did not finish, say so in the problems group
+ * under the status instead.
  *
  * The Updates page lists no hidden update, and Settings lists them all,
  * under 「已跳过的版本」 and 「不再提醒的工具」: their count is the way
@@ -104,7 +117,7 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
  */
 function nothingToUpdateLine(
   t: Translate,
-  summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" | "needsPassword" }>,
+  summary: Extract<UpdatesSummary, { kind: "upToDate" | "nothingToUpdate" | "needsPassword" }>,
   showHidden: () => void,
   lookupsFailed: number,
 ): ReactNode {
@@ -123,6 +136,7 @@ function nothingToUpdateLine(
         : t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }),
     );
   }
+  if (summary.notUsed > 0) parts.push(t("notUsedCopy.count", { count: summary.notUsed }));
   if (parts.length === 0) return null;
   return parts.map((part, index) => (
     <Fragment key={index}>
@@ -548,7 +562,7 @@ export function OverviewPage() {
         </Popover>
       </>
     );
-  } else if (summary.kind === "nothingToUpdate" || summary.kind === "needsPassword") {
+  } else if (summary.kind === "upToDate" || summary.kind === "nothingToUpdate" || summary.kind === "needsPassword") {
     line = nothingToUpdateLine(t, summary, showHiddenUpdates, lookupsFailed.length) ?? lastChecked;
   } else if (summary.kind === "updating") {
     // How many wait for the password, as the Updates page's headline goes
@@ -608,9 +622,13 @@ export function OverviewPage() {
         {t("overview.seeProgress")}
       </button>
     );
-  } else if (summary.kind === "nothingToUpdate" && summary.cantUpdateHere > 0) {
+  } else if (
+    (summary.kind === "upToDate" || summary.kind === "nothingToUpdate") &&
+    (summary.cantUpdateHere > 0 || summary.notUsed > 0)
+  ) {
     // The Updates page has rows to show, every one under "Can't update
-    // here": nothing to select, only a page to open.
+    // here" or of a copy Terminal does not run, which Update All leaves
+    // unticked: nothing to select, only a page to open.
     button = (
       <button type="button" onClick={() => setPage("updates")} className={BUTTON.regular.grey}>
         {t("overview.reviewUpdates")}
@@ -623,13 +641,13 @@ export function OverviewPage() {
   return (
     <div className={FORM_COLUMN}>
       <StatusRow
-        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary)}
+        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary, lookupsFailed.length)}
         title={
           failed
             ? t("header.checkFailed")
             : found !== null
               ? t(NOTHING_FOUND_KEYS[found].title)
-              : headlineText(t, summary, lookupsFailed.length, nothingChecked)
+              : headlineText(t, summary, lookupsFailed.length, nothingChecked, snapshot.instances)
         }
         line={line}
         button={button}

@@ -338,7 +338,9 @@ describe("everySourceChecked", () => {
 
   it("fails with Codex's own install, whose updates Banager never checks", () => {
     // Its check lists nothing (`Latest::Unchecked`), so no update listed
-    // there is no news: not "Everything is up to date".
+    // there is no news: not "Everything is up to date". The Overview's all
+    // good (I22) still holds -- it says what can be updated here is up to
+    // date -- with `everyChecked` false.
     const codex: ManagerInstance = {
       ...brew,
       id: "standalone-codex",
@@ -348,12 +350,19 @@ describe("everySourceChecked", () => {
     };
     expect(everySourceChecked([brew, codex], [])).toBe(false);
     expect(updatesSummary({ instances: [brew, codex], updates: [], errors: [] }, hiding())).toEqual({
-      kind: "nothingToUpdate",
+      kind: "upToDate",
       everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
+      notUsed: 0,
     });
-    expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({ kind: "upToDate" });
+    expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
+      kind: "upToDate",
+      everyChecked: true,
+      cantUpdateHere: 0,
+      hidden: 0,
+      notUsed: 0,
+    });
   });
 
   it("fails when a check failed this round, though every source still reads as answering", () => {
@@ -405,10 +414,11 @@ describe("updatesSummary", () => {
     // Both taken and both done, waiting for the refresh that drops them:
     // nothing to start, and wget alone is under "Can't update here".
     expect(updatesSummary(snapshot, hiding(), (u) => u !== wget)).toEqual({
-      kind: "nothingToUpdate",
+      kind: "upToDate",
       everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
+      notUsed: 0,
     });
   });
 
@@ -440,35 +450,43 @@ describe("updatesSummary", () => {
       count: 2,
       cantUpdateHere: 1,
       hidden: 0,
+      notUsed: 0,
     });
     // A hidden one waiting for the password is not counted: the Updates
     // page does not list it.
     expect(
       updatesSummary(snapshot, hiding({ ignored_updates: [glib.key] }), (u) => u !== wget, () => false, password),
-    ).toEqual({ kind: "needsPassword", count: 1, cantUpdateHere: 1, hidden: 1 });
+    ).toEqual({ kind: "needsPassword", count: 1, cantUpdateHere: 1, hidden: 1, notUsed: 0 });
   });
 
-  it("is up to date only with no update at all and every source checked", () => {
+  it("is up to date with every source checked this time, saying what is listed besides", () => {
     expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
+      everyChecked: true,
+      cantUpdateHere: 0,
+      hidden: 0,
+      notUsed: 0,
     });
     const stopped: ManagerInstance = {
       ...brew,
       status: { unavailable: "NotRunning", notes: [] },
     };
-    // Not checked in full, and nothing else to say: "Needs attention" says why.
+    // Not checked this time, and named: "Needs attention" says why.
     expect(updatesSummary({ instances: [stopped], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
-      everyChecked: false,
+      notChecked: { ids: [brew.id], partly: false, rest: false },
       cantUpdateHere: 0,
       hidden: 0,
+      notUsed: 0,
     });
+    // What Banager can update here is up to date: the rest is said under it (I22).
     const pinned = candidate({ blocked: "Pinned" });
     expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
-      kind: "nothingToUpdate",
+      kind: "upToDate",
       everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
+      notUsed: 0,
     });
     const glib = candidate();
     expect(
@@ -476,7 +494,7 @@ describe("updatesSummary", () => {
         { instances: [brew], updates: [glib], errors: [] },
         hiding({ ignored_updates: [glib.key] }),
       ),
-    ).toEqual({ kind: "nothingToUpdate", everyChecked: true, cantUpdateHere: 0, hidden: 1 });
+    ).toEqual({ kind: "upToDate", everyChecked: true, cantUpdateHere: 0, hidden: 1, notUsed: 0 });
   });
 
   it("counts, with nothing to install, what the Updates page lists and what the user hid, whatever checks failed", () => {
@@ -504,11 +522,13 @@ describe("updatesSummary", () => {
 
     expect(updatesSummary(snapshot, settings)).toEqual({
       kind: "nothingToUpdate",
-      everyChecked: false,
+      // Homebrew answered and failed a step; npm's detection failed.
+      notChecked: { ids: [brew.id, "npm"], partly: true, rest: true },
       // jq, urllib3 and wget: what the Updates page lists, every row
       // under "Can't update here".
       cantUpdateHere: 3,
       hidden: 2,
+      notUsed: 0,
     });
     expect(notHidden(snapshot.updates, settings)).toEqual([jq, urllib3, wget]);
   });
@@ -518,9 +538,10 @@ describe("updatesSummary", () => {
     const updating: ManagerInstance = { ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } };
     expect(updatesSummary({ instances: [updating], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
-      everyChecked: false,
+      notChecked: { ids: [brew.id], partly: false, rest: false },
       cantUpdateHere: 0,
       hidden: 0,
+      notUsed: 0,
     });
   });
 
@@ -528,9 +549,10 @@ describe("updatesSummary", () => {
     const failed = { instance_id: brew.id, message: "brew outdated exited 1" };
     expect(updatesSummary({ instances: [brew], updates: [], errors: [failed] }, hiding())).toEqual({
       kind: "nothingToUpdate",
-      everyChecked: false,
+      notChecked: { ids: [brew.id], partly: true, rest: false },
       cantUpdateHere: 0,
       hidden: 0,
+      notUsed: 0,
     });
     // What can be installed still comes first: a failed check elsewhere
     // does not take the count away.
