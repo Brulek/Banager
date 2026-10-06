@@ -1044,10 +1044,11 @@ pub enum Warning {
     /// formula's older versions -- `versions`, every version installed when
     /// the preview read the Cellar, oldest first, the one the upgrade
     /// replaces among them (`brew::kegs`) -- and its old downloads, as
-    /// Homebrew does by itself unless `HOMEBREW_NO_INSTALL_CLEANUP` is set
-    /// (`Cleanup.install_formula_clean!`, `cleanup.rb:348-358`); no other
-    /// formula's, no periodic clean-up, no autoremove (`Cleanup#clean!`
-    /// with names, `cleanup.rb:497-517`). The author's decision U9 (r6).
+    /// Homebrew does by itself after an upgrade unless
+    /// `HOMEBREW_NO_INSTALL_CLEANUP` is set (`Cleanup.install_clean!`,
+    /// `cleanup.rb:361-389`); no other formula's, no periodic clean-up, no
+    /// autoremove (`Cleanup#clean!` with names, `cleanup.rb:497-517`). The
+    /// author's decision U9 (r6).
     /// Produced by `BrewAdapter::plan` for a formula's `Upgrade`, first,
     /// only when that plan runs the cleanup; read by `warningKey`,
     /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
@@ -1056,7 +1057,7 @@ pub enum Warning {
     /// `versions`, oldest first, as the preview read the Cellar
     /// (`brew::kegs`) -- not only the one Banager lists: the plan's
     /// `brew uninstall` carries `--force`, Homebrew's way to delete all of
-    /// them (`cmd/uninstall.rb:43`, `uninstall.rb:31-44`), so none is left
+    /// them (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`), so none is left
     /// to come back on the Installed page. U9 (r6). Produced by
     /// `BrewAdapter::plan` for a formula's `Uninstall` with more than one
     /// version installed and no pin, right after its `UninstallScope`;

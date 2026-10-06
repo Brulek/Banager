@@ -740,6 +740,72 @@ clean-up — `bin/brew` passes every `HOMEBREW_*` variable it is started
 with on (`bin/brew:310`) — so it runs no autoremove unless a `brew.env`
 file takes that back.
 
+**Old versions** (the author's decision U9, 2026-10-06). With
+`HOMEBREW_NO_INSTALL_CLEANUP=1`, an upgrade used to leave the version it
+replaced in `<prefix>/Cellar/<name>`, and `brew uninstall` without
+`--force` deletes one version only (`cli/named_args.rb:567-601`,
+`uninstall.rb:46-69`): an uninstalled formula with an older version left
+came back on the Installed page, still installed. So:
+
+- After `brew upgrade --formula {name}` exits 0, Banager runs
+  `brew cleanup {name}` under the same environment
+  (`PlanAction::CommandThen`). With a name, `brew cleanup` deletes that
+  formula's installed versions older than the one now installed that are
+  not linked, pinned or still needed, its downloads in Homebrew's cache
+  that are outdated or older than `HOMEBREW_CLEANUP_MAX_AGE_DAYS` days
+  (120 unless set), and every download in the cache's `downloads` folder
+  that nothing refers to any more (`Cleanup#clean!` with names,
+  `cleanup.rb:497-517`; `cleanup_formula`, `:564-571`;
+  `Formula#eligible_kegs_for_cleanup`); with a name it runs no periodic
+  clean-up and no autoremove. A cask of the same name has its outdated
+  downloads in the cache deleted too (`cleanup_cask`, `:581-588`): the
+  cache only, nothing installed. This is what Homebrew does by itself
+  after an upgrade when `HOMEBREW_NO_INSTALL_CLEANUP` is not set
+  (`Cleanup.install_clean!`, `:361-389`), for that one formula. It runs
+  only when (`BrewAdapter::cleanup_after_upgrade`): the upgrade is a
+  formula's, not a cask's, and not an install; the `brew.env` files leave
+  Banager's `HOMEBREW_NO_INSTALL_CLEANUP=1` standing and none of them is
+  unread (otherwise Homebrew cleans up by itself, or may, and the
+  preview's lines say so); the person has not set
+  `HOMEBREW_NO_INSTALL_CLEANUP` themselves, in a `brew.env` or in
+  Banager's environment -- what Homebrew would make of the switch without
+  Banager's `1`; `HOMEBREW_NO_CLEANUP_FORMULAE` does not name the formula,
+  by the name Homebrew checks (one it names by an alias Banager cannot see
+  is refused by `brew cleanup` itself, `cleanup.rb:511-514`); and the
+  names of its versions were read (below). The update's preview says
+  first which versions go -- every version installed when it looked, the
+  one the update replaces among them (`Warning::HomebrewCleansUpOldVersions`,
+  「更新后会删除旧版本1.25.0。」, the command behind its ⓘ) -- and shows
+  both commands. How the cleanup ends never changes the update's outcome:
+  its lines go to the log after one saying it starts, and when it does
+  not exit 0 or is stopped (Cancel, or `CLEANUP_TIMEOUT_SECS`, 600 s),
+  one more says the update itself is done and that what it did not
+  delete is still listed as the tool's other versions
+  (`LogNote::CleaningUpOldVersions`, `OldVersionsNotCleanedUp`). A Cancel
+  that lands after the upgrade and before the cleanup starts runs no
+  cleanup.
+- An uninstall of a formula with more than one version installed and no
+  pin passes `--force`, Homebrew's own way to delete every version
+  (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`), and its preview names
+  each (`Warning::HomebrewRemovesEveryVersion`, 「已安装的所有版本都会删除：
+  1.24.0、1.25.0。」). `--force` leaves Homebrew's check of what still
+  depends on the formula (`uninstall.rb:25-28`, over every version) and
+  the autoremove switch as they are. It skips Homebrew's refusal of a
+  pinned formula, so it is never passed when
+  `<prefix>/var/homebrew/pinned/<name>` is there or cannot be looked at;
+  its refusal of a name with nothing installed (`cmd/uninstall.rb:138`),
+  which the reading after the uninstall answers anyway; and the lock
+  Homebrew takes on each version while it deletes it (`uninstall.rb:56`),
+  which keeps a `brew` command on the same formula, run in Terminal at
+  that moment, from overlapping it -- Banager's own operations on one
+  Homebrew never overlap. With one version installed, or a pin, the
+  uninstall is the plain `brew uninstall --formula {name}`.
+
+Both read, during the upgrade and the uninstall preview of a formula, the
+names in `<prefix>/Cellar/<name>` -- its versions, the folders there -- and
+whether `<prefix>/var/homebrew/pinned/<name>` is there (`brew::kegs`,
+`lstat` only); `<name>` is the last part of a tap's `user/tap/name`.
+
 **`brew.env`.** Homebrew's launcher, `bin/brew`, exports every
 `HOMEBREW_*` line of up to three `brew.env` files over the environment it
 was started with (`bin/brew:128-180`), so a line in one of them takes
@@ -992,7 +1058,8 @@ listed with Homebrew's word ("Disabled", 「已停用」) and no Update button, 
 Homebrew provides no more updates of it (and the replacement Homebrew
 suggests, when it names one), and `Session::issue_plan` refuses its
 upgrade (`UpdateBlocked::Disabled`, `BrewAdapter::check_updates`). Nothing
-more runs for this, and Banager never passes `--force`. The mark is as
+more runs for this, and Banager never passes `--force` to an install or
+an upgrade. The mark is as
 fresh as the last `brew update` that succeeded: when the index update
 fails, `brew info` reads the catalogue already on this Mac (the same copy
 `brew outdated` read), so a package Homebrew disabled since then is not
@@ -1077,15 +1144,21 @@ preview):
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 | Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
+| Uninstall a formula with more than one version installed and no pin | `<brew> uninstall --formula --force {name}` | 1800 s | No |
 | Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — Homebrew runs `sudo`, for example when the cask's recorded uninstall deletes paths (`delete:`), removes a background service (`launchctl:`) or a kernel extension (`kext:`), removes an installer package that is installed (`pkgutil:`), or runs a program the cask marks to run as root |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
+| Then, once that upgrade has exited 0, delete the formula's old versions (Old versions, below) | `<brew> cleanup {name}` | 600 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
 
 Every one of these argvs is exactly the verb, the kind flag and the name
 (`test_plan_never_passes_zap_force_or_ignore_dependencies` in the same
-file). Banager never passes `--zap`, `--force` or `--ignore-dependencies`
-to Homebrew, and never runs a bare `brew upgrade`: upgrades are one
-confirmed artifact per invocation. Before a write command starts,
+file), but for the two the author's decision U9 added (Old versions,
+below): the `brew cleanup {name}` that follows a formula's upgrade, and
+the `--force` of the uninstall of a formula with more than one version.
+Banager never passes `--zap` or `--ignore-dependencies` to Homebrew, never
+passes `--force` to anything but that uninstall, and never runs a bare
+`brew upgrade` or a bare `brew cleanup`: upgrades are one confirmed
+artifact per invocation, and a cleanup names the formula just upgraded. Before a write command starts,
 `execute` waits up to ten minutes (`OP_UPDATE_WAIT`) for a `brew update`
 still running in the background; if it is still running after that,
 nothing is run and the operation is reported as failed for that reason.
@@ -1617,8 +1690,9 @@ is its own choice, unchanged by these flags (the last paragraph of
 
 `--force` here is cargo's own flag, meaning "reinstall even though a
 version of this crate is already installed" — it is how cargo upgrades a
-binary. It is the only `--force` Banager passes to any tool, and it never
-goes to Homebrew.
+binary. The only other `--force` Banager passes to any tool is Homebrew's,
+to the uninstall of a formula with more than one version installed and no
+pin, which deletes every version (Homebrew's section, "Old versions").
 
 ## Ollama
 
@@ -3309,7 +3383,10 @@ not read (`protected::look`; How Banager runs anything, above):
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
   `INSTALL_RECEIPT.json`; during every uninstall preview, its trust list,
-  `trust.json` in the user's Homebrew config folder (Homebrew's section).
+  `trust.json` in the user's Homebrew config folder; during a formula's
+  upgrade and uninstall preview, the names in `<prefix>/Cellar/<name>` and
+  whether `<prefix>/var/homebrew/pinned/<name>` is there (Homebrew's
+  section, "Old versions").
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Banager opens no file in the app
@@ -3835,8 +3912,11 @@ configured, `index.crates.io`, and cargo still follows a
   `grok update` from a refresh: the refresh runs `grok update --check
   --json`, which grok's own help describes as checking without
   installing; `grok update` runs only after a confirmed preview.
-- Never passes `--zap`, `--force` or `--ignore-dependencies` to Homebrew
-  (the brew plan test), and never runs a bare `brew upgrade`.
+- Never passes `--zap` or `--ignore-dependencies` to Homebrew, nor
+  `--force` but to the uninstall of a formula with more than one version
+  installed and no pin, so that every version goes (the brew plan tests;
+  the author's decision U9), and never runs a bare `brew upgrade` or a
+  bare `brew cleanup`.
 - Never runs a `brew` command without `HOMEBREW_NO_AUTOREMOVE=1`, which
   keeps Homebrew from uninstalling packages the command does not name,
   and `HOMEBREW_NO_INSTALL_CLEANUP=1`, which keeps an install or upgrade
@@ -3844,7 +3924,11 @@ configured, `index.crates.io`, and cargo still follows a
   package it names and of any it updates along with it, and stray old
   downloads, every time, and those of all
   Homebrew software when its periodic clean-up is due; when a `brew.env`
-  file takes either back, the preview says so (Homebrew's section).
+  file takes either back, the preview says so (Homebrew's section). What
+  Banager runs in its place deletes the old versions of the one formula it
+  just upgraded, and nothing more, only where Homebrew would have done that
+  by itself and the person turned nothing of it off (Homebrew's section,
+  "Old versions").
 - Never runs a `brew` command as root.
 - Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Banager's
   environment: removing the last tool, uv would then also delete the

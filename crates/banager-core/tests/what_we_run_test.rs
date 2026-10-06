@@ -5,7 +5,8 @@
 //! the https allowlist, every environment variable brew and npm set, that
 //! the Cargo section says every cargo command is given `CargoAdapter::ENV`
 //! and shows each entry, the three Homebrew flags the file promises are
-//! never passed, and the
+//! never passed but for the one `--force` of U9, the `brew cleanup` after a
+//! formula's update with its time limit, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
 //! enforces and every protected place it never reads, the section on which copy a command runs with the two
 //! `CommandBudget::default()` enforces, the folders it reads and the words
@@ -265,25 +266,64 @@ fn test_what_we_run_says_every_cargo_command_is_given_cargos_environment() {
 }
 
 #[test]
-fn test_what_we_run_promises_the_three_brew_flags_are_never_passed() {
+fn test_what_we_run_promises_the_three_brew_flags_are_never_passed_but_for_u9s_force() {
     let doc = read_doc();
     // The promise, not the flags' spellings: the Cargo section lists
     // `cargo install --force`, so `doc.contains("--force")` would pass
-    // with the Homebrew sentence gone. One line has to name all three
-    // flags, the word "never" and Homebrew together -- the never-list's
-    // bullet does.
-    let promised = doc.lines().any(|line| {
-        let lower = line.to_ascii_lowercase();
-        lower.contains("never")
-            && lower.contains("homebrew")
+    // with the Homebrew sentence gone. One never-list bullet has to name
+    // all three flags and Homebrew together -- and, since the author's
+    // decision U9 (r6), the one `--force` Banager passes: to the uninstall
+    // of a formula with more than one version installed and no pin,
+    // which `test_plan_never_passes_zap_force_or_ignore_dependencies` and
+    // the brew adapter's `old_versions` tests keep true.
+    let promised = never_list_bullets(&doc).into_iter().any(|bullet| {
+        bullet.starts_with("Never passes")
+            && bullet.contains("Homebrew")
             && ["--zap", "--force", "--ignore-dependencies"]
                 .iter()
-                .all(|flag| line.contains(flag))
+                .all(|flag| bullet.contains(flag))
+            && ["uninstall", "more than one version", "no pin"]
+                .iter()
+                .all(|words| bullet.contains(words))
     });
     assert!(
         promised,
-        "docs/what-we-run.md has no line promising Homebrew is never passed --zap, --force and --ignore-dependencies, which test_plan_never_passes_zap_force_or_ignore_dependencies keeps true"
+        "docs/what-we-run.md has no never-list bullet promising Homebrew is never passed --zap or --ignore-dependencies, and --force only to uninstall a formula with more than one version and no pin"
     );
+}
+
+#[test]
+fn test_what_we_run_shows_the_cleanup_after_a_formulas_update_and_the_uninstall_of_every_version()
+{
+    // U9 (r6): the two commands Banager runs on its own account besides
+    // the plain verb, kind flag and name, each in the write-command table
+    // with its time limit, and what keeps the cleanup from running.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let row = |argv: &str| homebrew.lines().find(|line| line.starts_with('|') && line.contains(argv));
+    let cleanup = row("`<brew> cleanup {name}`").unwrap_or_else(|| {
+        panic!("Homebrew's write-command table has no row for `<brew> cleanup {{name}}`")
+    });
+    assert!(
+        cleanup.contains(&format!("{} s", BrewAdapter::CLEANUP_TIMEOUT_SECS)),
+        "the cleanup's row does not state its time limit: {cleanup}"
+    );
+    assert!(
+        row("`<brew> uninstall --formula --force {name}`").is_some(),
+        "Homebrew's write-command table has no row for the uninstall of every version"
+    );
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in [
+        "HOMEBREW_NO_CLEANUP_FORMULAE",
+        "HOMEBREW_NO_INSTALL_CLEANUP",
+        "<prefix>/Cellar/<name>",
+        "<prefix>/var/homebrew/pinned/<name>",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of the cleanup after an update"
+        );
+    }
 }
 
 /// The never-list's bullets, each hard-wrapped bullet folded into one

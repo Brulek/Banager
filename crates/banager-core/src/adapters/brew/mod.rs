@@ -313,8 +313,9 @@ impl BrewAdapter {
 
     /// How long the `brew cleanup <name>` after an upgrade may run (U9):
     /// it deletes one formula's old versions and downloads, which takes
-    /// seconds; ten minutes is for a slow disk, not for a network.
-    const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
+    /// seconds; ten minutes is for a slow disk, not for a network. Public
+    /// for the trust document's test, which finds it in its table.
+    pub const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
 
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
@@ -699,8 +700,8 @@ impl BrewAdapter {
     /// now, oldest first, the one the upgrade replaces among them -- or
     /// `None` when Banager runs no such cleanup (the author's decision U9,
     /// r6). Homebrew itself deletes them after every upgrade unless
-    /// `HOMEBREW_NO_INSTALL_CLEANUP` is set (`Cleanup.install_formula_clean!`,
-    /// `cleanup.rb:348-358`), which Banager sets to keep its periodic
+    /// `HOMEBREW_NO_INSTALL_CLEANUP` is set (`Cleanup.install_clean!`,
+    /// `cleanup.rb:361-389`), which Banager sets to keep its periodic
     /// clean-up of every formula from running (`ENV`); this gives that one
     /// formula back what Homebrew would have done for it, and only where
     /// the person has said nothing against it:
@@ -1959,7 +1960,7 @@ impl BrewAdapter {
                 let mut warnings = vec![scope];
                 // U9: every installed version goes, so none is left to be
                 // listed again once this one has: `--force`, Homebrew's own
-                // way to that (`cmd/uninstall.rb:43`, `uninstall.rb:31-44`),
+                // way to that (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`),
                 // passed only where there is more than one version and no
                 // pin -- a pinned formula is refused by Homebrew as it is
                 // without it (`uninstall.rb:45-53`).
