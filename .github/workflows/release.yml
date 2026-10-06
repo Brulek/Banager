@@ -42,7 +42,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Banager ${{ github.ref_name }}"
+          # Named "do not publish" from the start; only a passed Intel
+          # launch check (the job below) takes that off. A check that fails,
+          # times out, is cancelled or never runs leaves it on.
+          releaseName: "Banager ${{ github.ref_name }} (Intel launch check pending: do not publish)"
           releaseDraft: true
           includeUpdaterJson: true
           args: --target universal-apple-darwin
@@ -65,7 +68,8 @@ jobs:
   # actions/runner-images README, checked 2026-10-06, lists it and
   # `macos-26-intel`); macOS 15 is the oldest Intel image offered, so macOS
   # 13.3 to 14 are not covered. The draft release the job above made stays
-  # a draft either way: publish it only when this job is green.
+  # a draft either way, and its title says "do not publish" until this job
+  # has passed: publish it only when this job is green.
   intel-launch:
     needs: release
     runs-on: macos-15-intel
@@ -131,11 +135,22 @@ jobs:
           kill -9 "$pid" 2>/dev/null || true
           echo "Banager started on an Intel Mac and was still running after 30 seconds."
 
-      # Said on the draft itself, where it is published from.
-      - name: say on the draft release that the Intel launch check failed
-        if: failure()
+      # Said on the draft itself, where it is published from: its title
+      # loses "do not publish" only here, after the check passed.
+      - name: say on the draft release that the Intel launch check passed
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
-          --title "Banager $GITHUB_REF_NAME (Intel launch check failed: do not publish)"
+          --title "Banager $GITHUB_REF_NAME"
+
+      # A failed check, or one cut off by `timeout-minutes` or cancelled,
+      # says so. Should this step not get to run, the title still says
+      # the check is pending and not to publish.
+      - name: say on the draft release that the Intel launch check did not pass
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          --title "Banager $GITHUB_REF_NAME (Intel launch check did not pass: do not publish)"
