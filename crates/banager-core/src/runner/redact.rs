@@ -1,40 +1,41 @@
 //! Logins masked out of what a tool prints, before Banager shows, keeps or
-//! logs it (F2 of the decisions-round review).
+//! logs it (F2 of the decisions-round review, and R1–R3 of its re-check).
 //!
 //! The proxy and mirror settings every command is handed
 //! (`login_path::IMPORTED`) can hold a login --
 //! `http://user:password@proxy:8080` -- and tools print such a setting
-//! back, whole, when something about it is wrong. curl, and so Homebrew,
-//! says `Unsupported proxy syntax in 'http://user:password@…'`; pip says
-//! `Failed to parse: http://user:password@…` as the last line of its
-//! traceback. What a command prints is the operation's log, its failure
-//! summary and a source's error, so `RealRunner` puts every line it hands
-//! on, and every transcript meant for a person, through
-//! [`Redactor::redact`] first (runner/real.rs, `StreamBuffer`).
+//! back, whole or in part, when something about it is wrong. curl, and so
+//! Homebrew, says `Unsupported proxy syntax in 'http://user:password@…'`;
+//! pip says `Failed to parse: http://user:password@…` as the last line of
+//! its traceback; git, refused, says it `could not read Password for
+//! 'https://user@host'`; npm, given a proxy written with no scheme, says
+//! ``Invalid protocol `user:` ``. What a command prints is the operation's
+//! log, its failure summary and a source's error, so `RealRunner` puts
+//! every line it hands on, and every transcript meant for a person,
+//! through [`Redactor::redact`] first (runner/real.rs, `StreamBuffer`).
 //!
 //! Two passes:
 //!
-//! - The logins in the settings themselves (`Redactor::for_settings`), in
-//!   every form a tool may print them: the password as written, decoded
-//!   and percent-encoded, and the `user:password` pair as an HTTP Basic
-//!   credential (base64), which is how `curl -v` prints a proxy's login.
-//!   A proxy's login is all before the last `@` of its value, a mirror's
-//!   all before the last `@` a host follows, so a `/`, `?` or `#` written
-//!   into a password does not cut it short (`Login::in_setting`). On a
-//!   mirror's or a remote's http(s) address the name before the password,
-//!   or alone (`https://token@…`), may be a token, and is masked too; a
-//!   proxy's name is the account's and is not. This is what catches a
-//!   setting printed in a shape no pattern knows: curl prints a proxy
-//!   written without a scheme (`user:password@host:port`), or one it
-//!   cannot read, just as it was written.
+//! - The logins in the settings themselves (`Redactor::for_settings`).
+//!   Each value is read by fixed rules, never by what its parts look like
+//!   (`Address::of`): a scheme only where the value starts with one; a
+//!   proxy's login is all before the last `@` of the value; a mirror's
+//!   all before the last `@` of its authority, so an `@` in a path is the
+//!   path's -- unless what follows that `@` is no host and port, when the
+//!   rules cannot read the value, and its login is all before its last
+//!   `@`, as a proxy's is. With a login, the user name and the password
+//!   are both secrets, whatever they look like: a name may itself be a
+//!   token (`https://TOKEN:x-oauth-basic@github.com/…`). Each is masked
+//!   wherever it appears -- as written, decoded and percent-encoded -- and
+//!   so are the whole login, the whole value and the pair as an HTTP Basic
+//!   credential. A part shorter than [`SHORTEST_MASKED_ANYWHERE`], or one
+//!   of [`COMMON_WORDS`], is masked only where it stands in its login.
 //! - Any `scheme://user:password@` in the text (`mask_url_logins`),
-//!   whatever setting or file it came from.
+//!   whatever setting or file it came from: its password.
 //!
-//! Both put [`MASK`] where the secret was and leave the rest of the line,
-//! a proxy's user name included, as the tool wrote it. A secret is masked
-//! wherever it appears only when it cannot be a tool's own word
-//! (`worth_masking_anywhere`, `looks_like_a_token`); otherwise only
-//! where it stands in an address.
+//! Both put [`MASK`] where a secret was, and leave the rest of the line as
+//! the tool wrote it. Where a rule cannot tell, it masks too much rather
+//! than too little.
 use crate::runner::login_path::{LoginEnv, IMPORTED};
 use base64::Engine;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
@@ -42,23 +43,57 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
-/// What stands where a password or a token was.
+/// What stands where a secret was.
 pub const MASK: &str = "****";
 
-/// A password this many characters long or longer is masked wherever it
-/// appears, unless it is letters alone or digits alone
-/// (`worth_masking_anywhere`); a shorter one only where it stands as a
-/// login, before an `@` (`:abc@`). Masking every `abc` in a build log
-/// would make the log unreadable for a secret that short.
-pub const SHORTEST_MASKED_ANYWHERE: usize = 4;
+/// A user name or a password this many characters long or longer
+/// (decoded) is masked wherever it appears; a shorter one only where it
+/// stands in its login (`:ab@`, the whole login, the whole value).
+/// Masking every `ab` in a build log would make the log unreadable for a
+/// secret that short.
+pub const SHORTEST_MASKED_ANYWHERE: usize = 3;
 
-/// A mirror's user name or token this many characters long or longer is
-/// masked wherever it appears when it looks like a token
-/// (`looks_like_a_token`); any other only where it stands in the
-/// address (`//name@`, `//name:`). An access token is far longer
-/// (GitHub's are 40 characters and up); a person's name, which may be the
-/// Mac account's and so in every path a tool prints, is not.
-pub const SHORTEST_TOKEN: usize = 16;
+/// User names and passwords masked only where they stand in their login,
+/// never wherever they appear, compared ignoring case (ASCII). Each is a
+/// word tools print for their own reasons, and none is a secret:
+///
+/// - the names a host has everyone write before a token, the token being
+///   the password, or the word GitHub has everyone write after one;
+/// - account names that are also words in tools' output (`git`, as in
+///   `git@github.com:…`, which names an ssh user);
+/// - sudo's words that Banager reads to say an operation needs Terminal
+///   (`history::failure_cause`, `needsPassword` in src/lib/failureCause.ts):
+///   masked, "sudo: a password is required" would no longer be read.
+///
+/// The list is in docs/what-we-run.md, word for word (what_we_run_test).
+pub const COMMON_WORDS: &[&str] = &[
+    // Before or after a token.
+    "x-oauth-basic",
+    "x-access-token",
+    "x-token-auth",
+    "oauth2",
+    "oauth",
+    "gitlab-ci-token",
+    "__token__",
+    "token",
+    // Account names.
+    "git",
+    "user",
+    "username",
+    "admin",
+    "root",
+    "guest",
+    "anonymous",
+    "proxy",
+    "login",
+    "test",
+    "default",
+    // sudo's words.
+    "password",
+    "required",
+    "terminal",
+    "sudo",
+];
 
 /// How much of the word next to a cut [`before_cut`] and [`after_cut`]
 /// mask at most: far longer than any login, short enough that a runaway
@@ -73,93 +108,99 @@ const NOT_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~');
 
 /// The logins to mask in a command's output. `Default` knows no setting's
-/// login and still masks any `scheme://user:password@`.
+/// login and still masks any `scheme://user:password@`'s password.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Redactor {
-    /// Masked wherever they appear, longest first, so that a longer form
-    /// is never left half-masked by a shorter one inside it.
-    anywhere: Vec<String>,
-    /// Masked where they stand as a login: `(pattern, replacement)`.
-    in_login: Vec<(String, String)>,
+    /// `(what, replacement)`: every `what` in the text is replaced, the
+    /// longest first, so that a longer form is never left half-masked by a
+    /// shorter one inside it.
+    rules: Vec<(String, String)>,
 }
 
 impl Redactor {
     /// The logins in `settings`, as `(name, value)`: of the values, only
-    /// those that are an address with a login count.
+    /// those that hold a login count (`Address::of`).
     pub fn for_settings<'a>(settings: impl IntoIterator<Item = (&'a str, &'a str)>) -> Redactor {
         let mut redactor = Redactor::default();
         for (name, value) in settings {
-            match Login::in_setting(name, value) {
-                Some(Login::Password {
-                    user,
-                    password,
-                    token,
-                }) => {
-                    for form in forms_of(password) {
-                        redactor.mask_password(form);
-                    }
-                    if token {
-                        for form in forms_of(user) {
-                            redactor.mask_name(form, ':');
-                        }
-                    }
-                    // How a tool that sends the login prints it: HTTP Basic,
-                    // the pair decoded as it is sent, and as written.
-                    redactor.mask_anywhere(basic(&format!(
-                        "{}:{}",
-                        decoded(user).unwrap_or_else(|| user.to_string()),
-                        decoded(password).unwrap_or_else(|| password.to_string())
-                    )));
-                    redactor.mask_anywhere(basic(&format!("{user}:{password}")));
-                }
-                Some(Login::Token(token)) => {
-                    for form in forms_of(token) {
-                        redactor.mask_name(form, '@');
-                    }
-                    let token = decoded(token).unwrap_or_else(|| token.to_string());
-                    redactor.mask_anywhere(basic(&format!("{token}:")));
-                    redactor.mask_anywhere(basic(&token));
-                }
-                None => {}
+            if let Some(address) = Address::of(name, value) {
+                redactor.mask_login(value, &address);
             }
         }
+        // `MASK` itself, or any run of `*`, is no secret: replacing it
+        // would mask the masks.
         redactor
-            .anywhere
-            .sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-        redactor.anywhere.dedup();
+            .rules
+            .retain(|(what, _)| !what.is_empty() && !what.chars().all(|c| c == '*'));
+        redactor
+            .rules
+            .sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.cmp(b)));
+        redactor.rules.dedup_by(|later, kept| later.0 == kept.0);
         redactor
     }
 
-    /// Masks a password's `form` where it stands as one (`:{form}@`), and
-    /// anywhere at all when that is worth it (`worth_masking_anywhere`).
-    fn mask_password(&mut self, form: String) {
-        self.mask_in_login(format!(":{form}@"), format!(":{MASK}@"));
-        if worth_masking_anywhere(&form) {
-            self.mask_anywhere(form);
+    /// The rules for one setting's login: `value` read as `address`.
+    fn mask_login(&mut self, value: &str, address: &Address<'_>) {
+        let (user, password) = address.user_and_password();
+        let user_anywhere = !user.is_empty() && masked_anywhere(user);
+        let has_password = password.is_some_and(|password| !password.is_empty());
+        if !user_anywhere && !has_password {
+            // A name alone that is no secret -- `git@github.com:…` names
+            // an ssh user -- or no login at all (`http://:@proxy`).
+            return;
+        }
+        let login = masked_login(user, password);
+
+        // The whole value, as written and decoded: masked as the address
+        // it is, so the host stays readable.
+        let whole = format!("{}{login}@{}", address.scheme, address.rest);
+        self.replace(value, &whole);
+        if let Some(decoded) = decoded(value) {
+            self.replace(decoded, &whole);
+        }
+        // The whole login, in every form.
+        let login_anywhere = user_anywhere || password.is_some_and(masked_anywhere);
+        for form in forms_of(address.login) {
+            if login_anywhere {
+                self.replace(form, &login);
+            } else {
+                self.replace(format!("{form}@"), &format!("{login}@"));
+            }
+        }
+        // Each part, in every form.
+        if user_anywhere {
+            for form in forms_of(user) {
+                self.replace(form, MASK);
+            }
+        }
+        if let Some(password) = password.filter(|password| !password.is_empty()) {
+            for form in forms_of(password) {
+                if masked_anywhere(password) {
+                    self.replace(form, MASK);
+                } else {
+                    self.replace(format!(":{form}@"), &format!(":{MASK}@"));
+                }
+            }
+        }
+        // How a tool that sends the login prints it: HTTP Basic, the pair
+        // decoded as it is sent, and as written (`curl -v`'s
+        // `Proxy-Authorization: Basic …`).
+        let user_sent = decoded(user).unwrap_or_else(|| user.to_string());
+        match password {
+            Some(password) => {
+                let password_sent = decoded(password).unwrap_or_else(|| password.to_string());
+                self.replace(basic(&format!("{user_sent}:{password_sent}")), MASK);
+                self.replace(basic(&format!("{user}:{password}")), MASK);
+            }
+            None => {
+                self.replace(basic(&format!("{user_sent}:")), MASK);
+                self.replace(basic(&user_sent), MASK);
+            }
         }
     }
 
-    /// Masks a name's `form` where it stands in an address
-    /// (`//{form}{then}`), and anywhere at all when it looks like a token
-    /// (`looks_like_a_token`).
-    fn mask_name(&mut self, form: String, then: char) {
-        self.mask_in_login(format!("//{form}{then}"), format!("//{MASK}{then}"));
-        if looks_like_a_token(&form) {
-            self.mask_anywhere(form);
-        }
-    }
-
-    fn mask_in_login(&mut self, login: String, masked: String) {
-        let login = (login, masked);
-        if !self.in_login.contains(&login) {
-            self.in_login.push(login);
-        }
-    }
-
-    fn mask_anywhere(&mut self, secret: String) {
-        if !secret.is_empty() && secret != MASK {
-            self.anywhere.push(secret);
-        }
+    fn replace(&mut self, what: impl Into<String>, with: &str) {
+        self.rules.push((what.into(), with.to_string()));
     }
 
     /// What a command Banager runs is handed: the settings read from the
@@ -187,14 +228,9 @@ impl Redactor {
     /// Borrowed when there was nothing to mask.
     pub fn redact<'t>(&self, text: &'t str) -> Cow<'t, str> {
         let mut out = Cow::Borrowed(text);
-        for secret in &self.anywhere {
-            if out.contains(secret.as_str()) {
-                out = Cow::Owned(out.replace(secret.as_str(), MASK));
-            }
-        }
-        for (login, masked) in &self.in_login {
-            if out.contains(login.as_str()) {
-                out = Cow::Owned(out.replace(login.as_str(), masked));
+        for (what, with) in &self.rules {
+            if out.contains(what.as_str()) {
+                out = Cow::Owned(out.replace(what.as_str(), with));
             }
         }
         match mask_url_logins(&out) {
@@ -204,85 +240,54 @@ impl Redactor {
     }
 }
 
-/// A login as a setting's value holds it: what sits before an `@` of the
-/// address (what follows `scheme://`, or the value as a whole when it has
-/// no scheme, as curl accepts a proxy written that way) -- which `@`, by
-/// the setting's name (`Login::in_setting`).
+/// A setting's value read as an address with a login, by fixed rules:
+/// `{scheme}{login}@{rest}`.
 #[derive(Debug, PartialEq, Eq)]
-enum Login<'v> {
-    /// `user:password@`, with a password: the password is the secret,
-    /// and on a mirror's or a remote's http(s) address (`token`), the
-    /// name too, which may be a token: GitHub's documented form is
-    /// `https://TOKEN:x-oauth-basic@github.com/…`.
-    Password {
-        user: &'v str,
-        password: &'v str,
-        token: bool,
-    },
-    /// `token@` on an http(s) address: no password, so the name is the
-    /// secret (a mirror's access token). Elsewhere a name alone is no
-    /// secret: `git@github.com:…` names an ssh user.
-    Token(&'v str),
+struct Address<'v> {
+    /// `scheme://` when the value starts with one (`SCHEME`), else empty:
+    /// a `://` further in is part of the login (a password `rev://secret`
+    /// in a proxy written with no scheme, which curl accepts).
+    scheme: &'v str,
+    /// All before the `@` that ends the login.
+    login: &'v str,
+    /// All after it: the host, its port, and a mirror's path.
+    rest: &'v str,
 }
 
-impl<'v> Login<'v> {
-    fn in_setting(name: &str, value: &'v str) -> Option<Login<'v>> {
-        let (scheme, rest) = match value.find("://") {
-            Some(at) => (&value[..at], &value[at + 3..]),
-            None => ("", value),
-        };
-        // A password may hold a `/`, `?` or `#` as written: an address
-        // read by the rules, authority up to the first of them, would cut
-        // the login off before its `@`, and the tool that cannot read it
-        // either prints it back whole (curl: "Unsupported proxy syntax").
-        let userinfo = if is_proxy(name) {
-            // A proxy's address has no path: all before its last `@`.
-            &rest[..rest.rfind('@')?]
+impl<'v> Address<'v> {
+    /// `value`, the setting `name`'s, read as an address with a login; or
+    /// `None` when it has none. A proxy's address has no path, so its
+    /// login is all before the last `@` of the value, a `/`, `?`, `#` or
+    /// `@` in its password included; a mirror's or a remote's ends where
+    /// `mirror_login_end` says.
+    fn of(name: &str, value: &'v str) -> Option<Address<'v>> {
+        let scheme = SCHEME.find(value).map_or("", |found| found.as_str());
+        let after = &value[scheme.len()..];
+        let at = if is_proxy(name) {
+            after.rfind('@')?
         } else {
-            mirror_userinfo(rest)?
+            mirror_login_end(after)?
         };
-        let (user, password) = userinfo.split_once(':').unwrap_or((userinfo, ""));
-        let scheme = scheme.to_ascii_lowercase();
-        let http = ["http", "https"]
-            .iter()
-            .any(|name| scheme == *name || scheme.ends_with(&format!("+{name}")));
-        // A proxy's name is the account's (NTLM, Kerberos), never a token.
-        let token = http && !user.is_empty() && !is_proxy(name);
-        if !password.is_empty() {
-            return Some(Login::Password {
-                user,
-                password,
-                token,
-            });
+        Some(Address {
+            scheme,
+            login: &after[..at],
+            rest: &after[at + 1..],
+        })
+    }
+
+    /// The user name, and the password when the login has a `:` (the
+    /// first: a user name has none, a password may).
+    fn user_and_password(&self) -> (&'v str, Option<&'v str>) {
+        match self.login.split_once(':') {
+            Some((user, password)) => (user, Some(password)),
+            None => (self.login, None),
         }
-        token.then_some(Login::Token(user))
     }
 }
 
-/// Whether a password's form is worth masking wherever it appears: long
-/// enough ([`SHORTEST_MASKED_ANYWHERE`]), and not letters alone or digits
-/// alone. A password that is a plain word or number (`password`,
-/// `required`, `2026`) stands in sudo's "a password is required", which
-/// Banager reads to say that an operation needs Terminal
-/// (`history::failure_cause`, src/lib/failureCause.ts), and in dates and
-/// sizes: masked there, the reading fails and the log loses its words.
-/// Such a password is masked where it stands as a login (`:password@`),
-/// which is where tools print it.
-fn worth_masking_anywhere(secret: &str) -> bool {
-    secret.chars().count() >= SHORTEST_MASKED_ANYWHERE
-        && !secret.chars().all(char::is_alphabetic)
-        && !secret.chars().all(char::is_numeric)
-}
-
-/// Whether a mirror's user name or token looks like a token, and so is
-/// masked wherever it appears: long ([`SHORTEST_TOKEN`]), worth masking
-/// as a password would be, and with no `.` or `@`, which a person's name
-/// or address has and a token does not.
-fn looks_like_a_token(name: &str) -> bool {
-    name.chars().count() >= SHORTEST_TOKEN
-        && worth_masking_anywhere(name)
-        && !name.contains(['.', '@'])
-}
+/// A scheme, at the very start of a value only.
+static SCHEME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9+.\-]*://").expect("a valid pattern"));
 
 /// Whether the setting `name` is a proxy's address (`http_proxy`,
 /// `https_proxy`, `all_proxy`, in either case), not a mirror's or a
@@ -295,31 +300,39 @@ fn is_proxy(name: &str) -> bool {
     )
 }
 
-/// The login of a mirror's or a remote's address, `rest` being what follows
-/// its `scheme://`: what stands before the last `@` that a host follows
-/// (`/`, `?`, `#` and `@` in a password included), when what stands
-/// before it reads as a login -- a name with no `/`, `?` or `#`, then
-/// `:` and the password; failing that, before the last `@` of the
-/// authority (up to the first `/`, `?` or `#`), as the rules read it. An
-/// `@` in a path (`/npm/@scope`, `/foo@1.2`, `/x/user@example.com`) is
-/// the path's.
-fn mirror_userinfo(rest: &str) -> Option<&str> {
-    let before_a_host = rest.match_indices('@').map(|(at, _)| at).rev().find(|&at| {
-        let name = rest[..at].split(':').next().unwrap_or_default();
-        HOST_FIRST.is_match(&rest[at + 1..]) && !name.contains(['/', '?', '#'])
-    });
-    if let Some(at) = before_a_host {
-        return Some(&rest[..at]);
+/// Where the login of a mirror's or a remote's address ends, `after`
+/// being what follows its scheme: at the last `@` of its authority -- up
+/// to the first `/`, `?` or `#`, as the rules read an address -- so that
+/// an `@` in a path (`/npm/@scope`, `/x/user@example.com`) is the path's,
+/// after a port too (`https://mirror.example:8443/x/user@example.com`).
+///
+/// When what follows that `@` -- or the authority as a whole, with no `@`
+/// in it -- is no host and port (`HOST_AND_PORT`), the rules cannot read
+/// the value: a `/`, `?` or `#` written into a password cut the authority
+/// short (`https://user:pass/word@host/…`), and a tool that cannot read it
+/// either prints it back whole. Then the login is all before the last `@`
+/// of the value, as a proxy's is: which masks too much rather than too
+/// little when such a value also has an `@` in its path.
+fn mirror_login_end(after: &str) -> Option<usize> {
+    let authority = &after[..after.find(['/', '?', '#']).unwrap_or(after.len())];
+    if authority.is_empty() {
+        // `file:///…`, or a path: no host, so no login either.
+        return None;
     }
-    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
-    Some(&authority[..authority.rfind('@')?])
+    let at = authority.rfind('@');
+    let host = at.map_or(authority, |at| &authority[at + 1..]);
+    if HOST_AND_PORT.is_match(host) {
+        return at;
+    }
+    after.rfind('@')
 }
 
-/// A host, and its port if it has one, then the end of the address or
-/// of its authority: a domain name of two or more labels, the last
-/// starting with a letter (so not a version, `1.2`), an IPv4 or bracketed
-/// IPv6 address, or `localhost`.
-static HOST_FIRST: LazyLock<Regex> = LazyLock::new(|| {
+/// A host, and its port if it has one, and nothing else: a domain name of
+/// two labels or more, the last starting with a letter (so not a version,
+/// `1.2`), an IPv4 or bracketed IPv6 address, or `localhost`. A name of
+/// one label is not taken for a host: in `https://user:p@ss/word@host/`
+/// the rules read `ss` as one.
+static HOST_AND_PORT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?x)^
         (?: (?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+ [A-Za-z][A-Za-z0-9-]*
@@ -327,10 +340,33 @@ static HOST_FIRST: LazyLock<Regex> = LazyLock::new(|| {
           | \[[0-9A-Fa-f:.]+\]
           | (?i:localhost) )
         (?: :[0-9]{1,5} )?
-        (?: [/?\#] | $ )",
+        $",
     )
     .expect("a valid pattern")
 });
+
+/// Whether a user name or a password is masked wherever it appears: as
+/// decoded, [`SHORTEST_MASKED_ANYWHERE`] characters or longer, and not one
+/// of [`COMMON_WORDS`]. Whatever it looks like otherwise: letters alone,
+/// digits alone, with a `.` or not -- a token can be any of them.
+fn masked_anywhere(part: &str) -> bool {
+    let part = decoded(part).unwrap_or_else(|| part.to_string());
+    part.chars().count() >= SHORTEST_MASKED_ANYWHERE
+        && !COMMON_WORDS
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case(&part))
+}
+
+/// A login with each part that is there masked: `****:****`, `****`
+/// (a name alone), `:****` (a password alone).
+fn masked_login(user: &str, password: Option<&str>) -> String {
+    let user = if user.is_empty() { "" } else { MASK };
+    match password {
+        None => user.to_string(),
+        Some("") => format!("{user}:"),
+        Some(_) => format!("{user}:{MASK}"),
+    }
+}
 
 /// `written`, and the forms a tool may print it in instead: decoded, and
 /// percent-encoded with upper- and lowercase hex digits.
@@ -389,7 +425,9 @@ static URL_LOGIN: LazyLock<Regex> = LazyLock::new(|| {
         .expect("a valid pattern")
 });
 
-/// Masks the password of every `scheme://user:password@` in `text`.
+/// Masks the password of every `scheme://user:password@` in `text`. The
+/// name it leaves: not knowing the setting, it cannot tell a token from a
+/// person's name.
 pub fn mask_url_logins(text: &str) -> Cow<'_, str> {
     URL_LOGIN.replace_all(text, format!("${{1}}{MASK}@").as_str())
 }
@@ -466,34 +504,56 @@ mod tests {
         Redactor::for_settings(settings.iter().copied())
     }
 
-    #[test]
-    fn test_curls_proxy_error_has_the_password_masked() {
-        let said = redactor(&[("https_proxy", CURL_PROXY)])
-            .redact(CURL_SAID)
-            .into_owned();
-        assert_eq!(
-            said,
-            "curl: (5) Unsupported proxy syntax in \
-             'http://review-user:****@127.0.0.1:invalid': \
+    /// What curl 8.7.1 printed on this Mac (exit 5, before connecting
+    /// anywhere) for a proxy setting it cannot read: the setting back,
+    /// whole, as written.
+    fn curl_refuses(setting: &str) -> String {
+        format!(
+            "curl: (5) Unsupported proxy syntax in '{setting}': \
              Port number was not a decimal number between 0 and 65535"
-        );
-        // And with no setting known at all, by the pattern alone.
-        assert_eq!(Redactor::default().redact(CURL_SAID), said);
+        )
     }
 
     #[test]
-    fn test_pips_proxy_error_has_the_password_masked() {
+    fn test_curls_proxy_error_has_the_login_masked() {
+        let said = redactor(&[("https_proxy", CURL_PROXY)])
+            .redact(CURL_SAID)
+            .into_owned();
+        // The user name too, since the re-check's R1: a name can be a
+        // token, and nothing in it says whether it is.
+        assert_eq!(said, curl_refuses("http://****:****@127.0.0.1:invalid"));
+        // With no setting known at all, the pattern alone masks the
+        // password, and cannot tell a token from a person's name.
+        assert_eq!(
+            Redactor::default().redact(CURL_SAID),
+            curl_refuses("http://review-user:****@127.0.0.1:invalid")
+        );
+    }
+
+    #[test]
+    fn test_pips_proxy_error_has_the_login_masked() {
         let said = redactor(&[("https_proxy", CURL_PROXY)])
             .redact(PIP_SAID)
             .into_owned();
-        assert!(!said.contains("review-secret"), "{said}");
-        assert_eq!(
-            said.matches("review-user:****@127.0.0.1:invalid").count(),
-            2
-        );
+        assert!(!said.contains("review-"), "{said}");
+        assert_eq!(said.matches("//****:****@127.0.0.1:invalid").count(), 2);
         assert!(!Redactor::default()
             .redact(PIP_SAID)
             .contains("review-secret"));
+        // And pip's line for a percent-encoded password (pip 26.2.1, this
+        // Mac, before any request): the password as written.
+        let r = redactor(&[(
+            "http_proxy",
+            "http://someone:p%40ss%2Fword@127.0.0.1:invalid",
+        )]);
+        assert_eq!(
+            r.redact(
+                "pip._vendor.requests.exceptions.InvalidURL: \
+                 Failed to parse: http://someone:p%40ss%2Fword@127.0.0.1:invalid"
+            ),
+            "pip._vendor.requests.exceptions.InvalidURL: \
+             Failed to parse: http://****:****@127.0.0.1:invalid"
+        );
     }
 
     #[test]
@@ -505,22 +565,48 @@ mod tests {
         let said = redactor(&[("http_proxy", "review-user:review-secret@127.0.0.1:invalid")])
             .redact(CURL_SAID_NO_SCHEME)
             .into_owned();
-        assert!(!said.contains("review-secret"), "{said}");
-        assert!(
-            said.contains("'review-user:****@127.0.0.1:invalid'"),
-            "{said}"
-        );
+        assert_eq!(said, curl_refuses("****:****@127.0.0.1:invalid"));
     }
 
-    /// What curl 8.7.1 printed on this Mac (exit 5, before connecting
-    /// anywhere) for a proxy whose password holds a `/`, `#` or `?` as
-    /// written, not percent-encoded: it reads the address as ending there,
-    /// fails on the "port", and prints the setting back whole.
-    fn curl_refuses(setting: &str) -> String {
-        format!(
-            "curl: (5) Unsupported proxy syntax in '{setting}': \
-             Port number was not a decimal number between 0 and 65535"
-        )
+    /// The re-check's R2: a proxy written with no scheme whose password
+    /// holds `://`. curl 8.7.1 printed this on this Mac, exit 5, before
+    /// connecting anywhere; npm 10.9.9 (a scratch `HOME`, a closed local
+    /// registry, nothing sent) printed the second line.
+    const R2_PROXY: &str = "review-user:rev://secret@127.0.0.1:invalid";
+    const NPM_SAID: &str = "npm error Invalid protocol `review-user:` connecting to proxy ``";
+
+    #[test]
+    fn test_a_proxy_with_no_scheme_whose_password_holds_a_scheme_separator_is_masked() {
+        // A scheme only at the very start: `review-user:rev://` is none,
+        // so all before the last `@` is the login.
+        assert_eq!(
+            Address::of("https_proxy", R2_PROXY),
+            Some(Address {
+                scheme: "",
+                login: "review-user:rev://secret",
+                rest: "127.0.0.1:invalid",
+            })
+        );
+        for name in ["http_proxy", "https_proxy", "ALL_PROXY"] {
+            let r = redactor(&[(name, R2_PROXY)]);
+            assert_eq!(
+                r.redact(&curl_refuses(R2_PROXY)),
+                curl_refuses("****:****@127.0.0.1:invalid"),
+                "{name}"
+            );
+            assert_eq!(
+                r.redact(NPM_SAID),
+                "npm error Invalid protocol `****:` connecting to proxy ``",
+                "{name}"
+            );
+            assert_eq!(r.redact("secret rev://secret"), "secret ****", "{name}");
+        }
+        // Read as a mirror's, the same: its authority is no host and
+        // port, so all before the last `@`.
+        assert_eq!(
+            redactor(&[("PIP_INDEX_URL", R2_PROXY)]).redact(&curl_refuses(R2_PROXY)),
+            curl_refuses("****:****@127.0.0.1:invalid")
+        );
     }
 
     #[test]
@@ -556,15 +642,21 @@ mod tests {
         ] {
             let said = curl_refuses(setting);
             let masked = redactor(&[(name, setting)]).redact(&said).into_owned();
-            assert_eq!(masked, said.replace(password, MASK), "{name}={setting}");
-            assert!(
-                masked.contains("'review-user:****@") || masked.contains("//review-user:****@")
+            assert_eq!(
+                masked,
+                said.replace(password, MASK).replace("review-user", MASK),
+                "{name}={setting}"
             );
+            assert!(masked.contains("'****:****@") || masked.contains("//****:****@"));
         }
     }
 
     #[test]
     fn test_a_mirror_password_holding_a_slash_hash_question_mark_or_at_is_masked() {
+        // The authority, as the rules read it, ends at the first `/`, `?`
+        // or `#`; here what follows its last `@` (or the authority, with
+        // none) is no host and port, so the login is all before the last
+        // `@` of the value.
         for (name, setting, password) in [
             (
                 "HOMEBREW_CORE_GIT_REMOTE",
@@ -592,15 +684,43 @@ mod tests {
                 "https://review-user:pw4mirror@mirror.example/pkgs/foo@1.2",
                 "pw4mirror",
             ),
+            (
+                "UV_DEFAULT_INDEX",
+                "https://bot:s3cr3t-pw@mirror.example:8443/x/user@example.com/simple",
+                "s3cr3t-pw",
+            ),
         ] {
             let said = format!("fatal: unable to access '{setting}/': URL rejected");
             let masked = redactor(&[(name, setting)]).redact(&said).into_owned();
-            // A mirror's name is masked where it stands too: it may be a
-            // token (`test_a_token_in_the_user_name_slot_of_a_remote_is_masked`).
+            let user = setting["https://".len()..].split(':').next().unwrap();
             let expected = said
                 .replace(password, MASK)
-                .replace("//review-user:", "//****:");
+                .replace(&format!("//{user}:"), "//****:");
             assert_eq!(masked, expected, "{name}={setting}");
+        }
+    }
+
+    #[test]
+    fn test_an_at_in_a_mirrors_path_query_or_fragment_is_no_login() {
+        // The re-check's R3: a mirror with a port and an address in its
+        // path holds no login, and nothing of it is masked.
+        for (name, mirror) in [
+            (
+                "PIP_INDEX_URL",
+                "https://mirror.example:8443/x/user@example.com/simple",
+            ),
+            ("UV_INDEX_URL", "https://mirror.example/x/user@example.com"),
+            ("npm_config_registry", "https://mirror.example/npm/@scope/"),
+            ("HOMEBREW_API_DOMAIN", "https://[::1]:8443/a@b"),
+            ("HOMEBREW_BOTTLE_DOMAIN", "http://localhost:8080/x@y"),
+            ("RUSTUP_DIST_SERVER", "https://192.0.2.7/dist/foo@1.2.3.4/"),
+            ("PIP_INDEX_URL", "https://mirror.example?mail=a@b.example"),
+            ("PIP_INDEX_URL", "https://mirror.example#a@b.example"),
+        ] {
+            let r = redactor(&[(name, mirror)]);
+            assert_eq!(r, Redactor::default(), "{mirror}");
+            let said = format!("Looking in indexes: {mirror}");
+            assert_eq!(r.redact(&said), said);
         }
     }
 
@@ -619,6 +739,7 @@ mod tests {
             ),
             ("password p@ss/w0rd rejected", "p@ss/w0rd"),
             ("re-encoded p%40ss%2fw0rd here", "p%40ss%2fw0rd"),
+            ("the login someone:p@ss/w0rd", "someone"),
             ("upper P%40ss%2Fw0rd differs", ""),
         ] {
             let masked = r.redact(said).into_owned();
@@ -629,6 +750,33 @@ mod tests {
                 assert!(!masked.contains(gone), "{said} -> {masked}");
                 assert!(masked.contains(MASK), "{said} -> {masked}");
             }
+        }
+        assert_eq!(
+            r.redact("in 'http://someone:p%40ss%2Fw0rd@proxy.corp:3128'"),
+            "in 'http://****:****@proxy.corp:3128'"
+        );
+        assert_eq!(
+            r.redact("the login someone:p@ss/w0rd"),
+            "the login ****:****"
+        );
+    }
+
+    #[test]
+    fn test_every_form_of_a_percent_encoded_user_name_is_masked() {
+        // The name is `me@corp.example`, written `me%40corp.example`.
+        let r = redactor(&[("https_proxy", "http://me%40corp.example:pw@proxy.corp:3128")]);
+        for (said, expected) in [
+            (
+                "proxy auth for me@corp.example refused",
+                "proxy auth for **** refused",
+            ),
+            ("as me%40corp.example", "as ****"),
+            (
+                "'http://me%40corp.example:pw@proxy.corp:3128'",
+                "'http://****:****@proxy.corp:3128'",
+            ),
+        ] {
+            assert_eq!(r.redact(said), expected, "{said}");
         }
     }
 
@@ -662,78 +810,145 @@ mod tests {
         );
     }
 
+    /// What git 2.54 (Apple Git-157) printed on this Mac, asked for the
+    /// password of a login whose name is a token, with no credential
+    /// helper and no prompt allowed (`git credential fill`: exit 128, no
+    /// request made). The re-check's R1: git drops the password and prints
+    /// the name before an `@`, not before a `:`.
+    fn git_asks_again(name: &str) -> String {
+        format!("fatal: could not read Password for 'https://{name}@github.com': terminal prompts disabled")
+    }
+
     #[test]
-    fn test_a_token_in_the_user_name_slot_of_a_remote_is_masked() {
-        // GitHub's documented token-as-user-name form: the "password" is
-        // a fixed word, the token stands where a user name would.
+    fn test_a_token_in_the_user_name_slot_is_masked_whatever_it_looks_like() {
+        for token in [
+            // Letters alone, which the old rules left be.
+            "abcdefghijklmnopqrstuvwx",
+            // A JWT's dots, which the old rules took for a person's name.
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyZXZpZXcifQ.c2lnbmF0dXJl",
+            "ghp_reviewtoken42xoauth",
+        ] {
+            let remote = format!("https://{token}:x-oauth-basic@github.com/Homebrew/brew");
+            let r = redactor(&[("HOMEBREW_BREW_GIT_REMOTE", &remote)]);
+            assert_eq!(
+                r.redact(&git_asks_again(token)),
+                git_asks_again(MASK),
+                "{token}"
+            );
+            assert_eq!(
+                r.redact(&format!(
+                    "fatal: unable to access '{remote}/': The requested URL returned error: 403"
+                )),
+                "fatal: unable to access 'https://****:****@github.com/Homebrew/brew/': \
+                 The requested URL returned error: 403",
+                "{token}"
+            );
+            assert_eq!(
+                r.redact(&format!("token {token} refused")),
+                "token **** refused"
+            );
+            // `x-oauth-basic` is everyone's: a word, left be on its own.
+            assert_eq!(r.redact("use x-oauth-basic"), "use x-oauth-basic");
+        }
+        // A proxy's name, the same: npm 10.9.9 printed it as the
+        // "protocol" of a proxy written with no scheme.
         let r = redactor(&[(
-            "HOMEBREW_BREW_GIT_REMOTE",
-            "https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew",
+            "https_proxy",
+            "abcdefghijklmnopqrstuvwx:x-oauth-basic@127.0.0.1:8080",
         )]);
         assert_eq!(
             r.redact(
-                "fatal: unable to access \
-                 'https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew/': \
-                 The requested URL returned error: 403"
+                "npm error Invalid protocol `abcdefghijklmnopqrstuvwx:` connecting to proxy ``"
             ),
-            "fatal: unable to access 'https://****:****@github.com/Homebrew/brew/': \
-             The requested URL returned error: 403"
+            "npm error Invalid protocol `****:` connecting to proxy ``"
         );
-        assert_eq!(
-            r.redact("token ghp_reviewtoken42xoauth refused"),
-            "token **** refused"
-        );
-        // A name that is no token is masked in the address only: it may be
-        // the Mac account's.
+    }
+
+    #[test]
+    fn test_a_user_name_is_masked_wherever_it_appears_the_macs_account_name_too() {
+        // The old rules left a name that did not look like a token -- a
+        // word, or one with a `.` -- since it may be the Mac account's,
+        // and so in every path a tool prints. A name can be a token of
+        // any shape (R1), so it is masked in those paths too: more than
+        // needed, never less.
+        for (name, setting) in [
+            ("http_proxy", "http://brulek@proxy.lan:3128"),
+            ("https_proxy", "http://brulek:s3cret-pw@proxy.lan:3128"),
+            (
+                "HOMEBREW_BOTTLE_DOMAIN",
+                "https://brulek@mirror.example/homebrew-bottles",
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://brulek:apikey-0042@artifactory.corp.example/api/pypi/simple",
+            ),
+        ] {
+            let r = redactor(&[(name, setting)]);
+            assert_eq!(
+                r.redact("==> Pouring /Users/brulek/Library/Caches/Homebrew/downloads/jq.tar.gz"),
+                "==> Pouring /Users/****/Library/Caches/Homebrew/downloads/jq.tar.gz",
+                "{setting}"
+            );
+        }
         let r = redactor(&[(
             "PIP_INDEX_URL",
-            "https://jdoe:apikey-0042@artifactory.corp.example/api/pypi/simple",
+            "https://john.doe:apikey-0042@artifactory.corp.example/api/pypi/simple",
         )]);
         assert_eq!(
-            r.redact("Looking in indexes: https://jdoe:apikey-0042@artifactory.corp.example/api/pypi/simple"),
+            r.redact("Looking in indexes: https://john.doe:apikey-0042@artifactory.corp.example/api/pypi/simple"),
             "Looking in indexes: https://****:****@artifactory.corp.example/api/pypi/simple"
         );
-        let path = "/Users/jdoe/.cache/pip";
-        assert_eq!(r.redact(path), path);
-        // A proxy's user name stays as written: a proxy is not given a
-        // token that way.
-        let r = redactor(&[("https_proxy", "http://jdoe:s3cret-pw@proxy.lan:3128")]);
         assert_eq!(
-            r.redact(&curl_refuses("http://jdoe:s3cret-pw@proxy.lan:3128")),
-            curl_refuses("http://jdoe:****@proxy.lan:3128")
+            r.redact("/Users/john.doe/.cache/pip"),
+            "/Users/****/.cache/pip"
         );
     }
 
     #[test]
-    fn test_a_git_remote_user_name_is_no_login() {
+    fn test_a_name_alone_that_is_short_or_a_common_word_is_no_login() {
         // `git@github.com:Homebrew/brew.git` names an ssh user, not a
         // secret: masking every `git` would wreck Homebrew's own output.
-        let r = redactor(&[(
-            "HOMEBREW_BREW_GIT_REMOTE",
-            "git@github.com:Homebrew/brew.git",
-        )]);
-        assert_eq!(r, Redactor::default());
+        for (name, setting) in [
+            (
+                "HOMEBREW_BREW_GIT_REMOTE",
+                "git@github.com:Homebrew/brew.git",
+            ),
+            (
+                "HOMEBREW_CORE_GIT_REMOTE",
+                "ssh://git@github.com/Homebrew/homebrew-core",
+            ),
+            ("HOMEBREW_BOTTLE_DOMAIN", "https://Token@mirror.example/x"),
+            ("http_proxy", "http://ab@proxy.lan:3128"),
+            ("https_proxy", "http://:@proxy.lan:8080"),
+        ] {
+            let r = redactor(&[(name, setting)]);
+            assert_eq!(r, Redactor::default(), "{setting}");
+        }
         let said = "==> git fetch ssh://git@github.com/Homebrew/brew";
-        assert_eq!(r.redact(said), said);
-    }
-
-    #[test]
-    fn test_a_short_password_is_masked_only_where_it_stands_as_a_login() {
-        let r = redactor(&[("http_proxy", "http://u:abc@proxy.lan:8080")]);
         assert_eq!(
-            r.redact("in 'u:abc@proxy.lan:8080' and abcdef"),
-            "in 'u:****@proxy.lan:8080' and abcdef"
+            redactor(&[(
+                "HOMEBREW_BREW_GIT_REMOTE",
+                "git@github.com:Homebrew/brew.git"
+            )])
+            .redact(said),
+            said
         );
     }
 
     #[test]
-    fn test_a_proxy_given_a_user_name_alone_masks_nothing() {
-        // NTLM or Kerberos style: the name is the account's, no secret.
-        // Taken for a token, it masked the account name in every path.
-        let r = redactor(&[("http_proxy", "http://brulek@proxy.lan:3128")]);
-        assert_eq!(r, Redactor::default());
-        let said = "==> Pouring /Users/brulek/Library/Caches/Homebrew/downloads/jq.tar.gz";
-        assert_eq!(r.redact(said), said);
+    fn test_a_short_part_is_masked_only_where_it_stands_in_its_login() {
+        let r = redactor(&[("http_proxy", "http://u:ab@proxy.lan:8080")]);
+        assert_eq!(
+            r.redact("in 'u:ab@proxy.lan:8080' and abcdef, ab and u"),
+            "in '****:****@proxy.lan:8080' and abcdef, ab and u"
+        );
+        assert_eq!(
+            r.redact(&curl_refuses("http://u:ab@proxy.lan:8080")),
+            curl_refuses("http://****:****@proxy.lan:8080")
+        );
+        // Three characters and up: wherever it appears.
+        let r = redactor(&[("http_proxy", "http://u:abc@proxy.lan:8080")]);
+        assert_eq!(r.redact("abcdef"), "****def");
     }
 
     /// What sudo 1.9 prints when it cannot ask for a password, as Homebrew
@@ -743,47 +958,61 @@ mod tests {
         sudo: a password is required";
 
     #[test]
-    fn test_a_password_that_is_a_plain_word_or_number_is_masked_only_as_a_login() {
+    fn test_a_part_that_is_a_common_word_is_masked_only_where_it_stands_in_its_login() {
         use crate::history::{failure_cause, FailureCause};
-        for password in ["password", "required", "terminal", "2026", "12345678"] {
-            let setting = format!("http://me:{password}@proxy.lan:3128");
+        for (user, password) in [
+            ("me", "password"),
+            ("me", "Required"),
+            ("admin", "terminal"),
+            ("token", "sudo"),
+        ] {
+            let setting = format!("http://{user}:{password}@proxy.lan:3128");
             let r = redactor(&[("https_proxy", &setting)]);
-            // sudo's words, a date: left as written, and still read as
-            // sudo needing a password.
-            assert_eq!(r.redact(SUDO_SAID), SUDO_SAID, "{password}");
+            // sudo's words: left as written, and still read as sudo
+            // needing a password.
+            assert_eq!(r.redact(SUDO_SAID), SUDO_SAID, "{setting}");
             assert_eq!(
                 failure_cause(&r.redact(SUDO_SAID)),
                 Some(FailureCause::NeedsPassword),
-                "{password}"
+                "{setting}"
             );
-            let dated = "==> jq 1.8.1 was released 2026-10-01 (12345678 bytes)";
-            assert_eq!(r.redact(dated), dated, "{password}");
-            // Where it stands as a login it is masked all the same.
+            // Where it stands in its login it is masked all the same:
+            // the whole value, the whole login, `:password@`.
             assert_eq!(
                 r.redact(&curl_refuses(&setting)),
-                curl_refuses("http://me:****@proxy.lan:3128"),
-                "{password}"
+                curl_refuses("http://****:****@proxy.lan:3128"),
+                "{setting}"
+            );
+            assert_eq!(
+                r.redact(&format!("'{user}:{password}@proxy.lan:3128'")),
+                "'****:****@proxy.lan:3128'",
+                "{setting}"
+            );
+            assert_eq!(
+                r.redact(&format!("socks5://x:{password}@other.lan:1080")),
+                "socks5://x:****@other.lan:1080",
+                "{setting}"
             );
         }
-        // One that mixes letters with digits or signs is no word of a
-        // tool's, and is masked wherever it appears.
-        let r = redactor(&[("https_proxy", "http://me:passw0rd@proxy.lan:3128")]);
-        assert_eq!(r.redact("sent passw0rd"), "sent ****");
+        // A number, or letters that are no listed word, is masked
+        // wherever it appears, a date's year included: more than needed,
+        // never less.
+        let r = redactor(&[("https_proxy", "http://me:2026@proxy.lan:3128")]);
+        assert_eq!(
+            r.redact("==> jq 1.8.1 was released 2026-10-01"),
+            "==> jq 1.8.1 was released ****-10-01"
+        );
+        let r = redactor(&[("https_proxy", "http://me:hunter@proxy.lan:3128")]);
+        assert_eq!(r.redact("sent hunter"), "sent ****");
     }
 
     #[test]
-    fn test_a_mirror_name_is_masked_wherever_it_appears_only_when_it_looks_like_a_token() {
-        // A name that is a word or has a `.` may be the account's own.
-        for name in ["brulek", "john.doe"] {
-            let setting = format!("https://{name}@mirror.example/homebrew-bottles");
-            let r = redactor(&[("HOMEBREW_BOTTLE_DOMAIN", &setting)]);
-            let path = format!("==> Pouring /Users/{name}/Library/Caches/jq.tar.gz");
-            assert_eq!(r.redact(&path), path, "{name}");
-            assert_eq!(
-                r.redact(&format!("fatal: unable to access '{setting}/x'")),
-                "fatal: unable to access 'https://****@mirror.example/homebrew-bottles/x'",
-                "{name}"
-            );
+    fn test_common_words_are_lowercase_and_listed_once() {
+        let mut seen = std::collections::BTreeSet::new();
+        for word in COMMON_WORDS {
+            assert_eq!(*word, word.to_ascii_lowercase());
+            assert!(seen.insert(*word), "{word} twice");
+            assert!(word.chars().count() >= SHORTEST_MASKED_ANYWHERE, "{word}");
         }
     }
 
@@ -807,12 +1036,33 @@ mod tests {
                 "https://example.com:8080/a@b",
                 "https://example.com:8080/a@b",
             ),
+            (
+                "https://mirror.example:8443/x/user@example.com/simple",
+                "https://mirror.example:8443/x/user@example.com/simple",
+            ),
             ("ssh://git@github.com/x", "ssh://git@github.com/x"),
             ("mailto:someone@example.com", "mailto:someone@example.com"),
             ("http://u:****@host", "http://u:****@host"),
             ("no address here", "no address here"),
         ] {
             assert_eq!(r.redact(said), expected, "{said}");
+        }
+    }
+
+    #[test]
+    fn test_masking_twice_changes_nothing_more() {
+        let r = redactor(&[
+            ("https_proxy", CURL_PROXY),
+            ("http_proxy", R2_PROXY),
+            (
+                "HOMEBREW_BREW_GIT_REMOTE",
+                "https://abcdefghijklmnopqrstuvwx:x-oauth-basic@github.com/Homebrew/brew",
+            ),
+        ]);
+        let git = git_asks_again("abcdefghijklmnopqrstuvwx");
+        for said in [CURL_SAID, PIP_SAID, NPM_SAID, git.as_str()] {
+            let once = r.redact(said).into_owned();
+            assert_eq!(r.redact(&once), once);
         }
     }
 
@@ -849,9 +1099,14 @@ mod tests {
                 ),
                 ("UV_INDEX_URL", "https://mirror.example/x/user@example.com"),
                 (
+                    "UV_DEFAULT_INDEX",
+                    "https://mirror.example:8443/x/user@example.com/simple"
+                ),
+                (
                     "RUSTUP_DIST_SERVER",
                     "https://mirror.example/dist/foo@1.2.3.4/"
                 ),
+                ("RUSTUP_UPDATE_ROOT", "file:///Users/me@corp/rustup"),
             ]),
             Redactor::default()
         );
@@ -867,6 +1122,7 @@ mod tests {
             .redact(CURL_SAID_NO_SCHEME)
             .into_owned();
         assert!(!said.contains("review-secret"), "{said}");
+        assert!(!said.contains("review-user"), "{said}");
     }
 
     #[test]

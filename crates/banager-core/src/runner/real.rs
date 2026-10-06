@@ -2607,7 +2607,14 @@ mod tests {
     const CURL_SAID: &str = "curl: (5) Unsupported proxy syntax in \
         'http://review-user:review-secret@127.0.0.1:invalid': \
         Port number was not a decimal number between 0 and 65535";
+    /// The setting's login masked, its user name too: a name can be a
+    /// token (`runner::redact`, R1 of the decisions-round re-check).
     const CURL_MASKED: &str = "curl: (5) Unsupported proxy syntax in \
+        'http://****:****@127.0.0.1:invalid': \
+        Port number was not a decimal number between 0 and 65535";
+    /// With no setting known, the pattern alone masks the password; the
+    /// name it cannot tell from a person's, and leaves.
+    const CURL_MASKED_BY_PATTERN: &str = "curl: (5) Unsupported proxy syntax in \
         'http://review-user:****@127.0.0.1:invalid': \
         Port number was not a decimal number between 0 and 65535";
 
@@ -2675,7 +2682,7 @@ mod tests {
             *lines.lock().unwrap(),
             vec![(
                 Stream::Stdout,
-                "https_proxy=http://review-user:****@127.0.0.1:invalid".to_string()
+                "https_proxy=http://****:****@127.0.0.1:invalid".to_string()
             )]
         );
         assert_eq!(
@@ -2781,7 +2788,10 @@ mod tests {
         assert_eq!(output.exit_code, Some(5));
         let seen = lines.lock().unwrap().clone();
         assert_eq!(seen.len(), 4, "{seen:?}");
-        assert_eq!(seen[0], (Stream::Stderr, CURL_MASKED.to_string()));
+        assert_eq!(
+            seen[0],
+            (Stream::Stderr, CURL_MASKED_BY_PATTERN.to_string())
+        );
         for (_, line) in &seen {
             assert!(!line.contains("review-secret"), "{line}");
             assert!(line.contains("review-user:****@127.0.0.1"), "{line}");
@@ -2789,6 +2799,6 @@ mod tests {
         for said in [&output.stdout, &output.stderr] {
             assert!(!said.contains("review-secret"), "{said}");
         }
-        assert_eq!(output.stderr.lines().next(), Some(CURL_MASKED));
+        assert_eq!(output.stderr.lines().next(), Some(CURL_MASKED_BY_PATTERN));
     }
 }

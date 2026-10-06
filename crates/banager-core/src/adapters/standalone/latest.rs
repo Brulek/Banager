@@ -743,7 +743,10 @@ mod tests {
             )
             .expect_err(body);
             assert!(!err.contains("rev/s"), "{body:?}: {err}");
-            assert!(err.contains("review-user:****@"), "{body:?}: {err}");
+            // The user name too: a name can be a token (R1 of the
+            // decisions-round re-check).
+            assert!(!err.contains("review-user"), "{body:?}: {err}");
+            assert!(err.contains("****:****@"), "{body:?}: {err}");
         }
     }
 
