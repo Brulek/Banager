@@ -851,18 +851,49 @@ export function warningLines(
   // group), the scope sentence leaves out its own general "settings and
   // data elsewhere are kept": the group says which, and where.
   const keptNamed = warnings.some((warning) => typeof warning !== "string" && "KeepsData" in warning);
+  // Where every version of a formula goes (U9), its sentence does not call
+  // what goes 「这一版」, which reads as "this one version" beside the line
+  // that names them all.
+  const everyVersion = warnings.some(
+    (warning) => typeof warning !== "string" && "HomebrewRemovesEveryVersion" in warning,
+  );
   for (const warning of warnings) {
     if (affected.length > 0 && typeof warning !== "string" && "WouldBreak" in warning) continue;
-    const short =
-      keptNamed && subject !== undefined && typeof warning !== "string" && "UninstallScope" in warning
-        ? SCOPE_WITH_KEPT_KEYS[warning.UninstallScope.what]
+    const what =
+      subject !== undefined && typeof warning !== "string" && "UninstallScope" in warning
+        ? warning.UninstallScope.what
         : undefined;
+    const short =
+      what === undefined
+        ? undefined
+        : everyVersion && EVERY_VERSION_SCOPE_KEYS[what] !== undefined
+          ? EVERY_VERSION_SCOPE_KEYS[what][keptNamed ? "withKept" : "plain"]
+          : keptNamed
+            ? SCOPE_WITH_KEPT_KEYS[what]
+            : undefined;
     const line = warningLine(t, warning, subject, downloadBytes);
     if (line === null) continue;
     lines[warningGroup(warning)].push(short === undefined ? line : { ...line, text: t(short, { name: subject ?? "" }) });
   }
   return lines;
 }
+
+/**
+ * A formula's scope sentences where its uninstall deletes every version
+ * (`HomebrewRemovesEveryVersion`, U9): what Homebrew installed of it, not
+ * 「这一版」; `withKept` without the general "settings and data elsewhere
+ * are kept", as `SCOPE_WITH_KEPT_KEYS`.
+ */
+const EVERY_VERSION_SCOPE_KEYS: Partial<Record<UninstallScope, { plain: string; withKept: string }>> = {
+  HomebrewFormulaOnly: {
+    plain: "brewVersions.scopeEvery.HomebrewFormulaOnly",
+    withKept: "brewVersions.scopeEveryWithKept.HomebrewFormulaOnly",
+  },
+  HomebrewFormula: {
+    plain: "brewVersions.scopeEvery.HomebrewFormula",
+    withKept: "brewVersions.scopeEveryWithKept.HomebrewFormula",
+  },
+};
 
 /**
  * The scope sentences that end on a general "its settings and data

@@ -553,7 +553,15 @@
     "removesEvery": "Removes every installed version: {{versions}}.",
     "logCleaningUp": "The update is done. Now running brew cleanup to delete the old versions of {{name}}.",
     "logNotCleanedUp": "brew cleanup didn't finish. The update itself is done; the old versions it didn't delete are still listed under Other versions.",
-    "logCleanupStopped": "brew cleanup was stopped. The update itself is done; the old versions it didn't delete are still listed under Other versions."
+    "logCleanupStopped": "brew cleanup was stopped. The update itself is done; the old versions it didn't delete are still listed under Other versions.",
+    "scopeEvery": {
+      "HomebrewFormulaOnly": "Removes only what Homebrew installed of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
+      "HomebrewFormula": "Removes what Homebrew installed of {{name}} and the links to it. Settings and data stored elsewhere are kept."
+    },
+    "scopeEveryWithKept": {
+      "HomebrewFormulaOnly": "Removes only what Homebrew installed of {{name}} and the links to it.",
+      "HomebrewFormula": "Removes what Homebrew installed of {{name}} and the links to it."
+    }
   },
   "modelDownload": {
     "note": "Downloads the model files that changed, up to about\u00a0{{size}}."

@@ -1179,6 +1179,28 @@ describe("U9: the versions a Homebrew update or uninstall deletes", () => {
     expect(deletesForGood(two)).toBe(false);
   });
 
+  it("does not call what an uninstall of every version deletes 「这一版」 (this one version)", () => {
+    const every: Warning = { HomebrewRemovesEveryVersion: { versions: ["2.54.0", "2.55.0"] } };
+    const kept: Warning = { KeepsData: { path: "~/.config/git", what: "ToolData", size: null, left_out: [] } };
+    const scopes = (t: typeof zh, warnings: Warning[]) =>
+      warningLines(t, warnings, [], "git").scope.map((line) => line.text);
+    for (const [what, only] of [
+      ["HomebrewFormulaOnly", "只"],
+      ["HomebrewFormula", ""],
+    ] as const) {
+      const scope: Warning = { UninstallScope: { what } };
+      expect(scopes(zh, [scope, every])).toEqual([`${only}删除Homebrew安装的“git”和指向它的链接；别处的配置和数据不删除。`]);
+      expect(scopes(zh, [scope, every, kept])).toEqual([`${only}删除Homebrew安装的“git”和指向它的链接。`]);
+      expect(scopes(zhHant, [scope, every])).toEqual([
+        `${only === "只" ? "只" : ""}刪除Homebrew安裝的「git」和指向它的連結；別處的設定和資料不刪除。`,
+      ]);
+      expect(scopes(enT, [scope, every])[0]).toMatch(/^Removes (only )?what Homebrew installed of git and the links to it\. /);
+      expect(scopes(enT, [scope, every, kept])[0]).toMatch(/^Removes (only )?what Homebrew installed of git and the links to it\.$/);
+      // One version: the sentence as it was.
+      expect(scopes(zh, [scope])[0]).toContain("这一版");
+    }
+  });
+
   it("says an uninstall deletes every installed version, each named", () => {
     const every: Warning = { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } };
     expect(warningText(zh, every)).toBe("已安装的所有版本都会删除：1.25.0、1.26.0。");
