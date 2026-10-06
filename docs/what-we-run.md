@@ -137,6 +137,46 @@ to a log and never in the diagnostic info, since a proxy setting can hold
 a password; the app's own output at launch names the settings read, not
 their values.
 
+**What a tool prints about a login.** A proxy or mirror setting can hold a
+login -- `http://user:password@proxy:8080`, or a mirror's
+`https://token@mirror…` -- and tools print a setting back, whole, when
+something about it is wrong: curl, and so Homebrew, says `Unsupported
+proxy syntax in 'http://user:password@…'`, and pip ends its traceback with
+`Failed to parse: http://user:password@…`. So before a line a command
+prints reaches the operation's log, and before its stderr becomes a
+failure's summary or a source's error, Banager masks the login in it
+(`runner::redact`, which `RealRunner::run` applies to everything it hands
+on), putting `****` where the secret was and leaving the rest of the line,
+the user name included, as the tool wrote it:
+
+- for each setting the command was handed -- those read from the login
+  shell, and the same names in Banager's own environment, which a command
+  inherits when the shell did not set them -- the password in every form
+  a tool is known to print it: as written, percent-decoded, percent-encoded
+  (with upper- or lowercase hex digits), and the `user:password` pair as
+  the HTTP Basic credential `curl -v` shows for a proxy
+  (`> Proxy-Authorization: Basic …`, curl 8.7.1); for an http(s) address
+  whose login is a token alone, the token, in the same forms. A
+  password of fewer than four characters is masked only where it stands
+  as a login (`:abc@`), not everywhere it appears in a log. A name alone
+  before the `@` of anything but an http(s) address (`git@github.com:…`)
+  names an ssh user, not a secret, and is not masked;
+- besides, the password of any `scheme://user:password@` in the output,
+  whatever setting or file it came from.
+
+A line is masked once it has ended, so a login split across two reads is
+masked whole. A transcript for a person keeps at most its first and its
+last MiB (`HEAD_CAP`, `TAIL_CAP` in `runner/real.rs`), so a runaway build
+log does not fill memory; where Banager drops the middle of one, the word
+on each side of the cut is masked too, up to 1 KiB of it, since it may be
+half a login. What a parser reads -- a command's JSON on stdout, and the login shell's
+`env` output the settings come from -- is not masked: it is never shown,
+and masking it would hand every command `****` as its proxy's password.
+The settings are handed to the commands unchanged; only what they print is
+masked. Masking works on the text: a login a tool printed in some other
+form -- broken across two lines, or encoded some way not listed here --
+would not be caught.
+
 **What a command inherits.** A child gets Banager's own environment — the
 `PATH` and the proxy and mirror settings above, the only variables taken
 from the login shell (set on each command, not in Banager's own
@@ -256,7 +296,9 @@ to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
 own behalf. A proxy setting read from the login shell may hold a login;
 Banager hands it on unchanged to the commands it runs and gives it to that
-proxy alone (Network), and never shows or records it. Its commands run with no terminal (stdin is `/dev/null`), so
+proxy alone (Network), never writes it to a log or the diagnostic info,
+and masks it in what those commands print before anything shows or keeps
+it (What a tool prints about a login, above). Its commands run with no terminal (stdin is `/dev/null`), so
 when a cask's own step runs `sudo`, sudo cannot ask and the operation
 fails. Banager recognises sudo's own words for this
 (`needsPassword` in `src/lib/failureCause.ts`), and for a password window

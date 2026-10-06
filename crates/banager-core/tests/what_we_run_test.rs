@@ -1605,3 +1605,46 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
         "the `## Network` section says Banager's own requests pick a proxy by curl's rules, but `proxy_for` also reads `HTTP_PROXY` and a `*.` in `no_proxy`, which curl does not"
     );
 }
+
+/// F2 of the decisions-round review: the section that lists the proxy and
+/// mirror settings taken from the login shell says that a login in them
+/// is masked in what tools print (`runner::redact`), in which forms, with
+/// which mark, and what is not masked -- and the Passwords paragraph no
+/// longer promises Banager never shows one without saying how.
+#[test]
+fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
+    use banager_core::runner::redact::{MASK, SHORTEST_MASKED_ANYWHERE};
+    let doc = read_doc();
+    let body = section_body(&doc, "How Banager runs anything")
+        .expect("docs/what-we-run.md has a `## How Banager runs anything` section");
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert_eq!(
+        SHORTEST_MASKED_ANYWHERE, 4,
+        "the document says a password of fewer than four characters is masked only as a login"
+    );
+    for phrase in [
+        "**What a tool prints about a login.**",
+        "`runner::redact`",
+        &format!("`{MASK}`"),
+        "Unsupported proxy syntax in",
+        "Failed to parse:",
+        "percent-decoded",
+        "percent-encoded",
+        "HTTP Basic",
+        "fewer than four characters",
+        "any `scheme://user:password@`",
+        "split across two reads",
+        "the word on each side of the cut",
+        "What a parser reads",
+        "handed to the commands unchanged",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## How Banager runs anything` section of docs/what-we-run.md does not say {phrase:?} about masking a login in what tools print"
+        );
+    }
+    assert!(
+        !folded.contains("and never shows or records it"),
+        "the Passwords paragraph still says Banager never shows or records a proxy's login without saying it is masked in what tools print"
+    );
+}
