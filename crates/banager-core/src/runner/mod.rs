@@ -7,6 +7,7 @@ pub mod login_path;
 pub mod mock;
 pub mod path_env;
 pub mod real;
+pub mod redact;
 
 pub use mock::MockRunner;
 pub use path_env::{resolve_exe, HostEnv};
