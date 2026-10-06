@@ -36,6 +36,21 @@ export function commandText(action: Extract<PlanAction, { Command: unknown }>): 
 }
 
 /**
+ * Every command a plan runs, each as `commandText` gives it, in the order
+ * they run: one for a `Command`; two for a `CommandThen` -- a Homebrew
+ * update and the `brew cleanup` that follows it once it has succeeded
+ * (U9), under the same variables; none for a `TrashPaths`.
+ */
+export function commandTexts(action: PlanAction): string[] {
+  if ("Command" in action) return [commandText(action)];
+  if ("CommandThen" in action) {
+    const { program, args, env, then } = action.CommandThen;
+    return [commandText({ Command: { program, args, env } }), commandText({ Command: { program, args: then, env } })];
+  }
+  return [];
+}
+
+/**
  * The sentence a `TrashPaths` plan has in place of a command: its items go
  * to the Trash, and can be dragged back out of it -- nothing more. Not
  * Finder's Put Back, which works as often as not and is promised nowhere
@@ -49,7 +64,8 @@ function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unkno
  * What a confirmation's plans will do, exactly, one click away.
  *
  * For a `Command`: the variables it is given and its argv
- * (`commandText`), behind a disclosure -- 「查看命令」/
+ * (`commandText`) -- for a `CommandThen`, both of its commands, the second
+ * under the first (`commandTexts`) -- behind a disclosure -- 「查看命令」/
  * "Show the command", a button that says whether it is open
  * (`aria-expanded`) -- and open from the start while Settings' "Show
  * technical details" is on. One token per `displayToken`, since a plain
@@ -73,11 +89,11 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
   const panelId = useId();
 
   const trash: ReactNode[] = [];
-  const commands: Array<{ id: string; name?: string; text: string }> = [];
+  const commands: Array<{ id: string; name?: string; texts: string[] }> = [];
   for (const plan of plans) {
     const { action } = plan;
-    if ("Command" in action) {
-      commands.push({ id: plan.id, name: plan.name, text: commandText(action) });
+    if ("Command" in action || "CommandThen" in action) {
+      commands.push({ id: plan.id, name: plan.name, texts: commandTexts(action) });
     } else if ("TrashPaths" in action) {
       trash.push(
         <p key={plan.id} className={`text-muted ${SMALL_WRAPPING}`}>
@@ -96,7 +112,7 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
       {commands.length > 0 ? (
         <div className="mt-3">
           <DisclosureButton open={open} panelId={panelId} onToggle={() => setChosen(!open)}>
-            {t("commandPreview.show", { count: commands.length })}
+            {t("commandPreview.show", { count: commands.reduce((sum, command) => sum + command.texts.length, 0) })}
           </DisclosureButton>
           {open ? (
             <div id={panelId} className="mt-1 flex flex-col gap-2">
@@ -105,9 +121,15 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
                   {command.name !== undefined ? (
                     <p className="mb-1 text-small text-muted">{command.name}</p>
                   ) : null}
-                  <code className="block select-text whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-                    {command.text}
-                  </code>
+                  {/* A brew cleanup that follows an update (U9) under it, a step apart. */}
+                  {command.texts.map((text, index) => (
+                    <code
+                      key={index}
+                      className={`block select-text whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground${index > 0 ? " mt-1" : ""}`}
+                    >
+                      {text}
+                    </code>
+                  ))}
                 </div>
               ))}
             </div>

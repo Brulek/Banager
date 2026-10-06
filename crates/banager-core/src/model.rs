@@ -1039,6 +1039,29 @@ pub enum Warning {
     /// read by `warningKey`, `warningArgs` and `warningDetailKey` in
     /// src/lib/warnings.ts.
     HomebrewForgetsTrust { name: String },
+    /// Once this upgrade of a formula has exited 0, Banager runs
+    /// `brew cleanup <name>` (`PlanAction::CommandThen`), which deletes the
+    /// formula's older versions -- `versions`, every version installed when
+    /// the preview read the Cellar, oldest first, the one the upgrade
+    /// replaces among them (`brew::kegs`) -- and its old downloads, as
+    /// Homebrew does by itself unless `HOMEBREW_NO_INSTALL_CLEANUP` is set
+    /// (`Cleanup.install_formula_clean!`, `cleanup.rb:348-358`); no other
+    /// formula's, no periodic clean-up, no autoremove (`Cleanup#clean!`
+    /// with names, `cleanup.rb:497-517`). The author's decision U9 (r6).
+    /// Produced by `BrewAdapter::plan` for a formula's `Upgrade`, first,
+    /// only when that plan runs the cleanup; read by `warningKey`,
+    /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewCleansUpOldVersions { versions: Vec<String> },
+    /// This uninstall deletes every installed version of the formula --
+    /// `versions`, oldest first, as the preview read the Cellar
+    /// (`brew::kegs`) -- not only the one Banager lists: the plan's
+    /// `brew uninstall` carries `--force`, Homebrew's way to delete all of
+    /// them (`cmd/uninstall.rb:43`, `uninstall.rb:31-44`), so none is left
+    /// to come back on the Installed page. U9 (r6). Produced by
+    /// `BrewAdapter::plan` for a formula's `Uninstall` with more than one
+    /// version installed and no pin, right after its `UninstallScope`;
+    /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    HomebrewRemovesEveryVersion { versions: Vec<String> },
     /// What this uninstall removes and what it leaves, in the one sentence
     /// the uninstall confirmation shows under the tool: which sentence is
     /// `what` (`UninstallScope`). At most one per plan, and only on an
@@ -1530,13 +1553,15 @@ pub struct ResourceLock(pub String); // "brew:/opt/homebrew"
 /// gets no Finder "Put Back" record (spec §6.2; the Trash spike, which also
 /// found that a rename does reach `~/.Trash` without Full Disk Access).
 ///
-/// Readers, each matching both arms: `run_plan` (`adapters/mod.rs`;
-/// `Command` only, it refuses the other), `OperationManager::summaries`'s
-/// `argv_preview` and `env_preview` (`ops/mod.rs`; empty for `TrashPaths`),
-/// `CommandPreview.tsx` (one sentence for `TrashPaths`) and the
-/// hand-written mirror in `src/lib/types.ts`. Externally tagged on the
-/// wire like every other enum here: `{"Command":{"program":…,"args":[…],
-/// "env":[…]}}` and `{"TrashPaths":{"paths":[…]}}`.
+/// Readers, each matching every arm: `run_plan` (`adapters/mod.rs`;
+/// `Command` only, it refuses the others), `BrewAdapter::execute`
+/// (`CommandThen`), `OperationManager::summaries`'s `argv_preview` and
+/// `env_preview` (`ops/mod.rs`; the first command of a `CommandThen`,
+/// empty for `TrashPaths`), `CommandPreview.tsx` (both commands of a
+/// `CommandThen`, one sentence for `TrashPaths`) and the hand-written
+/// mirror in `src/lib/types.ts`. Externally tagged on the wire like every
+/// other enum here: `{"Command":{"program":…,"args":[…],"env":[…]}}`,
+/// `{"CommandThen":{…,"then":[…]}}` and `{"TrashPaths":{"paths":[…]}}`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlanAction {
     /// One program, one argv, one environment: what `run_plan` spawns.
@@ -1546,6 +1571,22 @@ pub enum PlanAction {
         program: PathBuf,
         args: Vec<String>,
         env: Vec<(String, String)>,
+    },
+    /// Two commands with one program and one environment: `program args`,
+    /// and only once that has exited 0, `program then`, a follow-up whose
+    /// own end decides nothing about the operation -- the first command's
+    /// work is done whatever becomes of it -- and is said in the log
+    /// instead (`LogNote::CleaningUpOldVersions`,
+    /// `LogNote::OldVersionsNotCleanedUp`). The preview shows both. Built
+    /// only by `BrewAdapter::plan`, for a formula's upgrade followed by
+    /// `brew cleanup <name>` (`Warning::HomebrewCleansUpOldVersions`, the
+    /// author's decision U9, r6), and carried out only by
+    /// `BrewAdapter::execute`; `run_plan` refuses it.
+    CommandThen {
+        program: PathBuf,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+        then: Vec<String>,
     },
     /// No command. `execute` moves each path to the Trash, in this order
     /// (the tool's launcher last, spec §6.2), after re-checking it. The
@@ -2914,6 +2955,44 @@ mod tests {
                 previewed: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn test_the_homebrew_version_cleanup_is_on_the_wire_as_the_mirror_spells_it() {
+        // U9 (r6): an upgrade of a Homebrew formula followed by
+        // `brew cleanup <name>` once it exits 0 -- one program, one
+        // environment, two argvs -- and the two lines that say which
+        // versions go. `src/lib/types.ts` mirrors all three.
+        let action = PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "wget".to_string(),
+            ],
+            env: vec![("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())],
+            then: vec!["cleanup".to_string(), "wget".to_string()],
+        };
+        let json = r#"{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":["cleanup","wget"]}}"#;
+        assert_eq!(serde_json::to_string(&action).unwrap(), json);
+        assert_eq!(serde_json::from_str::<PlanAction>(json).unwrap(), action);
+        for (warning, json) in [
+            (
+                Warning::HomebrewCleansUpOldVersions {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                },
+                r#"{"HomebrewCleansUpOldVersions":{"versions":["1.24.0","1.25.0"]}}"#,
+            ),
+            (
+                Warning::HomebrewRemovesEveryVersion {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                },
+                r#"{"HomebrewRemovesEveryVersion":{"versions":["1.25.0","1.26.0"]}}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&warning).unwrap(), json);
+            assert_eq!(serde_json::from_str::<Warning>(json).unwrap(), warning);
+        }
     }
 
     #[test]

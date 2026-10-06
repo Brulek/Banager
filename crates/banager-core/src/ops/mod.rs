@@ -497,7 +497,13 @@ impl OperationManager {
             .values()
             .map(|r| {
                 let (argv_preview, env_preview) = match &r.plan.action {
-                    PlanAction::Command { program, args, env } => {
+                    // A plan of two commands (U9) previews its first: the
+                    // upgrade a `brew cleanup` follows, which is what a
+                    // failed operation hands over for Terminal.
+                    PlanAction::Command { program, args, env }
+                    | PlanAction::CommandThen {
+                        program, args, env, ..
+                    } => {
                         let mut argv = vec![program.to_string_lossy().to_string()];
                         argv.extend(args.iter().cloned());
                         (argv, env.clone())

@@ -573,9 +573,20 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         name: plan.request.name,
         status: "Queued",
         outcome: null,
+        // A plan of two commands previews its first, as `summaries_of` in
+        // crates/banager-core/src/ops/mod.rs does (U9).
         argv_preview:
-          "Command" in plan.action ? [plan.action.Command.program, ...plan.action.Command.args] : [],
-        env_preview: "Command" in plan.action ? plan.action.Command.env : [],
+          "Command" in plan.action
+            ? [plan.action.Command.program, ...plan.action.Command.args]
+            : "CommandThen" in plan.action
+              ? [plan.action.CommandThen.program, ...plan.action.CommandThen.args]
+              : [],
+        env_preview:
+          "Command" in plan.action
+            ? plan.action.Command.env
+            : "CommandThen" in plan.action
+              ? plan.action.CommandThen.env
+              : [],
         cancel_policy: plan.cancel_policy,
       },
       plan,

@@ -374,6 +374,51 @@ async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview(
 }
 
 #[tokio::test]
+async fn test_summaries_preview_the_first_command_of_a_plan_of_two() {
+    // A Homebrew upgrade followed by `brew cleanup` (U9,
+    // `PlanAction::CommandThen`): the command an operation hands over for
+    // Terminal (`PasswordCommand.tsx`) is the upgrade, with its variables;
+    // the cleanup that follows it is not what a password failure is about.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let env = vec![("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())];
+    let plan = Plan {
+        request: OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "wget".to_string(),
+        },
+        action: PlanAction::CommandThen {
+            program: PathBuf::from("/opt/homebrew/bin/brew"),
+            args: vec!["upgrade".to_string(), "--formula".to_string(), "wget".to_string()],
+            env: env.clone(),
+            then: vec!["cleanup".to_string(), "wget".to_string()],
+        },
+        needs_password: false,
+        locks: vec![ResourceLock("fake:1".to_string())],
+        cancel_policy: CancelPolicy::KillThenReconcile,
+        warnings: vec![],
+        affected: vec![],
+        timeout_secs: 60,
+    };
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(
+        summary.argv_preview,
+        ["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"]
+    );
+    assert_eq!(summary.env_preview, env);
+}
+
+#[tokio::test]
 async fn test_summaries_carry_the_plans_environment_in_its_order_and_on_the_wire() {
     // A failed operation hands its command over for Terminal
     // (`src/components/PasswordCommand.tsx`): with the variables the plan

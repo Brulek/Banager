@@ -800,6 +800,45 @@ describe("types", () => {
     expect(roundTrip(trash)).toEqual(trash);
   });
 
+  it("spells U9's Homebrew cleanup as model.rs and events.rs do", () => {
+    // `test_the_homebrew_version_cleanup_is_on_the_wire_as_the_mirror_spells_it`
+    // in model.rs and `test_the_cleanup_notes_wire_shape_is_what_the_typescript_mirror_expects`
+    // in events.rs assert these exact strings from the Rust side.
+    const then: PlanAction = {
+      CommandThen: {
+        program: "/opt/homebrew/bin/brew",
+        args: ["upgrade", "--formula", "wget"],
+        env: [["HOMEBREW_NO_AUTOREMOVE", "1"]],
+        then: ["cleanup", "wget"],
+      },
+    };
+    expect(JSON.stringify(then)).toBe(
+      '{"CommandThen":{"program":"/opt/homebrew/bin/brew","args":["upgrade","--formula","wget"],"env":[["HOMEBREW_NO_AUTOREMOVE","1"]],"then":["cleanup","wget"]}}',
+    );
+    expect(roundTrip(then)).toEqual(then);
+    const cleans: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.24.0", "1.25.0"] } };
+    expect(JSON.stringify(cleans)).toBe('{"HomebrewCleansUpOldVersions":{"versions":["1.24.0","1.25.0"]}}');
+    const every: Warning = { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } };
+    expect(JSON.stringify(every)).toBe('{"HomebrewRemovesEveryVersion":{"versions":["1.25.0","1.26.0"]}}');
+    expect(roundTrip(cleans)).toEqual(cleans);
+    expect(roundTrip(every)).toEqual(every);
+    const starting: OperationEvent = { Note: { op_id: 7, note: { CleaningUpOldVersions: { name: "wget" } } } };
+    expect(JSON.stringify(starting)).toBe('{"Note":{"op_id":7,"note":{"CleaningUpOldVersions":{"name":"wget"}}}}');
+    const failed: OperationEvent = {
+      Note: { op_id: 7, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: 1 } } },
+    };
+    expect(JSON.stringify(failed)).toBe(
+      '{"Note":{"op_id":7,"note":{"OldVersionsNotCleanedUp":{"name":"wget","exit_code":1}}}}',
+    );
+    const stopped: OperationEvent = {
+      Note: { op_id: 7, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: null } } },
+    };
+    expect(JSON.stringify(stopped)).toBe(
+      '{"Note":{"op_id":7,"note":{"OldVersionsNotCleanedUp":{"name":"wget","exit_code":null}}}}',
+    );
+    expect(roundTrip(stopped)).toEqual(stopped);
+  });
+
   it("spells the unknown-source scan's shapes as Rust sends them", () => {
     // Mirrors `crates/banager-core/src/scan/mod.rs`, whose
     // `test_scan_wire_shapes_match_the_hand_written_ts_mirror` asserts

@@ -367,6 +367,18 @@ export type Warning =
    * `name` alone: a cask's full name, a formula's tap and name.
    */
   | { HomebrewForgetsTrust: { name: string } }
+  /**
+   * U9 (r6): once this upgrade of a formula exits 0, Banager runs
+   * `brew cleanup <name>` (`PlanAction`'s `CommandThen`), which deletes
+   * these older versions -- every version installed when the preview
+   * looked, oldest first -- and its old downloads.
+   */
+  | { HomebrewCleansUpOldVersions: { versions: string[] } }
+  /**
+   * U9 (r6): this uninstall deletes every installed version of the
+   * formula (`brew uninstall --force`), oldest first, so none comes back.
+   */
+  | { HomebrewRemovesEveryVersion: { versions: string[] } }
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   /**
@@ -517,6 +529,13 @@ export type CancelPolicy = "KillThenReconcile" | "NoCancel";
  */
 export type PlanAction =
   | { Command: { program: string; args: string[]; env: [string, string][] } }
+  /**
+   * U9 (r6): `program args`, then -- only once that exits 0 -- `program
+   * then`, under the same `env`: a Homebrew formula's upgrade and the
+   * `brew cleanup <name>` that follows it. The follow-up's end decides
+   * nothing about the operation; the log says it. The preview shows both.
+   */
+  | { CommandThen: { program: string; args: string[]; env: [string, string][]; then: string[] } }
   | { TrashPaths: { paths: string[] } };
 export interface Plan {
   request: OpRequest;
@@ -788,7 +807,11 @@ export type LogNote =
   | { MovedToTrash: { path: string; trashed_to: string } }
   | { TrashFailed: { path: string; error: string } }
   | { OutOfTime: { path: string; seconds: number } }
-  | { BackAfterUninstall: { path: string } };
+  | { BackAfterUninstall: { path: string } }
+  // U9 (r6): an upgrade's follow-up `brew cleanup <name>` starts, and, when
+  // it did not end in exit 0, how it ended (`null`: it was stopped).
+  | { CleaningUpOldVersions: { name: string } }
+  | { OldVersionsNotCleanedUp: { name: string; exit_code: number | null } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

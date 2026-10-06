@@ -75,6 +75,21 @@ pub enum LogNote {
     /// which then returns `Outcome::NeedsAttention(Attention::
     /// BackAfterUninstall)`; worded by `LogDrawer.tsx`.
     BackAfterUninstall { path: String },
+    /// The upgrade of the formula `name` exited 0, and Banager now runs the
+    /// plan's follow-up, `brew cleanup <name>`, which deletes its older
+    /// versions (`PlanAction::CommandThen`, the author's decision U9, r6);
+    /// what that command prints follows. From `BrewAdapter::execute`;
+    /// worded by `LogDrawer.tsx`.
+    CleaningUpOldVersions { name: String },
+    /// That `brew cleanup` did not end in exit 0: `exit_code`, or `None`
+    /// when it was stopped -- a Cancel, or its time limit. The upgrade
+    /// before it stands, and stays the operation's outcome; what the
+    /// cleanup did not delete is still listed as the tool's other
+    /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    OldVersionsNotCleanedUp {
+        name: String,
+        exit_code: Option<i32>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +247,47 @@ mod tests {
             serde_json::to_string(&back).unwrap(),
             r#"{"Note":{"op_id":7,"note":{"BackAfterUninstall":{"path":"~/.local/share/claude"}}}}"#
         );
+    }
+
+    #[test]
+    fn test_the_cleanup_notes_wire_shape_is_what_the_typescript_mirror_expects() {
+        // U9 (r6): the two lines a Homebrew upgrade's follow-up
+        // `brew cleanup <name>` writes -- as it starts, and when it did not
+        // end in exit 0 (`None`: it was stopped). `src/lib/types.test.ts`
+        // builds the same strings from the TS type.
+        let starting = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::CleaningUpOldVersions {
+                name: "wget".to_string(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&starting).unwrap(),
+            r#"{"Note":{"op_id":7,"note":{"CleaningUpOldVersions":{"name":"wget"}}}}"#
+        );
+        for (exit_code, json) in [
+            (
+                Some(1),
+                r#"{"Note":{"op_id":7,"note":{"OldVersionsNotCleanedUp":{"name":"wget","exit_code":1}}}}"#,
+            ),
+            (
+                None,
+                r#"{"Note":{"op_id":7,"note":{"OldVersionsNotCleanedUp":{"name":"wget","exit_code":null}}}}"#,
+            ),
+        ] {
+            let unfinished = OperationEvent::Note {
+                op_id: 7,
+                note: LogNote::OldVersionsNotCleanedUp {
+                    name: "wget".to_string(),
+                    exit_code,
+                },
+            };
+            assert_eq!(serde_json::to_string(&unfinished).unwrap(), json);
+            assert_eq!(
+                serde_json::from_str::<OperationEvent>(json).unwrap(),
+                unfinished
+            );
+        }
     }
 
     #[test]

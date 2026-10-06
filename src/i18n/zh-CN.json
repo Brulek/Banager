@@ -498,6 +498,14 @@
     "homebrewMayAutoUpdate": "开始前，Homebrew可能会先更新它自己，并联网查找新版本。",
     "homebrewMayAutoUpdateDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTO_UPDATE=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知它是否把这个值设成了空值。"
   },
+  "brewVersions": {
+    "cleansUp_other": "更新后会删除旧版本{{versions}}。",
+    "cleansUpDetail": "更新完成后会运行brew cleanup，删除这些旧版本和过期的下载文件，和Homebrew平时更新后做的一样。其他软件的旧版本不删除。",
+    "removesEvery": "已安装的所有版本都会删除：{{versions}}。",
+    "logCleaningUp": "更新已完成，接着运行brew cleanup删除{{name}}的旧版本。",
+    "logNotCleanedUp": "brew cleanup没有完成。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
+    "logCleanupStopped": "brew cleanup已停止。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。"
+  },
   "modelDownload": {
     "note": "需要下载已更改的模型文件，最多约{{size}}。"
   },

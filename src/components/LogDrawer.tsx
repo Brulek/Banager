@@ -59,6 +59,16 @@ function noteText(t: TFunction, note: LogNote): string {
   if ("BackAfterUninstall" in note) {
     return t("operations.logNote.backAfterUninstall", { path: note.BackAfterUninstall.path });
   }
+  // U9: an update's follow-up `brew cleanup` -- its own lines follow it,
+  // and whatever it wrote of why it stopped is right above the second.
+  if ("CleaningUpOldVersions" in note) {
+    return t("brewVersions.logCleaningUp", { name: note.CleaningUpOldVersions.name });
+  }
+  if ("OldVersionsNotCleanedUp" in note) {
+    return note.OldVersionsNotCleanedUp.exit_code === null
+      ? t("brewVersions.logCleanupStopped")
+      : t("brewVersions.logNotCleanedUp");
+  }
   const unhandled: never = note;
   return unhandled;
 }

@@ -35,7 +35,7 @@ import { twinsByArtifact } from "../lib/commands";
 import { modelPath } from "../lib/names";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapshot } from "../lib/types";
-import { commandText } from "./CommandPreview";
+import { commandTexts } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
 import { neededByReason } from "../lib/neededBy";
@@ -840,7 +840,7 @@ function BatchPlanDetails({ plans }: { plans: Array<{ id: string; name: string; 
             <div key={id}>
               <p className={`mb-1 text-muted ${SMALL_WRAPPING}`}>{name}</p>
               <code className="block select-text whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-                {"Command" in action ? commandText(action) : action.TrashPaths.paths.join("\n")}
+                {"TrashPaths" in action ? action.TrashPaths.paths.join("\n") : commandTexts(action).join("\n")}
               </code>
             </div>
           ))}

@@ -1171,6 +1171,11 @@ impl StandaloneAdapter {
                 }
                 run_plan(&self.runner, plan, sink, op_id, cancel).await
             }
+            // Only Homebrew builds one (U9); here it is a bug's, refused
+            // before anything starts.
+            PlanAction::CommandThen { .. } => Err(AdapterError::Refused(
+                "a tool with its own installer was handed a plan of two commands".to_string(),
+            )),
             PlanAction::TrashPaths { paths, previewed } => {
                 // A recipe with no uninstall, or with a `Command` one, has
                 // no list to move: `plan` built no `TrashPaths` plan for
@@ -1293,7 +1298,7 @@ impl StandaloneAdapter {
             Some(Uninstall::Paths { remove, keep }) if !launcher_there => {
                 let moved: &[PathBuf] = match &plan.action {
                     PlanAction::TrashPaths { paths, .. } => paths,
-                    PlanAction::Command { .. } => &[],
+                    PlanAction::Command { .. } | PlanAction::CommandThen { .. } => &[],
                 };
                 let job = removal::Job {
                     recipe: self.recipe,

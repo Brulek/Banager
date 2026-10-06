@@ -567,6 +567,8 @@ const EVERY_VARIANT: Warning[] = [
   "HomebrewMayAutoUpdate",
   { HomebrewNoCleanupFormulae: { names: ["node"], old_versions: true, autoremove: true } },
   { HomebrewForgetsTrust: { name: "someone/tap/thing" } },
+  { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } },
+  { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } },
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
@@ -681,7 +683,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(26);
+    expect(notes).toHaveLength(28);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -1151,5 +1153,40 @@ describe("warningLines", () => {
         'warnings.uninstallScope.HomebrewFormulaOnly({"name":"node@22"})',
       ]);
     }
+  });
+});
+
+describe("U9: the versions a Homebrew update or uninstall deletes", () => {
+  const zh = i18n.getFixedT("zh-CN");
+  const enT = i18n.getFixedT("en");
+  const zhHant = i18n.getFixedT("zh-Hant");
+
+  it("says an update deletes the old versions afterwards, each named, with how behind the ⓘ", () => {
+    const one: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } };
+    const two: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.24.0", "1.25.0"] } };
+    expect(warningText(zh, one)).toBe("更新后会删除旧版本1.25.0。");
+    expect(warningText(zh, two)).toBe("更新后会删除旧版本1.24.0、1.25.0。");
+    expect(warningText(zhHant, two)).toBe("更新後會刪除舊版本1.24.0、1.25.0。");
+    expect(warningText(enT, one)).toBe("After updating, removes the old version 1.25.0.");
+    expect(warningText(enT, two)).toBe("After updating, removes the old versions 1.24.0, 1.25.0.");
+    expect(warningLine(zh, two)?.detail).toBe(
+      "更新完成后会运行brew cleanup，删除这些旧版本和过期的下载文件，和Homebrew平时更新后做的一样。其他软件的旧版本不删除。",
+    );
+    // How the update goes, as Homebrew does it by default: not a caution,
+    // and nothing the uninstall button speaks of.
+    expect(warningGroup(two)).toBe("note");
+    expect(isCaution(two)).toBe(false);
+    expect(deletesForGood(two)).toBe(false);
+  });
+
+  it("says an uninstall deletes every installed version, each named", () => {
+    const every: Warning = { HomebrewRemovesEveryVersion: { versions: ["1.25.0", "1.26.0"] } };
+    expect(warningText(zh, every)).toBe("已安装的所有版本都会删除：1.25.0、1.26.0。");
+    expect(warningText(zhHant, every)).toBe("已安裝的所有版本都會刪除：1.25.0、1.26.0。");
+    expect(warningText(enT, every)).toBe("Removes every installed version: 1.25.0, 1.26.0.");
+    expect(warningDetailKey(every)).toBeNull();
+    expect(warningGroup(every)).toBe("note");
+    expect(isCaution(every)).toBe(false);
+    expect(deletesForGood(every)).toBe(false);
   });
 });

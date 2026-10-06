@@ -207,6 +207,37 @@ describe("LogDrawer", () => {
     }
   });
 
+  it("says where an update's brew cleanup starts, and how it ended when it did not finish (U9)", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+
+      act(() => {
+        useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading wget" });
+        useUiStore.getState().appendLog({ opId: 1, note: { CleaningUpOldVersions: { name: "wget" } } });
+        useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "Error: Permission denied" });
+        useUiStore
+          .getState()
+          .appendLog({ opId: 1, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: 1 } } });
+        useUiStore
+          .getState()
+          .appendLog({ opId: 1, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: null } } });
+      });
+
+      await findByText("Error: Permission denied");
+      const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
+      expect(lines).toEqual([
+        "==> Upgrading wget",
+        "更新已完成，接着运行brew cleanup删除wget的旧版本。",
+        "Error: Permission denied",
+        "brew cleanup没有完成。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
+        "brew cleanup已停止。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says which stream a failed read cut short", async () => {
     const { findByText } = renderWithProviders(<LogDrawer />);
 

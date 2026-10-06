@@ -233,6 +233,34 @@ describe("startShown, for Update all of more tools than the backend holds", () =
   });
 });
 
+describe("startShown, for an update a brew cleanup follows (U9)", () => {
+  it("works it out again like any upgrade's command, and starts it only when both commands are the ones shown", async () => {
+    const cleanup = (req: OpRequest, then: string[]): Plan =>
+      brewPlan(req, {
+        action: {
+          CommandThen: {
+            program: "/opt/homebrew/bin/brew",
+            args: ["upgrade", "--formula", req.name],
+            env: [["HOMEBREW_NO_AUTO_UPDATE", "1"]],
+            then,
+          },
+        },
+        warnings: [{ HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } }],
+      });
+    const same = heldBackend((req) => cleanup(req, ["cleanup", req.name]));
+    const shown = await same.through.plan(request("wget"));
+    await same.through.submit(shown.id);
+    // Let go: planned again, and the same two commands start.
+    await expect(startShown(shown, shown.plan.request, "planAgain", same.through)).resolves.toBe(2);
+    expect(same.planned).toHaveLength(2);
+    // Planned again with another follow-up: not the plan shown, not started.
+    const other = heldBackend((req, nth) => cleanup(req, nth === 1 ? ["cleanup", req.name] : ["cleanup", "--prune=all"]));
+    const first = await other.through.plan(request("wget"));
+    await other.through.submit(first.id);
+    await expect(startShown(first, first.plan.request, "planAgain", other.through)).rejects.toThrow(CHANGED_SINCE_SHOWN);
+  });
+});
+
 describe("letGoPolicy", () => {
   it("says a refusal as it came in a batch of no more than the backend holds", () => {
     expect(letGoPolicy(PLANS_HELD, 0, 0)).toBe("asSent");

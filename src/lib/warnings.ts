@@ -296,6 +296,9 @@ export function warningKey(warning: Warning): string | null {
   }
   if ("ShellConfigUnread" in warning) return "unreadInProtectedPlace.shellConfigUnread";
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrust";
+  // U9: plural on `{{count}}`, the versions it names.
+  if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUp";
+  if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
   if ("HomebrewNoCleanupFormulae" in warning) {
     const { old_versions: oldVersions, autoremove } = warning.HomebrewNoCleanupFormulae;
     return NO_CLEANUP_FORMULAE_KEYS[oldVersions ? (autoremove ? "both" : "oldVersions") : "autoremove"];
@@ -347,6 +350,14 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
   if ("ShellConfigUnread" in warning) return { path: warning.ShellConfigUnread.path };
   if ("HomebrewForgetsTrust" in warning) return { name: warning.HomebrewForgetsTrust.name };
+  if ("HomebrewCleansUpOldVersions" in warning) {
+    const versions = warning.HomebrewCleansUpOldVersions.versions;
+    return { count: versions.length, versions: versions.join(separator) };
+  }
+  if ("HomebrewRemovesEveryVersion" in warning) {
+    const versions = warning.HomebrewRemovesEveryVersion.versions;
+    return { count: versions.length, versions: versions.join(separator) };
+  }
   if ("HomebrewNoCleanupFormulae" in warning) {
     const names = warning.HomebrewNoCleanupFormulae.names;
     return { count: names.length, names: names.join(separator) };
@@ -475,6 +486,8 @@ export function warningDetailKey(warning: Warning): string | null {
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
   if ("HomebrewForgetsTrust" in warning) return "uninstall.forgetsTrustDetail";
+  // How: the command, and that it is what Homebrew does by default.
+  if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUpDetail";
   if ("LeavesShellConfigLine" in warning) {
     return warning.LeavesShellConfigLine.certain
       ? "warnings.leavesShellConfigLineDetail"
@@ -490,6 +503,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
+    "HomebrewRemovesEveryVersion" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -538,6 +552,8 @@ export function warningGroup(warning: Warning): WarningGroup {
     "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
+    "HomebrewCleansUpOldVersions" in warning ||
+    "HomebrewRemovesEveryVersion" in warning ||
     "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
@@ -612,6 +628,10 @@ export function deletesForGood(warning: Warning): boolean {
     "ShellConfigUnread" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
+    // `brew uninstall` and `brew cleanup` delete what they always delete:
+    // the old versions are said by name, as how it goes (U9).
+    "HomebrewCleansUpOldVersions" in warning ||
+    "HomebrewRemovesEveryVersion" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning ||
     "Message" in warning
@@ -749,6 +769,9 @@ export function isCaution(warning: Warning): boolean {
     "AlreadyGone" in warning ||
     "HomebrewNoCleanupFormulae" in warning ||
     "HomebrewForgetsTrust" in warning ||
+    // What Homebrew does by default, each version named (U9).
+    "HomebrewCleansUpOldVersions" in warning ||
+    "HomebrewRemovesEveryVersion" in warning ||
     "UninstallScope" in warning ||
     "KeepsData" in warning
   ) {

@@ -546,6 +546,15 @@
     "homebrewMayAutoUpdate": "Before it starts, Homebrew may first update itself and check online for new versions.",
     "homebrewMayAutoUpdateDetail": "Homebrew is run with HOMEBREW_NO_AUTO_UPDATE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known."
   },
+  "brewVersions": {
+    "cleansUp_one": "After updating, removes the old version {{versions}}.",
+    "cleansUp_other": "After updating, removes the old versions {{versions}}.",
+    "cleansUpDetail": "Once the update is done, brew cleanup runs to delete these old versions and outdated downloads, as Homebrew does after an update by default. Old versions of other software are kept.",
+    "removesEvery": "Removes every installed version: {{versions}}.",
+    "logCleaningUp": "The update is done. Now running brew cleanup to delete the old versions of {{name}}.",
+    "logNotCleanedUp": "brew cleanup didn't finish. The update itself is done; the old versions it didn't delete are still listed under Other versions.",
+    "logCleanupStopped": "brew cleanup was stopped. The update itself is done; the old versions it didn't delete are still listed under Other versions."
+  },
   "modelDownload": {
     "note": "Downloads the model files that changed, up to about\u00a0{{size}}."
   },

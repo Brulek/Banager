@@ -27,8 +27,9 @@
  * refused as expired, as one still held is (`LetGo`), never given a longer
  * life than it would have had.
  *
- * Upgrade plans only, each a `Command` (`isUpgradeCommand`): every field
- * of one is on the wire, so `samePlan` sees all of it. A path-list
+ * Upgrade plans only, each a `Command` or a `CommandThen`
+ * (`isUpgradeCommand`): every field of one is on the wire, so `samePlan`
+ * sees all of it. A path-list
  * uninstall's plan also carries what its preview found on disk, which
  * never leaves the backend (`PlanAction::TrashPaths`' `previewed` in
  * crates/banager-core/src/model.rs); worked out again, it would be checked
@@ -109,9 +110,14 @@ export function letGoPolicy(planned: number, askedAt: number, now: number): LetG
   return now - askedAt <= PLAN_LIFETIME_MS ? "planAgain" : "expired";
 }
 
-/** Whether `plan` is an upgrade that runs a command: the only kind `startShown` works out again. */
+/**
+ * Whether `plan` is an upgrade that runs a command -- or two: a Homebrew
+ * update the `brew cleanup` of its old versions follows (`CommandThen`,
+ * U9), every field of which is on the wire too. The only kind `startShown`
+ * works out again.
+ */
 export function isUpgradeCommand(plan: Plan): boolean {
-  return plan.request.kind === "Upgrade" && "Command" in plan.action;
+  return plan.request.kind === "Upgrade" && ("Command" in plan.action || "CommandThen" in plan.action);
 }
 
 /** What `startShown` asks the backend through: `plan_operation` and `submit_operation`. */

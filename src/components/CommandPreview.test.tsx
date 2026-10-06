@@ -188,6 +188,37 @@ describe("CommandPreview", () => {
     );
   });
 
+  it("shows both commands of an update that a brew cleanup follows, each as Terminal would take it (U9)", async () => {
+    settings.show_technical_details = true;
+    renderWithProviders(
+      <CommandPreview
+        plans={[
+          {
+            id: "1",
+            action: {
+              CommandThen: {
+                program: "/opt/homebrew/bin/brew",
+                args: ["upgrade", "--formula", "wget"],
+                env: [["HOMEBREW_NO_AUTOREMOVE", "1"]],
+                then: ["cleanup", "wget"],
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    const upgrade = await screen.findByText("HOMEBREW_NO_AUTOREMOVE=1 /opt/homebrew/bin/brew upgrade --formula wget");
+    const cleanup = screen.getByText("HOMEBREW_NO_AUTOREMOVE=1 /opt/homebrew/bin/brew cleanup wget");
+    expect(upgrade.tagName).toBe("CODE");
+    expect(cleanup.tagName).toBe("CODE");
+    expect(cleanup).toHaveClass("select-text");
+    // In the order they run, behind the one press, which counts both.
+    expect(upgrade.compareDocumentPosition(cleanup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Show Commands" })).toBeInTheDocument();
+  });
+
   it("says only what is sure of a path-list uninstall, in the open, with no command to show", () => {
     // A `TrashPaths` plan runs no command: Banager moves the items itself.
     // T4 of the copy table: they go to the Trash and can be dragged back
