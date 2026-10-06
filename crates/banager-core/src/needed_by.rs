@@ -53,13 +53,21 @@
 //! contents are read, nothing is written and no command runs.
 //! Bounded (`BUDGET`): a look it stopped short of is reported as one that
 //! did not finish (`NeededBy::complete`), never as "nothing runs on it".
-//! So is one that met a path it may not or cannot follow: a source's
-//! launcher, an environment's Python, or an earlier PATH entry. A link
-//! can change both the program's name and its location inside a keg, so
-//! the absence of a same-named file in opt/<formula>/bin cannot rule out
-//! a dependency. This may warn for unrelated packages too; it never
-//! invents a NeededBySource relationship. A known missing path does not
-//! introduce this uncertainty.
+//! So is one that met a path it may not or cannot follow (`Doubt`) -- a
+//! source's program, a tool's environment or a `PATH` folder that is, or
+//! leads into, a protected place, one on the way to which a folder could
+//! not be searched, and a pipx or uv tool with no environment Banager
+//! knows of -- when the package could be what that path leads to
+//! (`Look::could_be`): what is there is not known, so neither is whether
+//! it runs on such a package. What the path would have to lead to is
+//! judged by what it is for, not only by its name, for a link can change
+//! both: pip's program is a Python whatever it is called (`~/bin/python3`
+//! may lead to python@3.13's `bin/python3.13`, which has no `python3`),
+//! npm's lives in a Node.js, a tool's environment runs a Python. A package
+//! could be it when it is named for it (`uv`, `node@22`, `python@3.13`),
+//! or has, of its own, a program of such a name. jq, or a font, can be
+//! none of these, and their previews say nothing of it. A path that is
+//! known not to be there (`Missing`) is known not to run on it.
 //! Run on the blocking pool by `Session::issue_plan`
 //! (`session/needed_by.rs`).
 
@@ -140,7 +148,8 @@ pub const BUDGET: Budget = Budget {
 /// What `needed_by` found: a `Warning::NeededBySource` for each source that
 /// runs on the package, and whether the look finished. One that did not --
 /// the budget ran out, the package's own folder could not be read, or a
-/// path that could have led into it was not followed -- is no proof that nothing
+/// path that could have led into it, were it what the package is, was
+/// not followed (`Doubt`, `Look::could_be`) -- is no proof that nothing
 /// else does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NeededBy {
@@ -191,13 +200,13 @@ pub fn needed_by(
             continue;
         }
         // What the source's program, and the interpreter it is run with,
-        // lead to: into the package, or not, or not known. Its program
-        // not followed is moot when its interpreter proves the dependency.
-        let mut uncertain = false;
+        // lead to: into the package, or not, or not known (`Doubt`). Its
+        // program not followed is moot when its interpreter leads in.
+        let mut doubts = Vec::new();
         let mut program = match look.leads_into(&source.exe_path, &roots) {
             Some(into) => into,
             None => {
-                uncertain = true;
+                doubts.extend(Doubt::of_program(&source.adapter_id, &source.exe_path));
                 false
             }
         };
@@ -207,12 +216,12 @@ pub fn needed_by(
             // doubt even when the one found after it leads into the
             // package, for then it may not be the one that runs.
             if passed_over {
-                look.uncertain = true;
+                look.doubts.push(Doubt::Program(name.to_string()));
             }
             if let Some(found) = found {
                 match look.leads_into(&found, &roots) {
                     Some(into) => program = into,
-                    None => uncertain = true,
+                    None => doubts.push(Doubt::Program(name.to_string())),
                 }
             }
         }
@@ -224,7 +233,7 @@ pub fn needed_by(
             });
             continue;
         }
-        look.uncertain |= uncertain;
+        look.doubts.extend(doubts);
         if has_environments(&source.adapter_id) {
             let on_it = tools
                 .iter()
@@ -235,7 +244,7 @@ pub fn needed_by(
                     // No environment to look at, or one not followed:
                     // whether its Python is the package's is not known.
                     if into.is_none() {
-                        look.uncertain = true;
+                        look.doubts.push(Doubt::Python);
                     }
                     into == Some(true)
                 })
@@ -249,9 +258,10 @@ pub fn needed_by(
             }
         }
     }
+    let doubted = look.could_be(package, brew, &roots);
     NeededBy {
         warnings,
-        complete: !look.over && !look.uncertain,
+        complete: !look.over && !doubted,
     }
 }
 
@@ -284,7 +294,7 @@ fn own_folders(
                 Leads::To(app) => roots.push(app),
                 Leads::Nowhere => {}
                 // Its own app, not followed: anything may lead into it.
-                Leads::Unknown => look.uncertain = true,
+                Leads::Unknown => look.doubts.push(Doubt::Anything),
             }
         }
     }
@@ -326,6 +336,67 @@ enum Leads {
     Unknown,
 }
 
+/// A path whose end is not known (`Leads::Unknown`), or a tool with no
+/// environment path, by what it would have to lead to for the source to
+/// run on the package: the look did not finish only when the package
+/// could be that (`Look::could_be`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Doubt {
+    /// A program of this name: a source's own program, by its file name,
+    /// or the interpreter it is run with (npm's `node`).
+    Program(String),
+    /// A Python: a pipx or uv tool's environment's `bin/python`, or pip's
+    /// own program, whatever it is called.
+    Python,
+    /// Anything: the package's own app could not be followed.
+    Anything,
+}
+
+impl Doubt {
+    /// The doubts about `adapter_id`'s program at `path`, not followed:
+    /// what it is for, not only what it is called, for a link may lead
+    /// to a program of another name (`~/bin/python3` to python@3.13's
+    /// `bin/python3.13`; npm's `npm` to `lib/node_modules/npm/bin/npm-cli.js`).
+    /// pip's program, or any program named as a Python is, is a Python;
+    /// npm's lives in a Node.js, with its `node`; any other is a program
+    /// of its own name. Anything, for a path with no name.
+    fn of_program(adapter_id: &str, path: &Path) -> Vec<Doubt> {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return vec![Doubt::Anything];
+        };
+        if adapter_id == "pip" || is_python(name) {
+            return vec![Doubt::Python];
+        }
+        let mut doubts = vec![Doubt::Program(name.to_string())];
+        if let Some(interpreter) = interpreter(adapter_id) {
+            doubts.push(Doubt::Program(interpreter.to_string()));
+        }
+        doubts
+    }
+}
+
+/// Whether `name` is a Python's, as pip's candidates are named
+/// (`PipAdapter::CANDIDATE_INTERPRETERS`): `python`, `python3`,
+/// `python3.N`.
+fn is_python(name: &str) -> bool {
+    name == "python"
+        || name.strip_prefix("python3").is_some_and(|rest| {
+            rest.is_empty()
+                || rest.strip_prefix('.').is_some_and(|minor| {
+                    !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
+                })
+        })
+}
+
+/// Whether a package of short name `short` is named for the program
+/// `name`: Homebrew's `uv` for `uv`, `node@22` for `node` -- a formula
+/// named for a program is that program, wherever in its keg it keeps it.
+fn named_for(short: &str, name: &str) -> bool {
+    short
+        .strip_prefix(name)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+}
+
 /// Where each path leads, and what has been spent on finding out.
 struct Look {
     protected: Protected,
@@ -333,9 +404,10 @@ struct Look {
     looks: usize,
     budget: Budget,
     over: bool,
-    /// At least one relevant path could not be followed. Missing paths
-    /// are known to lead nowhere and do not set this flag.
-    uncertain: bool,
+    /// The paths met whose end is not known, by what each would have to
+    /// lead to (`Doubt`). A path that is not there is known to lead
+    /// nowhere, and is not one of these.
+    doubts: Vec<Doubt>,
 }
 
 impl Look {
@@ -346,7 +418,7 @@ impl Look {
             looks: 0,
             budget,
             over: false,
-            uncertain: false,
+            doubts: Vec::new(),
         }
     }
 
@@ -388,6 +460,64 @@ impl Look {
             Leads::Nowhere => Some(false),
             Leads::Unknown => None,
         }
+    }
+
+    /// Whether `package` could be what one of the doubts met leads to
+    /// (`Doubt`), so that the look did not finish: whether it is named for
+    /// what a doubt would have to end at (`named_for`: `uv`, `node@22`,
+    /// a `python@3.N` for a Python), or has, of its own, a program of that
+    /// name -- a formula in `<prefix>/opt/<name>/bin` (where `opt/<name>`
+    /// leads into its keg, linked or keg-only), a cask in `<prefix>/bin`
+    /// (where its `binary` links go) -- leading into its own folders
+    /// (`roots`). A Python is `python3`, or `python3.N` for
+    /// `python@3.N`, whose keg has no `python3` unless it is Homebrew's
+    /// default Python. One look a name, and none without a doubt or for a
+    /// package named for one; one that is not known itself counts as a
+    /// yes.
+    fn could_be(
+        &mut self,
+        package: &InstalledArtifact,
+        brew: &ManagerInstance,
+        roots: &[PathBuf],
+    ) -> bool {
+        let doubts = std::mem::take(&mut self.doubts);
+        if doubts.is_empty() {
+            return false;
+        }
+        let Some(short) = short_name(&package.key.name) else {
+            return true;
+        };
+        let mut names: Vec<String> = Vec::new();
+        let mut named = false;
+        for doubt in doubts {
+            match doubt {
+                Doubt::Anything => return true,
+                Doubt::Program(name) => {
+                    named |= named_for(short, &name);
+                    names.push(name);
+                }
+                Doubt::Python => {
+                    named |= named_for(short, "python");
+                    names.push("python3".to_string());
+                    if let Some(version) = short.strip_prefix("python@") {
+                        names.push(format!("python{version}"));
+                    }
+                }
+            }
+        }
+        if named {
+            return true;
+        }
+        let bin = match package.key.kind {
+            ArtifactKind::Formula => brew.prefix.join("opt").join(short).join("bin"),
+            _ => brew.prefix.join("bin"),
+        };
+        names.sort();
+        names.dedup();
+        names
+            .iter()
+            .filter(|name| short_name(name) == Some(name.as_str()))
+            .any(|name| self.leads_into(&bin.join(name), roots) != Some(false))
     }
 
     /// The first `name` on `env`'s `PATH`, as `env` would find it: what
@@ -1254,8 +1384,9 @@ mod tests {
     }
 
     /// `jq`, a formula nothing else runs on, laid out as Homebrew lays it
-    /// out (its keg, its `opt` link, linked into `bin`), and a font cask.
-    /// An unresolved launcher cannot exclude these by basename alone.
+    /// out (its keg, its `opt` link, linked into `bin`), and a font cask,
+    /// which has no app: packages no doubt about a `node`, a Python or a
+    /// source's own program can be about.
     fn bystanders(root: &Root) -> [InstalledArtifact; 2] {
         root.program("opt/homebrew/Cellar/jq/1.8.1/bin/jq");
         root.link("opt/homebrew/opt/jq", "../Cellar/jq/1.8.1");
@@ -1290,8 +1421,8 @@ mod tests {
         // never sees -- one whose `bin` cannot be searched, and one with
         // no environment Banager knows of. Neither "needs it" nor
         // "nothing needs it" is known of a Python: its look did not finish
-        // (`Warning::DependentsUnknown` in the preview). A launcher name
-        // alone cannot establish that jq or a font is unrelated either.
+        // (`Warning::DependentsUnknown` in the preview). Of jq or a font,
+        // which no environment's `bin/python` can be, it is.
         let root = Root::new("unknown-env");
         root.python_313();
         let others = bystanders(&root);
@@ -1340,11 +1471,11 @@ mod tests {
         assert_eq!(look(&python, std::slice::from_ref(&gone)), finished());
         // In `~/Documents`, not looked into; or with no environment path
         // at all: python@3.13's look is not finished -- its keg has
-        // `python3.13`, not `python3`. Other packages stay uncertain too.
+        // `python3.13`, not `python3` -- and jq's and the font's are.
         for tools in [vec![gone.clone(), in_documents.clone()], vec![no_app]] {
             assert_eq!(look(&python, &tools), unfinished(), "{tools:?}");
             for other in &others {
-                assert_eq!(look(other, &tools), unfinished(), "{other:?} {tools:?}");
+                assert_eq!(look(other, &tools), finished(), "{other:?} {tools:?}");
             }
         }
         // One that needs it is still named beside one that may.
@@ -1360,7 +1491,8 @@ mod tests {
             vec![("pipx".to_string(), false, 1)]
         );
         assert!(!found.complete);
-        // A `bin` this account may not search: no destination is known.
+        // A `bin` this account may not search: not finished either, of a
+        // Python alone.
         let bin = root.path("home/.local/pipx/venvs/poetry/bin");
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o000)).unwrap();
         let poetry = [tool("poetry", Some("home/.local/pipx/venvs/poetry"))];
@@ -1368,7 +1500,7 @@ mod tests {
         let jq = look(&others[0], &poetry);
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(unreadable, unfinished());
-        assert_eq!(jq, unfinished());
+        assert_eq!(jq, finished());
         // Homebrew's default Python has `python3` too, and is a Python by
         // it whatever its name.
         root.program("opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3");
@@ -1388,8 +1520,9 @@ mod tests {
         // npm's `npm` is a copy outside the `node` keg; the `node` it is run
         // with is the first on `PATH`. A `PATH` folder in `~/Documents`
         // comes first: whether a `node` there would be the one is not
-        // known, so the look does not finish. Homebrew's, found after it,
-        // is still named; other packages cannot be excluded by basename.
+        // known, so the look of a Node.js does not finish -- and
+        // Homebrew's, found after it, is still named. Of jq or a font,
+        // which no `node` can be, it does.
         let npm = instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix());
         let instances = vec![brew(&root), npm];
         let protected_first = root.env(&["home/Documents/bin", "opt/homebrew/bin"]);
@@ -1403,7 +1536,7 @@ mod tests {
         // one in `~/Documents` leads into it is not known either.
         assert_eq!(look(&formula("node@22"), &protected_first), unfinished());
         for other in &others {
-            assert_eq!(look(other, &protected_first), unfinished(), "{other:?}");
+            assert_eq!(look(other, &protected_first), finished(), "{other:?}");
         }
         // A `PATH` folder that is not there is known to hold no `node`.
         let missing = look(
@@ -1415,11 +1548,11 @@ mod tests {
     }
 
     #[test]
-    fn test_a_source_program_in_a_protected_place_cannot_rule_out_other_packages() {
+    fn test_a_source_program_in_a_protected_place_leaves_only_its_own_packages_look_unfinished() {
         // uv's program leads into `~/Documents`: whether it is Homebrew's
         // `uv` is not known. Its one tool's environment is known to hold
-        // no Python, so only the program is in doubt. Its destination
-        // might have a different name or live outside the keg's bin.
+        // no Python, so only the program is in doubt -- which only a
+        // package that could be a `uv` can settle.
         let root = Root::new("unknown-program");
         root.python_313();
         let others = bystanders(&root);
@@ -1445,9 +1578,9 @@ mod tests {
             needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
         };
         assert_eq!(look(&formula("uv")), unfinished());
-        assert_eq!(look(&formula("python@3.13")), unfinished());
+        assert_eq!(look(&formula("python@3.13")), finished());
         for other in &others {
-            assert_eq!(look(other), unfinished(), "{other:?}");
+            assert_eq!(look(other), finished(), "{other:?}");
         }
     }
 
