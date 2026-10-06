@@ -552,12 +552,13 @@ pub static RUSTUP: Recipe = Recipe {
 /// Codex (`codex`), OpenAI's terminal agent, installed by its own script
 /// (`curl -fsSL https://chatgpt.com/codex/install.sh | sh`, which redirects
 /// to `releases.openai.com/codex/install.sh`; run by the user, never by
-/// Banager). Listed only: Banager reads what is on the disk and runs
-/// nothing for it -- no version command, no update check, no update, no
-/// uninstall.
+/// Banager). Banager reads what is on the disk and runs nothing for it --
+/// no version command, no update check, no update; its uninstall moves the
+/// script's files to the Trash (below).
 ///
 /// Every value here is from that script, fetched as text on 2026-10-01 and
-/// read, never executed (research S §3f; `adapters/fixtures/
+/// read, never executed -- fetched and read again on 2026-10-06, the same
+/// 34,564 bytes, SHA-256 `150e3cf6…8bf6` (research S §3f; `adapters/fixtures/
 /// standalone-codex/install-script-2026-10-01/README.md` names the lines):
 /// - `BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"`: the launcher is
 ///   `~/.local/bin/codex`, a symbolic link whose text is absolute,
@@ -605,9 +606,24 @@ pub static RUSTUP: Recipe = Recipe {
 ///   not on Banager's list, so nothing is asked (`Latest::Unchecked`) and
 ///   there is no `upgrade`: Banager must not re-run the script's `curl |
 ///   sh`;
-/// - no uninstall (`NoSafeMethod`): a move-to-Trash list (the two links and
-///   `~/.codex/packages/standalone`, keeping the rest of `~/.codex`) is a
-///   new path list, the author's decision D5 (synthesis §三).
+/// - there is no `codex uninstall` and the script documents no removal, so
+///   the uninstall is a path list moved to the Trash, as for Claude Code
+///   and Grok Build -- the author's decision U8 (b), 2026-10-06 (D5,
+///   synthesis §三). It is the script's own layout, read from the lines
+///   above: first the helper link `~/.local/bin/codex-code-mode-host`
+///   (optional: the script makes it only on macOS and only for a release
+///   that has the helper, `update_visible_command`), moved only when it
+///   leads into the package folder (`Expect::SymlinkToProgram`, through
+///   `current`), while that folder is still there; then the package folder
+///   `~/.codex/packages/standalone` -- every release, `current`, the
+///   `auto-update-version` marker; then the launcher, last (spec §6.2).
+///   `~/.local/bin` itself is shared and never moved. Kept, and said when
+///   present: the rest of `~/.codex` -- `config.toml`, `auth.json`,
+///   `sessions/`, history -- and `~/.zprofile`, where the script appends
+///   its marked PATH block (`# >>> Codex installer >>>`, `add_to_path`) for
+///   zsh on macOS when `~/.local/bin` is not on PATH (`pick_profile`;
+///   `~/.bash_profile` for bash, not listed: zsh is macOS's default shell,
+///   as for grok's `~/.zshrc`). Banager edits no shell file.
 pub static CODEX: Recipe = Recipe {
     id: "codex",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-codex.toml"),
@@ -625,7 +641,41 @@ pub static CODEX: Recipe = Recipe {
     latest: Latest::Unchecked,
     self_updates: true,
     upgrade: None,
-    uninstall: None,
+    uninstall: Some(Uninstall::Paths {
+        remove: &[
+            RemoveSpec {
+                path: "~/.local/bin/codex-code-mode-host",
+                expect: Expect::SymlinkToProgram {
+                    program: "~/.codex/packages/standalone",
+                    via: &[],
+                },
+                what: RemovedWhat::Program,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.codex/packages/standalone",
+                expect: Expect::Dir,
+                what: RemovedWhat::Program,
+                optional: false,
+            },
+            RemoveSpec {
+                path: "~/.local/bin/codex",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: false,
+            },
+        ],
+        keep: &[
+            KeepSpec {
+                path: "~/.codex",
+                what: KeptWhat::SettingsAndHistory,
+            },
+            KeepSpec {
+                path: "~/.zprofile",
+                what: KeptWhat::ShellConfigLines,
+            },
+        ],
+    }),
     extra_locks: no_extra_locks,
     backup_globs: &[],
     other_commands: &[],
@@ -1571,11 +1621,10 @@ mod tests {
             &["-aarch64-apple-darwin", "-x86_64-apple-darwin"]
         );
         assert_eq!(link.follows_latest, "auto-update-version");
-        // Listed only: nothing asked, nothing run, nothing moved (D5).
+        // Nothing asked and nothing run: no update check, no update.
         assert_eq!(CODEX.latest, Latest::Unchecked);
         assert!(CODEX.self_updates);
         assert!(CODEX.upgrade.is_none());
-        assert!(CODEX.uninstall.is_none());
         assert!(CODEX.backup_globs.is_empty());
         assert!(CODEX.other_commands.is_empty());
         assert!(
@@ -1584,6 +1633,59 @@ mod tests {
                 Path::new("/Users/someone/.cargo"),
             ))
             .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_codex_uninstall_moves_its_two_links_and_its_package_folder_and_keeps_the_rest_of_codex(
+    ) {
+        // The author's decision U8 (b), 2026-10-06: the two links the
+        // install script makes in `~/.local/bin` and the package folder
+        // they lead into go to the Trash; everything else in `~/.codex` --
+        // settings, login, sessions -- stays, and so does the shell file
+        // the script may have added its marked PATH block to. The helper
+        // first, while the program it leads to is still there; the
+        // launcher last (spec §6.2).
+        let Some(Uninstall::Paths { remove, keep }) = &CODEX.uninstall else {
+            panic!("Codex's own install has a path list");
+        };
+        let remove: Vec<(&str, Expect, RemovedWhat, bool)> = remove
+            .iter()
+            .map(|spec| (spec.path, spec.expect, spec.what, spec.optional))
+            .collect();
+        assert_eq!(
+            remove,
+            vec![
+                (
+                    "~/.local/bin/codex-code-mode-host",
+                    Expect::SymlinkToProgram {
+                        program: "~/.codex/packages/standalone",
+                        via: &[],
+                    },
+                    RemovedWhat::Program,
+                    true
+                ),
+                (
+                    "~/.codex/packages/standalone",
+                    Expect::Dir,
+                    RemovedWhat::Program,
+                    false
+                ),
+                (
+                    "~/.local/bin/codex",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    false
+                ),
+            ]
+        );
+        let keep: Vec<(&str, KeptWhat)> = keep.iter().map(|spec| (spec.path, spec.what)).collect();
+        assert_eq!(
+            keep,
+            vec![
+                ("~/.codex", KeptWhat::SettingsAndHistory),
+                ("~/.zprofile", KeptWhat::ShellConfigLines),
+            ]
         );
     }
 }

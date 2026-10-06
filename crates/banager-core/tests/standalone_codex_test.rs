@@ -1,11 +1,13 @@
-//! Codex installed by its own script, listed only (`recipes::CODEX`): the
-//! version comes from the `current` link's release folder, nothing is ever
-//! run or asked, there is no update and no uninstall, and the Other
-//! Programs page stops calling its launcher a stranger. Every layout is
-//! synthetic, built in a temp home the way the install script writes it
-//! (read as text, `adapters/fixtures/standalone-codex/…/README.md`); the
-//! runner and the HTTP client are mocks that record every call, and every
-//! test checks there was none.
+//! Codex installed by its own script (`recipes::CODEX`): the version comes
+//! from the `current` link's release folder, nothing is ever run or asked,
+//! there is no update, the uninstall moves the script's two links and its
+//! package folder to the Trash and keeps the rest of `~/.codex` (the
+//! author's decision U8), and the Other Programs page stops calling its
+//! launcher a stranger. Every layout is synthetic, built in a temp home the
+//! way the install script writes it (read as text,
+//! `adapters/fixtures/standalone-codex/…/README.md`); the runner and the
+//! HTTP client are mocks that record every call, and every test checks
+//! there was none; the Trash is `MockTrasher`'s folder.
 
 use banager_core::adapters::standalone::recipes::CODEX;
 use banager_core::adapters::standalone::StandaloneAdapter;
@@ -13,7 +15,8 @@ use banager_core::adapters::{Adapter, AdapterError, CheckOptions};
 use banager_core::events::VecSink;
 use banager_core::http::MockHttpClient;
 use banager_core::model::{
-    ArtifactKind, InstanceNote, OpKind, OpRequest, UninstallBlocked, UpdateBlocked,
+    ArtifactKind, InstanceNote, KeptWhat, OpKind, OpRequest, OpStatus, Outcome, PlanAction,
+    RemovedWhat, UpdateBlocked, Warning,
 };
 use banager_core::runner::{HostEnv, MockRunner};
 use banager_core::session::Session;
@@ -21,6 +24,7 @@ use banager_core::trash::MockTrasher;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// A fresh, canonical home for one test, removed when it ends.
 struct Home(PathBuf);
@@ -112,6 +116,7 @@ fn install(home: &Home, release: &str, follows_latest: bool) -> PathBuf {
 struct Mocks {
     runner: Arc<MockRunner>,
     http: Arc<MockHttpClient>,
+    trasher: Arc<MockTrasher>,
 }
 
 impl Mocks {
@@ -119,16 +124,19 @@ impl Mocks {
         Mocks {
             runner: Arc::new(MockRunner::new()),
             http: Arc::new(MockHttpClient::new()),
+            trasher: Arc::new(MockTrasher::new()),
         }
     }
 
+    /// With no pause after each move to the Trash.
     fn adapter(&self) -> StandaloneAdapter {
         StandaloneAdapter::new(
             &CODEX,
             self.runner.clone(),
             self.http.clone(),
-            Arc::new(MockTrasher::new()),
+            self.trasher.clone(),
         )
+        .with_trash_gap(Duration::ZERO)
     }
 
     /// Nothing was run and nothing was asked.
@@ -183,7 +191,8 @@ async fn test_codex_is_listed_with_the_current_links_version_and_nothing_runs() 
     );
     // The marker names the release in use: it updates itself.
     assert!(row.auto_updates);
-    assert_eq!(row.uninstall_blocked, Some(UninstallBlocked::NoSafeMethod));
+    // Its uninstall is a path list: the row offers Uninstall.
+    assert_eq!(row.uninstall_blocked, None);
 
     // No update check: no candidate and no "could not check" row.
     let outcome = adapter
@@ -255,7 +264,7 @@ async fn test_a_pinned_install_is_not_said_to_update_itself() {
 }
 
 #[tokio::test]
-async fn test_no_update_and_no_uninstall_is_planned() {
+async fn test_no_update_and_no_install_is_planned() {
     let home = Home::new("plans");
     install(&home, RELEASE, true);
     let mocks = Mocks::new();
@@ -268,15 +277,200 @@ async fn test_no_update_and_no_uninstall_is_planned() {
         })
     ));
     assert!(matches!(
-        adapter.plan(&inst, &request(OpKind::Uninstall)).await,
-        Err(AdapterError::UninstallBlocked {
-            reason: UninstallBlocked::NoSafeMethod
-        })
-    ));
-    assert!(matches!(
         adapter.plan(&inst, &request(OpKind::Install)).await,
         Err(AdapterError::Unsupported(_))
     ));
+    mocks.assert_untouched();
+}
+
+/// The three paths the uninstall moves, in order: the helper link, the
+/// package folder, the launcher last.
+fn moved(home: &Home) -> Vec<PathBuf> {
+    vec![
+        home.at(".local/bin/codex-code-mode-host"),
+        home.at(".codex/packages/standalone"),
+        home.at(".local/bin/codex"),
+    ]
+}
+
+#[tokio::test]
+async fn test_the_uninstall_preview_lists_exactly_what_moves_and_names_codex_as_what_stays() {
+    let home = Home::new("preview");
+    install(&home, RELEASE, true);
+    std::fs::write(home.at(".zprofile"), "export PATH=\"$HOME/.local/bin:$PATH\"\n").unwrap();
+    let mocks = Mocks::new();
+    let adapter = mocks.adapter();
+    let inst = adapter.detect(&home.env(Vec::new())).await.remove(0);
+
+    let plan = adapter
+        .plan(&inst, &request(OpKind::Uninstall))
+        .await
+        .expect("a path list, not a refusal");
+    let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+        panic!("a path list, not a command: {:?}", plan.action);
+    };
+    assert_eq!(paths, &moved(&home));
+    assert_eq!(previewed.len(), 3);
+    assert!(!plan.needs_password);
+    assert!(plan.affected.is_empty());
+    assert_eq!(
+        plan.warnings,
+        vec![
+            Warning::WillTrash {
+                path: "~/.local/bin/codex-code-mode-host".to_string(),
+                what: RemovedWhat::Program
+            },
+            Warning::WillTrash {
+                path: "~/.codex/packages/standalone".to_string(),
+                what: RemovedWhat::Program
+            },
+            Warning::WillTrash {
+                path: "~/.local/bin/codex".to_string(),
+                what: RemovedWhat::Launcher
+            },
+            Warning::WillKeep {
+                path: "~/.codex".to_string(),
+                what: KeptWhat::SettingsAndHistory
+            },
+            Warning::WillKeep {
+                path: "~/.zprofile".to_string(),
+                what: KeptWhat::ShellConfigLines
+            },
+        ]
+    );
+    // A preview moves nothing.
+    assert!(mocks.trasher.calls().is_empty());
+    mocks.assert_untouched();
+}
+
+#[tokio::test]
+async fn test_without_the_helper_the_preview_lists_the_package_folder_and_the_launcher() {
+    // An older release, or one without the helper: the script makes no
+    // `codex-code-mode-host` link, and nothing is said of one.
+    let home = Home::new("no-helper");
+    install(&home, RELEASE, false);
+    std::fs::remove_file(home.at(".local/bin/codex-code-mode-host")).unwrap();
+    let mocks = Mocks::new();
+    let adapter = mocks.adapter();
+    let inst = adapter.detect(&home.env(Vec::new())).await.remove(0);
+    let plan = adapter
+        .plan(&inst, &request(OpKind::Uninstall))
+        .await
+        .expect("plan");
+    let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+        panic!("a path list: {:?}", plan.action);
+    };
+    assert_eq!(paths, &moved(&home)[1..]);
+    assert!(!plan
+        .warnings
+        .iter()
+        .any(|w| format!("{w:?}").contains("codex-code-mode-host")));
+    mocks.assert_untouched();
+}
+
+#[tokio::test]
+async fn test_a_helper_of_that_name_that_is_not_codexs_is_kept_and_said() {
+    // A file of the user's own at the helper's path, or a link elsewhere:
+    // not the script's, so it stays where it is and the preview says so.
+    for theirs in ["file", "link"] {
+        let home = Home::new("not-ours");
+        install(&home, RELEASE, true);
+        let helper = home.at(".local/bin/codex-code-mode-host");
+        std::fs::remove_file(&helper).unwrap();
+        if theirs == "file" {
+            home.executable(".local/bin/codex-code-mode-host");
+        } else {
+            let elsewhere = home.executable("tools/codex-code-mode-host");
+            std::os::unix::fs::symlink(&elsewhere, &helper).unwrap();
+        }
+        let mocks = Mocks::new();
+        let adapter = mocks.adapter();
+        let inst = adapter.detect(&home.env(Vec::new())).await.remove(0);
+        let plan = adapter
+            .plan(&inst, &request(OpKind::Uninstall))
+            .await
+            .expect("plan");
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list: {:?}", plan.action);
+        };
+        assert_eq!(paths, &moved(&home)[1..], "{theirs}");
+        assert!(
+            plan.warnings.contains(&Warning::WillKeep {
+                path: "~/.local/bin/codex-code-mode-host".to_string(),
+                what: KeptWhat::NotOurs
+            }),
+            "{theirs}: {:?}",
+            plan.warnings
+        );
+        mocks.assert_untouched();
+    }
+}
+
+/// Waits for `op_id` to finish and returns its outcome.
+async fn outcome_of(session: &Arc<Session>, op_id: banager_core::events::OpId) -> Outcome {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(op) = session.operations().into_iter().find(|op| op.id == op_id) {
+            if op.status == OpStatus::Done {
+                return op.outcome.expect("a finished operation has an outcome");
+            }
+        }
+        assert!(Instant::now() < deadline, "the uninstall never finished");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test]
+async fn test_uninstalling_codex_moves_its_files_to_the_trash_and_keeps_settings_and_sessions() {
+    let home = Home::new("uninstall");
+    install(&home, RELEASE, true);
+    std::fs::create_dir_all(home.at(".codex/sessions/2026/10")).unwrap();
+    std::fs::write(home.at(".codex/sessions/2026/10/rollout.jsonl"), "{}\n").unwrap();
+    std::fs::write(home.at(".codex/auth.json"), "{}\n").unwrap();
+    // Claude Code's launcher shares the folder: never touched.
+    home.executable(".local/bin/claude");
+    let mocks = Mocks::new();
+    let session = Session::with_adapters(
+        Arc::new(VecSink::new()),
+        vec![Arc::new(mocks.adapter()) as Arc<dyn Adapter>],
+        None,
+    );
+    let env = home.env(Vec::new());
+    let snapshot = session.refresh(&env, &CheckOptions::default()).await;
+    let row = snapshot
+        .artifacts
+        .iter()
+        .find(|a| a.key.instance_id == "standalone-codex")
+        .expect("Codex is listed");
+    assert_eq!(row.uninstall_blocked, None, "the row offers Uninstall");
+
+    let issued = session
+        .issue_plan(&request(OpKind::Uninstall))
+        .await
+        .expect("the gate lets it through and the preview is built");
+    let op_id = session.submit(issued.id).expect("submit");
+    assert_eq!(outcome_of(&session, op_id).await, Outcome::Succeeded);
+
+    // Exactly the previewed paths, in order, and nothing else.
+    assert_eq!(mocks.trasher.calls(), moved(&home));
+    assert!(mocks
+        .trasher
+        .bin()
+        .join(format!("standalone/releases/{RELEASE}/bin/codex"))
+        .is_file());
+    // Settings, login and sessions stay, and so does the shared folder.
+    assert!(home.at(".codex/config.toml").is_file());
+    assert!(home.at(".codex/auth.json").is_file());
+    assert!(home.at(".codex/sessions/2026/10/rollout.jsonl").is_file());
+    assert!(home.at(".codex/packages").is_dir());
+    assert!(home.at(".local/bin/claude").is_file());
+    assert!(!home.at(".local/bin/codex").exists());
+    // And the next refresh has no Codex row.
+    let snapshot = session.refresh(&env, &CheckOptions::default()).await;
+    assert!(snapshot
+        .instances
+        .iter()
+        .all(|i| i.id != "standalone-codex"));
     mocks.assert_untouched();
 }
 
