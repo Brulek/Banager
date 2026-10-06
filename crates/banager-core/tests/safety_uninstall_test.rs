@@ -289,6 +289,60 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
     }
 }
 
+#[tokio::test]
+async fn test_a_homebrew_formula_with_two_versions_is_uninstalled_whole_and_only_it() {
+    // U9 (r6): with more than one version of the formula installed, the
+    // uninstall passes `--force`, Homebrew's own way to delete every one of
+    // them -- the one word of `REMOVES_MORE` it may carry, which removes
+    // more of the tool and nothing beside it: the rest of the argv is the
+    // verb, the kind flag and the name, as its row in Homebrew's write
+    // table shows it, and nothing else runs.
+    let prefix = std::env::temp_dir().join(format!(
+        "banager-safety-two-versions-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&prefix);
+    for version in ["1.24.0", "1.25.0"] {
+        std::fs::create_dir_all(prefix.join("Cellar/wget").join(version)).unwrap();
+    }
+    let runner = Arc::new(MockRunner::new());
+    let adapter = BrewAdapter::new(runner.clone());
+    let inst = instance("brew", "/opt/homebrew/bin/brew", prefix.to_str().unwrap());
+    runner.respond(
+        vec!["/opt/homebrew/bin/brew", "uses", "--installed", "wget"],
+        exited_0(),
+    );
+    let request = OpRequest {
+        kind: OpKind::Uninstall,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Formula,
+        name: "wget".to_string(),
+    };
+    let plan = adapter.plan(&inst, &request).await.expect("plan");
+    let PlanAction::Command { program, args, .. } = &plan.action else {
+        panic!("an uninstall that runs a command");
+    };
+    assert_eq!(args, &["uninstall", "--formula", "--force", "wget"]);
+    let mut argv = vec![program.to_string_lossy().into_owned()];
+    argv.extend(args.iter().cloned());
+    let doc = std::fs::read_to_string("../../docs/what-we-run.md").expect("read the document");
+    let (_, writes) = commands_in(&section(&doc, "Homebrew"), "<brew>");
+    let mut shown = vec!["<brew>".to_string()];
+    shown.extend(args.iter().cloned());
+    assert!(
+        writes.iter().any(|write| is(&shown, write)),
+        "{shown:?} is no row of Homebrew's write table: {writes:?}"
+    );
+    let planned = runner.calls().len();
+    runner.respond(argv.iter().map(String::as_str).collect(), exited_0());
+    adapter
+        .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+        .await
+        .expect("execute");
+    assert_eq!(runner.calls()[planned..].to_vec(), vec![argv]);
+    std::fs::remove_dir_all(&prefix).unwrap();
+}
+
 #[test]
 fn test_no_path_list_uninstall_moves_a_path_any_tool_keeps_or_a_folder_holding_one() {
     // `kept_data`'s table (`families`) is what the preview says stays,
