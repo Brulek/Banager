@@ -74,7 +74,7 @@ describe("RowAction", () => {
 });
 
 describe("ToolRow", () => {
-  it("shows the source's avatar, the name, and one line about it: no pill, the source in the avatar's tooltip and for a screen reader", () => {
+  it("shows the tool's avatar with its source's mark, the name, and one line about it: no pill, the source in the avatar's tooltip and for a screen reader", () => {
     const { container, getByText } = renderWithProviders(
       <ToolRow
         adapterId="brew"
@@ -86,10 +86,13 @@ describe("ToolRow", () => {
 
     const row = container.querySelector("[data-tool-row]") as HTMLElement;
     const avatar = row.querySelector('[aria-hidden="true"]');
-    expect(avatar).toHaveTextContent("H");
-    expect(avatar?.className).toContain("bg-source-homebrew");
-    // 32px: the size a row's avatar is.
-    expect(avatar?.className).toContain("h-8");
+    // No logo of its own in this test's empty pack: the program tile, not
+    // the source's avatar (I8), 32px, the size a row's avatar is, with the
+    // source's mark -- here its initial -- on its corner.
+    expect(avatar?.querySelector("[data-program-tile]")?.className).toContain("h-8");
+    const badge = avatar?.querySelector("[data-source-badge]");
+    expect(badge).toHaveTextContent("H");
+    expect(badge?.firstElementChild?.className).toContain("bg-source-homebrew");
     // The source's name over the avatar, on a layer above the row.
     expect(avatar?.parentElement).toHaveAttribute("title", "Homebrew");
     expect(avatar?.parentElement?.className).toContain("z-10");
@@ -1371,7 +1374,7 @@ describe("ToolRow's app icon", () => {
     return (container.querySelector("[data-tool-row]") as HTMLElement).querySelector('[aria-hidden="true"]') as Element;
   }
 
-  it("shows a cask's own app icon once it arrives, and the source's letter until then", async () => {
+  it("shows a cask's own app icon once it arrives, and the program tile until then", async () => {
     let answer: (icon: string | null) => void = () => {};
     mockInvoke.mockImplementation(
       (cmd: string) =>
@@ -1383,10 +1386,11 @@ describe("ToolRow's app icon", () => {
       <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={iterm} name="iTerm2" description="Terminal emulator" />,
     );
 
-    // Asked, and not here yet: the coloured initial stands in.
+    // Asked, and not here yet: the program tile stands in (I8), the
+    // source's letter on its corner.
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("artifact_icon", { key: iterm }));
-    expect(avatarOf(container)).toHaveTextContent("H");
-    expect(avatarOf(container).className).toContain("bg-source-homebrew");
+    expect(avatarOf(container).querySelector("[data-program-tile]")).not.toBeNull();
+    expect(avatarOf(container).querySelector("[data-source-badge]")).toHaveTextContent("H");
 
     await act(async () => answer(ICON));
 
@@ -1398,13 +1402,14 @@ describe("ToolRow's app icon", () => {
     expect(icon.className).toContain("h-8");
     expect(icon.className).toContain("rounded-[7px]");
     expect(icon.className).not.toMatch(/\bbg-/);
-    // The source's letter moves to the icon's corner, 14px.
+    // The tile gives way to it; the source's letter stays on the corner, 14px.
+    expect(avatarOf(container).querySelector("[data-program-tile]")).toBeNull();
     const badge = avatarOf(container).querySelector("[data-source-badge]");
     expect(badge).toHaveTextContent("H");
     expect(badge?.firstElementChild?.className).toContain("h-3.5");
   });
 
-  it("keeps the source's letter for a cask that has no icon", async () => {
+  it("keeps the program tile for a cask that has no icon", async () => {
     mockInvoke.mockImplementation((cmd: string) => Promise.resolve(cmd === "artifact_icon" ? null : undefined));
     const { container, queryClient } = renderWithProviders(
       <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={iterm} name="iTerm2" description="Terminal emulator" />,
@@ -1412,7 +1417,8 @@ describe("ToolRow's app icon", () => {
 
     await waitFor(() => expect(queryClient.getQueryState(["artifactIcon", "brew:/opt/homebrew", "Cask", "iterm2"])?.status).toBe("success"));
     expect(avatarOf(container).tagName).toBe("SPAN");
-    expect(avatarOf(container)).toHaveTextContent("H");
+    expect(avatarOf(container).querySelector("[data-program-tile]")).not.toBeNull();
+    expect(avatarOf(container).querySelector("[data-app-icon]")).toBeNull();
   });
 
   it("asks nothing for a row that is not a cask, or that names no tool", () => {
@@ -1420,7 +1426,7 @@ describe("ToolRow's app icon", () => {
     const formula = renderWithProviders(
       <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={jq} name="jq" description="JSON processor" />,
     );
-    expect(avatarOf(formula.container)).toHaveTextContent("H");
+    expect(avatarOf(formula.container).querySelector("[data-program-tile]")).not.toBeNull();
     formula.unmount();
     renderWithProviders(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" />);
 

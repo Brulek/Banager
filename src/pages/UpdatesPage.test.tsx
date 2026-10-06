@@ -4734,11 +4734,13 @@ describe("UpdatesPage", () => {
       expect(dialog.querySelector("[data-dialog-icon]")).toBeNull();
       const tools = [...dialog.querySelectorAll("[data-sheet-tools] > [data-sheet-tool]")] as HTMLElement[];
       expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
-      // The row's own avatar, at 24; its source for a screen reader; the
-      // version it moves to, on the right.
-      const initial = within(tools[0]).getByText("H");
-      expect(initial).toHaveAttribute("aria-hidden", "true");
-      expect(initial.className).toMatch(/\bh-6 w-6\b/);
+      // The row's own avatar, at 24 -- glib has no logo in this test's
+      // pack: the program tile (I8), its source's initial on the corner;
+      // its source for a screen reader; the version it moves to, on the right.
+      const tile = tools[0].querySelector("[data-program-tile]") as HTMLElement;
+      expect(tile).toHaveAttribute("aria-hidden", "true");
+      expect(tile.className).toMatch(/\bh-6 w-6\b/);
+      expect(within(tools[0]).getByText("H").closest("[data-source-badge]")).not.toBeNull();
       expect(within(tools[0]).getByText("Homebrew")).toHaveClass("sr-only");
       expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();

@@ -157,7 +157,8 @@ describe("JustUpdated", () => {
 
     const line = screen.getByRole("listitem");
     expect(line).toHaveClass("h-7");
-    expect(line.querySelector("[aria-hidden]")?.className).toMatch(/h-5 w-5/);
+    // git has no logo in the test's pack: the program tile, at 20 (I8).
+    expect(line.querySelector("[data-program-tile]")?.className).toMatch(/h-5 w-5/);
     expect(within(line).getByText("git")).toHaveClass("text-body");
     expect(within(line).getByText("2.55.1")).toHaveClass("text-small", "text-muted");
     const done = within(line).getByText("Updated");

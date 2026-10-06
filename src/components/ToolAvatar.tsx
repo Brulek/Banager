@@ -3,6 +3,7 @@ import { useArtifactIcon } from "../lib/queries";
 import type { ToolIcon } from "../lib/toolIcons";
 import { useToolIcons } from "../lib/toolIconsContext";
 import type { ArtifactKey } from "../lib/types";
+import { TerminalIcon } from "./icons";
 import { PackLogo, SourceAvatar } from "./SourceAvatar";
 
 /** The key the icon query is given when there is no tool to ask about: it is never asked. */
@@ -28,16 +29,16 @@ const ICON_CLASSES = {
 export interface ToolAvatarProps {
   /**
    * The source's adapter id and name: its logo, or its coloured initial,
-   * in place of the tool's own icon where it has none, and on its corner
-   * where it has one.
+   * on the corner of the tool's icon -- the tool's own, or the neutral
+   * program tile where it has none.
    */
   adapterId: string;
   sourceLabel: string;
   /**
    * The tool's key, which finds its own icon: a cask's is asked for its
    * app's (`useArtifactIcon`, which asks for nothing else), and any tool's
-   * logo is looked up in the logo pack (`resolveToolIcon`). Left out, the
-   * source's avatar is all there is.
+   * logo is looked up in the logo pack (`resolveToolIcon`). Left out,
+   * there is nothing of its own to find: the program tile.
    */
   iconKey?: ArtifactKey;
   /** `md` unless said: a row's. */
@@ -52,14 +53,15 @@ export interface ToolAvatarProps {
  *    installed, once it has arrived, drawn as macOS draws it, with no
  *    coloured square behind it;
  * 2. the tool's logo, from the logo pack;
- * 3. its source's logo, from the pack;
- * 4. its source's coloured initial.
+ * 3. the neutral program tile, a prompt on grey (`ProgramTile`): never
+ *    its source's logo, which made a tool without one look like another
+ *    -- tokei like rustup, both Rust's -- nor a letter (decision I8).
  *
- * The first two wear the source's mark, 14px (16 on a dialog's 48), on their corner: at the
- * window's default 800px a row's source chip gives way to the name, and
- * the avatar is left to say where the tool comes from. The last two are
- * the source's own avatar, and wear none; nor does a tool whose logo is
- * its source's, such as one with its own installer, its own source.
+ * Each wears the source's mark, 14px (16 on a dialog's 48), on its corner:
+ * at the window's default 800px a row's source chip gives way to the
+ * name, and the avatar is left to say where the tool comes from. A tool
+ * whose logo is its source's -- one with its own installer, its own
+ * source, such as rustup or Claude Code -- is its logo alone.
  *
  * The app's icon is asked for only when an avatar is drawn, so a
  * virtualized list asks for the rows on screen and no others. Decorative,
@@ -82,14 +84,48 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
     );
   }
   const logo = iconKey === undefined ? null : resolveToolIcon(iconKey, adapterId);
-  if (logo !== null && !sameLogo(logo, resolveSourceIcon(adapterId))) {
-    return (
-      <WithSourceBadge adapterId={adapterId} sourceLabel={sourceLabel} size={size}>
-        <PackLogo icon={logo} size={size} />
-      </WithSourceBadge>
-    );
+  if (logo !== null && sameLogo(logo, resolveSourceIcon(adapterId))) {
+    return <SourceAvatar adapterId={adapterId} label={sourceLabel} size={size} />;
   }
-  return <SourceAvatar adapterId={adapterId} label={sourceLabel} size={size} />;
+  return (
+    <WithSourceBadge adapterId={adapterId} sourceLabel={sourceLabel} size={size}>
+      {logo !== null ? <PackLogo icon={logo} size={size} /> : <ProgramTile size={size} />}
+    </WithSourceBadge>
+  );
+}
+
+/**
+ * The prompt's size on the program tile at each size: the 18 the Other
+ * Programs page draws its tile's at 32 (`ProgramAvatar` in
+ * src/pages/UnknownPage.tsx), and about as much room around it at the
+ * others.
+ */
+const PROMPT_SIZES = { sm: 14, md: 18, lg: 27, compact: 12 } as const;
+
+/**
+ * The icon of a command-line tool that has none of its own -- no app
+ * icon, no logo in the pack: a prompt, white on the neutral grey, as
+ * Finder draws a Unix executable and as the Other Programs page draws a
+ * program no source accounts for (`data-program-tile`). Never its
+ * source's logo, which made a tool look like another, and never a letter
+ * (decision I8). Its source's mark goes on its corner.
+ *
+ * The grey is `neutral-avatar`: systemGray, in the dark systemGray3, and
+ * Apple's darker and lighter greys under Increase Contrast (index.css).
+ * In dark mode a 1px edge of 12% white just inside it, as a logo's square
+ * has (`PackLogo`), so the dark grey keeps its outline on the dark
+ * content and a selected row.
+ */
+function ProgramTile({ size }: { size: keyof typeof ICON_CLASSES }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-program-tile=""
+      className={`inline-flex shrink-0 items-center justify-center bg-neutral-avatar text-white dark:inset-ring dark:inset-ring-white/12 ${ICON_CLASSES[size]}`}
+    >
+      <TerminalIcon size={PROMPT_SIZES[size]} />
+    </span>
+  );
 }
 
 /**
@@ -111,15 +147,16 @@ interface WithSourceBadgeProps {
   adapterId: string;
   sourceLabel: string;
   size: keyof typeof ICON_CLASSES;
-  /** The tool's own icon or logo. */
+  /** The tool's own icon or logo, or the program tile. */
   children: ReactNode;
 }
 
 /**
- * A tool's own icon or logo with its source's avatar, 14px, on its
- * bottom-right corner, a little over the edge (`data-source-badge`). A
- * ring in the surface's colour cuts the badge out of what is under it, so
- * that a Homebrew badge on an amber logo still reads as a mark of its own.
+ * A tool's own icon or logo, or the program tile, with its source's
+ * avatar, 14px, on its bottom-right corner, a little over the edge
+ * (`data-source-badge`). A ring in the surface's colour cuts the badge out
+ * of what is under it, so that a Homebrew badge on an amber logo still
+ * reads as a mark of its own.
  * At 20 (`compact`) there is no room for one: the icon alone.
  */
 function WithSourceBadge({ adapterId, sourceLabel, size, children }: WithSourceBadgeProps) {

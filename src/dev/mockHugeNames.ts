@@ -10,7 +10,8 @@
  * data file. Which relatives a name gets comes from its own seeded stream
  * (`seededStream` in ./mockData.ts, passed in), so the list is the same on
  * every run. None of these is a name the logo pack or the description
- * tables know, so the rows show the source's avatar and line. Dev-only.
+ * tables know, so the rows show the program tile with the source's mark
+ * on its corner, and the source's line. Dev-only.
  */
 import { MANY_CARGO, MANY_CASKS, MANY_DEPENDENCIES, MANY_FORMULAE, MANY_NPM, MANY_PIPX, MANY_UV } from "./mockManyNames";
 

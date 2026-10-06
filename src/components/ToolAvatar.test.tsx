@@ -8,8 +8,9 @@ import { ToolAvatar } from "./ToolAvatar";
 
 /**
  * A pack of this test's own, so that nothing here depends on what the
- * built-in pack lists. Homebrew and Claude Code have a logo; npm and pipx
- * have none, so their badges and avatars are their initials.
+ * built-in pack lists. Homebrew, Cargo (Rust's), rustup (Rust's too) and
+ * Claude Code have a logo; npm and pipx have none, so their badges are
+ * their initials.
  */
 const PACK: ToolIconPack = {
   version: 1,
@@ -20,6 +21,8 @@ const PACK: ToolIconPack = {
     "si-typescript": { path: "M2 2h20v20H2z", hex: "FFD43B", title: "TypeScript" },
     "si-homebrew": { path: "M3 3h18v18H3z", hex: "FBB040", title: "Homebrew" },
     "si-claude": { path: "M4 4h16v16H4z", hex: "D97757", title: "Claude" },
+    // Rust's near-black, Cargo's and rustup's mark alike.
+    "si-rust": { path: "M5 5h14v14H5z", hex: "000000", title: "Rust" },
   },
   rasters: { "gh-iterm2": { file: "gh-iterm2.webp", title: "iTerm2" } },
   tools: {
@@ -28,8 +31,9 @@ const PACK: ToolIconPack = {
     "npm:typescript": "si-typescript",
     // A tool with its own installer: its logo is its source's.
     "standalone:claude": "si-claude",
+    "standalone:rustup": "si-rust",
   },
-  sources: { brew: "si-homebrew", "standalone-claude": "si-claude" },
+  sources: { brew: "si-homebrew", cargo: "si-rust", "standalone-claude": "si-claude", "standalone-rustup": "si-rust" },
 };
 const toolIcons = loadToolIcons(PACK, new Map([["gh-iterm2.webp", "/assets/gh-iterm2.webp"]]));
 
@@ -40,6 +44,10 @@ const iterm: ArtifactKey = { instance_id: brew, kind: "Cask", name: "iterm2" };
 const typescript: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "typescript" };
 const cowsay: ArtifactKey = { instance_id: "pipx", kind: "Tool", name: "cowsay" };
 const claude: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+const tokei: ArtifactKey = { instance_id: "cargo:/Users/you/.cargo", kind: "Binary", name: "tokei" };
+const rustup: ArtifactKey = { instance_id: "standalone-rustup", kind: "Binary", name: "rustup" };
+/** TerminalIcon's prompt and cursor (src/components/icons.tsx): the Other Programs page's mark. */
+const PROMPT = "M5.5 8L9.5 12L5.5 16M12.5 16.5H18.5";
 const APP_ICON = "data:image/png;base64,iVBORw0KGgo=";
 
 const mockInvoke = vi.mocked(invoke);
@@ -55,6 +63,11 @@ function renderAvatar(props: Parameters<typeof ToolAvatar>[0]) {
   /** The avatar: the one element drawn, hidden from a screen reader. */
   const avatar = () => rendered.container.firstElementChild as HTMLElement;
   return { ...rendered, avatar };
+}
+
+/** The neutral program tile in `avatar`, where the tool has no icon or logo of its own. */
+function programTile(avatar: HTMLElement): HTMLElement | null {
+  return avatar.querySelector<HTMLElement>("[data-program-tile]");
 }
 
 /** The tool's own logo in `avatar`: the one not on its corner. */
@@ -114,22 +127,80 @@ describe("ToolAvatar", () => {
     expect(badge?.firstElementChild?.className).toContain("h-3.5");
   });
 
-  it("shows the source's logo, with nothing on its corner, for a tool the pack has no logo for", () => {
+  it("draws a neutral program tile, its source's logo on its corner, for a tool the pack has no logo for (I8)", () => {
+    // Not the source's logo: a tool without a logo of its own does not
+    // borrow its source's, which made it look like another tool.
     const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget });
 
-    expect(avatar()).toHaveAttribute("data-logo", "glyph");
-    expect(avatar().querySelector("path")).toHaveAttribute("d", "M3 3h18v18H3z");
-    expect(avatar().className).toContain("h-8");
-    expect(avatar().querySelector("[data-source-badge]")).toBeNull();
+    expect(avatar()).toHaveAttribute("aria-hidden", "true");
+    const tile = programTile(avatar()) as HTMLElement;
+    expect(tile).not.toBeNull();
+    expect(tile.closest("[data-source-badge]")).toBeNull();
+    // The Other Programs page's tile: a prompt, white on the neutral grey,
+    // on a row's 32px and the corners a logo has there.
+    expect(tile.className.split(" ")).toEqual(
+      expect.arrayContaining(["bg-neutral-avatar", "text-white", "h-8", "w-8", "rounded-[7px]"]),
+    );
+    expect(tile.querySelector("svg path")).toHaveAttribute("d", PROMPT);
+    expect(tile.querySelector("svg")).toHaveAttribute("width", "18");
+    expect(ownLogo(avatar())).toBeNull();
+    // The source on its corner, 14px, as on a tool's own logo.
+    const mark = avatar().querySelector("[data-source-badge] [data-logo]");
+    expect(mark?.querySelector("path")).toHaveAttribute("d", "M3 3h18v18H3z");
+    expect(mark?.className).toContain("h-3.5");
+    // No letter anywhere: the tile is no initial.
+    expect(avatar().textContent).toBe("");
   });
 
-  it("shows the source's initial, with nothing on its corner, when neither the tool nor its source has a logo", () => {
+  it("edges the tile in 12% white in dark mode, as a logo's square is, so the dark grey keeps its outline", () => {
+    const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget });
+    expect(programTile(avatar())?.className.split(" ")).toEqual(
+      expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-white/12"]),
+    );
+  });
+
+  it("tells a tool without a logo apart from one whose logo is its source's: tokei is no rustup (I8)", () => {
+    const tokeiAvatar = renderAvatar({ adapterId: "cargo", sourceLabel: "Cargo", iconKey: tokei }).avatar();
+    const rustupAvatar = renderAvatar({ adapterId: "standalone-rustup", sourceLabel: "rustup", iconKey: rustup }).avatar();
+
+    // rustup: Rust's logo, its own source's, alone.
+    expect(rustupAvatar).toHaveAttribute("data-logo", "glyph");
+    expect(rustupAvatar.querySelector("path")).toHaveAttribute("d", "M5 5h14v14H5z");
+    expect(programTile(rustupAvatar)).toBeNull();
+    // tokei: the tile, with Cargo's Rust mark on its corner only.
+    expect(programTile(tokeiAvatar)?.querySelector("path")).toHaveAttribute("d", PROMPT);
+    expect(ownLogo(tokeiAvatar)).toBeNull();
+    expect(tokeiAvatar.querySelector("[data-source-badge] path")).toHaveAttribute("d", "M5 5h14v14H5z");
+  });
+
+  it("draws the tile, never the source's initial, when neither the tool nor its source has a logo", () => {
     const { avatar } = renderAvatar({ adapterId: "pipx", sourceLabel: "pipx", iconKey: cowsay });
 
-    expect(avatar()).toHaveTextContent("P");
-    expect(avatar().className).toContain("bg-source-python");
-    expect(avatar().querySelector("[data-logo]")).toBeNull();
-    expect(avatar().querySelector("[data-source-badge]")).toBeNull();
+    expect(programTile(avatar())).not.toBeNull();
+    expect(programTile(avatar())?.className).not.toContain("bg-source-python");
+    // The initial is the source's mark, on the corner, as on a logo.
+    const badge = avatar().querySelector("[data-source-badge]");
+    expect(badge).toHaveTextContent("P");
+    expect(badge?.firstElementChild?.className).toContain("bg-source-python");
+    expect(badge?.firstElementChild?.className).toContain("h-3.5");
+  });
+
+  it("sizes the tile as an icon of each size: 24 and 48 with the badge, 20 without", () => {
+    const glyphOf = (avatar: HTMLElement) => programTile(avatar)?.querySelector("svg")?.getAttribute("width");
+    const sm = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "sm" }).avatar();
+    expect(programTile(sm)?.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "w-6", "rounded-[5px]"]));
+    expect(glyphOf(sm)).toBe("14");
+    expect(sm.querySelector("[data-source-badge] [data-logo]")?.className).toContain("h-3.5");
+
+    const lg = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "lg" }).avatar();
+    expect(programTile(lg)?.className.split(" ")).toEqual(expect.arrayContaining(["h-12", "w-12", "rounded-[11px]"]));
+    expect(glyphOf(lg)).toBe("27");
+    expect(lg.querySelector("[data-source-badge] [data-logo]")?.className).toContain("h-4");
+
+    const compact = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "compact" }).avatar();
+    expect(programTile(compact)?.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5", "rounded-[4px]"]));
+    expect(glyphOf(compact)).toBe("12");
+    expect(compact.querySelector("[data-source-badge]")).toBeNull();
   });
 
   it("shows a tool whose logo is its source's own as the source, with nothing on its corner", () => {
@@ -140,11 +211,11 @@ describe("ToolAvatar", () => {
     expect(avatar().querySelector("[data-source-badge]")).toBeNull();
   });
 
-  it("shows the source's avatar alone, and looks nothing up, when it is given no tool", () => {
+  it("draws the tile with its source's mark, and looks nothing up, when it is given no tool", () => {
     const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew" });
 
-    expect(avatar()).toHaveAttribute("data-logo", "glyph");
-    expect(avatar().querySelector("[data-source-badge]")).toBeNull();
+    expect(programTile(avatar())).not.toBeNull();
+    expect(avatar().querySelector("[data-source-badge] [data-logo]")).toHaveAttribute("data-logo", "glyph");
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 

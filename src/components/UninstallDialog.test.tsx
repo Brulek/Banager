@@ -182,10 +182,12 @@ describe("UninstallDialog", () => {
     expect(icon.compareDocumentPosition(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    // The avatar a row has, at 48: the source's initial.
-    const initial = within(icon).getByText("H");
-    expect(initial).toHaveAttribute("aria-hidden", "true");
-    expect(initial.className).toMatch(/\bh-12 w-12\b/);
+    // The avatar a row has, at 48: jq has no logo in this test's pack, so
+    // the program tile (I8), with the source's initial on its corner.
+    const tile = icon.querySelector("[data-program-tile]") as HTMLElement;
+    expect(tile).toHaveAttribute("aria-hidden", "true");
+    expect(tile.className).toMatch(/\bh-12 w-12\b/);
+    expect(within(icon).getByText("H").closest("[data-source-badge]")).not.toBeNull();
   });
 
   it("says which of two Homebrews it uninstalls from, by the Mac each is for", async () => {

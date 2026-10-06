@@ -626,7 +626,7 @@ describe("InstalledPage", () => {
     expect(words.className.split(" ")).toContain("ml-5");
     expect(words.textContent).toBe("1 more package was installed for other software to use");
     const avatar = rowOf("jq").querySelector("[aria-hidden='true']") as HTMLElement;
-    expect(avatar.className).toMatch(/\bh-8 w-8\b/);
+    expect(avatar.querySelector("[data-program-tile]")?.className).toMatch(/\bh-8 w-8\b/);
     expect(avatar.parentElement?.nextElementSibling?.className.split(" ")).toContain("ml-3");
     const triangle = slot.firstElementChild as SVGElement;
     expect(triangle).toHaveAttribute("width", "10");
@@ -3412,7 +3412,7 @@ describe("InstalledPage", () => {
       expectLogos(await openDetails("jq"));
     });
 
-    it("shows the source's logo on a tool with none of its own and over its group, and the initial where the source has none", async () => {
+    it("shows the program tile on a tool with no logo of its own, its source's logo on the corner and over its group, and the initial where the source has none", async () => {
       served = {
         ...snapshot,
         instances: [brew, pip],
@@ -3421,10 +3421,15 @@ describe("InstalledPage", () => {
       renderInstalled({ toolIcons });
 
       fireEvent.click(await screen.findByRole("button", { name: /^1 more package was installed for other software to use/ }));
+      // Not its source's logo, which would make it look like Homebrew
+      // itself (I8): the program tile, with Homebrew's on its corner.
       const glib = await findRow("glib");
-      expect(glib.querySelector(glyph(HOMEBREW))).not.toBeNull();
-      expect(glib.querySelector("[data-source-badge]")).toBeNull();
-      expect(within(await findRow("requests")).getByText("P")).toHaveAttribute("aria-hidden", "true");
+      expect(glib.querySelector("[data-program-tile]")).not.toBeNull();
+      expect(glib.querySelector(`[data-source-badge] ${glyph(HOMEBREW)}`)).not.toBeNull();
+      expect(glib.querySelectorAll(glyph(HOMEBREW))).toHaveLength(1);
+      const requests = await findRow("requests");
+      expect(requests.querySelector("[data-program-tile]")).not.toBeNull();
+      expect(within(requests).getByText("P").closest("[data-source-badge]")).not.toBeNull();
 
       fireEvent.change(screen.getByRole("combobox", { name: "Sort Order" }), { target: { value: "source" } });
       const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew · 2 tools" });
