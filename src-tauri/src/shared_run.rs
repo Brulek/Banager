@@ -113,7 +113,7 @@ where
     /// How many calls wait for the run under way, its own caller among
     /// them.
     #[cfg(test)]
-    fn waiting(&self) -> usize {
+    pub(crate) fn waiting(&self) -> usize {
         self.running
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

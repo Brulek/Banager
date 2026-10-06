@@ -778,6 +778,21 @@ pub(crate) fn scan_unknown_impl(session: &Session, env: &HostEnv) -> UnknownScan
     session.scan_unknown(env)
 }
 
+/// `scan` of `session` through `runs` (`SCAN` for `scan_unknown`), keyed by
+/// the snapshot generation: a call while a scan of this same snapshot is
+/// under way is handed that scan; one after a refresh has committed waits
+/// for it and then has a scan of its own. The key is read before the run
+/// reads the snapshot, and the generation only goes up, so no call is
+/// handed a scan begun before the snapshot it saw.
+async fn shared_scan<T: Clone + Send + Sync + 'static>(
+    runs: &'static crate::shared_run::SharedRun<u64, T>,
+    session: std::sync::Arc<Session>,
+    scan: impl FnOnce(&Session) -> T + Send + 'static,
+) -> Result<T, String> {
+    let generation = session.snapshot().generation;
+    runs.run(generation, move || scan(&session)).await
+}
+
 /// The scan handed to the window, after the paths Show in Finder may show
 /// from now on are the ones it resolved (`reveal::Revealable`).
 #[tauri::command]
@@ -799,11 +814,9 @@ pub async fn scan_unknown(
     // snapshot waits for it and then scans. Each scan is remembered for
     // Show in Finder as part of its run, so scans are remembered in the
     // order they ran, whichever call is answered first.
-    let session = state.session.clone();
-    let generation = session.snapshot().generation;
     let env = HostEnv::discover();
-    SCAN.run(generation, move || {
-        let scan = scan_unknown_impl(&session, &env);
+    shared_scan(&SCAN, state.session.clone(), move |session| {
+        let scan = scan_unknown_impl(session, &env);
         app.state::<crate::reveal::Revealable>().remember(&scan);
         scan
     })
@@ -1119,6 +1132,74 @@ mod tests {
         done.sort_unstable();
         assert_eq!(done, (0..6).collect::<Vec<_>>());
         assert_eq!(most.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_scans_share_a_run_per_snapshot_generation_and_not_across_one() {
+        // `scan_unknown`'s key (`shared_scan`): a call while a scan of the
+        // same snapshot runs shares it; one made after a refresh has
+        // committed in the middle of that scan does not -- the page asks
+        // again then precisely so that a list judged against the older
+        // snapshot does not stand -- and has a scan of its own.
+        static RUNS: crate::shared_run::SharedRun<u64, (usize, u64)> =
+            crate::shared_run::SharedRun::new();
+        let state = state_with_fake_adapter();
+        let before = state.session.snapshot().generation;
+        let runs = Arc::new(AtomicUsize::new(0));
+        let (started, started_rx) = std::sync::mpsc::channel::<()>();
+        let (release, release_rx) = std::sync::mpsc::channel::<()>();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        // Each run: which run it was and the generation it scanned, held
+        // until the test lets it finish.
+        let call = |session: Arc<Session>| {
+            let (runs, started, release_rx) = (runs.clone(), started.clone(), release_rx.clone());
+            tokio::spawn(shared_scan(&RUNS, session, move |session: &Session| {
+                let seen = (
+                    runs.fetch_add(1, Ordering::SeqCst),
+                    session.snapshot().generation,
+                );
+                // Only the first run's start is waited for.
+                let _ = started.send(());
+                release_rx.lock().unwrap().recv().unwrap();
+                seen
+            }))
+        };
+
+        let first = call(state.session.clone());
+        tokio::task::spawn_blocking(move || started_rx.recv().unwrap())
+            .await
+            .unwrap();
+        let same_snapshot = call(state.session.clone());
+        until_waiting(&RUNS, 2).await;
+
+        refresh_impl(&state).await.expect("refresh");
+        let after = state.session.snapshot().generation;
+        assert!(after > before);
+        let newer_snapshot = call(state.session.clone());
+        until_waiting(&RUNS, 3).await;
+
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        assert_eq!(first.await.unwrap(), Ok((0, before)));
+        assert_eq!(same_snapshot.await.unwrap(), Ok((0, before)));
+        assert_eq!(newer_snapshot.await.unwrap(), Ok((1, after)));
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
+    }
+
+    /// Until `n` calls wait for the run under way in `runs`.
+    async fn until_waiting<T: Clone + Send + Sync + 'static>(
+        runs: &crate::shared_run::SharedRun<u64, T>,
+        n: usize,
+    ) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while runs.waiting() < n {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{n} calls never waited for one run (waiting: {})",
+                runs.waiting()
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     }
 
     #[tokio::test]
