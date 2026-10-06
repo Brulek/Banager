@@ -847,9 +847,12 @@ came back on the Installed page, still installed. So:
   Each of these is asked again right before the cleanup runs, once the
   upgrade has exited 0 (`BrewAdapter::cleanup_allowed`): a `brew.env`,
   a pin or the Cellar can change while the confirmation is open or the
-  update runs, and `brew cleanup` with a name checks neither
-  `HOMEBREW_NO_INSTALL_CLEANUP` nor a pin before it deletes
-  (`cleanup.rb:497-519`). When the answer is no longer yes -- the person
+  update runs, and `brew cleanup` with a name ignores
+  `HOMEBREW_NO_INSTALL_CLEANUP` (`cleanup.rb:497-519`) and, for a pinned
+  formula, skips only the pinned version itself: the formula's other old
+  versions it can still delete (`Formula#eligible_kegs_for_cleanup`,
+  `formula.rb:3760-3793`), which is why Banager runs no cleanup for a
+  pinned formula. When the answer is no longer yes -- the person
   turned the cleanup off or named the formula since the preview, pinned
   it, a `brew.env` took Banager's `1` back or can no longer be read, or
   the Cellar cannot -- the cleanup does not run, and the log says so

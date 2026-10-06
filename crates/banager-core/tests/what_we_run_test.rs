@@ -402,6 +402,33 @@ fn test_what_we_run_quotes_the_update_preview_saying_other_tools_downloads_go_to
     );
 }
 
+#[test]
+fn test_what_we_run_says_brew_cleanup_skips_a_pinned_version_but_not_its_other_old_ones() {
+    // Review of v1-brew's fixes (r6): `brew cleanup <name>` ignores
+    // `HOMEBREW_NO_INSTALL_CLEANUP` (`cleanup.rb:497-519`), but it does
+    // skip the pinned version itself (`Formula#eligible_kegs_for_cleanup`,
+    // `formula.rb:3787`); what it still deletes are the formula's other old
+    // versions. So the `## Homebrew` section must not say it checks no pin,
+    // and says what it does, with Homebrew's lines.
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    let folded = homebrew.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        !folded.contains("checks neither `HOMEBREW_NO_INSTALL_CLEANUP` nor a pin"),
+        "the `## Homebrew` section says `brew cleanup` with a name checks no pin, but Homebrew skips the pinned version itself"
+    );
+    for words in [
+        "skips only the pinned version itself",
+        "other old versions",
+        "`formula.rb:3760-3793`",
+    ] {
+        assert!(
+            folded.contains(words),
+            "the `## Homebrew` section does not say {words:?} of what `brew cleanup` with a name does for a pinned formula"
+        );
+    }
+}
+
 /// The never-list's bullets, each hard-wrapped bullet folded into one
 /// line, so a phrase split across a line break is still found and a phrase
 /// is attributed to the bullet it is in and not to its neighbour.

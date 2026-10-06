@@ -744,9 +744,12 @@ impl BrewAdapter {
     /// at the preview, and again right before the cleanup runs
     /// (review F4, r6): a `brew.env`, a pin or a Cellar can change while
     /// the confirmation is open or the update runs, and `brew cleanup` with
-    /// a name checks neither `HOMEBREW_NO_INSTALL_CLEANUP` nor a pin before
-    /// it deletes (`cleanup.rb:497-519`) -- so setting the switch for it
-    /// would not be enough.
+    /// a name ignores `HOMEBREW_NO_INSTALL_CLEANUP` (`cleanup.rb:497-519`)
+    /// -- so setting the switch for it would not be enough -- and, for a
+    /// pinned formula, skips only the pinned version itself: the formula's
+    /// other old versions it can still delete
+    /// (`Formula#eligible_kegs_for_cleanup`, `formula.rb:3760-3793`), which
+    /// is why no cleanup runs for a pinned formula.
     fn cleanup_allowed(&self, prefix: &Path, name: &str, env: &[(String, String)]) -> Option<Kegs> {
         let switches = self.switches_at(prefix, env);
         if !switches.no_install_cleanup || switches.install_cleanup_unknown {
