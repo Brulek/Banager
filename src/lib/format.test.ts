@@ -323,6 +323,12 @@ describe("outcomeKey for Banager's own failures", () => {
     expect(outcomeDetailKey({ BanagerFailed: { FormulaChanged: { name: "wget" } } })).toBe(
       "operations.outcome.BanagerFailed.FormulaChangedDetail",
     );
+    // Its first sentence says the formula changed, so the next must not
+    // open with "Nothing changed" (review of v1-brew's fixes, r6): it says
+    // what Banager did not do instead.
+    expect(en.operations.outcome.BanagerFailed.FormulaChangedDetail).toBe(
+      "Nothing was removed. Open the confirmation again to see which versions it removes.",
+    );
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(en.operations.logNote.trashFailed).toContain("{{error}}");
