@@ -92,6 +92,7 @@ impl Drop for Home {
 
 fn exited_0(stdout: &str) -> CommandOutput {
     CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: Some(0),
         stdout: stdout.to_string(),
         stderr: String::new(),

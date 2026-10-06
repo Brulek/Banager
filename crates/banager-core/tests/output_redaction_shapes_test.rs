@@ -177,7 +177,10 @@ async fn test_each_shape_is_masked_in_the_log_and_the_failure_summary() {
     expected.sort();
     assert_eq!(lines, expected);
 
-    let Outcome::Failed { exit_code, summary } = outcome else {
+    let Outcome::Failed {
+        exit_code, summary, ..
+    } = outcome
+    else {
         panic!("expected a failure, got {outcome:?}");
     };
     assert_eq!(exit_code, Some(5));

@@ -170,7 +170,10 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
         );
     }
 
-    let Outcome::Failed { exit_code, summary } = outcome else {
+    let Outcome::Failed {
+        exit_code, summary, ..
+    } = outcome
+    else {
         panic!("expected a failure, got {outcome:?}");
     };
     assert_eq!(exit_code, Some(5));

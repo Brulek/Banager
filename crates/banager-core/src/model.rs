@@ -1721,9 +1721,21 @@ pub enum Outcome {
     /// `BanagerFailed`, never this. A tool a signal ended before it could
     /// exit reported no failure, and is `Unconfirmed`, never this
     /// (`run_plan` in `adapters/mod.rs`).
+    ///
+    /// `cause` is why it failed, in one of a few words a person knows
+    /// (`history::FailureCause`), read off the summary's lines as the tool
+    /// wrote them, before a login was masked out of them
+    /// (`CommandOutput::failure_cause`): the mask can take the words that
+    /// say it -- a proxy password `pass` turns sudo's "a password is
+    /// required" into "a ****word is required" (re-check 2's N1). The
+    /// history, the completion notification and the window all take the
+    /// cause from here and never read it off `summary`. Absent in an older
+    /// payload: none.
     Failed {
         exit_code: Option<i32>,
         summary: String,
+        #[serde(default)]
+        cause: Option<crate::history::FailureCause>,
     },
     /// Banager itself could not carry the operation out -- not the tool.
     /// Carries which reason, never a sentence: the front end words it in
@@ -2846,10 +2858,47 @@ mod tests {
         let outcome = Outcome::Failed {
             exit_code: Some(1),
             summary: "boom".to_string(),
+            cause: None,
         };
         let json = serde_json::to_string(&outcome).expect("serialize");
         let back: Outcome = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(outcome, back);
+    }
+
+    #[test]
+    fn test_outcome_failed_carries_its_cause_on_the_wire() {
+        // Re-check 2's N1: the cause read before a login was masked out of
+        // the summary, as `FailureCause` names it in src/lib/failureCause.ts
+        // (`Failed.cause` in src/lib/types.ts).
+        let outcome = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "sudo: a ****word is required".to_string(),
+            cause: Some(crate::history::FailureCause::NeedsPassword),
+        };
+        let json = serde_json::to_string(&outcome).unwrap();
+        assert_eq!(
+            json,
+            r#"{"Failed":{"exit_code":1,"summary":"sudo: a ****word is required","cause":"needsPassword"}}"#
+        );
+        assert_eq!(serde_json::from_str::<Outcome>(&json).unwrap(), outcome);
+        assert_eq!(
+            serde_json::to_string(&Outcome::Failed {
+                exit_code: None,
+                summary: String::new(),
+                cause: None,
+            })
+            .unwrap(),
+            r#"{"Failed":{"exit_code":null,"summary":"","cause":null}}"#
+        );
+        // A payload from before the field: no cause.
+        assert_eq!(
+            serde_json::from_str::<Outcome>(r#"{"Failed":{"exit_code":2,"summary":"x"}}"#).unwrap(),
+            Outcome::Failed {
+                exit_code: Some(2),
+                summary: "x".to_string(),
+                cause: None,
+            }
+        );
     }
 
     #[test]

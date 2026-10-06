@@ -838,6 +838,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "prefix", "-g"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "/opt/homebrew\n".to_string(),
                 stderr: String::new(),
@@ -848,6 +849,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "12.0.2\n".to_string(),
                 stderr: String::new(),
@@ -894,6 +896,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "prefix", "-g"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "/opt/homebrew\n".to_string(),
                 stderr: String::new(),
@@ -904,6 +907,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "99.9.9\n".to_string(),
                 stderr: String::new(),
@@ -966,6 +970,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "prefix", "-g"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "/opt/homebrew\n".to_string(),
                 stderr: String::new(),
@@ -976,6 +981,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "12.0.2\n".to_string(),
                 stderr: String::new(),
@@ -1103,6 +1109,7 @@ mod tests {
         runner.respond(
             vec![npm_path_str, "prefix", "-g"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "npm error config Invalid npmrc".to_string(),
@@ -1146,6 +1153,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: json,
                 stderr: "npm warn config global".to_string(),
@@ -1170,6 +1178,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: json,
                 stderr: String::new(),
@@ -1198,7 +1207,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "npm error code ENOTFOUND\nnpm error network request to https://registry.npmjs.org failed".to_string(),
@@ -1211,6 +1220,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: ls,
                 stderr: String::new(),
@@ -1277,6 +1287,7 @@ mod tests {
                 "jq",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json,
                 stderr: String::new(),
@@ -1508,6 +1519,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "install", "-g", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "added 1 package\n".to_string(),
                 stderr: String::new(),
@@ -1541,6 +1553,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json,
                 stderr: String::new(),
@@ -1589,6 +1602,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json,
                 stderr: String::new(),

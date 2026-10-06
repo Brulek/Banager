@@ -52,6 +52,7 @@ const VERSION_LINE: &str = "rustup 1.29.1 (d95a37b6a 2026-08-13)\n";
 
 fn exited_0(stdout: &str) -> CommandOutput {
     CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: Some(0),
         stdout: stdout.to_string(),
         stderr: String::new(),
@@ -62,6 +63,7 @@ fn exited_0(stdout: &str) -> CommandOutput {
 
 fn timed_out() -> CommandOutput {
     CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: None,
         stdout: String::new(),
         stderr: String::new(),

@@ -288,9 +288,9 @@ pub enum Ended {
     /// `Outcome::Failed` and `Outcome::BanagerFailed`: did not happen.
     Failed,
     /// `Outcome::Failed` where sudo wanted the Mac's password with no way
-    /// to ask for it (`history::failure_cause` reads
-    /// `FailureCause::NeedsPassword` off the last lines the tool wrote to
-    /// stderr): did not happen either, and of an update the notification
+    /// to ask for it (its `cause`, `FailureCause::NeedsPassword`, read off
+    /// the last lines the tool wrote to stderr before a login was masked
+    /// out of them): did not happen either, and of an update the notification
     /// says it needs the password, as the operation bar does. Decided as
     /// the operation is counted or evicted, so that what eviction keeps
     /// (`EvictedOp`) still says it once the summary has gone.
@@ -303,14 +303,13 @@ pub enum Ended {
 
 impl Ended {
     pub fn of(outcome: &Outcome) -> Ended {
-        use crate::history::{failure_cause, FailureCause};
+        use crate::history::FailureCause;
         match outcome {
             Outcome::Succeeded => Ended::Succeeded,
-            Outcome::Failed { summary, .. }
-                if failure_cause(summary) == Some(FailureCause::NeedsPassword) =>
-            {
-                Ended::NeedsPassword
-            }
+            Outcome::Failed {
+                cause: Some(FailureCause::NeedsPassword),
+                ..
+            } => Ended::NeedsPassword,
             Outcome::Failed { .. } | Outcome::BanagerFailed(_) => Ended::Failed,
             Outcome::NeedsAttention(_) | Outcome::Unconfirmed => Ended::Attention,
             Outcome::Cancelled => Ended::Cancelled,
@@ -1321,10 +1320,12 @@ mod evicted_tests {
         let stopped = Outcome::Failed {
             exit_code: Some(1),
             summary: "==> Upgrading tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper".into(),
+            cause: Some(crate::history::FailureCause::NeedsPassword),
         };
         let failed = Outcome::Failed {
             exit_code: Some(1),
             summary: "Error: Download failed".into(),
+            cause: None,
         };
         ledger.keep(1, OpKind::Upgrade, Some(&stopped), 3);
         ledger.keep(2, OpKind::Upgrade, Some(&failed), 3);
@@ -1346,6 +1347,7 @@ mod evicted_tests {
         let failed = Outcome::Failed {
             exit_code: Some(1),
             summary: "no".into(),
+            cause: None,
         };
         ledger.keep(1, OpKind::Upgrade, Some(&Outcome::Succeeded), 3);
         ledger.keep(2, OpKind::Uninstall, Some(&failed), 3);

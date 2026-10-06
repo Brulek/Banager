@@ -191,9 +191,9 @@ pub fn record_for(
         Outcome::Succeeded => HistoryResult::Succeeded,
         Outcome::Cancelled => HistoryResult::Cancelled,
         Outcome::NeedsAttention(a) => HistoryResult::NeedsAttention(*a),
-        Outcome::Failed { summary, .. } => HistoryResult::Failed {
-            cause: failure_cause(summary),
-        },
+        // Read as the tool wrote it, before a login was masked out of the
+        // summary (`Outcome::Failed`'s `cause`), never off the summary.
+        Outcome::Failed { cause, .. } => HistoryResult::Failed { cause: *cause },
         Outcome::BanagerFailed(Fault::HomebrewStillUpdating { .. }) => HistoryResult::Failed {
             cause: Some(FailureCause::HomebrewUpdating),
         },
@@ -785,6 +785,7 @@ mod tests {
         let failed = Outcome::Failed {
             exit_code: Some(1),
             summary: "curl: (6) Could not resolve host: ghcr.io".to_string(),
+            cause: Some(FailureCause::Network),
         };
         let r = record_for(&ended(&k, &failed), &started("cmake"), "r", NOW).unwrap();
         assert_eq!(
@@ -803,6 +804,7 @@ mod tests {
         let failed = Outcome::Failed {
             exit_code: Some(1),
             summary: "Error: Permission denied @ apply2files - /Users/me/secret/thing".to_string(),
+            cause: Some(FailureCause::Permission),
         };
         let r = record_for(&ended(&k, &failed), &started("cmake"), "r", NOW).unwrap();
         let json = serde_json::to_string(&r).unwrap();

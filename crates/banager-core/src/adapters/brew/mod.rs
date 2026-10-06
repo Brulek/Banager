@@ -2539,6 +2539,7 @@ mod tests {
         runner.respond(
             vec![brew_path, "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: version_line.to_string(),
                 stderr: String::new(),
@@ -2649,6 +2650,7 @@ mod tests {
         runner.respond(
             vec!["/usr/local/bin/brew", "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Homebrew 99.9.9\n".to_string(),
                 stderr: String::new(),
@@ -2746,6 +2748,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json.to_string(),
                 stderr: String::new(),
@@ -2769,6 +2772,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -2780,6 +2784,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated_json.to_string(),
                 stderr: String::new(),
@@ -2845,6 +2850,7 @@ mod tests {
     /// outdated` lists nothing.
     fn runner_with_quick_update() -> Arc<MockRunner> {
         let ok = CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: String::new(),
             stderr: String::new(),
@@ -2996,6 +3002,7 @@ mod tests {
             runner.respond(
                 vec![brew, "update"],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: String::new(),
                     stderr: String::new(),
@@ -3006,6 +3013,7 @@ mod tests {
             runner.respond(
                 vec![brew, "outdated", "--json=v2"],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: empty_outdated.to_string(),
                     stderr: String::new(),
@@ -3078,6 +3086,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3094,6 +3103,7 @@ mod tests {
                 "--greedy",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: empty_outdated.to_string(),
                 stderr: String::new(),
@@ -3133,6 +3143,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3144,6 +3155,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: installed.to_string(),
                 stderr: String::new(),
@@ -3155,6 +3167,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated.to_string(),
                 stderr: String::new(),
@@ -3187,6 +3200,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3200,6 +3214,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated.to_string(),
                 stderr: String::new(),
@@ -3239,6 +3254,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3265,6 +3281,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: installed.to_string(),
                 stderr: String::new(),
@@ -3287,6 +3304,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated.to_string(),
                 stderr: String::new(),
@@ -3334,6 +3352,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3345,6 +3364,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated.to_string(),
                 stderr: String::new(),
@@ -3377,6 +3397,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "error: brew update failed: no such remote".to_string(),
@@ -3388,6 +3409,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: outdated_json.to_string(),
                 stderr: String::new(),
@@ -3423,6 +3445,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3433,6 +3456,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
                 stderr: String::new(),
@@ -3465,6 +3489,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3476,6 +3501,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: empty_outdated.to_string(),
                 stderr: String::new(),
@@ -3531,6 +3557,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "search", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "==> Formulae\njq\n".to_string(),
                 stderr: String::new(),
@@ -3541,6 +3568,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "search", "--desc", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "==> Formulae\njq: Command-line JSON processor\n".to_string(),
                 stderr: String::new(),
@@ -3753,6 +3781,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "python@3.13\n".to_string(),
                 stderr: String::new(),
@@ -3797,6 +3826,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "error: some transient brew failure".to_string(),
@@ -3827,6 +3857,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3865,6 +3896,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "docker"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3875,6 +3907,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3923,6 +3956,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "docker"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -4001,6 +4035,7 @@ mod plan_execute_tests {
             runner.respond(
                 vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: String::new(),
                     stderr: String::new(),
@@ -4057,6 +4092,7 @@ mod plan_execute_tests {
             runner.respond(
                 vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: String::new(),
                     stderr: String::new(),
@@ -4351,6 +4387,7 @@ mod plan_execute_tests {
             runner.respond(
                 vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: String::new(),
                     stderr: String::new(),
@@ -4424,6 +4461,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -4586,6 +4624,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -5276,6 +5315,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -5317,6 +5357,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Installing jq\nDone\n".to_string(),
                 stderr: String::new(),
@@ -5352,6 +5393,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr,
@@ -5374,7 +5416,9 @@ mod plan_execute_tests {
             .await
             .expect("execute");
         match outcome {
-            Outcome::Failed { exit_code, summary } => {
+            Outcome::Failed {
+                exit_code, summary, ..
+            } => {
                 assert_eq!(exit_code, Some(1));
                 assert_eq!(summary, "line4\nline5\nline6\nline7\nline8");
             }
@@ -5389,6 +5433,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json.to_string(),
                 stderr: String::new(),
@@ -5467,6 +5512,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: tap_cask_json().to_string(),
                 stderr: String::new(),
@@ -5490,6 +5536,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: tap_cask_json().to_string(),
                 stderr: String::new(),
@@ -5748,6 +5795,7 @@ mod plan_execute_tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
                 stderr: String::new(),
@@ -5777,6 +5825,7 @@ mod plan_execute_tests {
         let runner = runner_with_update(
             Duration::from_millis(400),
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "fatal: unable to access GitHub".to_string(),
@@ -5850,6 +5899,7 @@ mod plan_execute_tests {
         let runner = runner_with_update(
             Duration::ZERO,
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -5939,6 +5989,7 @@ mod plan_execute_tests {
         inner.respond(
             vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
                 stderr: String::new(),
@@ -5987,6 +6038,7 @@ mod plan_execute_tests {
         let runner = runner_with_update(
             Duration::from_millis(50),
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: String::new(),
                 stderr: String::new(),
@@ -6041,6 +6093,7 @@ mod plan_execute_tests {
     /// that answers at once.
     fn runner_with_slow_update(delay: Duration) -> Arc<MockRunner> {
         let ok = CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: String::new(),
             stderr: String::new(),
@@ -6239,6 +6292,7 @@ mod plan_execute_tests {
         runner.respond(
             uses.clone(),
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "python@3.13\n".to_string(),
                 stderr: String::new(),
@@ -6854,6 +6908,7 @@ mod plan_execute_tests {
     async fn test_a_refresh_runs_only_the_read_only_commands_homebrews_section_shows() {
         const BREW: &str = "/opt/homebrew/bin/brew";
         let ok = |stdout: &str| CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: stdout.to_string(),
             stderr: String::new(),
@@ -7082,6 +7137,7 @@ mod plan_execute_tests {
 
         fn ok(stdout: &str, stderr: &str, exit_code: i32) -> CommandOutput {
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(exit_code),
                 stdout: stdout.to_string(),
                 stderr: stderr.to_string(),
@@ -7536,6 +7592,7 @@ mod plan_execute_tests {
             let inst = test_instance();
             let req = request(OpKind::Upgrade, ArtifactKind::Formula, "wget");
             let stopped = |cancelled: bool| CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),

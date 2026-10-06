@@ -10,7 +10,8 @@
 
 use super::redact::{self, Redactor};
 use super::{
-    CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunLine, RunnerError,
+    failure_summary, CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunLine,
+    RunnerError, StderrCause,
 };
 use crate::events::{LogNote, Stream};
 use crate::protected::{look, Protected};
@@ -385,6 +386,24 @@ impl StreamBuffer {
         text
     }
 
+    /// Why the command failed, by the last lines of this stream as the
+    /// command wrote them (`history::failure_cause` over
+    /// `failure_summary`): the same lines `into_transcript` hands on
+    /// masked, read before the mask can take the words that say why --
+    /// sudo's "password", with a proxy password `pass` (re-check 2's N1).
+    /// Nothing of the text leaves here, only the cause.
+    fn cause_as_written(&self) -> Option<crate::history::FailureCause> {
+        let text = if self.elided == 0 {
+            String::from_utf8_lossy(&self.bytes).into_owned()
+        } else {
+            let mut text = String::from_utf8_lossy(&self.bytes[..self.head_len]).into_owned();
+            text.push_str(ELISION_MARK);
+            text.push_str(&String::from_utf8_lossy(&self.bytes[self.head_len..]));
+            text
+        };
+        crate::history::failure_cause(&failure_summary(&text))
+    }
+
     /// Hands `on_line` the line from `line_start` to `end` (exclusive),
     /// with a proxy's or mirror's login masked (`runner::redact`). Every
     /// line goes through here, a parser's stdout included: a line is
@@ -737,6 +756,7 @@ impl CommandRunner for RealRunner {
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: true,
+                stderr_cause: StderrCause::Read(None),
             });
         }
 
@@ -999,12 +1019,16 @@ impl CommandRunner for RealRunner {
             return Err(RunnerError::OutputTooLarge { limit: PARSE_CAP });
         }
 
+        // Why it failed, read off what it wrote before a login is masked
+        // out of it: the mask may take the words that say why.
+        let stderr_cause = StderrCause::Read(err.cause_as_written());
         Ok(CommandOutput {
             exit_code,
             stdout: out.into_transcript(),
             stderr: err.into_transcript(),
             timed_out,
             cancelled,
+            stderr_cause,
         })
     }
 }
@@ -2665,6 +2689,58 @@ mod tests {
         );
     }
 
+    /// What sudo 1.9 prints when it cannot ask for the Mac's password.
+    const SUDO_SAID: &str = "sudo: a terminal is required to read the password; \
+        either use the -S option to read from standard input or configure an askpass helper\n\
+        sudo: a password is required\n";
+
+    #[test]
+    fn test_the_cause_is_read_off_what_the_tool_wrote_before_the_mask() {
+        // Re-check 2's N1: a proxy password `pass` is masked inside sudo's
+        // "password", and the masked lines no longer say why it failed.
+        use crate::history::{failure_cause, FailureCause};
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle).redacting(Arc::new(
+            crate::runner::redact::Redactor::for_settings([(
+                "https_proxy",
+                "http://user:pass@127.0.0.1:8080",
+            )]),
+        ));
+        let (lines, on_line) = collected();
+        buf.push(SUDO_SAID.as_bytes(), Stream::Stderr, &on_line);
+        assert_eq!(buf.cause_as_written(), Some(FailureCause::NeedsPassword));
+        let text = buf.into_transcript();
+        assert!(text.contains("sudo: a ****word is required"), "{text}");
+        assert_eq!(failure_cause(&failure_summary(&text)), None);
+        assert!(lines
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, line)| !line.contains("pass")));
+    }
+
+    #[test]
+    fn test_the_cause_is_read_off_the_last_lines_of_a_cut_transcript() {
+        // The same lines as the summary: past the cut, the last five.
+        use crate::history::FailureCause;
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
+        buf.push(
+            format!("{}\n", words(HEAD_CAP)).as_bytes(),
+            Stream::Stderr,
+            &None,
+        );
+        buf.push(
+            format!("{}\n", words(2 * TAIL_CAP)).as_bytes(),
+            Stream::Stderr,
+            &None,
+        );
+        buf.push(SUDO_SAID.as_bytes(), Stream::Stderr, &None);
+        assert_eq!(buf.cause_as_written(), Some(FailureCause::NeedsPassword));
+        // Five more lines after sudo's push them out of the summary, and
+        // out of the cause with them, as before the mask was there.
+        buf.push(b"a\nb\nc\nd\ne\n", Stream::Stderr, &None);
+        assert_eq!(buf.cause_as_written(), None);
+    }
+
     #[test]
     fn test_parsed_stdout_is_handed_to_its_parser_as_written() {
         // A parser's input is data, never shown: and it is how the login
@@ -2754,6 +2830,55 @@ mod tests {
             assert!(!said.contains("secret"), "{}", &said[..said.len().min(80)]);
         }
         assert!(last.starts_with(&format!("{}': Port number", crate::runner::redact::MASK)));
+    }
+
+    #[tokio::test]
+    async fn test_the_real_runner_always_says_it_read_the_cause() {
+        // `StderrCause::InStderr` would have the cause read off the masked
+        // stderr (re-check 2's N1): the real runner never leaves it there.
+        use crate::history::FailureCause;
+        for (script, cause) in [
+            (
+                "printf 'sudo: a password is required\\n' >&2; exit 1",
+                Some(FailureCause::NeedsPassword),
+            ),
+            ("printf 'done\\n'; exit 0", None),
+        ] {
+            let output = RealRunner::new()
+                .run(
+                    CommandSpec {
+                        program: sh(),
+                        args: vec!["-c".to_string(), script.to_string()],
+                        env: vec![],
+                        cwd: None,
+                        timeout: std::time::Duration::from_secs(10),
+                        output_use: OutputUse::Transcript,
+                    },
+                    None,
+                    CancellationToken::new(),
+                )
+                .await
+                .expect("spawn /bin/sh");
+            assert_eq!(output.stderr_cause, StderrCause::Read(cause), "{script}");
+        }
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let output = RealRunner::new()
+            .run(
+                CommandSpec {
+                    program: sh(),
+                    args: vec!["-c".to_string(), "exit 0".to_string()],
+                    env: vec![],
+                    cwd: None,
+                    timeout: std::time::Duration::from_secs(10),
+                    output_use: OutputUse::Transcript,
+                },
+                None,
+                cancel,
+            )
+            .await
+            .expect("a cancelled run");
+        assert_eq!(output.stderr_cause, StderrCause::Read(None));
     }
 
     #[tokio::test]

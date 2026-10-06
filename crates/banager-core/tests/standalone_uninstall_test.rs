@@ -128,6 +128,7 @@ fn session_over(launcher: &Path, trasher: Arc<dyn Trasher>, sink: Arc<VecSink>) 
     runner.respond(
         vec![launcher.to_str().unwrap(), "--version"],
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: "2.1.281 (Claude Code)\n".to_string(),
             stderr: String::new(),
@@ -357,7 +358,8 @@ async fn test_an_uninstall_macos_refuses_partway_leaves_a_launcher_only_row_that
         outcome_of(&session, op_id).await,
         Outcome::Failed {
             exit_code: None,
-            summary: "“downloads” couldn’t be moved to the Trash because you don’t have permission to access it.".to_string()
+            summary: "“downloads” couldn’t be moved to the Trash because you don’t have permission to access it.".to_string(),
+            cause: None,
         }
     );
 

@@ -167,6 +167,7 @@ mod tests {
         runner.respond(
             argv.clone(),
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
@@ -198,6 +199,7 @@ mod tests {
         runner.respond(
             argv,
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout:
                     "_SHELL_ENV_DELIMITER_PATH=/opt/homebrew/bin:/usr/bin\n_SHELL_ENV_DELIMITER_"

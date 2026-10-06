@@ -1007,6 +1007,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "9.9.9\n".to_string(),
                 stderr: String::new(),
@@ -1052,6 +1053,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "cowsay: 5.0 -> 6.1\n".to_string(),
                 stderr: String::new(),
@@ -1076,7 +1078,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
                 stderr: String::new(),
@@ -1121,7 +1123,7 @@ mod tests {
             let runner = Arc::new(MockRunner::new());
             runner.respond(
                 vec!["/opt/homebrew/bin/pipx", "list", "--json"],
-                CommandOutput {
+                CommandOutput { stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
                     stderr: String::new(),
@@ -1164,6 +1166,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "Error: Could not reach pypi.org".to_string(),
@@ -1174,6 +1177,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list,
                 stderr: String::new(),
@@ -1201,7 +1205,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
                 stderr: String::new(),
@@ -1233,7 +1237,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"venvs":{
                     "cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}},
@@ -1355,6 +1359,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "install", "cowsay"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "installed cowsay\n".to_string(),
                 stderr: String::new(),
@@ -1387,7 +1392,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/pipx", "list", "--json"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: r#"{"venvs":{"cowsay":{"metadata":{"main_package":{"package":"cowsay","package_version":"5.0"}}}}}"#.to_string(),
                 stderr: String::new(),
@@ -1471,6 +1476,7 @@ mod tests {
         let exe = exe_path.to_str().expect("utf8 temp path");
 
         let ok = |stdout: String| CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout,
             stderr: String::new(),

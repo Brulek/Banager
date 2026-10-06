@@ -1263,6 +1263,7 @@ mod tests {
         runner.respond(
             vec![python_path_str, "-m", "pip", "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "pip 26.2.1 from /opt/lib/pip (python 3.14)\n".to_string(),
                 stderr: String::new(),
@@ -1316,6 +1317,7 @@ mod tests {
         runner.respond(
             vec![python_path_str, "-m", "pip", "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "No module named pip".to_string(),
@@ -1363,7 +1365,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec![python_path_str, "-m", "pip", "--version"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: format!(
@@ -1449,6 +1451,7 @@ mod tests {
 
     fn exited(code: i32, stdout: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(code),
             stdout: stdout.to_string(),
             stderr: String::new(),
@@ -1722,6 +1725,7 @@ mod tests {
                 "--format=json",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list_json,
                 stderr: String::new(),
@@ -1739,6 +1743,7 @@ mod tests {
                 "--not-required",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: not_required_json,
                 stderr: String::new(),
@@ -1798,6 +1803,7 @@ mod tests {
                 "--format=json",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: json,
                 stderr: String::new(),
@@ -1834,6 +1840,7 @@ mod tests {
                 "--format=json",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "WARNING: Retrying ... Read timed out.\nERROR: Could not fetch URL https://pypi.org/simple/".to_string(),
@@ -1850,6 +1857,7 @@ mod tests {
                 "--format=json",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list,
                 stderr: String::new(),
@@ -1917,6 +1925,7 @@ mod tests {
 
     fn exited_with(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(code),
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
@@ -2270,6 +2279,7 @@ mod tests {
                 "--format=json",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list_json.clone(),
                 stderr: String::new(),
@@ -2287,6 +2297,7 @@ mod tests {
                 "--not-required",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list_json,
                 stderr: String::new(),

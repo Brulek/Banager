@@ -1560,6 +1560,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Homebrew 7.0.3\n".to_string(),
                 stderr: String::new(),
@@ -2883,6 +2884,7 @@ mod tests {
 
     fn exited_0(stdout: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: stdout.to_string(),
             stderr: String::new(),
@@ -4348,6 +4350,7 @@ mod tests {
 
     fn brew_answer(exit_code: i32, stdout: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(exit_code),
             stdout: stdout.to_string(),
             stderr: String::new(),

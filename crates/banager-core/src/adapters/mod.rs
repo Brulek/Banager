@@ -794,14 +794,15 @@ pub async fn run_plan(
     }
     match output.exit_code {
         Some(0) => Ok(Outcome::Succeeded),
-        Some(code) => {
-            let stderr_lines: Vec<&str> = output.stderr.lines().collect();
-            let start = stderr_lines.len().saturating_sub(5);
-            Ok(Outcome::Failed {
-                exit_code: Some(code),
-                summary: stderr_lines[start..].join("\n"),
-            })
-        }
+        // The summary is the last lines of stderr, a login masked out of
+        // them; the cause was read off the same lines as the tool wrote
+        // them (`CommandOutput::failure_cause`), as the mask can take the
+        // words that say it (re-check 2's N1).
+        Some(code) => Ok(Outcome::Failed {
+            exit_code: Some(code),
+            summary: crate::runner::failure_summary(&output.stderr),
+            cause: output.failure_cause(),
+        }),
         // Neither flag is set, so the runner stopped nothing: a signal the
         // run did not send ended the command before it could exit (the doc
         // comment above). No exit code, no verdict.
@@ -1322,6 +1323,7 @@ mod tests {
         runner_raw.respond(
             vec!["/bin/fake", "cancelled"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
@@ -1332,6 +1334,7 @@ mod tests {
         runner_raw.respond(
             vec!["/bin/fake", "failed"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(2),
                 stdout: String::new(),
                 stderr: "l1\nl2\nl3\nl4\nl5\nl6\nl7".to_string(),
@@ -1367,6 +1370,7 @@ mod tests {
             Outcome::Failed {
                 exit_code: Some(2),
                 summary: "l3\nl4\nl5\nl6\nl7".to_string(),
+                cause: None,
             }
         );
     }
@@ -1414,6 +1418,7 @@ mod tests {
         runner_raw.respond(
             vec!["/bin/fake", "killed"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: None,
                 stdout: "==> Pouring jq".to_string(),
                 stderr: "Warning: partial\n".to_string(),
@@ -1467,6 +1472,7 @@ mod tests {
                     error: "Input/output error (os error 5)".to_string(),
                 }));
                 Ok(CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: "==> Pouring jq".to_string(),
                     stderr: String::new(),

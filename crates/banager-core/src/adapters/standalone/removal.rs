@@ -1297,8 +1297,11 @@ pub async fn execute_removal(
                 // macOS's own words, quoted by the front end as a tool's
                 // stderr would be. Whatever was moved before is in the
                 // Trash; the launcher (last) is not, and the row comes back.
+                // Not a tool's output: nothing in it is masked, and its
+                // cause is read off it as it is.
                 return Ok(Outcome::Failed {
                     exit_code: None,
+                    cause: crate::history::failure_cause(&detail),
                     summary: detail,
                 });
             }
@@ -3673,7 +3676,8 @@ mod tests {
             outcome,
             Outcome::Failed {
                 exit_code: None,
-                summary: "Operation not permitted".to_string()
+                summary: "Operation not permitted".to_string(),
+                cause: Some(crate::history::FailureCause::Permission),
             }
         );
         assert_eq!(mock.calls(), preview.paths[..2].to_vec());

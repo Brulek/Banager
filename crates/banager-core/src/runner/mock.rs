@@ -103,6 +103,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Homebrew 7.0.3\n".to_string(),
                 stderr: String::new(),

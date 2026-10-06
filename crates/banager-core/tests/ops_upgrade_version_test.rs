@@ -73,6 +73,7 @@ fn fixture(path: &str) -> String {
 
 fn exited_0(stdout: &str, stderr: &str) -> CommandOutput {
     CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: Some(0),
         stdout: stdout.to_string(),
         stderr: stderr.to_string(),
@@ -99,6 +100,7 @@ enum Stop {
 impl Stop {
     fn output(self) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: None,
             stdout: String::new(),
             stderr: String::new(),
@@ -837,6 +839,7 @@ async fn claude_upgrade(update_output: CommandOutput, versions: Vec<&str>) -> Ou
 #[tokio::test]
 async fn test_a_claude_update_exiting_zero_with_a_failed_version_read_is_unconfirmed() {
     let failed = CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: Some(1),
         stdout: String::new(),
         stderr: "dyld: Library not loaded".to_string(),
@@ -902,6 +905,7 @@ async fn test_a_claude_update_exiting_zero_with_no_version_before_it_falls_back_
     // `Succeeded` -- even here, where `claude update` found nothing to
     // install and the version after is the one installed before.
     let timed_out = CommandOutput {
+        stderr_cause: Default::default(),
         exit_code: None,
         stdout: String::new(),
         stderr: String::new(),

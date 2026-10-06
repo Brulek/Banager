@@ -777,10 +777,13 @@ mod tests {
         }
     }
 
+    /// A tool's failure, its cause read off `summary` as the runner reads
+    /// it off what the tool wrote (`CommandOutput::failure_cause`).
     fn failed(summary: &str) -> Option<Outcome> {
         Some(Outcome::Failed {
             exit_code: Some(1),
             summary: summary.into(),
+            cause: banager_core::history::failure_cause(summary),
         })
     }
 

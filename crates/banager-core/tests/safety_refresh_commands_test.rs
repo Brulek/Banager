@@ -89,6 +89,7 @@ impl CommandRunner for Recorder {
             .find(|(program, wanted, _, _)| *program == name && *wanted == args);
         Ok(match found {
             Some((_, _, exit, stdout)) => CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(*exit),
                 stdout: stdout.clone(),
                 stderr: String::new(),
@@ -96,6 +97,7 @@ impl CommandRunner for Recorder {
                 cancelled: false,
             },
             None => CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: String::new(),

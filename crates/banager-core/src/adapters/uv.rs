@@ -742,6 +742,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: format!("ruff v0.15.0 ({})\n", dir.path().display()),
                 stderr: String::new(),
@@ -779,6 +780,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ruff v0.15.0 [latest: 0.16.0]\n".into(),
                 stderr: String::new(),
@@ -819,6 +821,7 @@ mod tests {
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ruff v0.15.0 [latest: 0.16.0]\n".into(),
                 stderr: String::new(),
@@ -874,6 +877,7 @@ mod tests {
                 runner.respond(
                     vec!["/opt/homebrew/bin/uv", "tool", "list", option],
                     CommandOutput {
+                        stderr_cause: Default::default(),
                         exit_code: Some(0),
                         stdout: text.into(),
                         stderr: String::new(),
@@ -914,6 +918,7 @@ mod tests {
                     "parsed output must stay plain even with inherited FORCE_COLOR"
                 );
                 Ok(CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: "No tools installed".into(),
                     stderr: String::new(),
@@ -1109,6 +1114,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: fixture,
                 stderr: String::new(),
@@ -1141,6 +1147,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: text,
                 stderr: String::new(),
@@ -1170,6 +1177,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(2),
                 stdout: String::new(),
                 stderr: "error: Request failed after 3 retries".to_string(),
@@ -1180,6 +1188,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: list,
                 stderr: String::new(),
@@ -1261,6 +1270,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: text,
                 stderr: String::new(),
@@ -1350,6 +1360,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "install", "ruff"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Installed ruff\n".to_string(),
                 stderr: String::new(),
@@ -1380,7 +1391,7 @@ ruff v0.15.0 (/Users/someone/.local/share/uv/tools/ruff)
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ruff v0.15.0 (/Users/brulek/.local/share/uv/tools/ruff)\n- ruff (/Users/brulek/.local/bin/ruff)\n".to_string(),
                 stderr: String::new(),

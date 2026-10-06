@@ -1734,6 +1734,7 @@ mod tests {
 
     fn exited_0(stdout: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: stdout.to_string(),
             stderr: String::new(),
@@ -1951,6 +1952,7 @@ mod tests {
         runner.respond(
             vec![layout.launcher.to_str().unwrap(), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
                 stderr: "dyld: Library not loaded\n".to_string(),
@@ -1981,6 +1983,7 @@ mod tests {
         runner.respond(
             vec![layout.launcher.to_str().unwrap(), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: None,
                 stdout: String::new(),
                 stderr: String::new(),
@@ -3823,7 +3826,8 @@ mod tests {
             outcome,
             Outcome::Failed {
                 exit_code: None,
-                summary: "Operation not permitted".to_string()
+                summary: "Operation not permitted".to_string(),
+                cause: Some(crate::history::FailureCause::Permission),
             }
         );
         assert_eq!(trasher.calls().len(), 2);
@@ -4135,7 +4139,7 @@ mod tests {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec![layout.launcher.to_str().unwrap(), "--version"],
-            CommandOutput {
+            CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: RUSTUP_VERSION_LINE.to_string(),
                 stderr: "info: This is the version for the rustup toolchain manager, not the rustc compiler.\ninfo: no `rustc` is currently active\n".to_string(),
@@ -5760,6 +5764,7 @@ mod tests {
             // as typed and grok's own first line of stderr...
             (
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(1),
                     stdout: String::new(),
                     stderr: "error: could not reach x.ai\n".to_string(),
@@ -5771,6 +5776,7 @@ mod tests {
             // ...or, when grok said nothing, its exit code as a number...
             (
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(1),
                     stdout: String::new(),
                     stderr: String::new(),
@@ -5783,6 +5789,7 @@ mod tests {
             // said, that it did not finish.
             (
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: None,
                     stdout: String::new(),
                     stderr: String::new(),
@@ -5811,6 +5818,7 @@ mod tests {
             ),
             (
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: None,
                     stdout: String::new(),
                     stderr: String::new(),
@@ -6191,7 +6199,8 @@ mod tests {
             outcome,
             Outcome::Failed {
                 exit_code: None,
-                summary: "Operation not permitted".to_string()
+                summary: "Operation not permitted".to_string(),
+                cause: Some(crate::history::FailureCause::Permission),
             }
         );
         assert_eq!(trasher.calls().len(), 2);

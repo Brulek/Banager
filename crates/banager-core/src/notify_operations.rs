@@ -421,10 +421,13 @@ mod tests {
     /// ask (`history::failure_cause`'s `NeedsPassword`).
     const SUDO: &str = "==> Installing tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
 
+    /// A tool's failure, its cause read off `summary` as the runner reads
+    /// it off what the tool wrote (`CommandOutput::failure_cause`).
     fn failed(summary: &str) -> Option<Outcome> {
         Some(Outcome::Failed {
             exit_code: Some(1),
             summary: summary.into(),
+            cause: crate::history::failure_cause(summary),
         })
     }
 

@@ -2105,6 +2105,7 @@ mod tests {
         ) -> Result<CommandOutput, crate::runner::RunnerError> {
             self.specs.lock().unwrap().push(spec);
             Ok(CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "cargo 1.98.1 (797e8a9bc 2026-08-05)\n".to_string(),
                 stderr: String::new(),
@@ -2672,6 +2673,7 @@ mod tests {
                 "hexyl",
             ],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "Installing hexyl\n".to_string(),
                 stderr: String::new(),
@@ -2748,6 +2750,7 @@ mod tests {
         runner.respond(
             vec![cargo_path, "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: stdout.to_string(),
                 stderr: String::new(),

@@ -1497,6 +1497,7 @@ mod tests {
         runner.respond(
             vec!["/usr/local/bin/ollama", "pull", "qwen3.8:27b-mlx"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "pulling manifest\nsuccess\n".to_string(),
                 stderr: String::new(),
@@ -1629,6 +1630,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ollama version is 0.34.1\n".to_string(),
                 stderr: String::new(),
@@ -1685,6 +1687,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ollama version is 9.9.9\n".to_string(),
                 stderr: String::new(),
@@ -1740,6 +1743,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ollama version is 9.9.9\n".to_string(),
                 stderr: String::new(),
@@ -1783,6 +1787,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ollama version is 9.9.9\n".to_string(),
                 stderr: String::new(),
@@ -1829,6 +1834,7 @@ mod tests {
         runner.respond(
             vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: "ollama version is 9.9.9\n".to_string(),
                 stderr: String::new(),

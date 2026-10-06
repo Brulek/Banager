@@ -390,6 +390,7 @@ mod tests {
             runner.respond(
                 vec!["/test-shell", "-ilc", COMMAND],
                 CommandOutput {
+                    stderr_cause: Default::default(),
                     exit_code: Some(0),
                     stdout: stdout.into(),
                     stderr: String::new(),
@@ -419,6 +420,7 @@ mod tests {
         runner.respond(
             vec!["/test-shell", "-ilc", COMMAND],
             CommandOutput {
+                stderr_cause: Default::default(),
                 exit_code: Some(0),
                 stdout: format!("{DELIMITER}{environment}{DELIMITER}"),
                 stderr: String::new(),
@@ -653,6 +655,7 @@ mod tests {
 
     fn timed_out() -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: None,
             stdout: String::new(),
             stderr: String::new(),
@@ -663,6 +666,7 @@ mod tests {
 
     fn printed(path: &str) -> CommandOutput {
         CommandOutput {
+            stderr_cause: Default::default(),
             exit_code: Some(0),
             stdout: format!("{DELIMITER}PATH={path}\nHOME=/Users/someone\n{DELIMITER}"),
             stderr: String::new(),

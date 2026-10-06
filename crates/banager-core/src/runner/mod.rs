@@ -1,4 +1,5 @@
 use crate::events::{LogNote, Stream};
+use crate::history::{failure_cause, FailureCause};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -77,6 +78,51 @@ pub struct CommandOutput {
     /// The runner stopped the command because the cancellation token fired.
     /// See `timed_out` for a command that finishes while being stopped.
     pub cancelled: bool,
+    /// Why the command failed, by the last lines it wrote to stderr as it
+    /// wrote them (`CommandOutput::failure_cause`). `RealRunner` reads it
+    /// before it masks a login (`StderrCause::Read`), since the mask can
+    /// take the words that say it: a proxy password `pass` turns sudo's
+    /// "a password is required" into "a ****word is required" (re-check
+    /// 2's N1). A runner that masks nothing leaves it to be read off
+    /// `stderr` (`StderrCause::InStderr`, the default).
+    pub stderr_cause: StderrCause,
+}
+
+/// How many of the last lines a failed command wrote to stderr are its
+/// failure's summary (`Outcome::Failed`, `run_plan`), and are read for why
+/// it failed (`history::failure_cause`).
+pub const SUMMARY_LINES: usize = 5;
+
+/// A failed command's summary: the last [`SUMMARY_LINES`] lines of its
+/// stderr.
+pub fn failure_summary(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().collect();
+    let start = lines.len().saturating_sub(SUMMARY_LINES);
+    lines[start..].join("\n")
+}
+
+/// Where a command's failure cause is: see [`CommandOutput::stderr_cause`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StderrCause {
+    /// `stderr` is as the command wrote it, so the cause is read off its
+    /// summary (`failure_summary`). A runner that masks nothing says this.
+    #[default]
+    InStderr,
+    /// Read by the runner off the summary's lines as the command wrote
+    /// them, before any login was masked out of `stderr`. `RealRunner`
+    /// always says this.
+    Read(Option<FailureCause>),
+}
+
+impl CommandOutput {
+    /// Why the command failed, by the last lines it wrote to stderr
+    /// (`history::failure_cause` over `failure_summary`), as it wrote them.
+    pub fn failure_cause(&self) -> Option<FailureCause> {
+        match self.stderr_cause {
+            StderrCause::InStderr => failure_cause(&failure_summary(&self.stderr)),
+            StderrCause::Read(cause) => cause,
+        }
+    }
 }
 
 /// One thing a runner hands its [`LineCallback`] while a command runs.
