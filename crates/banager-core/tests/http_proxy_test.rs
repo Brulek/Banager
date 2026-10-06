@@ -4,8 +4,11 @@
 //! request as a forwarded one, an https one as a `CONNECT` tunnel -- and a
 //! request to this Mac itself, as the one to Ollama is, never does. Two
 //! local listeners stand in for the proxy and for Ollama; nothing leaves
-//! this Mac. A file of its own: `accept` sets state for the whole process,
-//! and each file under tests/ runs in a process of its own.
+//! this Mac: each request is for this Mac, named in `no_proxy`, or of a
+//! scheme whose proxy the test sets itself, so a proxy set in the
+//! environment the tests run in, or in System Settings, is never asked.
+//! A file of its own: `accept` sets state for the whole process, and each
+//! file under tests/ runs in a process of its own.
 
 use banager_core::http::{HttpClient, HttpError, HttpRequest, RealHttpClient};
 use banager_core::runner::login_path::{self, LoginEnv};
@@ -159,15 +162,19 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
     assert_eq!(proxied.lock().unwrap().len(), before);
 
     // A SOCKS proxy, as Clash and Surge print `all_proxy`: spoken to as
-    // one, not sent an HTTP `CONNECT`.
+    // one, not sent an HTTP `CONNECT`. `https_proxy` is set to it as well:
+    // `all_proxy` comes after `https_proxy` and `HTTPS_PROXY`, and a name
+    // the login shell did not set is taken from the environment the tests
+    // run in, so a terminal that exports a proxy would otherwise send this
+    // request there (`http::proxy::proxy_for`, whose own tests cover the
+    // order).
     let (socks_port, greeted) = first_bytes();
+    let socks = format!("socks5://127.0.0.1:{socks_port}");
     login_path::accept(&LoginEnv {
         path: "/usr/bin:/bin".to_string(),
         imported: vec![
-            (
-                "all_proxy".to_string(),
-                format!("socks5://127.0.0.1:{socks_port}"),
-            ),
+            ("https_proxy".to_string(), socks.clone()),
+            ("all_proxy".to_string(), socks),
             ("no_proxy".to_string(), "straight.invalid".to_string()),
         ],
     });
