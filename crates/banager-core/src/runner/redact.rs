@@ -82,9 +82,18 @@ impl Redactor {
         let mut redactor = Redactor::default();
         for (name, value) in settings {
             match Login::in_setting(name, value) {
-                Some(Login::Password { user, password }) => {
+                Some(Login::Password {
+                    user,
+                    password,
+                    token,
+                }) => {
                     for form in forms_of(password) {
                         redactor.mask_password(form);
+                    }
+                    if token {
+                        for form in forms_of(user) {
+                            redactor.mask_name(form, ':');
+                        }
                     }
                     // How a tool that sends the login prints it: HTTP Basic,
                     // the pair decoded as it is sent, and as written.
@@ -193,8 +202,15 @@ impl Redactor {
 /// the setting's name (`Login::in_setting`).
 #[derive(Debug, PartialEq, Eq)]
 enum Login<'v> {
-    /// `user:password@`, with a password: the password is the secret.
-    Password { user: &'v str, password: &'v str },
+    /// `user:password@`, with a password: the password is the secret,
+    /// and on a mirror's or a remote's http(s) address (`token`), the
+    /// name too, which may be a token: GitHub's documented form is
+    /// `https://TOKEN:x-oauth-basic@github.com/…`.
+    Password {
+        user: &'v str,
+        password: &'v str,
+        token: bool,
+    },
     /// `token@` on an http(s) address: no password, so the name is the
     /// secret (a mirror's access token). Elsewhere a name alone is no
     /// secret: `git@github.com:…` names an ssh user.
@@ -218,14 +234,20 @@ impl<'v> Login<'v> {
             mirror_userinfo(rest)?
         };
         let (user, password) = userinfo.split_once(':').unwrap_or((userinfo, ""));
-        if !password.is_empty() {
-            return Some(Login::Password { user, password });
-        }
         let scheme = scheme.to_ascii_lowercase();
         let http = ["http", "https"]
             .iter()
             .any(|name| scheme == *name || scheme.ends_with(&format!("+{name}")));
-        (http && !user.is_empty() && !is_proxy(name)).then_some(Login::Token(user))
+        // A proxy's name is the account's (NTLM, Kerberos), never a token.
+        let token = http && !user.is_empty() && !is_proxy(name);
+        if !password.is_empty() {
+            return Some(Login::Password {
+                user,
+                password,
+                token,
+            });
+        }
+        token.then_some(Login::Token(user))
     }
 }
 
@@ -565,7 +587,12 @@ mod tests {
         ] {
             let said = format!("fatal: unable to access '{setting}/': URL rejected");
             let masked = redactor(&[(name, setting)]).redact(&said).into_owned();
-            assert_eq!(masked, said.replace(password, MASK), "{name}={setting}");
+            // A mirror's name is masked where it stands too: it may be a
+            // token (`test_a_token_in_the_user_name_slot_of_a_remote_is_masked`).
+            let expected = said
+                .replace(password, MASK)
+                .replace("//review-user:", "//****:");
+            assert_eq!(masked, expected, "{name}={setting}");
         }
     }
 
@@ -624,6 +651,48 @@ mod tests {
         assert_eq!(
             r.redact("token ghp_mirrortoken42 refused"),
             "token **** refused"
+        );
+    }
+
+    #[test]
+    fn test_a_token_in_the_user_name_slot_of_a_remote_is_masked() {
+        // GitHub's documented token-as-user-name form: the "password" is
+        // a fixed word, the token stands where a user name would.
+        let r = redactor(&[(
+            "HOMEBREW_BREW_GIT_REMOTE",
+            "https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew",
+        )]);
+        assert_eq!(
+            r.redact(
+                "fatal: unable to access \
+                 'https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew/': \
+                 The requested URL returned error: 403"
+            ),
+            "fatal: unable to access 'https://****:****@github.com/Homebrew/brew/': \
+             The requested URL returned error: 403"
+        );
+        assert_eq!(
+            r.redact("token ghp_reviewtoken42xoauth refused"),
+            "token **** refused"
+        );
+        // A name that is no token is masked in the address only: it may be
+        // the Mac account's.
+        let r = redactor(&[(
+            "PIP_INDEX_URL",
+            "https://jdoe:apikey-0042@artifactory.corp.example/api/pypi/simple",
+        )]);
+        assert_eq!(
+            r.redact("Looking in indexes: https://jdoe:apikey-0042@artifactory.corp.example/api/pypi/simple"),
+            "Looking in indexes: https://****:****@artifactory.corp.example/api/pypi/simple"
+        );
+        let path = "/Users/jdoe/.cache/pip";
+        assert_eq!(r.redact(path), path);
+        // A proxy's user name stays as written: a proxy is not given a
+        // token that way.
+        let r = redactor(&[("https_proxy", "http://jdoe:s3cret-pw@proxy.lan:3128")]);
+        assert_eq!(
+            r.redact(&curl_refuses("http://jdoe:s3cret-pw@proxy.lan:3128")),
+            curl_refuses("http://jdoe:****@proxy.lan:3128")
         );
     }
 

@@ -39,6 +39,9 @@ const QUERY_PROXY: &str = "http://review-user:rev?secret@127.0.0.1:8080";
 const ALL_PROXY: &str = "socks5://someone:p%40ss%2Fword@127.0.0.1:7891";
 /// A mirror whose login is an access token alone.
 const MIRROR: &str = "https://ghp_mirrortoken42@mirror.example/homebrew-bottles";
+/// A remote whose token stands where a user name would, GitHub's
+/// documented `TOKEN:x-oauth-basic` form.
+const REMOTE: &str = "https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew";
 
 /// Every secret above, in each form a test below has a tool print.
 const SECRETS: &[&str] = &[
@@ -50,6 +53,7 @@ const SECRETS: &[&str] = &[
     "p%40ss%2Fword",
     "p@ss/word",
     "ghp_mirrortoken42",
+    "ghp_reviewtoken42xoauth",
     // base64("review-user:review-secret"), as `curl -v` sends a proxy.
     "cmV2aWV3LXVzZXI6cmV2aWV3LXNlY3JldA==",
 ];
@@ -65,6 +69,7 @@ fn accept_settings_with_logins() {
             ("HTTPS_PROXY".to_string(), HASH_PROXY.to_string()),
             ("ALL_PROXY".to_string(), QUERY_PROXY.to_string()),
             ("HOMEBREW_BOTTLE_DOMAIN".to_string(), MIRROR.to_string()),
+            ("HOMEBREW_BREW_GIT_REMOTE".to_string(), REMOTE.to_string()),
         ],
     });
 }
@@ -84,6 +89,7 @@ sleep 0.2
 printf "secret%s': Port number was not a decimal number between 0 and 65535\n" "${https_proxy#*secret}" >&2
 printf "curl: (5) Unsupported proxy syntax in '%s': Port number was not a decimal number between 0 and 65535\n" "$http_proxy" >&2
 printf "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: %s\n" "$https_proxy" >&2
+printf "fatal: unable to access '%s/': The requested URL returned error: 403\n" "$HOMEBREW_BREW_GIT_REMOTE" >&2
 printf "==> Downloading %s/jq-1.8.1.bottle.tar.gz\n" "$HOMEBREW_BOTTLE_DOMAIN"
 printf "proxy %s refused the login for p@ss/word\n" "$all_proxy"
 printf "> Proxy-Authorization: Basic cmV2aWV3LXVzZXI6cmV2aWV3LXNlY3JldA==\n"
@@ -136,7 +142,7 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
             _ => None,
         })
         .collect();
-    assert_eq!(lines.len(), 10, "{lines:#?}");
+    assert_eq!(lines.len(), 11, "{lines:#?}");
     for line in &lines {
         assert_no_secret("a log line", line);
     }
@@ -151,6 +157,7 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
         "==> Downloading https://****@mirror.example/homebrew-bottles/jq-1.8.1.bottle.tar.gz",
         "proxy socks5://someone:****@127.0.0.1:7891 refused the login for ****",
         "> Proxy-Authorization: Basic ****",
+        "fatal: unable to access 'https://****:****@github.com/Homebrew/brew/': The requested URL returned error: 403",
     ];
     for line in expected {
         assert!(
@@ -164,9 +171,13 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
     };
     assert_eq!(exit_code, Some(5));
     assert_no_secret("the failure summary", &summary);
-    // The last five lines: pip's, and curl's for the three proxies with
-    // a `/`, `#` or `?` in the password.
+    // The last five lines: git's, curl's for the three proxies with a
+    // `/`, `#` or `?` in the password, and pip's.
     assert_eq!(summary.lines().count(), 5, "{summary}");
+    assert!(
+        summary.contains("'https://****:****@github.com/Homebrew/brew/'"),
+        "{summary}"
+    );
     assert!(
         summary.contains("review-user:****@127.0.0.1:invalid"),
         "{summary}"
@@ -271,5 +282,6 @@ async fn test_the_login_shell_read_still_gets_the_settings_as_written() {
     assert_eq!(value("HTTPS_PROXY"), Some(HASH_PROXY));
     assert_eq!(value("ALL_PROXY"), Some(QUERY_PROXY));
     assert_eq!(value("HOMEBREW_BOTTLE_DOMAIN"), Some(MIRROR));
+    assert_eq!(value("HOMEBREW_BREW_GIT_REMOTE"), Some(REMOTE));
     let _ = std::fs::remove_dir_all(&dir);
 }
