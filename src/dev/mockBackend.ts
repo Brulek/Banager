@@ -33,6 +33,7 @@ import { withFamilies } from "./mockFamilies";
 import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import { withMockKeptData } from "./mockKeptData";
 import { namesASource, withMockNeededBy } from "./mockNeededBy";
+import { applyMockCleanup, mockCleanupLines, withMockOldVersions } from "./mockOldVersions";
 import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
@@ -434,6 +435,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       }
       world.updates = world.updates.filter((u) => !sameKey(u.key, target));
       world.greedyUpdates = world.greedyUpdates.filter((u) => !sameKey(u.key, target));
+      applyMockCleanup(plan, world);
       return;
     }
     if (plan.request.kind === "Uninstall") {
@@ -503,13 +505,16 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     // Homebrew refuses to uninstall what something installed still needs,
     // whatever else would have happened -- once it runs at all.
     const refused = scripted === "banager" ? null : homebrewRefusal(world, inst, op.plan);
-    const { lines, outcome } =
+    const played =
       refused === null
         ? playOutcome(op.plan, subject, scripted)
         : {
             lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
             outcome: { Failed: { exit_code: 1, summary: refused.join("\n") } } satisfies Outcome,
           };
+    const { outcome } = played;
+    // An update a `brew cleanup` follows (U9) goes on to it once it succeeded.
+    const lines = outcome === "Succeeded" ? [...played.lines, ...mockCleanupLines(op.plan, world)] : played.lines;
     let at = TIMING.start;
     schedule(op, at, () => setStatus(op, "Running"));
     // A `brew update` a refresh left running: Homebrew operations wait
@@ -678,12 +683,17 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         id: planCount.toString(16).padStart(32, "0"),
         // What the uninstall leaves behind, named (`mockKeptData.ts`), then
         // the sources that run on a Homebrew package (`mockNeededBy.ts`).
-        plan: withMockNeededBy(
-          withMockKeptData(
-            buildPlan(world, inst, request),
-            inst.adapter_id,
+        // And U9's old versions of a Homebrew formula (`mockOldVersions.ts`).
+        plan: withMockOldVersions(
+          withMockNeededBy(
+            withMockKeptData(
+              buildPlan(world, inst, request),
+              inst.adapter_id,
+              request,
+              world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
+            ),
+            world,
             request,
-            world.instances.some((instance) => instance.adapter_id === "standalone-codex"),
           ),
           world,
           request,
