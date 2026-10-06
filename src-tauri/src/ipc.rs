@@ -752,14 +752,15 @@ pub async fn open_ollama_app() -> Result<(), String> {
 /// Whose turn it is to launch Ollama.app (`open_ollama_app`).
 static OPEN_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// Whose turn it is to scan for programs of unknown source (`scan_unknown`).
-static SCAN_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// The scan for programs of unknown source under way, if any, keyed by the
+/// snapshot generation it is judged against (`scan_unknown`).
+static SCAN: crate::shared_run::SharedRun<u64, UnknownScan> = crate::shared_run::SharedRun::new();
 
 /// `work` on the blocking pool once `turn` is this call's: one at a time,
 /// the others waiting for it as tasks, holding no thread. Without it a page
-/// that called `scan_unknown` (up to ten seconds each) or `open_ollama_app`
-/// (up to `OPEN_ANSWER_TIMEOUT`) over and over would take a blocking thread
-/// for each call, up to the pool's limit, which the app icons share.
+/// that called `open_ollama_app` (up to `OPEN_ANSWER_TIMEOUT`) over and
+/// over would take a blocking thread for each call, up to the pool's
+/// limit, which the app icons share.
 async fn in_turn<T: Send + 'static>(
     turn: &tokio::sync::Mutex<()>,
     work: impl FnOnce() -> T + Send + 'static,
@@ -781,26 +782,36 @@ pub(crate) fn scan_unknown_impl(session: &Session, env: &HostEnv) -> UnknownScan
 /// from now on are the ones it resolved (`reveal::Revealable`).
 #[tauri::command]
 pub async fn scan_unknown(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
-    revealable: State<'_, crate::reveal::Revealable>,
 ) -> Result<UnknownScan, String> {
+    use tauri::Manager as _;
     // On the blocking pool, as `open_ollama_app` is: the scan is
     // synchronous file-system work bounded by `ScanBudget::default()` --
     // up to ten seconds by design -- and running it inline would hold one
     // of the async runtime's worker threads, the ones every other command
     // and the refresh run on, for that long. `State` cannot move into the
-    // task; the `Arc<Session>` inside it can. One at a time (`SCAN_TURN`).
+    // task; the `Arc<Session>` inside it, and the app handle, can.
+    //
+    // One at a time, and shared (`SCAN`): a call while a scan judged
+    // against this same snapshot is under way is handed that scan's
+    // result instead of queueing a scan of its own; one for a newer
+    // snapshot waits for it and then scans. Each scan is remembered for
+    // Show in Finder as part of its run, so scans are remembered in the
+    // order they ran, whichever call is answered first.
     let session = state.session.clone();
+    let generation = session.snapshot().generation;
     let env = HostEnv::discover();
-    let scan = in_turn(&SCAN_TURN, move || scan_unknown_impl(&session, &env))
-        .await
-        // Only a panic inside the scan reaches this arm. The text is the
-        // front end's to show verbatim, the way a failed load shows the
-        // backend's own words under `emptyStates.loadFailed`; it is the
-        // runtime's sentence, not one of Banager's to translate.
-        .map_err(|e| e.to_string())?;
-    revealable.remember(&scan);
-    Ok(scan)
+    SCAN.run(generation, move || {
+        let scan = scan_unknown_impl(&session, &env);
+        app.state::<crate::reveal::Revealable>().remember(&scan);
+        scan
+    })
+    .await
+    // Only a panic inside the scan makes this an error. The text is the
+    // front end's to show verbatim, the way a failed load shows the
+    // backend's own words under `emptyStates.loadFailed`; it is the
+    // runtime's sentence, not one of Banager's to translate.
 }
 
 /// How much disk each installed thing takes, as the newest round of

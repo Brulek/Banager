@@ -32,10 +32,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 banager-core = { path = "../crates/banager-core" }
 # The daily check's timer (`tokio::time::interval_at` in auto_check.rs), on
-# tauri's own tokio runtime. Already in Cargo.lock at this version as a
-# dependency of tauri, and banager-core already switches `time` on, so no
-# new crate and no new feature enters the build.
-tokio = { version = "1", features = ["time"] }
+# tauri's own tokio runtime; and the turns and shared runs of ipc.rs and
+# shared_run.rs (`tokio::sync::Mutex`, `tokio::sync::watch`). Already in
+# Cargo.lock at this version as a dependency of tauri, and banager-core
+# already switches `time` and `sync` on, so no new crate and no new feature
+# enters the build.
+tokio = { version = "1", features = ["time", "sync"] }
 # `menu::preferred_languages` asks macOS for the user's preferred languages
 # (`NSLocale preferredLanguages`), to build the menu bar in the window's
 # language before the page has said which; `window::observe_activation`

@@ -8,6 +8,7 @@ mod notify;
 mod notify_ops;
 mod quit;
 mod reveal;
+mod shared_run;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
 // `get_settings`/`set_settings` methods are only exercised by this module's

@@ -2590,7 +2590,12 @@ refresh (`Session::scan_unknown` in
 (from the sidebar, or Other Programs, ⌘4, in the menu bar's View menu),
 again when the sources' state changes while the page is open, and when
 you press *Scan Again* — always against the sources' last known state —
-and its result is not stored.
+and its result is not stored. One scan runs at a time: a request that
+comes while a scan against the same state of the sources is under way is
+handed that scan's result rather than starting another, and one that
+comes after the sources' state changed waits for it and then scans
+(`SharedRun` in `src-tauri/src/shared_run.rs`, keyed by the snapshot's
+`generation`).
 
 A program is *not* listed when a known source accounts for it
 (`Known::claimant`): it is a source's own executable, or resolves to the
