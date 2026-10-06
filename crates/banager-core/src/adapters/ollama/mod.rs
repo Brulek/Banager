@@ -117,10 +117,13 @@ fn contained_manifest_path(
     Ok(path)
 }
 
+/// Ollama's own registry: the one `check_updates` looks a model up in.
+const OLLAMA_REGISTRY: &str = "registry.ollama.ai";
+
 /// Ollama's own registry, and the one documented mirror it understands.
 /// A reference whose first segment looks like a host and is neither of
 /// these names a third party.
-const DEFAULT_REGISTRIES: [&str; 2] = ["registry.ollama.ai", "hf.co"];
+const DEFAULT_REGISTRIES: [&str; 2] = [OLLAMA_REGISTRY, "hf.co"];
 
 /// The third-party registry a model reference points at, if any.
 ///
@@ -137,12 +140,17 @@ const DEFAULT_REGISTRIES: [&str; 2] = ["registry.ollama.ai", "hf.co"];
 /// is a model name, and warning about it would teach the user to ignore the
 /// warning that matters.
 fn third_party_registry(reference: &str) -> Option<&str> {
+    named_registry(reference).filter(|host| !DEFAULT_REGISTRIES.contains(host))
+}
+
+/// The registry a model reference names, if it names one: its first
+/// segment, where it has more than one and that segment looks like a host
+/// (it has a `.`) -- `hf.co` of `hf.co/user/repo:tag` -- and nothing of
+/// `qwen3.8:27b-mlx` or `someuser/somemodel:tag`, which are Ollama's own
+/// library's.
+fn named_registry(reference: &str) -> Option<&str> {
     let (first, _rest) = reference.split_once('/')?;
-    if first.contains('.') && !DEFAULT_REGISTRIES.contains(&first) {
-        Some(first)
-    } else {
-        None
-    }
+    first.contains('.').then_some(first)
 }
 
 /// Ollama's own default daemon URL, used whenever the host environment did
@@ -418,8 +426,12 @@ impl OllamaAdapter {
     /// `contained_manifest_path`, before anything is read. Only a request
     /// with no answer, or a 408, 429 or 5xx, is one checking again can get
     /// past (`LookupFailure`): a 404 -- a model made with `ollama create`,
-    /// one removed upstream, one from another registry looked up here --
-    /// and a local manifest that cannot be read are said again next time.
+    /// one removed upstream -- and a local manifest that cannot be read or
+    /// parsed are said again next time. A local manifest that is not there
+    /// -- the models kept elsewhere through `OLLAMA_MODELS`, which
+    /// Banager's environment does not carry -- or that is in a protected
+    /// place Banager does not read is no lookup at all: nothing is asked,
+    /// at this check or the next (`LookupFailure::not_looked_up`).
     async fn compare_digests(
         &self,
         manifests_root: &Path,
@@ -433,10 +445,15 @@ impl OllamaAdapter {
         let protected = crate::protected::Protected::of_this_process();
         let local_json =
             crate::adapters::read_file::read_text(&local_path, &protected).map_err(|e| {
-                format!(
+                let reason = format!(
                     "could not read local manifest {}: {e}",
                     local_path.display()
-                )
+                );
+                if e.kind() == std::io::ErrorKind::NotFound || look::is_protected(&e) {
+                    LookupFailure::not_looked_up(reason)
+                } else {
+                    LookupFailure::from(reason)
+                }
             })?;
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
@@ -483,6 +500,24 @@ impl OllamaAdapter {
         manifests_root: &Path,
         artifact: &InstalledArtifact,
     ) -> Option<UpdateCandidate> {
+        // A model from another registry -- `hf.co/user/repo:tag`, the one
+        // mirror Ollama documents, or any other host -- is not looked up:
+        // Ollama keeps its manifest under `manifests/<host>/…`, not under
+        // `manifests_root`, and registry.ollama.ai is the one registry
+        // this check asks. Nothing is read and nothing asked, at this
+        // check or the next (`LookupFailure::not_looked_up`).
+        if let Some(host) =
+            named_registry(&artifact.key.name).filter(|host| *host != OLLAMA_REGISTRY)
+        {
+            return Some(uncheckable_candidate(
+                artifact.key.clone(),
+                artifact.version.clone(),
+                UpdateChannel::Digest,
+                LookupFailure::not_looked_up(format!(
+                    "models from {host} are not looked up; only those from {OLLAMA_REGISTRY} are"
+                )),
+            ));
+        }
         let (namespace, name, tag) = split_model_reference(&artifact.key.name);
         match self
             .compare_digests(manifests_root, &namespace, &name, &tag)
@@ -1231,14 +1266,22 @@ mod tests {
             .compare_digests(&manifests_root, "library", "qwen3.8", "27b-mlx")
             .await;
         drop(as_if);
-        assert!(refused.is_err(), "{refused:?}");
+        // No request made, now or next time: not looked up on this Mac
+        // (F5 review), as the models of an Ollama on another Mac are.
+        let refused = refused.expect_err("refused in a protected place");
+        assert!(refused.not_looked_up, "{refused:?}");
+        assert!(!refused.transient, "{refused:?}");
         let _ = std::fs::remove_dir_all(&home);
     }
 
     #[tokio::test]
     async fn test_check_updates_marks_a_model_uncheckable_when_the_local_manifest_is_missing() {
         // Edge case the fixture cannot show directly: the local manifest
-        // file is absent (e.g. deleted out from under Banager).
+        // file is absent -- the models kept elsewhere through
+        // `OLLAMA_MODELS`, which Banager's environment does not carry, or
+        // deleted out from under Banager. No request is made, at this
+        // check or the next: not looked up on this Mac (F5 review), so
+        // it keeps no Overview from its all good for good.
         let tags_json =
             std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
                 .expect("read ollama api-tags.json fixture");
@@ -1248,11 +1291,11 @@ mod tests {
             "http://127.0.0.1:11434/api/tags",
             HttpResponse {
                 status: 200,
-                body: tags_json,
+                body: tags_json.clone(),
             },
         );
-        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
-        let inst = test_instance("http://127.0.0.1:11434", home);
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance("http://127.0.0.1:11434", home.clone());
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1260,6 +1303,108 @@ mod tests {
             .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
+        assert!(
+            candidates[0].warnings.contains(&Warning::NotLookedUpHere),
+            "{:?}",
+            candidates[0].warnings
+        );
+        assert!(!candidates[0]
+            .warnings
+            .contains(&Warning::TransientLookupFailure));
+        assert!(warnings_text(&candidates[0].warnings).contains("could not read local manifest"));
+        assert_eq!(http.calls(), vec!["http://127.0.0.1:11434/api/tags"]);
+
+        // A local manifest that is there but does not parse is a lookup
+        // that did not succeed, not one never made.
+        let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
+        std::fs::write(model_dir.join("27b-mlx"), "not json").expect("write local manifest");
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert!(!candidates[0].checkable);
+        assert!(
+            !candidates[0].warnings.contains(&Warning::NotLookedUpHere),
+            "{:?}",
+            candidates[0].warnings
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_does_not_look_up_a_model_from_another_registry() {
+        // `hf.co/user/repo:tag`, the one mirror Ollama documents (and any
+        // other host, `modelscope.cn/…`): Ollama keeps its manifest under
+        // `manifests/hf.co/…`, not under `manifests/registry.ollama.ai`,
+        // and registry.ollama.ai is the one registry this check asks. So
+        // nothing is read and nothing asked: not looked up on this Mac
+        // (F5 review), rather than a lookup that fails the same way at
+        // every check and keeps the Overview grey for good.
+        let model = "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M";
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+        let home = crate::testing::unique_temp_path("ollama-other-registry");
+        // Where Ollama keeps it, and where a lookup here would have read it.
+        for root in [
+            "models/manifests/hf.co",
+            "models/manifests/registry.ollama.ai/hf.co",
+        ] {
+            let dir = home.join(root).join("bartowski/Llama-3.2-3B-Instruct-GGUF");
+            std::fs::create_dir_all(&dir).expect("create fixture manifest dir");
+            std::fs::write(dir.join("Q4_K_M"), &local_json).expect("write local manifest");
+        }
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "http://127.0.0.1:11434/api/tags",
+            HttpResponse {
+                status: 200,
+                body: tags_body_naming(model),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert!(!candidates[0].checkable);
+        assert_eq!(candidates[0].current, candidates[0].target);
+        assert_eq!(
+            candidates[0].warnings,
+            vec![
+                Warning::Message(
+                    "models from hf.co are not looked up; only those from registry.ollama.ai are"
+                        .into()
+                ),
+                Warning::NotLookedUpHere,
+            ]
+        );
+        assert_eq!(http.calls(), vec!["http://127.0.0.1:11434/api/tags"]);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn test_named_registry_is_a_host_like_first_segment_of_a_longer_reference() {
+        assert_eq!(named_registry("hf.co/user/repo:tag"), Some("hf.co"));
+        assert_eq!(
+            named_registry("modelscope.cn/Qwen/Qwen3-8B"),
+            Some("modelscope.cn")
+        );
+        assert_eq!(
+            named_registry("registry.ollama.ai/library/qwen3.8:27b-mlx"),
+            Some("registry.ollama.ai")
+        );
+        // Ollama's own library: a dotted model name, a user's namespace.
+        assert_eq!(named_registry("qwen3.8:27b-mlx"), None);
+        assert_eq!(named_registry("someuser/somemodel:sometag"), None);
+        assert_eq!(named_registry("library/qwen3.8:27b-mlx"), None);
     }
 
     #[tokio::test]

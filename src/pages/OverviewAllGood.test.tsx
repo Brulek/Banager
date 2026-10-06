@@ -481,6 +481,43 @@ describe("the Overview's all good, over a lookup that did not succeed", () => {
     expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
   });
 
+  it.each([
+    [
+      "a model from hf.co",
+      "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M",
+      "models from hf.co are not looked up; only those from registry.ollama.ai are",
+    ],
+    [
+      "a model whose manifest is not where Banager reads (OLLAMA_MODELS elsewhere)",
+      "qwen3:8b",
+      "could not read local manifest /Users/you/.ollama/models/manifests/registry.ollama.ai/library/qwen3/8b: no such file or folder",
+    ],
+  ])("keeps the green check beside %s, which Banager does not look up from here", async (_what, name, message) => {
+    // F5 review: no request made, at this check or the next.
+    const local = instance("ollama:http://127.0.0.1:11434", "ollama");
+    const model = key(local, name, "Model");
+    served = snapshotWith({
+      instances: [brew, local],
+      artifacts: [artifact(jq), artifact(model)],
+      updates: [
+        candidate(model, {
+          checkable: false,
+          current: "abc",
+          target: "abc",
+          channel: "Digest",
+          warnings: [{ Message: message }, "NotLookedUpHere"],
+        }),
+      ],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "Everything you can update here is up to date",
+    });
+    expect(statusRow(container).getAttribute("data-status")).toBe("upToDate");
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
+  });
+
   it("does not call the rest up to date where a source that answered had a lookup fail", async () => {
     served = snapshotWith({
       instances: [brew, cargo, stoppedOllama],

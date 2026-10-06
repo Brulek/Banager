@@ -811,7 +811,9 @@ pub enum Warning {
     /// On a `checkable: false` candidate, after the `Message` that says
     /// why: Banager does not look this tool up on this Mac, by design, and
     /// made no request -- not a lookup that did not succeed. An Ollama
-    /// whose models are on another Mac (`OLLAMA_HOST` not this one),
+    /// whose models are on another Mac (`OLLAMA_HOST` not this one), an
+    /// Ollama model from another registry (`hf.co/…`) or whose local
+    /// manifest is not where Banager reads it or is in a protected place,
     /// Antigravity CLI on an Intel Mac or under Rosetta (its manifest URL
     /// is verified for Apple silicon only), Claude Code whose settings are
     /// kept in a protected place (which channel it follows is not known).

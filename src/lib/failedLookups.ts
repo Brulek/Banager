@@ -86,7 +86,7 @@ export function failedLookupsOf(
 /**
  * The warnings that mark a "could not check" row (`checkable: false`) as
  * one Banager never looks up, by design, rather than one whose lookup did
- * not succeed -- every such row there is:
+ * not succeed:
  *
  * - `NonRegistrySource`: a crate installed from a git repository or a
  *   local path (`CargoAdapter::check_updates` in
@@ -95,10 +95,19 @@ export function failedLookupsOf(
  * - `NotLookedUpHere` (`LookupFailure::not_looked_up` in
  *   crates/banager-core/src/adapters/mod.rs), where no request is made on
  *   this Mac: the models of an Ollama on another Mac
- *   (`OllamaAdapter::check_updates`), Antigravity CLI on an Intel Mac or
- *   under Rosetta (`manifest_arch_allowed`), and Claude Code whose settings
+ *   (`OllamaAdapter::check_updates`); an Ollama model from another
+ *   registry, `hf.co/…` (`OllamaAdapter::check_one_model`), or whose local
+ *   manifest is not there -- the models kept elsewhere through
+ *   `OLLAMA_MODELS` -- or is in a protected place
+ *   (`OllamaAdapter::compare_digests`); Antigravity CLI on an Intel Mac or
+ *   under Rosetta (`manifest_arch_allowed`); and Claude Code whose settings
  *   are kept in a protected place, so the channel it follows is not known
  *   (`StandaloneAdapter::published`).
+ *
+ * Not a lookup that fails the same way at every check, though nothing
+ * the user does here mends it either: a model made with `ollama create`,
+ * which the registry answers 404 for at every check, keeps the all good
+ * away, as a crate crates.io has no such name for does.
  *
  * The other tools and sources Banager never checks list no row at all, so
  * there is nothing of theirs to leave out here: Codex's and opencode's own

@@ -1898,8 +1898,17 @@ not measured either (Disk use, below). The three name parts
 come out of the daemon's `/api/tags` answer, so before any path is built
 each must be a plain path segment (`contained_manifest_path`: nothing
 absolute, no `..`), and in the URL each is percent-encoded. The registry
-manifest is always fetched from `registry.ollama.ai`, whatever registry
-the model was pulled from. Ollama has no search command Banager uses.
+manifest is always fetched from `registry.ollama.ai`. A model whose name
+begins with another registry -- `hf.co/…`, the one mirror Ollama
+documents, or any other host -- is not looked up at all: Ollama keeps its
+manifest under `manifests/<host>/…`, not where Banager reads, so no file
+is read and no request made for it. Nor is a request made for a model
+whose local manifest is not there (the models kept elsewhere through
+`OLLAMA_MODELS`, which Banager's environment does not carry) or is in a
+place Banager never looks into. Each such model is listed as "could not
+check", with the line that it isn't checked for updates on this Mac
+(`Warning::NotLookedUpHere`), and keeps no Overview from saying all is up
+to date. Ollama has no search command Banager uses.
 From the same two manifests, and nothing else, a model with an update
 also gets the most its pull can download: the sum of the `size`s the
 registry manifest gives its layers and config whose digests the local

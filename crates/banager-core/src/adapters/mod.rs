@@ -383,9 +383,12 @@ impl From<String> for LookupFailure {
 impl LookupFailure {
     /// No lookup, by design: Banager does not look this tool up on this
     /// Mac, and made no request -- the models of an Ollama on another Mac,
-    /// Antigravity CLI on an Intel Mac, Claude Code whose settings are kept
-    /// in a protected place. `reason` says which, as the row's `Message`;
-    /// never transient, as the next check makes no request either.
+    /// an Ollama model from another registry or whose local manifest is
+    /// not there or is in a protected place
+    /// (`OllamaAdapter::check_one_model`, `compare_digests`), Antigravity
+    /// CLI on an Intel Mac, Claude Code whose settings are kept in a
+    /// protected place. `reason` says which, as the row's `Message`; never
+    /// transient, as the next check makes no request either.
     pub(crate) fn not_looked_up(reason: String) -> Self {
         LookupFailure {
             not_looked_up: true,
