@@ -245,6 +245,40 @@ describe("LogDrawer", () => {
     }
   });
 
+  it("says an update's brew cleanup did not run when the settings no longer allow it, in each language (F4)", async () => {
+    const expected: [string, string][] = [
+      [
+        "en",
+        "brew cleanup didn't run: Homebrew's settings changed after the confirmation opened, or couldn't be read. The update itself is done; any old versions left are still listed under Other versions.",
+      ],
+      [
+        "zh-CN",
+        "没有运行brew cleanup：确认窗口打开后，Homebrew的设置有了变化，或无法读取。更新本身已经完成，留下的旧版本仍列在“其他版本”中。",
+      ],
+      [
+        "zh-Hant",
+        "沒有執行brew cleanup：確認視窗開啟後，Homebrew的設定有了變化，或無法讀取。更新本身已經完成，留下的舊版本仍列在「其他版本」中。",
+      ],
+    ];
+    try {
+      for (const [language, line] of expected) {
+        await i18n.changeLanguage(language);
+        act(() => useUiStore.setState({ logs: [] }));
+        const { findByText, getByRole, unmount } = renderWithProviders(<LogDrawer />);
+        act(() => {
+          useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Upgrading wget" });
+          useUiStore.getState().appendLog({ opId: 1, note: { OldVersionsCleanupSkipped: { name: "wget" } } });
+        });
+        await findByText("==> Upgrading wget");
+        const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
+        expect(lines).toEqual(["==> Upgrading wget", line]);
+        unmount();
+      }
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says which stream a failed read cut short", async () => {
     const { findByText } = renderWithProviders(<LogDrawer />);
 

@@ -77,6 +77,11 @@ function noteText(t: TFunction, note: LogNote): string {
       count: versions.length,
     });
   }
+  // Review F4 (r6): it did not start -- the settings, asked again at its
+  // turn, no longer allowed it.
+  if ("OldVersionsCleanupSkipped" in note) {
+    return t("brewVersions.logCleanupSkipped");
+  }
   const unhandled: never = note;
   return unhandled;
 }

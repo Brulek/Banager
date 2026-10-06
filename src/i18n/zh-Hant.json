@@ -517,6 +517,7 @@
     "removesEvery": "已安裝的所有版本都會刪除：{{versions}}。",
     "logCleaningUp": "更新已完成，接著執行brew cleanup刪除{{name}}的舊版本。",
     "logNotCleanedUp": "brew cleanup沒有完成。更新本身已經完成，沒刪掉的舊版本仍列在「其他版本」中。",
+    "logCleanupSkipped": "沒有執行brew cleanup：確認視窗開啟後，Homebrew的設定有了變化，或無法讀取。更新本身已經完成，留下的舊版本仍列在「其他版本」中。",
     "logKept_other": "brew cleanup保留了{{name}}的舊版本{{versions}}，仍列在「其他版本」中。",
     "scopeEvery": {
       "HomebrewFormulaOnly": "只刪除Homebrew安裝的「{{name}}」和指向它的連結；別處的設定和資料不刪除。",

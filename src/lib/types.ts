@@ -820,7 +820,10 @@ export type LogNote =
   // of those its preview named it deletes are still there, which.
   | { CleaningUpOldVersions: { name: string } }
   | { OldVersionsNotCleanedUp: { name: string; exit_code: number | null } }
-  | { OldVersionsKept: { name: string; versions: string[] } };
+  | { OldVersionsKept: { name: string; versions: string[] } }
+  // Review F4 (r6): asked again at its turn, the person's settings no longer
+  // let that cleanup run, or could not be read, so it did not.
+  | { OldVersionsCleanupSkipped: { name: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

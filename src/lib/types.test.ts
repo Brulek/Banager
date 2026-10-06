@@ -850,6 +850,11 @@ describe("types", () => {
       '{"Note":{"op_id":7,"note":{"OldVersionsKept":{"name":"wget","versions":["1.24.0","1.25.0"]}}}}',
     );
     expect(roundTrip(kept)).toEqual(kept);
+    // Review F4 (r6): asked again at its turn, the settings no longer let
+    // the cleanup run (events.rs builds the same string).
+    const skipped: OperationEvent = { Note: { op_id: 7, note: { OldVersionsCleanupSkipped: { name: "wget" } } } };
+    expect(JSON.stringify(skipped)).toBe('{"Note":{"op_id":7,"note":{"OldVersionsCleanupSkipped":{"name":"wget"}}}}');
+    expect(roundTrip(skipped)).toEqual(skipped);
   });
 
   it("spells the unknown-source scan's shapes as Rust sends them", () => {
