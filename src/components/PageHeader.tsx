@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { elapsedSince, type Elapsed } from "../lib/format";
@@ -176,6 +176,34 @@ export interface PageHeaderProps {
 }
 
 /**
+ * Whether the subtitle's second part, what follows the count, is in
+ * sight: on the count's line, not wrapped out of sight below it where the
+ * line has no room for it whole. Measured as the toolbar is laid out, and
+ * again as the status's width changes -- the window resized, the line
+ * wrapping or not; in sight where there is no second part.
+ */
+function useRestInSight(status: RefObject<HTMLParagraphElement | null>, shown: string | null, rest: string | undefined): boolean {
+  const [inSight, setInSight] = useState(true);
+  useLayoutEffect(() => {
+    const node = status.current;
+    if (node === null || shown === null || rest === undefined) {
+      setInSight(true);
+      return;
+    }
+    const measure = () => {
+      const count = node.firstElementChild as HTMLElement | null;
+      const second = node.querySelector<HTMLElement>("[data-subtitle-rest]");
+      setInSight(count === null || second === null || second.offsetTop <= count.offsetTop);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [status, shown, rest]);
+  return inSight;
+}
+
+/**
  * The window's toolbar, over every page: its title, with a line under it
  * where the page has one, and on the right the page's own actions, then
  * the page's way to look again, rightmost. 52 high whatever it holds, as a Mac
@@ -202,6 +230,8 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
   // What the status says: the subtitle, but for a failure, which the alert says.
   const shown = subtitle === null || subtitle.failed ? null : subtitle.text;
   const note = shown === null ? undefined : subtitle?.note;
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const restInSight = useRestInSight(statusRef, shown, subtitle?.rest);
   return (
     <header
       data-tauri-drag-region="deep"
@@ -225,8 +255,11 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
             not fit. */}
         {/* Laid out inline, as wide as it needs up to the room left for
             the ⓘ after it, which is outside it: a status is read whole as
-            it changes, and the ⓘ's name is no part of what it says. */}
+            it changes, and the ⓘ's name is no part of what it says. The
+            room is kept whether the ⓘ is there or not, so the line wraps
+            at the same width either way. */}
         <p
+          ref={statusRef}
           role="status"
           data-subtitle=""
           className={
@@ -244,9 +277,22 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
             </>
           )}
         </p>
+        {/* The ⓘ explains the second part, so it goes where that goes:
+            wrapped out of sight -- an English window 800 wide on the
+            Installed page, 「58 tools」 alone -- the line keeps its full
+            width, and an ⓘ after it would stand apart from the count,
+            naming a total no one can see. It is hidden then, not taken
+            out: it keeps its room in the toolbar, so the line has the
+            same room to come back into as the window grows. Hidden, a
+            keyboard and a screen reader pass it by too. */}
         {note === undefined ? null : (
           // A new note, a new ⓘ, closed: not the last one's, still open.
-          <span key={note} data-subtitle-note="" className="ml-1 inline-flex h-3.5 items-center align-top">
+          <span
+            key={note}
+            data-subtitle-note=""
+            className="ml-1 inline-flex h-3.5 items-center align-top"
+            style={restInSight ? undefined : { visibility: "hidden" }}
+          >
             <InfoDetail label={t("common.detailsLabel", { title: subtitle?.rest ?? shown })}>{note}</InfoDetail>
           </span>
         )}

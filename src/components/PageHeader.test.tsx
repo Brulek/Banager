@@ -123,6 +123,53 @@ describe("PageHeader", () => {
     expect(rest.className.split(" ")).toContain("whitespace-pre");
   });
 
+  it("leaves out the ⓘ while what it explains is wrapped out of sight, and brings it back with it", () => {
+    // jsdom lays nothing out: what an English window 800 wide does on the
+    // Installed page, where 「· 10.6 GB or more」 wraps a line below 「58
+    // tools」, is given as the size's place, and the toolbar's resizes as
+    // the observer's calls.
+    let below = true;
+    const offsetTop = vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (this: HTMLElement) {
+      return below && this.hasAttribute("data-subtitle-rest") ? 14 : 0;
+    });
+    const resized: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resized.push(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const subtitle = { text: "58 tools", rest: "10.6 GB or more", note: "Other versions count; caches do not.", failed: false };
+      const { getByRole, queryByRole } = renderWithProviders(<PageHeader title="Installed" subtitle={subtitle} actions={null} />);
+      // No ⓘ beside 「58 tools」 naming a total no one can see; the status
+      // still says it whole.
+      expect(queryByRole("button", { name: "Details: 10.6 GB or more" })).toBeNull();
+      expect(getByRole("status")).toHaveTextContent("58 tools · 10.6 GB or more");
+      // Hidden, not taken out: it keeps its room, so the toolbar's title
+      // stays as wide and the size has room to come back into.
+      const slot = document.querySelector<HTMLElement>("[data-subtitle-note]");
+      expect(slot).not.toBeNull();
+      expect(slot?.style.visibility).toBe("hidden");
+
+      // The window made wider: the size back on the line, its ⓘ after it.
+      below = false;
+      act(() => {
+        for (const callback of resized) callback();
+      });
+      const info = getByRole("button", { name: "Details: 10.6 GB or more" });
+      expect(getByRole("status")).not.toContainElement(info);
+    } finally {
+      offsetTop.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("says its subtitle's changes through one status node, from 「正在检查…」 to the count and back to nothing", () => {
     const { getByRole, rerender } = renderWithProviders(
       <PageHeader title="Updates" subtitle={{ text: "Checking…", failed: false }} actions={null} />,

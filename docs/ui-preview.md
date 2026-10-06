@@ -231,8 +231,14 @@ Paths are under a generic home folder, `/Users/you`.
   shows only some, the toolbar says how many of how many,
   「58个工具中的2个」. A total counts a
   formula's other versions (其他版本), which its row's size leaves out, so a heading
-  can be more than its rows add up to; hovering a heading or the subtitle
-  with a total shows a tooltip that says so (other versions in, caches out).
+  can be more than its rows add up to; an ⓘ after a heading or the
+  subtitle with a total says so (other versions in, caches out), named
+  with what it explains, 「详情：Homebrew · 2.6 GB以上」. In an English
+  window at its narrowest, 800 wide (`?lang=en&page=installed`, the
+  browser window 800 wide), the toolbar has no room for 「· 10.6 GB or
+  more」, which wraps out of sight, and its ⓘ is hidden with it: the line
+  reads 「58 tools」 alone. 960 wide, or in Chinese at 800, the line is
+  whole with its ⓘ after it.
 - The Installed page's 「显示」 popup also offers 「装了不止一份」: on the
   default pretend Mac, Codex's own install and npm's @openai/codex; with
   `?state=notices`, Claude Code and @anthropic-ai/claude-code as well. With
