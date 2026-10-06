@@ -4879,6 +4879,37 @@ describe("UpdatesPage", () => {
       expect(within(first).getByText("You can't enter your Mac password here. If an app asks for it at this step, you'll see how to finish in Terminal.")).toBeInTheDocument();
     });
 
+    it("does not count Homebrew's routine cleanup line as a note to put first (U9)", async () => {
+      // Every formula's update now says which old versions go after it; a
+      // tool whose only line is that ranks with the tools that say nothing,
+      // so a caution or a major update stays in sight above them.
+      const cleansUp = (versions: string[]): Warning => ({ HomebrewCleansUpOldVersions: { versions } });
+      updates = [
+        brewCandidate("gemini-cli"),
+        brewCandidate("git"),
+        brewCandidate("rustup"),
+        { ...brewCandidate("tokei"), current: "12.1.2", target: "13.0.0" },
+      ];
+      planWarnings["gemini-cli"] = [cleansUp(["0.9.0", "1.0.0"])];
+      planWarnings.git = [cleansUp(["2.54.0", "2.55.0"])];
+      noCancel.add("rustup");
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("4 updates available");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("dialog", { name: "Update 4 tools?" });
+      const names = () =>
+        [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
+
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
+      expect(names()).toEqual(["rustup", "tokei", "gemini-cli", "git"]);
+      // The cleanup lines are still said, each under its own tool.
+      const git = [...dialog.querySelectorAll("[data-sheet-tool]")].find(
+        (tool) => tool.querySelector("[data-sheet-name]")?.textContent === "git",
+      ) as HTMLElement;
+      expect(within(git).getByText(/2\.54\.0/)).toBeInTheDocument();
+    });
+
     it("says nothing about notes beside Update when there are none", async () => {
       const { findByRole, findByText, getByRole } = renderPage();
 

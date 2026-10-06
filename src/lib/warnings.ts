@@ -722,6 +722,17 @@ export function skipsTrash(warnings: readonly Warning[]): boolean {
 }
 
 /**
+ * Whether a warning's line is routine: true of nearly every update of its
+ * kind, so that a list of several does not put the tool first for it. Only
+ * U9's 「更新后会删除旧版本…」, which every Homebrew formula's update now
+ * carries; were it to count, the tools with a caution or a major update
+ * would sink below any number of formulae that say only that.
+ */
+export function isRoutineNote(warning: Warning): boolean {
+  return typeof warning !== "string" && "HomebrewCleansUpOldVersions" in warning;
+}
+
+/**
  * Whether a warning's line is a caution -- something a person may not
  * expect and should weigh before going on -- which a confirmation marks
  * with a small ⚠︎ before its words (spec R6): what else goes or stops

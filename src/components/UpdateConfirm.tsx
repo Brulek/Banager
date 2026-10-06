@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
 import { modelPath } from "../lib/names";
-import { warningLines, type WarningLine } from "../lib/warnings";
+import { isRoutineNote, warningLines, type WarningLine } from "../lib/warnings";
 import { majorJump } from "../lib/versionJump";
 import { CHANGED_SINCE_SHOWN, letGoPolicy, startShown } from "../lib/heldPlans";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -567,8 +567,9 @@ function sameBatchTool(was: BatchToolProps, now: BatchToolProps): boolean {
  * it starts, that it may ask for the Mac's password. A batch can mix a
  * rustup self update with Homebrew upgrades, and Casks with formulae, so
  * each note stays with the tool it is true of. The tools with something
- * to say come first -- a refusal before a note -- so that the first of it
- * is in sight without scrolling; the rest keep the list's order. A
+ * to say come first -- a refusal before a note, and Homebrew's routine
+ * cleanup line not counted -- so that the first of it is in sight without
+ * scrolling; the rest keep the list's order. A
  * caution has a ⚠︎ before its words; a line's longer why is behind its ⓘ.
  * The commands are one click away (`CommandPreview`), each under its
  * tool's name, open from the start with technical details on.
@@ -705,9 +706,14 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // became of it once submitted, and why not.
   const said = items.map((item) => ({ item, notes: notesOf(item) }));
   // The tools with a refusal first, then those with notes, then the rest,
-  // each in the list's order (`Array.prototype.sort` is stable).
+  // each in the list's order (`Array.prototype.sort` is stable). A routine
+  // line (`isRoutineNote`: Homebrew's cleanup after a formula's update) is
+  // said under its tool but does not count: a tool with only that ranks
+  // with the rest, so that a caution stays in sight above them.
+  const routineCount = (item: BatchItem) =>
+    item.issued === null ? 0 : item.issued.plan.warnings.filter(isRoutineNote).length;
   const rank = ({ item, notes }: { item: BatchItem; notes: WarningLine[] }) =>
-    item.planError !== null || item.submitError !== null ? 0 : notes.length > 0 ? 1 : 2;
+    item.planError !== null || item.submitError !== null ? 0 : notes.length > routineCount(item) ? 1 : 2;
   const ordered = several ? [...said].sort((a, b) => rank(a) - rank(b)) : said;
   // The first few drawn with the dialog, the rest in turns
   // (`useToolsInTurn`): as it opens, and again once its plans are back.
