@@ -1071,6 +1071,12 @@ function scenarioWorld(state: ScenarioState): World {
       withRefusedSources(world);
       withRefusedLookups(world);
       return world;
+    case "unchecked":
+      // uv still not answering, as on the Mac above; every other source
+      // answered and has nothing to update.
+      world.updates = [];
+      world.greedyUpdates = [];
+      return world;
   }
 }
 
