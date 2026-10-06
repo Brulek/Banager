@@ -85,21 +85,57 @@ after a read that worked, none runs again. Each refresh takes the `PATH`
 and whether it is the login shell's together, as one value, as it starts
 (`login_path::round_env`), and keeps it: a read that works while an older
 round is still running changes neither for that round, which says which
-copy of a command runs only when its own `PATH` was the login shell's. No other shell variable is
-imported. The `PATH` read is kept in Banager's memory and handed to every
-command it runs as that command's `PATH` (`RealRunner::run`); Banager's
-own process environment is never changed, since changing it while other
-threads may read it is unsafe.
+copy of a command runs only when its own `PATH` was the login shell's.
+From the same read Banager takes the proxy and mirror settings listed
+next (`login_path::IMPORTED`), and no other variable. The `PATH` read is
+kept in Banager's memory and handed to every command it runs as that
+command's `PATH`, and each of those settings the shell set is handed to
+every command as it was (`RealRunner::run`); Banager's own process
+environment is never changed, since changing it while other threads may
+read it is unsafe.
+
+**Proxy and mirror settings from the login shell.** Opened from Finder,
+Banager would not otherwise see a proxy or a mirror exported only in
+`~/.zprofile` or `~/.zshrc`, and a `brew update` that works in Terminal
+would time out in Banager. These, and only these, are taken from the read
+above when the shell set them (`runner::login_path::read`):
+
+- proxies, in both spellings, since programs differ in which they read:
+  `http_proxy`, `HTTP_PROXY`, `https_proxy`, `HTTPS_PROXY`, `all_proxy`,
+  `ALL_PROXY`, `no_proxy`, `NO_PROXY`;
+- Homebrew's mirrors: `HOMEBREW_API_DOMAIN`, `HOMEBREW_BOTTLE_DOMAIN`,
+  `HOMEBREW_BREW_GIT_REMOTE`, `HOMEBREW_CORE_GIT_REMOTE`,
+  `HOMEBREW_PIP_INDEX_URL`;
+- pip's, which pipx runs: `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`;
+- npm's, which reads its settings in either case: `npm_config_registry`,
+  `NPM_CONFIG_REGISTRY`;
+- uv's: `UV_INDEX_URL`, `UV_DEFAULT_INDEX`, `UV_EXTRA_INDEX_URL`;
+- rustup's: `RUSTUP_DIST_SERVER`, `RUSTUP_UPDATE_ROOT`.
+
+A setting with no value, with a control character in it, or whose name
+starts more than one line of what the shell's `env` printed (one of
+those lines is then the rest of another variable's value, and which is
+real cannot be told) is not taken. Banager neither changes these values
+nor adds to them: a command gets them as Terminal would give them,
+`no_proxy` included, and a variable a source sets itself for a command
+(each source's section) still wins. Nothing that decides where things are
+installed is taken -- `CARGO_HOME`, `RUSTUP_HOME`, `UV_TOOL_DIR`,
+`PIPX_HOME`, an npm or Homebrew prefix -- because that would change which
+folders an uninstall and its preview act on; nor any token, nor
+`OLLAMA_HOST`. The values are never written
+to a log and never in the diagnostic info, since a proxy setting can hold
+a password; the app's own output at launch names the settings read, not
+their values.
 
 **What a command inherits.** A child gets Banager's own environment — the
-`PATH` above, which is the only variable taken from the login shell (set
-on each command, not in Banager's own environment), and
-whatever else Banager itself was started with — plus the variables listed
-in each source's section below (`RealRunner::run` adds them with `envs` and
-never clears the environment). Opened from Finder or the Dock, Banager
-starts with macOS's small default environment, so a variable exported only
-in a shell startup file — a proxy such as `https_proxy`, a Homebrew mirror
-such as `HOMEBREW_BOTTLE_DOMAIN`, `CARGO_HOME` — does not reach the commands
+`PATH` and the proxy and mirror settings above, the only variables taken
+from the login shell (set on each command, not in Banager's own
+environment), and whatever else Banager itself was started with — plus
+the variables listed in each source's section below (`RealRunner::run`
+adds them with `envs` and never clears the environment). Opened from
+Finder or the Dock, Banager starts with macOS's small default
+environment, so any other variable exported only in a shell startup file
+— `CARGO_HOME`, `RUSTUP_HOME`, a token — does not reach the commands
 Banager runs (see "Which Rust" under rustup for why that is deliberate). Its stdin is
 `/dev/null`, so a tool that asks a question gets end-of-file rather than a
 wait; its stdout and stderr are piped and, for a write command, streamed
@@ -2319,8 +2355,9 @@ same look — gone is succeeded, still there is unconfirmed.
 leaving one that makes every shell reading that file print an error.
 
 **Which Rust.** rustup runs with the environment Banager itself was
-started with: at launch Banager restores only `PATH` from your login shell,
-and every command it runs inherits the rest. Banager reads `CARGO_HOME`,
+started with: at launch Banager restores `PATH` and the proxy and mirror
+settings (How Banager runs anything) from your login shell, nothing that
+says where Rust is, and every command it runs inherits the rest. Banager reads `CARGO_HOME`,
 `RUSTUP_HOME` and `ZDOTDIR` from that same environment — the one the
 rustup it runs will see, so the two always agree about which folders are
 meant. A `RUSTUP_HOME` or `CARGO_HOME` exported only in a shell startup
@@ -2424,7 +2461,8 @@ not listed, as for a launcher Banager cannot look at. A link into
 `node_modules` or Homebrew's `Caskroom` is not this row. Only the default
 folders are looked at: `CODEX_HOME` and `CODEX_INSTALL_DIR` are not read,
 because a Mac app started from the Finder inherits no variable from your
-shell except the `PATH` Banager asks your login shell for, so a
+shell except the `PATH` and the proxy and mirror settings Banager asks your
+login shell for (How Banager runs anything), so a
 `CODEX_HOME` set in `~/.zshrc` is invisible to it. A Codex installed under
 another `CODEX_HOME` is not listed here (the Other Programs page lists its
 launcher instead). Nothing else in `~/.codex`, with your settings, login
@@ -2975,8 +3013,9 @@ variable (`KIMI_CODE_HOME`, `KIMI_SHARE_DIR`, `IFLOW_HOME`,
 `CRUSH_GLOBAL_DATA`, `COPILOT_HOME`, `GOOSE_PATH_ROOT`, `VIBE_HOME`,
 `OPENCLAW_STATE_DIR`, `GROK_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`);
 Banager reads none of them -- a Mac app started from the Finder inherits
-nothing from your shell but the `PATH` Banager asks your login shell for
--- so a folder moved that way is not named.
+nothing from your shell but the `PATH` and the proxy and mirror settings
+Banager asks your login shell for (How Banager runs anything) -- so a
+folder moved that way is not named.
 
 opencode's two are the folders its own docs name for macOS
 (opencode.ai/docs/troubleshooting, "Storage": sessions, `auth.json`
@@ -3207,7 +3246,8 @@ Every path in the text has the home folder written as `~`. The folders on
 `PATH` are the one environment variable's value the text holds, as its
 "Command search folders" (「查找命令的文件夹」) lines, and Settings' footnote says
 so; it never holds any other environment variable's value (a proxy setting
-can hold a password), anything from a shell file, or a token.
+can hold a password) -- not even those of the proxy and mirror settings
+read from the login shell -- anything from a shell file, or a token.
 
 Check Tool Setup (「检查工具环境」), in the Help menu and beside Copy
 Diagnostic Info in Settings' About, opens a sheet that says the same facts

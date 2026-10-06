@@ -181,7 +181,9 @@ mod tests {
             "/test-shell".into(),
             "/tmp".into(),
             banager_core::runner::login_path::TIMEOUT,
-            move |path| to.lock().unwrap().push(path.to_string()),
+            move |found: &banager_core::runner::login_path::LoginEnv| {
+                to.lock().unwrap().push(found.path.clone())
+            },
         )));
         state.read_login_path().await;
         assert!(!state.session.login_path_restored());

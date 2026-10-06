@@ -1441,3 +1441,42 @@ fn test_what_we_run_never_says_a_folder_the_uninstall_preview_walks_is_never_rea
         );
     }
 }
+
+/// U12 of the decisions round: every setting taken from the login shell
+/// besides `PATH` (`login_path::IMPORTED`) is named where the document
+/// says how Banager runs anything, so the list and the document change
+/// together; so are the ones deliberately left out, which decide where
+/// things are installed. And no section still says that `PATH` is the
+/// only thing taken from the shell.
+#[test]
+fn test_what_we_run_names_every_setting_taken_from_the_login_shell() {
+    use banager_core::runner::login_path::IMPORTED;
+    let doc = read_doc();
+    let body = section_body(&doc, "How Banager runs anything")
+        .expect("docs/what-we-run.md has a `## How Banager runs anything` section");
+    for name in IMPORTED {
+        assert!(
+            body.contains(&format!("`{name}`")),
+            "the `## How Banager runs anything` section of docs/what-we-run.md does not name `{name}`, which login_path::IMPORTED takes from the login shell"
+        );
+    }
+    for kept_out in ["CARGO_HOME", "RUSTUP_HOME", "UV_TOOL_DIR"] {
+        assert!(
+            body.contains(&format!("`{kept_out}`")),
+            "the `## How Banager runs anything` section of docs/what-we-run.md does not say `{kept_out}` is left out"
+        );
+    }
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    for stale in [
+        "No other shell variable is imported",
+        "the only variable taken from the login shell",
+        "restores only `PATH` from your login shell",
+        "inherits no variable from your shell except the `PATH` Banager asks",
+        "inherits nothing from your shell but the `PATH` Banager asks",
+    ] {
+        assert!(
+            !folded.contains(stale),
+            "docs/what-we-run.md still says {stale:?}, but the proxy and mirror settings are taken too"
+        );
+    }
+}

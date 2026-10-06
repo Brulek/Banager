@@ -73,11 +73,13 @@ pub fn run() {
             // `settings.json` (history.rs; docs/what-we-run.md, "Files
             // Banager writes").
             history::attach(&app.state::<AppState>(), &data_dir);
-            // The login shell's `PATH` (runner::login_path), read in the
-            // background from now on -- `$SHELL` (`/bin/zsh` when unset)
-            // from the home folder, within `login_path::TIMEOUT` -- so a
-            // slow shell never holds the window back. Every refresh waits
-            // for it, and reads again when it failed (`read_login_path`).
+            // The login shell's `PATH` and proxy and mirror settings
+            // (runner::login_path), read in the background from now on --
+            // `$SHELL` (`/bin/zsh` when unset) from the home folder, within
+            // `login_path::TIMEOUT` -- so a slow shell never holds the
+            // window back. Every refresh waits for it, and reads again when
+            // it failed (`read_login_path`). The log names the settings
+            // read, never their values: a proxy's can hold a password.
             let shell = std::env::var_os("SHELL")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| "/bin/zsh".into());
@@ -86,9 +88,15 @@ pub fn run() {
                 shell,
                 banager_core::runner::HostEnv::discover().home,
                 banager_core::runner::login_path::TIMEOUT,
-                |path| {
-                    banager_core::runner::login_path::accept(path);
-                    println!("[banager] read the login shell's PATH: {path}");
+                |found: &banager_core::runner::login_path::LoginEnv| {
+                    banager_core::runner::login_path::accept(found);
+                    println!("[banager] read the login shell's PATH: {}", found.path);
+                    if !found.imported.is_empty() {
+                        println!(
+                            "[banager] and its proxy and mirror settings: {}",
+                            found.imported_names().join(", ")
+                        );
+                    }
                 },
             ));
             let _ = app.state::<AppState>().login_path.set(probe);
