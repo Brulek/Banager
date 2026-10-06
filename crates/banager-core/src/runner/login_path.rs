@@ -22,7 +22,9 @@
 //! diagnostics read the `PATH` in place of the process's own (`path`),
 //! and Banager's own requests go through the proxy it names, never for
 //! this Mac itself (`command_var`, `http::proxy`). The diagnostics never
-//! hold an imported value: a proxy's can hold a password.
+//! hold an imported value: a proxy's can hold a password. Nor does what a
+//! command prints, as anyone sees it: tools print a setting back whole,
+//! and the runner masks a login in it first (`redact`).
 use super::{CommandRunner, CommandSpec, OutputUse};
 use std::ffi::OsString;
 use std::path::PathBuf;
