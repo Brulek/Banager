@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
-import { stateId, type Twin } from "../lib/commands";
-import type { CommandState, InstalledArtifact } from "../lib/types";
-import { artifactKeyId } from "../store/ui";
+import { twinVerdict, type Twin } from "../lib/commands";
+import type { InstalledArtifact } from "../lib/types";
 import type { StatusChipProps } from "./StatusChip";
 import { detailLines } from "./updateDetails";
+
+/** Pure, and read outside the components too: src/lib/commands.ts. */
+export { twinVerdict, type TwinVerdict } from "../lib/commands";
 
 /**
  * What to make of a tool installed more than once (research synthesis
@@ -18,32 +20,6 @@ import { detailLines } from "./updateDetails";
 
 /** A source's name in the user's language, by instance id (`InstalledPage`'s `sourceLabelFor`). */
 type SourceLabel = (instanceId: string) => string;
-
-/**
- * What typing the copies' shared command runs, from `artifact`'s side:
- * this copy (`runs`); another copy, `by` (`unused`); or nothing to say --
- * no twins, the commands disagree, or the one that runs is no copy.
- */
-export type TwinVerdict =
-  | { kind: "runs"; command: string; others: Twin[] }
-  | { kind: "unused"; command: string; by: InstalledArtifact }
-  | null;
-
-export function twinVerdict(artifact: InstalledArtifact, twins: readonly Twin[] | undefined): TwinVerdict {
-  if (twins === undefined || twins.length === 0) return null;
-  const shared = [...new Set(twins.flatMap((twin) => twin.commands))];
-  const states = shared.map((name) => artifact.facts.commands.find((fact) => fact.name === name)?.state ?? null);
-  const state: CommandState | null = states[0] ?? null;
-  if (state === null || !states.every((other) => other !== null && stateId(other) === stateId(state))) return null;
-  const command = twins[0].commands[0];
-  if (state === "Runs") return { kind: "runs", command, others: [...twins] };
-  if ("ShadowedBy" in state && state.ShadowedBy.by !== null) {
-    const by = state.ShadowedBy.by;
-    const twin = twins.find((other) => artifactKeyId(other.artifact.key) === artifactKeyId(by));
-    if (twin !== undefined) return { kind: "unused", command, by: twin.artifact };
-  }
-  return null;
-}
 
 /**
  * Who installed a copy, as a sentence names it: 「npm」, or for a tool's

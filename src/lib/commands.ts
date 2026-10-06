@@ -88,6 +88,36 @@ export function twinsByArtifact(artifacts: readonly InstalledArtifact[]): Map<st
 }
 
 /**
+ * What typing the copies' shared command runs, from `artifact`'s side:
+ * this copy (`runs`); another copy, `by` (`unused`); or nothing to say --
+ * no twins, the commands disagree, or the one that runs is no copy.
+ * Said from `ArtifactFacts.commands` alone, as the 「在终端里输入时」 group
+ * judges them (against the `PATH` read when the app opened). The
+ * inspector's advice and the Updates page's 「终端用另一份」
+ * (src/components/TwinAdvice.tsx) go by it.
+ */
+export type TwinVerdict =
+  | { kind: "runs"; command: string; others: Twin[] }
+  | { kind: "unused"; command: string; by: InstalledArtifact }
+  | null;
+
+export function twinVerdict(artifact: InstalledArtifact, twins: readonly Twin[] | undefined): TwinVerdict {
+  if (twins === undefined || twins.length === 0) return null;
+  const shared = [...new Set(twins.flatMap((twin) => twin.commands))];
+  const states = shared.map((name) => artifact.facts.commands.find((fact) => fact.name === name)?.state ?? null);
+  const state: CommandState | null = states[0] ?? null;
+  if (state === null || !states.every((other) => other !== null && stateId(other) === stateId(state))) return null;
+  const command = twins[0].commands[0];
+  if (state === "Runs") return { kind: "runs", command, others: [...twins] };
+  if ("ShadowedBy" in state && state.ShadowedBy.by !== null) {
+    const by = state.ShadowedBy.by;
+    const twin = twins.find((other) => artifactKeyId(other.artifact.key) === artifactKeyId(by));
+    if (twin !== undefined) return { kind: "unused", command, by: twin.artifact };
+  }
+  return null;
+}
+
+/**
  * The standalone source's own sentences about its launcher on `PATH`
  * (`sourceNoticesFor`: the `NotOnPath` and three `ShadowedBy*` notes),
  * by title. Each names the launcher as `values.command`.
