@@ -387,15 +387,26 @@ describe("the Installed page's source headings, on disk use", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 1 tool" })).toBeInTheDocument();
   });
 
-  it("say in a tooltip that other versions count and caches do not, which the rows' sizes leave out", async () => {
+  it("say behind an ⓘ beside the heading that other versions count and caches do not, which the rows' sizes leave out", async () => {
     served = measuredAll;
     await bySource();
     const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools · about 616.4 MB" });
-    expect(heading).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
+    // An ⓘ, which a keyboard and a screen reader reach (decision I21e),
+    // not a tooltip; beside the heading, not in its name.
+    expect(heading).not.toHaveAttribute("title");
+    const slot = heading.parentElement as HTMLElement;
+    const info = within(slot).getByRole("button", { name: /^Details: / });
+    expect(heading).not.toContainElement(info);
+    fireEvent.click(info);
+    expect(document.getElementById(info.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      /including other versions but not caches/,
+    );
 
     cleanupAndServe({ ...measuredAll, done: false, total: null, sources: [] });
     await bySource();
-    expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools" })).not.toHaveAttribute("title");
+    const bare = await screen.findByRole("heading", { level: 2, name: "Homebrew · 3 tools" });
+    expect(bare).not.toHaveAttribute("title");
+    expect(within(bare.parentElement as HTMLElement).queryByRole("button")).toBeNull();
   });
 
   it("say it in Chinese, 约 before the number", async () => {

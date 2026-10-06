@@ -495,6 +495,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * What the ⓘ after an Update History line's ending says, once pressed:
+ * its why, reached by a keyboard and a screen reader as by a pointer
+ * (decision I21e), never a tooltip only.
+ */
+function endingWhy(words: HTMLElement): string {
+  expect(words).not.toHaveAttribute("title");
+  const info = within(words).getByRole("button");
+  fireEvent.click(info);
+  return document.getElementById(info.getAttribute("aria-controls") ?? "")?.textContent ?? "";
+}
+
 describe("UpdatesPage", () => {
   it("shows the first check's spinner and why it takes a while until the backend has answered, not Loading…", async () => {
     // At launch `get_snapshot` has not answered yet: the first check is
@@ -3907,7 +3919,7 @@ describe("UpdatesPage", () => {
         const lines = within(section).getAllByRole("listitem");
         expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "broken", "wget"]);
         expect(within(lines[0]).getByText("4.0.0")).toBeInTheDocument();
-        expect(within(lines[0]).getByText("Updated")).toHaveAttribute("title", expect.stringMatching(/read before and after/));
+        expect(endingWhy(within(lines[0]).getByText("Updated"))).toMatch(/read before and after/);
         expect(within(lines[0]).getByText(`Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
         expect(within(lines[1]).getByText("Couldn't update: Connection failed")).toBeInTheDocument();
         expect(within(lines[1]).getByText("Sep 27")).toBeInTheDocument();
@@ -3937,7 +3949,7 @@ describe("UpdatesPage", () => {
           const section = await screen.findByRole("region", { name: "最近的更新记录" });
           const lines = within(section).getAllByRole("listitem");
           expect(within(lines[0]).getByText(`今天${new Intl.DateTimeFormat("zh-CN", { timeStyle: "short" }).format(new Date(2026, 8, 28, 14, 2))}`)).toBeInTheDocument();
-          expect(within(lines[0]).getByText("已更新")).toHaveAttribute("title", expect.stringMatching(/更新前后各读了一次/));
+          expect(endingWhy(within(lines[0]).getByText("已更新"))).toMatch(/更新前后各读了一次/);
           expect(within(lines[1]).getByText("9月20日")).toBeInTheDocument();
           expect(within(lines[1]).getByText("已更新")).toBeInTheDocument();
         } finally {
@@ -3977,13 +3989,12 @@ describe("UpdatesPage", () => {
           const section = await screen.findByRole("region", { name: "最近的更新记录" });
           const lines = within(section).getAllByRole("listitem");
           expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["cmake", "wget", "git"]);
-          expect(within(lines[0]).getByText("未能更新：需要输入密码")).toHaveAttribute(
-            "title",
+          expect(endingWhy(within(lines[0]).getByText("未能更新：需要输入密码"))).toBe(
             "需要输入Mac的登录密码，无法在这里输入。",
           );
           expect(within(lines[1]).getByText("没有更新成功：版本没有变")).toBeInTheDocument();
           expect(within(lines[1]).getByRole("img", { name: "需要查看" })).toBeInTheDocument();
-          expect(within(lines[2]).getByText("已更新")).toHaveAttribute("title", expect.stringMatching(/更新前后各读了一次/));
+          expect(endingWhy(within(lines[2]).getByText("已更新"))).toMatch(/更新前后各读了一次/);
           expect(within(lines[2]).getByText("2.55.0")).toBeInTheDocument();
           expect(section.textContent).not.toMatch(/网络连接失败/);
         } finally {
@@ -4068,9 +4079,8 @@ describe("UpdatesPage", () => {
         renderPage();
 
         const section = await screen.findByRole("region", { name: "Update History" });
-        await waitFor(() =>
-          expect(within(section).getByText("Updated")).toHaveAttribute("title", expect.stringMatching(/read before and after/)),
-        );
+        await waitFor(() => expect(within(within(section).getByText("Updated")).queryByRole("button")).not.toBeNull());
+        expect(endingWhy(within(section).getByText("Updated"))).toMatch(/read before and after/);
         const lines = within(section).getAllByRole("listitem");
         expect(lines).toHaveLength(1);
         expect(within(lines[0]).getByText("2.90.0")).toBeInTheDocument();

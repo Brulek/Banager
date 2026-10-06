@@ -1936,30 +1936,38 @@ export function InstalledPage() {
               // A group's heading, as a Mac's grouped list sets one: 13
               // bold, how many in the secondary colour after it, and the
               // source's mark at 16 -- no pill. With the whole source's
-              // size, a tooltip says what it holds: other versions, which
-              // the rows' own sizes leave out.
-              <h2
-                className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground"
-                title={sourceTotalOf(item.instance.id) === null ? undefined : t("sizeTotals.note")}
-              >
-                <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
-                <span className="min-w-0 truncate">{item.label}</span>{" "}
-                {/* 「Homebrew · 33个 · 约2.6 GB」: a count with its unit,
-                    Ollama's in models. */}
-                {/* -ml-1: the 8 of the heading's gap less a space's 4, so
-                    「·」 stands a space from the name, as from the count. */}
-                <span className="-ml-1 shrink-0 text-body font-normal tabular-nums text-muted">
-                  {[
-                    t(item.instance.adapter_id === "ollama" ? "clarity.modelCount" : "clarity.headingCount", {
-                      count: item.count,
-                    }),
-                    sourceTotalOf(item.instance.id),
-                  ]
-                    .filter((part) => part !== null)
-                    .map((part) => `· ${part}`)
-                    .join(" ")}
-                </span>
-              </h2>
+              // size, an ⓘ after it says what it holds: other versions,
+              // which the rows' own sizes leave out -- beside the heading,
+              // not in its name, and not a tooltip, which a keyboard and a
+              // screen reader never reach (decision I21e).
+              <div className="flex h-10 items-end px-5 pb-2">
+                <div className="flex min-w-0 items-center gap-1">
+                  <h2 className="flex min-w-0 items-end gap-2 text-title text-foreground">
+                    <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
+                    <span className="min-w-0 truncate">{item.label}</span>{" "}
+                    {/* 「Homebrew · 33个 · 约2.6 GB」: a count with its unit,
+                        Ollama's in models. */}
+                    {/* -ml-1: the 8 of the heading's gap less a space's 4, so
+                        「·」 stands a space from the name, as from the count. */}
+                    <span className="-ml-1 shrink-0 text-body font-normal tabular-nums text-muted">
+                      {[
+                        t(item.instance.adapter_id === "ollama" ? "clarity.modelCount" : "clarity.headingCount", {
+                          count: item.count,
+                        }),
+                        sourceTotalOf(item.instance.id),
+                      ]
+                        .filter((part) => part !== null)
+                        .map((part) => `· ${part}`)
+                        .join(" ")}
+                    </span>
+                  </h2>
+                  {sourceTotalOf(item.instance.id) === null ? null : (
+                    <InfoDetail label={t("common.detailsLabel", { title: sourceTotalOf(item.instance.id) ?? "" })}>
+                      {t("sizeTotals.note")}
+                    </InfoDetail>
+                  )}
+                </div>
+              </div>
             ) : item.type === "fold" ? (
               <FoldLine
                 count={item.count}

@@ -31,6 +31,18 @@ function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpS
 
 const none = { shownInRows: new Set<number>(), cleared: [], finishedAt: {} };
 
+/**
+ * What the ⓘ after a line's ending says, once pressed: its why, which a
+ * keyboard and a screen reader reach as a pointer does (decision I21e) --
+ * never a tooltip only the pointer shows.
+ */
+function why(words: HTMLElement): string {
+  expect(words).not.toHaveAttribute("title");
+  const info = within(words).getByRole("button");
+  fireEvent.click(info);
+  return document.getElementById(info.getAttribute("aria-controls") ?? "")?.textContent ?? "";
+}
+
 describe("justUpdatedOps", () => {
   it("takes each tool's newest operation: a finished update that worked, failed or asks to be checked", () => {
     const operations = [
@@ -215,7 +227,7 @@ describe("JustUpdated", () => {
     expect(marks).toEqual(["C", "H"]);
   });
 
-  it("says Today and the time for one that finished today, and Updated, as the row says it, with what Banager read in its tooltip (walk-3 W3-19)", () => {
+  it("says Today and the time for one that finished today, and Updated, as the row says it, with what Banager read behind its ⓘ (walk-3 W3-19)", () => {
     renderWithProviders(<JustUpdated entries={[{ ...entry, verified: true }]} onClear={() => {}} />);
 
     const line = screen.getByRole("listitem");
@@ -224,10 +236,9 @@ describe("JustUpdated", () => {
       `Today ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(entry.finishedAt)}`,
     );
     const done = within(line).getByText("Updated");
-    expect(done).toHaveAttribute(
-      "title",
-      "The installed version was read before and after the update, and it had changed.",
-    );
+    // Named by its line's tool, as each line has one.
+    expect(within(done).getByRole("button", { name: "Details: git" })).toHaveAttribute("aria-expanded", "false");
+    expect(why(done)).toBe("The installed version was read before and after the update, and it had changed.");
     expect(done.querySelector("svg")).toHaveAttribute("width", "12");
     // One word for an update that worked, read or not: no "Update confirmed".
     expect(within(line).queryByText("Update confirmed")).toBeNull();
@@ -243,10 +254,7 @@ describe("JustUpdated", () => {
       verified: true,
     };
     renderWithProviders(<JustUpdated entries={[model]} onClear={() => {}} />);
-    expect(screen.getByText("Updated")).toHaveAttribute(
-      "title",
-      "The model was read before and after the update, and it had changed.",
-    );
+    expect(why(screen.getByText("Updated"))).toBe("The model was read before and after the update, and it had changed.");
   });
 
   it(`shows the newest ${JUST_UPDATED_SHOWN} and folds the rest under a line that shows them`, () => {
@@ -275,7 +283,7 @@ describe("JustUpdated", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(JUST_UPDATED_SHOWN);
   });
 
-  it("says 「未能更新」 with the cause beside a red sign, and what to do about it in the title", () => {
+  it("says 「未能更新」 with the cause beside a red sign, and what to do about it behind its ⓘ", () => {
     const failed: JustUpdatedEntry[] = [
       { ...entry, id: "a", version: null, ending: { kind: "failed", cause: "network" } },
       { ...entry, id: "b", name: "wget", version: null, ending: { kind: "failed", cause: null } },
@@ -285,14 +293,12 @@ describe("JustUpdated", () => {
     const [withCause, without] = screen.getAllByRole("listitem");
     const words = within(withCause).getByText("Couldn't update: Connection failed");
     expect(words).toHaveClass("text-small", "text-foreground");
-    expect(words).toHaveAttribute(
-      "title",
-      "The connection failed. Check your internet connection, then try again.",
-    );
+    expect(why(words)).toBe("The connection failed. Check your internet connection, then try again.");
     expect(words.querySelector("svg")).toHaveClass("text-danger");
     expect(words.querySelector("svg")).toHaveAttribute("width", "12");
     const plain = within(without).getByText("Couldn't update");
     expect(plain).not.toHaveAttribute("title");
+    expect(within(plain).queryByRole("button")).toBeNull();
     expect(plain.querySelector("svg")).toHaveClass("text-danger");
     // Neither says it updated, nor shows a version it might be read as updated to.
     for (const line of [withCause, without]) {
@@ -317,10 +323,7 @@ describe("JustUpdated", () => {
     // Said as what it means, that it did not update, and what was read in
     // its title (walk-2 W2-12).
     const words = within(unchanged).getByText("Didn't update: same version");
-    expect(words).toHaveAttribute(
-      "title",
-      "The command said it finished, but the version read before and after the update is the same.",
-    );
+    expect(why(words)).toBe("The command said it finished, but the version read before and after the update is the same.");
     expect(within(unchanged).queryByText("Unexpected result")).toBeNull();
     expect(within(unchanged).queryByText(/reported success/)).toBeNull();
     expect(within(words).getByRole("img", { name: "Needs attention" }).querySelector("svg")).toHaveClass(
@@ -348,20 +351,11 @@ describe("JustUpdated", () => {
       renderWithProviders(<JustUpdated entries={lines} onClear={() => {}} />);
 
       const [verified, password, plain, unconfirmed, unchanged] = screen.getAllByRole("listitem");
-      expect(within(verified).getByText("已更新")).toHaveAttribute(
-        "title",
-        "更新前后各读了一次已安装的版本，版本已经变了。",
-      );
-      expect(within(unchanged).getByText("没有更新成功：版本没有变")).toHaveAttribute(
-        "title",
-        "命令显示已完成，但更新前后读到的版本相同。",
-      );
+      expect(why(within(verified).getByText("已更新"))).toBe("更新前后各读了一次已安装的版本，版本已经变了。");
+      expect(why(within(unchanged).getByText("没有更新成功：版本没有变"))).toBe("命令显示已完成，但更新前后读到的版本相同。");
       expect(screen.getByText("清除记录")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "再显示2条" })).toBeInTheDocument();
-      expect(within(password).getByText("未能更新：需要输入密码")).toHaveAttribute(
-        "title",
-        "需要输入Mac的登录密码，无法在这里输入。",
-      );
+      expect(why(within(password).getByText("未能更新：需要输入密码"))).toBe("需要输入Mac的登录密码，无法在这里输入。");
       expect(within(plain).getByText("未能更新")).toBeInTheDocument();
       expect(within(unconfirmed).getByText("结果未确认")).toBeInTheDocument();
       expect(within(unconfirmed).getByRole("img", { name: "需要查看" })).toBeInTheDocument();

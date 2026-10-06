@@ -113,7 +113,7 @@ describe("PageHeader", () => {
     expect(status).toHaveTextContent("58 tools · 10.6 GB or more");
     // One line 14 high, whose second part wraps out of sight below it
     // where the line has no room for it whole.
-    expect(status.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-wrap", "h-3.5", "overflow-hidden"]));
+    expect(status.className.split(" ")).toEqual(expect.arrayContaining(["inline-flex", "flex-wrap", "h-3.5", "overflow-hidden"]));
     const [count, rest] = [...status.children] as HTMLElement[];
     expect(count).toHaveTextContent("58 tools");
     expect(count.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));

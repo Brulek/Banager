@@ -202,17 +202,36 @@ describe("the Installed page's subtitle, on disk use", () => {
     await waitFor(() => expect(subtitle()).toBe("2 tools · 6.6 GB or more"));
   });
 
-  it("says in a tooltip what a total holds, and that models' shared files count once over Ollama's", async () => {
+  it("says behind an ⓘ what a total holds, and that models' shared files count once over Ollama's", async () => {
     served = measured;
     const subtitle = await subtitleOn("Homebrew");
     await waitFor(() => expect(subtitle()).toBe("1 tool · about 1.2 MB"));
-    const line = () => screen.getByRole("heading", { level: 1 }).nextElementSibling;
-    expect(line()).toHaveAttribute("title", expect.stringMatching(/including other versions but not caches/));
+    const line = () => screen.getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
+    // Behind an ⓘ beside the line, which a keyboard and a screen reader
+    // reach (decision I21e), not a tooltip -- and outside the line's
+    // status, which is read whole each time it changes.
+    const why = (name: string) => {
+      expect(line()).not.toHaveAttribute("title");
+      const titleBlock = screen.getByRole("heading", { level: 1 }).parentElement as HTMLElement;
+      const info = within(titleBlock).getByRole("button", { name });
+      expect(line()).not.toContainElement(info);
+      fireEvent.click(info);
+      return document.getElementById(info.getAttribute("aria-controls") ?? "")?.textContent ?? "";
+    };
+    expect(why("Details: about 1.2 MB")).toMatch(/including other versions but not caches/);
     const sources = await screen.findByRole("list", { name: "Sources" });
     fireEvent.click(within(sources).getByRole("button", { name: "Ollama" }));
     await waitFor(() => expect(subtitle()).toBe("1 model · Ollama models: about 6.6 GB in all"));
     // Models: the files several share count once, which adding up the rows does not.
-    expect(line()).toHaveAttribute("title", expect.stringMatching(/Files several models share count once/));
+    expect(why("Details: Ollama models: about 6.6 GB in all")).toMatch(/Files several models share count once/);
+  });
+
+  it("has no ⓘ under the title while there is no total to say what it holds", async () => {
+    served = { ...measured, done: false, total: null, sources: [] };
+    const subtitle = await subtitleOn("Homebrew");
+    await waitFor(() => expect(subtitle()).toBe("1 tool"));
+    const titleBlock = screen.getByRole("heading", { level: 1 }).parentElement as HTMLElement;
+    expect(within(titleBlock).queryByRole("button")).toBeNull();
   });
 
   it("says how many of how many while the 显示 popup shows only some, and no size, which is of all of them", async () => {

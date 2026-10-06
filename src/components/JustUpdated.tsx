@@ -5,6 +5,7 @@ import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/fail
 import { outcomeSentence, outcomeTone } from "../lib/operations";
 import { calendarDaysBetween, shortDateText, shortTimeText } from "../lib/shortDate";
 import type { ArtifactKey, Attention, HistoryResult, OpSummary, Outcome } from "../lib/types";
+import { InfoDetail } from "./InfoDetail";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
@@ -165,11 +166,11 @@ export function finishedText(
  * (`OutcomeIcon`): the ✓ and 「已更新」 the row showed, or 「已确认更新」 where
  * Banager read the version change for itself; the red ⚠︎ and 「未能更新」,
  * with the cause where the tool's words gave one --
- * 「未能更新：网络连接失败」 -- and what to do about it in the `title`; the
+ * 「未能更新：网络连接失败」 -- and what to do about it behind an ⓘ; the
  * orange ⚠︎ and what did not add up, in the outcome's own words
  * (「结果未确认」) -- but an update whose version Banager read unchanged
  * after it says what that means, 「没有更新成功：版本没有变」, and what it
- * read in the `title`: 「显示已更新」 left a person asking whether it had
+ * read behind an ⓘ: 「显示已更新」 left a person asking whether it had
  * (walk-2 W2-12). Words, not colour, tell them apart.
  */
 function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
@@ -177,14 +178,14 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
   const { ending } = entry;
   let tone: "success" | "failure" | "attention";
   let words: string;
-  let title: string | undefined;
+  let why: string | undefined;
   switch (ending.kind) {
     case "succeeded":
       tone = "success";
       // 「已更新」, as the row and the operation bar say it (walk-3 W3-19);
-      // that the version was read before and after is the tooltip's.
+      // that the version was read before and after is behind its ⓘ.
       words = t("updates.progress.succeeded");
-      title = entry.verified
+      why = entry.verified
         ? t(entry.key.kind === "Model" ? "history.verifiedModelTitle" : "history.verifiedTitle")
         : undefined;
       break;
@@ -194,7 +195,7 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
         ending.cause === null
           ? t("updates.progress.failed")
           : t("history.failedBecause", { cause: t(FAILURE_CAUSE_KEYS[ending.cause].word) });
-      title = ending.cause === null ? undefined : t(FAILURE_CAUSE_KEYS[ending.cause].line);
+      why = ending.cause === null ? undefined : t(FAILURE_CAUSE_KEYS[ending.cause].line);
       break;
     case "attention":
       tone = "attention";
@@ -204,21 +205,26 @@ function EndingWords({ entry }: { entry: JustUpdatedEntry }) {
       // as what it means: it did not update.
       if (typeof ending.outcome !== "string" && ending.outcome.NeedsAttention === "UnchangedAfterUpgrade") {
         words = t("history.unchanged");
-        title = t("history.unchangedTitle");
+        why = t("history.unchangedTitle");
       } else {
         words = outcomeSentence(t, ending.outcome, "Upgrade");
-        title = undefined;
+        why = undefined;
       }
       break;
   }
   return (
     <span
-      title={title}
       data-just-updated-ending={ending.kind}
       className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground"
     >
       <OutcomeIcon tone={tone} size={12} />
       {words}
+      {/* The why behind an ⓘ, not a tooltip: a keyboard and a screen
+          reader reach it as a pointer does (decision I21e). Named by the
+          line's tool, as every line may say the same words. */}
+      {why === undefined ? null : (
+        <InfoDetail label={t("common.detailsLabel", { title: entry.name })}>{why}</InfoDetail>
+      )}
     </span>
   );
 }
@@ -247,10 +253,10 @@ export interface JustUpdatedProps {
  * ended in 11 (`EndingWords`: 「已更新」 or 「已确认更新」, 「未能更新」 with
  * its cause, 「没有更新成功：版本没有变」, or what else did not add up), and
  * when it finished, 11 muted. Nothing to
- * select or press but Clear, which hides what it lists, after a restart
- * too, until the next update ends, and, past `JUST_UPDATED_SHOWN`
- * lines, the "N More" line that shows the rest; it is no part of the
- * page's count or of Select all.
+ * select or press but an ending's ⓘ, Clear, which hides what it lists,
+ * after a restart too, until the next update ends, and, past
+ * `JUST_UPDATED_SHOWN` lines, the "N More" line that shows the rest; it
+ * is no part of the page's count or of Select all.
  */
 export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
   const { t, i18n } = useTranslation();

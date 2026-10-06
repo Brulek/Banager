@@ -4,6 +4,7 @@ import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { elapsedSince, type Elapsed } from "../lib/format";
 import { useUiStore } from "../store/ui";
 import { RefreshIcon, SpinnerIcon } from "./icons";
+import { InfoDetail } from "./InfoDetail";
 import { ICON_BUTTON, ICON_BUTTON_BUSY } from "./ui/controls";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
@@ -142,7 +143,11 @@ export interface PageSubtitle {
    */
   rest?: string;
   failed: boolean;
-  /** What the words leave out, as the subtitle's tooltip: what a size total counts. */
+  /**
+   * What the words leave out: what a size total counts, behind an ⓘ after
+   * the line -- which a keyboard and a screen reader reach, as a tooltip
+   * they do not (decision I21e).
+   */
   note?: string;
 }
 
@@ -193,14 +198,18 @@ export interface PageHeaderProps {
  * it would select the word under it.
  */
 export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled = false }: PageHeaderProps) {
+  const { t } = useTranslation();
   // What the status says: the subtitle, but for a failure, which the alert says.
   const shown = subtitle === null || subtitle.failed ? null : subtitle.text;
+  const note = shown === null ? undefined : subtitle?.note;
   return (
     <header
       data-tauri-drag-region="deep"
       className="relative flex h-13 shrink-0 select-none items-center justify-between gap-4 px-5"
     >
-      <div className="min-w-0">
+      {/* 14 a line under the title, whatever is on it: the status, and
+          the ⓘ after it, top-aligned. */}
+      <div className="min-w-0 leading-3.5">
         <h1 tabIndex={-1} data-focus-fallback="" className="truncate text-title text-foreground outline-none">
           {title}
         </h1>
@@ -214,11 +223,17 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
             wraps out of sight below it where the line has no room for it
             whole: the count alone is cut short only where it alone does
             not fit. */}
+        {/* Laid out inline, as wide as it needs up to the room left for
+            the ⓘ after it, which is outside it: a status is read whole as
+            it changes, and the ⓘ's name is no part of what it says. */}
         <p
           role="status"
           data-subtitle=""
-          title={shown === null ? undefined : subtitle?.note}
-          className={shown === null ? "sr-only" : "flex h-3.5 flex-wrap overflow-hidden text-small text-muted"}
+          className={
+            shown === null
+              ? "sr-only"
+              : `inline-flex h-3.5 ${note === undefined ? "max-w-full" : "max-w-[calc(100%-1.5rem)]"} flex-wrap overflow-hidden align-top text-small text-muted`
+          }
         >
           {shown === null ? null : (
             <>
@@ -229,6 +244,12 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
             </>
           )}
         </p>
+        {note === undefined ? null : (
+          // A new note, a new ⓘ, closed: not the last one's, still open.
+          <span key={note} data-subtitle-note="" className="ml-1 inline-flex h-3.5 items-center align-top">
+            <InfoDetail label={t("common.detailsLabel", { title: subtitle?.rest ?? shown })}>{note}</InfoDetail>
+          </span>
+        )}
         {subtitle?.failed ? (
           <p role="alert" className="truncate text-small text-danger-text">
             {subtitle.text}
