@@ -106,11 +106,17 @@ above when the shell set them (`runner::login_path::read`):
 - Homebrew's mirrors: `HOMEBREW_API_DOMAIN`, `HOMEBREW_BOTTLE_DOMAIN`,
   `HOMEBREW_BREW_GIT_REMOTE`, `HOMEBREW_CORE_GIT_REMOTE`,
   `HOMEBREW_PIP_INDEX_URL`;
-- pip's, which pipx runs: `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`;
+- pip's, which pipx runs: `PIP_INDEX_URL`;
 - npm's, which reads its settings in either case: `npm_config_registry`,
   `NPM_CONFIG_REGISTRY`;
-- uv's: `UV_INDEX_URL`, `UV_DEFAULT_INDEX`, `UV_EXTRA_INDEX_URL`;
+- uv's: `UV_INDEX_URL`, `UV_DEFAULT_INDEX`;
 - rustup's: `RUSTUP_DIST_SERVER`, `RUSTUP_UPDATE_ROOT`.
+
+Each of these replaces where a tool downloads from. pip's and uv's extra
+index (`PIP_EXTRA_INDEX_URL`, `UV_EXTRA_INDEX_URL`, `UV_INDEX`) is not
+taken: it is no mirror but a second index searched beside PyPI, and an
+update could then install a higher-numbered package of the same name from
+it than the one Banager found on pypi.org.
 
 A setting with no value, with a control character in it, or whose name
 starts more than one line of what the shell's `env` printed (one of

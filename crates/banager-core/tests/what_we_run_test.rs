@@ -1446,7 +1446,8 @@ fn test_what_we_run_never_says_a_folder_the_uninstall_preview_walks_is_never_rea
 /// besides `PATH` (`login_path::IMPORTED`) is named where the document
 /// says how Banager runs anything, so the list and the document change
 /// together; so are the ones deliberately left out, which decide where
-/// things are installed. And no section still says that `PATH` is the
+/// things are installed or add an index beside PyPI (the U12 review).
+/// And no section still says that `PATH` is the
 /// only thing taken from the shell.
 #[test]
 fn test_what_we_run_names_every_setting_taken_from_the_login_shell() {
@@ -1460,7 +1461,13 @@ fn test_what_we_run_names_every_setting_taken_from_the_login_shell() {
             "the `## How Banager runs anything` section of docs/what-we-run.md does not name `{name}`, which login_path::IMPORTED takes from the login shell"
         );
     }
-    for kept_out in ["CARGO_HOME", "RUSTUP_HOME", "UV_TOOL_DIR"] {
+    for kept_out in [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "UV_TOOL_DIR",
+        "PIP_EXTRA_INDEX_URL",
+        "UV_EXTRA_INDEX_URL",
+    ] {
         assert!(
             body.contains(&format!("`{kept_out}`")),
             "the `## How Banager runs anything` section of docs/what-we-run.md does not say `{kept_out}` is left out"

@@ -74,6 +74,12 @@ pub const TIMEOUT: Duration = Duration::from_secs(15);
 ///   these names. Cargo reads its mirror from `~/.cargo/config.toml`,
 ///   which needs nothing imported.
 ///
+/// Only settings that replace where a tool downloads from: not pip's or
+/// uv's extra index (`PIP_EXTRA_INDEX_URL`, `UV_EXTRA_INDEX_URL`,
+/// `UV_INDEX`), which is no mirror but a second index searched beside
+/// PyPI, from which an update may take a higher version of a package of
+/// the same name than the one Banager found on pypi.org (the U12 review).
+///
 /// `docs/what-we-run.md` names each (`tests/what_we_run_test.rs`).
 pub const IMPORTED: &[&str] = &[
     "http_proxy",
@@ -90,12 +96,10 @@ pub const IMPORTED: &[&str] = &[
     "HOMEBREW_CORE_GIT_REMOTE",
     "HOMEBREW_PIP_INDEX_URL",
     "PIP_INDEX_URL",
-    "PIP_EXTRA_INDEX_URL",
     "npm_config_registry",
     "NPM_CONFIG_REGISTRY",
     "UV_INDEX_URL",
     "UV_DEFAULT_INDEX",
-    "UV_EXTRA_INDEX_URL",
     "RUSTUP_DIST_SERVER",
     "RUSTUP_UPDATE_ROOT",
 ];
@@ -464,8 +468,11 @@ mod tests {
              HOMEBREW_BOTTLE_DOMAIN=https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles\n\
              HOMEBREW_BREW_GIT_REMOTE=https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git\n\
              PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple\n\
+             PIP_EXTRA_INDEX_URL=https://pkgs.example.com/simple\n\
              npm_config_registry=https://registry.npmmirror.com\n\
-             UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple\n",
+             UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple\n\
+             UV_EXTRA_INDEX_URL=https://pkgs.example.com/simple\n\
+             UV_INDEX=extra=https://pkgs.example.com/simple\n",
         )
         .await
         .expect("a complete read");
@@ -559,12 +566,10 @@ mod tests {
                 "HOMEBREW_CORE_GIT_REMOTE",
                 "HOMEBREW_PIP_INDEX_URL",
                 "PIP_INDEX_URL",
-                "PIP_EXTRA_INDEX_URL",
                 "npm_config_registry",
                 "NPM_CONFIG_REGISTRY",
                 "UV_INDEX_URL",
                 "UV_DEFAULT_INDEX",
-                "UV_EXTRA_INDEX_URL",
                 "RUSTUP_DIST_SERVER",
                 "RUSTUP_UPDATE_ROOT",
             ]
@@ -591,6 +596,13 @@ mod tests {
             "HOMEBREW_GITHUB_API_TOKEN",
             "OLLAMA_HOST",
             "OLLAMA_MODELS",
+            // Not a mirror: a second index searched beside PyPI, from
+            // which pip or uv may take a higher version of a package of
+            // the same name than the one Banager found on pypi.org (the
+            // U12 review).
+            "PIP_EXTRA_INDEX_URL",
+            "UV_EXTRA_INDEX_URL",
+            "UV_INDEX",
         ] {
             assert!(!IMPORTED.contains(&kept_out), "{kept_out} is imported");
         }
