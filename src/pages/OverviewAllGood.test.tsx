@@ -231,6 +231,21 @@ describe("the Overview's all good", () => {
     expect(zh.nextElementSibling?.textContent).toBe("1个终端用不到");
   });
 
+  it("is all good beside a Python with no pip, which no check would find otherwise, and says so under it", async () => {
+    const noPip = instance("pip:/opt/local/bin/python3.13", "pip", {
+      exe_path: "/opt/local/bin/python3.13",
+      read_only_reason: "ByDesign",
+      status: { unavailable: "NoPip", notes: [] },
+    });
+    served = snapshotWith({ instances: [brew, pip, noPip] });
+    const { container } = renderOverview();
+    await screen.findByRole("heading", { level: 2, name: "Everything you can update here is up to date" });
+    expect(statusRow(container).getAttribute("data-status")).toBe("upToDate");
+    // Its notice is still there, as news.
+    expect(screen.getByRole("list", { name: "Needs attention" })).toBeInTheDocument();
+    await headlineIn("zh-CN", "能在这里更新的都已是最新");
+  });
+
   it("names a source that was not checked this time, in every language", async () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
     const { container } = renderOverview();

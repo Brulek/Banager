@@ -16,6 +16,7 @@ import type {
   SnoozedUpdate,
   Snapshot,
   SourceError,
+  Unavailable,
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
@@ -361,6 +362,59 @@ const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
 };
 
 /**
+ * Which ways of not answering the next check finds the same way, so not
+ * news of this one: a Python with no pip (`NoPip`: nothing is broken),
+ * and an Ollama at an `https://` address Banager never asks
+ * (`HttpsHostRefused`) -- both until the user changes something outside
+ * Banager. Not `RefusesAsRoot`: Banager was started with `sudo`, and
+ * opening it again normally is what changes it, so 「这次」 holds for this
+ * launch. A `Record`, so a variant added to `Unavailable` without an
+ * answer here fails `tsc`.
+ */
+const UNAVAILABLE_EVERY_TIME: Record<Unavailable, boolean> = {
+  NotRunning: false,
+  NotResponding: false,
+  RefusesAsRoot: false,
+  HttpsHostRefused: true,
+  NoPip: true,
+};
+
+/**
+ * Of the notes that leave a source's updates unchecked, those the next
+ * check finds the same way: a launcher left without its program
+ * (`LauncherOnly`), until the user reinstalls or uninstalls it. A list
+ * still downloading or out of date is news of this check.
+ */
+const NOTE_UNCHECKED_EVERY_TIME: Record<InstanceNote, boolean> = {
+  IndexMayBeStale: false,
+  IndexUpdating: false,
+  NotOnPath: false,
+  ShadowedByHomebrew: false,
+  ShadowedByNpm: false,
+  ShadowedByOther: false,
+  LauncherOnly: true,
+};
+
+/**
+ * Whether no check of `instance` would check its updates, so that their
+ * going unchecked is so every time, not news of this check: Codex's own
+ * install (`updatesUnchecked`), or a state the next check finds the same
+ * way (`UNAVAILABLE_EVERY_TIME`, `NOTE_UNCHECKED_EVERY_TIME`). The
+ * Overview neither names such a source as not checked this time nor
+ * counts it as the rest that was; it is never `checkedInFull`, so it
+ * still keeps the plain 「所有工具都是最新的」 away, as the Updates page's
+ * "Everything is up to date".
+ */
+function uncheckedEveryTime(instance: ManagerInstance): boolean {
+  const { unavailable, notes } = instance.status;
+  return (
+    updatesUnchecked(instance) ||
+    (unavailable !== null && UNAVAILABLE_EVERY_TIME[unavailable]) ||
+    notes.some((note) => NOTE_UNCHECKED_EVERY_TIME[note])
+  );
+}
+
+/**
  * The sources this check did not check in full this time, for the
  * Overview to name them (decision I22: 「uv这次没检查，其余都是最新的」).
  *
@@ -375,9 +429,11 @@ const NOTE_LEAVES_UPDATES_CHECKED_IN_PART: Record<InstanceNote, boolean> = {
  *   date (`NOTE_LEAVES_UPDATES_CHECKED_IN_PART`) -- so 「没检查完」, not
  *   「没检查」.
  * - `rest`: some other source was checked in full (`checkedInFull`), so
- *   「其余都是最新的」 is about something. Codex's own install, whose updates
- *   Banager never checks (`updatesUnchecked`), is neither named nor rest:
- *   that is so every time, not news of this check.
+ *   「其余都是最新的」 is about something. A source no check would check
+ *   (`uncheckedEveryTime`: Codex's own install, a Python with no pip, an
+ *   Ollama at an `https://` address, a launcher without its program) is
+ *   neither named nor rest: that is so every time, not news of this
+ *   check -- unless an error of this round names it.
  *
  * Null when every source was checked in full this time, but for those
  * Banager never checks.
@@ -395,9 +451,10 @@ export function notCheckedThisTime(instances: ManagerInstance[], errors: SourceE
   let rest = false;
   for (const instance of instances) {
     const notes = instance.status.notes;
+    if (uncheckedEveryTime(instance) && !failed.has(instance.id)) continue;
     const unchecked = !isAvailable(instance) || notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]);
     if (!unchecked && !failed.has(instance.id)) {
-      if (!updatesUnchecked(instance)) rest = true;
+      rest = true;
       continue;
     }
     ids.push(instance.id);

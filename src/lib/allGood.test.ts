@@ -150,12 +150,55 @@ describe("the Overview's all good", () => {
     expect(summaryOf([noted(brew, "IndexMayBeStale"), uv])).toMatchObject({
       notChecked: { ids: [brew.id], partly: true, rest: true },
     });
-    // Still downloading its list, or the launcher without its program: not checked at all.
+    // Still downloading its list: not checked at all.
     expect(summaryOf([noted(brew, "IndexUpdating"), uv])).toMatchObject({
       notChecked: { ids: [brew.id], partly: false, rest: true },
     });
-    expect(summaryOf([brew, noted(codex, "LauncherOnly")])).toMatchObject({
-      notChecked: { ids: [codex.id], partly: false, rest: true },
+  });
+
+  it("names no source that the next check would find the same way: that is so every time, not news of this check", () => {
+    // A Python with no pip, an Ollama at an https:// address Banager never
+    // asks, a launcher left without its program: as Codex's own install,
+    // neither named nor the rest, and never the plain up to date.
+    const noPip = instance("pip:/opt/local/bin/python3.13", "pip", {
+      read_only_reason: "ByDesign",
+      status: { unavailable: "NoPip", notes: [] },
+    });
+    const httpsOllama: ManagerInstance = {
+      ...ollama,
+      id: "ollama:https://ollama.home.lan",
+      status: { unavailable: "HttpsHostRefused", notes: [] },
+    };
+    const launcher = noted(instance("standalone-claude", "standalone-claude"), "LauncherOnly");
+    expect(summaryOf([brew, noPip, httpsOllama, launcher])).toEqual({
+      kind: "upToDate",
+      everything: false,
+      cantUpdateHere: 0,
+      hidden: 0,
+      notUsed: 0,
+    });
+    expect(summaryOf([brew, noted(codex, "LauncherOnly")])).toMatchObject({ kind: "upToDate", everything: false });
+    // Beside a source not checked this time: not counted as the rest that was.
+    expect(summaryOf([stopped(uv), noPip])).toMatchObject({
+      kind: "nothingToUpdate",
+      notChecked: { ids: [uv.id], partly: false, rest: false },
+    });
+    expect(summaryOf([brew, stopped(uv), noPip])).toMatchObject({
+      kind: "nothingToUpdate",
+      notChecked: { ids: [uv.id], partly: false, rest: true },
+      everythingElse: false,
+    });
+    // Named all the same where an error of this round names it.
+    expect(summaryOf([brew, noPip], [], [{ instance_id: noPip.id, message: "python3.13 -m pip exited 1" }])).toMatchObject({
+      kind: "nothingToUpdate",
+      notChecked: { ids: [noPip.id] },
+    });
+    // Started with sudo: opening Banager again normally is what changes it,
+    // so 「这次」 holds, and Homebrew is named.
+    const asRoot: ManagerInstance = { ...brew, status: { unavailable: "RefusesAsRoot", notes: [] } };
+    expect(summaryOf([asRoot, uv])).toMatchObject({
+      kind: "nothingToUpdate",
+      notChecked: { ids: [brew.id], partly: false, rest: true },
     });
   });
 
