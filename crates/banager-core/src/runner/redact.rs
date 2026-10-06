@@ -515,6 +515,63 @@ mod tests {
     }
 
     #[test]
+    fn test_a_value_is_read_by_fixed_rules() {
+        let read = |name: &str, value: &'static str| {
+            Address::of(name, value).map(|address| (address.scheme, address.login, address.rest))
+        };
+        for (name, value, expected) in [
+            // A scheme at the start only.
+            (
+                "http_proxy",
+                "http://u:pw@proxy.lan:3128",
+                Some(("http://", "u:pw", "proxy.lan:3128")),
+            ),
+            (
+                "http_proxy",
+                "u:rev://pw@proxy.lan:3128",
+                Some(("", "u:rev://pw", "proxy.lan:3128")),
+            ),
+            (
+                "ALL_PROXY",
+                "socks5h://u:p@ss/w0rd@127.0.0.1:7891",
+                Some(("socks5h://", "u:p@ss/w0rd", "127.0.0.1:7891")),
+            ),
+            ("https_proxy", "http://127.0.0.1:7890", None),
+            // A mirror's authority ends at the first `/`, `?` or `#`.
+            (
+                "PIP_INDEX_URL",
+                "https://u:pw@mirror.example/a@b",
+                Some(("https://", "u:pw", "mirror.example/a@b")),
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://mirror.example:8443/x/user@example.com/simple",
+                None,
+            ),
+            (
+                "HOMEBREW_BREW_GIT_REMOTE",
+                "git@github.com:Homebrew/brew.git",
+                Some(("", "git", "github.com:Homebrew/brew.git")),
+            ),
+            // No host and port where the rules read one: the last `@`.
+            (
+                "PIP_INDEX_URL",
+                "https://u:pass/word@mirror.example/a@b",
+                Some(("https://", "u:pass/word@mirror.example/a", "b")),
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://u:p@ss/w0rd@mirror.example/",
+                Some(("https://", "u:p@ss/w0rd", "mirror.example/")),
+            ),
+            ("RUSTUP_UPDATE_ROOT", "file:///Users/me@corp/rustup", None),
+            ("no_proxy", "localhost,127.0.0.1,.corp", None),
+        ] {
+            assert_eq!(read(name, value), expected, "{name}={value}");
+        }
+    }
+
+    #[test]
     fn test_curls_proxy_error_has_the_login_masked() {
         let said = redactor(&[("https_proxy", CURL_PROXY)])
             .redact(CURL_SAID)
@@ -688,6 +745,13 @@ mod tests {
                 "UV_DEFAULT_INDEX",
                 "https://bot:s3cr3t-pw@mirror.example:8443/x/user@example.com/simple",
                 "s3cr3t-pw",
+            ),
+            // R2's password in a mirror's address: its `//` ends the
+            // authority as the rules read it.
+            (
+                "PIP_INDEX_URL",
+                "https://review-user:rev://secret@pypi.mirror.example/simple",
+                "rev://secret",
             ),
         ] {
             let said = format!("fatal: unable to access '{setting}/': URL rejected");
