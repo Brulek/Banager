@@ -277,6 +277,8 @@ dependencies = [
  "banager-core",
  "base64 0.22.1",
  "getrandom 0.4.3",
+ "http",
+ "hyper-util",
  "insta",
  "libc",
  "objc2",

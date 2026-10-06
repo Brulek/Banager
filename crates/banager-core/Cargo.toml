@@ -27,6 +27,19 @@ tokio-util = { version = "0.7", features = ["rt"] }
 # (`http::proxy`, U12). In reqwest 0.13 the feature adds no crate: the SOCKS
 # client is hyper-util's, already built for reqwest's proxy support.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
+# The proxy this Mac's own network settings name (System Settings > Network
+# > Details > Proxies), which a proxy app in its "system proxy" mode sets,
+# is what Banager's own requests fall back to when no proxy setting names
+# one (`http::proxy::system_proxy`, U12 review). Read with hyper-util's
+# `Matcher::from_system`, the reader reqwest used for Banager until it was
+# given a proxy of its own (giving one turns reqwest's off). Both crates are
+# already in Cargo.lock at these versions as reqwest's own dependencies, and
+# `client-proxy-system` is already on in the app's build (tauri-plugin-updater
+# turns on reqwest's `system-proxy`, which is that feature), so no crate
+# enters the build: named here so this crate does not depend on the app
+# switching it on. `http` is for the `Uri` the matcher is asked about.
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
+http = "1"
 # Already in Cargo.lock as a transitive dependency of reqwest/url, so this
 # adds no crate and no version to the build graph; it is declared directly
 # because `adapters::url_path_segment` encodes untrusted names into registry

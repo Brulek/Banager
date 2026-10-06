@@ -1,9 +1,11 @@
 //! Which proxy Banager's own requests go through (U12 of the decisions
 //! round): the one the proxy settings its commands get name
 //! (`runner::login_path::command_var`), so a check Banager makes itself
-//! goes the way a `brew` it runs does -- except to this Mac itself, which
-//! is never sent through a proxy: a proxy on another machine cannot reach
-//! the Ollama on this one, and one on this Mac has no reason to be asked.
+//! goes the way a `brew` it runs does; failing that, the one this Mac's
+//! own network settings name (`system_proxy`), as reqwest chose before --
+//! except to this Mac itself, which is never sent through a proxy: a
+//! proxy on another machine cannot reach the Ollama on this one, and one
+//! on this Mac has no reason to be asked.
 //!
 //! The rules are curl's, which Homebrew and pip follow: `https_proxy` for
 //! an https address and `http_proxy` for an http one, each read in
@@ -18,9 +20,16 @@ use std::net::{IpAddr, Ipv4Addr};
 use url::{Host, Url};
 
 /// The proxy Banager's own request to `url` goes through, as the setting
-/// names it, with `var` giving each setting's value; `None` to connect
-/// straight -- always so for this Mac itself (`is_this_mac`).
-pub fn proxy_for(url: &Url, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+/// names it, with `var` giving each setting's value; when none names one
+/// for `url`'s scheme, the one `system` gives, which is asked only then
+/// (`system_proxy`); `None` to connect straight -- always so for this Mac
+/// itself (`is_this_mac`) and for what `no_proxy` names, without asking
+/// `system`.
+pub fn proxy_for(
+    url: &Url,
+    var: impl Fn(&str) -> Option<String>,
+    system: impl FnOnce(&Url) -> Option<String>,
+) -> Option<String> {
     let host = url.host()?;
     if is_this_mac(&host) {
         return None;
@@ -35,11 +44,43 @@ pub fn proxy_for(url: &Url, var: impl Fn(&str) -> Option<String>) -> Option<Stri
     if first(&["no_proxy", "NO_PROXY"]).is_some_and(|list| listed(&host, &list)) {
         return None;
     }
-    match url.scheme() {
+    let named = match url.scheme() {
         "https" => first(&["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]),
         "http" => first(&["http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"]),
-        _ => None,
-    }
+        _ => return None,
+    };
+    named.or_else(|| system(url))
+}
+
+/// The proxy this Mac's own network settings name for `url` (System
+/// Settings > Network > Details > Proxies): its web proxy (HTTP) for an
+/// http address, its secure web proxy (HTTPS) for an https one -- what a
+/// proxy app such as Clash Verge, ClashX or Surge sets in its "system
+/// proxy" mode, with nothing exported in a shell. reqwest read these for
+/// Banager until it was given a proxy of its own (`ClientBuilder::proxy`
+/// turns its own reading off), with hyper-util's `Matcher::from_system`,
+/// which is read here too, at each request, so turning such an app on or
+/// off counts from the next check. That reads the process environment
+/// first, which `proxy_for` has already found nothing in when it asks.
+/// Neither the SOCKS proxy nor the list of hosts the settings bypass is
+/// read, as reqwest did not read them either.
+pub fn system_proxy(url: &Url) -> Option<String> {
+    from_matcher(
+        &hyper_util::client::proxy::matcher::Matcher::from_system(),
+        url,
+    )
+}
+
+/// The proxy `matcher` names for `url`, as an address reqwest reads:
+/// `http://host:port/` for the `host:port` macOS keeps.
+fn from_matcher(
+    matcher: &hyper_util::client::proxy::matcher::Matcher,
+    url: &Url,
+) -> Option<String> {
+    let uri: http::Uri = url.as_str().parse().ok()?;
+    matcher
+        .intercept(&uri)
+        .map(|intercept| intercept.uri().to_string())
 }
 
 /// Whether `host` is this Mac: `localhost` and any name under it
@@ -149,8 +190,110 @@ mod tests {
         }
     }
 
+    /// With no proxy in this Mac's network settings.
     fn through(url: &str, set: &[(&str, &str)]) -> Option<String> {
-        proxy_for(&Url::parse(url).unwrap(), vars(set))
+        proxy_for(&Url::parse(url).unwrap(), vars(set), |_| None)
+    }
+
+    /// With `system` as the proxy this Mac's network settings name, and
+    /// whether it was asked.
+    fn through_with_system(url: &str, set: &[(&str, &str)]) -> (Option<String>, bool) {
+        let asked = std::cell::Cell::new(false);
+        let found = proxy_for(&Url::parse(url).unwrap(), vars(set), |asked_for| {
+            asked.set(true);
+            assert_eq!(asked_for.as_str(), url, "asked for another address");
+            Some(format!("http://system.proxy:{}", asked_for.scheme().len()))
+        });
+        (found, asked.get())
+    }
+
+    /// The finding of the U12 review: a proxy app in its "system proxy"
+    /// mode (Clash Verge, ClashX, Surge) sets only this Mac's network
+    /// settings, which reqwest read for Banager before it named its own
+    /// proxy. They are asked last -- after the login shell's setting and
+    /// the environment's (`vars`, as `command_var` answers) -- and never
+    /// for this Mac itself or what `no_proxy` names.
+    #[test]
+    fn test_this_macs_network_settings_are_asked_last_and_never_for_this_mac_or_no_proxy() {
+        let crates = "https://crates.io/api/v1/crates/ripgrep";
+        let remote = "http://192.168.1.20:11434/api/tags";
+        // Nothing set: this Mac's network settings, for either scheme.
+        assert_eq!(
+            through_with_system(crates, &[]),
+            (Some("http://system.proxy:5".into()), true)
+        );
+        assert_eq!(
+            through_with_system(remote, &[]),
+            (Some("http://system.proxy:4".into()), true)
+        );
+        // A setting for the scheme comes first, and the network settings
+        // are not asked.
+        for set in [
+            &[("https_proxy", "http://a:1")][..],
+            &[("HTTPS_PROXY", "http://a:1")][..],
+            &[("all_proxy", "http://a:1")][..],
+        ] {
+            assert_eq!(
+                through_with_system(crates, set),
+                (Some("http://a:1".into()), false),
+                "{set:?}"
+            );
+        }
+        // A setting for the other scheme, or an empty one, is not one for
+        // this: the network settings are asked.
+        assert_eq!(
+            through_with_system(
+                crates,
+                &[("http_proxy", "http://a:1"), ("https_proxy", " ")]
+            ),
+            (Some("http://system.proxy:5".into()), true)
+        );
+        // This Mac, and what `no_proxy` names: straight, without asking.
+        for url in [
+            "http://127.0.0.1:11434/api/tags",
+            "http://localhost:11434/api/tags",
+            "http://[::1]:11434/",
+            "http://0.0.0.0:11434/",
+        ] {
+            assert_eq!(through_with_system(url, &[]), (None, false), "{url}");
+        }
+        assert_eq!(
+            through_with_system(crates, &[("no_proxy", "crates.io")]),
+            (None, false)
+        );
+        assert_eq!(
+            through_with_system(remote, &[("NO_PROXY", "192.168.0.0/16")]),
+            (None, false)
+        );
+    }
+
+    /// What this Mac's network settings name is handed to reqwest as a
+    /// proxy address it reads: `host:port`, as macOS keeps them, becomes
+    /// an http proxy, each for its own scheme.
+    #[test]
+    fn test_a_proxy_named_in_this_macs_network_settings_becomes_an_http_proxy_address() {
+        use hyper_util::client::proxy::matcher::Matcher;
+        let settings = Matcher::builder()
+            .http("127.0.0.1:7897")
+            .https("proxy.lan:8443")
+            .build();
+        let named = |url: &str| from_matcher(&settings, &Url::parse(url).unwrap());
+        assert_eq!(
+            named("https://crates.io/api/v1/crates/ripgrep"),
+            Some("http://proxy.lan:8443/".into())
+        );
+        assert_eq!(
+            named("http://192.168.1.20:11434/api/tags"),
+            Some("http://127.0.0.1:7897/".into())
+        );
+        let proxy = reqwest::Proxy::all(named("https://pypi.org/pypi/httpie/json").unwrap());
+        assert!(proxy.is_ok(), "{proxy:?}");
+        // Neither set: none.
+        let unset = Matcher::builder().build();
+        assert_eq!(
+            from_matcher(&unset, &Url::parse("https://pypi.org/").unwrap()),
+            None
+        );
     }
 
     const EVERY_PROXY: &[(&str, &str)] = &[

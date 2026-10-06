@@ -124,14 +124,24 @@ impl RealHttpClient {
             // redirect, so the policy is `none` and `send` below turns a
             // 3xx into an error instead of handing it back as a response.
             .redirect(reqwest::redirect::Policy::none())
-            // The proxy the login shell's settings name, read at each
-            // request, so a read that ends after this client is built
-            // still counts -- and never for this Mac itself, as the
-            // Ollama daemon usually is (`super::proxy`, U12). A custom
-            // proxy also turns off reqwest's own reading of the process
-            // environment, which had no such exception.
+            // The proxy the login shell's settings name, else the
+            // process environment's, else this Mac's own network settings
+            // (System Settings > Network > Proxies, which a proxy app in
+            // its "system proxy" mode sets), looked up at each request, so
+            // a read that ends after this client is built, or a proxy app
+            // turned on or off, still counts -- and never for this Mac
+            // itself, as the Ollama daemon usually is, or for what
+            // `no_proxy` names (`super::proxy`, U12). Naming a proxy here
+            // turns off reqwest's own reading of the environment and of
+            // the network settings (`ClientBuilder::proxy`), which had no
+            // exception for this Mac: `system_proxy` reads the network
+            // settings the way it did.
             .proxy(reqwest::Proxy::custom(|url| {
-                super::proxy::proxy_for(url, crate::runner::login_path::command_var)
+                super::proxy::proxy_for(
+                    url,
+                    crate::runner::login_path::command_var,
+                    super::proxy::system_proxy,
+                )
             }))
             .timeout(std::time::Duration::from_secs(30))
             .build()
