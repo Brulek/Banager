@@ -462,6 +462,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 - `.github/workflows/ci.yml`：`feat/**` 推送触发是本分支验证期的临时加项，PR 会让整套 macOS 作业（含真实 `brew install`）跑两遍；合并后去掉~~或加 `concurrency` 组与 `timeout-minutes`~~。
   （2026-10-02 核对：`concurrency` 组与 `timeout-minutes: 30` 已于 2026-09-22 在 `6a4005b` 加上，`.github/workflows/ci.yml:14-19`、`:26`；
   只剩去掉 `feat/**` 触发，`:12`，何时去掉由作者定。）
+  —— **已于 2026-10-06 去掉**（作者决定 R3）：推送只触发 `main`，功能分支靠它的 PR 跑 CI（`.github/workflows/ci.yml:5-12`）。
 - ~~`src-tauri/Cargo.toml`：`fix-path-env` 是无 `rev` 的 git 依赖，仅靠 Cargo.lock 钉住；应加 `rev`。~~ —— **已于 2026-09-22 解决**（`6b8a0af`）：`src-tauri/Cargo.toml:46` 带 `rev`。
 - GitHub Actions 提示 checkout@v4 / setup-node@v4 / pnpm action-setup@v4 使用即将弃用的 Node 20 运行时；GitHub 定下时间表后升级。
 

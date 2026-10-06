@@ -3,13 +3,14 @@ name: CI
 on:
   pull_request:
   push:
-    # feat/** is deliberate while feat/phase-3-sources is being verified
-    # pre-merge: it gives every push on the branch its own CI run instead of
-    # waiting for a PR. Drop it once that branch has merged to main -- CI
-    # runs a live `brew install`/`brew uninstall` against the runner's real
-    # Homebrew, so pushing to every feature branch is not something we want
-    # as a permanent trigger.
-    branches: [main, "feat/**"]
+    # main only. A feature branch is checked through its pull request: a
+    # push trigger on feature branches as well (it was `feat/**` while
+    # feat/phase-3-sources was verified before merging) ran this whole
+    # macOS job twice for every push to a branch with a pull request open,
+    # and CI runs a live `brew install`/`brew uninstall` against the
+    # runner's real Homebrew. Removed by the author's decision R3,
+    # 2026-10-06.
+    branches: [main]
 
 concurrency:
   # One live-Homebrew run per ref at a time: pushing twice in quick
