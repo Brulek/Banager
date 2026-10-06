@@ -46,6 +46,10 @@ const cowsay: ArtifactKey = { instance_id: "pipx", kind: "Tool", name: "cowsay" 
 const claude: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
 const tokei: ArtifactKey = { instance_id: "cargo:/Users/you/.cargo", kind: "Binary", name: "tokei" };
 const rustup: ArtifactKey = { instance_id: "standalone-rustup", kind: "Binary", name: "rustup" };
+const leftPad: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "left-pad" };
+/** An Ollama model outside the pack's model families, and a cask the pack has no logo for. */
+const llava: ArtifactKey = { instance_id: "ollama", kind: "Model", name: "llava:7b" };
+const quickjot: ArtifactKey = { instance_id: brew, kind: "Cask", name: "quickjot" };
 /** TerminalIcon's prompt and cursor (src/components/icons.tsx): the Other Programs page's mark. */
 const PROMPT = "M5.5 8L9.5 12L5.5 16M12.5 16.5H18.5";
 const APP_ICON = "data:image/png;base64,iVBORw0KGgo=";
@@ -224,10 +228,55 @@ describe("ToolAvatar", () => {
     expect(avatar().querySelector("[data-source-badge]")).toBeNull();
   });
 
-  it("draws the tile with its source's mark, and looks nothing up, when it is given no tool", () => {
+  it("draws the prompt on the tile of each kind that is a program: a formula, a package, a tool, a binary", () => {
+    const keys: [string, string, ArtifactKey][] = [
+      ["brew", "Homebrew", wget],
+      ["npm", "npm", leftPad],
+      ["pipx", "pipx", cowsay],
+      ["cargo", "Cargo", tokei],
+    ];
+    for (const [adapterId, sourceLabel, iconKey] of keys) {
+      const tile = programTile(renderAvatar({ adapterId, sourceLabel, iconKey }).avatar());
+      expect(tile?.querySelector("svg path"), iconKey.kind).toHaveAttribute("d", PROMPT);
+    }
+  });
+
+  it("draws an Ollama model the pack has no logo for as the tile with no prompt: a model is data, not a command-line program (I8, I10)", () => {
+    const { avatar } = renderAvatar({ adapterId: "ollama", sourceLabel: "Ollama", iconKey: llava });
+
+    const tile = programTile(avatar()) as HTMLElement;
+    expect(tile).not.toBeNull();
+    expect(tile.className.split(" ")).toEqual(
+      expect.arrayContaining(["bg-neutral-avatar", "h-8", "w-8", "rounded-[7px]", "dark:inset-ring-white/12"]),
+    );
+    expect(tile.querySelector("svg")).toBeNull();
+    // Nor Ollama's own logo, which would make it look like Ollama: its
+    // initial on the corner here, the one place the source is drawn.
+    expect(ownLogo(avatar())).toBeNull();
+    expect(avatar().querySelector("[data-source-badge]")).toHaveTextContent("O");
+    expect(avatar().textContent).toBe("O");
+  });
+
+  it("draws a cask with no app icon and no logo as the tile with no prompt: an app, a font or a plug-in is no command-line program", async () => {
+    const { avatar, queryClient } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: quickjot });
+
+    // While its app icon is asked for, and once the answer is that it has none.
+    expect(programTile(avatar())?.querySelector("svg")).toBeNull();
+    await waitFor(() =>
+      expect(queryClient.getQueryState(["artifactIcon", brew, "Cask", "quickjot"])?.status).toBe("success"),
+    );
+    const tile = programTile(avatar()) as HTMLElement;
+    expect(tile).not.toBeNull();
+    expect(tile.querySelector("svg")).toBeNull();
+    expect(avatar().querySelector("[data-source-badge] [data-logo] path")).toHaveAttribute("d", "M3 3h18v18H3z");
+  });
+
+  it("draws the tile with its source's mark, and no prompt, and looks nothing up, when it is given no tool", () => {
     const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew" });
 
+    // Nothing says it is a program.
     expect(programTile(avatar())).not.toBeNull();
+    expect(programTile(avatar())?.querySelector("svg")).toBeNull();
     expect(avatar().querySelector("[data-source-badge] [data-logo]")).toHaveAttribute("data-logo", "glyph");
     expect(mockInvoke).not.toHaveBeenCalled();
   });

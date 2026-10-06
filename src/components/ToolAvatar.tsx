@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useArtifactIcon } from "../lib/queries";
 import type { ToolIcon } from "../lib/toolIcons";
 import { useToolIcons } from "../lib/toolIconsContext";
-import type { ArtifactKey } from "../lib/types";
+import type { ArtifactKey, ArtifactKind } from "../lib/types";
 import { TerminalIcon } from "./icons";
 import { PackLogo, SourceAvatar } from "./SourceAvatar";
 
@@ -37,8 +37,10 @@ export interface ToolAvatarProps {
   /**
    * The tool's key, which finds its own icon: a cask's is asked for its
    * app's (`useArtifactIcon`, which asks for nothing else), and any tool's
-   * logo is looked up in the logo pack (`resolveToolIcon`). Left out,
-   * there is nothing of its own to find: the program tile.
+   * logo is looked up in the logo pack (`resolveToolIcon`), and its kind
+   * says whether its tile, where it has neither, has the prompt. Left
+   * out, there is nothing of its own to find, nor anything that says it
+   * is a program: the tile with no prompt.
    */
   iconKey?: ArtifactKey;
   /** `md` unless said: a row's. */
@@ -53,9 +55,10 @@ export interface ToolAvatarProps {
  *    installed, once it has arrived, drawn as macOS draws it, with no
  *    coloured square behind it;
  * 2. the tool's logo, from the logo pack;
- * 3. the neutral program tile, a prompt on grey (`ProgramTile`): never
- *    its source's logo, which made a tool without one look like another
- *    -- tokei like rustup, both Rust's -- nor a letter (decision I8).
+ * 3. the neutral tile (`ProgramTile`), grey, with a prompt on it for a
+ *    command-line program: never its source's logo, which made a tool
+ *    without one look like another -- tokei like rustup, both Rust's --
+ *    nor a letter (decision I8).
  *
  * Each wears the source's mark, 14px (16 on a dialog's 48), on its corner:
  * at the window's default 800px a row's source chip gives way to the
@@ -89,7 +92,11 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
   }
   return (
     <WithSourceBadge adapterId={adapterId} sourceLabel={sourceLabel} size={size}>
-      {logo !== null ? <PackLogo icon={logo} size={size} /> : <ProgramTile size={size} />}
+      {logo !== null ? (
+        <PackLogo icon={logo} size={size} />
+      ) : (
+        <ProgramTile size={size} prompt={iconKey !== undefined && PROGRAM_KINDS.has(iconKey.kind)} />
+      )}
     </WithSourceBadge>
   );
 }
@@ -112,26 +119,37 @@ const PROMPTS = {
 } as const;
 
 /**
- * The icon of a command-line tool that has none of its own -- no app
- * icon, no logo in the pack: a prompt, white on the neutral grey, as
- * Finder draws a Unix executable and as the Other Programs page draws a
- * program no source accounts for (`data-program-tile`). Never its
+ * The kinds that are command-line programs, whose tile has the prompt: a
+ * formula, an npm or Python package, a uv or pipx tool, a binary. Not a
+ * cask -- an app, a font, a Quick Look plug-in, a driver, which the
+ * prompt would call a command-line program, and every app for the moment
+ * before its icon arrives -- nor an Ollama model, which is data (decision
+ * I10).
+ */
+const PROGRAM_KINDS: ReadonlySet<ArtifactKind> = new Set(["Formula", "Package", "Tool", "Binary"]);
+
+/**
+ * The icon of a tool that has none of its own -- no app icon, no logo in
+ * the pack (`data-program-tile`): the neutral grey, and on it, for a
+ * command-line program (`prompt`), a prompt in white, as Finder draws a
+ * Unix executable and as the Other Programs page draws a program no
+ * source accounts for. For a cask or a model, the grey alone. Never its
  * source's logo, which made a tool look like another, and never a letter
  * (decision I8). Its source's mark goes on its corner.
  *
  * The grey is `neutral-avatar`: systemGray, in the dark systemGray3, the
- * Other Programs page's (index.css). In dark mode a 1px edge of 12% white just inside it, as a logo's square
- * has (`PackLogo`), so the dark grey keeps its outline on the dark
- * content and a selected row.
+ * Other Programs page's (index.css). In dark mode a 1px edge of 12% white
+ * just inside it, as a logo's square has (`PackLogo`), so the dark grey
+ * keeps its outline on the dark content and a selected row.
  */
-function ProgramTile({ size }: { size: keyof typeof ICON_CLASSES }) {
+function ProgramTile({ size, prompt }: { size: keyof typeof ICON_CLASSES; prompt: boolean }) {
   return (
     <span
       aria-hidden="true"
       data-program-tile=""
       className={`inline-flex shrink-0 items-center justify-center bg-neutral-avatar text-white dark:inset-ring dark:inset-ring-white/12 ${ICON_CLASSES[size]}`}
     >
-      <TerminalIcon size={PROMPTS[size].size} className={PROMPTS[size].shift} />
+      {prompt ? <TerminalIcon size={PROMPTS[size].size} className={PROMPTS[size].shift} /> : null}
     </span>
   );
 }
