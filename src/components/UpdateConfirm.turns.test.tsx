@@ -86,7 +86,7 @@ const sayingOf = (dialog: HTMLElement) => rowsOf(dialog).filter((row) => row.que
 /** After each drawing the dialog commits: how many tools its list has, how many say something, and whether it is busy. */
 let commits: Array<{ rows: number; saying: number; busy: boolean }> = [];
 function recordCommit() {
-  const dialog = document.querySelector<HTMLElement>("[role='dialog']");
+  const dialog = document.querySelector<HTMLElement>("[role='alertdialog']");
   const list = dialog?.querySelector("[data-sheet-tools]");
   if (dialog && list) {
     commits.push({ rows: rowsOf(dialog).length, saying: sayingOf(dialog).length, busy: list.getAttribute("aria-busy") === "true" });
@@ -116,7 +116,7 @@ afterEach(() => {
 describe("UpdateConfirmDialog over a long Update all", () => {
   it("draws its tools a turn at a time as it opens, every one in the end, in the list's order", async () => {
     const { getByRole } = renderWithProviders(watched(planning));
-    const dialog = getByRole("dialog", { name: `Update ${COUNT} tools?` });
+    const dialog = getByRole("alertdialog", { name: `Update ${COUNT} tools?` });
     await waitFor(() => expect(rowsOf(dialog)).toHaveLength(COUNT));
     expect(namesOf(dialog)).toEqual(names);
     // The first few with the dialog, then never more than a turn's at once.
@@ -130,7 +130,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
 
   it("once its plans are back, shows its first tools as they are at once and the rest a turn at a time, keeping every tool, its title and its Update", async () => {
     const { getByRole, rerender } = renderWithProviders(watched(planning));
-    const dialog = getByRole("dialog", { name: `Update ${COUNT} tools?` });
+    const dialog = getByRole("alertdialog", { name: `Update ${COUNT} tools?` });
     await waitFor(() => expect(rowsOf(dialog)).toHaveLength(COUNT));
     // The sheet holds the focus while Update is off, as it prepares.
     dialog.focus();
@@ -163,7 +163,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
   it("ends as when it drew every tool at once: the same list, and the same order for the keyboard", async () => {
     // Drawn as it opens and again once its plans are back...
     const turned = renderWithProviders(<UpdateConfirmDialog confirm={confirmOf(planning)} />);
-    const first = turned.getByRole("dialog");
+    const first = turned.getByRole("alertdialog");
     await waitFor(() => expect(rowsOf(first)).toHaveLength(COUNT));
     turned.rerender(<UpdateConfirmDialog confirm={confirmOf(ready)} />);
     await waitFor(() => expect(namesOf(first)).toEqual(finalOrder));
@@ -184,7 +184,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
 
     // ...and drawn once its plans are back, from the start.
     const whole = renderWithProviders(<UpdateConfirmDialog confirm={confirmOf({ ...ready, id: 2 })} />);
-    const second = whole.getByRole("dialog");
+    const second = whole.getByRole("alertdialog");
     await waitFor(() => expect(namesOf(second)).toEqual(finalOrder));
     expect(html(second)).toBe(listHtml);
     expect(focusOrder(second)).toEqual(order);
@@ -196,7 +196,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
     // The first has none of it.
     const plain = (dialog: HTMLElement) => lines.every((line) => !rowsOf(dialog)[0].classList.contains(line));
     const { getByRole, rerender } = renderWithProviders(watched(planning));
-    const dialog = getByRole("dialog");
+    const dialog = getByRole("alertdialog");
     const list = dialog.querySelector<HTMLElement>("[data-sheet-tools]")!;
     // The list draws none itself: no rule over "every tool after another".
     expect([...list.classList].filter((name) => name.includes("*+*"))).toEqual([]);
@@ -215,7 +215,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
 
   it("tells a screen reader its list is busy while any tool is still to be drawn, as it opens and once its plans are back", async () => {
     const { getByRole, rerender } = renderWithProviders(watched(planning));
-    const dialog = getByRole("dialog");
+    const dialog = getByRole("alertdialog");
     await waitFor(() => expect(rowsOf(dialog)).toHaveLength(COUNT));
     const list = dialog.querySelector("[data-sheet-tools]")!;
     expect(list).not.toHaveAttribute("aria-busy");
@@ -238,7 +238,7 @@ describe("UpdateConfirmDialog over a long Update all", () => {
     const { getByRole, rerender } = renderWithProviders(
       <UpdateConfirmDialog confirm={confirmOf({ ...planning, items: planning.items.slice(0, TOOLS_DRAWN_FIRST) })} />,
     );
-    const dialog = getByRole("dialog");
+    const dialog = getByRole("alertdialog");
     expect(namesOf(dialog)).toEqual(few);
     await act(async () => {
       rerender(<UpdateConfirmDialog confirm={confirmOf({ ...ready, items: ready.items.slice(0, TOOLS_DRAWN_FIRST) })} />);

@@ -597,7 +597,7 @@ describe("App", () => {
     const row = (await findByText("jq", { selector: "[data-tool-row] p" })).closest("[data-tool-row]");
     const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall jq…" });
     fireEvent.click(uninstall);
-    const sheet = await findByRole("dialog", { name: "Uninstall “jq”?" });
+    const sheet = await findByRole("alertdialog", { name: "Uninstall “jq”?" });
     const confirm = within(sheet).getByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
@@ -828,7 +828,7 @@ describe("quitting while an operation is under way", () => {
 
     rust.hear(QUIT_REQUESTED_EVENT, 1);
 
-    const dialog = await findByRole("dialog", { name: "1 operation hasn't finished" });
+    const dialog = await findByRole("alertdialog", { name: "1 operation hasn't finished" });
     // On screen, and Rust is told so: it waits for the answer.
     await waitFor(() =>
       expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_question_shown")).toEqual([

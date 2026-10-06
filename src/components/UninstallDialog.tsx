@@ -322,6 +322,8 @@ export function UninstallDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("uninstall.title", { name: displayName })}
+      // A question to answer before anything else, as NSAlert's.
+      alert
       icon={
         <SheetIcon
           adapterId={adapterId}
@@ -331,7 +333,7 @@ export function UninstallDialog({
       }
       subtitle={sheetMeta(displayName, sourceLabel, version)}
       // What goes and what stays: the alert's text, said as it opens.
-      describedBy={text.map((_, index) => `${textId}-${index}`).join(" ")}
+      describedBy={text.length === 0 ? undefined : text.map((_, index) => `${textId}-${index}`).join(" ")}
       // Cancel first: nothing here should be one keypress from removing.
       initialFocus={cancelRef}
       returnFocusTo={returnFocusTo}

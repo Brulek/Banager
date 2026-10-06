@@ -719,6 +719,8 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         if (!open && !submitting) uninstall.close();
       }}
       title={title}
+      // A question to answer before anything else, as NSAlert's.
+      alert
       width="several"
       icon={
         only !== null && (planning || included.length > 0) ? (
@@ -726,7 +728,17 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
         ) : undefined
       }
       subtitle={only !== null && (planning || included.length > 0) ? sheetMeta(only.name, sourceLabelOf(only.instance), onlyVersion) : undefined}
-      describedBy={texts.length > 0 ? texts.map((text) => text.id).join(" ") : undefined}
+      // Its text; while it checks, or where it has none, the list of what
+      // it asks about, by its name -- as one tool's sheet has its subtitle.
+      describedBy={
+        texts.length > 0
+          ? texts.map((text) => text.id).join(" ")
+          : only !== null && (planning || included.length > 0)
+            ? undefined
+            : planning || included.length > 0
+              ? `${textId}-list`
+              : `${textId}-stayList`
+      }
       initialFocus={phase === "done" ? closeRef : !planning && included.length === 0 ? okRef : cancelRef}
       returnFocusTo={uninstall.returnFocusTo}
       onClosed={uninstall.afterClose}
@@ -771,7 +783,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
 
       {planning ? (
         <>
-          <SheetToolList label={t("batchUninstall.goTitle")} contained={false}>{entries.map((entry) => toolOf(entry, null))}</SheetToolList>
+          <SheetToolList id={`${textId}-list`} label={t("batchUninstall.goTitle")} contained={false}>{entries.map((entry) => toolOf(entry, null))}</SheetToolList>
           <SheetPending text={t("batchUninstall.checking", { done, total: entries.length })} />
         </>
       ) : (
@@ -783,7 +795,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           ) : null}
           {included.length > 0 ? (
             <div className="mt-3">
-              <SheetToolList label={t("batchUninstall.goTitle")} contained={false}>
+              <SheetToolList id={`${textId}-list`} label={t("batchUninstall.goTitle")} contained={false}>
                 {included.map(({ entry, after }) => {
                   const size = itemSizeOf(sizes, entry.artifact);
                   return toolOf(
@@ -800,7 +812,7 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           ) : null}
           {excluded.length > 0 ? (
             <SheetSection title={t("batchUninstall.stayTitle")}>
-              <SheetToolList label={t("batchUninstall.stayTitle")} contained={false}>
+              <SheetToolList id={`${textId}-stayList`} label={t("batchUninstall.stayTitle")} contained={false}>
                 {excluded.map(({ entry, reason }) => toolOf(entry, reasonOf(entry, reason)))}
               </SheetToolList>
             </SheetSection>

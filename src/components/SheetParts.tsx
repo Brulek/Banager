@@ -197,12 +197,15 @@ export function SheetTool({
  * dialog's question and its Update count say.
  */
 export function SheetToolList({
+  id,
   label,
   contained = true,
   rowsSeparate = false,
   busy = false,
   children,
 }: {
+  /** For a sheet with nothing else to say to describe itself by: its name. */
+  id?: string;
   label?: string;
   contained?: boolean;
   rowsSeparate?: boolean;
@@ -214,6 +217,7 @@ export function SheetToolList({
     : " [&>*+*]:relative [&>*+*]:before:absolute [&>*+*]:before:left-10.5 [&>*+*]:before:right-2.5 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-group-separator";
   return (
     <ul
+      id={id}
       aria-label={label}
       aria-busy={busy ? true : undefined}
       data-sheet-tools=""

@@ -342,7 +342,7 @@ async function openSheet(tools: InstalledArtifact[]): Promise<HTMLElement> {
   await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("get_snapshot"));
   await act(async () => {});
   fireEvent.click(screen.getByRole("button", { name: "open" }));
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   if (!holdPlans) await untilChecked(dialog);
   return dialog;
 }
@@ -395,6 +395,25 @@ describe("the batch uninstall's sheet", () => {
     await untilChecked(dialog);
     // jq's preview was refused (Homebrew updating its list): four go.
     expect(within(dialog).getByRole("button", { name: "Uninstall 4 Tools" })).toBeEnabled();
+  });
+
+  it("is an alert dialog, as NSAlert is, described by what it says from the moment it opens", async () => {
+    // Decision I21c. Checking, it has only the list's name to say; then
+    // what goes and what it takes.
+    holdPlans = true;
+    const dialog = await openSheet([wget, git]);
+    expect(dialog).toHaveAttribute("role", "alertdialog");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The list, which a screen reader names by its label, as WebKit's
+    // description does (jsdom's would read its rows instead).
+    const list = within(dialog).getByRole("list", { name: "Will be uninstalled" });
+    expect(list.id).not.toBe("");
+    expect(dialog).toHaveAttribute("aria-describedby", list.id);
+    while (held.length > 0 || planned.length < 2) {
+      await act(async () => held.shift()?.());
+    }
+    await untilChecked(dialog);
+    expect(dialog).toHaveAccessibleDescription(/^These 2 tools will be uninstalled/);
   });
 
   it("asks about one tool as its own Uninstall does", async () => {
@@ -496,7 +515,7 @@ describe("the batch uninstall's sheet", () => {
     await waitFor(() => expect(ok).toHaveFocus());
     expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent.click(ok);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("puts a ticked dependent first, and says under its dependency why it waits", async () => {
@@ -712,7 +731,7 @@ describe("the batch uninstall's sheet", () => {
     useUiStore.getState().selectUninstalls([python.key, pipxFormula.key, wget.key, git.key]);
     const dialog = await openSheet([python, pipxFormula, wget]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall 3 Tools" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(submitted).toEqual(["pipx", "python@3.13", "wget"]);
     // git was ticked and not part of this batch: still ticked.
     expect(useUiStore.getState().selectedUninstalls).toEqual([artifactKeyId(git.key)]);
@@ -743,7 +762,7 @@ describe("the batch uninstall's sheet", () => {
     await waitFor(() => expect(close).toHaveFocus());
     expect(useUiStore.getState().uninstallBatch?.items.map((item) => item.opId)).toEqual([null, null, 41]);
     fireEvent.click(close);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(onStarted).not.toHaveBeenCalled();
   });
 
@@ -767,7 +786,7 @@ describe("the batch uninstall's sheet", () => {
     expect(planned).toEqual(["wget", "git", "wget", "git"]);
     expect(submitted).toEqual([]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall 2 Tools" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(submitted).toEqual(["wget", "git"]);
   });
 
@@ -776,12 +795,12 @@ describe("the batch uninstall's sheet", () => {
     const dialog = await openSheet([wget, git, jq, htop, node]);
     await waitFor(() => expect(planned).toHaveLength(3));
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     await act(async () => {
       while (held.length > 0) held.shift()!();
     });
     expect(planned).toEqual(["wget", "git", "jq"]);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("closes with Escape, but not while it starts the uninstalls", async () => {
@@ -791,20 +810,20 @@ describe("the batch uninstall's sheet", () => {
     await waitFor(() => expect(heldSubmits).toHaveLength(1));
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await act(async () => {
       while (heldSubmits.length > 0 || submitted.length < 2) {
         heldSubmits.shift()?.();
         await Promise.resolve();
       }
     });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 
     holdSubmits = false;
     fireEvent.click(screen.getByRole("button", { name: "open" }));
-    await untilChecked(await screen.findByRole("dialog"));
+    await untilChecked(await screen.findByRole("alertdialog"));
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("says it in Chinese", async () => {

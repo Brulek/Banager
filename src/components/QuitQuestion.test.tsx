@@ -70,7 +70,7 @@ beforeEach(() => {
     if (cmd === "quit_anyway") return quitReply();
     if (cmd === "quit_question_shown") {
       const { question } = args as { question: unknown };
-      shown.push({ question, onScreen: screen.queryByRole("dialog") !== null });
+      shown.push({ question, onScreen: screen.queryByRole("alertdialog") !== null });
       return shownReply();
     }
     return Promise.resolve(undefined);
@@ -103,7 +103,7 @@ function ask(rust: ReturnType<typeof fakeMenuBar>): number {
 /** Rust asks, as a quit comes while something is under way; resolves to the question. */
 async function asked(rust: ReturnType<typeof fakeMenuBar>, name: string | RegExp): Promise<HTMLElement> {
   ask(rust);
-  return screen.findByRole("dialog", { name });
+  return screen.findByRole("alertdialog", { name });
 }
 
 /** The backend's list has moved on: what a `Status` or `Finished` event makes the page ask again. */
@@ -119,7 +119,7 @@ describe("the question before a quit", () => {
     operations = [op(1, "wget", "Running")];
     await mounted();
 
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(sent("quit_anyway")).toBe(0);
     expect(sent("quit_question_shown")).toBe(0);
   });
@@ -171,12 +171,32 @@ describe("the question before a quit", () => {
 
     await answer(user, dialog);
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(sent("quit_anyway")).toBe(0);
     // Rust is told, so that its wait for word from the page does not quit.
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_kept_waiting")).toEqual([
       ["quit_kept_waiting", { question: 1 }],
     ]);
+  });
+
+  it("is an alert dialog, as NSAlert reads, described by what quitting now would do", async () => {
+    // Decision I21c. With nothing quitting can stop, the line about what
+    // nothing can stop is what it says.
+    operations = [rustup(1, "Running")];
+    const { rust, queryClient } = await mounted();
+    ask(rust);
+    const dialog = await screen.findByRole("alertdialog", { name: "1 operation hasn't finished" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(dialog).toHaveAccessibleDescription(
+      "rustup's update has started and can't be cancelled. Wait for it to finish before you quit.",
+    );
+
+    await listNow(queryClient, [op(2, "wget", "Running")]);
+    await waitFor(() =>
+      expect(dialog).toHaveAccessibleDescription(
+        "Quitting now stops it, and the tool it's updating can be left half-updated.",
+      ),
+    );
   });
 
   it("asks again at the next quit after Keep waiting", async () => {
@@ -185,7 +205,7 @@ describe("the question before a quit", () => {
     const { rust } = await mounted();
     const first = await asked(rust, "1 operation hasn't finished");
     await user.click(within(first).getByRole("button", { name: "Keep Waiting" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 
     await asked(rust, "1 operation hasn't finished");
 
@@ -212,7 +232,7 @@ describe("the question before a quit", () => {
     expect(within(dialog).getByRole("button", { name: "Keep Waiting" })).toBeDisabled();
     // In the app, Banager is gone by now.
     await act(async () => quit());
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(sent("quit_anyway")).toBe(1);
   });
 
@@ -241,7 +261,7 @@ describe("the question before a quit", () => {
     await user.click(within(dialog).getByRole("button", { name: "Quit" }));
 
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Quit" })).toBeEnabled());
-    expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
+    expect(screen.getByRole("alertdialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(error).toHaveBeenCalledWith("quit_anyway failed", expect.any(Error));
     error.mockRestore();
   });
@@ -257,7 +277,7 @@ describe("the question before a quit", () => {
     ask(rust);
 
     await waitFor(() => expect(sent("quit_anyway")).toBe(1));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     // Nothing on screen, and nothing said: Banager is quitting.
     expect(sent("quit_question_shown")).toBe(0);
   });
@@ -279,10 +299,10 @@ describe("the question before a quit", () => {
     await asked(rust, "2 operations haven't finished");
 
     await listNow(queryClient, [op(1, "wget", "Done"), op(2, "jq", "Running")]);
-    expect(await screen.findByRole("dialog", { name: "1 operation hasn't finished" })).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog", { name: "1 operation hasn't finished" })).toBeInTheDocument();
 
     await listNow(queryClient, [op(1, "wget", "Done"), op(2, "jq", "Done")]);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     // Nothing is left to wait for, and Banager stays, with how they went
     // on the operation bar -- Rust told so, once.
     expect(sent("quit_anyway")).toBe(0);
@@ -292,7 +312,7 @@ describe("the question before a quit", () => {
 
     // Nor does it come back by itself when something starts again.
     await listNow(queryClient, [op(3, "git", "Running")]);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("counts every unfinished uninstall of a batch, which submits them all at once", async () => {
@@ -316,7 +336,7 @@ describe("the question before a quit", () => {
     ask(rust);
 
     await waitFor(() => expect(sent("list_operations")).toBeGreaterThanOrEqual(3));
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     // The one sheet answers every quit: said so up to the newest, whose
     // number stands for those before it (`QuitGuard::shown`).
     await waitFor(() => expect(shown[shown.length - 1]).toEqual({ question: 3, onScreen: true }));
@@ -354,7 +374,7 @@ describe("the question before a quit", () => {
       new Error("quit_question_shown went wrong"),
     );
     expect(sent("quit_question_shown")).toBe(2);
-    expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
+    expect(screen.getByRole("alertdialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(sent("quit_anyway")).toBe(0);
 
     await user.click(within(dialog).getByRole("button", { name: "Keep Waiting" }));

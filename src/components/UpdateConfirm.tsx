@@ -622,7 +622,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     if (phase === "done") closeRef.current?.focus();
     if (phase === "ready") {
       const update = updateRef.current;
-      const sheet = update?.closest('[role="dialog"]');
+      const sheet = update?.closest('[role="alertdialog"]');
       if (update && sheet && document.activeElement === sheet) update.focus();
     }
   }, [phase]);
@@ -779,8 +779,10 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const onlyJump = only === null ? null : versionJump(t, only.candidate);
   const onlyDigest = only?.candidate.channel === "Digest";
   // What there is to know about the one tool, under its question: with its
-  // subtitle, what describes the dialog as it opens.
+  // subtitle, what describes the dialog as it opens. Several have their
+  // list, by its name.
   const aboutId = useId();
+  const listId = useId();
 
   return (
     <Dialog
@@ -794,6 +796,8 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         if (!open && !submitting) confirm.close();
       }}
       title={title}
+      // A question to answer before anything else, as NSAlert's.
+      alert
       width={several ? "several" : "one"}
       icon={
         only !== null && onlyAdapter !== null ? (
@@ -811,7 +815,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           ? sheetMeta(only.name, sourceLabelOf(only.candidate.key.instance_id), onlyDigest ? null : onlyJump)
           : undefined
       }
-      describedBy={only !== null ? aboutId : undefined}
+      describedBy={only !== null ? aboutId : listId}
       initialFocus={batch?.phase === "done" ? closeRef : updateRef}
       returnFocusTo={confirm.returnFocusTo}
       onClosed={confirm.afterClose}
@@ -847,7 +851,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>
       ) : (
-        <SheetToolList label={t("a11y.updateList")} rowsSeparate busy={turns.drawn < ordered.length}>
+        <SheetToolList id={listId} label={t("a11y.updateList")} rowsSeparate busy={turns.drawn < ordered.length}>
           <Fragment key="now">
             {apart ? drawnNow.map(({ item, notes }, index) => tool(item, notes, confirm.refusalOf(item), index)) : null}
           </Fragment>

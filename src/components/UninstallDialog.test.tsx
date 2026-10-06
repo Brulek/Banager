@@ -166,7 +166,9 @@ describe("UninstallDialog", () => {
 
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+    // An alert dialog to a screen reader, as NSAlert is (decision I21c).
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
+    expect(screen.queryByRole("dialog")).toBeNull();
     // An alert's layout (spec §3.6): one tool, 360 wide; its icon over the
     // question, and where it comes from and the version it has under it.
     expect(dialog).toHaveAttribute("data-dialog-width", "360");
@@ -217,7 +219,7 @@ describe("UninstallDialog", () => {
 
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={intelRequest} displayName="jq" />);
 
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
     const subtitle = (await within(dialog).findByText("1.7.1")).closest("[data-dialog-subtitle]");
     expect(subtitle).toHaveTextContent("Homebrew (Intel) · 1.7.1");
   });
@@ -236,7 +238,7 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={itermRequest} displayName="iTerm2" />,
     );
 
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall “iTerm2”?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “iTerm2”?" });
     const item = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
     await waitFor(() => expect(item.querySelector("img[data-app-icon]")).toHaveAttribute("src", icon));
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("artifact_icon", {
@@ -466,7 +468,7 @@ describe("UninstallDialog", () => {
       expect(line.className).not.toMatch(/text-muted/);
     }
     // No warning sign by the question, and none over the notes.
-    const dialog = screen.getByRole("dialog");
+    const dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }).querySelector("svg")).toBeNull();
   });
 
@@ -698,7 +700,7 @@ describe("UninstallDialog", () => {
     // names the tool.
     expect(sentence).toHaveAttribute("data-sheet-text");
     expect(sentence.className).toMatch(/\btext-foreground\b/);
-    expect(screen.getByRole("dialog", { name: "Uninstall “jq”?" })).toContainElement(sentence);
+    expect(screen.getByRole("alertdialog", { name: "Uninstall “jq”?" })).toContainElement(sentence);
     // No line says it deletes for good: no "can't undo", and plain Uninstall.
     expect(screen.queryByText(/can't undo/)).toBeNull();
     // Not a note: with nothing else to say there is no "Before you
@@ -2135,7 +2137,7 @@ describe("UninstallDialog", () => {
         onSubmitted={onSubmitted}
       />,
     );
-    await screen.findByRole("dialog", { name: "Uninstall “yq”?" });
+    await screen.findByRole("alertdialog", { name: "Uninstall “yq”?" });
     await showCommand();
     await screen.findByText("/opt/homebrew/bin/brew uninstall --formula yq");
 

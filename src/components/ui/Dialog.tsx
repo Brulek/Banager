@@ -86,6 +86,14 @@ export interface DialogProps {
   focusSelf?: boolean;
   /** Called once it has closed and handed the focus back. */
   onClosed?: () => void;
+  /**
+   * It asks the user to confirm something, as NSAlert does -- quit,
+   * uninstall, update -- and a screen reader announces it as an alert
+   * dialog (`role="alertdialog"`), reading what `describedBy` names as it
+   * opens. Only the role: closing on a click around it and where the focus
+   * starts stay as for any other (decision I21c).
+   */
+  alert?: boolean;
 }
 
 /**
@@ -137,6 +145,7 @@ export function Dialog({
   initialFocus,
   focusSelf = false,
   onClosed,
+  alert = false,
 }: DialogProps) {
   const noted = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -161,6 +170,7 @@ export function Dialog({
         <RadixDialog.Overlay data-dialog-overlay="" className="fixed inset-0" />
         <RadixDialog.Content
           ref={contentRef}
+          {...(alert ? { role: "alertdialog" } : {})}
           {...(description === undefined ? { "aria-describedby": describedByIds === "" ? undefined : describedByIds } : {})}
           data-dialog-width={DIALOG_WIDTHS[width]}
           onOpenAutoFocus={(event) => {

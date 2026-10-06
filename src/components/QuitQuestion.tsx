@@ -88,6 +88,8 @@ export function QuitQuestion() {
   const count = active.length;
   const body = quitBodyKey(active);
   const bodyId = useId();
+  const unstoppable = active.filter(runsToItsEnd);
+  const describedBy = [...(body === null ? [] : [bodyId]), ...unstoppable.map((op) => `${bodyId}-${op.id}`)].join(" ");
 
   // It goes, and Banager stays: Rust is told, so that its wait for word
   // from the page does not quit.
@@ -110,8 +112,11 @@ export function QuitQuestion() {
         if (!open) keepWaiting();
       }}
       title={t("quit.title", { count })}
-      // What quitting now would stop: the question's text, said as it opens.
-      describedBy={body === null ? undefined : bodyId}
+      // A question to answer before anything else, as NSAlert's.
+      alert
+      // What quitting now would stop, then what nothing can stop: the
+      // question's text, said as it opens.
+      describedBy={describedBy === "" ? undefined : describedBy}
       initialFocus={keepWaitingButton}
       // Two answers that read as long as a sentence side by side: one over
       // the other, as wide as the dialog, staying on top -- the default.
@@ -135,8 +140,8 @@ export function QuitQuestion() {
     >
       {question !== null && <OnScreen question={question} />}
       {body !== null && <SheetText id={bodyId}>{t(body, { count: quitStops(active).length })}</SheetText>}
-      {active.filter(runsToItsEnd).map((op) => (
-        <p key={op.id} className="mt-2 flex gap-1.5 text-body text-foreground">
+      {unstoppable.map((op) => (
+        <p key={op.id} id={`${bodyId}-${op.id}`} className="mt-2 flex gap-1.5 text-body text-foreground">
           <WarningFilledIcon size={12} className="mt-0.5 shrink-0 text-warning" />
           <span className="min-w-0 break-words">{t(QUIT_NO_CANCEL_KEYS[op.kind], { name: nameOf(op) })}</span>
         </p>

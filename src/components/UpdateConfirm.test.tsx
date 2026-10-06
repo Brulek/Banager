@@ -58,7 +58,7 @@ describe("UpdateConfirmDialog", () => {
     const { rerender, getByRole } = renderWithProviders(
       <UpdateConfirmDialog confirm={confirmOf({ id: 1, phase: "planning", items: tools.map((c) => item(c)) })} />,
     );
-    const dialog = getByRole("dialog", { name: "Update 3 tools?" });
+    const dialog = getByRole("alertdialog", { name: "Update 3 tools?" });
     expect(drawn.mock.calls.map(([props]) => props.name)).toEqual(["glib", "jq", "wget"]);
 
     // The page drew it again with the same batch, its items new objects,
@@ -83,12 +83,36 @@ describe("UpdateConfirmDialog", () => {
   });
 });
 
+describe("UpdateConfirmDialog to a screen reader", () => {
+  it("is an alert dialog, as NSAlert is, described by its one tool or by its list of several", () => {
+    // Decision I21c: the role, and what it is about said as it opens.
+    const one = renderWithProviders(
+      <UpdateConfirmDialog confirm={confirmOf({ id: 3, phase: "planning", items: [item(candidate("jq"))] })} />,
+    );
+    const sheet = one.getByRole("alertdialog", { name: "Update “jq”?" });
+    expect(one.queryByRole("dialog")).toBeNull();
+    expect(sheet).toHaveAccessibleDescription(/^Homebrew · 1\.0\.0 → 1\.1\.0/);
+    one.unmount();
+
+    const several = renderWithProviders(
+      <UpdateConfirmDialog
+        confirm={confirmOf({ id: 4, phase: "planning", items: ["glib", "jq"].map((name) => item(candidate(name))) })}
+      />,
+    );
+    // Several: the list, which a screen reader names by its label, as
+    // WebKit's description does (jsdom's would read its rows instead).
+    const list = several.getByRole("list", { name: "Tools to update" });
+    expect(list.id).not.toBe("");
+    expect(several.getByRole("alertdialog", { name: "Update 2 tools?" })).toHaveAttribute("aria-describedby", list.id);
+  });
+});
+
 describe("UpdateConfirmDialog's list of several", () => {
   it("names the list it scrolls with the keyboard, in either language, as it is a Tab stop of its own", async () => {
     const tools = ["glib", "jq"].map(candidate);
     const batch: Batch = { id: 2, phase: "planning", items: tools.map((c) => item(c)) };
     const { getByRole, unmount } = renderWithProviders(<UpdateConfirmDialog confirm={confirmOf(batch)} />);
-    const list = within(getByRole("dialog", { name: "Update 2 tools?" })).getByRole("list", { name: "Tools to update" });
+    const list = within(getByRole("alertdialog", { name: "Update 2 tools?" })).getByRole("list", { name: "Tools to update" });
     expect(list).toHaveAttribute("tabindex", "0");
     unmount();
 
@@ -172,7 +196,7 @@ describe("UpdateConfirmDialog on a copy Terminal does not run", () => {
     const { findByText, getByRole } = renderWithProviders(<UpdateConfirmDialog confirm={confirmOf(batch)} />);
     const note = await findByText(/^Terminal runs another copy\./);
     expect(note).toHaveTextContent("Terminal runs another copy. Updating this one doesn't change what codex runs in Terminal.");
-    const dialog = getByRole("dialog");
+    const dialog = getByRole("alertdialog");
     expect(dialog).toContainElement(note);
     // Which copy runs is behind the line's ⓘ, as on the row.
     expect(within(dialog).getByRole("button", { name: /^Details: Terminal runs another copy/ })).toBeInTheDocument();

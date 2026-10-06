@@ -283,6 +283,46 @@ describe("Dialog", () => {
     expect(getByRole("dialog")).not.toHaveAttribute("aria-describedby");
   });
 
+  it("is an alert dialog where it asks to confirm, as NSAlert reads, and behaves as any other", async () => {
+    // Decision I21c: the role only, not Radix's AlertDialog -- its focus is
+    // still placed as `initialFocus` says, and Escape (as a click on the
+    // page around it) still closes it.
+    const onOpenChange = vi.fn();
+    const cancel = { current: null as HTMLButtonElement | null };
+    const { getByRole, queryByRole } = renderWithProviders(
+      <Dialog
+        open
+        alert
+        onOpenChange={onOpenChange}
+        title="Uninstall “jq”?"
+        subtitle="Homebrew · 1.8.1"
+        describedBy="about-jq"
+        initialFocus={cancel}
+        footer={
+          <>
+            <button
+              ref={(button) => {
+                cancel.current = button;
+              }}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button type="button">Uninstall</button>
+          </>
+        }
+      >
+        <p id="about-jq">Removes jq.</p>
+      </Dialog>,
+    );
+    const sheet = getByRole("alertdialog", { name: "Uninstall “jq”?" });
+    expect(queryByRole("dialog")).toBeNull();
+    expect(sheet).toHaveAccessibleDescription("Homebrew · 1.8.1 Removes jq.");
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("button", { name: "Cancel" })));
+    await userEvent.setup().keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("fades its body's bottom edge while more of it is below what is in sight, and not once its end is", () => {
     const { getByRole } = renderWithProviders(
       <Dialog open onOpenChange={vi.fn()} title="Icon credits" footer={<button type="button">Done</button>}>

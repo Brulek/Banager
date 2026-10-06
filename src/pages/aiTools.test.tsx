@@ -329,7 +329,7 @@ describe("the Updates page with AI Tools shown", () => {
     showAiTools();
     fireEvent.click(await screen.findByRole("button", { name: "Update 2 Tools" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Update 2 tools?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Update 2 tools?" });
     await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(2));
     expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual([
       "@openai/codex",

@@ -618,7 +618,7 @@ describe("UpdatesPage", () => {
     const updateButtons = await findAllByRole("button", { name: ROW_UPDATE });
     fireEvent.click(updateButtons[0]);
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
@@ -636,7 +636,7 @@ describe("UpdatesPage", () => {
 
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
     // Every item started, so the dialog closes on its own.
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   it("previews every selected command, then submits one operation per item, each with its own plan id", async () => {
@@ -648,7 +648,7 @@ describe("UpdatesPage", () => {
 
     // The button counts what it will update.
     fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
@@ -657,7 +657,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
 
@@ -674,7 +674,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
 
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
@@ -690,7 +690,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     await within(dialog).findByText(
       "This compiles on your Mac and takes a while.",
     );
@@ -707,7 +707,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     const line =
       "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
     await within(dialog).findByText(noteLine(line));
@@ -728,7 +728,7 @@ describe("UpdatesPage", () => {
       const { findAllByRole, findByRole } = renderPage();
 
       fireEvent.click((await findAllByRole("button", { name: /^更新(?!所选)/ }))[0]);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       await within(dialog).findByText(
         noteLine(
           "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
@@ -747,7 +747,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     await within(dialog).findByText(
       noteLine(
         "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
@@ -963,7 +963,7 @@ describe("UpdatesPage", () => {
     // One, not two: my-fork's selection counts for nothing.
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(plannedNames()).toEqual(["glib"]);
@@ -1213,16 +1213,16 @@ describe("UpdatesPage", () => {
 
     // The update's confirmation, under its question.
     fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
-    const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+    const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
     const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
     expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew (Intel) · 2.88.3 → 2.90.0");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 
     // Several: the two wgets' rows say in sight whose each is, and glib's
     // for a screen reader.
     fireEvent.click(getByRole("button", { name: "Update All" }));
-    const several = await findByRole("dialog", { name: "Update 3 tools?" });
+    const several = await findByRole("alertdialog", { name: "Update 3 tools?" });
     const sources = within(several).getAllByText(/^Homebrew/);
     expect(sources.filter((source) => !source.classList.contains("sr-only")).map((source) => source.textContent)).toEqual(
       ["Homebrew (Apple silicon)", "Homebrew (Intel)"],
@@ -1240,7 +1240,7 @@ describe("UpdatesPage", () => {
     const { getByRole, findByRole } = renderPage();
     await findRow("tool-00");
     fireEvent.click(getByRole("button", { name: "Update All" }));
-    const dialog = await findByRole("dialog", { name: "Update 20 tools?" });
+    const dialog = await findByRole("alertdialog", { name: "Update 20 tools?" });
     await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(20));
     expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
       updates.map((update) => update.key.name),
@@ -1374,7 +1374,7 @@ describe("UpdatesPage", () => {
     await findRow("onyx");
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
-    await findByRole("dialog");
+    await findByRole("alertdialog");
     expect(plannedNames()).toEqual(["onyx"]);
   });
 
@@ -1899,7 +1899,7 @@ describe("UpdatesPage", () => {
     await findRow("glib");
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(plannedNames()).toEqual(["glib"]);
@@ -1963,7 +1963,7 @@ describe("UpdatesPage", () => {
     // Update All's list names it as the row does, so its tag is not what
     // is cut short; whole in its tooltip and for a screen reader.
     fireEvent.click(getByRole("button", { name: "Update All" }));
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     const inSheet = within(dialog).getByTitle(MODELS.coder);
     expect(inSheet).toHaveAttribute("data-sheet-name");
     expect(inSheet.firstElementChild?.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
@@ -1991,7 +1991,7 @@ describe("UpdatesPage", () => {
     const linesUnder = async (update: RegExp) => {
       const row = (await screen.findByTitle(MODELS.coder)).closest("[data-tool-row]") as HTMLElement;
       fireEvent.click(within(row).getByRole("button", { name: update }));
-      const dialog = await screen.findByRole("dialog");
+      const dialog = await screen.findByRole("alertdialog");
       // One tool: its lines are the dialog's own, under its name.
       await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
       return [...dialog.querySelectorAll("li")].map((item) => ({
@@ -2056,14 +2056,14 @@ describe("UpdatesPage", () => {
     const versionColumn = async (key: string) => (await modelRow(key)).querySelector("[data-version]")?.textContent;
     const linesUnderOne = async (update: RegExp) => {
       fireEvent.click(within(await modelRow(MODELS.coder)).getByRole("button", { name: update }));
-      const dialog = await screen.findByRole("dialog");
+      const dialog = await screen.findByRole("alertdialog");
       await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
       return [...dialog.querySelectorAll("li")].map((item) => item.textContent?.trim());
     };
     const notesInUpdateAll = async (updateAll: string) => {
       await modelRow(MODELS.coder);
       fireEvent.click(screen.getByRole("button", { name: updateAll }));
-      const dialog = await screen.findByRole("dialog");
+      const dialog = await screen.findByRole("alertdialog");
       const notesOf = (key: string) => {
         const tool = within(dialog).getByTitle(key).closest("[data-sheet-tool]") as HTMLElement;
         return [...tool.querySelectorAll("li")].map((item) => item.textContent?.trim());
@@ -2140,13 +2140,13 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(submittedPlanIds()).toEqual([]);
   });
 
@@ -2160,7 +2160,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    let dialog = await findByRole("dialog");
+    let dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -2174,12 +2174,12 @@ describe("UpdatesPage", () => {
     expect(calls("plan_operation")).toHaveLength(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
 
     // Asking again plans again: a new id and a new preview, and still no
     // submit until the user confirms that preview.
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    dialog = await findByRole("dialog");
+    dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(calls("plan_operation")).toHaveLength(2);
@@ -2201,7 +2201,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Couldn't prepare the update: glib is pinned",
     );
@@ -2223,7 +2223,7 @@ describe("UpdatesPage", () => {
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Formula|glib"]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   it("says an item's planning failure in the dialog without the backend's words while technical details are off", async () => {
@@ -2235,7 +2235,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't prepare the update. Try again later.");
     expect(within(dialog).queryByText(/glib is pinned/)).toBeNull();
@@ -2247,7 +2247,7 @@ describe("UpdatesPage", () => {
     const plain = renderPage();
 
     fireEvent.click((await plain.findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    let dialog = await plain.findByRole("dialog");
+    let dialog = await plain.findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -2259,7 +2259,7 @@ describe("UpdatesPage", () => {
     nextPlanId = 1;
     const technical = renderPage();
     fireEvent.click((await technical.findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    dialog = await technical.findByRole("dialog");
+    dialog = await technical.findByRole("alertdialog");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
@@ -2286,7 +2286,7 @@ describe("UpdatesPage", () => {
       "Couldn't prepare the update: Open Homebrew to see what it has and check for updates.",
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);
-    expect(queryByRole("dialog")).not.toBeInTheDocument();
+    expect(queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
@@ -2298,7 +2298,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
-    let dialog = await findByRole("dialog");
+    let dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
@@ -2313,12 +2313,12 @@ describe("UpdatesPage", () => {
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Cask|onyx"]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
 
     // Retry: plan_operation is asked exactly once more, for onyx only — a
     // fresh id must never re-queue the item that already started.
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
-    dialog = await findByRole("dialog");
+    dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     const secondRound = calls("plan_operation").slice(2);
@@ -2357,11 +2357,11 @@ describe("UpdatesPage", () => {
     // The sheet is up from the first press, over the page, so the second
     // press comes after Cancel.
     fireEvent.click(updateButtons[0]);
-    const first = await findByRole("dialog", { name: "Update “glib”?" });
+    const first = await findByRole("alertdialog", { name: "Update “glib”?" });
     fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     fireEvent.click(updateButtons[1]);
-    const dialog = await findByRole("dialog", { name: "Update “onyx”?" });
+    const dialog = await findByRole("alertdialog", { name: "Update “onyx”?" });
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     await waitFor(() => expect(releasePlan.glib).toBeDefined());
@@ -2372,7 +2372,7 @@ describe("UpdatesPage", () => {
       releasePlan.glib();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(queryByRole("dialog")).toBe(dialog);
+    expect(queryByRole("alertdialog")).toBe(dialog);
     expect(
       within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
     ).not.toBeInTheDocument();
@@ -2390,11 +2390,11 @@ describe("UpdatesPage", () => {
     expect(updateAll).toBeDisabled();
     expect(updateButtons[0]).toBeDisabled();
     fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(queryByRole("dialog")).toBe(dialog);
+    expect(queryByRole("alertdialog")).toBe(dialog);
 
     await waitFor(() => expect(releaseSubmit["2"]).toBeDefined());
     releaseSubmit["2"]();
-    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(submittedPlanIds()).toEqual([{ planId: "2" }]);
     expect(updateAll).not.toBeDisabled();
     // Ticked, glib is what the one button updates, and that is not locked either.
@@ -2502,7 +2502,7 @@ describe("UpdatesPage", () => {
       await findByText("3 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
 
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       showCommands(dialog);
       await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula jq");
       expect([...plannedNames()].sort()).toEqual(["glib", "jq", "onyx"]);
@@ -2519,7 +2519,7 @@ describe("UpdatesPage", () => {
 
       fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(3));
-      await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+      await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
     });
 
@@ -2528,10 +2528,10 @@ describe("UpdatesPage", () => {
       const { getByRole, findByRole, findByText, queryByRole } = renderPage();
       await findByText("3 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       expect(useUiStore.getState().selectedUpdates).toHaveLength(3);
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+      await waitFor(() => expect(queryByRole("alertdialog")).not.toBeInTheDocument());
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
       expect(getByRole("button", { name: "Update All" })).toBeInTheDocument();
       expect(submittedPlanIds()).toEqual([]);
@@ -2868,7 +2868,7 @@ describe("UpdatesPage", () => {
 
     fireEvent.click(selectAll);
     fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
-    await findByRole("dialog");
+    await findByRole("alertdialog");
     expect(plannedNames()).toEqual(["onyx"]);
   });
 
@@ -3507,7 +3507,7 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       fireEvent.click(await within(glib).findByRole("button", { name: ROW_RETRY }));
-      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
@@ -3566,7 +3566,7 @@ describe("UpdatesPage", () => {
       const { findAllByRole, findByRole } = renderPage();
 
       fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       showCommands(dialog);
       await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
       fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -3788,7 +3788,7 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
 
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      await findByRole("dialog", { name: "Update “OnyX”?" });
+      await findByRole("alertdialog", { name: "Update “OnyX”?" });
       expect(plannedNames()).toEqual(["onyx"]);
     });
 
@@ -4696,7 +4696,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
 
     // Under the question, with where it comes from.
     const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
@@ -4708,7 +4708,7 @@ describe("UpdatesPage", () => {
       const { findAllByRole, findByRole, getByRole, queryByRole } = renderPage();
 
       fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-      let dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      let dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       // One tool: an alert, 360 wide, its 48 icon over the question.
       expect(dialog).toHaveAttribute("data-dialog-width", "360");
       expect(dialog.querySelector("[data-dialog-icon]")).not.toBeNull();
@@ -4722,13 +4722,13 @@ describe("UpdatesPage", () => {
       ]);
       expect(dialog).toHaveAccessibleDescription(/^Homebrew · 2\.88\.3 → 2\.90\.0/);
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
 
       const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
-      dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
       // Several: 480 wide, no icon, the tools in a grouped list.
       expect(dialog).toHaveAttribute("data-dialog-width", "480");
       expect(dialog.querySelector("[data-dialog-icon]")).toBeNull();
@@ -4777,7 +4777,7 @@ describe("UpdatesPage", () => {
       expectLogos(row);
 
       fireEvent.click(within(row).getByRole("button", { name: ROW_UPDATE }));
-      expectLogos((await findByRole("dialog", { name: "Update “glib”?" })).querySelector("[data-dialog-icon]"));
+      expectLogos((await findByRole("alertdialog", { name: "Update “glib”?" })).querySelector("[data-dialog-icon]"));
     });
 
     it("keeps the commands one press away while Show technical details is off", async () => {
@@ -4787,7 +4787,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
 
       const disclosure = within(dialog).getByRole("button", { name: "Show Commands" });
       expect(disclosure).toHaveAttribute("aria-expanded", "false");
@@ -4804,7 +4804,7 @@ describe("UpdatesPage", () => {
       const { findAllByRole, findByRole } = renderPage();
 
       fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
 
       expect(await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
       expect(within(dialog).getByRole("button", { name: "Show Command" })).toHaveAttribute(
@@ -4823,7 +4823,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
 
       const tools = [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => ({
@@ -4867,7 +4867,7 @@ describe("UpdatesPage", () => {
 
       await findByText("2 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
       const names = () =>
         [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
 
@@ -4915,7 +4915,7 @@ describe("UpdatesPage", () => {
 
       await findByText("2 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
 
       await waitFor(() => expect(within(dialog).getByRole("button", { name: UPDATE_SEVERAL })).toBeEnabled());
       expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
@@ -4945,7 +4945,7 @@ describe("UpdatesPage", () => {
 
       await findByText("3 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 3 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 3 tools?" });
       const rows = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
       const shown = (row: HTMLElement) =>
         [...row.querySelectorAll("[data-sheet-name] ~ span")].map((span) => [span.textContent, span.className]);
@@ -4965,7 +4965,7 @@ describe("UpdatesPage", () => {
 
       await findByText("10 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 10 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 10 tools?" });
 
       const list = dialog.querySelector("[data-sheet-tools]") as HTMLElement;
       expect([...list.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
@@ -4990,7 +4990,7 @@ describe("UpdatesPage", () => {
 
       await findByText("10 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 9 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 9 tools?" });
 
       expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(10);
       expect(within(dialog).getByRole("alert")).toHaveTextContent("Couldn't prepare the update: tool-8 is pinned");
@@ -5013,13 +5013,13 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       await waitFor(() =>
         expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Update" })),
       );
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
       expect(await findAllByRole("button", { name: ROW_UPDATE })).toContain(rowUpdate);
     });
@@ -5032,11 +5032,11 @@ describe("UpdatesPage", () => {
       await findByText("2 updates available");
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(2));
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
     });
 
@@ -5046,10 +5046,10 @@ describe("UpdatesPage", () => {
       await findByText("2 updates available");
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(updateAll));
     });
 
@@ -5058,12 +5058,12 @@ describe("UpdatesPage", () => {
 
       const onyx = await findRow("onyx");
       fireEvent.click(within(onyx).getByRole("button", { name: "Update onyx" }));
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
       fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(1));
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowOf("onyx")));
       expect(document.activeElement).not.toBe(document.body);
     });
@@ -5075,13 +5075,13 @@ describe("UpdatesPage", () => {
       await findByText("2 updates available");
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
-      const dialog = await findByRole("dialog");
+      const dialog = await findByRole("alertdialog");
       fireEvent.click(within(dialog).getByRole("button", { name: UPDATE_SEVERAL }));
 
       const close = await within(dialog).findByRole("button", { name: "Close" });
       await waitFor(() => expect(document.activeElement).toBe(close));
       fireEvent.click(close);
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(updateAll));
     });
 
@@ -5091,10 +5091,10 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("checkbox", { name: ROW_CHECKBOX }))[0]);
       const updateSelected = getByRole("button", { name: /^Update Selected/ });
       fireEvent.click(updateSelected);
-      await findByRole("dialog");
+      await findByRole("alertdialog");
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(updateSelected));
     });
   });
@@ -5122,7 +5122,7 @@ describe("UpdatesPage", () => {
 
       // No plan is back yet: the tools, with their avatars and versions,
       // are the rows'.
-      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 2 tools?" });
       expect(plannedNames().sort()).toEqual(["glib", "onyx"]);
       const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
       expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
@@ -5167,7 +5167,7 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       const update = within(dialog).getByRole("button", { name: "Update" });
@@ -5188,7 +5188,7 @@ describe("UpdatesPage", () => {
       const { findByRole } = renderPage();
 
       fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
-      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       const cancel = within(dialog).getByRole("button", { name: "Cancel" });
       cancel.focus();
 
@@ -5204,13 +5204,13 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
 
       await release("glib");
-      expect(queryByRole("dialog")).toBeNull();
+      expect(queryByRole("alertdialog")).toBeNull();
       expect(queryByRole("alert")).toBeNull();
       expect(rowUpdate).toBeEnabled();
       expect(submittedPlanIds()).toEqual([]);
@@ -5225,12 +5225,12 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      const dialog = await findByRole("alertdialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
 
       await release("glib");
       expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update: glib is pinned");
-      expect(queryByRole("dialog")).toBeNull();
+      expect(queryByRole("alertdialog")).toBeNull();
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
     });
 
@@ -5242,7 +5242,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
       expect(queryByText(/glib is pinned/)).toBeNull();
-      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(queryByRole("alertdialog")).toBeNull());
     });
 
     it("shows the words on the page's refusal as soon as technical details are turned on", async () => {
@@ -5281,7 +5281,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole, findByRole } = renderPage();
 
     fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
 
     expect(
       await within(dialog).findByText("This model has a new version"),
@@ -5913,7 +5913,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
 
     fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("alertdialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
@@ -5970,7 +5970,7 @@ describe("UpdatesPage", () => {
 
       // Said again where the update is confirmed, as one quiet line.
       fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
-      const dialog = await screen.findByRole("dialog");
+      const dialog = await screen.findByRole("alertdialog");
       expect(await within(dialog).findByText("This is a major update, so how it works may change.")).toBeInTheDocument();
     });
 
@@ -6046,7 +6046,7 @@ describe("UpdatesPage", () => {
 
       // Enter opens nothing and starts nothing.
       fireEvent.keyDown(jq, { key: "Enter" });
-      expect(queryByRole("dialog")).toBeNull();
+      expect(queryByRole("alertdialog")).toBeNull();
       expect(calls("plan_operation")).toEqual([]);
 
       // On to the last row it can update, then the line that discloses
@@ -6180,7 +6180,7 @@ describe("UpdatesPage", () => {
       expect(selectAll.indeterminate).toBe(false);
 
       fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
-      await findByRole("dialog");
+      await findByRole("alertdialog");
       expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
     });
 
@@ -6247,7 +6247,7 @@ describe("UpdatesPage", () => {
       expect(selectIdsOf()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
 
       fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
-      await findByRole("dialog");
+      await findByRole("alertdialog");
       expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
     });
 

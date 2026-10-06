@@ -685,7 +685,7 @@ describe("InstalledPage", () => {
     const jq = await findRow("jq");
     fireEvent.click(within(jq).getByRole("button", { name: ROW_UNINSTALL }));
 
-    const dialog = await findByRole("dialog", { name: "Uninstall “jq”?" });
+    const dialog = await findByRole("alertdialog", { name: "Uninstall “jq”?" });
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Uninstall",
@@ -743,11 +743,11 @@ describe("InstalledPage", () => {
 
     const uninstall = within(await findRow("jq")).getByRole("button", { name: ROW_UNINSTALL });
     fireEvent.click(uninstall);
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
     await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" })));
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(uninstall));
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(0);
   });
@@ -762,14 +762,14 @@ describe("InstalledPage", () => {
     const row = await findRow("jq");
     const uninstall = within(row).getByRole("button", { name: ROW_UNINSTALL });
     fireEvent.click(uninstall);
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
     const confirm = within(dialog).getByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
 
     await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
     expect(useUiStore.getState().focusedOpId).toBe(7);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(document.activeElement).toBe(row);
   });
 
@@ -779,7 +779,7 @@ describe("InstalledPage", () => {
 
     fireEvent.click(within(await findRow("jq")).getByRole("button", { name: ROW_UNINSTALL }));
 
-    const dialog = await findByRole("dialog", { name: "Uninstall “jq”?" });
+    const dialog = await findByRole("alertdialog", { name: "Uninstall “jq”?" });
     await within(dialog).findByText("jq-cli-wrapper");
     expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
@@ -2005,7 +2005,7 @@ describe("InstalledPage", () => {
     const held = within(model).getByRole("button", { name: ROW_UNINSTALL });
     expect(held).toBeDisabled();
     fireEvent.click(held);
-    expect(queryByRole("dialog")).toBeNull();
+    expect(queryByRole("alertdialog")).toBeNull();
     expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
     expect(chipsOf(model)).toEqual(["Can't uninstall now"]);
     expect(chipDetail(model, "Can't uninstall now")).toHaveTextContent(
@@ -2067,7 +2067,7 @@ describe("InstalledPage", () => {
     const held = within(jq).getByRole("button", { name: ROW_UNINSTALL });
     expect(held).toBeDisabled();
     fireEvent.click(held);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
     expect(chipsOf(jq)).toEqual(["Can't uninstall now"]);
     expect(chipDetail(jq, "Can't uninstall now")).toHaveTextContent(
@@ -2100,7 +2100,7 @@ describe("InstalledPage", () => {
     // Its word goes with the hold; up to date goes without saying.
     expect(chipsOf(rowOf("jq"))).toEqual([]);
     fireEvent.click(within(rowOf("jq")).getByRole("button", { name: ROW_UNINSTALL }));
-    expect(await screen.findByRole("dialog", { name: "Uninstall “jq”?" })).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" })).toBeInTheDocument();
   });
 
   it("unfolds one source's components without unfolding another's, each line naming its source", async () => {
@@ -2862,7 +2862,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("New version").nextElementSibling).toHaveTextContent("2.90.0");
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Update" }));
-      const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
+      const confirm = await screen.findByRole("alertdialog", { name: "Update “glib”?" });
       expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
@@ -2885,7 +2885,7 @@ describe("InstalledPage", () => {
       ];
       fireEvent.click(within(confirm).getByRole("button", { name: "Update" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update “glib”?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Update “glib”?" })).toBeNull());
       // Where the button was, as on the Updates page's row.
       const open = screen.getByRole("complementary", { name: "glib" });
       expect(await within(open).findByText("Updating…")).toBeInTheDocument();
@@ -2918,7 +2918,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Retry" }));
-      await screen.findByRole("dialog", { name: "Update “glib”?" });
+      await screen.findByRole("alertdialog", { name: "Update “glib”?" });
       expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
@@ -3027,14 +3027,14 @@ describe("InstalledPage", () => {
       const drawer = await openDetails("jq");
       const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
       fireEvent.click(uninstall);
-      const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+      const dialog = await screen.findByRole("alertdialog", { name: "Uninstall “jq”?" });
       await within(dialog).findByRole("button", { name: "Show Command" });
       showCommand(dialog);
       expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
       await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
       expect(useUiStore.getState().focusedOpId).toBe(7);
       // No dialog to get out of the log's way: the inspector stays until
@@ -3055,17 +3055,17 @@ describe("InstalledPage", () => {
       const update = within(drawer).getByRole("button", { name: "Update" });
 
       fireEvent.click(uninstall);
-      await screen.findByRole("dialog", { name: "Uninstall “glib”?" });
+      await screen.findByRole("alertdialog", { name: "Uninstall “glib”?" });
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Uninstall “glib”?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Uninstall “glib”?" })).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(uninstall));
       // The inspector stays: only the question went.
       expect(screen.getByRole("complementary", { name: "glib" })).toBe(drawer);
 
       fireEvent.click(update);
-      const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
+      const confirm = await screen.findByRole("alertdialog", { name: "Update “glib”?" });
       fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update “glib”?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Update “glib”?" })).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(update));
     });
 

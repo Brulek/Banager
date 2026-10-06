@@ -295,14 +295,14 @@ describe("Uninstall Selected, on the Installed page", () => {
     await waitFor(() => expect(button()).toHaveAccessibleName("Uninstall Selected (2)…"));
 
     fireEvent.click(button()!);
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall these 2 tools?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Uninstall these 2 tools?" });
     expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(["jq", "wget"]);
     // One batch at a time (under the sheet, out of the accessibility tree).
     expect(document.querySelector("[data-uninstall-selected]")).toBeDisabled();
     const uninstall = await within(dialog).findByRole("button", { name: "Uninstall 2 Tools" });
     await waitFor(() => expect(uninstall).toBeEnabled());
     fireEvent.click(uninstall);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(submitted).toEqual(["jq", "wget"]);
     // Started: unticked, the button gone with them, and the focus in the list.
     expect(useUiStore.getState().selectedUninstalls).toEqual([]);
