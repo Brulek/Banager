@@ -14,7 +14,7 @@
 //!
 //! Two passes:
 //!
-//! - The logins in the settings themselves (`Redactor::for_values`), in
+//! - The logins in the settings themselves (`Redactor::for_settings`), in
 //!   every form a tool may print them: the password as written, decoded
 //!   and percent-encoded, and the `user:password` pair as an HTTP Basic
 //!   credential (base64), which is how `curl -v` prints a proxy's login.
@@ -67,11 +67,11 @@ pub struct Redactor {
 }
 
 impl Redactor {
-    /// The logins in `values` -- settings' values, of which only those
-    /// that are an address with a login count.
-    pub fn for_values<'a>(values: impl IntoIterator<Item = &'a str>) -> Redactor {
+    /// The logins in `settings`, as `(name, value)`: of the values, only
+    /// those that are an address with a login count.
+    pub fn for_settings<'a>(settings: impl IntoIterator<Item = (&'a str, &'a str)>) -> Redactor {
         let mut redactor = Redactor::default();
-        for value in values {
+        for (_name, value) in settings {
             match Login::in_value(value) {
                 Some(Login::Password { user, password }) => {
                     for form in forms_of(password) {
@@ -127,17 +127,19 @@ impl Redactor {
     /// same-named settings of Banager's own environment, which a command
     /// inherits when the login shell did not set them.
     pub fn for_commands(accepted: Option<&LoginEnv>) -> Redactor {
-        let mut values: Vec<String> = accepted
-            .map(|found| {
-                found
-                    .imported
-                    .iter()
-                    .map(|(_, value)| value.clone())
-                    .collect()
-            })
+        let mut settings: Vec<(String, String)> = accepted
+            .map(|found| found.imported.clone())
             .unwrap_or_default();
-        values.extend(IMPORTED.iter().filter_map(|name| std::env::var(name).ok()));
-        Redactor::for_values(values.iter().map(String::as_str))
+        settings.extend(
+            IMPORTED
+                .iter()
+                .filter_map(|name| Some((name.to_string(), std::env::var(name).ok()?))),
+        );
+        Redactor::for_settings(
+            settings
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+        )
     }
 
     /// `text` with every login this knows, and every
@@ -326,13 +328,15 @@ mod tests {
         pip._vendor.requests.exceptions.InvalidURL: \
         Failed to parse: http://review-user:review-secret@127.0.0.1:invalid";
 
-    fn redactor(values: &[&str]) -> Redactor {
-        Redactor::for_values(values.iter().copied())
+    fn redactor(settings: &[(&str, &str)]) -> Redactor {
+        Redactor::for_settings(settings.iter().copied())
     }
 
     #[test]
     fn test_curls_proxy_error_has_the_password_masked() {
-        let said = redactor(&[CURL_PROXY]).redact(CURL_SAID).into_owned();
+        let said = redactor(&[("https_proxy", CURL_PROXY)])
+            .redact(CURL_SAID)
+            .into_owned();
         assert_eq!(
             said,
             "curl: (5) Unsupported proxy syntax in \
@@ -345,7 +349,9 @@ mod tests {
 
     #[test]
     fn test_pips_proxy_error_has_the_password_masked() {
-        let said = redactor(&[CURL_PROXY]).redact(PIP_SAID).into_owned();
+        let said = redactor(&[("https_proxy", CURL_PROXY)])
+            .redact(PIP_SAID)
+            .into_owned();
         assert!(!said.contains("review-secret"), "{said}");
         assert_eq!(
             said.matches("review-user:****@127.0.0.1:invalid").count(),
@@ -362,7 +368,7 @@ mod tests {
         assert!(Redactor::default()
             .redact(CURL_SAID_NO_SCHEME)
             .contains("review-secret"));
-        let said = redactor(&["review-user:review-secret@127.0.0.1:invalid"])
+        let said = redactor(&[("http_proxy", "review-user:review-secret@127.0.0.1:invalid")])
             .redact(CURL_SAID_NO_SCHEME)
             .into_owned();
         assert!(!said.contains("review-secret"), "{said}");
@@ -376,7 +382,10 @@ mod tests {
     fn test_every_form_of_a_percent_encoded_password_is_masked() {
         // The password is `p@ss/w0rd`, written percent-encoded as it has to
         // be in an address.
-        let r = redactor(&["http://someone:p%40ss%2Fw0rd@proxy.corp:3128"]);
+        let r = redactor(&[(
+            "https_proxy",
+            "http://someone:p%40ss%2Fw0rd@proxy.corp:3128",
+        )]);
         for (said, gone) in [
             (
                 "in 'http://someone:p%40ss%2Fw0rd@proxy.corp:3128'",
@@ -403,14 +412,17 @@ mod tests {
         // base64("review-user:review-secret").
         let header = "> Proxy-Authorization: Basic cmV2aWV3LXVzZXI6cmV2aWV3LXNlY3JldA==";
         assert_eq!(
-            redactor(&[CURL_PROXY]).redact(header),
+            redactor(&[("https_proxy", CURL_PROXY)]).redact(header),
             "> Proxy-Authorization: Basic ****"
         );
     }
 
     #[test]
     fn test_a_token_alone_before_the_at_of_an_https_mirror_is_masked() {
-        let r = redactor(&["https://ghp_mirrortoken42@mirror.example/homebrew-bottles"]);
+        let r = redactor(&[(
+            "HOMEBREW_BOTTLE_DOMAIN",
+            "https://ghp_mirrortoken42@mirror.example/homebrew-bottles",
+        )]);
         let said = r
             .redact("fatal: unable to access 'https://ghp_mirrortoken42@mirror.example/x': 403")
             .into_owned();
@@ -428,7 +440,10 @@ mod tests {
     fn test_a_git_remote_user_name_is_no_login() {
         // `git@github.com:Homebrew/brew.git` names an ssh user, not a
         // secret: masking every `git` would wreck Homebrew's own output.
-        let r = redactor(&["git@github.com:Homebrew/brew.git"]);
+        let r = redactor(&[(
+            "HOMEBREW_BREW_GIT_REMOTE",
+            "git@github.com:Homebrew/brew.git",
+        )]);
         assert_eq!(r, Redactor::default());
         let said = "==> git fetch ssh://git@github.com/Homebrew/brew";
         assert_eq!(r.redact(said), said);
@@ -436,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_a_short_password_is_masked_only_where_it_stands_as_a_login() {
-        let r = redactor(&["http://u:abc@proxy.lan:8080"]);
+        let r = redactor(&[("http_proxy", "http://u:abc@proxy.lan:8080")]);
         assert_eq!(
             r.redact("in 'u:abc@proxy.lan:8080' and abcdef"),
             "in 'u:****@proxy.lan:8080' and abcdef"
@@ -474,7 +489,7 @@ mod tests {
 
     #[test]
     fn test_text_with_nothing_to_mask_is_not_copied() {
-        let r = redactor(&[CURL_PROXY]);
+        let r = redactor(&[("https_proxy", CURL_PROXY)]);
         assert!(matches!(
             r.redact("==> Upgrading jq 1.7 -> 1.8\nhttps://ghcr.io/v2/x"),
             Cow::Borrowed(_)
@@ -485,12 +500,18 @@ mod tests {
     fn test_settings_with_no_login_add_nothing() {
         assert_eq!(
             redactor(&[
-                "http://127.0.0.1:7890",
-                "localhost,127.0.0.1,.corp",
-                "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles",
-                "socks5://127.0.0.1:7891",
-                "https://mirror.example/path/with@sign",
-                "http://:@proxy.lan:8080",
+                ("http_proxy", "http://127.0.0.1:7890"),
+                ("no_proxy", "localhost,127.0.0.1,.corp"),
+                (
+                    "HOMEBREW_BOTTLE_DOMAIN",
+                    "https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles",
+                ),
+                ("all_proxy", "socks5://127.0.0.1:7891"),
+                (
+                    "HOMEBREW_API_DOMAIN",
+                    "https://mirror.example/path/with@sign"
+                ),
+                ("https_proxy", "http://:@proxy.lan:8080"),
             ]),
             Redactor::default()
         );

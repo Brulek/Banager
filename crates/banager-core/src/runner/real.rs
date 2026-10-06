@@ -2612,9 +2612,9 @@ mod tests {
         Port number was not a decimal number between 0 and 65535";
 
     fn knowing_the_login(policy: CapPolicy) -> StreamBuffer {
-        StreamBuffer::new(policy).redacting(Arc::new(crate::runner::redact::Redactor::for_values(
-            [LOGIN_PROXY],
-        )))
+        StreamBuffer::new(policy).redacting(Arc::new(
+            crate::runner::redact::Redactor::for_settings([("https_proxy", LOGIN_PROXY)]),
+        ))
     }
 
     /// The lines a callback was handed, as it was handed them.
