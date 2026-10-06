@@ -953,7 +953,8 @@ fn named(
 
 /// pipx's default bin folder, under the home folder: where `pipx install`
 /// puts its links unless `PIPX_BIN_DIR` says otherwise, which Banager's
-/// environment does not carry (only `PATH` comes from the login shell).
+/// environment does not carry (only `PATH` and the proxy and mirror
+/// settings come from the login shell, `login_path::IMPORTED`).
 const PIPX_BIN_DIR: &str = ".local/bin";
 
 /// A pipx tool's apps: the program in its environment is the command's

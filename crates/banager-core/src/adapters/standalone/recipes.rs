@@ -500,8 +500,9 @@ const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
 ///   lines). `--no-modify-path` is not passed (spec Q6): rustup removing
 ///   its own startup line beats leaving one that errors on every new
 ///   terminal;
-/// - both commands run with Banager's own environment: only `PATH` is
-///   taken from the login shell (`runner::login_path`), and the runner
+/// - both commands run with Banager's own environment: only `PATH` and
+///   the proxy and mirror settings (`login_path::IMPORTED`, none of them
+///   a folder) are taken from the login shell (`runner::login_path`), and the runner
 ///   passes the rest as inherited. A `RUSTUP_HOME` or `CARGO_HOME` exported only in
 ///   a shell startup file is not seen by Banager or by the rustup it
 ///   runs -- the two agree, which is what the gate relies on -- so the
@@ -576,8 +577,9 @@ pub static RUSTUP: Recipe = Recipe {
 ///   one in use (`update_current_link`, absolute text);
 /// - detection: Banager looks only at `~/.local/bin/codex` and the root
 ///   under `~/.codex`. `CODEX_HOME` is not read: a Finder-launched app
-///   inherits no variable from the user's shell except the `PATH` Banager
-///   asks the login shell for (`runner::login_path`), so a `CODEX_HOME` exported
+///   inherits no variable from the user's shell except the `PATH` and the
+///   proxy and mirror settings Banager asks the login shell for
+///   (`runner::login_path`), so a `CODEX_HOME` exported
 ///   in `~/.zshrc` is invisible to it. A Codex installed under another
 ///   `CODEX_HOME` (or another `CODEX_INSTALL_DIR`) has a launcher that does
 ///   not lead into this root and is not listed here -- the Unknown page

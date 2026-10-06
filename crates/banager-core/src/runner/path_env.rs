@@ -328,8 +328,9 @@ mod tests {
     #[test]
     fn test_discover_reads_rustup_home_and_zdotdir_like_cargo_home() {
         // Both are read the way `cargo_home` is: raw, from the process
-        // environment (only PATH is taken from the login shell, and kept
-        // apart from it: `login_path::accept`), `None` when unset. Interpreting them -- empty means
+        // environment (only PATH and the proxy and mirror settings are
+        // taken from the login shell, and kept apart from it:
+        // `login_path::accept`), `None` when unset. Interpreting them -- empty means
         // default, relative means unsupported -- is `tool_home`'s and the
         // rustup recipe's job, not this reader's. The test does not set
         // the variables (a test must not change the process environment
