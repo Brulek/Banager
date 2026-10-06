@@ -230,9 +230,12 @@ pub struct TopMenu {
 /// menus use in that language -- Finder's, Safari's: 拷贝 and 拷貝, not
 /// 复制 or 複製, and 显示 or 顯示方式 for View. The four pages are named as
 /// the sidebar names them (`nav.*` in src/i18n/en.json and zh-CN.json),
-/// which a test checks. Chinese and the app's name are a typed space
-/// apart: the page's text-autospace draws that gap in the window, and a
-/// menu on a macOS that draws none of its own would run them together.
+/// which a test checks. In English and Simplified Chinese, Chinese and the
+/// app's name are a typed space apart: the page's text-autospace draws that
+/// gap in the window, and a menu on a macOS that draws none of its own would
+/// run them together. Traditional Chinese types none, as Apple's own zh_TW
+/// menus write it (Finder's 結束Finder): macOS 27's menus draw a 1/8 em gap
+/// themselves, so a typed space would sit wider than Finder's.
 struct Words {
     about: &'static str,
     settings: &'static str,
@@ -265,8 +268,9 @@ struct Words {
     help: &'static str,
     /// Help's first item of Banager's, `{app}` for the app's name, named
     /// as the sheet's title names it (`welcome.title` in src/i18n, whose
-    /// `{{name}}` is the app's name) with the typed space a menu needs,
-    /// which a test checks.
+    /// `{{name}}` is the app's name) -- with the typed space the menu's
+    /// other items have, but in Traditional Chinese exactly -- which a test
+    /// checks.
     welcome: &'static str,
     /// Help's second, named as the sheet's title names it (`faq.title` in
     /// src/i18n), which a test checks.
@@ -356,13 +360,13 @@ const SIMPLIFIED_CHINESE: Words = Words {
 
 const TRADITIONAL_CHINESE: Words = Words {
     common_questions: "常見問題",
-    about: "關於 {app}",
+    about: "關於{app}",
     settings: "設定…",
     services: "服務",
-    hide: "隱藏 {app}",
+    hide: "隱藏{app}",
     hide_others: "隱藏其他",
     show_all: "顯示全部",
-    quit: "結束 {app}",
+    quit: "結束{app}",
     file: "檔案",
     close_window: "關閉視窗",
     edit: "編輯",
@@ -384,7 +388,7 @@ const TRADITIONAL_CHINESE: Words = Words {
     zoom: "縮放",
     bring_all_to_front: "將此程式所有視窗移至最前",
     help: "輔助說明",
-    welcome: "歡迎使用 {app}",
+    welcome: "歡迎使用{app}",
     keyboard_shortcuts: "鍵盤快速鍵",
     check_tool_setup: "檢查工具環境…",
     copy_diagnostics: "拷貝診斷資訊…",
@@ -848,16 +852,53 @@ mod tests {
         out
     }
 
+    /// `text` with every space between a Chinese character and a Latin
+    /// letter or a digit taken out: how Apple's own zh_TW menus write it
+    /// (Finder's 結束Finder, 關於Finder).
+    fn unspaced(text: &str) -> String {
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::new();
+        for (i, &c) in chars.iter().enumerate() {
+            if c == ' ' && i > 0 && i + 1 < chars.len() {
+                let (p, n) = (chars[i - 1], chars[i + 1]);
+                if (is_han(p) && n.is_ascii_alphanumeric())
+                    || (p.is_ascii_alphanumeric() && is_han(n))
+                {
+                    continue;
+                }
+            }
+            out.push(c);
+        }
+        out
+    }
+
     #[test]
     fn test_no_menu_item_runs_chinese_into_the_apps_name() {
         // The window's text-autospace never reaches a menu, so there the
         // gap between Chinese and Latin is typed: without it, a macOS that
-        // draws no gap of its own shows 關於Banager.
-        for language in [MenuLanguage::En, MenuLanguage::ZhCn, MenuLanguage::ZhHant] {
+        // draws no gap of its own shows 关于Banager.
+        for language in [MenuLanguage::En, MenuLanguage::ZhCn] {
             for (menu, items) in labels(&menu_bar(language, "Banager")) {
                 for label in std::iter::once(&menu).chain(&items) {
                     assert_eq!(label, &spaced(label), "{language:?}");
                 }
+            }
+        }
+        assert_eq!(
+            labels(&menu_bar(MenuLanguage::ZhCn, "Banager"))[5].1[0],
+            "欢迎使用 Banager"
+        );
+    }
+
+    #[test]
+    fn test_traditional_chinese_menu_writes_banager_as_apples_own_menus_do() {
+        // Apple's own zh_TW menus type no space between Chinese and a
+        // Latin name -- Finder's 結束Finder, 關於Finder -- and macOS draws
+        // the gap itself (1/8 em on macOS 27). The window's
+        // `welcome.title`, 歡迎使用{{name}}, has none either.
+        for (menu, items) in labels(&menu_bar(MenuLanguage::ZhHant, "Banager")) {
+            for label in std::iter::once(&menu).chain(&items) {
+                assert_eq!(label, &unspaced(label));
             }
         }
         let bar = menu_bar(MenuLanguage::ZhHant, "Banager");
@@ -865,26 +906,22 @@ mod tests {
         assert_eq!(
             words[0].1,
             [
-                "關於 Banager",
+                "關於Banager",
                 "—",
                 "設定…",
                 "—",
                 "服務",
                 "—",
-                "隱藏 Banager",
+                "隱藏Banager",
                 "隱藏其他",
                 "顯示全部",
                 "—",
-                "結束 Banager",
+                "結束Banager",
             ]
             .map(String::from)
             .to_vec()
         );
-        assert_eq!(words[5].1[0], "歡迎使用 Banager");
-        assert_eq!(
-            labels(&menu_bar(MenuLanguage::ZhCn, "Banager"))[5].1[0],
-            "欢迎使用 Banager"
-        );
+        assert_eq!(words[5].1[0], "歡迎使用Banager");
     }
 
     #[test]
@@ -1112,17 +1149,20 @@ mod tests {
                 words.copy_diagnostics,
                 format!("{}…", locale["diagnostics"]["copy"].as_str().unwrap())
             );
-            // Welcome to Banager as the sheet's title names it, with the
-            // space the page's text-autospace draws typed in.
-            assert_eq!(
-                words.welcome.replace("{app}", "Banager"),
-                spaced(
-                    &locale["welcome"]["title"]
-                        .as_str()
-                        .unwrap()
-                        .replace("{{name}}", "Banager")
-                )
-            );
+            // Welcome to Banager as the sheet's title names it: in
+            // Traditional Chinese exactly, as Apple's zh_TW menus type no
+            // space before a Latin name; elsewhere with the space the
+            // page's text-autospace draws typed in.
+            let title = locale["welcome"]["title"]
+                .as_str()
+                .unwrap()
+                .replace("{{name}}", "Banager");
+            let expected = if std::ptr::eq(words, &TRADITIONAL_CHINESE) {
+                title
+            } else {
+                spaced(&title)
+            };
+            assert_eq!(words.welcome.replace("{app}", "Banager"), expected);
             // Common Questions as the sheet's title names it.
             assert_eq!(
                 words.common_questions,
