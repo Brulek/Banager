@@ -173,17 +173,17 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     expect(within(rows[1]).getByRole("status")).toBeEmptyDOMElement();
   });
 
-  it("offers nothing that deletes what stays", async () => {
+  it("offers no button that deletes what stays, and nothing that deletes for good", async () => {
     open(claudeKept);
     const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
     const buttons = within(group).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Copy Path", "Copy Path"]);
-    expect(group.textContent).not.toMatch(/delete|remove|trash|删除|移除|废纸篓/i);
+    expect(group.textContent).not.toMatch(/delete|remove|删除|移除/i);
     // Nor does it make the uninstall a permanent one.
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
   });
 
-  it("says under the list how to reach a path in Finder, and what ~ is, and never how to delete one", async () => {
+  it("says under the list how to reach a path in Finder, what ~ is, and that the data can go to the Trash there (U15 e)", async () => {
     open(claudeKept);
     const group = await screen.findByRole("region", { name: "Stays after uninstalling" });
     const find = group.querySelector("[data-kept-find]");
@@ -192,13 +192,53 @@ describe("the uninstall dialog's 「卸载后会保留」 group", () => {
     );
     // After the list, not in a row.
     expect(find?.closest("li")).toBeNull();
-    expect(group.textContent).not.toMatch(/delete|remove|trash/i);
+    // One sentence, no button: the person moves it, in Finder, where it
+    // can be dragged back out of the Trash.
+    const trash = group.querySelector("[data-kept-trash]");
+    expect(trash).toHaveTextContent(/^If you don't need these settings and data, you can move them to the Trash in Finder\.$/);
+    expect(trash?.closest("li")).toBeNull();
+    expect(trash?.previousElementSibling).toBe(find);
 
     await i18n.changeLanguage("zh-CN");
     expect(await within(group).findByText(/个人文件夹/)).toHaveTextContent(
       "路径开头的“~”是你的个人文件夹。要在访达中查看，可以拷贝路径，在访达中按下⇧⌘G，粘贴路径后按下Return键。",
     );
-    expect(group.textContent).not.toMatch(/删除|移除|废纸篓/);
+    expect(group.querySelector("[data-kept-trash]")).toHaveTextContent(
+      /^不需要这些设置和数据的话，可以在访达中把它们移到废纸篓。$/,
+    );
+    expect(group.textContent).not.toMatch(/删除|移除/);
+  });
+
+  it("tells to leave a Terminal settings file where it is, and says nothing of the Trash with no settings or data listed (U15 e)", () => {
+    const { container, unmount } = renderWithProviders(
+      <KeptDataGroup
+        warnings={[
+          { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
+        ]}
+      />,
+    );
+    expect(container.querySelector("[data-kept-trash]")).toHaveTextContent(
+      /^If you don't need these settings and data, you can move them to the Trash in Finder\. Leave Terminal settings files where they are\.$/,
+    );
+    unmount();
+    // A dead link, a folder that may not be the tool's, an installer's
+    // staging folder or a shell file: none is the tool's settings or data.
+    const others = renderWithProviders(
+      <KeptDataGroup
+        warnings={[
+          { WillKeep: { path: "/usr/local/bin/grok", what: "OutsideHome" } },
+          { WillKeep: { path: "~/.local/bin/agent", what: "NotOurs" } },
+          { WillKeep: { path: "~/.cache/antigravity", what: "InstallerCache" } },
+          { WillKeep: { path: "~/.zshrc", what: "ShellConfigLines" } },
+        ]}
+      />,
+    );
+    expect(others.container.querySelector("[data-kept-trash]")).toBeNull();
+    others.unmount();
+    // Ollama's models are data too.
+    const models = renderWithProviders(<KeptDataGroup warnings={[JSON.parse(UNKNOWN_WIRE) as Warning]} />);
+    expect(models.container.querySelector("[data-kept-trash]")).not.toBeNull();
   });
 
   it("says nothing of ~ where no path starts with it", () => {

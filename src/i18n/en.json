@@ -1070,6 +1070,10 @@
     "findInFinder": "To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return.",
     "findInFinderHome": "“~” at the start of a path is your home folder. To see one in Finder, copy its path, press ⇧⌘G in Finder, paste the path and press Return."
   },
+  "keptTrash": {
+    "data": "If you don't need these settings and data, you can move them to the Trash in Finder.",
+    "dataButShellFile": "If you don't need these settings and data, you can move them to the Trash in Finder. Leave Terminal settings files where they are."
+  },
   "settings": {
     "groups": {
       "general": "General",

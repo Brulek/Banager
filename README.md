@@ -84,7 +84,8 @@ a protected place**, and the link is not followed.
   and uninstalls are not listed. The list is kept across restarts in `history.json`, until you press Clear History.
 - An uninstall's preview lists what stays after it — an AI tool's settings and data folders where the
   table names them, Ollama's models — with how much each takes where it could be measured, and Copy Path; nothing in it
-  deletes them.
+  deletes them. One line under the list says that settings and data you don't need can be moved to the Trash in Finder
+  (and, where a Terminal settings file is listed too, to leave that file where it is).
 - A Homebrew package another source runs on can't be uninstalled while that source has tools of its own:
   its preview lists the source under **Software that uses it**, after Homebrew's own dependents — "npm with
   its 4 tools" under the `node@22` npm runs on, "2 tools installed with pipx" under the `python@3.13` their
@@ -495,7 +496,8 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   后两种只在上次检查仍为这个工具提供更新时列出。
   取消的更新和卸载不列。这个列表重启后仍在（存在 `history.json` 里），直到你按“清除记录”。
 - 卸载前的预览会列出卸载后会保留的东西——AI 工具的设置和数据文件夹（内置表格里写了的）、Ollama 的模型——能算出大小的
-  写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮。
+  写出大小，并可以拷贝路径；预览里没有任何删除它们的按钮，只在列表下面用一句话说明不需要的设置和数据可以在访达中移到
+  废纸篓（同时列出终端配置文件时，提醒它留在原处）。
 - 别的来源要靠它运行的 Homebrew 软件，在那个来源还有自己的工具时不能卸载：预览把那个来源接在 Homebrew 自己的依赖者
   后面，列在“依赖此工具的软件”下——npm 靠着运行的 `node@22` 下是“npm及其4个工具”，pipx 工具环境所用的
   `python@3.13` 下是“pipx装的2个工具”，`ollama` 下是 Ollama 及其模型——“卸载”保持不可点，并写明要先卸载哪些工具；

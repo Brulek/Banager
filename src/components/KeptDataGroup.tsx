@@ -10,6 +10,14 @@ import { TextWithInfo } from "./InfoDetail";
 import { SheetSection } from "./SheetParts";
 import { SMALL_WRAPPING } from "./ui/group";
 
+/**
+ * What a path-list uninstall keeps that is the tool's own settings or data
+ * (`Warning.WillKeep`) -- what the group's last line says can go to the
+ * Trash in Finder. A dead link, a path not confirmed as the tool's, an
+ * installer's staging folder and a Terminal settings file are not.
+ */
+const SETTINGS_OR_DATA: ReadonlySet<KeptWhat> = new Set<KeptWhat>(["Settings", "SettingsAndHistory", "ToolState"]);
+
 /** What a path-list uninstall keeps is, said under its path (`Warning.WillKeep`). */
 const WILL_KEEP_WHAT_KEYS: Record<KeptWhat, string> = {
   Settings: "clarity.willKeepWhat.Settings",
@@ -45,9 +53,13 @@ interface KeptLine {
  * (`CopyButton`, as the details' copy buttons do). These are hidden folders,
  * so Show in Finder would show nothing: under the list, one line says how
  * to reach one with the copied path -- Finder's Go to Folder, ⇧⌘G -- and,
- * where a path starts with `~`, that `~` is the home folder. There is no
- * button, menu or command here that deletes one, and the line does not
- * say how to. Nothing when the plan names none. A folder
+ * where a path starts with `~`, that `~` is the home folder; and, where
+ * the list holds the tool's settings or data, one more says that what is
+ * not needed can be moved to the Trash in Finder, and to leave a Terminal
+ * settings file where it is when one is listed too (the author's decision
+ * U15 e: a sentence, no button -- in the Trash it can be dragged back).
+ * There is no button, menu or command here that deletes or moves one.
+ * Nothing when the plan names none. A folder
  * two tools share says, under it, which other tool's data it does not count
  * (`~/.gemini` without Antigravity CLI's `~/.gemini/antigravity-cli`).
  */
@@ -69,9 +81,15 @@ export function KeptDataGroup({
     return names.length === 0 ? null : t("batchUninstall.keptBy", { names: namesInSentence(t, names) });
   };
   const lines: KeptLine[] = [];
+  // Whether the list holds the tool's settings or data, and a Terminal
+  // settings file: what the last line says (`keptTrash`).
+  let settingsOrData = false;
+  let shellFile = false;
   for (const warning of warnings) {
     if (typeof warning !== "string" && "WillKeep" in warning) {
       const { path, what } = warning.WillKeep;
+      settingsOrData ||= SETTINGS_OR_DATA.has(what);
+      shellFile ||= what === "ShellConfigLines";
       const why = KEPT_WHAT_DETAIL_KEYS[what];
       lines.push({
         path,
@@ -84,6 +102,7 @@ export function KeptDataGroup({
     }
   }
   for (const item of keptDataOf(warnings)) {
+    settingsOrData = true;
     // What the size does not count: another copy's program inside the
     // folder (Codex's own install in ~/.codex).
     const leftOut =
@@ -152,6 +171,11 @@ export function KeptDataGroup({
       <p data-kept-find="" className={`mt-1.5 break-words text-muted ${SMALL_WRAPPING}`}>
         {t(home ? "keepsData.findInFinderHome" : "keepsData.findInFinder")}
       </p>
+      {settingsOrData ? (
+        <p data-kept-trash="" className={`mt-1.5 break-words text-muted ${SMALL_WRAPPING}`}>
+          {t(shellFile ? "keptTrash.dataButShellFile" : "keptTrash.data")}
+        </p>
+      ) : null}
     </SheetSection>
   );
 }

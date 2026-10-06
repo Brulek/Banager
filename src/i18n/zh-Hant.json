@@ -972,6 +972,10 @@
     "findInFinder": "要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。",
     "findInFinderHome": "路徑開頭的「~」是你的個人專屬檔案夾。要在Finder中查看，可以拷貝路徑，在Finder中按下⇧⌘G，貼上路徑後按下Return鍵。"
   },
+  "keptTrash": {
+    "data": "不需要這些設定和資料的話，可以在Finder中把它們移到垃圾桶。",
+    "dataButShellFile": "不需要這些設定和資料的話，可以在Finder中把它們移到垃圾桶。終端機設定檔請留在原處。"
+  },
   "settings": {
     "groups": {
       "general": "一般",
