@@ -104,6 +104,8 @@ pub struct LoginPath {
     ended: AtomicU64,
     /// Whether a read has worked: once it has, for good.
     read: AtomicBool,
+    /// Held from a look at `read` to its being told (`tell`).
+    told: std::sync::Mutex<()>,
 }
 
 impl LoginPath {
@@ -125,15 +127,29 @@ impl LoginPath {
             answer: tokio::sync::Mutex::new(Answer::NotYet),
             ended: AtomicU64::new(0),
             read: AtomicBool::new(false),
+            told: std::sync::Mutex::new(()),
         }
     }
 
     /// Whether a read has worked, without waiting for one under way: what
-    /// the session is told (`Session::note_login_path`), which then never
-    /// goes back to false because a caller that waited on a failed read
-    /// reports after a later read worked.
+    /// the session is told (`Session::note_login_path`, through `tell`),
+    /// which then never goes back to false because a caller that waited on
+    /// a failed read reports after a later read worked.
     pub fn is_read(&self) -> bool {
         self.read.load(Ordering::SeqCst)
+    }
+
+    /// Hands `tell` whether a read has worked (`is_read`), looked at and
+    /// told under one lock, so that callers look and tell one at a time.
+    /// A read that has worked stays worked, so whoever tells last also
+    /// looked last, and saw it if any read had: a caller that looked before
+    /// another's read worked can no longer tell the session false after
+    /// that one told it true (`AppState::read_login_path`; Astra's final
+    /// review, F4). `tell` must not wait: it is a store
+    /// (`Session::note_login_path`).
+    pub fn tell(&self, tell: impl FnOnce(bool)) {
+        let _one_at_a_time = self.told.lock().unwrap_or_else(|e| e.into_inner());
+        tell(self.is_read());
     }
 
     /// Whether `PATH` is the login shell's: true at once when a read has
@@ -331,6 +347,57 @@ mod tests {
             move |path| to.lock().unwrap().push(path.to_string()),
         );
         (probe, published)
+    }
+
+    /// Astra's final review, F4: caller A looked before any read had
+    /// worked; caller B's read then worked and B told the session so; A,
+    /// resuming, told it what it had seen, and the diagnostics said
+    /// Terminal's settings could not be read after a refresh that read
+    /// them (`AppState::read_login_path`, `get_system_facts`). Whoever
+    /// tells last must also have looked last.
+    #[test]
+    fn regression_a_caller_that_looked_before_a_read_worked_never_takes_the_success_back() {
+        use std::sync::mpsc;
+        let runner = Turns::new(vec![printed("/opt/homebrew/bin:/usr/bin")], Duration::ZERO);
+        let (probe, _) = probe(runner);
+        let probe = Arc::new(probe);
+        // The session's flag, as `Session::note_login_path` keeps it.
+        let session = Arc::new(AtomicBool::new(false));
+        let (looked, a_looked) = mpsc::channel();
+        let (told, b_told) = mpsc::channel();
+        let a = std::thread::spawn({
+            let (probe, session) = (probe.clone(), session.clone());
+            move || {
+                probe.tell(|read| {
+                    looked.send(read).unwrap();
+                    // B's read works now, and B tells the session -- if it
+                    // can before A has told it what A saw.
+                    let _ = b_told.recv_timeout(Duration::from_millis(500));
+                    session.store(read, Ordering::SeqCst);
+                })
+            }
+        });
+        assert!(!a_looked.recv().unwrap(), "A looked before any read worked");
+        let b = std::thread::spawn({
+            let (probe, session) = (probe.clone(), session.clone());
+            move || {
+                let worked = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .unwrap()
+                    .block_on(probe.ensure());
+                assert!(worked);
+                probe.tell(|read| session.store(read, Ordering::SeqCst));
+                let _ = told.send(());
+            }
+        });
+        a.join().unwrap();
+        b.join().unwrap();
+        assert!(probe.is_read());
+        assert!(
+            session.load(Ordering::SeqCst),
+            "a read worked, and the session must be left saying so"
+        );
     }
 
     #[test]

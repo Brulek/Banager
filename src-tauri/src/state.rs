@@ -77,9 +77,10 @@ impl AppState {
             return;
         };
         probe.ensure().await;
-        // Whether any read has worked, not this call's answer: a caller
-        // that waited on a failed read must not take back a later success.
-        self.session.note_login_path(probe.is_read());
+        // Whether any read has worked, not this call's answer, looked at
+        // and told one caller at a time (`LoginPath::tell`): a caller that
+        // waited on a failed read must not take back a later success.
+        probe.tell(|read| self.session.note_login_path(read));
     }
 
     /// What a refresh round looks along and whether that `PATH` is the
