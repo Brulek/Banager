@@ -3925,10 +3925,11 @@ configured, `index.crates.io`, and cargo still follows a
   downloads, every time, and those of all
   Homebrew software when its periodic clean-up is due; when a `brew.env`
   file takes either back, the preview says so (Homebrew's section). What
-  Banager runs in its place deletes the old versions of the one formula it
-  just upgraded, and nothing more, only where Homebrew would have done that
-  by itself and the person turned nothing of it off (Homebrew's section,
-  "Old versions").
+  Banager runs in its place deletes the installed old versions of the one
+  formula it just upgraded and outdated or unreferenced downloads in
+  Homebrew's cache, and no other installed software, only where Homebrew
+  would have done that by itself and the person turned nothing of it off
+  (Homebrew's section, "Old versions").
 - Never runs a `brew` command as root.
 - Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Banager's
   environment: removing the last tool, uv would then also delete the

@@ -6,7 +6,8 @@
 //! the Cargo section says every cargo command is given `CargoAdapter::ENV`
 //! and shows each entry, the three Homebrew flags the file promises are
 //! never passed but for the one `--force` of U9, the `brew cleanup` after a
-//! formula's update with its time limit, and the
+//! formula's update with its time limit and, in the never-list, the cache
+//! downloads it deletes besides the formula's old versions, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
 //! enforces and every protected place it never reads, the section on which copy a command runs with the two
 //! `CommandBudget::default()` enforces, the folders it reads and the words
@@ -325,6 +326,39 @@ fn test_what_we_run_shows_the_cleanup_after_a_formulas_update_and_the_uninstall_
         assert!(
             folded.contains(words),
             "the `## Homebrew` section does not say {words:?} of the cleanup after an update"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_never_list_says_the_cleanup_after_an_update_also_deletes_cache_downloads() {
+    // U9 (r6): `brew cleanup {name}` deletes the old installed versions of
+    // that one formula, and also downloads in Homebrew's cache -- the
+    // formula's outdated ones and every one nothing refers to any more,
+    // whatever package it was for (`cleanup.rb:564-567`, `:709-733`). The
+    // never-list is the promise people read: it must not say "nothing
+    // more", and it must name the cache.
+    let doc = read_doc();
+    let bullet = never_list_bullets(&doc)
+        .into_iter()
+        .find(|bullet| bullet.starts_with("Never runs a `brew` command without"))
+        .expect(
+            "the never-list's bullet on HOMEBREW_NO_AUTOREMOVE and HOMEBREW_NO_INSTALL_CLEANUP",
+        );
+    let at = bullet
+        .find("What Banager runs in its place")
+        .unwrap_or_else(|| {
+            panic!("the bullet does not say what Banager runs in its place: {bullet}")
+        });
+    let in_its_place = &bullet[at..];
+    assert!(
+        !in_its_place.contains("nothing more"),
+        "the never-list says the cleanup after an update deletes nothing more than the old versions, but it also deletes downloads in Homebrew's cache: {in_its_place}"
+    );
+    for words in ["cache", "unreferenced", "no other installed software"] {
+        assert!(
+            in_its_place.contains(words),
+            "the never-list's sentence on the cleanup after an update does not say {words:?}: {in_its_place}"
         );
     }
 }
