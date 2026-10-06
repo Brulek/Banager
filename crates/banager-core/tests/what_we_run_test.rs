@@ -1483,8 +1483,10 @@ fn test_what_we_run_names_every_setting_taken_from_the_login_shell() {
 
 /// U12: the Network section, which names every host Banager connects to,
 /// says that its own requests go through the proxy the login shell names,
-/// that this Mac -- the Ollama daemon -- never does, and that `no_proxy`
-/// is followed (`http::proxy::proxy_for`).
+/// failing that the one this Mac's network settings name (the U12
+/// review: what a proxy app in its "system proxy" mode sets), that this
+/// Mac -- the Ollama daemon -- never does, and that `no_proxy` is
+/// followed (`http::proxy::proxy_for`).
 #[test]
 fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_for_this_mac() {
     let doc = read_doc();
@@ -1501,6 +1503,8 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
         "`0.0.0.0`",
         "never through a proxy",
         "`socks5://`",
+        "System Settings → Network",
+        "\"system proxy\" mode",
     ] {
         assert!(
             folded.contains(phrase),

@@ -123,7 +123,8 @@ installed is taken -- `CARGO_HOME`, `RUSTUP_HOME`, `UV_TOOL_DIR`,
 `PIPX_HOME`, an npm or Homebrew prefix -- because that would change which
 folders an uninstall and its preview act on; nor any token, nor
 `OLLAMA_HOST`. Banager's own requests go through the proxy these settings
-name, but never for this Mac itself, and still only to the hosts listed
+name -- or, when they name none, the one this Mac's network settings name
+-- but never for this Mac itself, and still only to the hosts listed
 under Network: a mirror changes where the tools download from, not where
 Banager's own checks ask (Network, below). The values are never written
 to a log and never in the diagnostic info, since a proxy setting can hold
@@ -3662,7 +3663,7 @@ build the request — and that Ollama's notice says "Connecting to Ollama
 over https isn't supported" (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
-**Through a proxy, as Terminal's settings say.** When the login shell's
+**Through a proxy, as Terminal's or this Mac's settings say.** When the login shell's
 settings name a proxy (How Banager runs anything), Banager's own requests
 go through it, looked up at each request (`http::proxy::proxy_for`, which
 `RealHttpClient` asks), by curl's rules: `https_proxy` for an https
@@ -3672,7 +3673,21 @@ in it counts as not set; and `no_proxy` / `NO_PROXY` -- names (each with
 every name under it), addresses, address ranges such as `192.168.0.0/16`,
 or `*` for everything -- sends what it names straight. A setting the
 login shell did not set is taken from Banager's own environment, which the
-commands it runs inherit too. An https request then goes as a `CONNECT`
+commands it runs inherit too. When neither names a proxy for a request,
+it goes through the one this Mac's own network settings name (System
+Settings → Network → a service → Details → Proxies): the web proxy (HTTP)
+for an http address, the secure web proxy (HTTPS) for an https one --
+what a proxy app such as Clash Verge, ClashX or Surge sets in its "system
+proxy" mode, with nothing exported in a shell. Those are the settings
+Banager's requests went by before it read the login shell's, read the same
+way (`http::proxy::system_proxy`) and at each request, so turning such an
+app on or off counts from the next check; as before, the SOCKS proxy and
+the list of hosts to bypass in those settings are not read, so a machine
+on the local network is reached through that proxy unless `no_proxy`
+names it. The commands Banager runs are handed no setting from there: they
+get the settings above, as in Terminal, and one that reads this Mac's
+network settings itself (pip does) reads them as it does there. An https
+request then goes as a `CONNECT`
 tunnel through the proxy to the same host, and the certificate is checked
 against that host as before; a `socks5://` or `socks5h://` proxy -- as
 Clash and Surge print `all_proxy` -- is spoken to as SOCKS. This Mac itself
@@ -3681,7 +3696,8 @@ and any name under it, `127.0.0.1` and the rest of `127.0.0.0/8`, `::1`,
 and `0.0.0.0` or `::` (an `OLLAMA_HOST` of `0.0.0.0` is common) -- so the
 request to an Ollama daemon on this Mac always goes straight to it. The
 proxy is then the one host Banager connects to that is not in the table
-above, and only because the user's own settings name it; the host a
+above, and only because the user's own settings -- Terminal's or this
+Mac's -- name it; the host a
 request is for is still checked against the table first, and a refused
 one never reaches the proxy. A proxy setting that holds a login
 (`http://name:password@host:port`) gives that login to that proxy alone.
