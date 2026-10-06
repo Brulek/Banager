@@ -785,3 +785,8 @@ app 或更多工作。
   的 `onOpenAutoFocus` 按框安放）。要先定这三个框要不要保留现在的表现，或者只加 `role="alertdialog"` 不换组件。另：卸载框里那个常在的 sr-only `role=status`，r6 复审后已有测试确认文字落进同一个节点。~~
   —— **已于 2026-10-06 做了**（决定 I21c，`a1125d4c`）：只加 `role="alertdialog"`（`Dialog` 的 `alert`），不换组件，
   点外面关闭和初始焦点不变；后来加的批量卸载框一并加上。每个框打开时都有说明（`aria-describedby`），多个工具时指向工具列表。
+
+- **登录信息遮盖后，部分失败原因仍按遮盖后的文字判断**（2026-10-07，决策轮 U12 复审 r6/v4-redact2）。命令失败的原因（如需要密码）
+  已改为在遮盖前读取、随 `Outcome::Failed.cause` 传给窗口；但检查更新、来源出错（`SourceError`、`LookupFailure`）的原因仍从遮盖后的
+  文字判断。若代理或镜像的密码恰好是这些说法里的一段（例如 `time` 之于 "timed out"），可能丢掉「网络问题」的说法或「重新检查」，
+  不影响密码步骤。改法：给 `SourceError` 和 `LookupFailure` 也带上遮盖前读出的原因。
