@@ -28,8 +28,13 @@
 //!   token (`https://TOKEN:x-oauth-basic@github.com/…`). Each is masked
 //!   wherever it appears -- as written, decoded and percent-encoded -- and
 //!   so are the whole login, the whole value and the pair as an HTTP Basic
-//!   credential. A part shorter than [`SHORTEST_MASKED_ANYWHERE`], or one
+//!   credential, each in any case (npm prints a proxy's user name
+//!   lowercased). A part shorter than [`SHORTEST_MASKED_ANYWHERE`], or one
 //!   of [`COMMON_WORDS`], is masked only where it stands in its login.
+//!
+//! Why a command failed is read before any of this, off what it wrote
+//! (`CommandOutput::failure_cause`): the mask can take the words that say
+//! it.
 //! - Any `scheme://user:password@` in the text (`mask_url_logins`),
 //!   whatever setting or file it came from: its password.
 //!
@@ -61,9 +66,11 @@ pub const SHORTEST_MASKED_ANYWHERE: usize = 3;
 ///   the password, or the word GitHub has everyone write after one;
 /// - account names that are also words in tools' output (`git`, as in
 ///   `git@github.com:…`, which names an ssh user);
-/// - sudo's words that Banager reads to say an operation needs Terminal
-///   (`history::failure_cause`, `needsPassword` in src/lib/failureCause.ts):
-///   masked, "sudo: a password is required" would no longer be read.
+/// - sudo's words in "sudo: a password is required", so that sudo's lines,
+///   shown with the steps for Terminal, stay readable. Why the operation
+///   failed does not depend on them: the runner reads it before masking
+///   (`CommandOutput::failure_cause`, re-check 2's N1), so a password that
+///   is part of one of them (`pass`) masks that part and the cause stands.
 ///
 /// The list is in docs/what-we-run.md, word for word (what_we_run_test).
 pub const COMMON_WORDS: &[&str] = &[
