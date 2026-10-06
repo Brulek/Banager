@@ -1584,6 +1584,330 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_pips_python_not_followed_leaves_every_pythons_look_unfinished_whatever_its_name() {
+        // Astra's late review, finding 2: pip's program is a launcher of
+        // the user's own, `~/bin/python3`, that led into python@3.13's
+        // `bin/python3.13` -- a keg with no `python3` of its own. When it
+        // is rerouted through `~/Documents`, or a folder on the way cannot
+        // be searched, what runs pip is not known: it is a Python, so
+        // every Python's look does not finish, whatever the launcher is
+        // called. jq, a font and uv can be no Python, and theirs do.
+        let root = Root::new("pip-alias");
+        root.python_313();
+        root.link(
+            "opt/homebrew/Cellar/python@3.13/3.13.15/libexec/bin/python3",
+            "../../Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+        );
+        root.program("opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3.14");
+        root.link(
+            "opt/homebrew/Cellar/python@3.14/3.14.0/bin/python3",
+            "python3.14",
+        );
+        root.link(
+            "opt/homebrew/opt/python@3.14",
+            "../Cellar/python@3.14/3.14.0",
+        );
+        root.program("opt/homebrew/Cellar/uv/0.9.2/bin/uv");
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        let others = bystanders(&root);
+        let real = root.path("opt/homebrew/Cellar/python@3.13/3.13.15/bin/python3.13");
+        const PIP: &str = "pip:~/bin/python3";
+        let tools = vec![row(PIP, ArtifactKind::Package, "requests")];
+        let env = root.env(&["home/bin", "opt/homebrew/bin"]);
+        let look = |launcher: &str, package: &InstalledArtifact| {
+            let pip = instance("pip", PIP, root.path(launcher), root.path("home/bin"));
+            let instances = vec![brew(&root), pip];
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        // Followed: python@3.13 runs pip, and pip's one package needs it.
+        root.link("home/bin/python3", real.to_str().unwrap());
+        let found = look("home/bin/python3", &formula("python@3.13"));
+        assert_eq!(needed(&found.warnings), vec![(PIP.to_string(), true, 1)]);
+        assert!(found.complete);
+        // Into `~/Documents`, a link to itself, and one named `python`.
+        std::fs::remove_file(root.path("home/bin/python3")).unwrap();
+        root.link(
+            "home/bin/python3",
+            root.path("home/Documents/py/bin/python3").to_str().unwrap(),
+        );
+        root.link("home/bin/loop/python3", "python3");
+        root.link(
+            "home/bin/python",
+            root.path("home/Documents/py/bin/python3.13")
+                .to_str()
+                .unwrap(),
+        );
+        for launcher in [
+            "home/bin/python3",
+            "home/bin/loop/python3",
+            "home/bin/python",
+        ] {
+            for python in ["python@3.13", "python@3.14"] {
+                assert_eq!(
+                    look(launcher, &formula(python)),
+                    unfinished(),
+                    "{launcher} {python}"
+                );
+            }
+            assert_eq!(look(launcher, &formula("uv")), finished(), "{launcher}");
+            for other in &others {
+                assert_eq!(look(launcher, other), finished(), "{launcher} {other:?}");
+            }
+        }
+        // Known not to be there: known to run on nothing.
+        root.link("home/bin/gone/python3", "/nonexistent/python3");
+        assert_eq!(
+            look("home/bin/gone/python3", &formula("python@3.13")),
+            finished()
+        );
+    }
+
+    #[test]
+    fn test_a_package_named_for_a_program_not_followed_could_be_it_wherever_its_keg_keeps_it() {
+        // A link may lead to a program of another name, in another folder
+        // of the keg. A formula named for the program -- `uv` for uv's,
+        // `node@22` for npm's `node` -- could be it however it is laid
+        // out; `libuv`, whose name only contains it, and jq are not.
+        let root = Root::new("named-for");
+        let others = bystanders(&root);
+        root.program("opt/homebrew/Cellar/uv/0.9.2/libexec/vendor-launcher");
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        root.program("opt/homebrew/Cellar/libuv/1.51.0/lib/libuv.1.dylib");
+        root.link("opt/homebrew/opt/libuv", "../Cellar/libuv/1.51.0");
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("home/.local/bin/uv"),
+            root.path("home/.local/bin"),
+        );
+        let tools = vec![with_path(
+            row("uv", ArtifactKind::Tool, "ruff"),
+            root.path("home/.local/share/uv/tools/ruff"),
+        )];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let instances = vec![brew(&root), uv];
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        assert_eq!(look(&formula("uv")), unfinished());
+        assert_eq!(look(&formula("libuv")), finished());
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+        // npm's program not followed: it lives in a Node.js. The `node` on
+        // `PATH` is Homebrew's `node`, so that one is named; the keg-only
+        // `node@22` could hold the npm itself, and is not known either
+        // way. jq and the font can hold neither.
+        let root = Root::new("npm-not-followed");
+        root.node_22();
+        root.node_linked();
+        let others = bystanders(&root);
+        root.link(
+            "home/bin/npm",
+            root.path("home/Documents/npm/bin/npm-cli.js")
+                .to_str()
+                .unwrap(),
+        );
+        let npm = instance("npm", NPM, root.path("home/bin/npm"), root.prefix());
+        let instances = vec![brew(&root), npm];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let look = |package: &InstalledArtifact| {
+            needed_by(
+                package,
+                &instances[0],
+                &instances,
+                &npm_rows(),
+                &env,
+                BUDGET,
+            )
+        };
+        let node = look(&formula("node"));
+        assert_eq!(needed(&node.warnings), vec![(NPM.to_string(), true, 4)]);
+        assert!(node.complete);
+        assert_eq!(look(&formula("node@22")), unfinished());
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn test_the_p8_control_layouts_leave_only_a_runtime_the_path_could_reach_unfinished() {
+        // The real-data recheck p8 (item 7, finding F1), on a Homebrew laid
+        // out as Homebrew lays one out: twelve formulae -- `node@22`
+        // keg-only but linked by force, three Pythons (only 3.14 with a
+        // `python3`), pipx, uv, Ollama and five that are no runtime -- and
+        // two casks, a font and an app. npm runs on `node@22`, Ollama has
+        // one model, pipx no tool. In each layout, the packages whose look
+        // does not finish are exactly the ones the unfollowed path could
+        // reach; 8d437178 left all but one or two unfinished in each.
+        let root = Root::new("p8-layouts");
+        let keg = |name: &str, programs: &[&str]| {
+            for program in programs {
+                root.program(&format!("opt/homebrew/Cellar/{name}/1.0/bin/{program}"));
+                root.link(
+                    &format!("opt/homebrew/bin/{program}"),
+                    &format!("../Cellar/{name}/1.0/bin/{program}"),
+                );
+            }
+            root.dir(&format!("opt/homebrew/Cellar/{name}/1.0"));
+            root.link(
+                &format!("opt/homebrew/opt/{name}"),
+                &format!("../Cellar/{name}/1.0"),
+            );
+        };
+        for (name, programs) in [
+            ("jq", &["jq"][..]),
+            ("wget", &["wget"]),
+            ("git", &["git"]),
+            ("ffmpeg", &["ffmpeg"]),
+            ("libuv", &[]),
+            ("python@3.11", &["python3.11"]),
+            ("python@3.13", &["python3.13"]),
+            ("python@3.14", &["python3.14", "python3"]),
+            ("uv", &["uv", "uvx"]),
+            ("ollama", &["ollama"]),
+        ] {
+            keg(name, programs);
+        }
+        root.program("opt/homebrew/Cellar/pipx/1.0/libexec/bin/pipx");
+        root.link(
+            "opt/homebrew/Cellar/pipx/1.0/bin/pipx",
+            "../libexec/bin/pipx",
+        );
+        root.link("opt/homebrew/bin/pipx", "../Cellar/pipx/1.0/bin/pipx");
+        root.link("opt/homebrew/opt/pipx", "../Cellar/pipx/1.0");
+        root.node_22();
+        root.link_node_22();
+        root.dir("opt/homebrew/Caskroom/font-fira-code/6.2");
+        root.dir("opt/homebrew/Caskroom/libreoffice/26.2.0");
+        root.dir("Applications/LibreOffice.app/Contents/MacOS");
+        let mut packages: Vec<InstalledArtifact> = [
+            "jq",
+            "wget",
+            "git",
+            "ffmpeg",
+            "libuv",
+            "node@22",
+            "python@3.11",
+            "python@3.13",
+            "python@3.14",
+            "pipx",
+            "uv",
+            "ollama",
+        ]
+        .iter()
+        .map(|name| formula(name))
+        .collect();
+        packages.push(row(BREW, ArtifactKind::Cask, "font-fira-code"));
+        packages.push(with_path(
+            row(BREW, ArtifactKind::Cask, "libreoffice"),
+            root.path("Applications/LibreOffice.app"),
+        ));
+        root.program("usr/bin/true");
+        const OLLAMA: &str = "ollama:http://127.0.0.1:11434";
+        const PIP: &str = "pip:~/bin/python3";
+        let mut rows = npm_rows();
+        rows.push(row(OLLAMA, ArtifactKind::Model, "qwen3:8b"));
+        // pip run by a launcher of the user's own, and uv by one, each
+        // leading into `~/Documents`.
+        root.link(
+            "home/bin/python3",
+            root.path("home/Documents/py/bin/python3").to_str().unwrap(),
+        );
+        root.link(
+            "home/.local/bin/uv",
+            root.path("home/Documents/uv/bin/uv").to_str().unwrap(),
+        );
+        let base = vec![
+            brew(&root),
+            instance("npm", NPM, root.path("opt/homebrew/bin/npm"), root.prefix()),
+            instance(
+                "ollama",
+                OLLAMA,
+                root.path("opt/homebrew/bin/ollama"),
+                root.path("home/.ollama"),
+            ),
+            instance(
+                "pipx",
+                "pipx",
+                root.path("opt/homebrew/bin/pipx"),
+                root.path("opt/homebrew/bin"),
+            ),
+        ];
+        let login = root.env(&["opt/homebrew/bin", "usr/bin"]);
+        let protected_first = root.env(&["home/Documents/bin", "opt/homebrew/bin", "usr/bin"]);
+        let unfinished_of = |env: &HostEnv, layout: &str| -> Vec<String> {
+            let mut instances = base.clone();
+            let mut artifacts = rows.clone();
+            if layout == "npm-copy" || layout == "both" {
+                instances[1].exe_path = root.path("usr/bin/true");
+            }
+            let pipx_tool = layout == "pipx-no-env" || layout == "both";
+            if pipx_tool {
+                artifacts.push(row("pipx", ArtifactKind::Tool, "no-env"));
+            }
+            if layout == "pip-launcher" {
+                instances.push(instance(
+                    "pip",
+                    PIP,
+                    root.path("home/bin/python3"),
+                    root.path("home/bin"),
+                ));
+                artifacts.push(row(PIP, ArtifactKind::Package, "requests"));
+            }
+            if layout == "uv-launcher" {
+                instances.push(instance(
+                    "uv",
+                    "uv",
+                    root.path("home/.local/bin/uv"),
+                    root.path("home/.local/bin"),
+                ));
+                artifacts.push(with_path(
+                    row("uv", ArtifactKind::Tool, "ruff"),
+                    root.path("home/.local/share/uv/tools/ruff"),
+                ));
+            }
+            let mut names = Vec::new();
+            for package in &packages {
+                let found = needed_by(package, &instances[0], &instances, &artifacts, env, BUDGET);
+                // What is found is still named, in every layout: npm on
+                // `node@22` (its `npm`, or the `node` on `PATH`), Ollama on
+                // `ollama`, and pipx, once it has a tool, on `pipx`.
+                let expected = match package.key.name.as_str() {
+                    "node@22" => vec![(NPM.to_string(), true, 4)],
+                    "ollama" => vec![(OLLAMA.to_string(), true, 1)],
+                    "pipx" if pipx_tool => vec![("pipx".to_string(), true, 1)],
+                    _ => Vec::new(),
+                };
+                assert_eq!(needed(&found.warnings), expected, "{layout} {package:?}");
+                if !found.complete {
+                    names.push(package.key.name.clone());
+                }
+            }
+            names
+        };
+        let pythons = ["python@3.11", "python@3.13", "python@3.14"];
+        for (env, label) in [(&login, "login"), (&protected_first, "protected first")] {
+            let protected = label == "protected first";
+            assert_eq!(unfinished_of(env, "as-is"), Vec::<String>::new(), "{label}");
+            let npm_copy: Vec<&str> = if protected { vec!["node@22"] } else { vec![] };
+            assert_eq!(unfinished_of(env, "npm-copy"), npm_copy, "{label}");
+            assert_eq!(unfinished_of(env, "pipx-no-env"), pythons, "{label}");
+            let mut both = pythons.to_vec();
+            if protected {
+                both.insert(0, "node@22");
+            }
+            assert_eq!(unfinished_of(env, "both"), both, "{label}");
+            assert_eq!(unfinished_of(env, "pip-launcher"), pythons, "{label}");
+            assert_eq!(unfinished_of(env, "uv-launcher"), vec!["uv"], "{label}");
+        }
+    }
+
     /// A recorded fixture, read as it is, with the author's paths moved
     /// under `root`: `/Users/brulek` to its home folder, `/opt/homebrew`
     /// to its prefix. Nothing is edited but where things are.
