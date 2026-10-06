@@ -1,0 +1,89 @@
+# Step D's pre-merge recording (docs/superpowers/plans/2026-09-25-phase-4-step-d-grok-agy.md,
+# "The author's pre-merge verification"): how `grok update` and `claude update` behave with stdin
+# closed, in a throwaway HOME on a CI runner -- never on a person's Mac.
+# The author approved running it with the round's pull request (decision R2, 2026-10-06). A
+# workflow_dispatch workflow can only be started once it is on the default branch, so it also runs
+# when a pull request changes this file -- that is, once, with the pull request that adds it.
+name: Probe standalone upgrades
+
+on:
+  pull_request:
+    paths: [".github/workflows/standalone-upgrade-probe.yml"]
+  workflow_dispatch:
+    inputs:
+      grok_older:
+        description: "An older Grok Build version to install first (x.ai/cli/install.sh | bash -s <v>); empty = current"
+        default: "1.0.34"
+      claude_older:
+        description: "An older Claude Code version to install first; empty = current"
+        default: ""
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: throwaway home
+        run: |
+          echo "PROBE_HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+      - name: install grok (the older version when given)
+        env:
+          HOME: ${{ env.PROBE_HOME }}
+        run: |
+          if [ -n "${{ inputs.grok_older || '1.0.34' }}" ]; then
+            curl -fsSL https://x.ai/cli/install.sh | bash -s "${{ inputs.grok_older || '1.0.34' }}"
+          else
+            curl -fsSL https://x.ai/cli/install.sh | bash
+          fi
+          "$HOME/.grok/bin/grok" --version
+          "$HOME/.grok/bin/grok" update --check --json | tee grok-check-before.json
+      - name: grok update with stdin closed
+        env:
+          HOME: ${{ env.PROBE_HOME }}
+        run: |
+          set +e
+          # macOS has no `timeout`; the runner image's coreutils are
+          # g-prefixed. A missing command would be exit 127, misread as a
+          # prompt.
+          TIMEOUT=$(command -v gtimeout || command -v timeout) || { echo "no timeout command" | tee grok-update.exit; exit 0; }
+          start=$(date +%s)
+          "$TIMEOUT" 1800 "$HOME/.grok/bin/grok" update </dev/null >grok-update.stdout 2>grok-update.stderr
+          echo "exit=$? seconds=$(( $(date +%s) - start ))" | tee grok-update.exit
+          "$HOME/.grok/bin/grok" --version | tee grok-version-after.txt
+          ls -la "$HOME/.grok/bin" "$HOME/.grok/downloads" | sed "s|$HOME|~|g" | tee grok-layout-after.txt
+          cat "$HOME/.grok/config.toml" | tee grok-config-after.toml
+      - name: install claude (the older version when given)
+        env:
+          HOME: ${{ env.PROBE_HOME }}
+        run: |
+          curl -fsSL https://claude.ai/install.sh | head -80 | tee claude-install-head.txt
+          if [ -n "${{ inputs.claude_older }}" ]; then
+            curl -fsSL https://claude.ai/install.sh | bash -s "${{ inputs.claude_older }}"
+          else
+            curl -fsSL https://claude.ai/install.sh | bash
+          fi
+          DISABLE_AUTOUPDATER=1 "$HOME/.local/bin/claude" --version
+      - name: claude update with stdin closed
+        env:
+          HOME: ${{ env.PROBE_HOME }}
+        run: |
+          set +e
+          TIMEOUT=$(command -v gtimeout || command -v timeout) || { echo "no timeout command" | tee claude-update.exit; exit 0; }
+          start=$(date +%s)
+          "$TIMEOUT" 1800 "$HOME/.local/bin/claude" update </dev/null >claude-update.stdout 2>claude-update.stderr
+          echo "exit=$? seconds=$(( $(date +%s) - start ))" | tee claude-update.exit
+          DISABLE_AUTOUPDATER=1 "$HOME/.local/bin/claude" --version | tee claude-version-after.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-upgrade-probe
+          path: |
+            grok-*.json
+            grok-*.txt
+            grok-*.stdout
+            grok-*.stderr
+            grok-*.exit
+            grok-*.toml
+            claude-*.txt
+            claude-*.stdout
+            claude-*.stderr
+            claude-*.exit
