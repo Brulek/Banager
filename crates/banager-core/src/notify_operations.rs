@@ -79,6 +79,19 @@ impl FinishedRun {
     }
 }
 
+/// A run [`ReportedRuns::accepted`] accepts: how its operations ended
+/// (`run`), and of its updates that failed, how many stopped where sudo
+/// wanted the Mac's password with no way to ask (`password`;
+/// `Ended::NeedsPassword`) -- which the notification says as the
+/// operation bar says it, 「N个需要输入密码」, not as failures. Both are
+/// counted from the same records over the same interval, so an update
+/// evicted before its run is reported is told of as it ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Accepted {
+    pub run: FinishedRun,
+    pub password: u32,
+}
+
 /// The newest operation of the runs reported in this run of Banager, and
 /// the run withheld while Banager was in front with its window not
 /// focused, which waits for Banager to leave the front
@@ -101,7 +114,11 @@ impl ReportedRuns {
     /// runs after it. An ID taken by a submission whose record is not in
     /// yet (`Completions::unrecorded`) is unfinished, wherever the
     /// forgotten ones reach.
-    pub fn completed(&self, last_op: u64, known: &Completions) -> Option<FinishedRun> {
+    ///
+    /// Counted with it, from the same records: how many of its updates
+    /// stopped for the password ([`Accepted::password`]); none of a run
+    /// accepted telling of nothing.
+    pub fn accepted(&self, last_op: u64, known: &Completions) -> Option<Accepted> {
         let through = self.through();
         let first = through.checked_add(1)?;
         let count = last_op.checked_sub(first)?.checked_add(1)?;
@@ -151,22 +168,36 @@ impl ReportedRuns {
             if above != last_op.saturating_sub(forgotten.max(through)) {
                 return None;
             }
-            return Some(run);
+            return Some(Accepted { run, password: 0 });
         }
         if ended.iter().all(|(_, kind, _)| *kind == OpKind::Upgrade) {
             run.kind = RunKind::Upgrade;
         } else if ended.iter().all(|(_, kind, _)| *kind == OpKind::Uninstall) {
             run.kind = RunKind::Uninstall;
         }
-        for (_, _, how) in ended {
+        let mut password = 0;
+        for (_, kind, how) in ended {
             match how {
                 Ended::Succeeded => run.succeeded += 1,
                 Ended::Failed => run.failed += 1,
+                Ended::NeedsPassword => {
+                    run.failed += 1;
+                    // Of updates alone, as the operation bar says it.
+                    if kind == OpKind::Upgrade {
+                        password += 1;
+                    }
+                }
                 Ended::Attention => run.attention += 1,
                 Ended::Cancelled => {}
             }
         }
-        Some(run)
+        Some(Accepted { run, password })
+    }
+
+    /// The run [`accepted`](Self::accepted) accepts, without its password
+    /// stops.
+    pub fn completed(&self, last_op: u64, known: &Completions) -> Option<FinishedRun> {
+        self.accepted(last_op, known).map(|accepted| accepted.run)
     }
 
     /// The newest operation of the runs accepted so far, or 0: what the
@@ -384,6 +415,63 @@ mod tests {
         assert_eq!(next, run(5, RunKind::Uninstall, 1, 0, 0));
         report(&mut reported, true, Focus::Away, &next, post).unwrap();
         assert_eq!(*posted.borrow(), [whole, next]);
+    }
+
+    /// What sudo prints when it wants the Mac's password and has no way to
+    /// ask (`history::failure_cause`'s `NeedsPassword`).
+    const SUDO: &str = "==> Installing tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
+
+    fn failed(summary: &str) -> Option<Outcome> {
+        Some(Outcome::Failed {
+            exit_code: Some(1),
+            summary: summary.into(),
+        })
+    }
+
+    #[test]
+    fn regression_password_stops_are_counted_from_the_same_records_evicted_or_held() {
+        // Astra's final review, F1: an update that stopped for the password
+        // whose record was evicted before the run was reported was counted
+        // as failed from the eviction ledger, and its password cause was
+        // read off a second, later read of the operations, which no longer
+        // held it: the notification said it could not be updated.
+        let reported = ReportedRuns::default();
+        let mut known = records(&[
+            summary(5, OpKind::Upgrade, failed(SUDO)),
+            summary(4, OpKind::Upgrade, Some(Outcome::Succeeded)),
+            summary(3, OpKind::Uninstall, failed(SUDO)),
+        ]);
+        let sudo = Ended::of(&failed(SUDO).unwrap());
+        assert_eq!(sudo, Ended::NeedsPassword);
+        known.evicted.insert(1, evicted(OpKind::Upgrade, sudo));
+        known.evicted.insert(
+            2,
+            evicted(
+                OpKind::Upgrade,
+                Ended::of(&failed("Error: Download failed").unwrap()),
+            ),
+        );
+        assert_eq!(
+            reported.accepted(5, &known),
+            Some(Accepted {
+                run: run(5, RunKind::Other, 1, 4, 0),
+                // The evicted update and the held one; never the uninstall,
+                // which the operation bar does not say it of.
+                password: 2,
+            })
+        );
+        // Only the interval accepted: through 2, the one evicted.
+        assert_eq!(reported.accepted(2, &known).map(|a| a.password), Some(1));
+        // A run past proving how it ended tells of no password stop either.
+        known.forgotten_through = 1;
+        known.evicted.remove(&1);
+        assert_eq!(
+            reported.accepted(2, &known),
+            Some(Accepted {
+                run: run(2, RunKind::Other, 0, 0, 0),
+                password: 0,
+            })
+        );
     }
 
     #[test]

@@ -278,14 +278,23 @@ pub struct OpSummary {
 }
 
 /// How a finished operation ended, as the completion notification counts
-/// it (`notify_operations::ReportedRuns::completed`): `Outcome` without
-/// what it carries.
+/// it (`notify_operations::ReportedRuns::accepted`): `Outcome` without
+/// what it carries, but for the one thing about a failure the
+/// notification says apart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ended {
     /// `Outcome::Succeeded`.
     Succeeded,
     /// `Outcome::Failed` and `Outcome::BanagerFailed`: did not happen.
     Failed,
+    /// `Outcome::Failed` where sudo wanted the Mac's password with no way
+    /// to ask for it (`history::failure_cause` reads
+    /// `FailureCause::NeedsPassword` off the last lines the tool wrote to
+    /// stderr): did not happen either, and of an update the notification
+    /// says it needs the password, as the operation bar does. Decided as
+    /// the operation is counted or evicted, so that what eviction keeps
+    /// (`EvictedOp`) still says it once the summary has gone.
+    NeedsPassword,
     /// `Outcome::NeedsAttention` and `Outcome::Unconfirmed`.
     Attention,
     /// `Outcome::Cancelled`.
@@ -294,8 +303,14 @@ pub enum Ended {
 
 impl Ended {
     pub fn of(outcome: &Outcome) -> Ended {
+        use crate::history::{failure_cause, FailureCause};
         match outcome {
             Outcome::Succeeded => Ended::Succeeded,
+            Outcome::Failed { summary, .. }
+                if failure_cause(summary) == Some(FailureCause::NeedsPassword) =>
+            {
+                Ended::NeedsPassword
+            }
             Outcome::Failed { .. } | Outcome::BanagerFailed(_) => Ended::Failed,
             Outcome::NeedsAttention(_) | Outcome::Unconfirmed => Ended::Attention,
             Outcome::Cancelled => Ended::Cancelled,
@@ -305,7 +320,8 @@ impl Ended {
 
 /// What the manager keeps of a finished operation `records` evicts
 /// (`evict_oldest_done_records`): enough for the completion notification
-/// to count it all the same. A run longer than `DEFAULT_MAX_RECORDS`, or
+/// to count it all the same, an update that stopped for the password
+/// included (`Ended::NeedsPassword`). A run longer than `DEFAULT_MAX_RECORDS`, or
 /// one told of after that many newer operations, has lost its oldest
 /// records by then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1289,6 +1305,34 @@ impl OperationManager {
 #[cfg(test)]
 mod evicted_tests {
     use super::*;
+
+    #[test]
+    fn regression_an_evicted_failure_keeps_that_it_stopped_for_the_password() {
+        // Astra's final review, F1: eviction kept only `Ended::Failed`, so
+        // an update that stopped where sudo wanted the Mac's password was
+        // told of as one that could not be updated once its record went.
+        let mut ledger = EvictedLedger::default();
+        let stopped = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "==> Upgrading tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper".into(),
+        };
+        let failed = Outcome::Failed {
+            exit_code: Some(1),
+            summary: "Error: Download failed".into(),
+        };
+        ledger.keep(1, OpKind::Upgrade, Some(&stopped), 3);
+        ledger.keep(2, OpKind::Upgrade, Some(&failed), 3);
+        ledger.keep(
+            3,
+            OpKind::Upgrade,
+            Some(&Outcome::BanagerFailed(Fault::Panicked)),
+            3,
+        );
+        assert_eq!(
+            ledger.ops.values().map(|op| op.ended).collect::<Vec<_>>(),
+            [Ended::NeedsPassword, Ended::Failed, Ended::Failed]
+        );
+    }
 
     #[test]
     fn test_evicted_operations_are_kept_until_accepted_and_past_the_cap_are_forgotten() {

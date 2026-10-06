@@ -19,11 +19,9 @@ use crate::menu::MenuLanguage;
 use crate::notify::{self, Answer};
 use crate::state::AppState;
 use crate::window::NotificationPending;
-use banager_core::history::{failure_cause, FailureCause};
-use banager_core::model::{OpKind, OpStatus, Outcome};
 use banager_core::notify_operations::{self, FinishedRun, ReportedRuns, RunKind, RunNotice};
 use banager_core::notify_updates::Focus;
-use banager_core::ops::OpSummary;
+use banager_core::ops::Completions;
 use banager_core::settings::Settings;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime, State};
@@ -43,17 +41,15 @@ pub(crate) struct Runs {
 
 /// What `FinishedRun` does not count and the notification says: of the
 /// updates that failed, those that stopped where sudo wanted the Mac's
-/// password with no way to ask (`FailureCause::NeedsPassword`) -- the
-/// rows that say 「需要输入密码」, which the operation bar and the Updates
-/// page's headline count apart (`failedRunWords` in src/lib/runResult.ts,
-/// `updatesHeadline`). Kept step for step with `ReportedRuns`: the newest
-/// operation counted, which is `ReportedRuns`' own boundary -- a run is
-/// counted exactly when `completed` accepts it, and every accepted run is
-/// marked reported -- and how many of the run withheld stopped there,
-/// taken when it is posted or seen, as `ReportedRuns` takes the run.
+/// password with no way to ask (`Accepted::password`) -- the rows that say
+/// 「需要输入密码」, which the operation bar and the Updates page's
+/// headline count apart (`failedRunWords` in src/lib/runResult.ts,
+/// `updatesHeadline`). Each run's are counted with it, from the same
+/// records (`ReportedRuns::accepted`); kept here are those of the run
+/// withheld, taken when it is posted or seen, as `ReportedRuns` takes the
+/// run.
 #[derive(Debug, Default)]
 struct Passwords {
-    through: u64,
     withheld: u32,
 }
 
@@ -70,26 +66,6 @@ impl Runs {
     }
 }
 
-/// How many updates among `operations` numbered after `after` and up to
-/// `through` ended where sudo wanted the Mac's password with no way to ask
-/// (`FailureCause::NeedsPassword`, read off the last lines the tool wrote
-/// to stderr, as the history and the window read them). Only updates:
-/// the operation bar says it of updates alone.
-fn password_stops(operations: &[OpSummary], after: u64, through: u64) -> u32 {
-    let stopped = operations
-        .iter()
-        .filter(|op| op.id > after && op.id <= through)
-        .filter(|op| op.kind == OpKind::Upgrade && op.status == OpStatus::Done)
-        .filter(|op| match &op.outcome {
-            Some(Outcome::Failed { summary, .. }) => {
-                failure_cause(summary) == Some(FailureCause::NeedsPassword)
-            }
-            _ => false,
-        })
-        .count();
-    u32::try_from(stopped).unwrap_or(u32::MAX)
-}
-
 /// The page's report of a run of operations that has finished
 /// (`useOperationsNotification` in src/lib/operationsNotification.ts).
 /// What it does is `report`'s, with the focus as it is now and the words
@@ -102,7 +78,7 @@ fn password_stops(operations: &[OpSummary], after: u64, through: u64) -> u32 {
 /// The page supplies only a boundary hint. Counts and kind are derived
 /// from completed Rust records in the interval since the last accepted
 /// report -- with what the evicted ones left (`Session::completions_after`)
-/// -- under the same mutex as reporting/deduplication.
+/// -- under the same mutex as reporting/deduplication (`report_known`).
 #[tauri::command]
 pub async fn report_finished_run(
     app: AppHandle,
@@ -116,18 +92,12 @@ pub async fn report_finished_run(
     let reported = {
         let mut records = runs.0.lock().unwrap();
         let known = state.session.completions_after(records.reported.through());
-        let Some(actual) = records.reported.completed(run.last_op, &known) else {
-            return Ok(());
-        };
-        let operations = state.session.operations();
-        let password = password_stops(&operations, records.passwords.through, actual.last_op);
-        records.passwords.through = actual.last_op;
-        report_counted(
+        let reported = report_known(
             &mut records,
+            &known,
+            run.last_op,
             state.get_settings().notify_operations,
             focus,
-            &actual,
-            password,
             |run, password| {
                 notify::post(
                     &app,
@@ -136,7 +106,11 @@ pub async fn report_finished_run(
                     Answer::ShowWindow,
                 )
             },
-        )
+        );
+        let Some(reported) = reported else {
+            return Ok(());
+        };
+        reported
     };
     match reported {
         Ok(RunNotice::Post) => app.state::<NotificationPending>().set_window(),
@@ -147,6 +121,31 @@ pub async fn report_finished_run(
         }
     }
     Ok(())
+}
+
+/// The run through `last_op`, as the operations `known` -- one read of
+/// them, `Session::completions_after` -- prove it ended
+/// (`ReportedRuns::accepted`), reported over `records` (`report_counted`)
+/// with its password stops counted from the same records. `None`, and
+/// nothing changed, when they do not prove it: an operation of it
+/// unfinished, or the run reported before.
+fn report_known(
+    records: &mut Runs,
+    known: &Completions,
+    last_op: u64,
+    on: bool,
+    focus: Focus,
+    post: impl FnOnce(&FinishedRun, u32) -> Result<(), String>,
+) -> Option<Result<RunNotice, String>> {
+    let accepted = records.reported.accepted(last_op, known)?;
+    Some(report_counted(
+        records,
+        on,
+        focus,
+        &accepted.run,
+        accepted.password,
+        post,
+    ))
 }
 
 /// A run `report_finished_run` has just withheld, looked at again on the
@@ -270,7 +269,7 @@ pub(crate) fn post_withheld(
 }
 
 /// `notify_operations::report` over `runs`, with `password` -- how many of
-/// `run`'s updates stopped for the password (`password_stops`) -- kept
+/// `run`'s updates stopped for the password (`Accepted::password`) -- kept
 /// as `ReportedRuns` keeps the run: added to the run withheld, and handed
 /// to `post` with a run withheld before told of in the same notification.
 /// `decide` is asked first, with the same runs `report` asks it with, so
@@ -323,7 +322,7 @@ pub(crate) fn report(
 /// words the operation bar uses -- 「已更新3个工具」 when every one it tells
 /// of worked, else each way they ended that any did, 「2个已更新，1个未能
 /// 更新」. Of a run of updates, those of its failed ones that stopped
-/// where sudo wanted the Mac's password (`password`, `password_stops`) are
+/// where sudo wanted the Mac's password (`password`, `Accepted::password`) are
 /// said as the bar and the Updates page say them, 「13个需要输入密码」, not
 /// as failures: Terminal finishes them, with the steps their logs give.
 /// Cancelled operations are not told of. With no space around a number in
@@ -418,6 +417,8 @@ fn tools(n: u32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use banager_core::model::{OpKind, OpStatus, Outcome};
+    use banager_core::ops::OpSummary;
     use std::cell::RefCell;
 
     fn run(kind: RunKind, succeeded: u32, failed: u32, attention: u32) -> FinishedRun {
@@ -784,20 +785,105 @@ mod tests {
     }
 
     #[test]
-    fn test_password_stops_counts_only_finished_updates_sudo_stopped_in_the_interval() {
+    fn test_password_stops_are_told_of_only_of_finished_updates_in_the_run() {
         let sudo = "==> Installing tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
-        let operations = [
-            op(1, OpKind::Upgrade, failed(sudo)),
-            op(2, OpKind::Upgrade, failed(sudo)),
-            op(3, OpKind::Upgrade, failed("Error: Download failed")),
-            op(4, OpKind::Uninstall, failed(sudo)),
-            op(5, OpKind::Upgrade, Some(Outcome::Succeeded)),
-            op(6, OpKind::Upgrade, failed(sudo)),
-            op(7, OpKind::Upgrade, None),
-        ];
-        assert_eq!(password_stops(&operations, 0, 7), 3);
-        assert_eq!(password_stops(&operations, 1, 5), 1, "after 1, through 5");
-        assert_eq!(password_stops(&operations, 6, 7), 0);
+        let known = Completions {
+            operations: vec![
+                op(7, OpKind::Upgrade, None),
+                op(6, OpKind::Upgrade, failed(sudo)),
+                op(5, OpKind::Upgrade, Some(Outcome::Succeeded)),
+                op(4, OpKind::Uninstall, failed(sudo)),
+                op(3, OpKind::Upgrade, failed("Error: Download failed")),
+                op(2, OpKind::Upgrade, failed(sudo)),
+                op(1, OpKind::Upgrade, failed(sudo)),
+            ],
+            ..Completions::default()
+        };
+        let runs = OperationRuns::default();
+        let posted = RefCell::new(Vec::new());
+        let report = |last_op| {
+            report_known(
+                &mut runs.0.lock().unwrap(),
+                &known,
+                last_op,
+                true,
+                Focus::Away,
+                |run, password| {
+                    posted
+                        .borrow_mut()
+                        .push(body(MenuLanguage::ZhCn, run, password));
+                    Ok(())
+                },
+            )
+        };
+        assert_eq!(report(3), Some(Ok(RunNotice::Post)));
+        // An uninstall is not said to need the password.
+        assert_eq!(report(6), Some(Ok(RunNotice::Post)));
+        assert_eq!(report(7), None, "still running");
+        assert_eq!(
+            *posted.borrow(),
+            ["1个未能更新，2个需要输入密码", "1项已完成，2项未能完成"]
+        );
+    }
+
+    /// Astra's final review, F1: the run is counted from one read of the
+    /// operations (`Session::completions_after`), and so are its password
+    /// stops -- an update evicted before the page reported its run was
+    /// counted failed from what eviction kept, while its password cause
+    /// was looked for in a second, later read that no longer held it, and
+    /// the notification said it could not be updated.
+    #[test]
+    fn regression_an_evicted_update_that_stopped_for_the_password_is_told_of_as_one() {
+        use banager_core::ops::{Ended, EvictedOp};
+        let sudo = "==> Installing tool\nsudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper";
+        let mut known = Completions {
+            operations: vec![
+                op(4, OpKind::Upgrade, failed(sudo)),
+                op(3, OpKind::Upgrade, Some(Outcome::Succeeded)),
+            ],
+            ..Completions::default()
+        };
+        for (id, summary) in [(1, sudo), (2, "Error: Download failed")] {
+            known.evicted.insert(
+                id,
+                EvictedOp {
+                    kind: OpKind::Upgrade,
+                    ended: Ended::of(&failed(summary).unwrap()),
+                },
+            );
+        }
+        let runs = OperationRuns::default();
+        let posted = RefCell::new(Vec::new());
+        let reported = report_known(
+            &mut runs.0.lock().unwrap(),
+            &known,
+            4,
+            true,
+            Focus::Away,
+            |run, password| {
+                posted
+                    .borrow_mut()
+                    .push(body(MenuLanguage::ZhCn, run, password));
+                Ok(())
+            },
+        );
+        assert_eq!(reported, Some(Ok(RunNotice::Post)));
+        assert_eq!(
+            *posted.borrow(),
+            ["1个已更新，1个未能更新，2个需要输入密码"]
+        );
+        // The same boundary again: nothing, and nothing counted twice.
+        assert_eq!(
+            report_known(
+                &mut runs.0.lock().unwrap(),
+                &known,
+                4,
+                true,
+                Focus::Away,
+                |_, _| panic!("posted twice")
+            ),
+            None
+        );
     }
 
     /// A run withheld keeps its password stops until it is posted, with
