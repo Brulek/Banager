@@ -43,8 +43,12 @@ const MIRROR: &str = "https://ghp_mirrortoken42@mirror.example/homebrew-bottles"
 /// documented `TOKEN:x-oauth-basic` form.
 const REMOTE: &str = "https://ghp_reviewtoken42xoauth:x-oauth-basic@github.com/Homebrew/brew";
 
-/// Every secret above, in each form a test below has a tool print.
+/// Every secret above, in each form a test below has a tool print: the
+/// user names too, since a name can be a token (R1 of the decisions-round
+/// re-check; `runner::redact`).
 const SECRETS: &[&str] = &[
+    "review-user",
+    "someone",
     "review-secret",
     "rev/bare-secret",
     "rev/secret",
@@ -149,13 +153,13 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
     // The command was handed the settings as they are -- the login is
     // masked in what it printed, not taken out of what it was given.
     let expected = [
-        "curl: (5) Unsupported proxy syntax in 'http://review-user:****@127.0.0.1:invalid': Port number was not a decimal number between 0 and 65535",
-        "curl: (5) Unsupported proxy syntax in 'review-user:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
-        "curl: (5) Unsupported proxy syntax in 'http://review-user:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
-        "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://review-user:****@127.0.0.1:invalid",
-        "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://review-user:****@127.0.0.1:invalid",
+        "curl: (5) Unsupported proxy syntax in 'http://****:****@127.0.0.1:invalid': Port number was not a decimal number between 0 and 65535",
+        "curl: (5) Unsupported proxy syntax in '****:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
+        "curl: (5) Unsupported proxy syntax in 'http://****:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
+        "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://****:****@127.0.0.1:invalid",
+        "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://****:****@127.0.0.1:invalid",
         "==> Downloading https://****@mirror.example/homebrew-bottles/jq-1.8.1.bottle.tar.gz",
-        "proxy socks5://someone:****@127.0.0.1:7891 refused the login for ****",
+        "proxy socks5://****:****@127.0.0.1:7891 refused the login for ****",
         "> Proxy-Authorization: Basic ****",
         "fatal: unable to access 'https://****:****@github.com/Homebrew/brew/': The requested URL returned error: 403",
     ];
@@ -179,13 +183,11 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
         "{summary}"
     );
     assert!(
-        summary.contains("review-user:****@127.0.0.1:invalid"),
+        summary.contains("//****:****@127.0.0.1:invalid"),
         "{summary}"
     );
     assert_eq!(
-        summary
-            .matches("'http://review-user:****@127.0.0.1:8080'")
-            .count(),
+        summary.matches("'http://****:****@127.0.0.1:8080'").count(),
         3,
         "{summary}"
     );
@@ -233,9 +235,11 @@ async fn test_curls_own_error_for_a_proxy_with_a_login_is_masked() {
     for line in seen.lock().unwrap().iter() {
         assert_no_secret("a line of curl's", line);
     }
-    if output.stderr.contains("review-user") {
+    if output.stderr.contains("Unsupported proxy syntax") {
         assert!(
-            output.stderr.contains("review-user:****@127.0.0.1:invalid"),
+            output
+                .stderr
+                .contains("'http://****:****@127.0.0.1:invalid'"),
             "{}",
             output.stderr
         );
