@@ -189,6 +189,24 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
         ],
         timeout_secs: 120,
       };
+    case "standalone-codex":
+      // Nothing Banager may run for an update (`StandaloneAdapter::plan`'s
+      // late twin of the gate); its uninstall is `recipes::CODEX`'s list.
+      if (kind === "Upgrade") throw refusal({ kind: "update_blocked", reason: "SelfUpdatesOnly" });
+      return {
+        ...plan,
+        action: trash([".local/bin/codex-code-mode-host", ".codex/packages/standalone", ".local/bin/codex"]),
+        warnings: [
+          ...willTrash(
+            [".local/bin/codex-code-mode-host", "Program"],
+            [".codex/packages/standalone", "Program"],
+            [".local/bin/codex", "Launcher"],
+          ),
+          { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
+        ],
+        timeout_secs: 120,
+      };
     case "standalone-rustup": {
       // Both of rustup's own commands hold the cargo instance's lock too,
       // and neither can be stopped once it starts.

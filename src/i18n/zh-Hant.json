@@ -561,8 +561,7 @@
     "updatesItselfDetail": "{{source}}是用它自己的安裝指令稿按最新版本安裝的，可以自己安裝新版本。這裡不檢查也不安裝它的更新。",
     "notChecked": "不檢查更新",
     "notCheckedAria": "不檢查更新：{{name}}",
-    "notCheckedDetail": "這裡不檢查也不安裝{{source}}的更新。",
-    "uninstallDescription": "這份{{source}}是用它自己的安裝指令稿安裝的。這裡只列出它，不能在這裡解除安裝。"
+    "notCheckedDetail": "這裡不檢查也不安裝{{source}}的更新。"
   },
   "opencodeUpdates": {
     "word": "預設會自行更新",
@@ -1223,7 +1222,7 @@
       },
       "leftBehind": {
         "question": "解除安裝後哪些東西會留下，在哪裡？",
-        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的檔案夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
+        "answer": "解除安裝前，確認視窗會說明這次刪除什麼、保留什麼；事先無法知道的，也會寫明。工具在別處的設定和資料通常不刪除；知道位置的，列在「解除安裝後會保留」下方，可以拷貝路徑。Claude Code、Antigravity CLI、Grok Build、Codex內附的安裝程式安裝的那一份，檔案會移到垃圾桶，可以從那裡拖回來；解除安裝rustup則會永久刪除它的檔案夾，不經過垃圾桶。用Homebrew解除安裝時，當初跟著它安裝的其他軟體會留下，除非確認視窗另有說明。"
       },
       "changesMac": {
         "question": "此App會更動我的Mac嗎？",
@@ -1266,7 +1265,6 @@
     "previewHold": "檢查完成後才能解除安裝",
     "previewHoldDetail": "首次檢查要連上網路查詢每個工具的新版本，有時要一兩分鐘。",
     "otherVersionsDetail": "Homebrew還留著的其他版本，不是上面列出的這一版。更新或解除安裝它時通常會一併刪除，確認視窗裡會寫明；目前不能單獨清理。",
-    "listedOnly": "只列出",
     "notUsedUpdate": "更新這一份不會改變終端機裡執行的那一份。",
     "selfUpdatingDetail": "它執行時會自行安裝新版本，也可以在這裡更新。",
     "completeExcept": "檢查結果：完整，不含{{sources}}的更新",

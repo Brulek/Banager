@@ -1047,20 +1047,9 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
       refused: "installed.blocked.NoSafeMethod.standalone-rustup.refused",
     },
   },
-  // Codex's own install is listed only: whether it has an uninstall
-  // command was not looked into, so B's "has no uninstall command" would
-  // be a claim; what is true is that this build does not remove it (D5).
-  "standalone-codex": {
-    NoSafeMethod: {
-      // 「只列出」, not 「需手动卸载」: nothing here knows a manual way to give.
-      badge: "clarity.listedOnly",
-      description: "codexStandalone.uninstallDescription",
-      command: () => "",
-      refused: "installed.blocked.NoSafeMethod.refused",
-    },
-  },
-  // opencode's own install, listed only, as Codex's: no uninstall here, by
-  // the author's decision, not for want of a command.
+  // opencode's own install, listed only: no uninstall here, by the
+  // author's decision, not for want of a command. (Codex's own install
+  // moves its files to the Trash since the author's decision U8.)
   "standalone-opencode": {
     NoSafeMethod: {
       badge: "installed.blocked.NoSafeMethod.badge",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 import { ADAPTER_LABEL_KEYS, standaloneSummaryKey, uninstallBlockedCopy } from "./sources";
 import type { InstalledArtifact, ManagerInstance } from "./types";
 import { NO_FACTS } from "./types";
@@ -56,28 +57,20 @@ describe("tools whose updates Banager does not check", () => {
     expect(uncheckedUpdatesOf(artifact("standalone-claude", true), instance("standalone-claude"))).toBeNull();
   });
 
-  it("gives Codex its name, its line and its own words for why it cannot be uninstalled here", () => {
+  it("gives Codex its name and its line, and no words of its own for an uninstall it now has (U8)", () => {
     expect(ADAPTER_LABEL_KEYS["standalone-codex"]).toBe("adapters.standalone-codex");
     expect(en.adapters["standalone-codex"]).toBe("Codex");
     expect(zhCN.adapters["standalone-codex"]).toBe("Codex");
     expect(standaloneSummaryKey("standalone-codex")).toBe("codexStandalone.summary");
     expect(en.codexStandalone.summary).toBe("OpenAI's AI coding assistant");
     expect(zhCN.codexStandalone.summary).toBe("OpenAI的AI编程助手");
-    const copy = uninstallBlockedCopy("NoSafeMethod", "standalone-codex");
-    expect(copy.badge).toBe("clarity.listedOnly");
-    // Not "has no uninstall command": whether it has one was not looked into.
-    expect(copy.description).toBe("codexStandalone.uninstallDescription");
-    expect(zhCN.codexStandalone.uninstallDescription).not.toMatch(/没有卸载命令/);
-    // Nobody checked that Codex publishes uninstall instructions.
-    expect(zhCN.codexStandalone.uninstallDescription).not.toMatch(/官方说明/);
-    expect(en.codexStandalone.uninstallDescription).not.toMatch(/official/i);
-    // Nor a command to type: none was looked into either.
-    for (const text of [zhCN.codexStandalone.uninstallDescription, en.codexStandalone.uninstallDescription]) {
-      expect(text).not.toMatch(/终端|运行|rm |curl|Terminal|run /i);
+    // Its uninstall moves files to the Trash (`recipes::CODEX`), so its row
+    // never says 「只列出」 again, and the words for it are gone.
+    expect(uninstallBlockedCopy("NoSafeMethod", "standalone-codex")).toBe(uninstallBlockedCopy("NoSafeMethod", undefined));
+    for (const locale of [en, zhCN, zhHant] as Record<string, Record<string, unknown>>[]) {
+      expect(locale.codexStandalone).not.toHaveProperty("uninstallDescription");
+      expect(locale.clarity).not.toHaveProperty("listedOnly");
     }
-    // What it is and what this page does with it: its own script installed it, and it is only listed.
-    expect(zhCN.codexStandalone.uninstallDescription).toBe("这份{{source}}是用它自己的安装脚本装的。这里只列出它，不能在这里卸载。");
-    expect(copy.command(artifact("standalone-codex", true).key, instance("standalone-codex"))).toBe("");
   });
 
   it("says Codex's own script installed it at its latest release, not that someone set it so, nor when it updates", () => {

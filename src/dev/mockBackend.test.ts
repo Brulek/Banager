@@ -607,6 +607,37 @@ describe("the browser preview's mock backend", () => {
     ));
   });
 
+  it("offers Uninstall on Codex's own install and previews the two links and the package folder it moves (U8)", async () => {
+    // `recipes::CODEX`'s path list: the helper link first, the launcher
+    // last, and ~/.codex itself, with the settings, login and sessions, kept.
+    const { backend } = backendFor();
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const codex = snapshot.artifacts.find((a) => a.key.instance_id === "standalone-codex");
+    expect(codex?.uninstall_blocked).toBeNull();
+    const issued = await answer<IssuedPlan>(
+      backend.invoke("plan_operation", {
+        request: { kind: "Uninstall", instance_id: "standalone-codex", artifact_kind: "Binary", name: "codex" },
+      }),
+    );
+    expect(issued.plan.action).toEqual({
+      TrashPaths: {
+        paths: [
+          "/Users/you/.local/bin/codex-code-mode-host",
+          "/Users/you/.codex/packages/standalone",
+          "/Users/you/.local/bin/codex",
+        ],
+      },
+    });
+    expect(issued.plan.warnings).toEqual([
+      { WillTrash: { path: "~/.local/bin/codex-code-mode-host", what: "Program" } },
+      { WillTrash: { path: "~/.codex/packages/standalone", what: "Program" } },
+      { WillTrash: { path: "~/.local/bin/codex", what: "Launcher" } },
+      { WillKeep: { path: "~/.codex", what: "SettingsAndHistory" } },
+      { WillKeep: { path: "~/.zprofile", what: "ShellConfigLines" } },
+    ]);
+    expect(issued.plan.timeout_secs).toBe(120);
+  });
+
   it("keeps listing what a source had while an operation holds it, as the real refresh carries its rows forward", async () => {
     const { backend } = backendFor();
     await answer(backend.invoke("refresh"));

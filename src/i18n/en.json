@@ -611,8 +611,7 @@
     "updatesItselfDetail": "{{source}} was installed by its own script as the latest release, not a pinned one, so it can install new versions itself. Its updates aren't checked or installed here.",
     "notChecked": "Updates not checked",
     "notCheckedAria": "Not checked for updates: {{name}}",
-    "notCheckedDetail": "{{source}}'s updates aren't checked or installed here.",
-    "uninstallDescription": "This copy of {{source}} was installed by its own script. It's only listed here and can't be uninstalled here."
+    "notCheckedDetail": "{{source}}'s updates aren't checked or installed here."
   },
   "opencodeUpdates": {
     "word": "Updates itself by default",
@@ -1326,7 +1325,7 @@
       },
       "leftBehind": {
         "question": "What stays behind after uninstalling, and where?",
-        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path. For the copies Claude Code, Antigravity CLI and Grok Build installed themselves, the files are moved to the Trash, and you can drag them back; uninstalling rustup deletes its folders for good, without the Trash. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
+        "answer": "Before uninstalling, the confirmation says what goes and what stays; where that can't be known beforehand, it says so. A tool's settings and data elsewhere are usually kept; where their place is known, it's listed under “Stays after uninstalling” with Copy Path. For the copies Claude Code, Antigravity CLI, Grok Build and Codex installed themselves, the files are moved to the Trash, and you can drag them back; uninstalling rustup deletes its folders for good, without the Trash. Uninstalling with Homebrew leaves the other software installed along with it, unless the confirmation says otherwise."
       },
       "changesMac": {
         "question": "Does this app change my Mac?",
@@ -1371,7 +1370,6 @@
     "previewHold": "You can uninstall once the check is done",
     "previewHoldDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     "otherVersionsDetail": "Other versions Homebrew still keeps, besides the one listed above. Updating or uninstalling it usually removes them too, as its confirmation says. They can't be cleaned up on their own here yet.",
-    "listedOnly": "Listed only",
     "notUsedUpdate": "Updating this copy doesn't change the one Terminal runs.",
     "selfUpdatingDetail": "It installs new versions itself when it runs. You can also update it here.",
     "completeExcept": "Check: complete, except for updates to {{sources}}",

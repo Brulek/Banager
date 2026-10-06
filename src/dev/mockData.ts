@@ -535,10 +535,11 @@ function aiTools(): { artifacts: InstalledArtifact[]; updates: UpdateCandidate[]
 
 /**
  * Codex installed by its own script beside npm's `@openai/codex`
- * (`aiTools`): listed only. Its version is the release folder
+ * (`aiTools`). Its version is the release folder
  * `~/.codex/packages/standalone/current` points at; it follows the latest
- * release, so it updates itself (`auto_updates`); Banager checks nothing
- * and removes nothing (`NoSafeMethod`), so it is on no update list. Its
+ * release, so it updates itself (`auto_updates`); Banager checks nothing,
+ * so it is on no update list. Its uninstall moves the script's files to
+ * the Trash (`standalonePlan` in ./mockPlans.ts, `recipes::CODEX`). Its
  * metadata lists no verified version, so none is flagged.
  */
 function codexStandalone(): { instance: ManagerInstance; artifact: InstalledArtifact } {
@@ -555,7 +556,6 @@ function codexStandalone(): { instance: ManagerInstance; artifact: InstalledArti
       homepage: "https://github.com/openai/codex",
       path: inHome(".codex/packages/standalone/releases/0.159.3-aarch64-apple-darwin/bin/codex"),
       auto_updates: true,
-      uninstall_blocked: "NoSafeMethod",
       installed_at: daysAgo(2),
     }),
   };

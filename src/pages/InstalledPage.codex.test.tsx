@@ -8,11 +8,12 @@ import type { InstalledArtifact, ManagerInstance, Settings, Snapshot } from "../
 import { NO_FACTS } from "../lib/types";
 import { BUTTON } from "../components/ui/controls";
 
-// Codex installed by its own script, listed only: Banager checks nothing
-// for it, so its row never says "Up to date" -- it says Codex updates
-// itself, or only that it is not checked -- and it cannot be uninstalled
-// here. Claude Code beside it is checked, and is up to date. The harness
-// is InstalledPage.homebrew.test.tsx's.
+// Codex installed by its own script: Banager checks nothing for it, so its
+// row never says "Up to date" -- it says Codex updates itself, or only that
+// it is not checked -- and, since the author's decision U8, it can be
+// uninstalled here: its files go to the Trash (`recipes::CODEX`). Claude
+// Code beside it is checked, and is up to date. The harness is
+// InstalledPage.homebrew.test.tsx's.
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -80,7 +81,7 @@ function snapshotWith(codexFollowsLatest: boolean): Snapshot {
     instances: [claude, codex],
     artifacts: [
       row(claude, "claude", "Claude Code", { auto_updates: true }),
-      row(codex, "codex", "Codex", { auto_updates: codexFollowsLatest, uninstall_blocked: "NoSafeMethod" }),
+      row(codex, "codex", "Codex", { auto_updates: codexFollowsLatest }),
     ],
     updates: [],
     refreshed_at: 1789700000,
@@ -131,14 +132,15 @@ async function openDetails(name: string): Promise<HTMLElement> {
 }
 
 describe("InstalledPage, Codex's own install", () => {
-  it("says what Codex is, and that it is only listed here", async () => {
+  it("says what Codex is, and offers Uninstall rather than saying it is only listed (U8)", async () => {
     page();
     const tool = await rowOf("Codex");
     expect(within(tool).getByText("OpenAI's AI coding assistant")).toBeInTheDocument();
-    // The row's one word: what stands in the way of its Uninstall -- not
-    // "uninstall by hand", which would promise a way nothing here gives.
-    expect(within(tool).getByText("Listed only")).toBeInTheDocument();
+    expect(within(tool).queryByText("Listed only")).toBeNull();
+    expect(within(tool).queryByText("Manual uninstall")).toBeNull();
     expect(within(tool).queryByText("Up to date")).toBeNull();
+    const pane = await openDetails("Codex");
+    expect(within(pane).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
   });
 
   it("says in the inspector that Codex updates itself, never that it is up to date", async () => {
@@ -152,10 +154,6 @@ describe("InstalledPage, Codex's own install", () => {
       await screen.findByText(
         "Codex was installed by its own script as the latest release, not a pinned one, so it can install new versions itself. Its updates aren't checked or installed here.",
       ),
-    ).toBeInTheDocument();
-    fireEvent.click(within(status).getByRole("button", { name: "Details: Listed only" }));
-    expect(
-      await screen.findByText("This copy of Codex was installed by its own script. It's only listed here and can't be uninstalled here."),
     ).toBeInTheDocument();
   });
 
@@ -191,22 +189,45 @@ describe("InstalledPage, Codex's own install", () => {
     serve({ ...base, instances: [...base.instances, npm], artifacts: [base.artifacts[0], own, npmCodex] });
     page();
     const tool = await rowOf("Codex");
-    // The twin outranks 「只列出」 on the row; the details say both.
     expect(within(tool).getByText("Installed twice")).toBeInTheDocument();
-    expect(within(tool).queryByText("Listed only")).toBeNull();
     const pane = await openDetails("Codex");
     expect(pane.querySelector("[data-twin-advice]")?.textContent).toBe(
       "Typing codex in Terminal runs this copy; Terminal doesn't use the one from npm, version 0.155.1.",
     );
     const status = within(pane).getByText("Status").nextElementSibling as HTMLElement;
     expect([...status.querySelectorAll("[data-status-word]")].map((word) => word.textContent)).toEqual([
-      "Listed only",
       "Updates itself",
     ]);
     // npm's copy, which Terminal does not run: what it is, and that it may go.
     const npmPane = await openDetails("@openai/codex");
     expect([...npmPane.querySelectorAll("[data-twin-advice]")].map((line) => line.textContent)).toEqual([
       "Typing codex in Terminal runs the copy from Codex's own installer, version 0.159.3, so Terminal doesn't use this one.",
+      "If you don't need it, you can uninstall this copy.",
+    ]);
+  });
+
+  it("says Codex's own copy may go when Terminal runs npm's, now that it can be uninstalled here (U8)", async () => {
+    // The 「装了两份」 advice for the copy Terminal does not use ends on
+    // 「不需要的话，可以卸载这一份。」 only where that copy can be
+    // uninstalled here; Codex's own copy could not be until U8.
+    const npm: ManagerInstance = { ...standalone("npm:/opt/homebrew", "/opt/homebrew/bin/npm", "/opt/homebrew", "11.0.0"), adapter_id: "npm" };
+    const npmKey = { instance_id: npm.id, kind: "Package" as const, name: "@openai/codex" };
+    const npmCodex: InstalledArtifact = {
+      ...row(npm, "@openai/codex", "@openai/codex", {}),
+      key: npmKey,
+      version: "0.155.1",
+      facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: "Runs" }] },
+    };
+    const base = snapshotWith(true);
+    const own = {
+      ...base.artifacts[1],
+      facts: { ...NO_FACTS, family: "codex", commands: [{ name: "codex", state: { ShadowedBy: { by: npmKey } } }] },
+    };
+    serve({ ...base, instances: [...base.instances, npm], artifacts: [base.artifacts[0], own, npmCodex] });
+    page();
+    const pane = await openDetails("Codex");
+    expect([...pane.querySelectorAll("[data-twin-advice]")].map((line) => line.textContent)).toEqual([
+      "Typing codex in Terminal runs the copy from npm, version 0.155.1, so Terminal doesn't use this one.",
       "If you don't need it, you can uninstall this copy.",
     ]);
   });

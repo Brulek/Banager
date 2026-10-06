@@ -153,7 +153,9 @@ Paths are under a generic home folder, `/Users/you`.
   Antigravity CLI (a newer version it can only install itself), Grok
   Build (an update, a notice that it is not on the PATH, and
   「终端里找不到」 on its Installed row) and Codex,
-  installed by its own script and listed only, beside npm's @openai/codex.
+  installed by its own script beside npm's @openai/codex; its Uninstall
+  previews the two links in `~/.local/bin` and `~/.codex/packages/standalone`
+  going to the Trash, and `~/.codex` and `~/.zprofile` staying.
 - **Other Programs page**: six programs no source accounts for -- two plain
   files, two links an installer with administrator rights put there (one
   into an app), a broken link to an app that was deleted, and a link into
@@ -275,8 +277,8 @@ Paths are under a generic home folder, `/Users/you`.
   npm's copy, that it can be uninstalled. On the Updates page npm's copy
   says 「终端用另一份」; its uninstall preview says Codex's own copy stays
   and `codex` still works, and ~/.codex's size leaves out
-  `packages/standalone` (its ⓘ says so). Codex's own install says
-  「只列出」 in its 状态; it would on its row too, without the twin.
+  `packages/standalone` (its ⓘ says so). Codex's own install can be
+  uninstalled too: its files go to the Trash.
 - `?state=preview`: the first check's list says once, in a line over it,
   「检查完成后才能卸载」 with an ⓘ; each Uninstall is off with that as its
   tooltip, and no row repeats it.
