@@ -235,9 +235,10 @@ CI 时再升，升了没法在本地验证）；~~8pt 网格（约 51 处，需�
 并给出 `<该 brew 的绝对路径> unpin <名字>`（cask 为 `--cask`；路径取自该实例的 `exe_path`，
 以代码样式显示）；pipx 的行写 `<该 pipx 的绝对路径> unpin <名字>`，说明句里的来源名按实例给（Homebrew / pipx）。
 自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Banager 不代为解除固定。
-pipx 被固定的例子是改过的录制（`adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt`，只插了 ` [pinned]`，
-README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一样，与设计文档「只收真机录制」的字面冲突，
-放哪儿仍待作者拍板。
+pipx 被固定的例子是改过的录制（原在 `adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt`，只插了 ` [pinned]`，
+README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一样，与设计文档「只收真机录制」的字面冲突。
+—— **已于 2026-10-06 按作者决定 R7 移走**：两份都在 `adapters/fixtures-derived/`（`brew/7.0.6/outdated-pinned.json`、
+`pipx/1.17.3/list-outdated-pinned.txt`），各带 README；`fixtures_layout_test.rs` 核对每份都有 README 和同版本的录制。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
 - ~~**pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
@@ -451,7 +452,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 ## 测试数据
 
-- ~~`parse.rs` 的 `pinned` 分支无覆盖~~ —— **已于 2026-09-24 在分支 feat/per-package-actionability 解决**：`pinned` 现在被读成 `UpdateCandidate.blocked = Some(Pinned)`，有内联 JSON 单元测试，也有 `adapters/fixtures/brew/7.0.6/outdated-pinned.json`（由真实录制改了四个 pin 字段而来，README 写明，`brew_fixtures.rs` 有测试核对只差这四个值）。
+- ~~`parse.rs` 的 `pinned` 分支无覆盖~~ —— **已于 2026-09-24 在分支 feat/per-package-actionability 解决**：`pinned` 现在被读成 `UpdateCandidate.blocked = Some(Pinned)`，有内联 JSON 单元测试，也有 `adapters/fixtures/brew/7.0.6/outdated-pinned.json`（由真实录制改了四个 pin 字段而来，README 写明，`brew_fixtures.rs` 有测试核对只差这四个值；2026-10-06 按 R7 移到 `adapters/fixtures-derived/brew/7.0.6/`）。
 - ~~`adapters/fixtures/brew/7.0.3/uses-jq.txt` 为空；下次为新 brew 版本重录 fixtures 时，选一个有已装依赖者的 formula（如 `openssl@3`）录 `uses-<formula>.txt`，不得伪造。~~
   —— **已于 2026-09-22 解决**（`63aa31c`）：真机录了有依赖者的 `adapters/fixtures/brew/7.0.3/uses-pcre2.txt`（4 行），
   `crates/banager-core/tests/brew_fixtures.rs:188-203` 读它；`uses-jq.txt` 照旧是空的，作为「没有依赖者」的录制保留。

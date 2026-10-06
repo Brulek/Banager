@@ -914,7 +914,10 @@ mod tests {
     }
 
     const RECORDED_OUTDATED: &str = "../../adapters/fixtures/pipx/1.17.3/list-outdated.txt";
-    const PINNED_OUTDATED: &str = "../../adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt";
+    // Made by editing the recording above, so not among the recordings: see
+    // adapters/fixtures-derived/pipx/1.17.3/README.md.
+    const PINNED_OUTDATED: &str =
+        "../../adapters/fixtures-derived/pipx/1.17.3/list-outdated-pinned.txt";
 
     fn read_fixture(path: &str) -> String {
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"))

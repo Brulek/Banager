@@ -3,7 +3,8 @@
 //! error, garbage -- may panic, hang or yield an absurd value.
 //!
 //! Each parser is fed its recorded fixtures (read-only, from
-//! `adapters/fixtures/`) truncated at many offsets, with random byte
+//! `adapters/fixtures/`, and the samples made from them in
+//! `adapters/fixtures-derived/`) truncated at many offsets, with random byte
 //! flips, with lines shuffled and duplicated, with invalid UTF-8 (decoded
 //! lossily, as the runner decodes a tool's output), with CRLF line ends,
 //! with numbers out of range, unexpected types and unknown keys in its
@@ -72,9 +73,14 @@ const LOCALIZED_ERRORS: [&str; 6] = [
     "npm ERR! code ECONNRESET\nnpm ERR! errno ECONNRESET\n",
 ];
 
-/// One recorded fixture, read-only.
+/// One fixture, read-only: a recording, under `adapters/fixtures/`, or,
+/// named `derived/<id>/<version>/<file>`, a sample made by editing one,
+/// under `adapters/fixtures-derived/`.
 fn fixture(path: &str) -> String {
-    let full = format!("../../adapters/fixtures/{path}");
+    let full = match path.strip_prefix("derived/") {
+        Some(sample) => format!("../../adapters/fixtures-derived/{sample}"),
+        None => format!("../../adapters/fixtures/{path}"),
+    };
     std::fs::read_to_string(&full).unwrap_or_else(|e| panic!("read {full}: {e}"))
 }
 
@@ -594,7 +600,7 @@ fn brew_parsers_survive_any_input() {
         &[
             "brew/7.0.3/outdated.json",
             "brew/7.0.6/outdated.json",
-            "brew/7.0.6/outdated-pinned.json",
+            "derived/brew/7.0.6/outdated-pinned.json",
         ],
     );
     problems.extend(run(
@@ -781,7 +787,7 @@ fn pipx_parsers_survive_any_input() {
         32,
         &[
             "pipx/1.17.3/list-outdated.txt",
-            "pipx/1.17.3/list-outdated-pinned.txt",
+            "derived/pipx/1.17.3/list-outdated-pinned.txt",
         ],
     );
     problems.extend(run(

@@ -217,13 +217,21 @@ fn test_parse_version_reads_the_recorded_version() {
 }
 
 // Recorded later, against Homebrew 7.0.6. See that directory's README:
-// `outdated.json` there is verbatim, `outdated-pinned.json` is the same
+// `outdated.json` there is verbatim. `outdated-pinned.json` is the same
 // recording with two entries' pin fields edited, because nothing on the
-// recording Mac was pinned and pinning one would have changed its Homebrew.
+// recording Mac was pinned and pinning one would have changed its Homebrew;
+// so it is not among the recordings, but in `adapters/fixtures-derived/`
+// (its README says what was edited).
 const FIXTURE_DIR_7_0_6: &str = "../../adapters/fixtures/brew/7.0.6";
+const DERIVED_DIR_7_0_6: &str = "../../adapters/fixtures-derived/brew/7.0.6";
 
 fn read_fixture_7_0_6(name: &str) -> String {
     let path = format!("{}/{}", FIXTURE_DIR_7_0_6, name);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path, e))
+}
+
+fn read_derived_7_0_6(name: &str) -> String {
+    let path = format!("{}/{}", DERIVED_DIR_7_0_6, name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path, e))
 }
 
@@ -236,7 +244,7 @@ fn outdated_pinned_fixture_differs_from_the_recording_only_in_the_pin_fields() {
     let recorded: serde_json::Value =
         serde_json::from_str(&read_fixture_7_0_6("outdated.json")).expect("recorded json");
     let mut edited: serde_json::Value =
-        serde_json::from_str(&read_fixture_7_0_6("outdated-pinned.json")).expect("edited json");
+        serde_json::from_str(&read_derived_7_0_6("outdated-pinned.json")).expect("edited json");
 
     let mut restored = 0;
     for partition in ["formulae", "casks"] {
@@ -270,7 +278,7 @@ fn test_parse_outdated_7_0_6_recording_blocks_nothing() {
 /// Homebrew would refuse `brew upgrade` of exactly these two.
 #[test]
 fn test_parse_outdated_marks_exactly_the_pinned_entries() {
-    let json = read_fixture_7_0_6("outdated-pinned.json");
+    let json = read_derived_7_0_6("outdated-pinned.json");
     let result = parse_outdated(&json, "brew:/opt/homebrew").expect("parse");
     let blocked: Vec<_> = result
         .iter()

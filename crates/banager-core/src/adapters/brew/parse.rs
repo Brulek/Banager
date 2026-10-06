@@ -765,8 +765,9 @@ mod tests {
     // `pinned` is the one per-package refusal `brew outdated --json=v2`
     // reports, on formula and cask entries alike (Homebrew 7.0.6:
     // `cmd/outdated.rb:196-200`, `cask/cask.rb:472-478`). The recorded
-    // fixture for it is `adapters/fixtures/brew/7.0.6/outdated-pinned.json`
-    // (edited, see its README); these cover the branches directly.
+    // fixture for it is `adapters/fixtures-derived/brew/7.0.6/outdated-pinned.json`
+    // (edited from a recording, see its README); these cover the branches
+    // directly.
 
     #[test]
     fn parse_outdated_marks_a_pinned_formula_and_a_pinned_cask_as_blocked() {
