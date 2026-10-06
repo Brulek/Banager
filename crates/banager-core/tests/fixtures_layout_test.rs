@@ -56,16 +56,22 @@ fn test_every_registered_adapter_has_a_documented_fixture_directory() {
     }
 }
 
-/// The samples made by editing a recording -- for a case that could not be
+/// The samples made rather than recorded -- edited from a recording, or
+/// built from a catalogue Homebrew downloaded, for a case that could not be
 /// recorded without changing the recording Mac's own tools, such as a
 /// pinned package -- live apart from the recordings, under
-/// `adapters/fixtures-derived/<id>/<version>/`, so that `adapters/fixtures/`
-/// holds recordings only (the author's decision R7, 2026-10-06). Each such
-/// folder is for a registered adapter, has a README.md saying exactly what
-/// was edited, and is made from a recording of the same version, which
-/// stays under `adapters/fixtures/<id>/<version>/`; and no sample there
-/// has the name of a recording beside it, so the two cannot be mistaken
-/// for each other.
+/// `adapters/fixtures-derived/<id>/<version>/`, so that none sits among the
+/// recordings in `adapters/fixtures/` (the author's decision R7,
+/// 2026-10-06). Each such folder is for a registered adapter, has a
+/// README.md that names every sample in it and says how it was made, and
+/// sits beside a recording of the same version, which stays under
+/// `adapters/fixtures/<id>/<version>/`; and no sample there has the path
+/// of a recording beside it, so the two cannot be mistaken for each other.
+///
+/// What this test cannot see is whether a file under `adapters/fixtures/`
+/// was edited; each folder's README says so where it was (four
+/// `layout.txt` listings have the account name or the home folder's path
+/// masked).
 #[test]
 fn test_every_derived_fixture_has_a_readme_and_the_recording_it_was_made_from() {
     let sink = Arc::new(VecSink::new());
@@ -118,18 +124,49 @@ fn test_every_derived_fixture_has_a_readme_and_the_recording_it_was_made_from() 
                 dir.display(),
                 recording.display()
             );
-            for sample in std::fs::read_dir(&dir)
-                .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| entry.file_name() != "README.md")
+            let readme = std::fs::read_to_string(dir.join("README.md"))
+                .unwrap_or_else(|e| panic!("read {}/README.md: {e}", dir.display()));
+            let samples = files_under(&dir);
+            assert!(!samples.is_empty(), "{} holds no sample", dir.display());
+            for sample in samples
+                .iter()
+                .filter(|s| s.as_path() != Path::new("README.md"))
             {
                 assert!(
-                    !recording.join(sample.file_name()).exists(),
-                    "{} has the name of a recording in {}",
-                    sample.path().display(),
+                    !recording.join(sample).exists(),
+                    "{} has the path of a recording in {}",
+                    dir.join(sample).display(),
                     recording.display()
+                );
+                let file_name = sample.file_name().unwrap().to_string_lossy();
+                assert!(
+                    readme.contains(&format!("`{file_name}`")),
+                    "{}/README.md does not name {file_name}",
+                    dir.display()
                 );
             }
         }
     }
+}
+
+/// Every file under `dir`, at any depth, as a path relative to it.
+fn files_under(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let mut pending = vec![std::path::PathBuf::new()];
+    while let Some(relative) = pending.pop() {
+        let here = dir.join(&relative);
+        for entry in std::fs::read_dir(&here)
+            .unwrap_or_else(|e| panic!("read {}: {e}", here.display()))
+            .filter_map(|entry| entry.ok())
+        {
+            let path = relative.join(entry.file_name());
+            if entry.path().is_dir() {
+                pending.push(path);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
 }

@@ -67,7 +67,7 @@ banager/
 ├── src/                        React 前端
 ├── adapters/meta/*.toml        适配器元数据（id、名称、平台、主页、i18n、fixture 采集版本），编译时 include_str! 进 core
 ├── adapters/fixtures/<id>/     真机录制的命令输出 + 期望解析结果
-├── adapters/fixtures-derived/<id>/  录不到的情形：在同版本真机录制上改几处得来的样本，README 写明改了什么（2026-10-06 R7）
+├── adapters/fixtures-derived/<id>/  录不到的情形：在同版本真机录制上改几处、或按 Homebrew 下载的 cask 目录构造的样本，README 写明怎么来的（2026-10-06 R7）
 ├── catalog/                    精选清单 JSON + i18n
 └── .github/workflows/          ci.yml、release.yml、canary.yml（Windows/Linux 每周编译健康检查）
 ```
@@ -106,7 +106,7 @@ trait Adapter {
 - 启动时用 `fix-path-env-rs` 恢复登录 shell 的 PATH（本机验证：Finder 启动的进程 PATH 为空默认值）。
 - 每个命令有超时（探测 30 s、查更新 120 s、安装/升级 30 min）；stdout/stderr 独立并发读取；处理 `\r` 进度行；输出按 UTF-8 解码、失败时 lossy。
 - 子进程用 `process_group(0)` 启动，取消时向进程组发信号；取消后一律 `reconcile`。
-- 每个适配器目录带 fixtures：**只收真机录制**（作者 Mac、CI macOS runner），文件名含来源版本；禁止 AI 生成 fixture。录不到的情形（例如录制机上没有被固定的包，固定一个又会改动用户的工具）可以在同版本的真机录制上改几处，放 `adapters/fixtures-derived/<id>/<版本>/`，不放 `adapters/fixtures/`；README 写明改了哪几个值、为什么，并有测试核对与录制只差这几处（2026-10-06 作者决定 R7）。
+- 每个适配器目录带 fixtures：**只收真机录制**（作者 Mac、CI macOS runner），文件名含来源版本；禁止 AI 生成 fixture。录不到的情形（例如录制机上没有被固定的包，固定一个又会改动用户的工具）可以在同版本的真机录制上改几处，或（仅 Homebrew 的 cask 收据）按录制机上 Homebrew 下载的 cask 目录构造，放 `adapters/fixtures-derived/<id>/<版本>/`，不放 `adapters/fixtures/`；README 写明怎么来的，改过的还要写明改了哪几个值、为什么，并有测试核对与录制只差这几处（2026-10-06 作者决定 R7）。`adapters/fixtures/` 里唯一录制后改过的地方是四份 `layout.txt`（claude、rustup、grok、agy）：为不让账户名进仓库，账户名或主目录路径被换成 `user` / `~`，各自 README 写明。
 - 元数据 TOML 记录 `schema_version`、已验证的来源版本范围；检测到超出范围时界面标"未验证版本"。
 
 ### 4.2 各来源落地（macOS v1，命令均已核实或标注待验证）

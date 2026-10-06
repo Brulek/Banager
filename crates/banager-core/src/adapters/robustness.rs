@@ -3,7 +3,7 @@
 //! error, garbage -- may panic, hang or yield an absurd value.
 //!
 //! Each parser is fed its recorded fixtures (read-only, from
-//! `adapters/fixtures/`, and the samples made from them in
+//! `adapters/fixtures/`, and the samples made, not recorded, in
 //! `adapters/fixtures-derived/`) truncated at many offsets, with random byte
 //! flips, with lines shuffled and duplicated, with invalid UTF-8 (decoded
 //! lossily, as the runner decodes a tool's output), with CRLF line ends,
@@ -74,7 +74,7 @@ const LOCALIZED_ERRORS: [&str; 6] = [
 ];
 
 /// One fixture, read-only: a recording, under `adapters/fixtures/`, or,
-/// named `derived/<id>/<version>/<file>`, a sample made by editing one,
+/// named `derived/<id>/<version>/<file>`, a sample made, not recorded,
 /// under `adapters/fixtures-derived/`.
 fn fixture(path: &str) -> String {
     let full = match path.strip_prefix("derived/") {
@@ -636,18 +636,22 @@ fn brew_parsers_survive_any_input() {
 #[test]
 fn cask_receipts_survive_any_record() {
     use crate::adapters::brew::cask_receipt::{classify, Recorded};
-    let names = [
-        "claudebar",
-        "libreoffice",
-        "onyx",
+    // Three recorded on this Mac, and four built or edited (under
+    // `adapters/fixtures-derived/`).
+    let recorded = ["claudebar", "libreoffice", "onyx"];
+    let made = [
         "uninstall-flight-block",
         "unknown-stanza",
         "wireshark-chmodbpf",
         "adobe-creative-cloud",
     ];
-    let paths: Vec<String> = names
+    let paths: Vec<String> = recorded
         .iter()
         .map(|n| format!("brew/7.0.6/receipts/{n}.json"))
+        .chain(
+            made.iter()
+                .map(|n| format!("derived/brew/7.0.6/receipts/{n}.json")),
+        )
         .collect();
     let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let inputs = inputs_for(6, &paths);

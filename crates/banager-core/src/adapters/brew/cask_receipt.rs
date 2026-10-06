@@ -842,11 +842,12 @@ mod tests {
     use crate::model::CaskStep::*;
 
     /// The fixtures' home folder: the constructed receipts put `/$HOME` there
-    /// (`adapters/fixtures/brew/7.0.6/README.md`).
+    /// (`adapters/fixtures-derived/brew/7.0.6/README.md`).
     const HOME: &str = "/Users/someone";
 
+    /// A receipt recorded on this Mac:
     /// `adapters/fixtures/brew/7.0.6/receipts/<name>.json`.
-    macro_rules! receipt {
+    macro_rules! recorded {
         ($name:literal) => {
             (
                 $name,
@@ -859,13 +860,29 @@ mod tests {
         };
     }
 
+    /// A receipt built from the catalogue or edited from a recording, not
+    /// recorded: `adapters/fixtures-derived/brew/7.0.6/receipts/<name>.json`
+    /// (that folder's README says how each was made).
+    macro_rules! receipt {
+        ($name:literal) => {
+            (
+                $name,
+                include_str!(concat!(
+                    "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/",
+                    $name,
+                    ".json"
+                )),
+            )
+        };
+    }
+
     /// The five receipts recorded on this Mac, unedited.
     const RECORDED: [(&str, &str); 5] = [
-        receipt!("claudebar"),
-        receipt!("codexbar"),
-        receipt!("libreoffice"),
-        receipt!("onyx"),
-        receipt!("package-manager-manager"),
+        recorded!("claudebar"),
+        recorded!("codexbar"),
+        recorded!("libreoffice"),
+        recorded!("onyx"),
+        recorded!("package-manager-manager"),
     ];
 
     /// A receipt's record, read the way `read_recorded` reads one beside a
@@ -916,6 +933,54 @@ mod tests {
     /// With nothing Homebrew put down or linked: a `pkg` or installer cask.
     fn only_steps(kinds: &[(CaskStep, &[&str])]) -> Classified {
         Classified::OnlySteps(listed(kinds))
+    }
+
+    #[test]
+    fn the_receipts_among_the_recordings_are_the_five_recorded_on_this_mac() {
+        // `adapters/fixtures/` holds recordings; a receipt built from the
+        // catalogue or edited from a recording lives in
+        // `adapters/fixtures-derived/brew/7.0.6/receipts/` (the author's
+        // decision R7). cargo runs tests from `crates/banager-core`.
+        let dir = Path::new("../../adapters/fixtures/brew/7.0.6/receipts");
+        let mut found: Vec<String> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        found.sort();
+        let mut recorded: Vec<String> = RECORDED
+            .iter()
+            .map(|(name, _)| format!("{name}.json"))
+            .collect();
+        recorded.sort();
+        assert_eq!(found, recorded);
+    }
+
+    #[test]
+    fn the_two_edited_receipts_differ_from_the_recording_only_where_this_readme_says() {
+        // `adapters/fixtures-derived/brew/7.0.6/README.md`: both are copies
+        // of the recorded `package-manager-manager.json` with only
+        // `uninstall_artifacts` changed, and, for the first,
+        // `uninstall_flight_blocks` and `source`. Each named field does
+        // differ, and with the recording's values put back the copy is the
+        // recording.
+        let (_, recording) = recorded!("package-manager-manager");
+        let recording: Value = serde_json::from_str(recording).expect("the recording parses");
+        let edited: [((&str, &str), &[&str]); 2] = [
+            (
+                receipt!("uninstall-flight-block"),
+                &["uninstall_artifacts", "uninstall_flight_blocks", "source"],
+            ),
+            (receipt!("unknown-stanza"), &["uninstall_artifacts"]),
+        ];
+        for ((name, json), fields) in edited {
+            let mut sample: Value = serde_json::from_str(json).expect("the sample parses");
+            for field in fields {
+                assert_ne!(sample[field], recording[field], "{name}: {field}");
+                sample[field] = recording[field].clone();
+            }
+            assert_eq!(sample, recording, "{name}");
+        }
     }
 
     #[test]
@@ -1913,7 +1978,7 @@ mod tests {
 
     #[test]
     fn nothing_is_said_of_what_homebrew_would_take_from_elsewhere() {
-        let (_, json) = receipt!("onyx");
+        let (_, json) = recorded!("onyx");
         // The receipt lists nothing: Homebrew would load the cask's current
         // definition instead.
         let prefix = Prefix::new("empty-receipt");
@@ -1954,7 +2019,7 @@ mod tests {
     #[test]
     fn a_caskroom_folder_that_is_a_link_is_not_read() {
         let prefix = Prefix::new("linked");
-        let (_, json) = receipt!("onyx");
+        let (_, json) = recorded!("onyx");
         prefix.receipt("real", json);
         prefix.caskfile("real", "5.0.2", "20260811074234.796", "onyx.json", "{}");
         std::os::unix::fs::symlink(

@@ -239,6 +239,8 @@ pipx 被固定的例子是改过的录制（原在 `adapters/fixtures/pipx/1.17.
 README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一样，与设计文档「只收真机录制」的字面冲突。
 —— **已于 2026-10-06 按作者决定 R7 移走**：两份都在 `adapters/fixtures-derived/`（`brew/7.0.6/outdated-pinned.json`、
 `pipx/1.17.3/list-outdated-pinned.txt`），各带 README；`fixtures_layout_test.rs` 核对每份都有 README 和同版本的录制。
+brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录构造、2 份由 `package-manager-manager.json` 改出）也一并移到
+`adapters/fixtures-derived/brew/7.0.6/receipts/`；`adapters/fixtures/brew/7.0.6/receipts/` 只剩本机录的 5 份，`cask_receipt.rs` 有测试核对。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
 - ~~**pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定

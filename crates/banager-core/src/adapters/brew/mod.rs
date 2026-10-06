@@ -4046,21 +4046,25 @@ mod plan_execute_tests {
         adapter.plan(inst, &req).await.expect("plan")
     }
 
-    /// The home folder the fixtures' constructed receipts were built for.
+    /// The home folder the constructed receipts were built for
+    /// (`adapters/fixtures-derived/brew/7.0.6/README.md`).
     fn someones_home(name: &str) -> Option<OsString> {
         (name == "HOME").then(|| OsString::from("/Users/someone"))
     }
 
     const CLAUDEBAR_RECEIPT: &str =
         include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/claudebar.json");
-    const WORD_RECEIPT: &str =
-        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/microsoft-word.json");
-    const TWELITE_RECEIPT: &str =
-        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/twelite-stage.json");
-    const PYCHARM_EDU_RECEIPT: &str =
-        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/pycharm-edu.json");
+    const WORD_RECEIPT: &str = include_str!(
+        "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/microsoft-word.json"
+    );
+    const TWELITE_RECEIPT: &str = include_str!(
+        "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/twelite-stage.json"
+    );
+    const PYCHARM_EDU_RECEIPT: &str = include_str!(
+        "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/pycharm-edu.json"
+    );
     const PLAYDATE_RECEIPT: &str = include_str!(
-        "../../../../../adapters/fixtures/brew/7.0.6/receipts/playdate-simulator.json"
+        "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/playdate-simulator.json"
     );
 
     /// Charles, where Homebrew puts it: `/Applications/Charles.app`, whose
@@ -4081,8 +4085,9 @@ mod plan_execute_tests {
         // `Charles.app`. Found where Homebrew puts apps, with that bundle
         // id in its Info.plist, the line names it as Finder does --
         // 「还会退出正在运行的 Charles」 -- where it said the bundle id.
-        let charles =
-            include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/charles.json");
+        let charles = include_str!(
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/charles.json"
+        );
         let prefix = CaskroomPrefix::new(
             "quit-names",
             &[("charles", charles), ("microsoft-word", WORD_RECEIPT)],
@@ -4609,7 +4614,7 @@ mod plan_execute_tests {
         // not say Homebrew deletes what it installed: only its one step,
         // `launchctl`, removes anything.
         const LITTLE_SNITCH_RECEIPT: &str = include_str!(
-            "../../../../../adapters/fixtures/brew/7.0.6/receipts/little-snitch@4.json"
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/little-snitch@4.json"
         );
         let prefix = CaskroomPrefix::new(
             "steps-only",
@@ -4673,13 +4678,14 @@ mod plan_execute_tests {
         // what it deletes -- a vendor's uninstaller may take settings and
         // data -- so the sentence says that, not that the rest stays, and
         // the step's own line still names what runs.
-        const GPT4ALL_RECEIPT: &str =
-            include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/gpt4all.json");
+        const GPT4ALL_RECEIPT: &str = include_str!(
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/gpt4all.json"
+        );
         const CHMODBPF_RECEIPT: &str = include_str!(
-            "../../../../../adapters/fixtures/brew/7.0.6/receipts/wireshark-chmodbpf.json"
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/wireshark-chmodbpf.json"
         );
         const FLIGHT_BLOCK_RECEIPT: &str = include_str!(
-            "../../../../../adapters/fixtures/brew/7.0.6/receipts/uninstall-flight-block.json"
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/uninstall-flight-block.json"
         );
         let prefix = CaskroomPrefix::new(
             "unseen",
@@ -4780,7 +4786,7 @@ mod plan_execute_tests {
         // Every way Banager ends up with no list to go by, or an empty one,
         // gets the one sentence that claims no deletion (`HomebrewCask`).
         const FLIGHT_BLOCK_RECEIPT: &str = include_str!(
-            "../../../../../adapters/fixtures/brew/7.0.6/receipts/uninstall-flight-block.json"
+            "../../../../../adapters/fixtures-derived/brew/7.0.6/receipts/uninstall-flight-block.json"
         );
         let prefix = CaskroomPrefix::new(
             "empty-or-missing",
