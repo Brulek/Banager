@@ -1794,8 +1794,12 @@ pub enum Fault {
     /// showed: a version is installed that the preview did not name -- an
     /// update in Terminal since then, say, which `--force` would delete
     /// too -- or the formula is pinned now, or its Cellar or pin record
-    /// can no longer be looked at. Nothing was started; a new preview
-    /// names what is there now. Built by `BrewAdapter::execute`
+    /// can no longer be looked at. Or the plain uninstall of one version
+    /// (no `--force`) was not started because a second version, with no
+    /// pin, is installed now: Homebrew would delete the one `opt/` points
+    /// to, which may not be the one the preview showed. Nothing was
+    /// started; a new preview names what is there now. Built by
+    /// `BrewAdapter::execute`
     /// (`BrewAdapter::require_kegs_as_previewed`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     FormulaChanged { name: String },

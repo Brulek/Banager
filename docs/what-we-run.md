@@ -907,7 +907,15 @@ came back on the Installed page, still installed. So:
   which keeps a `brew` command on the same formula, run in Terminal at
   that moment, from overlapping it -- Banager's own operations on one
   Homebrew never overlap. With one version installed, or a pin, the
-  uninstall is the plain `brew uninstall --formula {name}`.
+  uninstall is the plain `brew uninstall --formula {name}`, which deletes
+  the one version `opt/` points to (`resolve_default_keg`,
+  `cli/named_args.rb:567-578`) and which its preview says removes "this
+  version". So the Cellar is read again before it runs too: a second
+  version installed since the preview, with no pin -- which may be the
+  one deleted, while the one the preview showed stays -- runs nothing and
+  ends the same way (`Fault::FormulaChanged`). A pin since then is left
+  to Homebrew's own refusal, and a Cellar that cannot be read then runs
+  as before.
 
 Both read, during the upgrade and the uninstall preview of a formula,
 again right before an uninstall with `--force` runs, and right before

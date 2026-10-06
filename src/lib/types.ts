@@ -33,7 +33,8 @@ export type Fault =
   | { PathChanged: { path: string } }
   // Review F3 (r6): the uninstall of every version of a Homebrew formula
   // found a version the preview did not name, a pin, or a Cellar it could
-  // not read again, and ran nothing.
+  // not read again, and ran nothing -- or the plain uninstall of its one
+  // version found a second one installed since, and ran nothing.
   | { FormulaChanged: { name: string } }
   | "Internal";
 // `Failed.summary` is another program's own words, never Banager's: the

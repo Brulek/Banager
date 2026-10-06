@@ -956,44 +956,71 @@ impl BrewAdapter {
         Ok(())
     }
 
-    /// For the uninstall of every version of a formula (U9's `--force`),
-    /// its Cellar and pin record looked at again right before it runs.
-    /// `--force` deletes every version Homebrew finds then
-    /// (`uninstall.rb:31-43`), and skips Homebrew's own refusal of a pinned
-    /// formula (`uninstall.rb:45-53`), which the preview left standing by
-    /// passing it only where there was no pin. So it runs only where both
-    /// are still as the preview showed them: no pin, and no version the
-    /// preview did not name (`Warning::HomebrewRemovesEveryVersion`) -- one
-    /// an update in Terminal put in since then, with its cleanup off, say
-    /// (review F3, r6). Fewer versions than it named is no reason to stop:
-    /// nothing it did not name is deleted. A formula pinned since then, one
-    /// with a version more, or whose Cellar or pin record cannot be looked
-    /// at now is `Fault::FormulaChanged`, and nothing runs. Any other plan
-    /// passes.
+    /// Whether an uninstall of a formula whose Cellar reads `kegs` passes
+    /// `--force` (U9): more than one version installed, and no pin.
+    fn removes_every_version(kegs: &Kegs) -> bool {
+        kegs.versions.len() > 1 && !kegs.pinned
+    }
+
+    /// For a formula's uninstall, its Cellar and pin record looked at
+    /// again right before it runs.
+    ///
+    /// The uninstall of every version (U9's `--force`): `--force` deletes
+    /// every version Homebrew finds then (`uninstall.rb:31-43`), and skips
+    /// Homebrew's own refusal of a pinned formula (`uninstall.rb:45-53`),
+    /// which the preview left standing by passing it only where there was
+    /// no pin. So it runs only where both are still as the preview showed
+    /// them: no pin, and no version the preview did not name
+    /// (`Warning::HomebrewRemovesEveryVersion`) -- one an update in
+    /// Terminal put in since then, with its cleanup off, say (review F3,
+    /// r6). Fewer versions than it named is no reason to stop: nothing it
+    /// did not name is deleted. A formula pinned since then, one with a
+    /// version more, or whose Cellar or pin record cannot be looked at now
+    /// is `Fault::FormulaChanged`, and nothing runs.
+    ///
+    /// The plain uninstall, which the preview says removes "this version":
+    /// Homebrew deletes the one version `opt/` points to
+    /// (`resolve_default_keg`, `cli/named_args.rb:567-578`). The preview
+    /// passed no `--force` because it found one version, a pin, or a
+    /// Cellar it could not read. More than one version now and no pin --
+    /// what would make the preview pass `--force` now -- is one put in
+    /// since, which may be the one deleted while the one the person saw
+    /// stays (review of v1-brew's fixes, r6): `Fault::FormulaChanged`, and
+    /// nothing runs. A pin now leaves Homebrew's own refusal standing, and
+    /// a Cellar that cannot be read now says nothing either way: both run,
+    /// as before.
+    ///
+    /// Any other plan passes.
     fn require_kegs_as_previewed(&self, plan: &Plan) -> Result<(), Fault> {
         let PlanAction::Command { program, args, .. } = &plan.action else {
             return Ok(());
         };
         if plan.request.kind != OpKind::Uninstall
             || plan.request.artifact_kind != ArtifactKind::Formula
-            || !args.iter().any(|arg| arg == "--force")
         {
             return Ok(());
+        }
+        let changed = || Fault::FormulaChanged {
+            name: plan.request.name.clone(),
+        };
+        let now = (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name);
+        if !args.iter().any(|arg| arg == "--force") {
+            return match now {
+                Some(now) if Self::removes_every_version(&now) => Err(changed()),
+                _ => Ok(()),
+            };
         }
         let named = plan.warnings.iter().find_map(|warning| match warning {
             Warning::HomebrewRemovesEveryVersion { versions } => Some(versions),
             _ => None,
         });
-        let now = (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name);
         match (named, now) {
             (Some(named), Some(now))
                 if !now.pinned && now.versions.iter().all(|version| named.contains(version)) =>
             {
                 Ok(())
             }
-            _ => Err(Fault::FormulaChanged {
-                name: plan.request.name.clone(),
-            }),
+            _ => Err(changed()),
         }
     }
 
@@ -2040,7 +2067,7 @@ impl BrewAdapter {
                 let every_version = (req.artifact_kind == ArtifactKind::Formula)
                     .then(|| (self.kegs_fn)(&inst.prefix, &req.name))
                     .flatten()
-                    .filter(|kegs| kegs.versions.len() > 1 && !kegs.pinned)
+                    .filter(Self::removes_every_version)
                     .map(|kegs| kegs.versions);
                 let mut args = vec!["uninstall".to_string(), flag.to_string()];
                 if let Some(versions) = every_version {
@@ -7819,6 +7846,88 @@ mod plan_execute_tests {
                     .expect("execute");
                 assert_eq!(outcome, Outcome::Succeeded);
                 assert_eq!(runner.calls().len(), planned + ran);
+                assert_eq!(runner.calls().last().expect("a call"), &uninstall);
+            }
+        }
+
+        #[tokio::test]
+        async fn an_uninstall_of_one_version_runs_nothing_when_another_version_is_installed_since_the_preview(
+        ) {
+            // Review of v1-brew's fixes (r6): the preview found one version,
+            // 1.25.0, and passes no `--force` -- it says it removes "this
+            // version". An update in Terminal with its cleanup off then
+            // installs and links 1.26.0 while the confirmation is open. A
+            // plain `brew uninstall` deletes the version opt/ points to
+            // (`resolve_default_keg`, `cli/named_args.rb:567-578`): 1.26.0,
+            // which the person never saw, leaving the 1.25.0 they meant. So
+            // the Cellar is read again right before the command, and a
+            // second version with no pin -- what would now make the preview
+            // pass `--force` -- stops it: nothing runs.
+            let uninstall = vec!["/opt/homebrew/bin/brew", "uninstall", "--formula", "wget"];
+            let runner = Arc::new(MockRunner::new());
+            nothing_uses(&runner, "wget");
+            runner.respond(uninstall.clone(), ok("", "", 0));
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            let one: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string()],
+                    pinned: false,
+                })
+            };
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(one)
+                .plan(
+                    &test_instance(),
+                    &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            assert_eq!(command_args(&plan), ["uninstall", "--formula", "wget"]);
+            let planned = runner.calls().len();
+            let one_more: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    pinned: false,
+                })
+            };
+            let outcome = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(one_more)
+                .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                .await
+                .expect("execute");
+            assert_eq!(
+                outcome,
+                Outcome::BanagerFailed(Fault::FormulaChanged {
+                    name: "wget".to_string()
+                })
+            );
+            assert_eq!(runner.calls().len(), planned, "{:?}", runner.calls());
+            // Each of these runs as before: the same one version; another
+            // one in its place, which is the whole of the formula the
+            // person asked to remove; two, pinned, which Homebrew refuses
+            // by itself without `--force` (`uninstall.rb:45-53`); and a
+            // Cellar that cannot be read now, as the preview may not have.
+            let replaced: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.26.0".to_string()],
+                    pinned: false,
+                })
+            };
+            let pinned: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    pinned: true,
+                })
+            };
+            let unread: Read = |_, _| None;
+            for (ran, read) in [one, replaced, pinned, unread].into_iter().enumerate() {
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(read)
+                    .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded);
+                assert_eq!(runner.calls().len(), planned + ran + 1);
                 assert_eq!(runner.calls().last().expect("a call"), &uninstall);
             }
         }
