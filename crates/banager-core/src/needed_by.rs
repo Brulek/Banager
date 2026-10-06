@@ -72,7 +72,7 @@
 //! (`session/needed_by.rs`).
 
 use crate::model::{ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, Warning};
-use crate::protected::{self, Protected, Resolution};
+use crate::protected::{self, look, Protected, Resolution};
 use crate::runner::HostEnv;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -375,18 +375,32 @@ impl Doubt {
     }
 }
 
-/// Whether `name` is a Python's, as pip's candidates are named
-/// (`PipAdapter::CANDIDATE_INTERPRETERS`): `python`, `python3`,
-/// `python3.N`.
+/// Whether `name` is a Python interpreter's: `python`, `pypy` or `graalpy`
+/// with nothing after it but a version -- digits and dots, and a `t` for
+/// a free-threaded build. pip's candidates (`python`, `python3`,
+/// `python3.N`: `PipAdapter::CANDIDATE_INTERPRETERS`), Homebrew's
+/// `python-freethreading` (`python3.14t`, and no `python3`), its
+/// `pypy3.11` (`pypy3.11`, `pypy3`). Not `python3.13-config`, nor
+/// `python-argcomplete-check-easy-install-script`.
 fn is_python(name: &str) -> bool {
-    name == "python"
-        || name.strip_prefix("python3").is_some_and(|rest| {
-            rest.is_empty()
-                || rest.strip_prefix('.').is_some_and(|minor| {
-                    !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
-                })
+    ["python", "pypy", "graalpy"].iter().any(|implementation| {
+        name.strip_prefix(implementation).is_some_and(|version| {
+            let version = version.strip_suffix('t').unwrap_or(version);
+            !version.starts_with('.') && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
         })
+    })
 }
+
+/// Casks known to keep a runtime a source runs on in their own folders
+/// with no link to it in `<prefix>/bin`, so that no look there finds it:
+/// Conda's distributions, whose installer puts a Python in
+/// `Caskroom/<token>/base` (`-p #{caskroom_path}/base`; only `conda` is
+/// linked); and Ollama's app, `ollama` in `Ollama.app/Contents/Resources`
+/// (a `binary` link Homebrew can be told to skip). Their folders are
+/// looked into as well (`Look::cask_holds`); named here in case their
+/// layout changes.
+const PYTHON_CASKS: [&str; 4] = ["anaconda", "mambaforge", "miniconda", "miniforge"];
+const PROGRAM_CASKS: [(&str, &str); 2] = [("ollama", "ollama"), ("ollama-app", "ollama")];
 
 /// Whether a package of short name `short` is named for the program
 /// `name`: Homebrew's `uv` for `uv`, `node@22` for `node` -- a formula
@@ -463,17 +477,20 @@ impl Look {
     }
 
     /// Whether `package` could be what one of the doubts met leads to
-    /// (`Doubt`), so that the look did not finish: whether it is named for
-    /// what a doubt would have to end at (`named_for`: `uv`, `node@22`,
-    /// a `python@3.N` for a Python), or has, of its own, a program of that
-    /// name -- a formula in `<prefix>/opt/<name>/bin` (where `opt/<name>`
-    /// leads into its keg, linked or keg-only), a cask in `<prefix>/bin`
-    /// (where its `binary` links go) -- leading into its own folders
-    /// (`roots`). A Python is `python3`, or `python3.N` for
-    /// `python@3.N`, whose keg has no `python3` unless it is Homebrew's
-    /// default Python. One look a name, and none without a doubt or for a
-    /// package named for one; one that is not known itself counts as a
-    /// yes.
+    /// (`Doubt`), so that the look did not finish. By its name: a package
+    /// named for what a doubt would have to end at (`named_for`: `uv`,
+    /// `node@22`, a `python@3.N` for a Python), or a cask known to hold it
+    /// (`PYTHON_CASKS`, `PROGRAM_CASKS`). Or by what it has of its own: a
+    /// program of that name -- a formula in `<prefix>/opt/<name>/bin`
+    /// (where `opt/<name>` leads into its keg, linked or keg-only), a cask
+    /// in `<prefix>/bin` (where its `binary` links go) -- leading into its
+    /// own folders (`roots`), a Python being `python3`, or `python3.N` for
+    /// `python@3.N`; then, for a Python, any Python interpreter
+    /// (`is_python`) in a formula's `opt/<name>/bin` -- a PyPy's
+    /// `pypy3.11`, a free-threaded `python3.14t` -- and for a cask what
+    /// it keeps with no link in `<prefix>/bin` (`cask_holds`). One look a
+    /// name or folder, and none without a doubt or for a package named
+    /// for one; one that is not known itself counts as a yes.
     fn could_be(
         &mut self,
         package: &InstalledArtifact,
@@ -487,24 +504,22 @@ impl Look {
         let Some(short) = short_name(&package.key.name) else {
             return true;
         };
-        let mut names: Vec<String> = Vec::new();
-        let mut named = false;
+        let cask = package.key.kind == ArtifactKind::Cask;
+        let mut programs: Vec<String> = Vec::new();
+        let mut python = false;
         for doubt in doubts {
             match doubt {
                 Doubt::Anything => return true,
-                Doubt::Program(name) => {
-                    named |= named_for(short, &name);
-                    names.push(name);
-                }
-                Doubt::Python => {
-                    named |= named_for(short, "python");
-                    names.push("python3".to_string());
-                    if let Some(version) = short.strip_prefix("python@") {
-                        names.push(format!("python{version}"));
-                    }
-                }
+                Doubt::Program(name) => programs.push(name),
+                Doubt::Python => python = true,
             }
         }
+        programs.sort();
+        programs.dedup();
+        let named = programs.iter().any(|name| {
+            named_for(short, name) || (cask && PROGRAM_CASKS.contains(&(short, name.as_str())))
+        }) || (python
+            && (named_for(short, "python") || (cask && PYTHON_CASKS.contains(&short))));
         if named {
             return true;
         }
@@ -512,12 +527,106 @@ impl Look {
             ArtifactKind::Formula => brew.prefix.join("opt").join(short).join("bin"),
             _ => brew.prefix.join("bin"),
         };
+        let mut names = programs.clone();
+        if python {
+            names.push("python3".to_string());
+            if let Some(version) = short.strip_prefix("python@") {
+                names.push(format!("python{version}"));
+            }
+        }
         names.sort();
         names.dedup();
-        names
+        if names
             .iter()
             .filter(|name| short_name(name) == Some(name.as_str()))
             .any(|name| self.leads_into(&bin.join(name), roots) != Some(false))
+        {
+            return true;
+        }
+        if cask {
+            self.cask_holds(roots, &programs, python)
+        } else {
+            python && self.holds(&bin, roots, &[], true)
+        }
+    }
+
+    /// Whether a cask keeps, in its own folders and with no link in
+    /// `<prefix>/bin`, a program of one of `programs` or, for `python`, a
+    /// Python (`is_python`): by name in its app's `Contents/MacOS` or
+    /// `Contents/Resources` -- Ollama's `ollama` -- for a program (an
+    /// app's own Python, such as the one LibreOffice runs its macros with,
+    /// is no Python a tool's environment is made with, and is not
+    /// counted); and in the `bin` of each folder in its
+    /// `Caskroom/<token>`, a version's or the `base` a Conda installer
+    /// fills. Its `Caskroom/<token>` not known: yes.
+    fn cask_holds(&mut self, roots: &[PathBuf], programs: &[String], python: bool) -> bool {
+        if let Some(app) = roots.get(1).filter(|_| !programs.is_empty()) {
+            for inside in ["Contents/MacOS", "Contents/Resources"] {
+                if self.holds(&app.join(inside), roots, programs, false) {
+                    return true;
+                }
+            }
+        }
+        let Some(caskroom) = roots.first() else {
+            return false;
+        };
+        let folders = match self.names_in(caskroom, roots) {
+            Ok(folders) => folders,
+            Err(known) => return known,
+        };
+        folders
+            .iter()
+            .filter(|name| !name.as_encoded_bytes().starts_with(b"."))
+            .any(|name| self.holds(&caskroom.join(name).join("bin"), roots, programs, python))
+    }
+
+    /// Whether the folder `path` leads to, inside `roots`, has an entry
+    /// named one of `programs`, or, for `python`, a Python interpreter
+    /// (`is_python`): its names, read once (`names_in`).
+    fn holds(&mut self, path: &Path, roots: &[PathBuf], programs: &[String], python: bool) -> bool {
+        match self.names_in(path, roots) {
+            Ok(names) => names.iter().filter_map(|name| name.to_str()).any(|name| {
+                (python && is_python(name)) || programs.iter().any(|program| program == name)
+            }),
+            Err(known) => known,
+        }
+    }
+
+    /// The names in the folder `path` leads to, when it is inside `roots`
+    /// (`protected::look::list`: one step at a time, never into a
+    /// protected place, `.` and `..` left out), one look; or what to make
+    /// of not having them: `Err(false)` for a folder that is not there,
+    /// not a folder, or outside `roots`; `Err(true)` -- it could hold
+    /// anything -- for one not known: protected, not searchable, replaced
+    /// while it was looked at, or the budget spent.
+    fn names_in(
+        &mut self,
+        path: &Path,
+        roots: &[PathBuf],
+    ) -> Result<Vec<std::ffi::OsString>, bool> {
+        if !self.one_more() {
+            return Err(true);
+        }
+        let listing = match look::list(path, &self.protected) {
+            Ok(listing) => listing,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Err(false)
+            }
+            Err(_) => return Err(true),
+        };
+        let real = protected::without_data_volume(listing.path());
+        if !roots
+            .iter()
+            .any(|root| protected::starts_with_folded(&real, &protected::without_data_volume(root)))
+        {
+            return Err(false);
+        }
+        listing.names().map_err(|_| true)
     }
 
     /// The first `name` on `env`'s `PATH`, as `env` would find it: what
