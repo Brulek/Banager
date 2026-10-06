@@ -2017,6 +2017,258 @@ mod tests {
         }
     }
 
+    /// A pipx whose program is Homebrew's, and a tool of it whose
+    /// environment is `environment`.
+    fn pipx_with_tool(root: &Root, environment: &str) -> (ManagerInstance, Vec<InstalledArtifact>) {
+        root.program("opt/homebrew/Cellar/pipx/1.17.3/libexec/bin/pipx");
+        let _ = std::fs::remove_file(root.path("opt/homebrew/bin/pipx"));
+        root.link(
+            "opt/homebrew/bin/pipx",
+            "../Cellar/pipx/1.17.3/libexec/bin/pipx",
+        );
+        let pipx = instance(
+            "pipx",
+            "pipx",
+            root.path("opt/homebrew/bin/pipx"),
+            root.path("opt/homebrew/bin"),
+        );
+        let tools = vec![with_path(
+            row("pipx", ArtifactKind::Tool, "tool"),
+            root.path(environment),
+        )];
+        (pipx, tools)
+    }
+
+    #[test]
+    fn test_a_pypy_or_a_free_threaded_python_is_a_python_too() {
+        // Astra's m2 review, finding 2: Homebrew's `pypy3.11` keeps its
+        // interpreter in `libexec/pypybin` and links `bin/pypy3.11` and
+        // `bin/pypy3`; `python-freethreading` has `bin/python3.14t` and no
+        // `python3`. Neither is named `python@…`. A tool's environment
+        // made with either, when it cannot be followed, leaves their looks
+        // unfinished; `python-tk@3.13` (no interpreter) and a formula whose
+        // programs only begin with `python-` finish, as jq and a font do.
+        let root = Root::new("pypy");
+        let others = bystanders(&root);
+        root.program("opt/homebrew/Cellar/pypy3.11/7.3.20/libexec/pypybin/pypy3.11");
+        root.link(
+            "opt/homebrew/Cellar/pypy3.11/7.3.20/bin/pypy3.11",
+            "../libexec/pypybin/pypy3.11",
+        );
+        root.link("opt/homebrew/Cellar/pypy3.11/7.3.20/bin/pypy3", "pypy3.11");
+        root.link("opt/homebrew/opt/pypy3.11", "../Cellar/pypy3.11/7.3.20");
+        root.program(
+            "opt/homebrew/Cellar/python-freethreading/3.14.0/Frameworks/PythonT.framework/Versions/3.14t/bin/python3.14t",
+        );
+        root.link(
+            "opt/homebrew/Cellar/python-freethreading/3.14.0/bin/python3.14t",
+            "../Frameworks/PythonT.framework/Versions/3.14t/bin/python3.14t",
+        );
+        root.link(
+            "opt/homebrew/opt/python-freethreading",
+            "../Cellar/python-freethreading/3.14.0",
+        );
+        root.dir("opt/homebrew/Cellar/python-tk@3.13/3.13.15/lib/python3.13");
+        root.link(
+            "opt/homebrew/opt/python-tk@3.13",
+            "../Cellar/python-tk@3.13/3.13.15",
+        );
+        for program in [
+            "python-argcomplete-check-easy-install-script",
+            "python3.13-config",
+            "register-python-argcomplete",
+        ] {
+            root.program(&format!(
+                "opt/homebrew/Cellar/python-argcomplete/3.6.2/bin/{program}"
+            ));
+        }
+        root.link(
+            "opt/homebrew/opt/python-argcomplete",
+            "../Cellar/python-argcomplete/3.6.2",
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        // Followed into the PyPy: pipx's tool needs it.
+        let (pipx, tools) = pipx_with_tool(&root, "home/.local/pipx/venvs/tool");
+        root.link(
+            "home/.local/pipx/venvs/tool/bin/python",
+            root.path("opt/homebrew/opt/pypy3.11/bin/pypy3.11")
+                .to_str()
+                .unwrap(),
+        );
+        let instances = vec![brew(&root), pipx];
+        let found = needed_by(
+            &formula("pypy3.11"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(found.complete);
+        // Kept in `~/Documents`: not known.
+        let (_, tools) = pipx_with_tool(&root, "home/Documents/venvs/tool");
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        for python in ["pypy3.11", "python-freethreading"] {
+            assert_eq!(look(&formula(python)), unfinished(), "{python}");
+        }
+        for other in ["python-tk@3.13", "python-argcomplete"] {
+            assert_eq!(look(&formula(other)), finished(), "{other}");
+        }
+        for other in &others {
+            assert_eq!(look(other), finished(), "{other:?}");
+        }
+        // The names a Python's interpreter has, and some it does not.
+        for name in [
+            "python",
+            "python3",
+            "python3.13",
+            "python3.14t",
+            "pypy",
+            "pypy3",
+            "pypy3.11",
+            "graalpy",
+        ] {
+            assert!(is_python(name), "{name}");
+        }
+        for name in [
+            "python3.13-config",
+            "python-argcomplete-check-easy-install-script",
+            "pythonw3.x",
+            "ipython",
+            "python.3",
+            "jq",
+        ] {
+            assert!(!is_python(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn test_a_cask_that_keeps_its_runtime_out_of_prefix_bin_could_be_it() {
+        // Astra's m2 review, finding 1. Miniconda's installer puts its
+        // Python in `Caskroom/miniconda/base`, and only `conda` is linked
+        // into `<prefix>/bin`; Ollama's app keeps `ollama` in
+        // `Contents/Resources`, its `binary` link skippable. Unfollowed,
+        // what leads into them is not known, by their names and by what
+        // their folders hold (the same layout under a name not on the
+        // list); a font, and an app whose only Python is its own
+        // (LibreOffice's), finish.
+        let root = Root::new("runtime-casks");
+        let others = bystanders(&root);
+        for token in ["miniconda", "some-python-dist"] {
+            root.program(&format!(
+                "opt/homebrew/Caskroom/{token}/base/bin/python3.13"
+            ));
+            root.link(
+                &format!("opt/homebrew/Caskroom/{token}/base/bin/python3"),
+                "python3.13",
+            );
+            root.program(&format!(
+                "opt/homebrew/Caskroom/{token}/25.7.0/Miniconda3-py313_25.7.0-2-MacOSX-arm64.sh"
+            ));
+        }
+        root.program("opt/homebrew/Caskroom/miniconda/base/condabin/conda");
+        root.link(
+            "opt/homebrew/bin/conda",
+            "../Caskroom/miniconda/base/condabin/conda",
+        );
+        root.dir("opt/homebrew/Caskroom/anaconda/2025.06");
+        let cask = |token: &str| row(BREW, ArtifactKind::Cask, token);
+        let app = |token: &str, name: &str, inside: &[&str]| {
+            root.dir(&format!("opt/homebrew/Caskroom/{token}/1.0"));
+            for program in inside {
+                root.program(&format!("Applications/{name}.app/Contents/{program}"));
+            }
+            with_path(cask(token), root.path(&format!("Applications/{name}.app")))
+        };
+        let ollama_app = app(
+            "ollama-app",
+            "Ollama",
+            &["MacOS/Ollama", "Resources/ollama"],
+        );
+        let llm_app = app(
+            "some-llm-app",
+            "SomeLLM",
+            &["MacOS/SomeLLM", "Resources/ollama"],
+        );
+        let libreoffice = app(
+            "libreoffice",
+            "LibreOffice",
+            &["MacOS/soffice", "MacOS/python", "Resources/python"],
+        );
+        let env = root.env(&["opt/homebrew/bin"]);
+        // A pipx tool on Miniconda's Python: named while it can be
+        // followed, not known once its environment is in `~/Documents`.
+        let (pipx, tools) = pipx_with_tool(&root, "home/.local/pipx/venvs/tool");
+        root.link(
+            "home/.local/pipx/venvs/tool/bin/python",
+            root.path("opt/homebrew/Caskroom/miniconda/base/bin/python3")
+                .to_str()
+                .unwrap(),
+        );
+        let instances = vec![brew(&root), pipx];
+        let found = needed_by(
+            &cask("miniconda"),
+            &instances[0],
+            &instances,
+            &tools,
+            &env,
+            BUDGET,
+        );
+        assert_eq!(
+            needed(&found.warnings),
+            vec![("pipx".to_string(), false, 1)]
+        );
+        assert!(found.complete);
+        let (_, tools) = pipx_with_tool(&root, "home/Documents/venvs/tool");
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &tools, &env, BUDGET)
+        };
+        for token in ["miniconda", "some-python-dist", "anaconda"] {
+            assert_eq!(look(&cask(token)), unfinished(), "{token}");
+        }
+        for package in [&libreoffice, &ollama_app, &others[0], &others[1]] {
+            assert_eq!(look(package), finished(), "{package:?}");
+        }
+        // Ollama run through `~/bin/ollama`, a link of the user's own into
+        // the app, with no `<prefix>/bin/ollama`: named while it can be
+        // followed, not known once it is rerouted through `~/Documents`.
+        const OLLAMA: &str = "ollama:http://127.0.0.1:11434";
+        let models = vec![row(OLLAMA, ArtifactKind::Model, "qwen3:8b")];
+        let resources = root.path("Applications/Ollama.app/Contents/Resources/ollama");
+        root.link("home/bin/ollama", resources.to_str().unwrap());
+        let ollama = instance(
+            "ollama",
+            OLLAMA,
+            root.path("home/bin/ollama"),
+            root.path("home/.ollama"),
+        );
+        let instances = vec![brew(&root), ollama];
+        let look = |package: &InstalledArtifact| {
+            needed_by(package, &instances[0], &instances, &models, &env, BUDGET)
+        };
+        let found = look(&ollama_app);
+        assert_eq!(needed(&found.warnings), vec![(OLLAMA.to_string(), true, 1)]);
+        assert!(found.complete);
+        std::fs::remove_file(root.path("home/bin/ollama")).unwrap();
+        root.link("home/Documents/ollama", resources.to_str().unwrap());
+        root.link(
+            "home/bin/ollama",
+            root.path("home/Documents/ollama").to_str().unwrap(),
+        );
+        for package in [&ollama_app, &llm_app, &cask("ollama")] {
+            assert_eq!(look(package), unfinished(), "{package:?}");
+        }
+        for package in [&libreoffice, &cask("miniconda"), &others[0], &others[1]] {
+            assert_eq!(look(package), finished(), "{package:?}");
+        }
+    }
+
     /// A recorded fixture, read as it is, with the author's paths moved
     /// under `root`: `/Users/brulek` to its home folder, `/opt/homebrew`
     /// to its prefix. Nothing is edited but where things are.
