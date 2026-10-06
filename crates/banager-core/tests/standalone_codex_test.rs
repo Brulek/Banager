@@ -297,7 +297,11 @@ fn moved(home: &Home) -> Vec<PathBuf> {
 async fn test_the_uninstall_preview_lists_exactly_what_moves_and_names_codex_as_what_stays() {
     let home = Home::new("preview");
     install(&home, RELEASE, true);
-    std::fs::write(home.at(".zprofile"), "export PATH=\"$HOME/.local/bin:$PATH\"\n").unwrap();
+    std::fs::write(
+        home.at(".zprofile"),
+        "export PATH=\"$HOME/.local/bin:$PATH\"\n",
+    )
+    .unwrap();
     let mocks = Mocks::new();
     let adapter = mocks.adapter();
     let inst = adapter.detect(&home.env(Vec::new())).await.remove(0);

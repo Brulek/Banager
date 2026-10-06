@@ -1637,8 +1637,8 @@ mod tests {
     }
 
     #[test]
-    fn test_codex_uninstall_moves_its_two_links_and_its_package_folder_and_keeps_the_rest_of_codex(
-    ) {
+    fn test_codex_uninstall_moves_its_two_links_and_its_package_folder_and_keeps_the_rest_of_codex()
+    {
         // The author's decision U8 (b), 2026-10-06: the two links the
         // install script makes in `~/.local/bin` and the package folder
         // they lead into go to the Trash; everything else in `~/.codex` --
