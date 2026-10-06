@@ -1110,15 +1110,19 @@ mod tests {
         // The sidebar's words: `nav.*` in the page's two locales. Settings…
         // is the sidebar's Settings with the ellipsis every Mac app's
         // Settings… has.
-        for (words, locale) in [
-            (&ENGLISH, include_str!("../../src/i18n/en.json")),
+        // With each language, whether its Welcome item is the sheet's title
+        // exactly, or the title with the space a menu needs typed in.
+        for (words, locale, welcome_exact) in [
+            (&ENGLISH, include_str!("../../src/i18n/en.json"), false),
             (
                 &TRADITIONAL_CHINESE,
                 include_str!("../../src/i18n/zh-Hant.json"),
+                true,
             ),
             (
                 &SIMPLIFIED_CHINESE,
                 include_str!("../../src/i18n/zh-CN.json"),
+                false,
             ),
         ] {
             let locale: serde_json::Value = serde_json::from_str(locale).unwrap();
@@ -1157,7 +1161,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .replace("{{name}}", "Banager");
-            let expected = if std::ptr::eq(words, &TRADITIONAL_CHINESE) {
+            let expected = if welcome_exact {
                 title
             } else {
                 spaced(&title)
