@@ -33,7 +33,7 @@
 //! Both put [`MASK`] where the secret was and leave the rest of the line,
 //! a proxy's user name included, as the tool wrote it. A secret is masked
 //! wherever it appears only when it cannot be a tool's own word
-//! ([`worth_masking_anywhere`], [`looks_like_a_token`]); otherwise only
+//! (`worth_masking_anywhere`, `looks_like_a_token`); otherwise only
 //! where it stands in an address.
 use crate::runner::login_path::{LoginEnv, IMPORTED};
 use base64::Engine;
@@ -47,14 +47,14 @@ pub const MASK: &str = "****";
 
 /// A password this many characters long or longer is masked wherever it
 /// appears, unless it is letters alone or digits alone
-/// ([`worth_masking_anywhere`]); a shorter one only where it stands as a
+/// (`worth_masking_anywhere`); a shorter one only where it stands as a
 /// login, before an `@` (`:abc@`). Masking every `abc` in a build log
 /// would make the log unreadable for a secret that short.
 pub const SHORTEST_MASKED_ANYWHERE: usize = 4;
 
 /// A mirror's user name or token this many characters long or longer is
 /// masked wherever it appears when it looks like a token
-/// ([`looks_like_a_token`]); any other only where it stands in the
+/// (`looks_like_a_token`); any other only where it stands in the
 /// address (`//name@`, `//name:`). An access token is far longer
 /// (GitHub's are 40 characters and up); a person's name, which may be the
 /// Mac account's and so in every path a tool prints, is not.
@@ -131,7 +131,7 @@ impl Redactor {
     }
 
     /// Masks a password's `form` where it stands as one (`:{form}@`), and
-    /// anywhere at all when that is worth it ([`worth_masking_anywhere`]).
+    /// anywhere at all when that is worth it (`worth_masking_anywhere`).
     fn mask_password(&mut self, form: String) {
         self.mask_in_login(format!(":{form}@"), format!(":{MASK}@"));
         if worth_masking_anywhere(&form) {
@@ -141,7 +141,7 @@ impl Redactor {
 
     /// Masks a name's `form` where it stands in an address
     /// (`//{form}{then}`), and anywhere at all when it looks like a token
-    /// ([`looks_like_a_token`]).
+    /// (`looks_like_a_token`).
     fn mask_name(&mut self, form: String, then: char) {
         self.mask_in_login(format!("//{form}{then}"), format!("//{MASK}{then}"));
         if looks_like_a_token(&form) {
