@@ -13,7 +13,8 @@ pub enum Stream {
 /// line the package manager printed.
 ///
 /// It travels as a key plus arguments, never as text, because the log
-/// drawer is the one place in the app a tool's own words are shown as-is:
+/// drawer is the one place in the app a tool's own words are shown as-is
+/// (but for a proxy's or mirror's login, masked, `runner::redact`):
 /// if Banager's remarks went through [`OperationEvent::Log`] they would be
 /// English sentences sitting among the tool's lines, the only English a
 /// Chinese user met anywhere else in a fully translated UI. The front end

@@ -60,7 +60,12 @@ pub struct CommandOutput {
     /// The command's exit code; `None` if it was ended by a signal or
     /// stopped by the runner.
     pub exit_code: Option<i32>,
+    /// As written for an [`OutputUse::Parsed`] command; for an
+    /// [`OutputUse::Transcript`] one, with a proxy's or mirror's login
+    /// masked, as in `stderr` (`redact`).
     pub stdout: String,
+    /// With a proxy's or mirror's login masked (`redact`): it is a
+    /// message for a person on every path.
     pub stderr: String,
     /// The runner stopped the command because `spec.timeout` passed.
     ///
@@ -77,7 +82,9 @@ pub struct CommandOutput {
 /// One thing a runner hands its [`LineCallback`] while a command runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RunLine {
-    /// A line the command itself wrote, verbatim.
+    /// A line the command itself wrote, as it wrote it but for a proxy's
+    /// or mirror's login, masked as `****` (`redact`, F2 of the
+    /// decisions-round review).
     Output(Stream, String),
     /// A remark of the runner's own about the run -- never the command's
     /// words, and never text: the front end localises it. See [`LogNote`].

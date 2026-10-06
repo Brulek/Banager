@@ -1683,7 +1683,9 @@ pub enum Outcome {
     /// operation bar both show it).
     NeedsAttention(Attention),
     /// Another program failed the operation, and `summary` is that
-    /// program's own words and nothing of Banager's: the front end shows it
+    /// program's own words and nothing of Banager's -- but for a proxy's or
+    /// mirror's login, which the runner masks as `****` before anything
+    /// sees it (`runner::redact`) -- and the front end shows it
     /// as-is but for surrounding whitespace, quoted inside a translated
     /// sentence, or says the program gave no reason when it is blank
     /// (`outcomeKey` and `outcomeArgs` in `src/lib/format.ts`).

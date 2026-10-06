@@ -8,12 +8,14 @@
 //! macOS only (see Global Constraints in the phase 0-1 plan), so this is not
 //! a limitation in practice.
 
+use super::redact::{self, Redactor};
 use super::{
     CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunLine, RunnerError,
 };
 use crate::events::{LogNote, Stream};
 use crate::protected::{look, Protected};
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
@@ -65,6 +67,15 @@ struct StreamBuffer {
     /// The run fails with [`RunnerError::OutputTooLarge`]; nothing this
     /// buffer holds is ever returned afterwards.
     overflowed: bool,
+    /// Whether the line not yet handed on lost bytes to
+    /// [`StreamBuffer::cap_by_eliding`]: its front, or a middle that
+    /// joined at `head_len`. The words on either side of that join may be
+    /// the halves of a login, which `emit_line` masks too.
+    spliced: bool,
+    /// What masks a proxy's or mirror's login in what a person reads
+    /// (`runner::redact`, F2 of the decisions-round review): every line
+    /// handed on, and the transcript of a stream that is for a person.
+    redactor: Arc<Redactor>,
 }
 
 /// What a buffer does when it will not fit: shorten, or refuse.
@@ -92,7 +103,16 @@ impl StreamBuffer {
             elided: 0,
             policy,
             overflowed: false,
+            spliced: false,
+            redactor: Arc::new(Redactor::default()),
         }
+    }
+
+    /// The same buffer, masking the logins `redactor` knows as well as
+    /// the `scheme://user:password@` every buffer masks.
+    fn redacting(mut self, redactor: Arc<Redactor>) -> StreamBuffer {
+        self.redactor = redactor;
+        self
     }
 }
 
@@ -168,7 +188,7 @@ impl StreamBuffer {
                 // Windows way. A lost blank line is the cheaper of the
                 // two, and it is deliberate, not an off-by-one.
                 if i > self.line_start {
-                    emit(&self.bytes[self.line_start..i], stream, on_line);
+                    self.emit_line(i, stream, on_line);
                 }
                 self.line_start = i + 1;
             }
@@ -219,6 +239,12 @@ impl StreamBuffer {
         // never be reversed.
         let cut_end = self.bytes.len() - TAIL_CAP;
         let dropped = cut_end - self.head_len;
+        // The line not yet handed on loses bytes to this cut when it began
+        // before the cut's end: its front, if it began in the bytes
+        // dropped, or its middle, if it began in the head.
+        if self.line_start < cut_end {
+            self.spliced = true;
+        }
         self.bytes.drain(self.head_len..cut_end);
         self.elided += dropped;
         // Keep the cursor on the same unterminated tail. A line longer
@@ -247,7 +273,7 @@ impl StreamBuffer {
     /// which on a failure is the one that matters.
     fn flush_partial_line(&mut self, stream: Stream, on_line: &Option<LineCallback>) {
         if self.line_start < self.bytes.len() {
-            emit(&self.bytes[self.line_start..], stream, on_line);
+            self.emit_line(self.bytes.len(), stream, on_line);
             self.line_start = self.bytes.len();
         }
     }
@@ -314,14 +340,37 @@ impl StreamBuffer {
     /// is valid UTF-8, i.e. all of it that is not a tool writing raw bytes
     /// — reuse the same allocation instead of copying the whole transcript
     /// a second time at the moment the operation returns.
+    ///
+    /// A stream for a person ([`CapPolicy::ElideMiddle`]: stderr, and a
+    /// [`OutputUse::Transcript`] stdout) has a proxy's or mirror's login
+    /// masked (`runner::redact`), as each of its lines had on the way out.
+    /// A parser's stdout ([`CapPolicy::Refuse`]) is returned as written:
+    /// it is data, never shown, and it is how the login shell's settings
+    /// are read in the first place (`login_path::read`), which a mask
+    /// would corrupt.
     fn into_transcript(self) -> String {
         if self.elided == 0 {
-            return match String::from_utf8(self.bytes) {
+            let text = match String::from_utf8(self.bytes) {
                 Ok(text) => text,
                 Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
             };
+            if self.policy == CapPolicy::Refuse {
+                return text;
+            }
+            let masked = match self.redactor.redact(&text) {
+                std::borrow::Cow::Owned(masked) => Some(masked),
+                std::borrow::Cow::Borrowed(_) => None,
+            };
+            return masked.unwrap_or(text);
         }
-        let mut text = String::from_utf8_lossy(&self.bytes[..self.head_len]).into_owned();
+        // Only an eliding stream gets here, which is for a person. The cut
+        // may run through a login, so the word on each side of it is
+        // masked as well (`redact::before_cut`, `redact::after_cut`).
+        let head = String::from_utf8_lossy(&self.bytes[..self.head_len]);
+        let mut text = self
+            .redactor
+            .redact(&redact::before_cut(&head))
+            .into_owned();
         // A bare ellipsis, not a sentence. This text is the tool's output,
         // and its last five stderr lines are shown to the user verbatim as
         // a failed run's summary -- which reaches back past this marker
@@ -331,17 +380,42 @@ impl StreamBuffer {
         // `[…]` is the one omission mark every reader of either locale
         // already knows, and it needs no translating.
         text.push_str(ELISION_MARK);
-        text.push_str(&String::from_utf8_lossy(&self.bytes[self.head_len..]));
+        let tail = String::from_utf8_lossy(&self.bytes[self.head_len..]);
+        text.push_str(&self.redactor.redact(&redact::after_cut(&tail)));
         text
     }
-}
 
-fn emit(raw: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
-    if let Some(cb) = on_line {
-        cb(RunLine::Output(
-            stream,
-            String::from_utf8_lossy(raw).to_string(),
-        ));
+    /// Hands `on_line` the line from `line_start` to `end` (exclusive),
+    /// with a proxy's or mirror's login masked (`runner::redact`). Every
+    /// line goes through here, a parser's stdout included: a line is
+    /// always for a person. A line is handed on only once it has ended, so
+    /// a login two reads split arrives whole and is masked whole.
+    ///
+    /// A line that lost bytes to [`StreamBuffer::cap_by_eliding`]
+    /// (`spliced`) joins at `head_len`, and has the word on each side of
+    /// the join masked as well: either may be part of a login cut in two.
+    fn emit_line(&mut self, end: usize, stream: Stream, on_line: &Option<LineCallback>) {
+        let spliced = std::mem::take(&mut self.spliced);
+        let Some(cb) = on_line else {
+            return;
+        };
+        let raw = &self.bytes[self.line_start..end];
+        let line = if spliced {
+            let join = self.head_len.saturating_sub(self.line_start).min(raw.len());
+            let before = String::from_utf8_lossy(&raw[..join]);
+            let after = String::from_utf8_lossy(&raw[join..]);
+            let mut line = self
+                .redactor
+                .redact(&redact::before_cut(&before))
+                .into_owned();
+            line.push_str(&self.redactor.redact(&redact::after_cut(&after)));
+            line
+        } else {
+            self.redactor
+                .redact(&String::from_utf8_lossy(raw))
+                .into_owned()
+        };
+        cb(RunLine::Output(stream, line));
     }
 }
 
@@ -673,10 +747,16 @@ impl CommandRunner for RealRunner {
         // (`login_path::accept`): kept out of the process environment, so
         // handed to each command here. A variable the spec sets itself
         // still wins, set after them.
-        if let Some(found) = super::login_path::accepted_env() {
+        let accepted = super::login_path::accepted_env();
+        if let Some(found) = &accepted {
             cmd.env("PATH", &found.path);
             cmd.envs(found.imported.iter().map(|(name, value)| (name, value)));
         }
+        // Those settings can hold a login, and tools print them back
+        // whole (curl's "Unsupported proxy syntax in 'http://user:pw@…'"):
+        // what this run hands on, and the transcripts a person reads, have
+        // it masked (`runner::redact`, F2 of the decisions-round review).
+        let redactor = Arc::new(Redactor::for_commands(accepted.as_ref()));
         cmd.envs(spec.env.iter().cloned());
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);
@@ -698,8 +778,9 @@ impl CommandRunner for RealRunner {
         let mut out = StreamBuffer::new(match spec.output_use {
             OutputUse::Transcript => CapPolicy::ElideMiddle,
             OutputUse::Parsed => CapPolicy::Refuse,
-        });
-        let mut err = StreamBuffer::new(CapPolicy::ElideMiddle);
+        })
+        .redacting(redactor.clone());
+        let mut err = StreamBuffer::new(CapPolicy::ElideMiddle).redacting(redactor);
         // Separate read buffers for stdout/stderr: both branches of the
         // `tokio::select!` below hold a `.read(&mut _)` future live at the
         // same time, so a single shared buffer would need two concurrent
@@ -2373,7 +2454,20 @@ mod tests {
         buf.flush_partial_line(Stream::Stdout, &on_line);
         let seen = lines.lock().unwrap().clone();
         assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].1.len(), HEAD_CAP + TAIL_CAP);
+        // The line joins where its middle was dropped, and the word on
+        // each side of the join could be half of a login (F2), so the
+        // `CUT_WINDOW` bytes next to it on each side are masked: what is
+        // left is the rest of the head and the tail.
+        use crate::runner::redact::{CUT_WINDOW, MASK};
+        let x = |n: usize| "x".repeat(n);
+        assert_eq!(
+            seen[0].1,
+            format!(
+                "{}{MASK}{MASK}{}",
+                x(HEAD_CAP - CUT_WINDOW),
+                x(TAIL_CAP - CUT_WINDOW)
+            )
+        );
     }
 
     #[tokio::test]
@@ -2504,5 +2598,197 @@ mod tests {
         let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         buf.push(b"before\xffafter\n", Stream::Stdout, &None);
         assert_eq!(buf.into_transcript(), "before\u{fffd}after\n");
+    }
+
+    // F2 of the decisions-round review: the proxy and mirror settings every
+    // command is handed can hold a login, and tools print them back whole.
+    // What curl 8.7.1 printed on this Mac for one (`runner::redact`).
+    const LOGIN_PROXY: &str = "http://review-user:review-secret@127.0.0.1:invalid";
+    const CURL_SAID: &str = "curl: (5) Unsupported proxy syntax in \
+        'http://review-user:review-secret@127.0.0.1:invalid': \
+        Port number was not a decimal number between 0 and 65535";
+    const CURL_MASKED: &str = "curl: (5) Unsupported proxy syntax in \
+        'http://review-user:****@127.0.0.1:invalid': \
+        Port number was not a decimal number between 0 and 65535";
+
+    fn knowing_the_login(policy: CapPolicy) -> StreamBuffer {
+        StreamBuffer::new(policy).redacting(Arc::new(crate::runner::redact::Redactor::for_values(
+            [LOGIN_PROXY],
+        )))
+    }
+
+    /// The lines a callback was handed, as it was handed them.
+    type Seen = Arc<Mutex<Vec<(Stream, String)>>>;
+
+    fn collected() -> (Seen, Option<LineCallback>) {
+        let lines: Seen = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: Option<LineCallback> = Some(output_lines(move |stream, line| {
+            lines_cb.lock().unwrap().push((stream, line));
+        }));
+        (lines, on_line)
+    }
+
+    #[test]
+    fn test_a_login_split_across_reads_is_masked_in_the_line_and_the_transcript() {
+        // The line is handed on only once it ends, so a login that two
+        // reads split -- at any byte -- is masked whole.
+        for split in [1, 40, 59, 60, 65, CURL_SAID.len() - 1] {
+            let (lines, on_line) = collected();
+            let mut buf = knowing_the_login(CapPolicy::ElideMiddle);
+            let said = format!("{CURL_SAID}\n");
+            buf.push(&said.as_bytes()[..split], Stream::Stderr, &on_line);
+            buf.push(&said.as_bytes()[split..], Stream::Stderr, &on_line);
+            assert_eq!(
+                *lines.lock().unwrap(),
+                vec![(Stream::Stderr, CURL_MASKED.to_string())],
+                "split at {split}"
+            );
+            assert_eq!(buf.into_transcript(), format!("{CURL_MASKED}\n"));
+        }
+        // And a last line that never ends, delivered when the stream does.
+        let (lines, on_line) = collected();
+        let mut buf = knowing_the_login(CapPolicy::ElideMiddle);
+        buf.push(&CURL_SAID.as_bytes()[..50], Stream::Stderr, &on_line);
+        buf.push(&CURL_SAID.as_bytes()[50..], Stream::Stderr, &on_line);
+        buf.flush_partial_line(Stream::Stderr, &on_line);
+        assert_eq!(
+            *lines.lock().unwrap(),
+            vec![(Stream::Stderr, CURL_MASKED.to_string())]
+        );
+    }
+
+    #[test]
+    fn test_parsed_stdout_is_handed_to_its_parser_as_written() {
+        // A parser's input is data, never shown: and it is how the login
+        // shell's settings are read in the first place
+        // (`login_path::read`), which a mask would corrupt. A line of it
+        // handed on for a person to read is masked all the same.
+        let (lines, on_line) = collected();
+        let mut buf = knowing_the_login(CapPolicy::Refuse);
+        buf.push(
+            format!("https_proxy={LOGIN_PROXY}\n").as_bytes(),
+            Stream::Stdout,
+            &on_line,
+        );
+        assert_eq!(
+            *lines.lock().unwrap(),
+            vec![(
+                Stream::Stdout,
+                "https_proxy=http://review-user:****@127.0.0.1:invalid".to_string()
+            )]
+        );
+        assert_eq!(
+            buf.into_transcript(),
+            format!("https_proxy={LOGIN_PROXY}\n")
+        );
+    }
+
+    /// `filler` words of `n` bytes, no line break.
+    fn words(n: usize) -> String {
+        "word ".repeat(n / 5 + 1)[..n].to_string()
+    }
+
+    #[test]
+    fn test_a_login_cut_by_the_head_of_a_runaway_transcript_leaves_no_part_behind() {
+        // The head keeps the first `HEAD_CAP` bytes: here they end inside
+        // the password, `…'http://review-user:rev`, and the rest of the
+        // login is in the middle that is dropped. The cut word goes too.
+        let (lines, on_line) = collected();
+        let mut buf = knowing_the_login(CapPolicy::ElideMiddle);
+        let lead = "curl: (5) Unsupported proxy syntax in '";
+        let in_password = "http://review-user:rev".len();
+        buf.push(
+            words(HEAD_CAP - lead.len() - in_password).as_bytes(),
+            Stream::Stderr,
+            &on_line,
+        );
+        buf.push(CURL_SAID.as_bytes(), Stream::Stderr, &on_line);
+        buf.push(words(2 * TAIL_CAP).as_bytes(), Stream::Stderr, &on_line);
+        buf.push(b"\n", Stream::Stderr, &on_line);
+        let seen = lines.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1);
+        let text = buf.into_transcript();
+        for said in [&seen[0].1, &text] {
+            assert!(
+                !said.contains(":rev"),
+                "{}",
+                &said[HEAD_CAP - 80..HEAD_CAP + 20]
+            );
+            assert!(said.contains(&format!("in '{}", crate::runner::redact::MASK)));
+        }
+    }
+
+    #[test]
+    fn test_a_login_cut_by_the_tail_of_a_runaway_transcript_leaves_no_part_behind() {
+        // The tail keeps the last `TAIL_CAP` bytes: here they start inside
+        // the password, `secret@127.0.0.1:invalid'…`.
+        let (lines, on_line) = collected();
+        let mut buf = knowing_the_login(CapPolicy::ElideMiddle);
+        buf.push(
+            format!("{}\n", words(HEAD_CAP)).as_bytes(),
+            Stream::Stderr,
+            &on_line,
+        );
+        buf.push(
+            format!("{}\n", words(2 * TAIL_CAP)).as_bytes(),
+            Stream::Stderr,
+            &on_line,
+        );
+        let from_secret = CURL_SAID.find("secret@").unwrap();
+        let after = CURL_SAID.len() - from_secret;
+        buf.push(CURL_SAID.as_bytes(), Stream::Stderr, &on_line);
+        buf.push(words(TAIL_CAP - after).as_bytes(), Stream::Stderr, &on_line);
+        buf.flush_partial_line(Stream::Stderr, &on_line);
+        let seen = lines.lock().unwrap().clone();
+        let last = &seen.last().unwrap().1;
+        let text = buf.into_transcript();
+        for said in [last, &text] {
+            assert!(!said.contains("secret"), "{}", &said[..said.len().min(80)]);
+        }
+        assert!(last.starts_with(&format!("{}': Port number", crate::runner::redact::MASK)));
+    }
+
+    #[tokio::test]
+    async fn test_a_tools_proxy_error_reaches_neither_the_lines_nor_the_output_unmasked() {
+        // A real child, writing curl's line in two pieces a moment apart
+        // (two reads) and pip's two lines, on stderr, which is what a
+        // failed run's summary is made of; with no setting known, the
+        // pattern alone masks them.
+        let (lines, on_line) = collected();
+        let script = "printf '%s' \"curl: (5) Unsupported proxy syntax in 'http://review-user:review-sec\" >&2; \
+             sleep 0.2; \
+             printf '%s\\n' \"ret@127.0.0.1:invalid': Port number was not a decimal number between 0 and 65535\" >&2; \
+             printf '%s\\n' 'pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://review-user:review-secret@127.0.0.1:invalid' >&2; \
+             printf '%s\\n' 'pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://review-user:review-secret@127.0.0.1:invalid' >&2; \
+             printf '%s\\n' 'Using proxy http://review-user:review-secret@127.0.0.1:7890'; \
+             exit 5";
+        let output = RealRunner::new()
+            .run(
+                CommandSpec {
+                    program: sh(),
+                    args: vec!["-c".to_string(), script.to_string()],
+                    env: vec![],
+                    cwd: None,
+                    timeout: std::time::Duration::from_secs(10),
+                    output_use: OutputUse::Transcript,
+                },
+                on_line,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, Some(5));
+        let seen = lines.lock().unwrap().clone();
+        assert_eq!(seen.len(), 4, "{seen:?}");
+        assert_eq!(seen[0], (Stream::Stderr, CURL_MASKED.to_string()));
+        for (_, line) in &seen {
+            assert!(!line.contains("review-secret"), "{line}");
+            assert!(line.contains("review-user:****@127.0.0.1"), "{line}");
+        }
+        for said in [&output.stdout, &output.stderr] {
+            assert!(!said.contains("review-secret"), "{said}");
+        }
+        assert_eq!(output.stderr.lines().next(), Some(CURL_MASKED));
     }
 }
