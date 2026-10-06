@@ -4210,7 +4210,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText, getByRole } = renderPage();
 
-    await findByText("Couldn't update Homebrew's software list");
+    await findByText("Couldn't reach Homebrew, so updates for its tools weren't fully checked");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
@@ -4229,7 +4229,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText } = renderPage();
 
-    await findByText("Homebrew is updating its software list");
+    await findByText("Homebrew is checking online for new versions");
     expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
@@ -4436,26 +4436,26 @@ describe("UpdatesPage", () => {
       // Ollama's line, with its button, though Homebrew's comes first.
       await screen.findByText("Ollama isn't running");
       expect(screen.getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
-      expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
+      expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "1 more note" }));
-      expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+      expect(screen.getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
 
       // The updates go, and the page says so under the same two lines.
       updates = [];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
       await screen.findByText("No updates in the sources checked");
-      expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+      expect(screen.getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
 
       // One line, then two again: folded.
       instances = [...snapshot.instances, stoppedOllama];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
-      await waitFor(() => expect(screen.queryByText("Homebrew is updating its software list")).toBeNull());
+      await waitFor(() => expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull());
       expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
       instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
       expect(await screen.findByRole("button", { name: "1 more note" })).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
+      expect(screen.queryByText("Homebrew is checking online for new versions")).toBeNull();
     });
 
     it("names the silent source in its notice, and every row names its own, so the notice is never read as another source's", async () => {

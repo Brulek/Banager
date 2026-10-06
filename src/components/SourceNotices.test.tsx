@@ -87,12 +87,12 @@ describe("SourceNotices, folded", () => {
     renderWithProviders(<Folded notices={[brewUpdating, claudeUntested, npmUntested]} />);
 
     // No warning among them: the first line.
-    expect(linesShown()).toEqual(["Homebrew is updating its software list"]);
+    expect(linesShown()).toEqual(["Homebrew is checking online for new versions"]);
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
     expect(screen.queryByText("npm 12.1.0 not tested")).toBeNull();
     const more = screen.getByRole("button", { name: "2 more notes" });
     // Last in that line, after its own "Details".
-    expect(screen.getByText("Homebrew is updating its software list").parentElement?.lastElementChild).toBe(more);
+    expect(screen.getByText("Homebrew is checking online for new versions").parentElement?.lastElementChild).toBe(more);
   });
 
   // walk-4 W4-3: beside the inspector at 800 the folded line read
@@ -113,7 +113,7 @@ describe("SourceNotices, folded", () => {
     expect(more.querySelector("[data-notice-symbol] svg")).not.toBeNull();
     expect(more).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(more);
-    expect(linesShown()).toEqual(["uv isn't responding", "Couldn't update Homebrew's software list", "Claude Code 2.1.290 not tested"]);
+    expect(linesShown()).toEqual(["uv isn't responding", "Couldn't reach Homebrew, so updates for its tools weren't fully checked", "Claude Code 2.1.290 not tested"]);
     expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
   });
 
@@ -141,7 +141,7 @@ describe("SourceNotices, folded", () => {
 
     // In their order: the warning shown folded goes back to its place.
     expect(linesShown()).toEqual([
-      "Homebrew is updating its software list",
+      "Homebrew is checking online for new versions",
       "uv isn't responding",
       "Claude Code 2.1.290 not tested",
     ]);
@@ -176,7 +176,7 @@ describe("SourceNotices, folded", () => {
     expect(fewer).toHaveAttribute("aria-expanded", "true");
     expect(fewer).toHaveAttribute("aria-controls", controls);
     const lines = document.getElementById(controls ?? "");
-    expect(lines).toContainElement(screen.getByText("Homebrew is updating its software list"));
+    expect(lines).toContainElement(screen.getByText("Homebrew is checking online for new versions"));
     expect(lines).toContainElement(screen.getByText("uv isn't responding"));
   });
 
@@ -268,7 +268,7 @@ describe("SourceNotices, folded", () => {
 
     // As many lines, other ones: still unfolded.
     rerender(<Folded notices={[brewUpdating, ollamaStopped]} />);
-    expect(linesShown()).toEqual(["Homebrew is updating its software list", "Ollama isn't running"]);
+    expect(linesShown()).toEqual(["Homebrew is checking online for new versions", "Ollama isn't running"]);
     expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
 
     // One more: folded.

@@ -469,9 +469,11 @@ describe("sourceNoticesFor", () => {
     // One name for every button that runs the check: the header's.
     expect(note.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
     // Why, and the next step; the button beside it says which.
-    expect(zhCN.sourceNotice.indexMayBeStale.description).toBe("此次检查使用了旧清单。请检查网络连接后重试。");
+    expect(zhCN.sourceNotice.indexMayBeStale.description).toBe(
+      "这次是按上次连上时的信息检查的。请检查网络连接，然后重新检查。",
+    );
     expect(en.sourceNotice.indexMayBeStale.description).toBe(
-      "This check used the old list. Check your internet connection, then try again.",
+      "This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again.",
     );
   });
 

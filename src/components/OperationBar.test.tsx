@@ -140,7 +140,7 @@ describe("OperationBar", () => {
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("onyx: Update · Waiting for Homebrew's software list…");
+    await findByText("onyx: Update · Waiting for Homebrew to check for new versions…");
     // Cancel must still work: the wait is still part of an active op.
     expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
@@ -151,7 +151,7 @@ describe("OperationBar", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderWithProviders(<OperationBar />);
-      await findByText("ffmpeg：更新 · 正在等待Homebrew更新软件清单…");
+      await findByText("ffmpeg：更新 · 正在等待Homebrew查找新版本…");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -246,7 +246,7 @@ describe("OperationBar", () => {
 
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
     await findByText("onyx: Update · Cancelling…");
-    expect(queryByText("onyx: Update · Waiting for Homebrew's software list…")).not.toBeInTheDocument();
+    expect(queryByText("onyx: Update · Waiting for Homebrew to check for new versions…")).not.toBeInTheDocument();
     // A cancel already on its way: the button stays, and cannot be pressed twice.
     expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
   });

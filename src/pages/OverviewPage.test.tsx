@@ -1159,7 +1159,7 @@ describe("OverviewPage", () => {
     expect(title.className).toContain("text-foreground");
     expect(title.className).not.toContain("text-danger");
     // In a person's words: Homebrew was updating its list, so try later.
-    expect(title.nextElementSibling?.textContent).toBe("Homebrew is updating its software list. Try again later.");
+    expect(title.nextElementSibling?.textContent).toBe("Homebrew is checking online for new versions. Try again later.");
     expect(title.nextElementSibling?.className).toContain("text-muted");
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("failed");
     const warning = symbolOf(container).querySelector("svg");
@@ -1238,7 +1238,7 @@ describe("OverviewPage", () => {
     const warningIcon = lines[0].querySelector("svg");
     expect(warningIcon?.getAttribute("class")).toContain("text-warning");
     expect(warningIcon?.querySelector('path[fill="currentColor"]')).not.toBeNull();
-    expect(queryByText("Homebrew is updating its software list")).toBeNull();
+    expect(queryByText("Homebrew is checking online for new versions")).toBeNull();
     // No title over the group: the status's is the page's one.
     expect(getAllByRole("heading", { level: 2 })).toHaveLength(1);
     // Ollama's own button, a regular grey one on the right, starts it.
@@ -1281,7 +1281,7 @@ describe("OverviewPage", () => {
     const triangle = more.querySelector("svg");
     expect(triangle).toHaveAttribute("width", "10");
     expect(triangle?.getAttribute("class")).not.toContain("rotate-90");
-    expect(list.textContent).not.toContain("Homebrew is updating its software list");
+    expect(list.textContent).not.toContain("Homebrew is checking online for new versions");
 
     // Pressed: the row stays where it was, after the warnings, its
     // triangle down, and the notes show under it in their sources' order,
@@ -1293,7 +1293,7 @@ describe("OverviewPage", () => {
     expect(hide).toBe(more);
     expect(hide).toHaveAttribute("aria-expanded", "true");
     expect(hide.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
-    expect(within(lines[2]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
+    expect(within(lines[2]).getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
     expect(within(lines[3]).getByText("Typing claude in Terminal runs a program with that name from npm")).toBeInTheDocument();
     for (const line of lines.slice(2)) {
       expect(line.className).toContain("min-h-11.5");
@@ -1372,7 +1372,7 @@ describe("OverviewPage", () => {
       const more = within(lines[0]).getByRole("button", { name: "另有1条提示" });
       fireEvent.click(more);
       expect(within(list).getByRole("button", { name: "收起1条提示" })).toBe(more);
-      expect(within(list).getByText("Homebrew正在更新软件清单")).toBeInTheDocument();
+      expect(within(list).getByText("Homebrew正在联网查找新版本")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -1387,7 +1387,7 @@ describe("OverviewPage", () => {
     const list = await findByRole("list", { name: "Needs attention" });
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(1);
-    expect(within(lines[0]).getByText("Couldn't update Homebrew's software list")).toBeInTheDocument();
+    expect(within(lines[0]).getByText("Couldn't reach Homebrew, so updates for its tools weren't fully checked")).toBeInTheDocument();
     expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
   });
 
@@ -1419,7 +1419,7 @@ describe("OverviewPage", () => {
     const lines = within(list).getAllByRole("listitem");
     expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
       "Homebrew (Apple silicon) isn't responding",
-      "Couldn't update Homebrew's software list",
+      "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
       "Claude Code's program files are missing",
       "Ollama isn't running",
     ]);
@@ -1427,7 +1427,7 @@ describe("OverviewPage", () => {
     expect(lines[0]).toHaveTextContent(
       "3 tools were installed with Homebrew (Apple silicon). It didn't respond this time, so they're shown as they were when it last responded. Check again later.",
     );
-    expect(lines[1]).toHaveTextContent("This check used the old list. Check your internet connection, then try again.");
+    expect(lines[1]).toHaveTextContent("This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again.");
     for (const line of lines.slice(0, 2)) {
       const again = within(line).getByRole("button", { name: "Check Again" });
       expect(again.className).toContain(BUTTON.regular.grey);

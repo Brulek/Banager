@@ -331,7 +331,7 @@ describe("FAILURE_CAUSE_KEYS", () => {
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.diskFull.word)).toBe("磁盘空间不足");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.permission.word)).toBe("没有权限");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.busy.word)).toBe("另一个操作正在进行");
-    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.homebrewUpdating.line)).toBe("Homebrew正在更新软件清单，请稍后再试。");
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.homebrewUpdating.line)).toBe("Homebrew正在联网查找新版本，请稍后再试。");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.needsPassword.word)).toBe("需要输入密码");
     for (const keys of Object.values(FAILURE_CAUSE_KEYS)) {
       const next = lookup(zhCN, keys.next) as string;

@@ -437,7 +437,7 @@ describe("the batch uninstall's sheet", () => {
     );
     expect(within(reason("postgresql@17")).getByText("/opt/homebrew/bin/brew unpin postgresql@17").tagName).toBe("CODE");
     expect(reason("jq")).toHaveTextContent(
-      "Couldn't check what this affects: Homebrew is updating its software list, so dependencies can't be checked reliably now. Try again in a minute or two.",
+      "Couldn't check what this affects: Homebrew is checking online for new versions, so dependencies can't be checked reliably now. Try again in a minute or two.",
     );
     expect(reason("rustup")).toHaveTextContent("This uninstall can't be cancelled once it starts. Uninstall it on its own, from its row.");
     expect(reason("zoom")).toHaveTextContent("This uninstall permanently deletes files. Uninstall it on its own, from its row.");

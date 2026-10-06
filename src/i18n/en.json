@@ -248,7 +248,7 @@
     "uninstallHold": {
       "label": "Can't uninstall now",
       "ariaLabel": "Can't uninstall {{name}} now",
-      "IndexUpdating": "Homebrew is updating its software list. You can uninstall once it's done."
+      "IndexUpdating": "Homebrew is checking online for new versions. You can uninstall once it's done."
     },
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
@@ -543,7 +543,7 @@
     "shellConfigUnreadDetail": "If a terminal shows an error when it starts after uninstalling, delete the line in {{path}} that loads Cargo."
   },
   "unreadBrewEnv": {
-    "homebrewMayAutoUpdate": "Before it starts, Homebrew may first update itself and its list of software.",
+    "homebrewMayAutoUpdate": "Before it starts, Homebrew may first update itself and check online for new versions.",
     "homebrewMayAutoUpdateDetail": "Homebrew is run with HOMEBREW_NO_AUTO_UPDATE=1, but one of its brew.env files is in, or points to, a protected location and wasn't read, so whether it sets that to nothing isn't known."
   },
   "modelDownload": {
@@ -664,12 +664,12 @@
       "other": "Couldn't open Ollama. Open it yourself from Applications."
     },
     "indexMayBeStale": {
-      "title": "Couldn't update Homebrew's software list",
-      "description": "This check used the old list. Check your internet connection, then try again."
+      "title": "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
+      "description": "This check used what Homebrew knew the last time it could be reached. Check your internet connection, then check again."
     },
     "indexUpdating": {
-      "title": "Homebrew is updating its software list",
-      "description": "The Updates page shows the previous check's results. A new check starts by itself when the list finishes updating."
+      "title": "Homebrew is checking online for new versions",
+      "description": "The Updates page shows the previous check's results. A new check starts by itself when Homebrew is done."
     },
     "notOnPath": {
       "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
@@ -729,7 +729,7 @@
     "spawnFailed": "{{source}} couldn't start. macOS said: {{detail}}",
     "spawnFailedPlain": "{{source}} couldn't start.",
     "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
-    "indexUpdating": "Homebrew is updating its software list, so dependencies can't be checked reliably now. Try again in a minute or two.",
+    "indexUpdating": "Homebrew is checking online for new versions, so dependencies can't be checked reliably now. Try again in a minute or two.",
     "refused": "Couldn't continue because of an internal error.",
     "notListed": "Couldn't start because it's no longer in the list. Click Check Again.",
     "uninstallUnsafe": {
@@ -771,7 +771,7 @@
       "Upgrade": "Cancel Update"
     },
     "logNote": {
-      "waitingForBrewUpdate": "Homebrew is updating its software list; this starts when it's done, waiting up to {{minutes}} minutes. Cancelling now changes nothing.",
+      "waitingForBrewUpdate": "Homebrew is checking online for new versions; this starts when it's done, waiting up to {{minutes}} minutes. Cancelling now changes nothing.",
       "readFailedStdout": "Couldn't read any more output: {{error}}",
       "readFailedStderr": "Couldn't read any more error messages: {{error}}",
       "movedToTrash": "Moved {{path}} to the Trash: {{trashedTo}}",
@@ -801,7 +801,7 @@
       "CancelRequested": "Cancelling…",
       "Cancelling": "Cancelling…",
       "Verifying": "Checking the result…",
-      "waitingForBrewUpdate": "Waiting for Homebrew's software list…"
+      "waitingForBrewUpdate": "Waiting for Homebrew to check for new versions…"
     },
     "outcome": {
       "Cancelled": "Cancelled",
@@ -825,7 +825,7 @@
         "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",
         "SpawnFailed": "Couldn't start the program. Nothing changed. macOS said: {{detail}}",
         "SpawnFailedShort": "Couldn't start the program. Nothing changed",
-        "HomebrewStillUpdating": "Couldn't start: Homebrew was still updating its software list after {{minutes}} minutes",
+        "HomebrewStillUpdating": "Couldn't start: Homebrew was still checking online for new versions after {{minutes}} minutes",
         "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
         "PathChanged": "Stopped: {{path}} changed after the confirmation opened",
         "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
@@ -1312,7 +1312,7 @@
       },
       "changesMac": {
         "question": "Does this app change my Mac?",
-        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files, and sometimes more: checking for updates, Homebrew may first update itself and its list of software, and uninstalling rustup removes the line it added to Terminal's settings files, which the confirmation says beforehand."
+        "answer": "Before an update or uninstall, the confirmation lets you see the command it will run or the files it will move, and nothing starts until you confirm. The app itself writes only three files, all in its own folder: its settings, its record of updates and uninstalls, and the window's size and position; it doesn't edit Terminal's settings files. Looking for commands, measuring disk use and scanning for other programs, it doesn't read protected places such as Documents, Desktop, Downloads, iCloud Drive and other disks. The tools it runs change their own files, and sometimes more: checking for updates, Homebrew may first update itself and check online for new versions, and uninstalling rustup removes the line it added to Terminal's settings files, which the confirmation says beforehand."
       },
       "otherPrograms": {
         "question": "What's in Other Programs?",
@@ -1461,7 +1461,7 @@
       "diskFull": "Disk is full",
       "permission": "No permission",
       "busy": "Another operation is running",
-      "homebrewUpdating": "Homebrew is updating its software list",
+      "homebrewUpdating": "Homebrew is checking online for new versions",
       "needsPassword": "Needs your password",
       "passwordNotAccepted": "Password not accepted"
     },
@@ -1479,7 +1479,7 @@
       "diskFull": "The disk is full. Free up some space, then try again.",
       "permission": "There's no permission to change its files. Check the permissions, then try again.",
       "busy": "Another operation is running. Wait for it to finish, then try again.",
-      "homebrewUpdating": "Homebrew is updating its software list. Try again later.",
+      "homebrewUpdating": "Homebrew is checking online for new versions. Try again later.",
       "needsPassword": "This needs your Mac login password, which can't be entered here.",
       "passwordNotAccepted": "The password wasn't accepted. Enter your Mac login password in the password window, then try again."
     },

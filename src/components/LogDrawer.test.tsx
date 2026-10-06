@@ -195,7 +195,7 @@ describe("LogDrawer", () => {
       await findByText("==> Pouring jq");
       const lines = Array.from(getByRole("log").querySelectorAll("p"));
       expect(lines.map((p) => p.textContent)).toEqual([
-        "Homebrew正在更新软件清单，完成后开始，最多等待10分钟。现在取消不会有任何改动。",
+        "Homebrew正在联网查找新版本，完成后开始，最多等待10分钟。现在取消不会有任何改动。",
         "==> Pouring jq",
         "无法读取后续错误信息：Input/output error (os error 5)",
       ]);
@@ -515,7 +515,7 @@ describe("LogDrawer", () => {
       // The whole log, Banager's notes in the user's words.
       await waitFor(() =>
         expect(writeText).toHaveBeenCalledWith(
-          "Fetching jq\nHomebrew is updating its software list; this starts when it's done, waiting up to 10 minutes. Cancelling now changes nothing.",
+          "Fetching jq\nHomebrew is checking online for new versions; this starts when it's done, waiting up to 10 minutes. Cancelling now changes nothing.",
         ),
       );
       await findByText("Copied");

@@ -1580,8 +1580,8 @@ describe("InstalledPage", () => {
 
     it.each([
       // Its only chip is about its Uninstall, held while the list updates.
-      ["IndexUpdating", "Homebrew is updating its software list", ["Can't uninstall now"]],
-      ["IndexMayBeStale", "Couldn't update Homebrew's software list", []],
+      ["IndexUpdating", "Homebrew is checking online for new versions", ["Can't uninstall now"]],
+      ["IndexMayBeStale", "Couldn't reach Homebrew, so updates for its tools weren't fully checked", []],
     ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line, chips) => {
       served = { ...snapshot, instances: [{ ...brew, status: { unavailable: null, notes: [note] } }], updates: [] };
       const { queryByText } = renderInstalled();
@@ -2071,7 +2071,7 @@ describe("InstalledPage", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
     expect(chipsOf(jq)).toEqual(["Can't uninstall now"]);
     expect(chipDetail(jq, "Can't uninstall now")).toHaveTextContent(
-      "Homebrew is updating its software list. You can uninstall once it's done.",
+      "Homebrew is checking online for new versions. You can uninstall once it's done.",
     );
     // The word is the same on every row it holds: its button and the
     // row's Uninstall say whose, the words first; the row says the word.
@@ -2079,7 +2079,7 @@ describe("InstalledPage", () => {
     expect(held).toHaveAccessibleName("Uninstall jq…");
     expect(jq).toHaveAccessibleName("jq, Can't uninstall now");
     // The page's own line says what Homebrew is doing.
-    expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+    expect(screen.getByText("Homebrew is checking online for new versions")).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: ROW_UNINSTALL })).toBeEnabled();
     expect(chipsOf(rowOf("Claude Code"))).not.toContain("Can't uninstall now");
 
@@ -2088,7 +2088,7 @@ describe("InstalledPage", () => {
     const drawer = await openDetails("jq");
     expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     expect(statusWhy(drawer, "Can't uninstall now")).toHaveTextContent(
-      "Homebrew is updating its software list. You can uninstall once it's done.",
+      "Homebrew is checking online for new versions. You can uninstall once it's done.",
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     fireEvent.click(within(drawer).getByRole("button", { name: "Close Details" }));

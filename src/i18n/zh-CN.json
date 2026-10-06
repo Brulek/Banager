@@ -228,7 +228,7 @@
     "uninstallHold": {
       "label": "暂时不能卸载",
       "ariaLabel": "暂时不能卸载{{name}}",
-      "IndexUpdating": "Homebrew正在更新软件清单，完成后才能卸载。"
+      "IndexUpdating": "Homebrew正在联网查找新版本，完成后才能卸载。"
     },
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
@@ -495,7 +495,7 @@
     "shellConfigUnreadDetail": "卸载后如果终端启动时报错，请删除{{path}}中加载Cargo的那一行。"
   },
   "unreadBrewEnv": {
-    "homebrewMayAutoUpdate": "开始前，Homebrew可能会先更新它自己和软件清单。",
+    "homebrewMayAutoUpdate": "开始前，Homebrew可能会先更新它自己，并联网查找新版本。",
     "homebrewMayAutoUpdateDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTO_UPDATE=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知它是否把这个值设成了空值。"
   },
   "modelDownload": {
@@ -612,12 +612,12 @@
       "other": "无法打开Ollama。请在“应用程序”中手动打开。"
     },
     "indexMayBeStale": {
-      "title": "无法更新Homebrew软件清单",
-      "description": "此次检查使用了旧清单。请检查网络连接后重试。"
+      "title": "无法连上Homebrew，用它安装的工具的更新这次没能查全",
+      "description": "这次是按上次连上时的信息检查的。请检查网络连接，然后重新检查。"
     },
     "indexUpdating": {
-      "title": "Homebrew正在更新软件清单",
-      "description": "“更新”页显示的是上次的结果。清单更新完成后会自动重新检查。"
+      "title": "Homebrew正在联网查找新版本",
+      "description": "“更新”页显示的是上次的结果。查找完成后会自动重新检查。"
     },
     "notOnPath": {
       "title": "{{source}}已安装，但在终端输入“{{command}}”打不开它",
@@ -675,7 +675,7 @@
     "spawnFailed": "{{source}}无法启动。系统提示：{{detail}}",
     "spawnFailedPlain": "{{source}}无法启动。",
     "outputTooLarge": "{{source}}返回的内容过多，无法继续。",
-    "indexUpdating": "Homebrew正在更新软件清单，现在无法准确检查依赖。请过一两分钟再试。",
+    "indexUpdating": "Homebrew正在联网查找新版本，现在无法准确检查依赖。请过一两分钟再试。",
     "refused": "发生内部错误，无法继续。",
     "notListed": "无法开始，因为它已不在列表中。请点按“重新检查”。",
     "uninstallUnsafe": {
@@ -714,7 +714,7 @@
       "Upgrade": "取消更新"
     },
     "logNote": {
-      "waitingForBrewUpdate": "Homebrew正在更新软件清单，完成后开始，最多等待{{minutes}}分钟。现在取消不会有任何改动。",
+      "waitingForBrewUpdate": "Homebrew正在联网查找新版本，完成后开始，最多等待{{minutes}}分钟。现在取消不会有任何改动。",
       "readFailedStdout": "无法读取后续输出：{{error}}",
       "readFailedStderr": "无法读取后续错误信息：{{error}}",
       "movedToTrash": "{{path}}已移到废纸篓：{{trashedTo}}",
@@ -744,7 +744,7 @@
       "CancelRequested": "正在取消…",
       "Cancelling": "正在取消…",
       "Verifying": "正在核对结果…",
-      "waitingForBrewUpdate": "正在等待Homebrew更新软件清单…"
+      "waitingForBrewUpdate": "正在等待Homebrew查找新版本…"
     },
     "outcome": {
       "Cancelled": "已取消",
@@ -768,7 +768,7 @@
         "ProgramMissing": "未能开始：找不到{{program}}，没有改动",
         "SpawnFailed": "未能开始：程序无法启动，没有改动。系统提示：{{detail}}",
         "SpawnFailedShort": "未能开始：程序无法启动，没有改动",
-        "HomebrewStillUpdating": "未能开始：Homebrew更新软件清单超过了{{minutes}}分钟",
+        "HomebrewStillUpdating": "未能开始：Homebrew联网查找新版本超过了{{minutes}}分钟",
         "HomebrewStillUpdatingDetail": "没有改动。请检查网络连接，稍后再试。",
         "PathChanged": "已停止：确认窗口打开后，{{path}}发生了变化",
         "PathChangedDetail": "如有已移到废纸篓的项目，日志中都已列出。请重新打开确认窗口。",
@@ -1211,7 +1211,7 @@
       },
       "changesMac": {
         "question": "此App会改动我的Mac吗？",
-        "answer": "更新或卸载之前，确认窗口里可以查看要运行的命令或要移走的文件，确认后才会开始。此App自己只写三个文件：设置、更新和卸载记录、窗口的大小和位置，都在它自己的文件夹里；它不修改终端的设置文件。查找命令、计算占用空间和扫描“其他程序”时，不读取文稿、桌面、下载、iCloud云盘和其他磁盘等受保护的位置。它运行的工具会改动自己的文件，有时不止于此：比如检查更新时，Homebrew可能会先更新它自己和它的软件列表；卸载rustup时，它会从终端的设置文件中删除自己添加的那一行，确认窗口会提前说明。"
+        "answer": "更新或卸载之前，确认窗口里可以查看要运行的命令或要移走的文件，确认后才会开始。此App自己只写三个文件：设置、更新和卸载记录、窗口的大小和位置，都在它自己的文件夹里；它不修改终端的设置文件。查找命令、计算占用空间和扫描“其他程序”时，不读取文稿、桌面、下载、iCloud云盘和其他磁盘等受保护的位置。它运行的工具会改动自己的文件，有时不止于此：比如检查更新时，Homebrew可能会先更新它自己，并联网查找新版本；卸载rustup时，它会从终端的设置文件中删除自己添加的那一行，确认窗口会提前说明。"
       },
       "otherPrograms": {
         "question": "“其他程序”里的是什么？",
@@ -1349,7 +1349,7 @@
       "diskFull": "磁盘空间不足",
       "permission": "没有权限",
       "busy": "另一个操作正在进行",
-      "homebrewUpdating": "Homebrew正在更新软件清单",
+      "homebrewUpdating": "Homebrew正在联网查找新版本",
       "needsPassword": "需要输入密码",
       "passwordNotAccepted": "密码未被接受"
     },
@@ -1367,7 +1367,7 @@
       "diskFull": "磁盘空间不足，请清理出一些磁盘空间后重试。",
       "permission": "没有权限修改它的文件，请确认权限后重试。",
       "busy": "另一个操作正在进行，请等它完成后重试。",
-      "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。",
+      "homebrewUpdating": "Homebrew正在联网查找新版本，请稍后再试。",
       "needsPassword": "需要输入Mac的登录密码，无法在这里输入。",
       "passwordNotAccepted": "密码未被接受，请在密码窗口输入Mac的登录密码后重试。"
     },
