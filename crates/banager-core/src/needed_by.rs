@@ -1230,6 +1230,71 @@ mod tests {
     }
 
     #[test]
+    fn test_homebrews_uv_and_rust_are_each_needed_while_their_source_still_has_tools() {
+        // The author's decision U10 (a), 2026-10-06: Homebrew's `uv` while
+        // uv manages tools, and Homebrew's `rust` while Cargo has installed
+        // programs, are held back like pipx (above), pip's Python and
+        // Ollama -- each source's own program leads into the package's
+        // keg. With no tool left, each may go.
+        let root = Root::new("uv-rust");
+        root.dir("opt/homebrew/Cellar");
+        for (keg, program) in [("uv/0.9.2", "uv"), ("rust/1.90.0", "cargo")] {
+            root.program(&format!("opt/homebrew/Cellar/{keg}/bin/{program}"));
+            root.link(
+                &format!("opt/homebrew/bin/{program}"),
+                &format!("../Cellar/{keg}/bin/{program}"),
+            );
+        }
+        root.link("opt/homebrew/opt/uv", "../Cellar/uv/0.9.2");
+        root.link("opt/homebrew/opt/rust", "../Cellar/rust/1.90.0");
+        const CARGO: &str = "cargo:~/.cargo";
+        let uv = instance(
+            "uv",
+            "uv",
+            root.path("opt/homebrew/bin/uv"),
+            root.path("opt/homebrew/bin"),
+        );
+        let cargo = instance(
+            "cargo",
+            CARGO,
+            root.path("opt/homebrew/bin/cargo"),
+            root.path("home/.cargo"),
+        );
+        let tools = vec![
+            row("uv", ArtifactKind::Tool, "ruff"),
+            row("uv", ArtifactKind::Tool, "black"),
+            row(CARGO, ArtifactKind::Binary, "ripgrep"),
+        ];
+        let instances = vec![brew(&root), uv, cargo];
+        let env = root.env(&["opt/homebrew/bin"]);
+        let look = |package: &str, tools: &[InstalledArtifact]| {
+            needed_by(
+                &formula(package),
+                &instances[0],
+                &instances,
+                tools,
+                &env,
+                BUDGET,
+            )
+        };
+        let uv_formula = look("uv", &tools);
+        assert_eq!(
+            needed(&uv_formula.warnings),
+            vec![("uv".to_string(), true, 2)]
+        );
+        assert!(uv_formula.complete);
+        let rust_formula = look("rust", &tools);
+        assert_eq!(
+            needed(&rust_formula.warnings),
+            vec![(CARGO.to_string(), true, 1)]
+        );
+        assert!(rust_formula.complete);
+        // Nothing left to run on them: both may go.
+        assert_eq!(needed(&look("uv", &[]).warnings), Vec::new());
+        assert_eq!(needed(&look("rust", &[]).warnings), Vec::new());
+    }
+
+    #[test]
     fn test_ollamas_app_cask_and_formula_each_need_their_models_kept() {
         let root = Root::new("ollama");
         root.dir("opt/homebrew/Cellar");
