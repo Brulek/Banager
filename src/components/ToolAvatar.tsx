@@ -119,9 +119,8 @@ const PROMPTS = {
  * source's logo, which made a tool look like another, and never a letter
  * (decision I8). Its source's mark goes on its corner.
  *
- * The grey is `neutral-avatar`: systemGray, in the dark systemGray3, and
- * Apple's darker and lighter greys under Increase Contrast (index.css).
- * In dark mode a 1px edge of 12% white just inside it, as a logo's square
+ * The grey is `neutral-avatar`: systemGray, in the dark systemGray3, the
+ * Other Programs page's (index.css). In dark mode a 1px edge of 12% white just inside it, as a logo's square
  * has (`PackLogo`), so the dark grey keeps its outline on the dark
  * content and a selected row.
  */
