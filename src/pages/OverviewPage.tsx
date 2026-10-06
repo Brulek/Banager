@@ -69,9 +69,7 @@ function headlineText(
       return t("overviewPassword.title", { count: summary.count });
     case "upToDate":
       if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
-      return summary.everyChecked && summary.cantUpdateHere + summary.hidden + summary.notUsed === 0
-        ? t("overview.upToDate")
-        : t("overviewAllGood.upToDateHere");
+      return summary.everything ? t("overview.upToDate") : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
       if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
       return notCheckedHeadline(t, summary.notChecked, instances);

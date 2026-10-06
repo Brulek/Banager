@@ -12,7 +12,7 @@ import type { InstanceNote, ManagerInstance, SourceError, UpdateCandidate } from
  * the Updates page lists (hidden, can't be updated here, a copy Terminal
  * does not run): those are said in the line under it. A source whose
  * updates Banager never checks (Codex's own install) does not stop it; it
- * only stops the plain 「所有工具都是最新的」 (`everyChecked`). Where a source
+ * only stops the plain 「所有工具都是最新的」 (`everything`). Where a source
  * was not checked this time, the summary names it (`notChecked`).
  */
 
@@ -74,7 +74,7 @@ describe("the Overview's all good", () => {
   it("is the plain up to date with nothing listed and every source checked in full", () => {
     expect(summaryOf([brew, uv, pip])).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -87,7 +87,7 @@ describe("the Overview's all good", () => {
     const hidden = candidate(brew.id, "glib");
     expect(summaryOf([brew, pip], [pinned, readOnly, hidden], [], hiding({ ignored_updates: [hidden.key] }))).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: false,
       cantUpdateHere: 2,
       hidden: 1,
       notUsed: 0,
@@ -97,7 +97,20 @@ describe("the Overview's all good", () => {
   it("is all good beside Codex's own install, whose updates Banager never checks, but not the plain up to date", () => {
     expect(summaryOf([brew, codex])).toEqual({
       kind: "upToDate",
-      everyChecked: false,
+      everything: false,
+      cantUpdateHere: 0,
+      hidden: 0,
+      notUsed: 0,
+    });
+  });
+
+  it("is the plain up to date only with nothing listed at all, as the Updates page says it", () => {
+    // glib has just been updated and waits for the check that drops its
+    // row: the Updates page still lists it, so not "Everything is up to date".
+    const glib = candidate(brew.id, "glib");
+    expect(updatesSummary({ instances: [brew], updates: [glib], errors: [], artifacts: [] }, hiding(), (u) => u === glib)).toEqual({
+      kind: "upToDate",
+      everything: false,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,

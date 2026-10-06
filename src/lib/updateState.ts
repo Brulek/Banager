@@ -456,9 +456,11 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   Overview's 「都好了」, its green check (decision I22). What the Updates
  *   page lists besides is said under it, not held against it: the user hid
  *   it, Banager cannot update it here, or it is a copy Terminal does not
- *   run. `everyChecked` (`everySourceChecked`) is false where a source
- *   Banager never checks is there too (Codex's own install): then, as
- *   with anything listed besides, the headline says that what can be
+ *   run. `everything` is whether nothing is listed at all and every
+ *   source was checked in full (`everySourceChecked`) -- exactly when the
+ *   Updates page says "Everything is up to date". It is false where a
+ *   source Banager never checks is there too (Codex's own install), and
+ *   where anything is listed: then the headline says that what can be
  *   updated here is up to date, not that everything is.
  * - `nothingToUpdate`: none to install, and a source was not checked in
  *   full this time: `notChecked` names it, for the headline to say
@@ -484,7 +486,7 @@ export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[]; password: number }
   | { kind: "updating"; count: number; password: number }
   | { kind: "needsPassword"; count: number; cantUpdateHere: number; hidden: number; notUsed: number }
-  | { kind: "upToDate"; everyChecked: boolean; cantUpdateHere: number; hidden: number; notUsed: number }
+  | { kind: "upToDate"; everything: boolean; cantUpdateHere: number; hidden: number; notUsed: number }
   | { kind: "nothingToUpdate"; notChecked: NotChecked; cantUpdateHere: number; hidden: number; notUsed: number };
 
 export function updatesSummary(
@@ -512,7 +514,8 @@ export function updatesSummary(
   if (password > 0) return { kind: "needsPassword", count: password, ...besides };
   const notChecked = notCheckedThisTime(snapshot.instances, snapshot.errors);
   if (notChecked !== null) return { kind: "nothingToUpdate", notChecked, ...besides };
-  return { kind: "upToDate", everyChecked: everySourceChecked(snapshot.instances, snapshot.errors), ...besides };
+  const everything = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
+  return { kind: "upToDate", everything, ...besides };
 }
 
 /**

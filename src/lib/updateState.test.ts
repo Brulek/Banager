@@ -340,7 +340,7 @@ describe("everySourceChecked", () => {
     // Its check lists nothing (`Latest::Unchecked`), so no update listed
     // there is no news: not "Everything is up to date". The Overview's all
     // good (I22) still holds -- it says what can be updated here is up to
-    // date -- with `everyChecked` false.
+    // date -- with `everything` false.
     const codex: ManagerInstance = {
       ...brew,
       id: "standalone-codex",
@@ -351,14 +351,14 @@ describe("everySourceChecked", () => {
     expect(everySourceChecked([brew, codex], [])).toBe(false);
     expect(updatesSummary({ instances: [brew, codex], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
-      everyChecked: false,
+      everything: false,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
     });
     expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -415,7 +415,7 @@ describe("updatesSummary", () => {
     // nothing to start, and wget alone is under "Can't update here".
     expect(updatesSummary(snapshot, hiding(), (u) => u !== wget)).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: false,
       cantUpdateHere: 1,
       hidden: 0,
       notUsed: 0,
@@ -462,7 +462,7 @@ describe("updatesSummary", () => {
   it("is up to date with every source checked this time, saying what is listed besides", () => {
     expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -483,7 +483,7 @@ describe("updatesSummary", () => {
     const pinned = candidate({ blocked: "Pinned" });
     expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
-      everyChecked: true,
+      everything: false,
       cantUpdateHere: 1,
       hidden: 0,
       notUsed: 0,
@@ -494,7 +494,7 @@ describe("updatesSummary", () => {
         { instances: [brew], updates: [glib], errors: [] },
         hiding({ ignored_updates: [glib.key] }),
       ),
-    ).toEqual({ kind: "upToDate", everyChecked: true, cantUpdateHere: 0, hidden: 1, notUsed: 0 });
+    ).toEqual({ kind: "upToDate", everything: false, cantUpdateHere: 0, hidden: 1, notUsed: 0 });
   });
 
   it("counts, with nothing to install, what the Updates page lists and what the user hid, whatever checks failed", () => {
