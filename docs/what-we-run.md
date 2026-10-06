@@ -2751,9 +2751,12 @@ not counted as any tool's command, and nothing is said about a name it
 could be before another copy.
 
 Nothing's contents are read, nothing found is run or changed, and no
-lock is taken. Reading the folders stops after 20000 entries or 5
+lock is taken. Reading the folders stops after 100,000 entries or 5
 seconds, and working out the answer after 5 seconds more
-(`CommandBudget::default`); that refresh then says nothing about which
+(`CommandBudget::default`). Reading a folder reads only the names in it,
+and 12,000 of them take about 5 milliseconds, so the entry limit is far above what a Homebrew
+with thousands of formulae links into its `bin` (ten to fifteen
+thousand); past either limit that refresh says nothing about which
 copy runs for what the inventories listed (a row kept from an earlier
 refresh, because its source did not answer this time, keeps what was
 said then). A read that has not come back a second after its limit is

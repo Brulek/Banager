@@ -876,6 +876,28 @@ fn test_the_recorded_uv_line_names_ruff() {
     assert_eq!(ruff, "- ruff (/Users/brulek/.local/bin/ruff)");
 }
 
+/// P1 of the decisions round: a Homebrew with a few thousand formulae
+/// links ten to fifteen thousand names into its `bin`, and with
+/// `/usr/bin` and the rest of `PATH` a round passed the old limit of
+/// 20,000 names and said nothing about which copy runs. Thirty thousand
+/// names in one folder are now read whole, with room to spare.
+#[test]
+fn test_a_bin_folder_of_thirty_thousand_names_is_read_within_the_default_budget() {
+    let home = Home::new("many-names");
+    let bin = home.path().join("opt/homebrew/bin");
+    fs::create_dir_all(&bin).unwrap();
+    for n in 0..30_000 {
+        fs::File::create(bin.join(format!("tool-{n}"))).unwrap();
+    }
+    let started = std::time::Instant::now();
+    let folders = read_folders(&[bin], &[], home.path(), CommandBudget::default());
+    let took = started.elapsed();
+    assert!(folders.complete(), "30,000 names stopped the read");
+    // Reading names only: well inside the 5 seconds a round may take.
+    assert!(took < Duration::from_secs(5), "{took:?}");
+    eprintln!("read 30,000 names in {took:?}");
+}
+
 #[test]
 fn test_the_budget_stops_the_read_and_then_nothing_is_judged() {
     let home = Home::new("budget");

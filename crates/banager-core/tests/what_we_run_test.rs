@@ -647,7 +647,7 @@ fn test_what_we_run_has_the_command_check_section_with_its_folders_and_both_of_i
     let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
     let budget = CommandBudget::default();
     for limit in [
-        format!("{} entries", budget.max_entries),
+        format!("{} entries", with_commas(budget.max_entries as u64)),
         format!("{} seconds", budget.max_duration.as_secs()),
     ] {
         assert!(

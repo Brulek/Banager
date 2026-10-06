@@ -96,10 +96,17 @@ pub struct CommandBudget {
 impl Default for CommandBudget {
     /// A Mac's `PATH` folders hold a few thousand names between them
     /// (`/usr/bin` alone about a thousand, a busy Homebrew's `bin` as
-    /// many again); reading them takes milliseconds.
+    /// many again); reading them takes milliseconds. A Homebrew with a few
+    /// thousand formulae links ten to fifteen thousand names into its
+    /// `bin` alone, which with the rest of `PATH` passed the 20,000 this
+    /// was until the decisions round (P1), and such a round said nothing
+    /// about which copy runs. 100,000 leaves room for those Macs: reading
+    /// 12,000 names was measured at about 5 milliseconds
+    /// (`r5/tracks/p3-perf-at-scale.md`), so even the whole 100,000 is a
+    /// small part of `max_duration`, which still bounds a slow disk.
     fn default() -> CommandBudget {
         CommandBudget {
-            max_entries: 20_000,
+            max_entries: 100_000,
             max_duration: Duration::from_secs(5),
         }
     }
@@ -1188,7 +1195,7 @@ mod tests {
         // docs/what-we-run.md states both; `what_we_run_test` holds the
         // section to them.
         let budget = CommandBudget::default();
-        assert_eq!(budget.max_entries, 20_000);
+        assert_eq!(budget.max_entries, 100_000);
         assert_eq!(budget.max_duration, Duration::from_secs(5));
     }
 
