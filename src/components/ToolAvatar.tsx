@@ -95,12 +95,21 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
 }
 
 /**
- * The prompt's size on the program tile at each size: the 18 the Other
- * Programs page draws its tile's at 32 (`ProgramAvatar` in
+ * The prompt on the program tile at each size: the 18 the Other Programs
+ * page draws its tile's at 32 (`ProgramAvatar` in
  * src/pages/UnknownPage.tsx), and about as much room around it at the
- * others.
+ * others -- a little less at 24, where the 14 badge takes over half the
+ * tile. Where a badge sits on the corner the prompt is set a little up
+ * and to the left, as Terminal's own icon has its prompt top left: at 32
+ * a centred prompt's cursor ran under the badge. At 20, with no badge,
+ * it is centred. Whole class names, for Tailwind.
  */
-const PROMPT_SIZES = { sm: 14, md: 18, lg: 27, compact: 12 } as const;
+const PROMPTS = {
+  sm: { size: 12, shift: "-translate-x-px -translate-y-0.5" },
+  md: { size: 18, shift: "-translate-x-px -translate-y-0.5" },
+  lg: { size: 27, shift: "-translate-x-0.5 -translate-y-0.75" },
+  compact: { size: 12, shift: undefined },
+} as const;
 
 /**
  * The icon of a command-line tool that has none of its own -- no app
@@ -123,7 +132,7 @@ function ProgramTile({ size }: { size: keyof typeof ICON_CLASSES }) {
       data-program-tile=""
       className={`inline-flex shrink-0 items-center justify-center bg-neutral-avatar text-white dark:inset-ring dark:inset-ring-white/12 ${ICON_CLASSES[size]}`}
     >
-      <TerminalIcon size={PROMPT_SIZES[size]} />
+      <TerminalIcon size={PROMPTS[size].size} className={PROMPTS[size].shift} />
     </span>
   );
 }

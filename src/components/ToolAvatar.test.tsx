@@ -189,7 +189,7 @@ describe("ToolAvatar", () => {
     const glyphOf = (avatar: HTMLElement) => programTile(avatar)?.querySelector("svg")?.getAttribute("width");
     const sm = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "sm" }).avatar();
     expect(programTile(sm)?.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "w-6", "rounded-[5px]"]));
-    expect(glyphOf(sm)).toBe("14");
+    expect(glyphOf(sm)).toBe("12");
     expect(sm.querySelector("[data-source-badge] [data-logo]")?.className).toContain("h-3.5");
 
     const lg = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "lg" }).avatar();
@@ -201,6 +201,19 @@ describe("ToolAvatar", () => {
     expect(programTile(compact)?.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5", "rounded-[4px]"]));
     expect(glyphOf(compact)).toBe("12");
     expect(compact.querySelector("[data-source-badge]")).toBeNull();
+  });
+
+  it("sets the prompt a little up and to the left, clear of the badge, as Terminal's icon has it, and centres it with none", () => {
+    // At 32 a centred prompt's cursor ran under the 14 badge on the corner.
+    const promptOf = (size: "sm" | "md" | "lg" | "compact") =>
+      programTile(renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size }).avatar())
+        ?.querySelector("svg")
+        ?.getAttribute("class")
+        ?.split(" ") ?? [];
+    expect(promptOf("md")).toEqual(expect.arrayContaining(["-translate-x-px", "-translate-y-0.5"]));
+    expect(promptOf("sm")).toEqual(expect.arrayContaining(["-translate-x-px", "-translate-y-0.5"]));
+    expect(promptOf("lg")).toEqual(expect.arrayContaining(["-translate-x-0.5", "-translate-y-0.75"]));
+    expect(promptOf("compact").filter((c) => c.includes("translate"))).toEqual([]);
   });
 
   it("shows a tool whose logo is its source's own as the source, with nothing on its corner", () => {
