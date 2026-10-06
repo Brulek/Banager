@@ -170,13 +170,23 @@ read by fixed rules, never by what its parts look like:
 - a mirror's or a remote's login is all before the last `@` of its
   authority -- up to the first `/`, `?` or `#` -- so an `@` in its path is
   the path's: `https://mirror.example:8443/x/user@example.com/simple` has
-  no login, and nothing of it is masked. When what follows that `@`, or
-  the authority with no `@` in it, is no host and port -- a domain name of
-  two labels or more, an IPv4 or bracketed IPv6 address, or `localhost`,
-  with or without a port of digits -- the rules cannot read the value: a
-  `/`, `?` or `#` written into a password cut the authority short. Then
-  its login is all before the last `@` of the value, as a proxy's is,
-  which masks too much rather than too little;
+  no login, and nothing of it is masked; nor has an intranet's
+  `https://nexus:8081/repository/npm/@scope/pkg`, or an absolute name's
+  `https://mirror.example.:8443/…`. When what follows that `@`, or the
+  authority with no `@` in it, is no host and port -- a domain name of two
+  labels or more, with or without the final `.` of an absolute name, an
+  IPv4 or bracketed IPv6 address, or a name of one label with a letter in
+  it (`nexus`, `localhost`), each with or without a port of digits; after
+  an `@`, a name of one label only with a port, or `localhost` -- the
+  rules cannot read the value: a `/`, `?` or `#` written into a password
+  cut the authority short (`https://user:p@ss/word@mirror.example/` reads
+  `ss` as its host). Then its login is all before the last `@` of the
+  value, as a proxy's is, which masks too much rather than too little. A
+  password whose first part reads as a port, a `/` written right after
+  it (`https://user:1234/rest@mirror…`), or a token alone whose first part
+  reads as a host (`https://tok/en@mirror…`), is read as the rules read
+  it, an address with a path and no login, as the tools read it too, and
+  is not masked by this rule;
 - a value with no `@` where these rules look for one holds no login.
 
 In a login, the user name and the password are both secrets, whatever
@@ -184,11 +194,15 @@ they look like: a user name can itself be a token -- GitHub's
 `https://TOKEN:x-oauth-basic@github.com/…`, a mirror's `https://token@…`,
 a proxy's in npm's "Invalid protocol" -- and nothing in it says whether it
 is one. Each is masked wherever it appears, as written, percent-decoded
-and percent-encoded (with upper- or lowercase hex digits); so are the
-whole login and the whole value (shown as `scheme://****:****@host…`, so
-the host stays readable), and the `user:password` pair as the HTTP Basic
-credential `curl -v` shows for a proxy (`> Proxy-Authorization: Basic …`,
-curl 8.7.1). Two kinds of part are masked only where they stand in their
+and percent-encoded; so are the whole login and the whole value (shown as
+`scheme://****:****@host…`, so the host stays readable), and the
+`user:password` pair as the HTTP Basic credential `curl -v` shows for a
+proxy (`> Proxy-Authorization: Basic …`, curl 8.7.1). Every one of these
+is found ignoring the case of its letters (ASCII), since a tool may print
+a secret in another case than it was written: npm reads a proxy's user
+name as the scheme of an address and prints it lowercased (``Invalid
+protocol `proxytokenabcdefghijklmn:` `` for `ProxyTokenAbCdEfGhIjKlMn`,
+npm 10.9.9). Two kinds of part are masked only where they stand in their
 login (`:ab@`, the whole login before its `@`, the whole value):
 
 - a user name or password of fewer than three characters: masked
@@ -200,19 +214,35 @@ login (`:ab@`, the whole login before its `@`, the whole value):
   tools print (`git@github.com:…` names an ssh user): `git`, `user`,
   `username`, `admin`, `root`, `guest`, `anonymous`, `proxy`, `login`,
   `test`, `default`; and sudo's words in "sudo: a password is required",
-  which Banager reads to say an operation needs Terminal (`needsPassword`
-  in `src/lib/failureCause.ts`): `password`, `required`, `terminal`,
-  `sudo` (`COMMON_WORDS` in `runner/redact.rs`).
+  so that sudo's lines, with the steps for Terminal beside them, stay
+  readable: `password`, `required`, `terminal`, `sudo` (`COMMON_WORDS` in
+  `runner/redact.rs`).
 
 A user name alone that is that short or one of those words
 (`git@github.com:…`) holds no secret, and nothing is masked for it.
 Anything else is masked wherever it appears, more than needed rather than
 less: a password of digits masks a date's year that matches it, and a
 user name that is the Mac account's masks it in every path a tool prints
-(`/Users/****/…`). Besides, the password of any `scheme://user:password@`
-in the output is masked, whatever setting or file it came from; its user
-name is left, since without the setting there is no telling a token from
-a person's name.
+(`/Users/****/…`), and a password that is part of a word masks that
+part in every word that holds it (`pass`: "a ****word is required").
+Besides, the password of any `scheme://user:password@` in the output is
+masked, whatever setting or file it came from; its user name is left,
+since without the setting there is no telling a token from a person's
+name.
+
+Why an operation failed is not read off what the mask left. The runner
+reads it off the last five lines the tool wrote to stderr as the tool
+wrote them, before the mask (`CommandOutput::failure_cause`,
+`history::failure_cause`), and only the cause -- one of a few words, never
+the lines -- goes on, beside the masked summary (`Outcome::Failed`'s
+`cause`): so an operation where sudo wanted the Mac's password still says
+so, with its steps for Terminal, in the operation bar, the Updates row, the
+history and the notification, though a password `pass` masked sudo's
+"password" (`needsPassword` in `src/lib/failureCause.ts`, which the window
+takes from the outcome). What a check or a source failed with is still
+read off its masked words: a password that is part of one of the few
+phrases Banager looks for there (`timed out`, `Could not resolve host`)
+can lose the word for its cause, and the message is shown as it is.
 
 A line is masked once it has ended, so a login split across two reads is
 masked whole. A transcript for a person keeps at most its first and its

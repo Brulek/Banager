@@ -1732,6 +1732,18 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "more than needed rather than less",
         "`/Users/****/…`",
         "`COMMON_WORDS` in `runner/redact.rs`",
+        // Re-check 2: any case (N3), one-label and absolute hosts (N2),
+        // and the cause read before the mask (N1).
+        "found ignoring the case of its letters",
+        "prints it lowercased",
+        "`https://nexus:8081/repository/npm/@scope/pkg`",
+        "`https://mirror.example.:8443/…`",
+        "is not masked by this rule",
+        "Why an operation failed is not read off what the mask left",
+        "before the mask (`CommandOutput::failure_cause`",
+        "(`Outcome::Failed`'s `cause`)",
+        "a ****word is required",
+        "What a check or a source failed with is still read off its masked words",
     ] {
         assert!(
             folded.contains(phrase),
@@ -1746,10 +1758,13 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "16 characters or more",
         "only when it looks like a token",
         "a proxy's user name included",
+        // Re-check 2's N1: the cause no longer depends on sudo's words
+        // being left unmasked.
+        "which Banager reads to say an operation needs Terminal (`needsPassword` in `src/lib/failureCause.ts`): `password`",
     ] {
         assert!(
             !folded.contains(gone),
-            "the section still says {gone:?}, a rule the re-check found leaking a token (R1)"
+            "the section still says {gone:?}, which the decisions-round re-checks found wrong (R1, N1)"
         );
     }
     assert!(
