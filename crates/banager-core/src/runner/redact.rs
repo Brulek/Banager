@@ -71,8 +71,8 @@ impl Redactor {
     /// those that are an address with a login count.
     pub fn for_settings<'a>(settings: impl IntoIterator<Item = (&'a str, &'a str)>) -> Redactor {
         let mut redactor = Redactor::default();
-        for (_name, value) in settings {
-            match Login::in_value(value) {
+        for (name, value) in settings {
+            match Login::in_setting(name, value) {
                 Some(Login::Password { user, password }) => {
                     for form in forms_of(password) {
                         redactor.mask_login(":", form);
@@ -164,10 +164,10 @@ impl Redactor {
     }
 }
 
-/// A login as a setting's value holds it: what sits before the last `@`
-/// of the address's authority (`scheme://` and what follows up to the
-/// first `/`, `?` or `#`; the value as a whole when it has no scheme, as
-/// curl accepts a proxy written that way).
+/// A login as a setting's value holds it: what sits before an `@` of the
+/// address (what follows `scheme://`, or the value as a whole when it has
+/// no scheme, as curl accepts a proxy written that way) -- which `@`, by
+/// the setting's name (`Login::in_setting`).
 #[derive(Debug, PartialEq, Eq)]
 enum Login<'v> {
     /// `user:password@`, with a password: the password is the secret.
@@ -179,13 +179,21 @@ enum Login<'v> {
 }
 
 impl<'v> Login<'v> {
-    fn in_value(value: &'v str) -> Option<Login<'v>> {
+    fn in_setting(name: &str, value: &'v str) -> Option<Login<'v>> {
         let (scheme, rest) = match value.find("://") {
             Some(at) => (&value[..at], &value[at + 3..]),
             None => ("", value),
         };
-        let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
-        let userinfo = &authority[..authority.rfind('@')?];
+        // A password may hold a `/`, `?` or `#` as written: an address
+        // read by the rules, authority up to the first of them, would cut
+        // the login off before its `@`, and the tool that cannot read it
+        // either prints it back whole (curl: "Unsupported proxy syntax").
+        let userinfo = if is_proxy(name) {
+            // A proxy's address has no path: all before its last `@`.
+            &rest[..rest.rfind('@')?]
+        } else {
+            mirror_userinfo(rest)?
+        };
         let (user, password) = userinfo.split_once(':').unwrap_or((userinfo, ""));
         if !password.is_empty() {
             return Some(Login::Password { user, password });
@@ -197,6 +205,54 @@ impl<'v> Login<'v> {
         (http && !user.is_empty()).then_some(Login::Token(user))
     }
 }
+
+/// Whether the setting `name` is a proxy's address (`http_proxy`,
+/// `https_proxy`, `all_proxy`, in either case), not a mirror's or a
+/// remote's. `no_proxy` lists hosts, and is read as a mirror's would be:
+/// it holds no `@`.
+fn is_proxy(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "http_proxy" | "https_proxy" | "all_proxy"
+    )
+}
+
+/// The login of a mirror's or a remote's address, `rest` being what follows
+/// its `scheme://`: what stands before the last `@` that a host follows
+/// (`/`, `?`, `#` and `@` in a password included), when what stands
+/// before it reads as a login -- a name with no `/`, `?` or `#`, then
+/// `:` and the password; failing that, before the last `@` of the
+/// authority (up to the first `/`, `?` or `#`), as the rules read it. An
+/// `@` in a path (`/npm/@scope`, `/foo@1.2`, `/x/user@example.com`) is
+/// the path's.
+fn mirror_userinfo(rest: &str) -> Option<&str> {
+    let before_a_host = rest.match_indices('@').map(|(at, _)| at).rev().find(|&at| {
+        let name = rest[..at].split(':').next().unwrap_or_default();
+        HOST_FIRST.is_match(&rest[at + 1..]) && !name.contains(['/', '?', '#'])
+    });
+    if let Some(at) = before_a_host {
+        return Some(&rest[..at]);
+    }
+    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    Some(&authority[..authority.rfind('@')?])
+}
+
+/// A host, and its port if it has one, then the end of the address or
+/// of its authority: a domain name of two or more labels, the last
+/// starting with a letter (so not a version, `1.2`), an IPv4 or bracketed
+/// IPv6 address, or `localhost`.
+static HOST_FIRST: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)^
+        (?: (?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+ [A-Za-z][A-Za-z0-9-]*
+          | (?:[0-9]{1,3}\.){3}[0-9]{1,3}
+          | \[[0-9A-Fa-f:.]+\]
+          | (?i:localhost) )
+        (?: :[0-9]{1,5} )?
+        (?: [/?\#] | $ )",
+    )
+    .expect("a valid pattern")
+});
 
 /// `written`, and the forms a tool may print it in instead: decoded, and
 /// percent-encoded with upper- and lowercase hex digits.
@@ -378,6 +434,93 @@ mod tests {
         );
     }
 
+    /// What curl 8.7.1 printed on this Mac (exit 5, before connecting
+    /// anywhere) for a proxy whose password holds a `/`, `#` or `?` as
+    /// written, not percent-encoded: it reads the address as ending there,
+    /// fails on the "port", and prints the setting back whole.
+    fn curl_refuses(setting: &str) -> String {
+        format!(
+            "curl: (5) Unsupported proxy syntax in '{setting}': \
+             Port number was not a decimal number between 0 and 65535"
+        )
+    }
+
+    #[test]
+    fn test_a_proxy_password_holding_a_slash_hash_or_question_mark_is_masked() {
+        for (name, setting, password) in [
+            (
+                "https_proxy",
+                "http://review-user:rev/secret@127.0.0.1:8080",
+                "rev/secret",
+            ),
+            (
+                "HTTPS_PROXY",
+                "http://review-user:rev#secret@127.0.0.1:8080",
+                "rev#secret",
+            ),
+            (
+                "ALL_PROXY",
+                "http://review-user:rev?secret@127.0.0.1:8080",
+                "rev?secret",
+            ),
+            // No scheme, as curl also accepts and prints back as written.
+            (
+                "http_proxy",
+                "review-user:rev/secret@127.0.0.1:8080",
+                "rev/secret",
+            ),
+            // `@` and `/` both: all before the last `@` is the login.
+            (
+                "all_proxy",
+                "socks5h://review-user:p@ss/w0rd@127.0.0.1:7891",
+                "p@ss/w0rd",
+            ),
+        ] {
+            let said = curl_refuses(setting);
+            let masked = redactor(&[(name, setting)]).redact(&said).into_owned();
+            assert_eq!(masked, said.replace(password, MASK), "{name}={setting}");
+            assert!(
+                masked.contains("'review-user:****@") || masked.contains("//review-user:****@")
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_mirror_password_holding_a_slash_hash_question_mark_or_at_is_masked() {
+        for (name, setting, password) in [
+            (
+                "HOMEBREW_CORE_GIT_REMOTE",
+                "https://review-user:rev/secret@github.example/Homebrew/homebrew-core",
+                "rev/secret",
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://review-user:rev#secret@pypi.mirror.example/simple",
+                "rev#secret",
+            ),
+            (
+                "UV_INDEX_URL",
+                "https://review-user:rev?secret@pypi.mirror.example:8443/simple",
+                "rev?secret",
+            ),
+            (
+                "npm_config_registry",
+                "https://review-user:p@ss/w0rd@registry.mirror.example/",
+                "p@ss/w0rd",
+            ),
+            // An `@` in the path after the host is the path's.
+            (
+                "HOMEBREW_BOTTLE_DOMAIN",
+                "https://review-user:pw4mirror@mirror.example/pkgs/foo@1.2",
+                "pw4mirror",
+            ),
+        ] {
+            let said = format!("fatal: unable to access '{setting}/': URL rejected");
+            let masked = redactor(&[(name, setting)]).redact(&said).into_owned();
+            assert_eq!(masked, said.replace(password, MASK), "{name}={setting}");
+        }
+    }
+
     #[test]
     fn test_every_form_of_a_percent_encoded_password_is_masked() {
         // The password is `p@ss/w0rd`, written percent-encoded as it has to
@@ -512,6 +655,17 @@ mod tests {
                     "https://mirror.example/path/with@sign"
                 ),
                 ("https_proxy", "http://:@proxy.lan:8080"),
+                // An `@` in a mirror's path is no login, after a port too.
+                ("PIP_INDEX_URL", "https://example.com:8080/a@b"),
+                (
+                    "npm_config_registry",
+                    "https://mirror.example/npm/@scope/pkg"
+                ),
+                ("UV_INDEX_URL", "https://mirror.example/x/user@example.com"),
+                (
+                    "RUSTUP_DIST_SERVER",
+                    "https://mirror.example/dist/foo@1.2.3.4/"
+                ),
             ]),
             Redactor::default()
         );

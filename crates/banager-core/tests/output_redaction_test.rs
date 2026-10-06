@@ -21,12 +21,20 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-/// A proxy whose port curl and pip refuse, so both print it back, login
-/// and all, before connecting anywhere.
+/// `https_proxy`: a proxy whose port curl and pip refuse, so both print it
+/// back, login and all, before connecting anywhere.
 const HTTPS_PROXY: &str = "http://review-user:review-secret@127.0.0.1:invalid";
-/// The same login written with no scheme, as curl also accepts -- and
-/// prints back as written, with no `scheme://` for a pattern to find.
-const HTTP_PROXY: &str = "review-user:review-secret@127.0.0.1:invalid";
+/// `http_proxy`: a login written with no scheme, as curl also accepts --
+/// and prints back as written, with no `scheme://` for a pattern to find --
+/// with a `/` in its password, as written.
+const HTTP_PROXY: &str = "review-user:rev/bare-secret@127.0.0.1:8080";
+/// `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`: a `/`, `#` or `?` in the
+/// password as written, not percent-encoded. curl 8.7.1 reads the address
+/// as ending there, fails on the "port" and prints the setting back whole
+/// (exit 5, on this Mac), the F2 review's reproduction.
+const SLASH_PROXY: &str = "http://review-user:rev/secret@127.0.0.1:8080";
+const HASH_PROXY: &str = "http://review-user:rev#secret@127.0.0.1:8080";
+const QUERY_PROXY: &str = "http://review-user:rev?secret@127.0.0.1:8080";
 /// A password that has to be percent-encoded in an address: `p@ss/word`.
 const ALL_PROXY: &str = "socks5://someone:p%40ss%2Fword@127.0.0.1:7891";
 /// A mirror whose login is an access token alone.
@@ -35,6 +43,10 @@ const MIRROR: &str = "https://ghp_mirrortoken42@mirror.example/homebrew-bottles"
 /// Every secret above, in each form a test below has a tool print.
 const SECRETS: &[&str] = &[
     "review-secret",
+    "rev/bare-secret",
+    "rev/secret",
+    "rev#secret",
+    "rev?secret",
     "p%40ss%2Fword",
     "p@ss/word",
     "ghp_mirrortoken42",
@@ -49,6 +61,9 @@ fn accept_settings_with_logins() {
             ("http_proxy".to_string(), HTTP_PROXY.to_string()),
             ("https_proxy".to_string(), HTTPS_PROXY.to_string()),
             ("all_proxy".to_string(), ALL_PROXY.to_string()),
+            ("HTTP_PROXY".to_string(), SLASH_PROXY.to_string()),
+            ("HTTPS_PROXY".to_string(), HASH_PROXY.to_string()),
+            ("ALL_PROXY".to_string(), QUERY_PROXY.to_string()),
             ("HOMEBREW_BOTTLE_DOMAIN".to_string(), MIRROR.to_string()),
         ],
     });
@@ -72,6 +87,9 @@ printf "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: %s\n
 printf "==> Downloading %s/jq-1.8.1.bottle.tar.gz\n" "$HOMEBREW_BOTTLE_DOMAIN"
 printf "proxy %s refused the login for p@ss/word\n" "$all_proxy"
 printf "> Proxy-Authorization: Basic cmV2aWV3LXVzZXI6cmV2aWV3LXNlY3JldA==\n"
+for proxy in "$HTTP_PROXY" "$HTTPS_PROXY" "$ALL_PROXY"; do
+  printf "curl: (5) Unsupported proxy syntax in '%s': Port number was not a decimal number between 0 and 65535\n" "$proxy" >&2
+done
 printf "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: %s\n" "$https_proxy" >&2
 exit 5
 "#;
@@ -118,7 +136,7 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
             _ => None,
         })
         .collect();
-    assert_eq!(lines.len(), 7, "{lines:#?}");
+    assert_eq!(lines.len(), 10, "{lines:#?}");
     for line in &lines {
         assert_no_secret("a log line", line);
     }
@@ -126,7 +144,8 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
     // masked in what it printed, not taken out of what it was given.
     let expected = [
         "curl: (5) Unsupported proxy syntax in 'http://review-user:****@127.0.0.1:invalid': Port number was not a decimal number between 0 and 65535",
-        "curl: (5) Unsupported proxy syntax in 'review-user:****@127.0.0.1:invalid': Port number was not a decimal number between 0 and 65535",
+        "curl: (5) Unsupported proxy syntax in 'review-user:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
+        "curl: (5) Unsupported proxy syntax in 'http://review-user:****@127.0.0.1:8080': Port number was not a decimal number between 0 and 65535",
         "pip._vendor.urllib3.exceptions.LocationParseError: Failed to parse: http://review-user:****@127.0.0.1:invalid",
         "pip._vendor.requests.exceptions.InvalidURL: Failed to parse: http://review-user:****@127.0.0.1:invalid",
         "==> Downloading https://****@mirror.example/homebrew-bottles/jq-1.8.1.bottle.tar.gz",
@@ -145,8 +164,20 @@ async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins
     };
     assert_eq!(exit_code, Some(5));
     assert_no_secret("the failure summary", &summary);
-    assert_eq!(summary.lines().count(), 4, "{summary}");
-    assert!(summary.contains("review-user:****@127.0.0.1"), "{summary}");
+    // The last five lines: pip's, and curl's for the three proxies with
+    // a `/`, `#` or `?` in the password.
+    assert_eq!(summary.lines().count(), 5, "{summary}");
+    assert!(
+        summary.contains("review-user:****@127.0.0.1:invalid"),
+        "{summary}"
+    );
+    assert_eq!(
+        summary
+            .matches("'http://review-user:****@127.0.0.1:8080'")
+            .count(),
+        3,
+        "{summary}"
+    );
 }
 
 #[tokio::test]
@@ -236,6 +267,9 @@ async fn test_the_login_shell_read_still_gets_the_settings_as_written() {
     assert_eq!(value("https_proxy"), Some(HTTPS_PROXY));
     assert_eq!(value("http_proxy"), Some(HTTP_PROXY));
     assert_eq!(value("all_proxy"), Some(ALL_PROXY));
+    assert_eq!(value("HTTP_PROXY"), Some(SLASH_PROXY));
+    assert_eq!(value("HTTPS_PROXY"), Some(HASH_PROXY));
+    assert_eq!(value("ALL_PROXY"), Some(QUERY_PROXY));
     assert_eq!(value("HOMEBREW_BOTTLE_DOMAIN"), Some(MIRROR));
     let _ = std::fs::remove_dir_all(&dir);
 }
