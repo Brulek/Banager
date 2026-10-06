@@ -1803,6 +1803,17 @@ pub enum Fault {
     /// (`BrewAdapter::require_kegs_as_previewed`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     FormulaChanged { name: String },
+    /// An install or update through Homebrew was not started, because what
+    /// Homebrew would delete by itself after it, read again right before
+    /// the command, is more than the preview said: a `brew.env` changed
+    /// since then takes Banager's `HOMEBREW_NO_INSTALL_CLEANUP=1` or
+    /// `HOMEBREW_NO_AUTOREMOVE=1` back, or can no longer be read, or no
+    /// longer names a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE`
+    /// leaves out. Nothing was started; a new preview says what Homebrew
+    /// deletes now. Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_cleanup_as_previewed`); read by `faultKey`
+    /// in src/lib/format.ts.
+    HomebrewSettingsChanged,
     /// Something on Banager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Banager, not a state of the Mac.
@@ -2863,12 +2874,20 @@ mod tests {
             .unwrap(),
             r#"{"BanagerFailed":{"FormulaChanged":{"name":"wget"}}}"#
         );
+        // An install or update found Homebrew would now delete more by
+        // itself than its preview said, and ran nothing (review of
+        // v1-brew's fixes, r6): a unit variant, a bare string.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::HomebrewSettingsChanged)).unwrap(),
+            r#"{"BanagerFailed":"HomebrewSettingsChanged"}"#
+        );
         for fault in [
             Fault::Panicked,
             Fault::HomebrewStillUpdating { minutes: 10 },
             Fault::FormulaChanged {
                 name: "wget".to_string(),
             },
+            Fault::HomebrewSettingsChanged,
             Fault::Internal,
         ] {
             let json = serde_json::to_string(&Outcome::BanagerFailed(fault.clone())).unwrap();

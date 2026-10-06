@@ -956,6 +956,69 @@ impl BrewAdapter {
         Ok(())
     }
 
+    /// Refuses an install or upgrade, right before it runs, after which
+    /// Homebrew would now delete more by itself than the preview said --
+    /// the reverse of `cleanup_allowed`'s second look (review of v1-brew's
+    /// fixes, r6). A `brew.env` edited, or turned unreadable, while the
+    /// confirmation is open can take Banager's
+    /// `HOMEBREW_NO_INSTALL_CLEANUP=1` back, and the command then runs
+    /// Homebrew's own cleanup (`Cleanup.install_clean!`,
+    /// `cleanup.rb:361-389`): the package's old versions and downloads,
+    /// every formula's when the periodic cleanup is due, and autoremove
+    /// unless that is off -- where a preview without those lines said
+    /// other software and its old versions are kept. So the switches are
+    /// read again as the preview read them (`switch_warnings`): when
+    /// Homebrew cleans up now, or may, the preview must have said it
+    /// would or might (`Warning::HomebrewPeriodicCleanup`,
+    /// `HomebrewMayCleanUp`); when that cleanup autoremoves now, or may,
+    /// the preview must have said that too (`HomebrewCleanupAutoremoves`,
+    /// `HomebrewCleanupMayAutoremove`); and every formula the preview said
+    /// `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out must still be left out.
+    /// "Will" where the preview said "may", or the reverse, is no reason
+    /// to stop, and nor is less than it said. Otherwise
+    /// `Fault::HomebrewSettingsChanged`, and nothing runs.
+    fn require_cleanup_as_previewed(
+        &self,
+        plan: &Plan,
+        prefix: &Path,
+        env: &[(String, String)],
+    ) -> Result<(), Fault> {
+        let now = self.switches_at(prefix, env);
+        if now.no_install_cleanup {
+            return Ok(());
+        }
+        let said = |line: fn(&Warning) -> bool| plan.warnings.iter().any(line);
+        let cleans_up = said(|warning| {
+            matches!(
+                warning,
+                Warning::HomebrewPeriodicCleanup | Warning::HomebrewMayCleanUp
+            )
+        });
+        let autoremoves = now.no_autoremove
+            || said(|warning| {
+                matches!(
+                    warning,
+                    Warning::HomebrewCleanupAutoremoves | Warning::HomebrewCleanupMayAutoremove
+                )
+            });
+        let left_out: &[String] = plan
+            .warnings
+            .iter()
+            .find_map(|warning| match warning {
+                Warning::HomebrewNoCleanupFormulae { names, .. } => Some(names.as_slice()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let still_left_out = left_out
+            .iter()
+            .all(|name| now.no_cleanup_formulae.contains(name));
+        if cleans_up && autoremoves && still_left_out {
+            Ok(())
+        } else {
+            Err(Fault::HomebrewSettingsChanged)
+        }
+    }
+
     /// Whether an uninstall of a formula whose Cellar reads `kegs` passes
     /// `--force` (U9): more than one version installed, and no pin.
     fn removes_every_version(kegs: &Kegs) -> bool {
@@ -2179,7 +2242,11 @@ impl BrewAdapter {
             if let PlanAction::Command { program, env, .. }
             | PlanAction::CommandThen { program, env, .. } = &plan.action
             {
-                self.require_no_auto_update(&Self::prefix_for(program), env)?;
+                let prefix = Self::prefix_for(program);
+                self.require_no_auto_update(&prefix, env)?;
+                if let Err(fault) = self.require_cleanup_as_previewed(plan, &prefix, env) {
+                    return Ok(Outcome::BanagerFailed(fault));
+                }
             }
         }
         if let Err(fault) = self.require_kegs_as_previewed(plan) {
@@ -7568,6 +7635,35 @@ mod plan_execute_tests {
             // (`cleanup.rb:497-519`), so Banager asks again right before it
             // and, when the answer is no longer yes, runs nothing more and
             // says so in the log. The update stands.
+            //
+            // The last two only once the update has run: at the click they
+            // stop the update itself
+            // (`an_install_or_update_runs_nothing_when_homebrew_would_now_delete_more_than_its_preview_said`).
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static UPDATED: AtomicBool = AtomicBool::new(false);
+            /// Answers as `inner`, and marks `UPDATED` once it has run
+            /// `after`.
+            struct MarkAfter {
+                inner: Arc<MockRunner>,
+                after: Vec<String>,
+            }
+            #[async_trait]
+            impl CommandRunner for MarkAfter {
+                async fn run(
+                    &self,
+                    spec: CommandSpec,
+                    on_line: Option<crate::runner::LineCallback>,
+                    cancel: CancellationToken,
+                ) -> Result<CommandOutput, crate::runner::RunnerError> {
+                    let mut argv = vec![spec.program.to_string_lossy().into_owned()];
+                    argv.extend(spec.args.iter().cloned());
+                    let output = self.inner.run(spec, on_line, cancel).await;
+                    if argv == self.after {
+                        UPDATED.store(true, Ordering::SeqCst);
+                    }
+                    output
+                }
+            }
             type Files = fn(&Path) -> brew_env::EnvFile;
             type Read = fn(&Path, &str) -> Option<Kegs>;
             fn system(bytes: &'static [u8]) -> impl Fn(&Path) -> brew_env::EnvFile {
@@ -7598,13 +7694,19 @@ mod plan_execute_tests {
                 ),
                 (
                     "taken back",
-                    |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p),
+                    |p| {
+                        if UPDATED.load(Ordering::SeqCst) {
+                            system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p)
+                        } else {
+                            brew_env::EnvFile::Skipped
+                        }
+                    },
                     two_versions,
                 ),
                 (
                     "unknown",
                     |p| {
-                        if p == Path::new(brew_env::SYSTEM_FILE) {
+                        if UPDATED.load(Ordering::SeqCst) && p == Path::new(brew_env::SYSTEM_FILE) {
                             brew_env::EnvFile::Unknown
                         } else {
                             brew_env::EnvFile::Skipped
@@ -7625,6 +7727,7 @@ mod plan_execute_tests {
                 }
             );
             for (case, files, read) in cases {
+                UPDATED.store(false, Ordering::SeqCst);
                 let runner = Arc::new(MockRunner::new());
                 runner.respond(upgrade.clone(), ok("==> Upgrading wget\n", "", 0));
                 let plan = BrewAdapter::new(runner.clone())
@@ -7634,7 +7737,11 @@ mod plan_execute_tests {
                     .expect("plan");
                 assert!(upgrade_then_cleanup(&plan).is_some(), "{case}");
                 let sink = Arc::new(VecSink::new());
-                let outcome = BrewAdapter::new(runner.clone())
+                let marking = Arc::new(MarkAfter {
+                    inner: runner.clone(),
+                    after: upgrade.iter().map(|s| s.to_string()).collect(),
+                });
+                let outcome = BrewAdapter::new(marking)
                     .with_brew_env_fn(files)
                     .with_kegs_fn(read)
                     .execute(&plan, sink.clone(), 7, CancellationToken::new())
@@ -7668,6 +7775,133 @@ mod plan_execute_tests {
             assert_eq!(outcome, Outcome::Succeeded);
             assert_eq!(runner.calls(), vec![upgrade.clone()]);
             assert_eq!(log_lines(&sink), vec![skipped]);
+        }
+
+        #[tokio::test]
+        async fn an_install_or_update_runs_nothing_when_homebrew_would_now_delete_more_than_its_preview_said(
+        ) {
+            // Review of v1-brew's fixes (r6), the reverse of F4: a brew.env
+            // edited while the confirmation is open takes Banager's
+            // `HOMEBREW_NO_INSTALL_CLEANUP=1` back, or becomes one Banager
+            // cannot read. The install or update would then run Homebrew's
+            // own cleanup (`Cleanup.install_clean!`) -- the periodic one of
+            // every formula when due -- where the preview said other
+            // software and its old versions are kept. So the switches are
+            // read again at the click, and when Homebrew would now delete
+            // more than the preview said -- cleanup, its autoremove, or a
+            // formula `HOMEBREW_NO_CLEANUP_FORMULAE` no longer leaves out --
+            // nothing runs. Where it deletes what the preview said, or
+            // less, or "will" where the preview said "may", it runs.
+            type Files = fn(&Path) -> brew_env::EnvFile;
+            fn system(bytes: &'static [u8]) -> impl Fn(&Path) -> brew_env::EnvFile {
+                move |path| {
+                    (path == Path::new(brew_env::SYSTEM_FILE))
+                        .then(|| bytes.to_vec())
+                        .into()
+                }
+            }
+            let none: Files = |_| brew_env::EnvFile::Skipped;
+            let taken_back: Files = |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p);
+            let unknown: Files = |p| {
+                if p == Path::new(brew_env::SYSTEM_FILE) {
+                    brew_env::EnvFile::Unknown
+                } else {
+                    brew_env::EnvFile::Skipped
+                }
+            };
+            let autoremove_too: Files =
+                |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_AUTOREMOVE=0\n")(p);
+            let jq_left_out: Files =
+                |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_CLEANUP_FORMULAE=jq\n")(p);
+            let jq_and_wget_left_out: Files = |p| {
+                system(b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_CLEANUP_FORMULAE=jq,wget\n")(p)
+            };
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let install = vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"];
+            // What, the operation, brew.env at the preview and at the
+            // click, and whether the command runs.
+            let cases: [(&str, OpKind, Files, Files, bool); 10] = [
+                (
+                    "Banager's 1 taken back",
+                    OpKind::Upgrade,
+                    none,
+                    taken_back,
+                    false,
+                ),
+                ("unreadable now", OpKind::Upgrade, none, unknown, false),
+                ("an install", OpKind::Install, none, taken_back, false),
+                (
+                    "autoremove back too",
+                    OpKind::Upgrade,
+                    taken_back,
+                    autoremove_too,
+                    false,
+                ),
+                (
+                    "jq no longer left out",
+                    OpKind::Upgrade,
+                    jq_left_out,
+                    taken_back,
+                    false,
+                ),
+                (
+                    "as previewed",
+                    OpKind::Upgrade,
+                    taken_back,
+                    taken_back,
+                    true,
+                ),
+                ("may, then will", OpKind::Upgrade, unknown, taken_back, true),
+                (
+                    "one more left out",
+                    OpKind::Upgrade,
+                    jq_left_out,
+                    jq_and_wget_left_out,
+                    true,
+                ),
+                ("an install as previewed", OpKind::Install, none, none, true),
+                (
+                    "less than previewed",
+                    OpKind::Upgrade,
+                    taken_back,
+                    none,
+                    true,
+                ),
+            ];
+            for (case, kind, at_preview, at_click, runs) in cases {
+                let (name, command) = match kind {
+                    OpKind::Install => ("jq", &install),
+                    _ => ("wget", &upgrade),
+                };
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(command.clone(), ok("", "", 0));
+                let plan = BrewAdapter::new(runner.clone())
+                    .with_brew_env_fn(at_preview)
+                    .with_kegs_fn(two_versions)
+                    .plan(
+                        &test_instance(),
+                        &request(kind, ArtifactKind::Formula, name),
+                    )
+                    .await
+                    .expect("plan");
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_brew_env_fn(at_click)
+                    .with_kegs_fn(two_versions)
+                    .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                if runs {
+                    assert_eq!(outcome, Outcome::Succeeded, "{case}");
+                    assert_eq!(runner.calls().first().expect(case), command, "{case}");
+                } else {
+                    assert_eq!(
+                        outcome,
+                        Outcome::BanagerFailed(Fault::HomebrewSettingsChanged),
+                        "{case}"
+                    );
+                    assert!(runner.calls().is_empty(), "{case}: {:?}", runner.calls());
+                }
+            }
         }
 
         #[tokio::test]

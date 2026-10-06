@@ -985,6 +985,22 @@ and, where the autoremove is back, they and the formulae they need at run
 time, which it keeps (`:1051-1055`). Banager changes nothing in those
 files.
 
+An install or upgrade reads them again right before its command runs,
+once any wait for an update of Homebrew's is over
+(`BrewAdapter::require_cleanup_as_previewed`, review of v1-brew's fixes,
+r6): a file edited, or turned unreadable, while the confirmation is open
+can take `HOMEBREW_NO_INSTALL_CLEANUP` back, and the command would then
+end in Homebrew's clean-up where its preview said nothing of one. When
+Homebrew would now delete more afterwards than the preview said -- it
+cleans up, or may, and the preview had no line saying it would or might;
+that clean-up autoremoves, or may, and the preview had no line for that;
+or a formula the preview said `HOMEBREW_NO_CLEANUP_FORMULAE` leaves out
+is no longer left out -- nothing runs, and the operation ends as
+「未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取」, asking
+for the confirmation to be opened again (`Fault::HomebrewSettingsChanged`).
+Less than the preview said, or "will" where it said "may", or the
+reverse, runs.
+
 **The trust list.** After `brew uninstall`, Homebrew deletes the entry its
 trust list holds for each package it uninstalled — a cask by its full
 name, which has its tap in it unless the cask is Homebrew's own; a formula
@@ -3542,7 +3558,9 @@ not read (`protected::look`; How Banager runs anything, above):
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
   the uninstall preview; its `brew.env` files, during every install,
-  uninstall and upgrade preview; during a cask's uninstall preview, the
+  uninstall and upgrade preview, again right before an install or upgrade
+  runs, and right before the cleanup that follows an update; during a
+  cask's uninstall preview, the
   names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
   folders there, the caskfile Homebrew saved when it is JSON, and
   `INSTALL_RECEIPT.json`; during every uninstall preview, its trust list,
@@ -4095,7 +4113,9 @@ configured, `index.crates.io`, and cargo still follows a
   package it names and of any it updates along with it, and stray old
   downloads, every time, and those of all
   Homebrew software when its periodic clean-up is due; when a `brew.env`
-  file takes either back, the preview says so (Homebrew's section). What
+  file takes either back, the preview says so, and one that takes
+  `HOMEBREW_NO_INSTALL_CLEANUP` back only after the preview stops the
+  install or upgrade before it starts (Homebrew's section). What
   Banager runs in its place deletes the installed old versions of the one
   formula it just upgraded, that formula's outdated downloads in
   Homebrew's cache and every unreferenced download there, whichever package
