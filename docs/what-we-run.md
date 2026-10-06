@@ -819,9 +819,13 @@ came back on the Installed page, still installed. So:
   not linked, pinned or still needed, its downloads in Homebrew's cache
   that are outdated or older than `HOMEBREW_CLEANUP_MAX_AGE_DAYS` days
   (120 unless set), and every download in the cache's `downloads` folder
-  that nothing refers to any more (`Cleanup#clean!` with names,
-  `cleanup.rb:497-517`; `cleanup_formula`, `:564-571`;
-  `Formula#eligible_kegs_for_cleanup`); with a name it runs no periodic
+  that nothing refers to any more, whichever package it was for and
+  however recent (`Cleanup#clean!` with names, `cleanup.rb:497-517`;
+  `cleanup_formula`, `:564-571`; `cleanup_unreferenced_downloads`,
+  `:709-733`; `Formula#eligible_kegs_for_cleanup`). `brew cleanup` has no
+  option that keeps that last part to the one formula, so the preview
+  says it (below) rather than Banager running another command to avoid
+  it; that part deletes nothing installed. With a name it runs no periodic
   clean-up and no autoremove. A cask of the same name has its outdated
   downloads in the cache deleted too (`cleanup_cask`, `:581-588`): the
   cache only, nothing installed. This is what Homebrew does by itself
@@ -853,8 +857,12 @@ came back on the Installed page, still installed. So:
   打开后，Homebrew的设置有了变化，或无法读取。……」); the update's
   outcome is unchanged. The update's preview says
   first which versions go -- every version installed when it looked, the
-  one the update replaces among them (`Warning::HomebrewCleansUpOldVersions`,
-  「更新后会删除旧版本1.25.0。」, the command behind its ⓘ) -- and shows
+  one the update replaces among them -- and, in the same line, that
+  Homebrew also deletes the downloads in its cache it no longer uses,
+  other tools' too, without calling those outdated
+  (`Warning::HomebrewCleansUpOldVersions`,
+  「更新后会删除旧版本1.25.0。Homebrew还会删除缓存里已不再使用的下载文件，
+  包括其他工具的。」, the command behind its ⓘ) -- and shows
   both commands. How the cleanup ends never changes the update's outcome:
   its lines go to the log after one saying it starts, and when it does
   not exit 0, is stopped (Cancel, or `CLEANUP_TIMEOUT_SECS`, 600 s) or
@@ -899,8 +907,9 @@ came back on the Installed page, still installed. So:
   uninstall is the plain `brew uninstall --formula {name}`.
 
 Both read, during the upgrade and the uninstall preview of a formula,
-again right before an uninstall with `--force` runs, and again after the
-cleanup that follows an update exits 0, the names in
+again right before an uninstall with `--force` runs, and right before
+the cleanup that follows an update runs and again after it exits 0, the
+names in
 `<prefix>/Cellar/<name>` -- its versions, the folders there -- and whether
 `<prefix>/var/homebrew/pinned/<name>` is there (`brew::kegs`, `lstat`
 only); `<name>` is the last part of a tap's `user/tap/name`.
@@ -4077,10 +4086,11 @@ configured, `index.crates.io`, and cargo still follows a
   Homebrew software when its periodic clean-up is due; when a `brew.env`
   file takes either back, the preview says so (Homebrew's section). What
   Banager runs in its place deletes the installed old versions of the one
-  formula it just upgraded and outdated or unreferenced downloads in
-  Homebrew's cache, and no other installed software, only where Homebrew
-  would have done that by itself and the person turned nothing of it off
-  (Homebrew's section, "Old versions").
+  formula it just upgraded, that formula's outdated downloads in
+  Homebrew's cache and every unreferenced download there, whichever package
+  it was for -- which the update's preview says -- and no other installed
+  software, only where Homebrew would have done that by itself and the
+  person turned nothing of it off (Homebrew's section, "Old versions").
 - Never runs a `brew` command as root.
 - Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Banager's
   environment: removing the last tool, uv would then also delete the

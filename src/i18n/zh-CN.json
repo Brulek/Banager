@@ -512,8 +512,8 @@
     "homebrewMayAutoUpdateDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTO_UPDATE=1，但它的某个brew.env文件在受保护的位置或指向那里，没有读取，无法得知它是否把这个值设成了空值。"
   },
   "brewVersions": {
-    "cleansUp_other": "更新后会删除旧版本{{versions}}。",
-    "cleansUpDetail": "更新完成后会运行brew cleanup，删除这些旧版本和过期的下载文件，和Homebrew平时更新后做的一样。其他软件的旧版本不删除。",
+    "cleansUp_other": "更新后会删除旧版本{{versions}}。Homebrew还会删除缓存里已不再使用的下载文件，包括其他工具的。",
+    "cleansUpDetail": "更新完成后会运行brew cleanup，和Homebrew平时更新后做的一样：删除这些旧版本、这个工具过期的下载文件，以及缓存里Homebrew已不再使用的所有下载文件，不论是哪个工具的。其他已安装的软件和它们的旧版本不删除。",
     "removesEvery": "已安装的所有版本都会删除：{{versions}}。",
     "logCleaningUp": "更新已完成，接着运行brew cleanup删除{{name}}的旧版本。",
     "logNotCleanedUp": "brew cleanup没有完成。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",

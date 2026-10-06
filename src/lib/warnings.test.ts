@@ -1164,14 +1164,36 @@ describe("U9: the versions a Homebrew update or uninstall deletes", () => {
   it("says an update deletes the old versions afterwards, each named, with how behind the ⓘ", () => {
     const one: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.25.0"] } };
     const two: Warning = { HomebrewCleansUpOldVersions: { versions: ["1.24.0", "1.25.0"] } };
-    expect(warningText(zh, one)).toBe("更新后会删除旧版本1.25.0。");
-    expect(warningText(zh, two)).toBe("更新后会删除旧版本1.24.0、1.25.0。");
-    expect(warningText(zhHant, two)).toBe("更新後會刪除舊版本1.24.0、1.25.0。");
-    expect(warningText(enT, one)).toBe("After updating, removes the old version 1.25.0.");
-    expect(warningText(enT, two)).toBe("After updating, removes the old versions 1.24.0, 1.25.0.");
+    // Review F1 (r6): `brew cleanup <name>` also deletes every download in
+    // Homebrew's cache that nothing there refers to any more, whichever
+    // package it was for (`cleanup_unreferenced_downloads`). The line says
+    // so before it runs, not only behind the ⓘ, and does not call them
+    // outdated.
+    const cache = {
+      zh: "Homebrew还会删除缓存里已不再使用的下载文件，包括其他工具的。",
+      zhHant: "Homebrew還會刪除快取裡已不再使用的下載檔案，包括其他工具的。",
+      en: "Homebrew also deletes downloads in its cache that it no longer uses, other tools' included.",
+    };
+    expect(warningText(zh, one)).toBe(`更新后会删除旧版本1.25.0。${cache.zh}`);
+    expect(warningText(zh, two)).toBe(`更新后会删除旧版本1.24.0、1.25.0。${cache.zh}`);
+    expect(warningText(zhHant, two)).toBe(`更新後會刪除舊版本1.24.0、1.25.0。${cache.zhHant}`);
+    expect(warningText(enT, one)).toBe(`After updating, removes the old version 1.25.0. ${cache.en}`);
+    expect(warningText(enT, two)).toBe(`After updating, removes the old versions 1.24.0, 1.25.0. ${cache.en}`);
     expect(warningLine(zh, two)?.detail).toBe(
-      "更新完成后会运行brew cleanup，删除这些旧版本和过期的下载文件，和Homebrew平时更新后做的一样。其他软件的旧版本不删除。",
+      "更新完成后会运行brew cleanup，和Homebrew平时更新后做的一样：删除这些旧版本、这个工具过期的下载文件，以及缓存里Homebrew已不再使用的所有下载文件，不论是哪个工具的。其他已安装的软件和它们的旧版本不删除。",
     );
+    expect(warningLine(zhHant, two)?.detail).toBe(
+      "更新完成後會執行brew cleanup，和Homebrew平常更新後做的一樣：刪除這些舊版本、這個工具過期的下載檔案，以及快取裡Homebrew已不再使用的所有下載檔案，不論是哪個工具的。其他已安裝的軟體和它們的舊版本不刪除。",
+    );
+    expect(warningLine(enT, two)?.detail).toBe(
+      "Once the update is done, brew cleanup runs, as Homebrew does after an update by default: it deletes these old versions, this tool's outdated downloads and every download in Homebrew's cache it no longer uses, whichever tool it was for. Other installed software and its old versions are kept.",
+    );
+    // What it says of other tools' downloads is not "outdated": they are
+    // deleted whatever their age.
+    for (const t of [zh, zhHant, enT]) {
+      const line = warningText(t, two) ?? "";
+      expect(line).not.toMatch(/过期|過期|outdated/);
+    }
     // How the update goes, as Homebrew does it by default: not a caution,
     // and nothing the uninstall button speaks of.
     expect(warningGroup(two)).toBe("note");

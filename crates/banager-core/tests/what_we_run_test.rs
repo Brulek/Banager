@@ -355,12 +355,51 @@ fn test_what_we_run_never_list_says_the_cleanup_after_an_update_also_deletes_cac
         !in_its_place.contains("nothing more"),
         "the never-list says the cleanup after an update deletes nothing more than the old versions, but it also deletes downloads in Homebrew's cache: {in_its_place}"
     );
-    for words in ["cache", "unreferenced", "no other installed software"] {
+    // Review F1 (r6): every unreferenced download goes, whatever package
+    // it was for, and the preview says so before it runs.
+    for words in [
+        "cache",
+        "unreferenced",
+        "whichever package it was for",
+        "which the update's preview says",
+        "no other installed software",
+    ] {
         assert!(
             in_its_place.contains(words),
             "the never-list's sentence on the cleanup after an update does not say {words:?}: {in_its_place}"
         );
     }
+}
+
+#[test]
+fn test_what_we_run_quotes_the_update_preview_saying_other_tools_downloads_go_too() {
+    // Review F1 (r6): `brew cleanup <name>` deletes every download in
+    // Homebrew's cache that nothing there refers to any more, whatever
+    // package it was for (`cleanup_unreferenced_downloads`,
+    // `cleanup.rb:709-733`), and Homebrew has no way to keep it to the one
+    // formula without another command. So the update's preview says so,
+    // and the `## Homebrew` section quotes the line as the app shows it --
+    // the same words as `brewVersions.cleansUp_other` in zh-CN.json.
+    let locale: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("../../src/i18n/zh-CN.json").expect("read zh-CN.json"),
+    )
+    .expect("zh-CN.json is JSON");
+    let line = locale["brewVersions"]["cleansUp_other"]
+        .as_str()
+        .expect("brewVersions.cleansUp_other")
+        .replace("{{versions}}", "1.25.0");
+    assert!(
+        line.contains("其他工具"),
+        "the preview's line does not say other tools' downloads go too: {line}"
+    );
+    let doc = read_doc();
+    let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
+    // Hard-wrapped Chinese has no spaces to fold a line break into.
+    let joined: String = homebrew.lines().map(str::trim).collect();
+    assert!(
+        joined.contains(&format!("「{line}」")),
+        "the `## Homebrew` section does not quote the update preview's line {line:?}"
+    );
 }
 
 /// The never-list's bullets, each hard-wrapped bullet folded into one
