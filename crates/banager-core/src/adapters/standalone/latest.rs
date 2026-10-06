@@ -15,6 +15,7 @@
 //! rule where a string comparison is wrong.
 
 use super::recipe::VersionParse;
+use crate::runner::redact::Redactor;
 use std::cmp::Ordering;
 use std::path::Path;
 
@@ -197,13 +198,20 @@ pub struct UpdateCheck {
 /// (ruling 10 of the phase 4 step D plan). The tool's `latest` is taken as
 /// it is, suffix and all: it is shown, not compared. Read by
 /// `StandaloneAdapter::published` for `Latest::Command`.
+///
+/// A reason quotes what the tool printed, and is shown on the source's
+/// row and in the diagnostics; the tool ran with the proxy and mirror
+/// settings, which can hold a login. So what it quotes goes through `mask`
+/// first (`Redactor::for_commands`, the runner's), and is cut to length
+/// after (F2 of the decisions-round review).
 pub fn parse_update_check(
     stdout: &str,
     latest_field: &str,
     available_field: &str,
     error_field: Option<&str>,
+    mask: &Redactor,
 ) -> Result<UpdateCheck, String> {
-    let shown = || -> String { stdout.trim().chars().take(40).collect() };
+    let shown = || -> String { mask.redact(stdout.trim()).chars().take(40).collect() };
     let value: serde_json::Value = serde_json::from_str(stdout)
         .map_err(|_| format!("the update check did not print JSON (got {:?})", shown()))?;
     if let Some(error) = error_field.and_then(|field| value.get(field)) {
@@ -212,7 +220,7 @@ pub fn parse_update_check(
                 Some(text) => text.trim().to_string(),
                 None => error.to_string(),
             };
-            let text: String = text.chars().take(80).collect();
+            let text: String = mask.redact(&text).chars().take(80).collect();
             return Err(format!("the update check reported: {text}"));
         }
     }
@@ -240,7 +248,7 @@ pub fn parse_update_check(
         return Err(format!("the update check's `{latest_field}` is empty"));
     }
     if !crate::adapters::sanity::is_name(&latest) {
-        let shown: String = latest.chars().take(40).collect();
+        let shown: String = mask.redact(&latest).chars().take(40).collect();
         return Err(format!(
             "the update check's `{latest_field}` is not a version (got {shown:?})"
         ));
@@ -306,9 +314,14 @@ mod tests {
         assert!(parse_channel_body("2.1.\u{0}274\n").is_err());
         assert_eq!(parse_channel_body("2.1.274\n"), Ok("2.1.274".to_string()));
         let check = r#"{"latestVersion":"1.0.\u001b42","updateAvailable":true,"error":null}"#;
-        assert!(
-            parse_update_check(check, "latestVersion", "updateAvailable", Some("error")).is_err()
-        );
+        assert!(parse_update_check(
+            check,
+            "latestVersion",
+            "updateAvailable",
+            Some("error"),
+            &Redactor::default()
+        )
+        .is_err());
     }
     use std::cmp::Ordering;
 
@@ -638,7 +651,13 @@ mod tests {
         // never "up to date" (ruling 10 of the phase 4 step D plan).
         let answer = r#"{"currentVersion":"1.0.41","latestVersion":"1.0.41","updateAvailable":false,"installer":"internal","channel":"stable","autoUpdate":true,"error":null}"#;
         assert_eq!(
-            parse_update_check(answer, "latestVersion", "updateAvailable", Some("error")),
+            parse_update_check(
+                answer,
+                "latestVersion",
+                "updateAvailable",
+                Some("error"),
+                &Redactor::default()
+            ),
             Ok(UpdateCheck {
                 latest: "1.0.41".to_string(),
                 available: false,
@@ -649,7 +668,8 @@ mod tests {
                 r#"{"latestVersion":"1.0.42-alpha.1","updateAvailable":true}"#,
                 "latestVersion",
                 "updateAvailable",
-                Some("error")
+                Some("error"),
+                &Redactor::default()
             ),
             Ok(UpdateCheck {
                 latest: "1.0.42-alpha.1".to_string(),
@@ -661,7 +681,8 @@ mod tests {
             r#"{"latestVersion":"1.0.41","updateAvailable":false,"error":"ignored"}"#,
             "latestVersion",
             "updateAvailable",
-            None
+            None,
+            &Redactor::default()
         )
         .is_ok());
         for (body, needle) in [
@@ -686,10 +707,43 @@ mod tests {
                 r#"reported: {"code":7}"#,
             ),
         ] {
-            let err = parse_update_check(body, "latestVersion", "updateAvailable", Some("error"))
-                .expect_err(body);
+            let err = parse_update_check(
+                body,
+                "latestVersion",
+                "updateAvailable",
+                Some("error"),
+                &Redactor::default(),
+            )
+            .expect_err(body);
             assert!(err.contains(needle), "{body:?}: {err}");
             assert!(err.len() < 140, "the reason stays short: {err}");
+        }
+    }
+
+    #[test]
+    fn test_parse_update_check_quotes_what_it_was_given_with_logins_masked() {
+        // F2 of the decisions-round review: the reason is shown on the
+        // source's row and in diagnostics, and the tool ran with the proxy
+        // settings read from the login shell. Masked before it is cut to
+        // length, so no part of a secret is left at the cut.
+        let mask =
+            Redactor::for_settings([("http_proxy", "review-user:rev/secret@127.0.0.1:8080")]);
+        for body in [
+            "review-user:rev/secret@127.0.0.1:8080 is not a proxy",
+            r#"{"latestVersion":"1.0.41","updateAvailable":false,"error":"proxy review-user:rev/secret@127.0.0.1:8080 refused"}"#,
+            // Not a version: a control character in it.
+            r#"{"latestVersion":"review-user:rev/secret@127.0.0.1:8080\u0007","updateAvailable":true}"#,
+        ] {
+            let err = parse_update_check(
+                body,
+                "latestVersion",
+                "updateAvailable",
+                Some("error"),
+                &mask,
+            )
+            .expect_err(body);
+            assert!(!err.contains("rev/s"), "{body:?}: {err}");
+            assert!(err.contains("review-user:****@"), "{body:?}: {err}");
         }
     }
 

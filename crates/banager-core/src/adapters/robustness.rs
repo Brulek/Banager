@@ -1010,7 +1010,15 @@ fn standalone_parsers_survive_any_input() {
     problems.extend(run(
         "standalone parse_update_check",
         &check,
-        |s| latest::parse_update_check(s, "latestVersion", "updateAvailable", Some("error")),
+        |s| {
+            latest::parse_update_check(
+                s,
+                "latestVersion",
+                "updateAvailable",
+                Some("error"),
+                &crate::runner::redact::Redactor::default(),
+            )
+        },
         |r| match r {
             Ok(check) => name_ok("latest", &check.latest),
             Err(reason) => reason_ok(reason),

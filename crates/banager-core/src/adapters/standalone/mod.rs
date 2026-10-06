@@ -881,12 +881,18 @@ impl StandaloneAdapter {
                     ));
                 }
                 // The error its check reported is the tool's own words too:
-                // transient where they name the network.
+                // transient where they name the network. What a reason
+                // quotes of them has a proxy's or mirror's login masked, as
+                // the runner masks what a person reads: the tool ran with
+                // those settings (F2 of the decisions-round review).
                 latest::parse_update_check(
                     &output.stdout,
                     latest_field,
                     available_field,
                     error_field,
+                    &crate::runner::redact::Redactor::for_commands(
+                        crate::runner::login_path::accepted_env().as_ref(),
+                    ),
                 )
                 .map(Published::ToolSays)
                 .map_err(|reason| {
@@ -6423,8 +6429,14 @@ mod tests {
         else {
             panic!("grok asks itself");
         };
-        let check = latest::parse_update_check(&body, latest_field, available_field, error_field)
-            .expect("grok's JSON: both fields present, `error` null");
+        let check = latest::parse_update_check(
+            &body,
+            latest_field,
+            available_field,
+            error_field,
+            &crate::runner::redact::Redactor::default(),
+        )
+        .expect("grok's JSON: both fields present, `error` null");
         // `latest` is shown, never compared, and the recipe takes it with
         // any suffix (a prerelease day is a truthful recording too), so it
         // is not held to a dotted shape here. When grok said nothing was
@@ -6563,8 +6575,14 @@ mod tests {
         else {
             panic!("grok asks itself");
         };
-        let said = latest::parse_update_check(&body, latest_field, available_field, error_field)
-            .expect("grok's JSON");
+        let said = latest::parse_update_check(
+            &body,
+            latest_field,
+            available_field,
+            error_field,
+            &crate::runner::redact::Redactor::default(),
+        )
+        .expect("grok's JSON");
         let home = TempHome::new("grok-check-recorded");
         let layout = grok_layout(&home, &installed);
         let runner = Arc::new(MockRunner::new());
