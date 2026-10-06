@@ -117,6 +117,16 @@ function line(
   return { id, symbol, text, detail: more.detail ?? null, secondary: more.secondary ?? null, view: more.view ?? null };
 }
 
+/**
+ * Whether 「终端设置」 has a ⚠︎ line, as `terminalLines` gives one:
+ * `get_system_facts` could not be had, or the login shell's settings were
+ * not read. Read by `setupAttention`; src/lib/setupAttention.test.ts holds
+ * the two together.
+ */
+function terminalWarns(facts: SystemFacts | null | undefined): boolean {
+  return facts === null || (facts !== undefined && !facts.login_path);
+}
+
 /** 「终端设置」: the login shell's settings, and the folders the last check read. */
 function terminalLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const { facts } = input;
@@ -194,6 +204,15 @@ function lastAnswered(t: Translate, instance: ManagerInstance, input: ToolSetupI
   return t("sourceNotice.answered.setupLine", { when: answeredWhen(t, at, input.nowMs, input.language) });
 }
 
+/**
+ * Whether a source's line has the ⚠︎: it did not answer, or its check did
+ * not finish (`failed`: the ids this round's errors name). Read by
+ * `sourceLines` and `setupAttention`.
+ */
+function sourceWarns(instance: ManagerInstance, failed: ReadonlySet<string>): boolean {
+  return instance.status.unavailable !== null || failed.has(instance.id);
+}
+
 function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const { snapshot } = input;
   if (snapshot === null) return [line("checking", "busy", t("common.checking"))];
@@ -214,7 +233,7 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
     lines.push(
       line(
         `source:${instance.id}`,
-        instance.status.unavailable !== null || unfinished ? "warning" : "note",
+        sourceWarns(instance, failed) ? "warning" : "note",
         t("setupCheck.sources.state", { source: label, state: inSentence(words).join(t("common.listSeparator")) }),
         {
           view: { kind: "source", instanceId: instance.id },
@@ -255,6 +274,16 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
  * is said of the tools checked, and how many it could not check under it:
  * never 「每个已安装的工具」 of tools it did not check.
  */
+/**
+ * Whether 「命令」 has its ⚠︎ line, as `commandLines` gives it: once the
+ * round is in, which copy each command runs was judged, and Terminal
+ * can't find some tool. Read by `setupAttention`;
+ * src/lib/setupAttention.test.ts holds the two together.
+ */
+function notOnPathWarns(artifacts: readonly InstalledArtifact[], pending: boolean): boolean {
+  return !pending && commandsKnown(artifacts, false, "verdicts") === "known" && discoverCounts(artifacts).notOnPath > 0;
+}
+
 function commandLines(t: Translate, input: ToolSetupInput): SetupLine[] {
   const artifacts = input.snapshot?.artifacts ?? [];
   // Commands are judged only when the round ends.
@@ -440,6 +469,26 @@ export function toolSetupCheck(t: Translate, input: ToolSetupInput): ToolSetupCh
   );
   const attention = sections.reduce((sum, section) => sum + section.lines.filter(warns).length, 0);
   return { pending: input.pending, sections: ordered, attention };
+}
+
+/**
+ * How many lines of the sheet have the ⚠︎ -- `toolSetupCheck(t,
+ * input).attention` -- worked out without building it: the facts, the
+ * sources and the commands, by the rules that give those lines their ⚠︎
+ * (`terminalWarns`, `sourceWarns`, `notOnPathWarns`). The Overview's
+ * 「工具环境」 row says 「N项需要查看」 by it while the sheet is closed
+ * (decision I4), and reads neither the sizes nor the clock. `sizes`,
+ * `technicalDetails`, `language` and `nowMs` change the lines' words, not
+ * their symbols.
+ */
+export function setupAttention(input: Pick<ToolSetupInput, "snapshot" | "pending" | "facts">): number {
+  const { snapshot } = input;
+  let count = terminalWarns(input.facts) ? 1 : 0;
+  if (snapshot === null) return count;
+  const failed = new Set(snapshot.errors.map((error) => error.instance_id));
+  count += snapshot.instances.filter((instance) => sourceWarns(instance, failed)).length;
+  if (notOnPathWarns(snapshot.artifacts, input.pending)) count += 1;
+  return count;
 }
 
 /** Whether the sheet is open: Help's item and Settings' button open it, wherever the window is. */
