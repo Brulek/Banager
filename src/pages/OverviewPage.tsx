@@ -18,13 +18,13 @@ import {
   unfinishedChecksNotice,
 } from "../lib/sources";
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
-import { updatesSummary } from "../lib/updateState";
+import { namedAsNotChecked, updatesSummary } from "../lib/updateState";
 import { notCheckedHeadline } from "../lib/allGood";
 import { failedLookupsOf, failedLookupsProblem, unsuccessfulLookupsOf } from "../lib/failedLookups";
 import { useSystemFacts } from "../lib/diagnostics";
 import { loginPathNotice } from "../lib/loginPathNotice";
 import type { UpdatesSummary } from "../lib/updateState";
-import type { ManagerInstance, Settings } from "../lib/types";
+import type { ManagerInstance, Settings, UpdateCandidate } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor, waitsForPassword } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
@@ -58,11 +58,14 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * a redirect it will not follow), though the others checked fine, no
  * update listed is no news, and nothing is called up to date, the rest
  * included: 「已检查的来源中没有可更新的工具」 (independent review r6, F5).
+ * Of a source named as not checked, its rows -- kept from its last
+ * answer -- are its own, said under the headline (`namedAsNotChecked`):
+ * a lookup of one of them that did not succeed keeps its name there.
  */
 function headlineText(
   t: Translate,
   summary: UpdatesSummary,
-  unsuccessful: number,
+  unsuccessful: readonly UpdateCandidate[],
   nothingChecked: boolean,
   instances: readonly ManagerInstance[],
 ): string {
@@ -75,11 +78,13 @@ function headlineText(
       return t("overviewPassword.title", { count: summary.count });
     case "upToDate":
       if (nothingChecked) return t("overview.nothingChecked");
-      if (unsuccessful > 0) return t("overview.nothingToUpdateChecked");
+      if (unsuccessful.length > 0) return t("overview.nothingToUpdateChecked");
       return summary.everything ? t("overview.upToDate") : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
       if (nothingChecked) return t("overview.nothingChecked");
-      if (unsuccessful > 0) return t("overview.nothingToUpdateChecked");
+      if (unsuccessful.some((candidate) => !namedAsNotChecked(summary.notChecked, candidate.key.instance_id))) {
+        return t("overview.nothingToUpdateChecked");
+      }
       return notCheckedHeadline(t, summary.notChecked, summary.everythingElse, instances);
   }
 }
@@ -515,7 +520,8 @@ export function OverviewPage() {
   // Every tool whose lookup did not succeed, whether or not checking again
   // can mend it: what keeps the all good away (independent review r6, F5).
   // Only those checking again can mend (`lookupsFailed`) offer Check Again.
-  const unsuccessful = unsuccessfulLookupsOf(snapshot.updates, settings).length;
+  const unsuccessfulRows = unsuccessfulLookupsOf(snapshot.updates, settings);
+  const unsuccessful = unsuccessfulRows.length;
   // Whether no installed tool was checked at all: each is a row that could
   // not be (`checkable: false`), whatever the reason.
   const unchecked = new Set(
@@ -662,7 +668,7 @@ export function OverviewPage() {
             ? t("header.checkFailed")
             : found !== null
               ? t(NOTHING_FOUND_KEYS[found].title)
-              : headlineText(t, summary, unsuccessful, nothingChecked, snapshot.instances)
+              : headlineText(t, summary, unsuccessfulRows, nothingChecked, snapshot.instances)
         }
         line={line}
         button={button}

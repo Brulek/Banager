@@ -493,4 +493,36 @@ describe("the Overview's all good, over a lookup that did not succeed", () => {
     expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here, including 1 that couldn't be checked");
     await headlineIn("zh-CN", "已检查的来源中没有可更新的工具");
   });
+
+  it("still names the source not checked where the only lookup that did not succeed is that source's own", async () => {
+    // F5 review: uv did not answer; its last answer, kept, had ruff's
+    // lookup meet a certificate Banager does not trust. That row is uv's,
+    // said under the headline and not held against the rest, which all
+    // checked fine (`updatesSummary`'s `everythingElse`).
+    const ruff = key(stoppedUv, "ruff", "Package");
+    served = snapshotWith({
+      instances: [brew, pip, stoppedUv],
+      artifacts: [artifact(glib), artifact(ruff)],
+      updates: [
+        candidate(ruff, {
+          checkable: false,
+          target: "1.0.0",
+          channel: "Registry",
+          warnings: [
+            { Message: "PyPI request failed: secure connection to pypi.org failed: invalid peer certificate: UnknownIssuer" },
+            { SecureConnectionFailed: { host: "pypi.org" } },
+          ],
+        }),
+      ],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "uv wasn't checked this time; everything else is up to date",
+    });
+    expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+    // The line still counts it: of what can't be updated here, it could not be checked.
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here, including 1 that couldn't be checked");
+    await headlineIn("zh-CN", "uv这次没检查，其余都是最新的");
+  });
 });

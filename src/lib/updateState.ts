@@ -467,6 +467,15 @@ export function notCheckedThisTime(instances: ManagerInstance[], errors: SourceE
 }
 
 /**
+ * Whether the source `instanceId` is one `notChecked` names: by its own
+ * id, or by the bare adapter id of its kind, which names every source of
+ * that kind (one only an error names, `notCheckedThisTime`).
+ */
+export function namedAsNotChecked(notChecked: NotChecked, instanceId: string): boolean {
+  return notChecked.ids.includes(instanceId) || notChecked.ids.includes(adapterIdOf(instanceId));
+}
+
+/**
  * Whether Homebrew's update check leaves `artifact` out while Settings'
  * "Show Homebrew apps that have their own updater" (`include_self_updating`) is off: a
  * cask that updates itself (`auto_updates`, from `brew info`'s
@@ -530,7 +539,9 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   is false the headline claims of the rest no more than the all good
  *   would of the same rows: 「其余能在这里更新的都已是最新」. The rows of
  *   a source it names (uv's, kept from its last answer) are its own, said
- *   under the headline and not held against the rest.
+ *   under the headline and not held against the rest -- a lookup of one
+ *   of them that did not succeed included: the Overview weighs only the
+ *   rest's (`namedAsNotChecked`).
  *
  * The last three carry what the Overview says under the headline, in the
  * Updates page's own numbers: `cantUpdateHere`, the updates under its
@@ -546,8 +557,10 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  * (`unsuccessfulLookupsOf` in src/lib/failedLookups.ts: no answer, or one
  * checking again will not mend, as a certificate Banager does not trust)
  * keeps the Overview's all good and its green check away, though the
- * others checked fine (independent review r6, F5); of them, only those
- * checking again can mend (`failedLookupsOf`) offer Check Again.
+ * others checked fine (independent review r6, F5) -- under
+ * `nothingToUpdate`, one of a source it does not name: the rows of one it
+ * names are that source's own; of them, only those checking again can
+ * mend (`failedLookupsOf`) offer Check Again.
  *
  * `updates` and `updating` carry how many wait for the password too
  * (`password`), which the Overview says under its headline.
@@ -591,10 +604,7 @@ export function updatesSummary(
   if (password > 0) return { kind: "needsPassword", count: password, ...besides };
   const notChecked = notCheckedThisTime(snapshot.instances, snapshot.errors);
   if (notChecked !== null) {
-    // A bare adapter id names every source of its kind: one only an error
-    // names (`notCheckedThisTime`).
-    const named = new Set(notChecked.ids);
-    const ofNamed = (instanceId: string) => named.has(instanceId) || named.has(adapterIdOf(instanceId));
+    const ofNamed = (instanceId: string) => namedAsNotChecked(notChecked, instanceId);
     const everythingElse =
       snapshot.updates.every((candidate) => ofNamed(candidate.key.instance_id)) &&
       snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance));
