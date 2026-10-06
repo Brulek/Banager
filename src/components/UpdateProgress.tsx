@@ -1,8 +1,7 @@
 import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
-import { actionableUpdatesOf } from "../lib/updateState";
-import { unusedCopies } from "../lib/commands";
+import { actionableUpdatesOf, countedUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
@@ -207,11 +206,17 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
  */
 export function useCountedUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
-  const startable = useStartableUpdates();
-  const unused = useMemo(() => unusedCopies(snapshot?.artifacts ?? []), [snapshot]);
+  const { data: settings } = useSettings();
+  const operationFor = useUpdateOperationFor();
+  // As `useStartableUpdates`: the snapshot and the settings decide what
+  // is counted, the operations only take rows out of it.
+  const counted = useMemo(
+    () => (snapshot && settings ? countedUpdatesOf(snapshot, settings) : undefined),
+    [snapshot, settings],
+  );
   return useMemo(
-    () => startable?.filter((candidate) => !unused.has(artifactKeyId(candidate.key))),
-    [startable, unused],
+    () => counted?.filter((candidate) => !holdsRow(operationFor(candidate))),
+    [counted, operationFor],
   );
 }
 
