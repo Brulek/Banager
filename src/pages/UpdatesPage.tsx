@@ -52,6 +52,7 @@ import {
   progressOf,
   progressWord,
   UpdateProgress,
+  useCountedUpdates,
   useStartableUpdates,
   useUpdateOperationFor,
 } from "../components/UpdateProgress";
@@ -106,11 +107,14 @@ const NO_UPDATES: UpdateCandidate[] = [];
 type Translate = (key: string, options?: Record<string, string | number>) => string;
 
 /**
- * How many rows have a checkbox, as the page says it over its list and
- * the window's toolbar under its title (`useUpdatesHeadline`): 「10个可更新」.
- * With none, not "0 updates": the rows under "Can't update here" are real,
- * and simply not Banager's to update. While some are updating, how many,
- * and how many more have a checkbox. After them, how many stopped where
+ * How many rows Update all would take, as the page says it over its list
+ * and the window's toolbar under its title (`useUpdatesHeadline`):
+ * 「10个可更新」. With none, not "0 updates": the rows under "Can't update
+ * here" are real, and simply not Banager's to update. While some are
+ * updating, how many, and how many more Update all would take. Then how
+ * many rows of a copy Terminal does not run have a checkbox, which Update
+ * all leaves unticked (decision U4): 「1个终端用不到」 -- never "nothing to
+ * update" over their Update buttons. After them, how many stopped where
  * sudo wanted the Mac's password (`passwordStepsOpId`) -- rows that still
  * offer their update, with no checkbox, as Terminal has to finish them --
  * 「13个需要输入密码」, never "nothing to update" over them (walk-4 W4-1).
@@ -120,6 +124,7 @@ export function updatesHeadline(
   updatingCount: number,
   startableCount: number,
   passwordCount = 0,
+  notUsedCount = 0,
 ): string {
   const parts: string[] = [];
   if (updatingCount > 0) {
@@ -128,6 +133,7 @@ export function updatesHeadline(
   } else if (startableCount > 0) {
     parts.push(t("updates.count", { count: startableCount }));
   }
+  if (notUsedCount > 0) parts.push(t("notUsedCopy.count", { count: notUsedCount }));
   if (passwordCount > 0) parts.push(t("updates.needPasswordCount", { count: passwordCount }));
   return parts.length === 0 ? t("updates.noneActionable") : parts.join(t("overview.listSeparator"));
 }
@@ -143,9 +149,11 @@ function waitsForPassword(op: OpSummary | null): boolean {
 
 /**
  * The page's headline (`updatesHeadline`) from outside it, for the
- * toolbar's subtitle: the same rows counted the same way -- those with a
- * checkbox (`useStartableUpdates`), and those an update is installing now
- * (`isUnderway`) -- so the two can never say different numbers. Null
+ * toolbar's subtitle: the same rows counted the same way -- those Update
+ * all would take (`useCountedUpdates`), those of a copy Terminal does not
+ * run that have a checkbox all the same, and those an update is
+ * installing now (`isUnderway`) -- so the two can never say different
+ * numbers, and the first is the sidebar's. Null
  * until the snapshot and the settings are in, and while the page lists
  * nothing at all and says so in a sentence of its own. While the
  * 「显示」 popup shows only the AI coding tools, of those alone, as the
@@ -158,6 +166,7 @@ export function useUpdatesHeadline(): string | null {
   const show = useUiStore((s) => s.updatesShow);
   const operationFor = useUpdateOperationFor();
   const startable = useStartableUpdates();
+  const counted = useCountedUpdates();
   const inView = useMemo(() => {
     if (show === "all" || !snapshot) return () => true;
     const byId = new Map(snapshot.artifacts.map((artifact) => [artifactKeyId(artifact.key), artifact]));
@@ -170,23 +179,25 @@ export function useUpdatesHeadline(): string | null {
         : undefined,
     [snapshot, settings],
   );
-  if (listed === undefined || startable === undefined || !listed.any) return null;
+  if (listed === undefined || startable === undefined || counted === undefined || !listed.any) return null;
   const updating = listed.actionable.filter(
     (candidate) => inView(candidate) && isUnderway(operationFor(candidate)),
   ).length;
-  const shown = startable.filter(inView).length;
+  const shown = counted.filter(inView).length;
+  // Rows with a checkbox that Update all leaves unticked: a copy Terminal does not run.
+  const notUsed = startable.filter(inView).length - shown;
   const password = listed.actionable.filter(
     (candidate) => inView(candidate) && waitsForPassword(operationFor(candidate)),
   ).length;
   // Of only some: how many of how many, 「5个可更新，共13个」, so the
   // sidebar's 13 beside it does not read as wrong.
-  if (show !== "all" && updating === 0 && shown > 0 && shown < startable.length) {
-    const ofAll = t("clarity.updatesOfAll", { count: shown, total: startable.length });
-    return password > 0
-      ? `${ofAll}${t("overview.listSeparator")}${t("updates.needPasswordCount", { count: password })}`
-      : ofAll;
+  if (show !== "all" && updating === 0 && shown > 0 && shown < counted.length) {
+    const parts = [t("clarity.updatesOfAll", { count: shown, total: counted.length })];
+    if (notUsed > 0) parts.push(t("notUsedCopy.count", { count: notUsed }));
+    if (password > 0) parts.push(t("updates.needPasswordCount", { count: password }));
+    return parts.join(t("overview.listSeparator"));
   }
-  return updatesHeadline(t, updating, shown, password);
+  return updatesHeadline(t, updating, shown, password, notUsed);
 }
 
 /**
@@ -478,11 +489,13 @@ export function UpdatesPage() {
   // or one that worked and still says so, stands in its row with no
   // checkbox -- Rust queues a second update of the same tool behind the
   // first, so a second click could only repeat it. These are every row
-  // that shows a checkbox, the header's "N updates", and what Select all,
-  // Invert selection and Update all hand to the store, so none of them can
-  // tick a row the user could not tick by hand. `useStartableUpdates`,
+  // that shows a checkbox, and what Select all and Invert selection hand
+  // to the store, so neither can tick a row the user could not tick by
+  // hand (`useStartableUpdates`). Of them, Update all takes all but the
+  // rows of a copy Terminal does not run, which keep their checkbox,
+  // unticked (decision U4): `countedUpdates`, the header's "N updates",
   // which the update notification's report, the sidebar's count and the
-  // Dock's badge read too (`useUpdateCount`).
+  // Dock's badge read too (`useCountedUpdates`, `useUpdateCount`).
   //
   // While the 「显示」 popup shows only the AI coding tools (`shownBy`),
   // the rows it hides are out of all of these too: the list, Select all,
@@ -493,6 +506,8 @@ export function UpdatesPage() {
   );
   const allStartable = useStartableUpdates() ?? NO_UPDATES;
   const startableUpdates = useMemo(() => allStartable.filter(inView), [allStartable, inView]);
+  const allCounted = useCountedUpdates() ?? NO_UPDATES;
+  const countedUpdates = useMemo(() => allCounted.filter(inView), [allCounted, inView]);
 
   // The list's two parts, each by name: the rows with an Update button,
   // and everything else listed -- pinned, read-only, could not be checked,
@@ -1194,12 +1209,15 @@ export function UpdatesPage() {
           rows that are ticked, or else every row it can update -- one
           confirmation for either, the one a row's own Update opens, and
           the one accent-coloured button on the screen. Update all ticks
-          them all first, as Select all would, so the list shows what the
-          confirmation is about. Both act on the rows that show a checkbox
+          its rows first, so the list shows what the confirmation is
+          about. Both act on the rows that show a checkbox
           (`startableUpdates`) and on no others: a row in any other
           `UpdateState` -- read-only, could not be checked, blocked, its
           source not answering -- has no checkbox, and a row the user hid
-          (skipped, or never to be reminded about) is not listed at all. */}
+          (skipped, or never to be reminded about) is not listed at all.
+          Update all leaves out the rows of a copy Terminal does not run
+          (`countedUpdates`, decision U4): ticked by hand, Update selected
+          takes them. */}
       <ToolbarItems>
         <ToolShowButton value={show} onChange={setShow} />
         {selectedCount > 0 ? (
@@ -1214,22 +1232,23 @@ export function UpdatesPage() {
         ) : (
           <button
             type="button"
-            disabled={startableCount === 0 || dialogOpen}
+            disabled={countedUpdates.length === 0 || dialogOpen}
             onClick={(event) => {
               // Ticked while the sheet asks, and unticked again if it is
               // cancelled: a cancel changes nothing.
               const before = new Set(useUiStore.getState().selectedUpdates);
-              const ticked = startableUpdates.map((u) => u.key).filter((key) => !before.has(artifactKeyId(key)));
+              const ticked = countedUpdates.map((u) => u.key).filter((key) => !before.has(artifactKeyId(key)));
               selectUpdates(ticked);
-              void openConfirm(startableUpdates, event.currentTarget, focusList, () => deselectUpdates(ticked));
+              void openConfirm(countedUpdates, event.currentTarget, focusList, () => deselectUpdates(ticked));
             }}
             className={BUTTON.regular.default}
           >
-            {/* Never 「更新这0个」: with none to start -- none listed, or all of
-                them already updating -- the plain word, greyed. */}
-            {show === "all" || startableCount === 0
+            {/* Never 「更新这0个」: with none to start -- none listed, all of
+                them already updating, or only copies Terminal does not
+                run -- the plain word, greyed. */}
+            {show === "all" || countedUpdates.length === 0
               ? t("updates.updateAll")
-              : t("families.updateTheseCount", { count: startableCount })}
+              : t("families.updateTheseCount", { count: countedUpdates.length })}
           </button>
         )}
       </ToolbarItems>

@@ -142,6 +142,10 @@
   "twinsFilterMore": {
     "showCount": "Installed More Than Once ({{number}})"
   },
+  "notUsedCopy": {
+    "count_one": "{{count}} not used in Terminal",
+    "count_other": "{{count}} not used in Terminal"
+  },
   "commandsKnown": {
     "previewing": "These appear here when the check finishes",
     "unjudged": "This check didn't look at the commands in Terminal",

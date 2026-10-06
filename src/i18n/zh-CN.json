@@ -129,6 +129,9 @@
   "twinsFilterMore": {
     "showCount": "装了不止一份（{{number}}）"
   },
+  "notUsedCopy": {
+    "count_other": "{{count}}个终端用不到"
+  },
   "commandsKnown": {
     "previewing": "检查完成后会显示在这里",
     "unjudged": "这次检查没有判断终端里的命令",

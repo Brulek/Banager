@@ -2,6 +2,7 @@ import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { actionableUpdatesOf } from "../lib/updateState";
+import { unusedCopies } from "../lib/commands";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
@@ -169,15 +170,12 @@ export function useUpdateOperationFor(): (candidate: UpdateCandidate) => OpSumma
 }
 
 /**
- * The updates Update all would take now: every one the Updates page offers
+ * The updates that can be started now: every one the Updates page offers
  * to install (`actionableUpdatesOf`) whose row no update takes
- * (`holdsRow`) -- the rows that show a checkbox, the page's "N updates",
- * and what its Select all, Invert selection and Update all hand on -- or
- * undefined until the snapshot and the settings have both arrived. The
- * Updates page and the update notification's report
- * (`useUpdateNotification` in src/lib/updateNotification.ts) read this
- * one hook, so the notification cannot count a row the page does not
- * offer to start.
+ * (`holdsRow`) -- the rows that show a checkbox, and what its Select all
+ * and Invert selection tick -- or undefined until the snapshot and the
+ * settings have both arrived. What Update all takes, and every number,
+ * is these less the copies Terminal does not run (`useCountedUpdates`).
  */
 export function useStartableUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
@@ -197,16 +195,39 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
 }
 
 /**
- * How many updates can be started now (`useStartableUpdates`), or
+ * The updates Update all would take now: those that can be started
+ * (`useStartableUpdates`) but the update of a copy Terminal does not run,
+ * whose row keeps its checkbox, unticked (`countedUpdatesOf`, decision
+ * U4) -- the page's "N updates", what its Update all hands on -- or
+ * undefined until the snapshot and the settings have both arrived. The
+ * Updates page and the update notification's report
+ * (`useUpdateNotification` in src/lib/updateNotification.ts) read this
+ * one hook, so the notification cannot count a row Update all would not
+ * take.
+ */
+export function useCountedUpdates(): UpdateCandidate[] | undefined {
+  const { data: snapshot } = useSnapshot();
+  const startable = useStartableUpdates();
+  const unused = useMemo(() => unusedCopies(snapshot?.artifacts ?? []), [snapshot]);
+  return useMemo(
+    () => startable?.filter((candidate) => !unused.has(artifactKeyId(candidate.key))),
+    [startable, unused],
+  );
+}
+
+/**
+ * How many updates can be started now (`useCountedUpdates`), or
  * undefined until the snapshot and the settings have both arrived: the
  * number beside the sidebar's Updates and on the Dock's badge
  * (`useDockBadge`), and the Updates page's 「N 个可更新」. Those an update
  * is installing are not counted: the page says 「正在更新 N 个工具」 of them
  * in words, and a number beside it that counted them too would disagree
- * with its own. One rule, so no two of them can show different numbers.
+ * with its own. Nor is the update of a copy Terminal does not run, which
+ * the page says apart (「1个终端用不到」). One rule, so no two of them can
+ * show different numbers.
  */
 export function useUpdateCount(): number | undefined {
-  return useStartableUpdates()?.length;
+  return useCountedUpdates()?.length;
 }
 
 /** Whatever `useTranslation()`'s `t` needs here. */

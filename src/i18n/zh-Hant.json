@@ -129,6 +129,9 @@
   "twinsFilterMore": {
     "showCount": "裝了不止一份（{{number}}）"
   },
+  "notUsedCopy": {
+    "count_other": "{{count}}個終端機用不到"
+  },
   "commandsKnown": {
     "previewing": "檢查完成後會顯示在這裡",
     "unjudged": "這次檢查沒有判斷終端機裡的指令",

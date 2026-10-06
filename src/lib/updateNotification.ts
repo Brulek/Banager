@@ -10,7 +10,7 @@
 import { useEffect, useRef } from "react";
 import { onOpenUpdates, reportUpdateSet } from "./api";
 import { useOperations, useSnapshot } from "./queries";
-import { useStartableUpdates } from "../components/UpdateProgress";
+import { useCountedUpdates } from "../components/UpdateProgress";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { UpdateCandidate, UpdatePair } from "./types";
 
@@ -24,7 +24,8 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
  *
  * - Once for each snapshot, as soon as the settings and the operations
  *   are in too, it reports the updates Update all would take
- *   (`useStartableUpdates`) with the snapshot's `round`
+ *   (`useCountedUpdates`: not the update of a copy Terminal does not run)
+ *   with the snapshot's `round`
  *   (`reportUpdateSet`) -- not the backend's startup snapshot, round 0,
  *   which no round committed. Rust posts nothing unless the round was the
  *   daily check's, notifications are on and another app is in front, not
@@ -44,7 +45,7 @@ export function useUpdateNotification(): void {
   // report as it is of Update all, and not counted while the operations
   // are still on their way.
   const { data: operations } = useOperations();
-  const startable = useStartableUpdates();
+  const startable = useCountedUpdates();
   const setPage = useUiStore((s) => s.setPage);
   // The last round reported: a round is reported once, whatever changes
   // after it -- the next snapshot is the next report. The snapshot cache
