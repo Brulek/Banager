@@ -303,9 +303,11 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
 ///
 /// Its warnings: the reason (`Warning::Message`), then
 /// `Warning::SecureConnectionFailed` where no secure connection could be
-/// set up (`LookupFailure::secure_connection`), and
+/// set up (`LookupFailure::secure_connection`),
 /// `Warning::TransientLookupFailure` where the failure is one checking
-/// again can get past (`LookupFailure::transient`).
+/// again can get past (`LookupFailure::transient`), and
+/// `Warning::NotLookedUpHere` where no lookup was made, by design
+/// (`LookupFailure::not_looked_up`).
 pub(crate) fn uncheckable_candidate(
     key: ArtifactKey,
     current: String,
@@ -319,6 +321,9 @@ pub(crate) fn uncheckable_candidate(
     }
     if failure.transient {
         warnings.push(Warning::TransientLookupFailure);
+    }
+    if failure.not_looked_up {
+        warnings.push(Warning::NotLookedUpHere);
     }
     UpdateCandidate {
         key,
@@ -342,7 +347,8 @@ pub(crate) fn uncheckable_candidate(
 /// network failed. Anything else -- a certificate rustls would not accept,
 /// a redirect or host the client refuses, a 404, an answer that would not
 /// parse, a version that
-/// could not be read, a tool not looked up on this Mac, a command that did
+/// could not be read, a tool not looked up on this Mac (`not_looked_up`),
+/// a command that did
 /// not finish -- is not known to mend itself, and a warning that asks the
 /// person to check again would then never go away. A plain `String` is
 /// such a failure (`From<String>`), so `?` on a helper that fails with
@@ -351,11 +357,16 @@ pub(crate) fn uncheckable_candidate(
 /// `secure_connection` is the host a request reached but could not set up
 /// a secure connection with (`HttpError::Tls`), for the row's words
 /// (`Warning::SecureConnectionFailed`).
+///
+/// `not_looked_up` is no failure at all: Banager does not look the tool up
+/// on this Mac, by design, and asked nothing (`LookupFailure::not_looked_up`,
+/// the row's `Warning::NotLookedUpHere`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LookupFailure {
     pub(crate) reason: String,
     pub(crate) transient: bool,
     pub(crate) secure_connection: Option<String>,
+    pub(crate) not_looked_up: bool,
 }
 
 impl From<String> for LookupFailure {
@@ -364,11 +375,24 @@ impl From<String> for LookupFailure {
             reason,
             transient: false,
             secure_connection: None,
+            not_looked_up: false,
         }
     }
 }
 
 impl LookupFailure {
+    /// No lookup, by design: Banager does not look this tool up on this
+    /// Mac, and made no request -- the models of an Ollama on another Mac,
+    /// Antigravity CLI on an Intel Mac, Claude Code whose settings are kept
+    /// in a protected place. `reason` says which, as the row's `Message`;
+    /// never transient, as the next check makes no request either.
+    pub(crate) fn not_looked_up(reason: String) -> Self {
+        LookupFailure {
+            not_looked_up: true,
+            ..LookupFailure::from(reason)
+        }
+    }
+
     /// A request that got no answer: `"{what}: {error}"`, transient when
     /// the network failed or the time ran out (`HttpError::Network`,
     /// `HttpError::Timeout`). Not for what the next check meets again: a
@@ -385,6 +409,7 @@ impl LookupFailure {
                 HttpError::Tls { host, .. } => Some(host.clone()),
                 _ => None,
             },
+            not_looked_up: false,
         }
     }
 
@@ -397,6 +422,7 @@ impl LookupFailure {
             reason,
             transient: status == 408 || status == 429 || (500..=599).contains(&status),
             secure_connection: None,
+            not_looked_up: false,
         }
     }
 
@@ -408,6 +434,7 @@ impl LookupFailure {
             reason,
             transient: says_network_failed(words),
             secure_connection: None,
+            not_looked_up: false,
         }
     }
 }
@@ -838,6 +865,65 @@ mod tests {
     }
 
     #[test]
+    fn test_uncheckable_candidate_marks_a_tool_never_looked_up_here_and_nothing_else_so() {
+        // Independent review r6, F5: the Overview's all good is kept away
+        // by a lookup that did not succeed, not by one Banager never makes
+        // on this Mac -- which only this mark tells apart on the wire.
+        let key = ArtifactKey {
+            instance_id: "ollama:http://server:11434".to_string(),
+            kind: crate::model::ArtifactKind::Model,
+            name: "qwen3:8b".to_string(),
+        };
+        let never = uncheckable_candidate(
+            key.clone(),
+            "abc".to_string(),
+            UpdateChannel::Digest,
+            LookupFailure::not_looked_up(
+                "remote daemon manifests cannot be checked from this Mac".to_string(),
+            ),
+        );
+        assert!(!never.checkable);
+        assert_eq!(
+            never.warnings,
+            vec![
+                Warning::Message(
+                    "remote daemon manifests cannot be checked from this Mac".to_string()
+                ),
+                Warning::NotLookedUpHere,
+            ]
+        );
+        // Not transient, and no constructor of a failed lookup marks it.
+        assert!(!LookupFailure::not_looked_up(String::new()).transient);
+        use crate::http::HttpError;
+        for failure in [
+            LookupFailure::from("could not parse registry manifest".to_string()),
+            LookupFailure::request("x", &HttpError::Network("dns error".to_string())),
+            LookupFailure::request(
+                "x",
+                &HttpError::Tls {
+                    host: "crates.io".to_string(),
+                    detail: "UnknownIssuer".to_string(),
+                },
+            ),
+            LookupFailure::request("x", &HttpError::Refused("redirect".to_string())),
+            LookupFailure::status(String::new(), 404),
+            LookupFailure::words(String::new(), "connection refused"),
+        ] {
+            let row = uncheckable_candidate(
+                key.clone(),
+                "abc".to_string(),
+                UpdateChannel::Digest,
+                failure,
+            );
+            assert!(
+                !row.warnings.contains(&Warning::NotLookedUpHere),
+                "{:?}",
+                row.warnings
+            );
+        }
+    }
+
+    #[test]
     fn test_lookup_failure_is_transient_only_for_no_answer_or_a_not_now_status() {
         use crate::http::HttpError;
         let network = LookupFailure::request(
@@ -873,7 +959,8 @@ mod tests {
             LookupFailure {
                 reason: "could not parse registry manifest".to_string(),
                 transient: false,
-                secure_connection: None
+                secure_connection: None,
+                not_looked_up: false,
             }
         );
     }
@@ -896,6 +983,7 @@ mod tests {
                 reason: "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer".to_string(),
                 transient: false,
                 secure_connection: Some("crates.io".to_string()),
+                not_looked_up: false,
             }
         );
         for refused in [

@@ -902,6 +902,35 @@ describe("UpdatesPage", () => {
     expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
   });
 
+  it("says a tool Banager does not look up on this Mac is not checked here, and never to check again", async () => {
+    // Independent review r6, F5: Antigravity CLI on an Intel Mac, an
+    // Ollama whose models are on another Mac -- no request was made, and
+    // the row says so in a person's words (`NotLookedUpHere`).
+    updates = [
+      {
+        key: { ...myForkKey, name: "intel" },
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: [
+          { Message: "Antigravity CLI's update manifest is not yet verified on Intel Macs (x86_64)" },
+          "NotLookedUpHere",
+        ],
+        blocked: null,
+      },
+    ];
+    const { queryByText } = renderPage();
+
+    await showCantUpdate();
+    const intel = chipDetail(await findRow("intel"), "Can't check");
+    expect([...intel.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
+      "Couldn't find its latest version.",
+      "It isn't checked for updates on this Mac.",
+    ]);
+    expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
+  });
+
   it("puts a person's words before the tool's own on a row that could not be checked, with technical details on", async () => {
     // a2 review 5: a secure connection's sentence follows its `Message` on
     // the wire, and came after rustls's words; a network row already had

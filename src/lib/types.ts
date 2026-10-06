@@ -329,6 +329,17 @@ export type Warning =
    * `TransientLookupFailure`, as the next check meets the same certificate.
    */
   | { SecureConnectionFailed: { host: string } }
+  /**
+   * On a `checkable: false` candidate, after the `Message` that says why:
+   * Banager does not look this tool up on this Mac, by design, and made no
+   * request -- an Ollama whose models are on another Mac, Antigravity CLI
+   * on an Intel Mac, Claude Code whose settings are kept in a protected
+   * place. Not a lookup that did not succeed: like a crate from git
+   * (`NonRegistrySource`), it does not keep the Overview from its all good
+   * (`NEVER_LOOKED_UP` in src/lib/failedLookups.ts). Never with
+   * `TransientLookupFailure`.
+   */
+  | "NotLookedUpHere"
   | { ThirdPartyRegistry: { host: string } }
   | "DownloadsModelChanges"
   | { WillTrash: { path: string; what: RemovedWhat } }

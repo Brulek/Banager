@@ -456,6 +456,31 @@ describe("the Overview's all good, over a lookup that did not succeed", () => {
     expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
   });
 
+  it("keeps the green check beside an Ollama whose models are on another Mac, which Banager does not look up from here", async () => {
+    const remote = instance("ollama:http://server:11434", "ollama");
+    const model = key(remote, "qwen3:8b", "Model");
+    served = snapshotWith({
+      instances: [brew, remote],
+      artifacts: [artifact(jq), artifact(model)],
+      updates: [
+        candidate(model, {
+          checkable: false,
+          current: "abc",
+          target: "abc",
+          channel: "Digest",
+          warnings: [{ Message: "remote daemon manifests cannot be checked from this Mac" }, "NotLookedUpHere"],
+        }),
+      ],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "Everything you can update here is up to date",
+    });
+    expect(statusRow(container).getAttribute("data-status")).toBe("upToDate");
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
+  });
+
   it("does not call the rest up to date where a source that answered had a lookup fail", async () => {
     served = snapshotWith({
       instances: [brew, cargo, stoppedOllama],

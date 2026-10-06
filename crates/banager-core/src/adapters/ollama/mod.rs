@@ -540,7 +540,9 @@ impl OllamaAdapter {
                         artifact.key.clone(),
                         artifact.version.clone(),
                         UpdateChannel::Digest,
-                        "remote daemon manifests cannot be checked from this Mac".to_string(),
+                        LookupFailure::not_looked_up(
+                            "remote daemon manifests cannot be checked from this Mac".to_string(),
+                        ),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -765,11 +767,14 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].checkable);
         assert_eq!(rows[0].current, rows[0].target);
+        // Never looked up here, by design, rather than a lookup that did
+        // not succeed (independent review r6, F5).
         assert_eq!(
             rows[0].warnings,
-            vec![Warning::Message(
-                "remote daemon manifests cannot be checked from this Mac".into()
-            )]
+            vec![
+                Warning::Message("remote daemon manifests cannot be checked from this Mac".into()),
+                Warning::NotLookedUpHere,
+            ]
         );
         assert_eq!(http.calls(), vec!["http://server:11434/api/tags"]);
 

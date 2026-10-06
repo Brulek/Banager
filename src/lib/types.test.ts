@@ -437,6 +437,13 @@ describe("types", () => {
       { Message: "npm error code ENOTFOUND" },
       "TransientLookupFailure",
     ]);
+    // A tool Banager does not look up on this Mac, by design, as Rust
+    // sends it: the reason, then the mark (`uncheckable_candidate`).
+    const notLookedUpHere: Warning = "NotLookedUpHere";
+    expect(JSON.stringify(notLookedUpHere)).toBe('"NotLookedUpHere"');
+    expect(
+      roundTrip<Warning[]>([{ Message: "remote daemon manifests cannot be checked from this Mac" }, notLookedUpHere]),
+    ).toEqual([{ Message: "remote daemon manifests cannot be checked from this Mac" }, "NotLookedUpHere"]);
     // A secure connection rustls would not set up: the reason, then the
     // host to name, and never the mark (`uncheckable_candidate`).
     const secureConnectionFailed: Warning = { SecureConnectionFailed: { host: "crates.io" } };

@@ -86,19 +86,29 @@ export function failedLookupsOf(
 /**
  * The warnings that mark a "could not check" row (`checkable: false`) as
  * one Banager never looks up, by design, rather than one whose lookup did
- * not succeed: a crate installed from a git repository or a local path
- * (`NonRegistrySource`, `CargoAdapter::check_updates` in
- * crates/banager-core/src/adapters/cargo.rs), which has no crates.io
- * version to compare with. The other tools and sources Banager never
- * checks list no row at all, so there is nothing of theirs to leave out
- * here: Codex's and opencode's own installs (`Latest::Unchecked`,
- * `UNCHECKED_STANDALONE` in src/lib/uncheckedStandalone.ts), a launcher
- * left without its program (`LauncherOnly`), a Python with no pip
- * (`NoPip`), an Ollama at an `https://` address (`HttpsHostRefused`), and
- * the Homebrew apps that update themselves while Settings leaves them out
- * (`leftOutOfUpdateCheck`).
+ * not succeed -- every such row there is:
+ *
+ * - `NonRegistrySource`: a crate installed from a git repository or a
+ *   local path (`CargoAdapter::check_updates` in
+ *   crates/banager-core/src/adapters/cargo.rs), with no crates.io version
+ *   to compare with.
+ * - `NotLookedUpHere` (`LookupFailure::not_looked_up` in
+ *   crates/banager-core/src/adapters/mod.rs), where no request is made on
+ *   this Mac: the models of an Ollama on another Mac
+ *   (`OllamaAdapter::check_updates`), Antigravity CLI on an Intel Mac or
+ *   under Rosetta (`manifest_arch_allowed`), and Claude Code whose settings
+ *   are kept in a protected place, so the channel it follows is not known
+ *   (`StandaloneAdapter::published`).
+ *
+ * The other tools and sources Banager never checks list no row at all, so
+ * there is nothing of theirs to leave out here: Codex's and opencode's own
+ * installs (`Latest::Unchecked`, `UNCHECKED_STANDALONE` in
+ * src/lib/uncheckedStandalone.ts), a launcher left without its program
+ * (`LauncherOnly`), a Python with no pip (`NoPip`), an Ollama at an
+ * `https://` address (`HttpsHostRefused`), and the Homebrew apps that
+ * update themselves while Settings leaves them out (`leftOutOfUpdateCheck`).
  */
-const NEVER_LOOKED_UP: readonly UpdateCandidate["warnings"][number][] = ["NonRegistrySource"];
+const NEVER_LOOKED_UP: readonly UpdateCandidate["warnings"][number][] = ["NonRegistrySource", "NotLookedUpHere"];
 
 /**
  * Whether Banager tried to find `candidate`'s newest version and did not

@@ -114,6 +114,7 @@ where
                 reason: reason.clone(),
                 transient,
                 secure_connection: host.map(str::to_string),
+                not_looked_up: false,
             },
             "{url}: {reason}"
         );

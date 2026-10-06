@@ -793,7 +793,7 @@ impl StandaloneAdapter {
                         // Claude Code reads its settings there; which
                         // channel they name is not known: a row that
                         // could not be checked, not a guess.
-                        LookupFailure::from(
+                        LookupFailure::not_looked_up(
                             "~/.claude/settings.json is in a place Banager never looks into, \
                              so which channel Claude Code updates from is not known"
                                 .to_string(),
@@ -825,7 +825,7 @@ impl StandaloneAdapter {
             Latest::HttpJsonField { url, field } => {
                 // Only where the manifest URL was verified (Apple silicon);
                 // elsewhere the row says so and nothing is sent.
-                latest::manifest_arch_allowed(self.arch)?;
+                latest::manifest_arch_allowed(self.arch).map_err(LookupFailure::not_looked_up)?;
                 let resp = get_ok(
                     self.http.as_ref(),
                     url.to_string(),
@@ -2626,6 +2626,16 @@ mod tests {
             } else {
                 assert_eq!(out.candidates.len(), 1, "{keep}");
                 assert!(!out.candidates[0].checkable, "{keep}");
+                // Never looked up here, by design, rather than a lookup
+                // that did not succeed (independent review r6, F5).
+                assert!(
+                    matches!(
+                        &out.candidates[0].warnings[..],
+                        [Warning::Message(_), Warning::NotLookedUpHere]
+                    ),
+                    "{keep}: {:?}",
+                    out.candidates[0].warnings
+                );
                 assert!(http.calls().is_empty(), "{keep}: {:?}", http.calls());
             }
         }
@@ -5294,8 +5304,13 @@ mod tests {
         assert!(!c.checkable);
         assert_eq!(c.current, "1.2.10");
         assert_eq!(c.target, "1.2.10");
+        // Never looked up here, by design, rather than a lookup that did
+        // not succeed (independent review r6, F5).
         assert!(
-            matches!(&c.warnings[..], [Warning::Message(m)] if m.contains("Intel") && m.contains("x86_64")),
+            matches!(
+                &c.warnings[..],
+                [Warning::Message(m), Warning::NotLookedUpHere] if m.contains("Intel") && m.contains("x86_64")
+            ),
             "{:?}",
             c.warnings
         );

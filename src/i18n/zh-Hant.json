@@ -497,6 +497,9 @@
   "secureConnection": {
     "failed": "無法與{{host}}建立安全連線。"
   },
+  "notLookedUp": {
+    "here": "這台Mac上不檢查它的更新。"
+  },
   "unreadInProtectedPlace": {
     "homebrewMayAutoremove": "Homebrew可能還會刪除為其他軟體安裝、目前已沒有軟體需要的相依套件。",
     "homebrewMayAutoremoveDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTOREMOVE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值改成了Homebrew視為未設定的值。",

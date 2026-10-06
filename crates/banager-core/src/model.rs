@@ -808,6 +808,22 @@ pub enum Warning {
     /// Set only by `adapters::uncheckable_candidate` from a
     /// `LookupFailure`; read by `warningKey` in src/lib/warnings.ts.
     SecureConnectionFailed { host: String },
+    /// On a `checkable: false` candidate, after the `Message` that says
+    /// why: Banager does not look this tool up on this Mac, by design, and
+    /// made no request -- not a lookup that did not succeed. An Ollama
+    /// whose models are on another Mac (`OLLAMA_HOST` not this one),
+    /// Antigravity CLI on an Intel Mac or under Rosetta (its manifest URL
+    /// is verified for Apple silicon only), Claude Code whose settings are
+    /// kept in a protected place (which channel it follows is not known).
+    /// The same on every check until something outside Banager changes, so
+    /// never with `TransientLookupFailure`. Set only by
+    /// `adapters::uncheckable_candidate` from a
+    /// `LookupFailure::not_looked_up`. Read by `NEVER_LOOKED_UP` in
+    /// src/lib/failedLookups.ts: such a row, like a crate from git
+    /// (`NonRegistrySource`), does not keep the Overview from its all good
+    /// (independent review r6, F5); and by `warningKey`, for its row's
+    /// words.
+    NotLookedUpHere,
     /// Installing or upgrading this model downloads it from `host`, a
     /// registry other than Ollama's own library. Carried only on
     /// Install/Upgrade plans: where a model came from is a reason to look
@@ -2504,6 +2520,14 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Warning>(r#""TransientLookupFailure""#).unwrap(),
             Warning::TransientLookupFailure
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::NotLookedUpHere).unwrap(),
+            r#""NotLookedUpHere""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Warning>(r#""NotLookedUpHere""#).unwrap(),
+            Warning::NotLookedUpHere
         );
         assert_eq!(
             serde_json::to_string(&Warning::SecureConnectionFailed {

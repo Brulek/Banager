@@ -31,6 +31,7 @@ describe("warningKey", () => {
     expect(warningKey("DownloadsModelChanges")).toBe("warnings.downloadsModelChanges");
     expect(warningKey("NonRegistrySource")).toBe("warnings.nonRegistrySource");
     expect(warningKey("TransientLookupFailure")).toBe("warnings.transientLookupFailure");
+    expect(warningKey("NotLookedUpHere")).toBe("notLookedUp.here");
     expect(warningKey({ SecureConnectionFailed: { host: "crates.io" } })).toBe("secureConnection.failed");
     expect(warningKey({ WouldBreak: { names: ["python@3.13"] } })).toBe("warnings.wouldBreak");
     expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
@@ -341,6 +342,7 @@ describe("warningKey", () => {
       "DownloadsModelChanges",
       "NonRegistrySource",
       "TransientLookupFailure",
+      "NotLookedUpHere",
       { SecureConnectionFailed: { host: "crates.io" } },
       { WouldBreak: { names: ["a"] } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
@@ -545,6 +547,7 @@ const EVERY_VARIANT: Warning[] = [
   "DownloadsModelChanges",
   "NonRegistrySource",
   "TransientLookupFailure",
+  "NotLookedUpHere",
   "HomebrewRustupLosesToolchains",
   "EditsShellConfig",
   { WouldBreak: { names: ["a"] } },
@@ -683,7 +686,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(28);
+    expect(notes).toHaveLength(29);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -764,6 +767,7 @@ describe("warningDetailKey", () => {
       "DownloadsModelChanges",
       "NonRegistrySource",
       "TransientLookupFailure",
+      "NotLookedUpHere",
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { WouldBreak: { names: ["a"] } },
@@ -1050,6 +1054,7 @@ describe("isCaution", () => {
       "CompilesLocally",
       "DownloadsModelChanges",
       "NonRegistrySource",
+      "NotLookedUpHere",
       { SecureConnectionFailed: { host: "crates.io" } },
       "EditsShellConfig",
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },

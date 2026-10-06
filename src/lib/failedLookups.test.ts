@@ -152,9 +152,22 @@ describe("unsuccessfulLookupsOf", () => {
       row("fine", { checkable: true, target: "1.1.0", warnings: [] }),
       row("hidden", { warnings: [{ Message: "could not parse registry manifest" }] }),
       row("counted", { warnings: [{ Message: "could not parse registry manifest" }] }),
+      // No request made on this Mac, by design: an Ollama whose models are
+      // on another Mac, Antigravity CLI on an Intel Mac.
+      row("remote", {
+        warnings: [{ Message: "remote daemon manifests cannot be checked from this Mac" }, "NotLookedUpHere"],
+      }),
+      row("intel", {
+        warnings: [
+          { Message: "Antigravity CLI's update manifest is not yet verified on Intel Macs (x86_64)" },
+          "NotLookedUpHere",
+        ],
+      }),
     ];
     expect(isUnsuccessfulLookup(rows[0])).toBe(false);
     expect(isUnsuccessfulLookup(rows[1])).toBe(false);
+    expect(isUnsuccessfulLookup(rows[4])).toBe(false);
+    expect(isUnsuccessfulLookup(rows[5])).toBe(false);
     expect(
       unsuccessfulLookupsOf(rows, { ...noHiding, ignored_updates: [key("hidden")] }).map((each) => each.key.name),
     ).toEqual(["counted"]);
