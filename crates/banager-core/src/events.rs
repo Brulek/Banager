@@ -82,14 +82,26 @@ pub enum LogNote {
     /// worded by `LogDrawer.tsx`.
     CleaningUpOldVersions { name: String },
     /// That `brew cleanup` did not end in exit 0: `exit_code`, or `None`
-    /// when it was stopped -- a Cancel, or its time limit. The upgrade
-    /// before it stands, and stays the operation's outcome; what the
-    /// cleanup did not delete is still listed as the tool's other
-    /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    /// when it has none -- a Cancel, its time limit, or a runner that
+    /// could not start it -- or a Cancel that landed after the upgrade and
+    /// before the cleanup, which then did not run (no
+    /// `CleaningUpOldVersions` before it). The upgrade before it stands,
+    /// and stays the operation's outcome; what the cleanup did not delete
+    /// is still listed as the tool's other versions. From
+    /// `BrewAdapter::execute`; worded by `LogDrawer.tsx`, the same either
+    /// way: the cleanup did not finish.
     OldVersionsNotCleanedUp {
         name: String,
         exit_code: Option<i32>,
     },
+    /// That `brew cleanup` exited 0, and `versions` -- of those the
+    /// update's preview said it deletes (`Warning::
+    /// HomebrewCleansUpOldVersions`), oldest first -- are still in the
+    /// Cellar when it is read again: Homebrew kept them (an alias in
+    /// `HOMEBREW_NO_CLEANUP_FORMULAE`, a version still linked or needed).
+    /// The update stands; they are still listed as the tool's other
+    /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    OldVersionsKept { name: String, versions: Vec<String> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,6 +300,17 @@ mod tests {
                 unfinished
             );
         }
+        // It exited 0 and kept versions the preview named.
+        let kept = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::OldVersionsKept {
+                name: "wget".to_string(),
+                versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+            },
+        };
+        let json = r#"{"Note":{"op_id":7,"note":{"OldVersionsKept":{"name":"wget","versions":["1.24.0","1.25.0"]}}}}"#;
+        assert_eq!(serde_json::to_string(&kept).unwrap(), json);
+        assert_eq!(serde_json::from_str::<OperationEvent>(json).unwrap(), kept);
     }
 
     #[test]

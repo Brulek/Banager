@@ -837,6 +837,13 @@ describe("types", () => {
       '{"Note":{"op_id":7,"note":{"OldVersionsNotCleanedUp":{"name":"wget","exit_code":null}}}}',
     );
     expect(roundTrip(stopped)).toEqual(stopped);
+    const kept: OperationEvent = {
+      Note: { op_id: 7, note: { OldVersionsKept: { name: "wget", versions: ["1.24.0", "1.25.0"] } } },
+    };
+    expect(JSON.stringify(kept)).toBe(
+      '{"Note":{"op_id":7,"note":{"OldVersionsKept":{"name":"wget","versions":["1.24.0","1.25.0"]}}}}',
+    );
+    expect(roundTrip(kept)).toEqual(kept);
   });
 
   it("spells the unknown-source scan's shapes as Rust sends them", () => {

@@ -207,7 +207,7 @@ describe("LogDrawer", () => {
     }
   });
 
-  it("says where an update's brew cleanup starts, and how it ended when it did not finish (U9)", async () => {
+  it("says where an update's brew cleanup starts, and how it ended when it did not finish or kept versions (U9)", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
@@ -219,9 +219,15 @@ describe("LogDrawer", () => {
         useUiStore
           .getState()
           .appendLog({ opId: 1, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: 1 } } });
+        // No exit code: cancelled, out of time, or never started -- it
+        // did not finish, whichever.
         useUiStore
           .getState()
           .appendLog({ opId: 1, note: { OldVersionsNotCleanedUp: { name: "wget", exit_code: null } } });
+        // It exited 0 and Homebrew kept versions the preview named.
+        useUiStore
+          .getState()
+          .appendLog({ opId: 1, note: { OldVersionsKept: { name: "wget", versions: ["1.24.0", "1.25.0"] } } });
       });
 
       await findByText("Error: Permission denied");
@@ -231,7 +237,8 @@ describe("LogDrawer", () => {
         "更新已完成，接着运行brew cleanup删除wget的旧版本。",
         "Error: Permission denied",
         "brew cleanup没有完成。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
-        "brew cleanup已停止。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
+        "brew cleanup没有完成。更新本身已经完成，没删掉的旧版本仍列在“其他版本”中。",
+        "brew cleanup保留了wget的旧版本1.24.0、1.25.0，仍列在“其他版本”中。",
       ]);
     } finally {
       await i18n.changeLanguage("en");

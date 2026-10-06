@@ -64,10 +64,18 @@ function noteText(t: TFunction, note: LogNote): string {
   if ("CleaningUpOldVersions" in note) {
     return t("brewVersions.logCleaningUp", { name: note.CleaningUpOldVersions.name });
   }
+  // With an exit code or without -- stopped, out of time, or never
+  // started -- it did not finish; "stopped" would not be true of all.
   if ("OldVersionsNotCleanedUp" in note) {
-    return note.OldVersionsNotCleanedUp.exit_code === null
-      ? t("brewVersions.logCleanupStopped")
-      : t("brewVersions.logNotCleanedUp");
+    return t("brewVersions.logNotCleanedUp");
+  }
+  if ("OldVersionsKept" in note) {
+    const { name, versions } = note.OldVersionsKept;
+    return t("brewVersions.logKept", {
+      name,
+      versions: versions.join(t("common.listSeparator")),
+      count: versions.length,
+    });
   }
   const unhandled: never = note;
   return unhandled;

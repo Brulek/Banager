@@ -771,19 +771,27 @@ came back on the Installed page, still installed. So:
   Banager's environment -- what Homebrew would make of the switch without
   Banager's `1`; `HOMEBREW_NO_CLEANUP_FORMULAE` does not name the formula,
   by the name Homebrew checks (one it names by an alias Banager cannot see
-  is refused by `brew cleanup` itself, `cleanup.rb:511-514`); and the
+  is refused by `brew cleanup` itself, `cleanup.rb:511-514`, which still
+  exits 0: the log then says which versions are left, below); and the
   names of its versions were read (below). The update's preview says
   first which versions go -- every version installed when it looked, the
   one the update replaces among them (`Warning::HomebrewCleansUpOldVersions`,
   「更新后会删除旧版本1.25.0。」, the command behind its ⓘ) -- and shows
   both commands. How the cleanup ends never changes the update's outcome:
   its lines go to the log after one saying it starts, and when it does
-  not exit 0 or is stopped (Cancel, or `CLEANUP_TIMEOUT_SECS`, 600 s),
-  one more says the update itself is done and that what it did not
-  delete is still listed as the tool's other versions
-  (`LogNote::CleaningUpOldVersions`, `OldVersionsNotCleanedUp`). A Cancel
-  that lands after the upgrade and before the cleanup starts runs no
-  cleanup.
+  not exit 0, is stopped (Cancel, or `CLEANUP_TIMEOUT_SECS`, 600 s) or
+  cannot be started, one more says it did not finish, that the update
+  itself is done and that what it did not delete is still listed as the
+  tool's other versions (`LogNote::CleaningUpOldVersions`,
+  `OldVersionsNotCleanedUp`). When it exits 0, the Cellar is read again,
+  as for the preview, and the versions the preview named that are still
+  there, but for the newest there (the one the update put in), are named
+  in the log (`LogNote::OldVersionsKept`): `brew cleanup` keeps, and
+  still exits 0 for, a formula an alias in `HOMEBREW_NO_CLEANUP_FORMULAE`
+  names and a version it still needs -- linked, kept by a `keepme`, the
+  newest HEAD (`Formula#eligible_kegs_for_cleanup`). A Cancel that lands
+  after the upgrade and before the cleanup starts runs no cleanup; the
+  log says it did not finish.
 - An uninstall of a formula with more than one version installed and no
   pin passes `--force`, Homebrew's own way to delete every version
   (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`), and its preview names
@@ -805,8 +813,9 @@ came back on the Installed page, still installed. So:
   Homebrew never overlap. With one version installed, or a pin, the
   uninstall is the plain `brew uninstall --formula {name}`.
 
-Both read, during the upgrade and the uninstall preview of a formula, and
-again right before an uninstall with `--force` runs, the names in
+Both read, during the upgrade and the uninstall preview of a formula,
+again right before an uninstall with `--force` runs, and again after the
+cleanup that follows an update exits 0, the names in
 `<prefix>/Cellar/<name>` -- its versions, the folders there -- and whether
 `<prefix>/var/homebrew/pinned/<name>` is there (`brew::kegs`, `lstat`
 only); `<name>` is the last part of a tap's `user/tap/name`.

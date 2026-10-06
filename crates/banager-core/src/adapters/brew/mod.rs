@@ -2150,29 +2150,66 @@ impl BrewAdapter {
         }
         let name = plan.request.name.clone();
         let note = |note| sink.emit(OperationEvent::Note { op_id, note });
-        let exit_code = if cancel.is_cancelled() {
+        if cancel.is_cancelled() {
             // Stopped before it started: nothing of it ran.
-            Some(None)
-        } else {
-            note(LogNote::CleaningUpOldVersions { name: name.clone() });
-            match run_plan(
-                &self.runner,
-                &step(then, Self::CLEANUP_TIMEOUT_SECS),
-                sink.clone(),
-                op_id,
-                cancel,
-            )
-            .await
-            {
-                Ok(Outcome::Succeeded) => None,
-                Ok(Outcome::Failed { exit_code, .. }) => Some(exit_code),
-                Ok(_) | Err(_) => Some(None),
-            }
-        };
-        if let Some(exit_code) = exit_code {
-            note(LogNote::OldVersionsNotCleanedUp { name, exit_code });
+            note(LogNote::OldVersionsNotCleanedUp {
+                name,
+                exit_code: None,
+            });
+            return Ok(outcome);
         }
+        note(LogNote::CleaningUpOldVersions { name: name.clone() });
+        let exit_code = match run_plan(
+            &self.runner,
+            &step(then, Self::CLEANUP_TIMEOUT_SECS),
+            sink.clone(),
+            op_id,
+            cancel,
+        )
+        .await
+        {
+            Ok(Outcome::Succeeded) => {
+                let versions = self.versions_kept(program, plan);
+                if !versions.is_empty() {
+                    note(LogNote::OldVersionsKept { name, versions });
+                }
+                return Ok(outcome);
+            }
+            Ok(Outcome::Failed { exit_code, .. }) => exit_code,
+            // Cancelled, out of time, or never started.
+            Ok(_) | Err(_) => None,
+        };
+        note(LogNote::OldVersionsNotCleanedUp { name, exit_code });
         Ok(outcome)
+    }
+
+    /// The versions the update's preview said its `brew cleanup` deletes
+    /// (`Warning::HomebrewCleansUpOldVersions`) that are still in the
+    /// Cellar once that cleanup has exited 0 -- the same read as the
+    /// preview's (`kegs_fn`) -- but for the newest there, the one the
+    /// update put in. `brew cleanup` exits 0 and keeps some: one named by
+    /// an alias in `HOMEBREW_NO_CLEANUP_FORMULAE` (`onoe`, which does not
+    /// fail the command, `cleanup.rb:511-514`), or one Homebrew still
+    /// needs (`Formula#eligible_kegs_for_cleanup`). Empty when none is
+    /// left, or the Cellar cannot be read.
+    fn versions_kept(&self, program: &Path, plan: &Plan) -> Vec<String> {
+        let Some(named) = plan.warnings.iter().find_map(|warning| match warning {
+            Warning::HomebrewCleansUpOldVersions { versions } => Some(versions),
+            _ => None,
+        }) else {
+            return Vec::new();
+        };
+        let Some(now) = (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name) else {
+            return Vec::new();
+        };
+        let Some((_newest, older)) = now.versions.split_last() else {
+            return Vec::new();
+        };
+        named
+            .iter()
+            .filter(|version| older.contains(version))
+            .cloned()
+            .collect()
     }
 
     pub async fn reconcile(
@@ -6838,6 +6875,55 @@ mod plan_execute_tests {
             })
         }
 
+        /// wget's Cellar once its update installed 1.26.0 and the cleanup
+        /// after it deleted every older version.
+        fn cleaned(_prefix: &Path, name: &str) -> Option<Kegs> {
+            (name.rsplit('/').next() == Some("wget")).then(|| Kegs {
+                versions: vec!["1.26.0".to_string()],
+                pinned: false,
+            })
+        }
+
+        /// What `sink` got, a line each: a command's line as it printed
+        /// it, a note as its `Debug`.
+        fn log_lines(sink: &VecSink) -> Vec<String> {
+            sink.snapshot()
+                .into_iter()
+                .map(|event| match event {
+                    crate::events::OperationEvent::Log { line, .. } => line,
+                    crate::events::OperationEvent::Note { note, .. } => format!("{note:?}"),
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        }
+
+        /// A runner that answers as `inner` and then, once it has answered
+        /// `after`, cancels `token`: a Cancel that lands between two
+        /// commands of one operation.
+        struct CancelAfter {
+            inner: Arc<MockRunner>,
+            after: Vec<String>,
+            token: CancellationToken,
+        }
+
+        #[async_trait]
+        impl CommandRunner for CancelAfter {
+            async fn run(
+                &self,
+                spec: CommandSpec,
+                on_line: Option<crate::runner::LineCallback>,
+                cancel: CancellationToken,
+            ) -> Result<CommandOutput, crate::runner::RunnerError> {
+                let mut argv = vec![spec.program.to_string_lossy().into_owned()];
+                argv.extend(spec.args.iter().cloned());
+                let output = self.inner.run(spec, on_line, cancel).await;
+                if argv == self.after {
+                    self.token.cancel();
+                }
+                output
+            }
+        }
+
         fn request(kind: OpKind, artifact_kind: ArtifactKind, name: &str) -> OpRequest {
             OpRequest {
                 kind,
@@ -7117,7 +7203,9 @@ mod plan_execute_tests {
                 let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
                 let plan = adapter.plan(&inst, &req).await.expect("plan");
                 let sink = Arc::new(VecSink::new());
-                let outcome = adapter
+                // The Cellar as the cleanup leaves it: the new version only.
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(cleaned)
                     .execute(&plan, sink.clone(), 7, CancellationToken::new())
                     .await
                     .expect("execute");
@@ -7180,6 +7268,180 @@ mod plan_execute_tests {
                 }
             ));
             assert_eq!(runner.calls().len(), 1, "{:?}", runner.calls());
+        }
+
+        #[tokio::test]
+        async fn a_cleanup_that_exits_0_but_leaves_versions_the_preview_named_says_which_in_the_log(
+        ) {
+            // `brew cleanup` exits 0 and still keeps a version: one named by
+            // an alias in HOMEBREW_NO_CLEANUP_FORMULAE (`onoe`, which does
+            // not fail the command, `cleanup.rb:511-514`), or one Homebrew
+            // still needs -- linked, kept by a keepme, the newest HEAD
+            // (`Formula#eligible_kegs_for_cleanup`). The Cellar is read again
+            // and the log says which of the versions the preview named are
+            // still there; the newest there is the one the update put in.
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let cleanup = vec!["/opt/homebrew/bin/brew", "cleanup", "wget"];
+            let inst = test_instance();
+            let req = request(OpKind::Upgrade, ArtifactKind::Formula, "wget");
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            let refused: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec![
+                        "1.24.0".to_string(),
+                        "1.25.0".to_string(),
+                        "1.26.0".to_string(),
+                    ],
+                    pinned: false,
+                })
+            };
+            let linked: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    pinned: false,
+                })
+            };
+            let unread: Read = |_, _| None;
+            let kept = |versions: &[&str]| {
+                Some(LogNote::OldVersionsKept {
+                    name: "wget".to_string(),
+                    versions: versions.iter().map(|v| v.to_string()).collect(),
+                })
+            };
+            for (read, note) in [
+                (refused, kept(&["1.24.0", "1.25.0"])),
+                (linked, kept(&["1.25.0"])),
+                (cleaned as Read, None),
+                (unread, None),
+            ] {
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(upgrade.clone(), ok("", "", 0));
+                runner.respond(
+                    cleanup.clone(),
+                    ok("", "Error: Refusing to clean up wget\n", 0),
+                );
+                let plan = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(two_versions)
+                    .plan(&inst, &req)
+                    .await
+                    .expect("plan");
+                let sink = Arc::new(VecSink::new());
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(read)
+                    .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded);
+                let mut expected = vec![
+                    format!(
+                        "{:?}",
+                        LogNote::CleaningUpOldVersions {
+                            name: "wget".to_string()
+                        }
+                    ),
+                    "Error: Refusing to clean up wget".to_string(),
+                ];
+                expected.extend(note.map(|note| format!("{note:?}")));
+                assert_eq!(log_lines(&sink), expected);
+            }
+        }
+
+        #[tokio::test]
+        async fn a_cleanup_that_is_stopped_or_cannot_start_leaves_the_update_succeeded() {
+            // Cancelled while it runs, out of time, or not started at all
+            // (the runner could not spawn it): the update stands, and the
+            // log says the cleanup did not finish.
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let cleanup = vec!["/opt/homebrew/bin/brew", "cleanup", "wget"];
+            let inst = test_instance();
+            let req = request(OpKind::Upgrade, ArtifactKind::Formula, "wget");
+            let stopped = |cancelled: bool| CommandOutput {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: !cancelled,
+                cancelled,
+            };
+            for ending in [Some(stopped(true)), Some(stopped(false)), None] {
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(upgrade.clone(), ok("", "", 0));
+                if let Some(output) = ending.clone() {
+                    runner.respond(cleanup.clone(), output);
+                }
+                let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
+                let plan = adapter.plan(&inst, &req).await.expect("plan");
+                let sink = Arc::new(VecSink::new());
+                let outcome = adapter
+                    .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded, "{ending:?}");
+                assert_eq!(runner.calls(), vec![upgrade.clone(), cleanup.clone()]);
+                assert_eq!(
+                    log_lines(&sink),
+                    vec![
+                        format!(
+                            "{:?}",
+                            LogNote::CleaningUpOldVersions {
+                                name: "wget".to_string()
+                            }
+                        ),
+                        format!(
+                            "{:?}",
+                            LogNote::OldVersionsNotCleanedUp {
+                                name: "wget".to_string(),
+                                exit_code: None,
+                            }
+                        ),
+                    ],
+                    "{ending:?}"
+                );
+            }
+        }
+
+        #[tokio::test]
+        async fn a_cancel_after_the_update_and_before_the_cleanup_runs_no_cleanup() {
+            // The update has succeeded; the Cancel lands before the cleanup
+            // starts. Nothing more runs, the log says the old versions were
+            // not cleaned up -- without saying the cleanup started -- and
+            // the outcome is the update's.
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let inner = Arc::new(MockRunner::new());
+            inner.respond(upgrade.clone(), ok("==> Upgrading wget\n", "", 0));
+            let token = CancellationToken::new();
+            let runner = Arc::new(CancelAfter {
+                inner: inner.clone(),
+                after: upgrade.iter().map(|s| s.to_string()).collect(),
+                token: token.clone(),
+            });
+            let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
+            let plan = adapter
+                .plan(
+                    &test_instance(),
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            let sink = Arc::new(VecSink::new());
+            let outcome = adapter
+                .execute(&plan, sink.clone(), 7, token)
+                .await
+                .expect("execute");
+            assert_eq!(outcome, Outcome::Succeeded);
+            assert_eq!(inner.calls(), vec![upgrade]);
+            assert_eq!(
+                log_lines(&sink),
+                vec![
+                    "==> Upgrading wget".to_string(),
+                    format!(
+                        "{:?}",
+                        LogNote::OldVersionsNotCleanedUp {
+                            name: "wget".to_string(),
+                            exit_code: None,
+                        }
+                    ),
+                ]
+            );
         }
 
         #[tokio::test]

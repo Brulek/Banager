@@ -808,10 +808,13 @@ export type LogNote =
   | { TrashFailed: { path: string; error: string } }
   | { OutOfTime: { path: string; seconds: number } }
   | { BackAfterUninstall: { path: string } }
-  // U9 (r6): an upgrade's follow-up `brew cleanup <name>` starts, and, when
-  // it did not end in exit 0, how it ended (`null`: it was stopped).
+  // U9 (r6): an upgrade's follow-up `brew cleanup <name>` starts; when it
+  // did not end in exit 0, how it ended (`null`: no exit code -- stopped,
+  // out of time, or never started); and when it exited 0 but the versions
+  // of those its preview named it deletes are still there, which.
   | { CleaningUpOldVersions: { name: string } }
-  | { OldVersionsNotCleanedUp: { name: string; exit_code: number | null } };
+  | { OldVersionsNotCleanedUp: { name: string; exit_code: number | null } }
+  | { OldVersionsKept: { name: string; versions: string[] } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }
