@@ -5,7 +5,6 @@
     {
       "id": "claude-code",
       "name_en": "Claude Code",
-      "name_zh": "Claude Code",
       "members": [
         { "source": "npm", "name": "@anthropic-ai/claude-code" },
         { "source": "cask", "name": "claude-code" },
@@ -16,7 +15,6 @@
     {
       "id": "codex",
       "name_en": "Codex",
-      "name_zh": "Codex",
       "members": [
         { "source": "npm", "name": "@openai/codex" },
         { "source": "cask", "name": "codex" },
@@ -27,7 +25,6 @@
     {
       "id": "gemini-cli",
       "name_en": "Gemini CLI",
-      "name_zh": "Gemini CLI",
       "members": [
         { "source": "npm", "name": "@google/gemini-cli" },
         { "source": "formula", "name": "gemini-cli" }
@@ -37,7 +34,6 @@
     {
       "id": "qwen-code",
       "name_en": "Qwen Code",
-      "name_zh": "Qwen Code",
       "members": [
         { "source": "npm", "name": "@qwen-code/qwen-code" },
         { "source": "formula", "name": "qwen-code" }
@@ -47,7 +43,6 @@
     {
       "id": "kimi-code",
       "name_en": "Kimi Code",
-      "name_zh": "Kimi Code",
       "members": [
         { "source": "npm", "name": "@moonshot-ai/kimi-code" },
         { "source": "formula", "name": "kimi-cli" },
@@ -58,28 +53,24 @@
     {
       "id": "iflow-cli",
       "name_en": "iFlow CLI",
-      "name_zh": "iFlow CLI",
       "members": [{ "source": "npm", "name": "@iflow-ai/iflow-cli" }],
       "data_paths": ["~/.iflow"]
     },
     {
       "id": "codebuddy-code",
       "name_en": "CodeBuddy Code",
-      "name_zh": "CodeBuddy Code",
       "members": [{ "source": "npm", "name": "@tencent-ai/codebuddy-code" }],
       "data_paths": ["~/.codebuddy"]
     },
     {
       "id": "qoder-cli",
       "name_en": "Qoder CLI",
-      "name_zh": "Qoder CLI",
       "members": [{ "source": "npm", "name": "@qoder-ai/qodercli" }],
       "data_paths": ["~/.qoder"]
     },
     {
       "id": "opencode",
       "name_en": "opencode",
-      "name_zh": "opencode",
       "members": [
         { "source": "npm", "name": "opencode-ai" },
         { "source": "formula", "name": "opencode" },
@@ -90,14 +81,12 @@
     {
       "id": "crush",
       "name_en": "Crush",
-      "name_zh": "Crush",
       "members": [{ "source": "npm", "name": "@charmland/crush" }],
       "data_paths": ["~/.local/share/crush", "~/.config/crush"]
     },
     {
       "id": "amp",
       "name_en": "Amp",
-      "name_zh": "Amp",
       "members": [
         { "source": "npm", "name": "@ampcode/cli" },
         { "source": "npm", "name": "@sourcegraph/amp" }
@@ -107,14 +96,12 @@
     {
       "id": "kilo",
       "name_en": "Kilo",
-      "name_zh": "Kilo",
       "members": [{ "source": "npm", "name": "@kilocode/cli" }],
       "data_paths": ["~/.local/share/kilo", "~/.config/kilo"]
     },
     {
       "id": "copilot-cli",
       "name_en": "GitHub Copilot CLI",
-      "name_zh": "GitHub Copilot CLI",
       "members": [
         { "source": "npm", "name": "@github/copilot" },
         { "source": "cask", "name": "copilot-cli" }
@@ -124,14 +111,12 @@
     {
       "id": "auggie",
       "name_en": "Auggie",
-      "name_zh": "Auggie",
       "members": [{ "source": "npm", "name": "@augmentcode/auggie" }],
       "data_paths": ["~/.augment"]
     },
     {
       "id": "droid",
       "name_en": "Factory Droid",
-      "name_zh": "Factory Droid",
       "members": [
         { "source": "npm", "name": "droid" },
         { "source": "npm", "name": "@factory/cli" }
@@ -141,14 +126,12 @@
     {
       "id": "cursor-cli",
       "name_en": "Cursor CLI",
-      "name_zh": "Cursor CLI",
       "members": [{ "source": "cask", "name": "cursor-cli" }],
       "data_paths": ["~/.cursor/cli-config.json"]
     },
     {
       "id": "aider",
       "name_en": "Aider",
-      "name_zh": "Aider",
       "members": [
         { "source": "formula", "name": "aider" },
         { "source": "pypi", "name": "aider-chat" }
@@ -158,28 +141,24 @@
     {
       "id": "goose",
       "name_en": "Goose",
-      "name_zh": "Goose",
       "members": [{ "source": "formula", "name": "block-goose-cli" }],
       "data_paths": ["~/.local/share/goose", "~/.config/goose"]
     },
     {
       "id": "mistral-vibe",
       "name_en": "Mistral Vibe",
-      "name_zh": "Mistral Vibe",
       "members": [{ "source": "pypi", "name": "mistral-vibe" }],
       "data_paths": ["~/.vibe"]
     },
     {
       "id": "openclaw",
       "name_en": "OpenClaw",
-      "name_zh": "OpenClaw",
       "members": [{ "source": "npm", "name": "openclaw" }],
       "data_paths": ["~/.openclaw", "~/.clawdbot"]
     },
     {
       "id": "ollama",
       "name_en": "Ollama",
-      "name_zh": "Ollama",
       "members": [
         { "source": "formula", "name": "ollama" },
         { "source": "cask", "name": "ollama-app" }
@@ -189,14 +168,12 @@
     {
       "id": "antigravity-cli",
       "name_en": "Antigravity CLI",
-      "name_zh": "Antigravity CLI",
       "members": [{ "source": "standalone", "name": "agy" }],
       "data_paths": ["~/.gemini/antigravity-cli"]
     },
     {
       "id": "grok-build",
       "name_en": "Grok Build",
-      "name_zh": "Grok Build",
       "members": [
         { "source": "cask", "name": "grok-build" },
         { "source": "standalone", "name": "grok" }

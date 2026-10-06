@@ -600,8 +600,8 @@ mod tests {
         assert!(others_inside("antigravity-cli", "~/.gemini/antigravity-cli").is_empty());
         assert!(others_inside("claude-code", "~/.claude").is_empty());
         // Every pair in the table: the name on the line is the family's,
-        // and the table spells it the same in both languages, since the
-        // wire carries one spelling.
+        // its one spelling in every language (a tool's name is not
+        // translated, decision I25), which is what the wire carries.
         for family in families::families() {
             for path in &family.data_paths {
                 for (inner, tool) in others_inside(&family.id, path) {
@@ -610,7 +610,6 @@ mod tests {
                         .find(|f| f.data_paths.iter().any(|p| p == inner))
                         .unwrap();
                     assert_eq!(owner.name_en, tool);
-                    assert_eq!(owner.name_en, owner.name_zh, "{}", owner.id);
                 }
             }
         }

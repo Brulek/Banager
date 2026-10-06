@@ -209,8 +209,10 @@ pub struct Member {
 pub struct Family {
     /// What `ArtifactFacts.family` carries: kebab-case, stable.
     pub id: String,
+    /// Its product name, the one spelling every language shows: a tool's
+    /// name is not translated (decision I25, 2026-10-06), as Apple does
+    /// not translate an app's.
     pub name_en: String,
-    pub name_zh: String,
     pub members: Vec<Member>,
     /// Folders (or files) it keeps the user's data in, `~/`-relative, for
     /// saying what an uninstall leaves behind. Empty where unverified.
@@ -440,12 +442,31 @@ mod tests {
                 "id {:?} is not kebab-case",
                 f.id
             );
-            assert!(
-                !f.name_en.trim().is_empty() && !f.name_zh.trim().is_empty(),
-                "{}",
-                f.id
-            );
+            assert!(!f.name_en.trim().is_empty(), "{}", f.id);
             assert!(!f.members.is_empty(), "{} has no member", f.id);
+        }
+    }
+
+    #[test]
+    fn test_names_each_tool_once_in_its_own_spelling_not_translated() {
+        // Decision I25 (2026-10-06): a tool's name is its product name,
+        // which Banager does not translate, as Apple does not translate an
+        // app's. The table spells it once; it has no Chinese name beside it.
+        let raw: serde_json::Value = serde_json::from_str(TABLE_JSON).unwrap();
+        for family in raw["families"].as_array().unwrap() {
+            let mut keys: Vec<&str> = family
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys,
+                ["data_paths", "id", "members", "name_en"],
+                "{}",
+                family["id"]
+            );
         }
     }
 
