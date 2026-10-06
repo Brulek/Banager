@@ -426,7 +426,7 @@ function uncheckedEveryTime(instance: ManagerInstance): boolean {
  *   dropped as a duplicate: `failedSourceAdapters` in src/lib/sources.ts).
  * - `partly`: one of them answered and was checked in part -- a step of
  *   its check failed, or it was checked against a list that may be out of
- *   date (`NOTE_LEAVES_UPDATES_CHECKED_IN_PART`) -- so 「没检查完」, not
+ *   date (`NOTE_LEAVES_UPDATES_CHECKED_IN_PART`) -- so 「未检查完」, not
  *   「没检查」.
  * - `rest`: some other source was checked in full (`checkedInFull`), so
  *   「其余都是最新的」 is about something. A source no check would check

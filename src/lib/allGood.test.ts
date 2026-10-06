@@ -278,13 +278,13 @@ describe("the names in the headline", () => {
     expect(notCheckedNames(en, { ids: ["npm", "npm:/opt/homebrew"], partly: false, rest: true }, [brew])).toEqual(["npm"]);
   });
 
-  it("says 没检查 or 没检查完, with 其余 only where something else was checked", () => {
+  it("says 没检查 or 未检查完 -- the problems row's word under it -- with 其余 only where something else was checked", () => {
     const sources = [brew, ollama, uv];
     expect(notCheckedHeadline(zh, { ids: [ollama.id], partly: false, rest: true }, true, sources)).toBe(
       "Ollama这次没检查，其余都是最新的",
     );
     expect(notCheckedHeadline(zh, { ids: [ollama.id, uv.id], partly: true, rest: true }, true, sources)).toBe(
-      "Ollama和uv这次没检查完，其余都是最新的",
+      "Ollama和uv这次未检查完，其余都是最新的",
     );
     expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, true, sources)).toBe(
       "Ollama wasn't checked this time",
@@ -307,8 +307,8 @@ describe("the names in the headline", () => {
     expect(notCheckedHeadline(en, both, false, sources)).toBe(
       "Ollama and uv weren't fully checked this time; everything else you can update here is up to date",
     );
-    expect(notCheckedHeadline(zh, both, false, sources)).toBe("Ollama和uv这次没检查完，其余能在这里更新的都已是最新");
-    expect(notCheckedHeadline(hant, both, false, sources)).toBe("Ollama和uv這次沒檢查完，其餘能在這裡更新的都已是最新");
+    expect(notCheckedHeadline(zh, both, false, sources)).toBe("Ollama和uv这次未检查完，其余能在这里更新的都已是最新");
+    expect(notCheckedHeadline(hant, both, false, sources)).toBe("Ollama和uv這次未檢查完，其餘能在這裡更新的都已是最新");
     // No rest to speak of: the same either way.
     expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, false, sources)).toBe(
       "Ollama wasn't checked this time",

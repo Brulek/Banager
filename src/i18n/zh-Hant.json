@@ -167,11 +167,11 @@
   "overviewAllGood": {
     "upToDateHere": "能在這裡更新的都已是最新",
     "notCheckedRest_other": "{{sources}}這次沒檢查，其餘都是最新的",
-    "notFinishedRest_other": "{{sources}}這次沒檢查完，其餘都是最新的",
+    "notFinishedRest_other": "{{sources}}這次未檢查完，其餘都是最新的",
     "notCheckedRestHere_other": "{{sources}}這次沒檢查，其餘能在這裡更新的都已是最新",
-    "notFinishedRestHere_other": "{{sources}}這次沒檢查完，其餘能在這裡更新的都已是最新",
+    "notFinishedRestHere_other": "{{sources}}這次未檢查完，其餘能在這裡更新的都已是最新",
     "notChecked_other": "{{sources}}這次沒檢查",
-    "notFinished_other": "{{sources}}這次沒檢查完"
+    "notFinished_other": "{{sources}}這次未檢查完"
   },
   "adapters": {
     "brew": "Homebrew",

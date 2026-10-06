@@ -38,7 +38,8 @@ export function notCheckedNames(t: Translate, notChecked: NotChecked, instances:
 
 /**
  * The headline: 「uv这次没检查」 for a source that did not answer, or whose
- * list was still downloading; 「这次没检查完」 where one answered and was
+ * list was still downloading; 「这次未检查完」 -- the word of the problems
+ * row under it, 「部分检查未完成」 -- where one answered and was
  * checked in part (`partly`: a step that failed, a list that could not be
  * downloaded); and after it, only where some other source was checked in
  * full (`rest`) -- never of nothing -- 「，其余都是最新的」 where those

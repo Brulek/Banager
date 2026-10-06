@@ -282,8 +282,11 @@ describe("the Overview's all good", () => {
       level: 2,
       name: "uv wasn't fully checked this time; everything else is up to date",
     });
-    await headlineIn("zh-CN", "uv这次没检查完，其余都是最新的");
-    await headlineIn("zh-Hant", "uv這次沒檢查完，其餘都是最新的");
+    // In the words of the problems row under it, 「部分检查未完成」.
+    const zh = await headlineIn("zh-CN", "uv这次未检查完，其余都是最新的");
+    expect(within(screen.getByRole("list", { name: "需要查看" })).getByText("uv这次未检查完，更新可能还没全部列出。")).toBeInTheDocument();
+    expect(zh).toBeInTheDocument();
+    await headlineIn("zh-Hant", "uv這次未檢查完，其餘都是最新的");
   });
 
   it("claims nothing else is up to date where nothing else was checked", async () => {
