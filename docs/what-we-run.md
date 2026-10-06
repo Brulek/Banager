@@ -4,8 +4,8 @@ Every command Banager runs, every file it reads, writes or moves to the
 Trash, every host it connects to and every environment variable it sets,
 for the thirteen sources it manages today: Homebrew, npm, pipx, uv, pip
 (read-only), Cargo, Ollama, and six tools with their own installer:
-Claude Code, Antigravity CLI, Grok Build and rustup, and Codex and
-opencode, which are listed only. Each sentence
+Claude Code, Antigravity CLI, Grok Build, rustup and Codex, and
+opencode, which is listed only. Each sentence
 describes what the code does now and names the function it describes, so
 it can be checked against `crates/banager-core/src/adapters/` rather than
 believed. `crates/banager-core/tests/what_we_run_test.rs` checks the parts
@@ -20,8 +20,8 @@ unknown-source scan's section and the section on which copy a command
 runs each state the two limits the code enforces and name every place
 they never read, that the latter says
 it runs no command and which folders it reads, that the sections of the
-three tools uninstalled by moving files to the
-Trash (Claude Code, Antigravity CLI, Grok Build) name every path those
+four tools uninstalled by moving files to the
+Trash (Claude Code, Antigravity CLI, Grok Build, Codex) name every path those
 uninstalls move or keep and their time budget, and the never-list every
 path of settings or state they keep, that Grok Build's section shows the
 update check it runs on every refresh and says it installs nothing, that
@@ -2537,9 +2537,11 @@ whose files live under such a `ZDOTDIR` is not read.
 
 Adapter: `StandaloneAdapter` over the `CODEX` recipe in
 `crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
-`release_link.rs` the version read, `route.rs` the recognition). Listed
-only: **no command runs for it, ever** — not `codex --version`, not an
-update check, not an update, not an uninstall. The row is Codex installed
+`release_link.rs` the version read, `route.rs` the recognition,
+`removal.rs` the uninstall). **No command runs for it, ever** — not `codex
+--version`, not an update check, not an update, not an uninstall: its
+uninstall moves files to the Trash itself, as Claude Code's does (below).
+The row is Codex installed
 by OpenAI's own script (`curl -fsSL https://chatgpt.com/codex/install.sh |
 sh`, run by the user — Banager never runs it); what the recipe expects
 was read from that script as text on 2026-10-01 (the fixture README,
@@ -2570,7 +2572,8 @@ and sessions, is looked at to list this row or read its version, and no
 file of yours there is ever opened. Only the preview of uninstalling a
 Codex -- npm's `@openai/codex`, Homebrew's `codex` -- walks `~/.codex` to
 say how much it takes, by names and sizes alone (Data an uninstall leaves
-behind, below).
+behind, below); the preview of uninstalling this one names `~/.codex` as
+what stays without walking it.
 
 **Version, with no command.** `readlink` and `realpath` of
 `~/.codex/packages/standalone/current`, which the installer points at
@@ -2606,17 +2609,46 @@ connects to, so its updates are not checked at all: the Updates page lists
 nothing for it, and the Installed page does not call it up to date.
 
 **Write commands**: none. No Update button (Banager must not re-run the
-installer's `curl | sh`), and no uninstall: the row says "Listed only"
-(「只列出」). Moving `~/.local/bin/codex`,
-`~/.local/bin/codex-code-mode-host` and `~/.codex/packages/standalone` to
-the Trash, keeping the rest of `~/.codex`, is a decision for the author
-(D5) and is not built.
+installer's `curl | sh`).
+
+| Purpose | Argv | Timeout | Needs a password |
+|---|---|---|---|
+| Uninstall | none: Banager moves up to three paths to the Trash itself (below) | 120 s; Banager stops between items once it is spent | No |
+
+**Uninstall** (the author's decision U8, 2026-10-06; only after the user
+reviews and confirms a preview; no command runs): Banager moves to the
+Trash, in this order, `~/.local/bin/codex-code-mode-host` when the
+installer made it (it does so only on a Mac and only for a release that
+has the helper; it goes first, while the folder it leads into is still
+there), `~/.codex/packages/standalone` (the program: every release the
+installer unpacked, the `current` link and the `auto-update-version`
+file), and last `~/.local/bin/codex`, the command itself. The folder
+`~/.local/bin` is shared with other tools (Claude Code's launcher is there
+too) and is never moved. Each path passes the checks Claude Code's section
+describes. The helper link passes one more: its own text must point into
+`~/.codex/packages/standalone`, and, if it still leads somewhere, lead
+there too — a file or a link of yours by that name stays where it is, and
+the preview says Banager could not confirm it is Codex's. The launcher is
+last: once the package folder is in the Trash, a run that stops leaves a
+launcher-only row that a second Uninstall finishes, as for Claude Code.
+The whole uninstall has 120 s, as Claude Code's does. It keeps the rest of
+`~/.codex` — `config.toml`, `auth.json` (the login), `sessions/`, the
+history — and `~/.zprofile`, where the installer adds its marked block
+(`# >>> Codex installer >>>`) for zsh when `~/.local/bin` is not on your
+`PATH`; Banager edits no shell file, and the block stays. For bash the
+installer writes to `~/.bash_profile` instead, which the preview does not
+name. There is no `codex uninstall` and no vendor uninstall document; the
+list is Banager's own reading of the install script (read as text on
+2026-10-01 and again on 2026-10-06, the same file both times), and the
+fixture README names the lines. Put Back from the Trash after this
+uninstall has not yet been tried by hand in Finder; the author does so
+once before this merges, as for Claude Code's (step C).
 
 ## opencode
 
 Adapter: `StandaloneAdapter` over the `OPENCODE` recipe in
 `crates/banager-core/src/adapters/standalone/` (`recipes.rs` is the data,
-`route.rs` the recognition). Listed only, like Codex: **no command runs for
+`route.rs` the recognition). Listed only: **no command runs for
 it, ever** — not `opencode --version`, not an update check, not an update,
 not an uninstall. The row is opencode installed by its own script (`curl
 -fsSL https://opencode.ai/install | bash`, run by the user — Banager never
@@ -3494,7 +3526,7 @@ not read (`protected::look`; How Banager runs anything, above):
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.
-- Codex (its own install, listed only): whether `~/.local/bin/codex`
+- Codex (its own install): whether `~/.local/bin/codex`
   exists and where it links to (`lstat`, `readlink`, `realpath`, also for
   the folder the link is in and for `~/.codex/packages/standalone`); where
   `~/.codex/packages/standalone/current` links to and whether that is a
@@ -3504,8 +3536,16 @@ not read (`protected::look`; How Banager runs anything, above):
   then `fstat`); for the notice under the source,
   each `PATH` directory's `codex`, as for Claude Code. Nothing else under
   `~/.codex` is read for this row, and no command runs (Codex's section);
-  the preview of uninstalling a Codex walks `~/.codex` for its size,
-  names and sizes only (Data an uninstall leaves behind, above).
+  the preview of uninstalling npm's or Homebrew's Codex walks `~/.codex`
+  for its size, names and sizes only (Data an uninstall leaves behind,
+  above). For the uninstall preview of this one, when it is confirmed, and
+  again right before each path is moved: the same reads as for Claude
+  Code's list, for `~/.local/bin/codex-code-mode-host`,
+  `~/.codex/packages/standalone` and `~/.local/bin/codex`; and whether
+  `~/.codex` and `~/.zprofile` exist and where they lead (`lstat`,
+  `realpath`; nothing in them is read). After an uninstall: the same look
+  at the launcher that detection makes, and whether the paths on the list
+  are there again, and nothing else — no version is read.
 - opencode (its own install, listed only): whether
   `~/.opencode/bin/opencode` exists, whether it is a regular file and
   where it leads (`lstat`, `realpath`); for the notice under the source,
@@ -3655,7 +3695,7 @@ It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by
 a confirmed path-list uninstall (`removal::execute_removal`; the Claude
-Code, Antigravity CLI and Grok Build sections), for each path right after
+Code, Antigravity CLI, Grok Build and Codex sections), for each path right after
 that path's last check. It never deletes anything, never empties the Trash
 and never renames a file itself, and a symbolic link is moved as the
 link, never its target: the
@@ -3987,13 +4027,15 @@ configured, `index.crates.io`, and cargo still follows a
   that does not belong to the user, or anything that is not what the
   tool's uninstall list describes
   (for Claude Code, Anthropic's removal steps plus its installer's
-  download cache; for Antigravity CLI and Grok Build, which publish no
-  removal steps, Banager's own reading of how each was installed);
+  download cache; for Antigravity CLI, Grok Build and Codex, which publish
+  no removal steps, Banager's own reading of how each was installed);
   never moves the settings, login and history Claude Code keeps
   in `~/.claude` (of that folder only its download cache,
   `~/.claude/downloads`) or `~/.claude.json`, the login, sessions, memory
   and settings Grok Build keeps in `~/.grok` (of that folder only
   `downloads/`, `bundled/`, `completions/` and the two links in `bin/`),
+  the settings, login and sessions Codex keeps in `~/.codex` (of that
+  folder only `packages/standalone`, the program its installer unpacked),
   or anything in Antigravity CLI's `~/.gemini/antigravity-cli` — nor
   `~/.gemini` itself, which Gemini CLI shares — nor anything they lead to.
 - Never connects to an `https` host that is not on the list above, and

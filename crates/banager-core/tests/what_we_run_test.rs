@@ -13,7 +13,7 @@
 //! `CommandBudget::default()` enforces, the folders it reads and the words
 //! that it runs no command, the one thing the allowlist refuses that a reader would not
 //! expect (an `https://` `OLLAMA_HOST`), every path each path-list
-//! uninstall (Claude Code's, Antigravity CLI's, Grok Build's) moves or
+//! uninstall (Claude Code's, Antigravity CLI's, Grok Build's, Codex's) moves or
 //! keeps with that uninstall's time budget, and the never-list's promise
 //! to keep each settings-and-state path those lists keep, the read-only
 //! check command of a tool asked for its own update check with the words
@@ -859,8 +859,9 @@ fn test_what_we_run_names_every_path_a_path_list_uninstall_moves_or_keeps() {
     // recipe's `uninstall` or `backup_globs` without its section changing
     // is a trust file that no longer says what Banager moves. Every
     // `Paths` recipe (Claude Code, Antigravity CLI, Grok Build since step
-    // D), by the name its meta gives its section; each section states the
-    // uninstall's budget; and every settings-and-state path a list keeps
+    // D, Codex since the author's decision U8), by the name its meta gives
+    // its section; each section states the uninstall's budget; and every
+    // settings-and-state path a list keeps
     // (`Settings`, `SettingsAndHistory`, `ToolState`) is also named in the
     // never-list, whose promise is the one the reader relies on.
     let doc = read_doc();
@@ -910,8 +911,8 @@ fn test_what_we_run_names_every_path_a_path_list_uninstall_moves_or_keeps() {
         }
     }
     assert_eq!(
-        paths_recipes, 3,
-        "Claude Code, Antigravity CLI and Grok Build uninstall by path list"
+        paths_recipes, 4,
+        "Claude Code, Antigravity CLI, Grok Build and Codex uninstall by path list"
     );
 }
 

@@ -34,7 +34,7 @@ Banager puts all of it in one window: what you have, what has an update, and a b
 | rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Banager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known — by the name the Installed page gives a program `cargo install` recorded (`jj-cli`, not `jj`), else by its file name. Neither can be cancelled once it is running, and the preview says so |
 | Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed under "N more can't be updated here", marked "Updates when run", whose ⓘ says to open the tool once — by typing `agy` in Terminal, where typing it runs this copy (Banager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Banager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
 | Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how `grok update` behaves when nothing can answer a prompt is yet to be recorded on CI); install no (the installer is xAI's, and Banager never runs it); uninstall yes — its downloaded versions, its bundled agents and shell completions, any fallback links its installer made in `~/.local/bin`, and the two links in its `bin` folder go to the Trash (the folder itself, which its installer put on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
-| Codex — OpenAI's terminal agent, via its own installer | yes, listed only: its version is read from the folder name its installer links to, and no command runs for it, not even a version check; npm's `@openai/codex` and Homebrew's `codex` cask stay those sources' own rows | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says Codex can update itself when its installer's auto-update file names the release in use, and otherwise that its updates aren't checked); install no (the installer is OpenAI's, and Banager never runs it); uninstall no — the row says "Manual uninstall" |
+| Codex — OpenAI's terminal agent, via its own installer | yes: its version is read from the folder name its installer links to, and no command runs for it, not even a version check; npm's `@openai/codex` and Homebrew's `codex` cask stay those sources' own rows | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says Codex can update itself when its installer's auto-update file names the release in use, and otherwise that its updates aren't checked); install no (the installer is OpenAI's, and Banager never runs it); uninstall yes — its two links in `~/.local/bin` and the program folder `~/.codex/packages/standalone` go to the Trash; the rest of `~/.codex` (settings, login, sessions) stays, and so does the `PATH` line its installer may have added |
 | opencode — via its own installer | yes, listed only: its version is not known, since its installer leaves no file that names it and no command runs for it | updates **no** — its newest version is not looked up, so the Updates page lists nothing for it (the row says it updates itself, by default); install no (Banager never runs its installer); uninstall no — the row says "Manual uninstall" |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
@@ -222,8 +222,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
   back — and Finder's Put Back will likely work too; the preview lists each path it will move and
   each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). Antigravity
-  CLI and Grok Build publish no removal instructions at all, so their lists are Banager's own
-  reading of how each was installed, and their paths go to the Trash the same way. Moving files to
+  CLI, Grok Build and Codex's own installer publish no removal instructions at all, so their lists
+  are Banager's own reading of how each was installed, and their paths go to the Trash the same way. Moving files to
   the Trash is the only change Banager makes to a file itself besides saving its own settings, its
   history of the updates and uninstalls it ran (`history.json`), and its window's size and position;
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
@@ -520,8 +520,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   停用或保留了其他版本的工具、实测占用的空间；数到工具的那几行和说某个来源有问题的那几行都有“查看”，会打开
   对应的列表或那个来源。不打分，
   只用上次检查的结果，不运行任何命令。
-- 用 OpenAI 自己的脚本装的 Codex 只列出来：Banager 不为它运行任何命令，连版本检查也不做；npm 的
-  `@openai/codex` 和 Homebrew 的 `codex` cask 仍算在各自来源下。用它自己的安装脚本装的 opencode 也只列出来：
+- 用 OpenAI 自己的脚本装的 Codex：Banager 不为它运行任何命令，连版本检查也不做；卸载时把 `~/.local/bin` 里它的
+  两个链接和程序文件夹 `~/.codex/packages/standalone` 移到废纸篓，`~/.codex` 里的设置、登录和会话不动。npm 的
+  `@openai/codex` 和 Homebrew 的 `codex` cask 仍算在各自来源下。用它自己的安装脚本装的 opencode 只列出来：
   它的安装脚本没留下写着版本的文件，Banager 也不为它运行任何命令，所以版本不知道。
 
 Banager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
