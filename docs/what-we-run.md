@@ -3085,10 +3085,14 @@ What it looks at, during the uninstall preview of a formula or cask only:
   are its dependencies', `app_paths_of_dependencies` -- and uv's
   `--show-paths` name), every link followed;
 - only when one of those could not be followed (below), and the package
-  is not named for what it would have to end at, whether the package has
-  a program of that name: for a formula `<prefix>/opt/<name>/bin/<program>`,
-  for a cask `<prefix>/bin/<program>`, every link followed -- one look a
-  name.
+  is not named for what it would have to end at nor a cask known to hold
+  it, whether the package has a program of that name: for a formula
+  `<prefix>/opt/<name>/bin/<program>`, for a cask `<prefix>/bin/<program>`,
+  every link followed -- one look a name; and then, by the names in them
+  (`protected::look::list`, one look a folder), for a Python a formula's
+  `<prefix>/opt/<name>/bin`, and a cask's app's `Contents/MacOS` and
+  `Contents/Resources` (for a program) and the `bin` of each folder in its
+  `<prefix>/Caskroom/<token>` but the hidden `.metadata`.
 
 A source runs on the package when its program, or npm's `node`, leads
 into the package's folder: then every tool it lists needs the package,
@@ -3117,8 +3121,8 @@ above): each path is followed one step at a time (`protected::resolve`:
 `lstat` and `readlink`, each asked of the folder before it, held open),
 and never into the places macOS asks about first nor onto another disk --
 the same places the command check never reads. Only folders are opened,
-to follow each link: no file's contents are read, nothing is written, and
-no command runs. At most 2,000 paths and 1 second for one
+to follow each link and to read the names in the few listed above: no
+file's contents are read, nothing is written, and no command runs. At most 2,000 paths and 1 second for one
 preview (`needed_by::BUDGET`), and the preview waits one second more at
 most for a step that does not answer at all (a folder on a disk that
 stopped answering), then goes on without it; a look that did not finish
@@ -3141,16 +3145,30 @@ environment; npm's is an `npm` in a Node.js, with its `node`; the `PATH`
 folder may hold a `node`; any other source's program is a program of its
 own name. The package could be that when it is named for it -- `uv` for
 uv's program, `node` or `node@22` for a `node`, any `python@3.N` for a
-Python -- or when it has, of its own, a program of that name (for a
-Python, `python3`, or `python3.N` for `python@3.N`, whose keg has no
-`python3` unless it is Homebrew's default Python) in its
-`opt/<name>/bin` for a formula, linked or keg-only, or in `<prefix>/bin`,
-where its `binary` links go, for a cask. What is there may run on such a
-package, so its preview says it could not check, and still names
-whatever it did find running on it; uncertainty alone never invents a
-dependency or blocks uninstall. jq, a font, or any other package that is
-none of these cannot be what it leads to, and its preview says nothing
-of it. A cask's own app that cannot be followed leaves that cask's look
+Python -- or is a cask known to keep it with no link in `<prefix>/bin`
+(`PYTHON_CASKS`: `anaconda`, `mambaforge`, `miniconda`, `miniforge`, whose
+installer puts a Python in `Caskroom/<token>/base`; `PROGRAM_CASKS`:
+`ollama` and `ollama-app` for Ollama's `ollama`, in the app's
+`Contents/Resources`), or when it has, of its own, a program of that
+name: in its `opt/<name>/bin` for a formula, linked or keg-only, or in
+`<prefix>/bin`, where its `binary` links go, for a cask (for a Python,
+`python3`, or `python3.N` for `python@3.N`, whose keg has no `python3`
+unless it is Homebrew's default Python). For a Python it is also any
+interpreter in a formula's `opt/<name>/bin` -- a name that is `python`,
+`pypy` or `graalpy` and a version, so PyPy's `pypy3.11` and the
+free-threaded `python3.14t` -- or in the `bin` of a folder in a cask's
+`Caskroom/<token>` (Miniconda's `base/bin`); for a program, one of its
+name in a cask's app's `Contents/MacOS` or `Contents/Resources`, or in
+such a `bin`. An app's own Python (LibreOffice's) is not counted: a
+tool's environment is not made with it. A folder that cannot be listed
+(protected, not searchable) counts as holding it. What is there may run
+on such a package, so its preview says it could not check, and still
+names whatever it did find running on it; uncertainty alone never
+invents a dependency or blocks uninstall. A package none of these finds
+-- jq, a font, LibreOffice -- is taken not to be what the path leads to,
+and its preview says nothing of it; a runtime kept under another name,
+with no link to it in these places, would not be found this way. A
+cask's own app that cannot be followed leaves that cask's look
 unfinished, whatever met it. A path that is not there at all is known
 not to run on any package.
 
@@ -3366,8 +3384,11 @@ not read (`protected::look`; How Banager runs anything, above):
   cask's app lead; where the program Banager runs for npm, pip, pipx, uv,
   Cargo and Ollama leads; the first `node` on `PATH`, for npm; and each
   pipx and uv tool's `bin/python` (`lstat` and `readlink`, one step at a
-  time, never into a protected place) — never a file's contents (What
-  runs on a Homebrew package, above).
+  time, never into a protected place); when one of those could not be
+  followed, the names in a few of the package's own folders (`readdir`:
+  a formula's `opt/<name>/bin`, a cask's app's `Contents/MacOS` and
+  `Contents/Resources`, the `bin` of each folder in its `Caskroom/<token>`)
+  — never a file's contents (What runs on a Homebrew package, above).
 - Which copy a command runs, at every refresh: the names in each `PATH`
   folder and in each Homebrew and npm prefix's `bin` (and Homebrew's
   `sbin`), one level deep, and where each entry a command could be leads

@@ -49,8 +49,10 @@
 //! and `readlink` of each step, from the folder before it held open, and
 //! never a step into one of the places macOS asks about first, nor onto
 //! another disk), plus the same `PATH` look `resolve_exe` makes for the
-//! interpreter. Only folders are opened, to follow each link; no file's
-//! contents are read, nothing is written and no command runs.
+//! interpreter. Only folders are opened -- to follow each link, and to
+//! read the names in the few of a package's own folders `Look::could_be`
+//! lists (`protected::look::list`); no file's contents are read, nothing
+//! is written and no command runs.
 //! Bounded (`BUDGET`): a look it stopped short of is reported as one that
 //! did not finish (`NeededBy::complete`), never as "nothing runs on it".
 //! So is one that met a path it may not or cannot follow (`Doubt`) -- a
@@ -65,9 +67,13 @@
 //! may lead to python@3.13's `bin/python3.13`, which has no `python3`),
 //! npm's lives in a Node.js, a tool's environment runs a Python. A package
 //! could be it when it is named for it (`uv`, `node@22`, `python@3.13`),
-//! or has, of its own, a program of such a name. jq, or a font, can be
-//! none of these, and their previews say nothing of it. A path that is
-//! known not to be there (`Missing`) is known not to run on it.
+//! or is a cask known to hold it (Conda's, Ollama's app), or has, of its
+//! own, a program of such a name -- for a Python, any interpreter
+//! (`pypy3.11`, `python3.14t`) -- including where a cask keeps one with
+//! no link in `<prefix>/bin` (Miniconda's `base/bin`, Ollama.app's
+//! `Contents/Resources`). jq, or a font, has none of these, and their
+//! previews say nothing of it. A path that is known not to be there
+//! (`Missing`) is known not to run on it.
 //! Run on the blocking pool by `Session::issue_plan`
 //! (`session/needed_by.rs`).
 
