@@ -14,14 +14,18 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+type Log = Arc<Mutex<Vec<String>>>;
+
 /// A listener on this Mac that answers every request with `body`, or a
 /// `CONNECT` with 502 (no tunnel is ever opened), and keeps the first line
-/// of each request it got.
-fn listener(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
+/// of each request it got, and each whole head.
+fn listener(body: &'static str) -> (u16, Log, Log) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let log = seen.clone();
+    let heads = Arc::new(Mutex::new(Vec::new()));
+    let head_log = heads.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
@@ -45,10 +49,11 @@ fn listener(body: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
                 )
             };
             log.lock().unwrap().push(first);
+            head_log.lock().unwrap().push(head);
             let _ = stream.write_all(answer.as_bytes());
         }
     });
-    (port, seen)
+    (port, seen, heads)
 }
 
 /// A listener that keeps the first byte each connection sends, and closes
@@ -82,9 +87,10 @@ fn get(url: &str) -> HttpRequest {
 
 #[tokio::test]
 async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_mac() {
-    let (proxy_port, proxied) = listener("through the proxy");
-    let (ollama_port, straight) = listener("straight to ollama");
-    let proxy = format!("http://127.0.0.1:{proxy_port}");
+    let (proxy_port, proxied, proxy_heads) = listener("through the proxy");
+    let (ollama_port, straight, ollama_heads) = listener("straight to ollama");
+    // With a login, which goes to the proxy and nowhere else.
+    let proxy = format!("http://someone:u12-secret@127.0.0.1:{proxy_port}");
     login_path::accept(&LoginEnv {
         path: "/usr/bin:/bin".to_string(),
         imported: vec![
@@ -119,6 +125,19 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
     }
     assert_eq!(straight.lock().unwrap().len(), 2);
     assert_eq!(proxied.lock().unwrap().len(), 1);
+    // The proxy's login went to the proxy ("someone:u12-secret"), and not
+    // to Ollama.
+    assert!(
+        proxy_heads.lock().unwrap()[0]
+            .to_ascii_lowercase()
+            .contains("proxy-authorization: basic c29tzw9uztp1mtitc2vjcmv0"),
+        "{:?}",
+        proxy_heads.lock().unwrap()
+    );
+    for head in ollama_heads.lock().unwrap().iter() {
+        let head = head.to_ascii_lowercase();
+        assert!(!head.contains("authorization"), "{head}");
+    }
 
     // An https check: a tunnel through the proxy, to the host on the
     // list -- which this proxy refuses, so nothing leaves this Mac.
