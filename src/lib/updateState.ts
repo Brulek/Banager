@@ -22,6 +22,7 @@ import type {
 import { canWrite, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 import { updatesUnchecked } from "./uncheckedStandalone";
+import { unusedCopies } from "./commands";
 
 /**
  * Why a listed update is or is not offered. The order of the checks in
@@ -223,12 +224,10 @@ export function notHidden(
  * The updates Banager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
  * (`isUpdateActionable`, against the instance its key names). Less the
- * rows an update under way or just finished takes (`holdsRow`), this is
- * the Updates page's "N updates", the rows its Select all and Update all
- * tick, the count on the sidebar's Updates entry and on the Dock's badge
- * (`useUpdateCount`) and what the update notification's report counts
- * (`useStartableUpdates`) -- one function, so neither badge nor the
- * notification can promise a row the page does not list.
+ * rows an update under way or just finished takes (`holdsRow`), these are
+ * the rows that show a checkbox, and what Select all and Invert selection
+ * tick. What Update all ticks, and every number of updates, is this less
+ * the copies Terminal does not run (`countedUpdatesOf`).
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,
@@ -238,6 +237,31 @@ export function actionableUpdatesOf(
   const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]));
   return notHidden(snapshot.updates, settings, nowMs).filter((candidate) =>
     isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id)),
+  );
+}
+
+/**
+ * The updates every number counts and Update all takes: those Banager can
+ * install (`actionableUpdatesOf`) but the update of a copy Terminal does
+ * not run (`unusedCopies`: the 「终端用另一份」 row of a tool installed
+ * twice). Updating that copy changes nothing the user types, and counting
+ * it read as though the copy they use were behind (decision U4, walk 2
+ * W2-3), so its row keeps its checkbox, unticked until the user ticks it.
+ * A major-version update stays in: it has its own word and Skip This
+ * Version. Less the rows an update takes (`holdsRow`), this is the
+ * Updates page's "N updates", what its Update all ticks, the count on the
+ * sidebar's Updates entry and on the Dock's badge (`useUpdateCount`), what
+ * the update notification's report counts and what the Overview's Review
+ * Updates selects -- one function, so no two of them can disagree.
+ */
+export function countedUpdatesOf(
+  snapshot: Pick<Snapshot, "instances" | "updates" | "artifacts">,
+  settings: HidingSettings,
+  nowMs: number = Date.now(),
+): UpdateCandidate[] {
+  const unused = unusedCopies(snapshot.artifacts);
+  return actionableUpdatesOf(snapshot, settings, nowMs).filter(
+    (candidate) => !unused.has(artifactKeyId(candidate.key)),
   );
 }
 
@@ -340,11 +364,12 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
 /**
  * The Overview's headline, as the Updates page would put it:
  *
- * - `updates`: there are updates it offers to install
- *   (`actionableUpdatesOf`) whose rows `holdsRow` leaves free -- an
- *   update already under way, or one that has just worked, takes its row
- *   (`holdsRow` in src/components/UpdateProgress.tsx) -- the rows "Review
- *   updates" selects and the Updates page's "N updates" counts.
+ * - `updates`: there are updates it counts (`countedUpdatesOf`: not one
+ *   of a copy Terminal does not run) whose rows `holdsRow` leaves free --
+ *   an update already under way, or one that has just worked, takes its
+ *   row (`holdsRow` in src/components/UpdateProgress.tsx) -- the rows
+ *   "Review updates" selects and the Updates page's "N updates" counts.
+ *   `artifacts` says which copies those are; without it, none is.
  * - `upToDate`: no update listed at all and every source checked in full
  *   (`everySourceChecked`) -- exactly when the Updates page says
  *   "Everything is up to date".
@@ -397,7 +422,7 @@ export type UpdatesSummary =
     };
 
 export function updatesSummary(
-  snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
+  snapshot: Pick<Snapshot, "instances" | "updates" | "errors"> & Partial<Pick<Snapshot, "artifacts">>,
   settings: HidingSettings,
   holdsRow: (candidate: UpdateCandidate) => boolean = () => false,
   underway: (candidate: UpdateCandidate) => boolean = () => false,
@@ -405,7 +430,10 @@ export function updatesSummary(
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
   const password = actionable.filter(waitsForPassword).length;
-  const startable = actionable.filter((candidate) => !holdsRow(candidate));
+  const unused = unusedCopies(snapshot.artifacts ?? []);
+  const startable = actionable.filter(
+    (candidate) => !holdsRow(candidate) && !unused.has(artifactKeyId(candidate.key)),
+  );
   if (startable.length > 0) return { kind: "updates", actionable: startable, password };
   const updating = actionable.filter(underway).length;
   if (updating > 0) return { kind: "updating", count: updating, password };

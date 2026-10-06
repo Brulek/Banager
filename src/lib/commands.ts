@@ -118,6 +118,27 @@ export function twinVerdict(artifact: InstalledArtifact, twins: readonly Twin[] 
 }
 
 /**
+ * The copies Terminal does not run, by `artifactKeyId`: every artifact
+ * whose `twinVerdict` is `unused` -- npm's `@openai/codex` where typing
+ * `codex` runs Codex's own install. Updating one changes nothing the user
+ * types, so Update all leaves its update unticked and no count of updates
+ * counts it (decision U4, `countedUpdatesOf` in src/lib/updateState.ts);
+ * its row still offers it, with 「终端用另一份」. `twins` is
+ * `twinsByArtifact(artifacts)`, where the caller has it already.
+ */
+export function unusedCopies(
+  artifacts: readonly InstalledArtifact[],
+  twins: ReadonlyMap<string, Twin[]> = twinsByArtifact(artifacts),
+): Set<string> {
+  const unused = new Set<string>();
+  for (const artifact of artifacts) {
+    const id = artifactKeyId(artifact.key);
+    if (twinVerdict(artifact, twins.get(id))?.kind === "unused") unused.add(id);
+  }
+  return unused;
+}
+
+/**
  * The standalone source's own sentences about its launcher on `PATH`
  * (`sourceNoticesFor`: the `NotOnPath` and three `ShadowedBy*` notes),
  * by title. Each names the launcher as `values.command`.
