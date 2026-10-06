@@ -770,7 +770,15 @@ app 或更多工作。
   白字不到 3.5:1（增强对比度下不到 4.5:1）时给 `<html>` 标 `data-accent-ink="dark"`，`index.css` 把
   `--color-accent-foreground` 换成黑色（≥4.5:1）；黄、绿、橙、石墨、粉（深色外观的红）用黑字，蓝、紫用白字，默认蓝保持
   约 4.0:1 的白字。窗口回到前台、外观或增强对比度变化时重算。强调色取值用 AppKit 读出的 macOS 27 实值。**仍待**：
-  在真窗口里用几种强调色核对一次（`pnpm tauri:mock`，系统设置换成黄、绿、石墨）；预览里可用 `?accent=yellow`。
+  在真窗口里用几种强调色核对一次（`pnpm tauri:mock`，系统设置换成黄、绿、石墨，各看「全部更新」、⋯ 菜单的高亮项和聚焦后的选中行）；
+  预览里的 `?accent=yellow` 直接设 `--color-accent`，绕过了下面这个问题，不能代替这次核对。
+  **未证实**（t6-a11y 复审第 1 条）：WKWebView 里的 `AccentColor` 是否跟随系统设置、取什么值。复审用一个小 WKWebView 程序
+  试过（只在该进程用 `-AppleAccentColor 2/3/6` 覆盖，没改系统设置）：AppKit 的 `controlAccentColor` 变成 #FFC600、#62BA46、
+  #F74F9E，WKWebView 算出的 `AccentColor` 仍是 rgb(0, 122, 255)，开 `_setUseSystemAppearance:` 也一样。这不能定论：
+  WebContent 进程读的是它自己的偏好设置，进程参数传不过去。若真窗口里换了强调色 `AccentColor` 仍是 #007AFF，就记下
+  I21b（以及原有的 `--color-accent: AccentColor`）在窗口里不起作用；要拿到真的强调色，得另行批准一个来源，例如由 Rust
+  读 AppKit 的 `controlAccentColor` 传给页面，并写进 `docs/what-we-run.md`。复审确认了 WebKit 的颜色写法与
+  `parseComputedColor` 相符：`AccentColor` 为 `rgb(0, 122, 255)`，color-mix 为 `color(srgb 0 0.406667 0.85)`。
 - ~~【待作者定】**确认框是 `role=dialog`，不是 `alertdialog`**（r6 复审第 5 条）：「要退出吗」（`QuitQuestion`）、卸载
   （`UninstallDialog`）、「要更新N个工具吗」（`UpdateConfirm`）仿的是 NSAlert，读屏会把 NSAlert 报成警告。改成 Radix
   `AlertDialog` 会同时改掉两件事：点对话框外面不再关闭（现在会关）；打开时焦点默认落在「取消」上（现在由 `src/components/ui/Dialog.tsx`

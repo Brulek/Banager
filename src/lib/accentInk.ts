@@ -16,7 +16,9 @@
  * one of 0.175 or more, so one of the two always does.
  *
  * The page knows the accent only as the colour `AccentColor` computes to
- * (WebKit's, the user's choice); it changes while Banager runs, with no
+ * (WebKit's, meant to be the user's choice -- whether WKWebView's follows
+ * System Settings is not yet seen in the real window: see I21b in
+ * docs/superpowers/backlog.md); it changes while Banager runs, with no
  * event to say so. So the words are worked out again whenever the window
  * comes back to the front -- the user picked a colour in System Settings,
  * then came back -- and whenever the appearance or Increase Contrast

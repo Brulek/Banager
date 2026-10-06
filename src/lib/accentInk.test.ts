@@ -30,7 +30,8 @@ const BLACK: Rgb = { r: 0, g: 0, b: 0 };
 /**
  * macOS 27's accents, as AppKit draws them (`controlAccentColor` in sRGB,
  * read with each System Settings choice in the light and the dark
- * appearance): what WebKit's `AccentColor` is in the window.
+ * appearance): what WebKit's `AccentColor` is taken to be in the window --
+ * not yet seen there (I21b in docs/superpowers/backlog.md).
  */
 const ACCENTS: Record<string, { light: string; dark: string }> = {
   blue: { light: "#007AFF", dark: "#007AFF" },
