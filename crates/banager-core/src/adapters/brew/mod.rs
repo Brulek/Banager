@@ -7376,10 +7376,13 @@ mod plan_execute_tests {
             fn unread_after(_: &Path, _: &str) -> Option<Kegs> {
                 use std::sync::atomic::{AtomicUsize, Ordering};
                 static READS: AtomicUsize = AtomicUsize::new(0);
-                (READS.fetch_add(1, Ordering::SeqCst) % 2 == 0).then(|| Kegs {
-                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
-                    pinned: false,
-                })
+                READS
+                    .fetch_add(1, Ordering::SeqCst)
+                    .is_multiple_of(2)
+                    .then(|| Kegs {
+                        versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                        pinned: false,
+                    })
             }
             let unread: Read = unread_after;
             let kept = |versions: &[&str]| {
