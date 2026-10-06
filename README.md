@@ -200,10 +200,12 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall lets you see the exact
-  command before it runs, with the variables Banager sets for it — one press on "Show Command"
-  in its confirmation, or open from the start with Settings' "Show technical details" on — and
-  says whether it may ask for your password; an uninstall that runs no command lists instead the
-  exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
+  command before it runs, with the variables Banager sets for it (all but the `PATH` and the proxy
+  and mirror settings it takes from your login shell, which `docs/what-we-run.md` lists under "How
+  Banager runs anything" and which are never shown, since a proxy setting can hold a password) —
+  one press on "Show Command" in its confirmation, or open from the start with Settings' "Show
+  technical details" on — and says whether it may ask for your password; an uninstall that runs
+  no command lists instead the exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
   so only when a Homebrew `brew.env` file turns Homebrew's clean-up back on, since Homebrew then
   deletes, after every update, the older versions of that software and of any it updates along
   with it, and stray old downloads, and, whenever
@@ -413,7 +415,7 @@ Banager（原名 Canager）：bao-manager，bao 是“包”的拼音；读起�
 
 Banager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
+每次更新和卸载，都能在它运行之前看到确切的命令，连同 Banager 为它设的环境变量（从登录 shell 拿来的 `PATH` 和代理、镜像设置除外：这些在 `docs/what-we-run.md` 的“How Banager runs anything”一节列出，代理设置里可能有密码，所以从不显示）：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1711 个 Rust 测试（另有 4 个要连着真实的
