@@ -77,6 +77,24 @@ describe("the AI-tool families' members", () => {
     expect(missing, `no logo: ${missing.join(", ")}`).toEqual([]);
   });
 
+  it("show one logo per family, whichever way it was installed (decision I9)", () => {
+    // One product, one logo: where a copy came from is the badge's and the
+    // source column's to say. Claude Code's own installer once showed
+    // Claude's logo, where its npm package and its cask show Claude Code's.
+    const logos = new Map<string, Set<string>>();
+    for (const member of MEMBERS) {
+      const logo = resolveToolIcon(...toolOf(member));
+      const seen = logos.get(member.family) ?? new Set<string>();
+      seen.add(logo === null ? "none" : logo.title);
+      logos.set(member.family, seen);
+    }
+    const mixed = [...logos]
+      .filter(([, seen]) => seen.size > 1)
+      .map(([family, seen]) => `${family}: ${[...seen].join(" / ")}`);
+    expect(mixed, `more than one logo: ${mixed.join("; ")}`).toEqual([]);
+    expect(logos.get("claude-code")).toEqual(new Set(["Claude Code"]));
+  });
+
   it("each have a line in Chinese", () => {
     // A tool with its own installer says what it is in the locale files
     // (its summary); every other member, in the Chinese table.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as simpleIcons from "simple-icons";
@@ -442,6 +442,40 @@ describe("the built-in pack", () => {
     for (const toolKey of ["npm:webpack-cli", "npm:sass", "npm:@vue/cli"]) {
       expect(built.tools[toolKey], toolKey).toBeUndefined();
     }
+  });
+
+  it("gives Claude Code's own installer Claude Code's logo, as a tool and as a source (decision I9)", () => {
+    const claudeCode = resolveToolIcon(key("npm:/opt/homebrew", "Package", "@anthropic-ai/claude-code"), "npm");
+    expect(claudeCode?.title).toBe("Claude Code");
+    expect(resolveToolIcon(key("brew:/opt/homebrew", "Cask", "claude-code"), "brew")).toEqual(claudeCode);
+    expect(resolveToolIcon(key("standalone-claude", "Binary", "claude"), "standalone-claude")).toEqual(claudeCode);
+    // Its source's mark is its own logo too: the row of a tool that is its
+    // own source wears no badge, and the sidebar's Claude Code row matches.
+    expect(resolveSourceIcon("standalone-claude")).toEqual(claudeCode);
+  });
+
+  it("is built from the reviewed mapping: lists what mapping.json names, and no logo it does not", () => {
+    // `icons:build` writes the pack from scripts/tool-icons/mapping.json; a
+    // pack edited by hand -- to change one entry without downloading every
+    // avatar again -- must still be the one the build would write.
+    const mapping = JSON.parse(
+      readFileSync(path.resolve(__dirname, "../../scripts/tool-icons/mapping.json"), "utf-8"),
+    ) as { tools: Record<string, { icon: string | null }>; sources: Record<string, string | null> };
+    const idOf = (ref: string) => {
+      const [scheme, name] = [ref.slice(0, ref.indexOf(":")), ref.slice(ref.indexOf(":") + 1)];
+      return scheme === "si" ? `si-${name}` : `gh-${name.toLowerCase()}`;
+    };
+    const tools = Object.fromEntries(
+      Object.entries(mapping.tools).flatMap(([toolKey, { icon }]) => (icon === null ? [] : [[toolKey, idOf(icon)]])),
+    );
+    const sources = Object.fromEntries(
+      Object.entries(mapping.sources).flatMap(([adapterId, ref]) => (ref === null ? [] : [[adapterId, idOf(ref)]])),
+    );
+    expect(built.tools).toEqual(tools);
+    expect(built.sources).toEqual(sources);
+    const named = new Set([...Object.values(tools), ...Object.values(sources)]);
+    const unnamed = [...Object.keys(built.glyphs), ...Object.keys(built.rasters)].filter((id) => !named.has(id));
+    expect(unnamed, `logos the mapping no longer names: ${unnamed.join(", ")}`).toEqual([]);
   });
 
   it("gives mtr no logo: Simple Icons' MTR is Hong Kong's railway, not the network tool", () => {
