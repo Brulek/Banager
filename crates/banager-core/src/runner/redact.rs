@@ -113,7 +113,11 @@ const NOT_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
 pub struct Redactor {
     /// `(what, replacement)`: every `what` in the text is replaced, the
     /// longest first, so that a longer form is never left half-masked by a
-    /// shorter one inside it.
+    /// shorter one inside it. `what` is kept in lowercase (ASCII) and
+    /// found ignoring case (`replace_ignoring_case`): a tool may print a
+    /// secret in another case than it was written -- npm prints a proxy's
+    /// user name lowercased, read as the scheme of an address (re-check
+    /// 2's N3).
     rules: Vec<(String, String)>,
 }
 
@@ -132,6 +136,9 @@ impl Redactor {
         redactor
             .rules
             .retain(|(what, _)| !what.is_empty() && !what.chars().all(|c| c == '*'));
+        for (what, _) in &mut redactor.rules {
+            what.make_ascii_lowercase();
+        }
         redactor
             .rules
             .sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.cmp(b)));
@@ -223,14 +230,19 @@ impl Redactor {
         )
     }
 
-    /// `text` with every login this knows, and every
+    /// `text` with every login this knows, in any case, and every
     /// `scheme://user:password@`'s password, replaced by [`MASK`].
     /// Borrowed when there was nothing to mask.
     pub fn redact<'t>(&self, text: &'t str) -> Cow<'t, str> {
         let mut out = Cow::Borrowed(text);
+        if self.rules.is_empty() {
+            return mask_url_logins(text);
+        }
+        let mut lowered = text.to_ascii_lowercase();
         for (what, with) in &self.rules {
-            if out.contains(what.as_str()) {
-                out = Cow::Owned(out.replace(what.as_str(), with));
+            if lowered.contains(what.as_str()) {
+                out = Cow::Owned(replace_ignoring_case(&out, &lowered, what, with));
+                lowered = out.to_ascii_lowercase();
             }
         }
         match mask_url_logins(&out) {
@@ -238,6 +250,22 @@ impl Redactor {
             Cow::Borrowed(_) => out,
         }
     }
+}
+
+/// `text` with every `what` replaced by `with`, found ignoring case
+/// (ASCII): `lowered` is `text` in lowercase, `what` is in lowercase.
+/// Lowercasing ASCII changes no byte's position, so where `what` stands in
+/// `lowered` is where it stands in `text`.
+fn replace_ignoring_case(text: &str, lowered: &str, what: &str, with: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut done = 0;
+    for (at, _) in lowered.match_indices(what) {
+        out.push_str(&text[done..at]);
+        out.push_str(with);
+        done = at + what.len();
+    }
+    out.push_str(&text[done..]);
+    out
 }
 
 /// A setting's value read as an address with a login, by fixed rules:
@@ -307,7 +335,7 @@ fn is_proxy(name: &str) -> bool {
 /// after a port too (`https://mirror.example:8443/x/user@example.com`).
 ///
 /// When what follows that `@` -- or the authority as a whole, with no `@`
-/// in it -- is no host and port (`HOST_AND_PORT`), the rules cannot read
+/// in it -- is no host and port (`reads_as_host`), the rules cannot read
 /// the value: a `/`, `?` or `#` written into a password cut the authority
 /// short (`https://user:pass/word@host/…`), and a tool that cannot read it
 /// either prints it back whole. Then the login is all before the last `@`
@@ -319,27 +347,48 @@ fn mirror_login_end(after: &str) -> Option<usize> {
         // `file:///…`, or a path: no host, so no login either.
         return None;
     }
-    let at = authority.rfind('@');
-    let host = at.map_or(authority, |at| &authority[at + 1..]);
-    if HOST_AND_PORT.is_match(host) {
-        return at;
+    match authority.rfind('@') {
+        Some(at) if reads_as_host(&authority[at + 1..], true) => Some(at),
+        None if reads_as_host(authority, false) => None,
+        _ => after.rfind('@'),
     }
-    after.rfind('@')
 }
 
-/// A host, and its port if it has one, and nothing else: a domain name of
-/// two labels or more, the last starting with a letter (so not a version,
-/// `1.2`), an IPv4 or bracketed IPv6 address, or `localhost`. A name of
-/// one label is not taken for a host: in `https://user:p@ss/word@host/`
-/// the rules read `ss` as one.
+/// Whether `text` is a host, and its port if it has one, and nothing else
+/// (`HOST_AND_PORT`): a domain name of two labels or more, the last
+/// starting with a letter (so not a version, `1.2`), with or without the
+/// final `.` of an absolute name (`mirror.example.:8443`); an IPv4 or
+/// bracketed IPv6 address; or a name of one label with a letter in it --
+/// an intranet's `nexus:8081`, `localhost` (re-check 2's N2).
+///
+/// `after_a_login`: what follows an `@` in the authority. There, a name of
+/// one label is a host only with a port, or as `localhost`: in
+/// `https://user:p@ss/word@mirror.example/`, a password with an `@` and a
+/// `/` written into it, the rules read `ss` as the host, and the value is
+/// read by its last `@` instead.
+fn reads_as_host(text: &str, after_a_login: bool) -> bool {
+    let Some(found) = HOST_AND_PORT.captures(text) else {
+        return false;
+    };
+    let Some(label) = found.name("label") else {
+        return true;
+    };
+    let label = label.as_str();
+    label.chars().any(|c| c.is_ascii_alphabetic())
+        && (!after_a_login
+            || found.name("port").is_some()
+            || label.eq_ignore_ascii_case("localhost"))
+}
+
+/// A host, and its port if it has one (`reads_as_host`).
 static HOST_AND_PORT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?x)^
-        (?: (?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+ [A-Za-z][A-Za-z0-9-]*
+        (?: (?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+ [A-Za-z][A-Za-z0-9-]* \.?
           | (?:[0-9]{1,3}\.){3}[0-9]{1,3}
           | \[[0-9A-Fa-f:.]+\]
-          | (?i:localhost) )
-        (?: :[0-9]{1,5} )?
+          | (?P<label>[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?) )
+        (?P<port> :[0-9]{1,5} )?
         $",
     )
     .expect("a valid pattern")
@@ -369,13 +418,12 @@ fn masked_login(user: &str, password: Option<&str>) -> String {
 }
 
 /// `written`, and the forms a tool may print it in instead: decoded, and
-/// percent-encoded with upper- and lowercase hex digits.
+/// percent-encoded (its hex digits in either case, as every form is found
+/// ignoring case).
 fn forms_of(written: &str) -> Vec<String> {
     let mut forms = vec![written.to_string()];
     if let Some(decoded) = decoded(written) {
-        let upper = utf8_percent_encode(&decoded, NOT_UNRESERVED).to_string();
-        forms.push(lowercase_hex(&upper));
-        forms.push(upper);
+        forms.push(utf8_percent_encode(&decoded, NOT_UNRESERVED).to_string());
         forms.push(decoded);
     }
     forms.retain(|form| !form.is_empty());
@@ -390,25 +438,6 @@ fn decoded(written: &str) -> Option<String> {
         .decode_utf8()
         .ok()
         .map(|text| text.into_owned())
-}
-
-/// `encoded` with the two hex digits after each `%` in lowercase, and
-/// nothing else changed.
-fn lowercase_hex(encoded: &str) -> String {
-    let mut out = String::with_capacity(encoded.len());
-    let mut hex_left = 0;
-    for c in encoded.chars() {
-        if hex_left > 0 {
-            out.push(c.to_ascii_lowercase());
-            hex_left -= 1;
-        } else {
-            out.push(c);
-            if c == '%' {
-                hex_left = 2;
-            }
-        }
-    }
-    out
 }
 
 /// `pair` as an HTTP Basic credential.
@@ -566,6 +595,34 @@ mod tests {
             ),
             ("RUSTUP_UPDATE_ROOT", "file:///Users/me@corp/rustup", None),
             ("no_proxy", "localhost,127.0.0.1,.corp", None),
+            // A host of one label, or an absolute name, is a host
+            // (re-check 2's N2) ...
+            (
+                "npm_config_registry",
+                "https://nexus:8081/repository/npm/@scope/pkg",
+                None,
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://mirror.example.:8443/x/user@example.com/simple",
+                None,
+            ),
+            (
+                "npm_config_registry",
+                "https://u:pw@nexus:8081/repository/npm/@scope/pkg",
+                Some(("https://", "u:pw", "nexus:8081/repository/npm/@scope/pkg")),
+            ),
+            (
+                "PIP_INDEX_URL",
+                "https://u:pw@localhost/x@y",
+                Some(("https://", "u:pw", "localhost/x@y")),
+            ),
+            // ... but after an `@`, one with no port is a password's tail.
+            (
+                "PIP_INDEX_URL",
+                "https://u:p@ss/w0rd@nexus:8081/",
+                Some(("https://", "u:p@ss/w0rd", "nexus:8081/")),
+            ),
         ] {
             assert_eq!(read(name, value), expected, "{name}={value}");
         }
@@ -780,6 +837,18 @@ mod tests {
             ("RUSTUP_DIST_SERVER", "https://192.0.2.7/dist/foo@1.2.3.4/"),
             ("PIP_INDEX_URL", "https://mirror.example?mail=a@b.example"),
             ("PIP_INDEX_URL", "https://mirror.example#a@b.example"),
+            // Re-check 2's N2: an intranet's host of one label, with a
+            // port or without, and an absolute name's final `.`.
+            (
+                "npm_config_registry",
+                "https://nexus:8081/repository/npm/@scope/pkg",
+            ),
+            ("npm_config_registry", "http://nexus/repository/npm/@scope/"),
+            (
+                "PIP_INDEX_URL",
+                "https://mirror.example.:8443/x/user@example.com/simple",
+            ),
+            ("UV_INDEX_URL", "https://mirror.example./x/user@example.com"),
         ] {
             let r = redactor(&[(name, mirror)]);
             assert_eq!(r, Redactor::default(), "{mirror}");
@@ -804,16 +873,13 @@ mod tests {
             ("password p@ss/w0rd rejected", "p@ss/w0rd"),
             ("re-encoded p%40ss%2fw0rd here", "p%40ss%2fw0rd"),
             ("the login someone:p@ss/w0rd", "someone"),
-            ("upper P%40ss%2Fw0rd differs", ""),
+            // In another case too (re-check 2's N3): masking too much
+            // rather than missing a tool's own lowercasing.
+            ("upper P%40ss%2Fw0rd differs", "P%40ss%2Fw0rd"),
         ] {
             let masked = r.redact(said).into_owned();
-            if gone.is_empty() {
-                // `P` is not `p`: another string, left alone.
-                assert_eq!(masked, said);
-            } else {
-                assert!(!masked.contains(gone), "{said} -> {masked}");
-                assert!(masked.contains(MASK), "{said} -> {masked}");
-            }
+            assert!(!masked.contains(gone), "{said} -> {masked}");
+            assert!(masked.contains(MASK), "{said} -> {masked}");
         }
         assert_eq!(
             r.redact("in 'http://someone:p%40ss%2Fw0rd@proxy.corp:3128'"),
@@ -926,6 +992,55 @@ mod tests {
             ),
             "npm error Invalid protocol `****:` connecting to proxy ``"
         );
+    }
+
+    /// What npm 10.9.9 printed on this Mac for a proxy written with no
+    /// scheme (`npm view`, a scratch `HOME`, a closed local registry,
+    /// nothing sent; the message is `@npmcli/agent`'s `getProxyAgent`):
+    /// it reads the user name as the address's scheme, which a URL parser
+    /// lowercases.
+    fn npm_refuses(lowered_user: &str) -> String {
+        format!("npm error Invalid protocol `{lowered_user}:` connecting to proxy ``")
+    }
+
+    #[test]
+    fn test_a_secret_is_masked_in_whatever_case_a_tool_prints_it() {
+        // Re-check 2's N3: the user name, mixed case or dotted, comes back
+        // lowercased.
+        for (proxy, lowered) in [
+            (
+                "ProxyTokenAbCdEfGhIjKlMn:x-oauth-basic@127.0.0.1:8080",
+                "proxytokenabcdefghijklmn",
+            ),
+            (
+                "Eyj.Token.AbCdEf:x-oauth-basic@127.0.0.1:8080",
+                "eyj.token.abcdef",
+            ),
+            ("Review-User:Rev://Secret@127.0.0.1:invalid", "review-user"),
+        ] {
+            let r = redactor(&[("https_proxy", proxy)]);
+            assert_eq!(
+                r.redact(&npm_refuses(lowered)),
+                npm_refuses(MASK),
+                "{proxy}"
+            );
+        }
+        // And any secret in any case: upper, lower, or mixed otherwise.
+        let r = redactor(&[(
+            "HOMEBREW_BREW_GIT_REMOTE",
+            "https://AbCdEfGhIjKlMnOpQrStUvWx:x-oauth-basic@github.com/Homebrew/brew",
+        )]);
+        for said in [
+            "token abcdefghijklmnopqrstuvwx",
+            "token ABCDEFGHIJKLMNOPQRSTUVWX",
+            "token aBcDeFgHiJkLmNoPqRsTuVwX",
+        ] {
+            assert_eq!(r.redact(said), "token ****", "{said}");
+        }
+        // A secret that is not ASCII keeps its case: only ASCII letters
+        // are folded, which every scheme, host and token is made of.
+        let r = redactor(&[("https_proxy", "http://me:Ünïcode-pw@proxy.lan:3128")]);
+        assert_eq!(r.redact("Ünïcode-pw ünïcode-pw"), "**** ünïcode-pw");
     }
 
     #[test]
