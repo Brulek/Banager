@@ -2537,26 +2537,30 @@ describe("UpdatesPage", () => {
       expect(submittedPlanIds()).toEqual([]);
     });
 
-    it("says how many are updating, and never that nothing can be updated, while every row it could update is", async () => {
+    it("says it is updating, and never that nothing can be updated, while every row it could update is", async () => {
       operations = [
         operation(onyxKey, { id: 8, status: "Queued" }),
         operation(glibKey, { id: 7, status: "Running" }),
       ];
       const { findByText, getByRole, queryByText } = renderPage();
 
-      expect(await findByText("Updating 2 tools")).toBeInTheDocument();
+      // Only that, with no count: the operation bar, a live region of its
+      // own, says how many -- one count heard at a time (decision I21d).
+      expect(await findByText("Updating…", { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
+      expect(queryByText(/Updating 2 tools/)).toBeNull();
       expect(queryByText("Nothing to update here")).toBeNull();
       expect(getByRole("button", { name: "Update All" })).toBeDisabled();
     });
 
-    it("says it in Chinese in the Overview's words, and how many more can be updated", async () => {
+    it("says it in Chinese, and not how many more can be updated, which a screen reader would hear over the bar", async () => {
       await i18n.changeLanguage("zh-CN");
       try {
         updates = [...snapshot.updates, brewCandidate("jq")];
         operations = [operation(glibKey, { id: 7, status: "Running" })];
-        const { findByText } = renderPage();
+        const { findByText, queryByText } = renderPage();
 
-        expect(await findByText("正在更新1个工具，另有2个可更新")).toBeInTheDocument();
+        expect(await findByText("正在更新…", { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
+        expect(queryByText(/另有2个可更新/)).toBeNull();
       } finally {
         await i18n.changeLanguage("en");
       }
@@ -3184,7 +3188,7 @@ describe("UpdatesPage", () => {
     // What the header says: a row an update is installing is said in
     // words, never counted as one more that can be updated.
     const takesRow: Array<[string, Partial<OpSummary>, string]> = [
-      ["under way", { status: "Running" }, "Updating 1 tool, 1 more can be updated"],
+      ["under way", { status: "Running" }, "Updating…"],
       ["that worked", { status: "Done", outcome: "Succeeded" }, "1 update available"],
     ];
 
@@ -3196,7 +3200,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole, queryByRole } = renderPage();
 
       const glib = await findRow("glib");
-      expect(await findByText(header)).toBeInTheDocument();
+      expect(await findByText(header, { selector: "[data-toolbar-subtitle]" })).toBeInTheDocument();
       expect(within(glib).queryByRole("checkbox")).toBeNull();
       expect(within(rowOf("onyx")).getByRole("checkbox")).toBeInTheDocument();
       // glib's tick counts for nothing.

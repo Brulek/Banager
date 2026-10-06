@@ -111,10 +111,12 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * and the window's toolbar under its title (`useUpdatesHeadline`):
  * 「10个可更新」. With none, not "0 updates": the rows under "Can't update
  * here" are real, and simply not Banager's to update. While some are
- * updating, how many, and how many more Update all would take. Then how
- * many rows of a copy Terminal does not run have a checkbox, which Update
- * all leaves unticked (decision U4): 「1个终端用不到」 -- never "nothing to
- * update" over their Update buttons. After them, how many stopped where
+ * updating, only 「正在更新…」: the operation bar says how many, and both
+ * are live regions -- one count heard at a time, not two read over each
+ * other (decision I21d). Otherwise, then how many rows of a copy Terminal
+ * does not run have a checkbox, which Update all leaves unticked (decision
+ * U4): 「1个终端用不到」 -- never "nothing to update" over their Update
+ * buttons. After them, how many stopped where
  * sudo wanted the Mac's password (`passwordStepsOpId`) -- rows that still
  * offer their update, with no checkbox, as Terminal has to finish them --
  * 「13个需要输入密码」, never "nothing to update" over them (walk-4 W4-1).
@@ -126,13 +128,9 @@ export function updatesHeadline(
   passwordCount = 0,
   notUsedCount = 0,
 ): string {
+  if (updatingCount > 0) return t("updatesMore.updating");
   const parts: string[] = [];
-  if (updatingCount > 0) {
-    parts.push(t("overview.updating", { count: updatingCount }));
-    if (startableCount > 0) parts.push(t("updates.alsoCount", { count: startableCount }));
-  } else if (startableCount > 0) {
-    parts.push(t("updates.count", { count: startableCount }));
-  }
+  if (startableCount > 0) parts.push(t("updates.count", { count: startableCount }));
   if (notUsedCount > 0) parts.push(t("notUsedCopy.count", { count: notUsedCount }));
   if (passwordCount > 0) parts.push(t("updates.needPasswordCount", { count: passwordCount }));
   return parts.length === 0 ? t("updates.noneActionable") : parts.join(t("overview.listSeparator"));

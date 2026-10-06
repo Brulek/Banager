@@ -322,8 +322,6 @@
     "noneActionable": "Nothing to update here",
     "needPasswordCount_one": "{{count}} needs your password",
     "needPasswordCount_other": "{{count}} need your password",
-    "alsoCount_one": "{{count}} more can be updated",
-    "alsoCount_other": "{{count}} more can be updated",
     "cantUpdateHere": "{{number}} more can't be updated here",
     "selectAll": "Select All",
     "selectAllLabel": "Select all items that can be updated here",
@@ -415,6 +413,9 @@
       "refused": "Couldn't update it because {{source}} has disabled it."
     },
     "pinnedPipxInjected": "This command also unpins the other packages installed alongside it."
+  },
+  "updatesMore": {
+    "updating": "Updating…"
   },
   "history": {
     "today": "Today {{time}}",

@@ -298,8 +298,9 @@ describe("Sidebar", () => {
   });
 
   it("leaves an update being installed out of its count, as the Updates page's toolbar does", async () => {
-    // glib's update is running: the page says so in words, and counts wget
-    // alone among those that can be updated; the sidebar counts the same.
+    // glib's update is running: the page's toolbar says only that it is
+    // updating (the operation bar counts), and the sidebar counts wget
+    // alone among those that can be updated.
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_snapshot") return Promise.resolve(served);
       if (cmd === "get_settings") return Promise.resolve(settings);
@@ -329,7 +330,7 @@ describe("Sidebar", () => {
       </>,
     );
 
-    await findByText("Updating 1 tool, 1 more can be updated");
+    await findByText("Updating…", { selector: "[data-toolbar-subtitle]" });
     const updatesButton = getByRole("button", { name: "Updates" });
     expect(within(updatesButton).getByText("1")).toBeInTheDocument();
     expect(updatesButton).toHaveAccessibleDescription("1 can be updated");

@@ -291,7 +291,6 @@
     "count_other": "{{count}}個可更新",
     "noneActionable": "這裡沒有可更新的工具",
     "needPasswordCount_other": "{{count}}個需要輸入密碼",
-    "alsoCount_other": "另有{{count}}個可更新",
     "cantUpdateHere": "另有{{number}}個無法在這裡更新",
     "selectAll": "全選",
     "selectAllLabel": "全選可在這裡更新的項目",
@@ -378,6 +377,9 @@
       "refused": "無法更新，因為{{source}}已停用它。"
     },
     "pinnedPipxInjected": "這條指令也會讓和它安裝在一起的其他套件不再固定版本。"
+  },
+  "updatesMore": {
+    "updating": "正在更新…"
   },
   "history": {
     "today": "今天{{time}}",
