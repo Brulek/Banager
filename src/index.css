@@ -98,6 +98,8 @@
      src/components/ui/controls.ts); nothing changes under the pointer. */
   --color-accent: #007aff;
   --color-accent-pressed: color-mix(in srgb, var(--color-accent) 85%, black);
+  /* White, as macOS draws words on its accent; black on a light one
+     (`:root[data-accent-ink="dark"]`, below). */
   --color-accent-foreground: #ffffff;
   /* The accent as the colour of text (linkColor): blue at 5.3:1 on white,
      where the accent itself would read at 4:1. */
@@ -245,13 +247,22 @@
    too, so their white words read at 4.5:1 or more rather than about 4:1:
    in the light appearance the default blue to #0060DF (5.5:1), in the
    dark to #0068D9 (5.3:1, and still 3:1 against the dark window round a
-   button), and the user's own by 15% in either. That 15% is measured for
-   blue only: for a light accent -- yellow, green, orange, graphite -- the
-   white words stay well under 4.5:1 (about 2:1 to 4.4:1), and purple,
-   pink and red only just pass; which way to go is the author's call
-   (docs/superpowers/backlog.md). After the user's accent (above), which
-   this darkens rather than replaces; nothing here applies without the
-   setting. */
+   button), and the user's own by 15% in either. Where white still reads
+   under 4.5:1 on the darkened accent -- yellow, green, orange, graphite,
+   pink -- the words are black (`data-accent-ink`, above). After the
+   user's accent (above), which this darkens rather than replaces; nothing
+   here applies without the setting. */
+/* Black words on a light accent -- a default button, a menu's highlighted
+   item, the focused list's selection -- where white would read under
+   3.5:1, as on yellow, green, orange, graphite or pink (about 1.5:1 to
+   3.4:1), or under 4.5:1 with Increase Contrast on; black reads at 4.5:1
+   or more on each (decision I21b). src/lib/accentInk.ts works it out from
+   the accent the page computes and marks <html>; without the mark, white,
+   which the Mac's own blue keeps at about 4:1 (decision I21a). */
+:root[data-accent-ink="dark"] {
+  --color-accent-foreground: #000000;
+}
+
 @media (prefers-contrast: more) {
   :root {
     --color-muted: rgb(0 0 0 / 0.7);
@@ -395,7 +406,8 @@ body {
  * inspector): filled as a Mac list fills its selection -- the grey
  * unemphasized fill while the list is not the keyboard's focus, and the
  * accent with every word on the row white while it is, as the focused
- * list's selection is drawn. The words of a panel opened from the row
+ * list's selection is drawn -- black on a light accent
+ * (`--color-accent-foreground`). The words of a panel opened from the row
  * (a status word's ⓘ, the ⋯ menu) keep their own colours. No hairline
  * under the selection, nor over it -- the row before's, whose slot the
  * page marks as a run's end (`VirtualList`'s `hairlineBefore`) -- and no
@@ -409,7 +421,7 @@ body {
 }
 [data-list]:focus-within [data-tool-row][data-selected]
   :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) {
-  color: #fff;
+  color: var(--color-accent-foreground);
 }
 /*
  * The row's own buttons on its selection: a grey button's fill of 7.8%
@@ -428,7 +440,7 @@ body {
   --color-fill-pressed: rgb(255 255 255 / 0.32);
 }
 [data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) {
-  color: rgb(255 255 255 / 0.5);
+  color: color-mix(in srgb, var(--color-accent-foreground) 50%, transparent);
 }
 /*
  * A grey button that is on, on the accent selection: white with the
@@ -447,6 +459,11 @@ body {
 }
 [data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled:active {
   background-color: rgb(255 255 255 / 0.85);
+}
+/* On a light accent the darkened accent does not read on white (yellow's
+   is about 2:1): the accent's own words, black. */
+:root[data-accent-ink="dark"] [data-list]:focus-within [data-tool-row][data-selected] button.bg-fill:enabled {
+  color: var(--color-accent-foreground);
 }
 [data-tool-row][data-selected] [data-row-separator] {
   display: none;

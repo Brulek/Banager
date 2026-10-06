@@ -1046,10 +1046,11 @@ describe("ToolRow", () => {
         .replace(/\s+/g, " ");
       expect(css).toContain("[data-row-selection] { background-color: var(--color-row-selected); }");
       expect(css).toContain("[data-list]:focus-within [data-row-selection] { background-color: var(--color-accent); }");
-      // Every word on it white -- but a panel's opened from it, which
-      // keeps the window's colours.
+      // Every word on it in the accent's words, white -- black on a light
+      // accent (decision I21b, src/test/increaseContrast.test.ts) -- but a
+      // panel's opened from it, which keeps the window's colours.
       expect(css).toContain(
-        "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: #fff; }",
+        "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: var(--color-accent-foreground); }",
       );
       // No hairline under it; none over it either -- the row before's,
       // whose slot the page marks as a run's end (InstalledPage's tests).
@@ -1069,10 +1070,11 @@ describe("ToolRow", () => {
       expect(css).toContain(
         "[data-list]:focus-within [data-tool-row][data-selected] { --color-fill: rgb(255 255 255 / 0.22); --color-fill-pressed: rgb(255 255 255 / 0.32); }",
       );
-      // Its words are white with the rest of the row's (`.text-foreground`);
-      // one that is off, half white.
+      // Its words are the accent's with the rest of the row's
+      // (`.text-foreground`): white, or black on a light accent; one that
+      // is off, at half strength.
       expect(css).toContain(
-        "[data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) { color: rgb(255 255 255 / 0.5); }",
+        "[data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) { color: color-mix(in srgb, var(--color-accent-foreground) 50%, transparent); }",
       );
     });
 

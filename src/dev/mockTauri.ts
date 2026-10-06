@@ -17,6 +17,7 @@ import type {
   invoke as tauriInvoke,
 } from "@tauri-apps/api/core";
 import { useUiStore } from "../store/ui";
+import { applyMockAccent } from "./mockAccent";
 import { createMockBackend } from "./mockBackend";
 import { parseScenario } from "./scenario";
 
@@ -48,6 +49,9 @@ console.info(
 for (const problem of problems) {
   console.warn(`[${MOCK_MARKER}] ${problem}`);
 }
+// `?accent=`: an accent other than the default blue (./mockAccent.ts).
+const accentProblem = applyMockAccent(window.location.search);
+if (accentProblem !== null) console.warn(`[${MOCK_MARKER}] ${accentProblem}`);
 
 /**
  * Replies reach the page one message each, after the task that asked, as

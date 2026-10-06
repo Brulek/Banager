@@ -103,3 +103,32 @@ describe("Increase contrast", () => {
     expect(body).toMatch(/(^|;) ?color: ?color-mix\(in srgb, ?var\(--color-accent\) 85%, ?black\) ?(;|$)/);
   });
 });
+
+// Decision I21b: on a light accent the words drawn on it are black
+// (src/lib/accentInk.ts marks <html data-accent-ink="dark">), and every
+// rule that drew them white draws them in the accent's own words instead.
+describe("The words on a light accent", () => {
+  it("are black where the page is marked for them, and white otherwise", () => {
+    expect(CSS).toContain("--color-accent-foreground: #ffffff;");
+    const rule = CSS.match(/:root\[data-accent-ink="dark"\] ?\{([^}]*)\}/);
+    expect(rule?.[1]).toMatch(/--color-accent-foreground: ?#000000 ?;/);
+  });
+
+  it("colour a focused list's selected row as the accent's words, not a fixed white", () => {
+    const words = CSS.match(
+      /\[data-list\]:focus-within \[data-tool-row\]\[data-selected\] :is\(\.text-foreground, \.text-muted, \.text-tertiary, \.text-glyph-rest\)[^{]*\{([^}]*)\}/,
+    );
+    expect(words?.[1]).toMatch(/color: ?var\(--color-accent-foreground\) ?;/);
+    const off = CSS.match(/\[data-list\]:focus-within \[data-tool-row\]\[data-selected\] button:disabled:is\(\.text-foreground\) ?\{([^}]*)\}/);
+    expect(off?.[1]).toMatch(/color: ?color-mix\(in srgb, ?var\(--color-accent-foreground\) 50%, ?transparent\) ?;/);
+    // A selected row's grey button: white, with black words on a light
+    // accent, where the darkened accent would not read on white.
+    const button = CSS.match(
+      /:root\[data-accent-ink="dark"\] \[data-list\]:focus-within \[data-tool-row\]\[data-selected\] button\.bg-fill:enabled ?\{([^}]*)\}/,
+    );
+    expect(button?.[1]).toMatch(/color: ?var\(--color-accent-foreground\) ?;/);
+    // Nothing on the selection is a fixed white any more.
+    const selection = CSS.slice(CSS.indexOf("[data-row-selection] {"), CSS.indexOf("[data-tool-row][data-selected] [data-row-separator]"));
+    expect(selection).not.toMatch(/(^|[^-])color: ?#fff ?;/);
+  });
+});
