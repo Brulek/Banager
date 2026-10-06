@@ -29,7 +29,9 @@ export function detailLines(lines: ReactNode[]): ReactNode {
 
 /**
  * Why a row could not be checked, for its "Can't check" chip: that it
- * could not, then its reason. A warning with a key of its own
+ * could not, then its reason -- or, for a tool Banager does not look up
+ * on this Mac (`NotLookedUpHere`), its reason alone, which says that no
+ * lookup was tried (F5 review). A warning with a key of its own
  * (`NonRegistrySource`) was written for this audience and is always
  * given. A `Message` is raw text off the wire -- a tool's stderr, an HTTP
  * error -- kept verbatim on purpose, and it is behind "Show technical
@@ -76,8 +78,11 @@ export function cannotCheckDetail(
     }
   }
   const tryLater = candidate.warnings.includes("TransientLookupFailure") && !causeSaid;
+  // Not "Couldn't find its latest version." over a tool Banager does not
+  // look up on this Mac: nothing was tried; its own line says so.
+  const notLookedUp = candidate.warnings.includes("NotLookedUpHere");
   return detailLines([
-    t("updates.cannotCheckShort"),
+    ...(notLookedUp ? [] : [t("updates.cannotCheckShort")]),
     ...reasons,
     ...(tryLater ? [t("warnings.transientLookupFailure")] : []),
   ]);

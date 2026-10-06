@@ -924,8 +924,9 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const intel = chipDetail(await findRow("intel"), "Can't check");
+    // Not first "Couldn't find its latest version.": no lookup was tried
+    // (F5 review).
     expect([...intel.querySelectorAll("[data-detail-line]")].map((line) => line.textContent)).toEqual([
-      "Couldn't find its latest version.",
       "It isn't checked for updates on this Mac.",
     ]);
     expect(queryByText(/^\d+ tools? couldn't be checked(: .*)?$/)).not.toBeInTheDocument();
