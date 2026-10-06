@@ -232,6 +232,7 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "BanagerFailed.HomebrewStillUpdating",
     "BanagerFailed.PathChanged",
     "BanagerFailed.FormulaChanged",
+    "BanagerFailed.HomebrewSettingsChanged",
     "BanagerFailed.Internal",
   ],
 };

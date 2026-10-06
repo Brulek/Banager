@@ -214,6 +214,7 @@ describe("outcomeKey", () => {
       { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
       { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
       { BanagerFailed: { FormulaChanged: { name: "wget" } } },
+      { BanagerFailed: "HomebrewSettingsChanged" },
       { BanagerFailed: "Internal" },
     ];
     const lookup = (locale: unknown, key: string): unknown =>
@@ -233,6 +234,7 @@ describe("outcomeKey", () => {
       ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],
       ["BanagerFailed.PathChanged", "operations.outcome.BanagerFailed.PathChangedDetail"],
       ["BanagerFailed.FormulaChanged", "operations.outcome.BanagerFailed.FormulaChangedDetail"],
+      ["BanagerFailed.HomebrewSettingsChanged", "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail"],
     ]);
     for (const [, detail] of withStep) {
       expect(typeof lookup(en, detail as string), detail as string).toBe("string");
@@ -251,6 +253,7 @@ describe("outcomeKey for Banager's own failures", () => {
     { HomebrewStillUpdating: { minutes: 10 } },
     { PathChanged: { path: "~/.local/bin/claude" } },
     { FormulaChanged: { name: "wget" } },
+    "HomebrewSettingsChanged",
     "Internal",
   ];
 
@@ -328,6 +331,29 @@ describe("outcomeKey for Banager's own failures", () => {
     // what Banager did not do instead.
     expect(en.operations.outcome.BanagerFailed.FormulaChangedDetail).toBe(
       "Nothing was removed. Open the confirmation again to see which versions it removes.",
+    );
+    // Review of v1-brew's fixes (r6): an install or update found Homebrew
+    // would now delete more after it than its preview said, and ran
+    // nothing. A bare string; it says what did not run, and asks for a new
+    // look.
+    expect(outcomeKey({ BanagerFailed: "HomebrewSettingsChanged" })).toBe(
+      "BanagerFailed.HomebrewSettingsChanged",
+    );
+    expect(outcomeArgs({ BanagerFailed: "HomebrewSettingsChanged" })).toEqual({});
+    expect(outcomeDetailKey({ BanagerFailed: "HomebrewSettingsChanged" })).toBe(
+      "operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail",
+    );
+    expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
+      "Couldn't start: Homebrew's settings changed after the confirmation opened, or couldn't be read",
+    );
+    expect(en.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
+      "Homebrew wasn't run. Open the confirmation again to see what it deletes now.",
+    );
+    expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChanged).toBe(
+      "未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取",
+    );
+    expect(zhCN.operations.outcome.BanagerFailed.HomebrewSettingsChangedDetail).toBe(
+      "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
     );
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");

@@ -245,6 +245,7 @@ describe("operationWords", () => {
     { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
     { BanagerFailed: { PathChanged: { path: "/opt/homebrew/bin/jq" } } },
     { BanagerFailed: { FormulaChanged: { name: "wget" } } },
+    { BanagerFailed: "HomebrewSettingsChanged" },
   ];
   const waiting: LogLine = { opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } }, seq: 1 };
   const kinds: OpKind[] = ["Install", "Uninstall", "Upgrade"];

@@ -36,6 +36,11 @@ export type Fault =
   // not read again, and ran nothing -- or the plain uninstall of its one
   // version found a second one installed since, and ran nothing.
   | { FormulaChanged: { name: string } }
+  // Review of v1-brew's fixes (r6): an install or update through Homebrew
+  // found, right before its command, that Homebrew would now delete more
+  // after it than the preview said (a brew.env changed or unreadable since
+  // then), and ran nothing.
+  | "HomebrewSettingsChanged"
   | "Internal";
 // `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move

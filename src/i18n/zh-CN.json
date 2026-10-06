@@ -813,6 +813,8 @@
         "PathChangedDetail": "如有已移到废纸篓的项目，日志中都已列出。请重新打开确认窗口。",
         "FormulaChanged": "未能开始：确认窗口打开后，Homebrew里的{{name}}有了变化",
         "FormulaChangedDetail": "没有改动。请重新打开确认窗口，查看会删除哪些版本。",
+        "HomebrewSettingsChanged": "未能开始：确认窗口打开后，Homebrew的设置有了变化，或无法读取",
+        "HomebrewSettingsChangedDetail": "没有运行Homebrew。请重新打开确认窗口，查看它现在会删除什么。",
         "Internal": "未能完成：发生内部错误，没有改动"
       }
     },

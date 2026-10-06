@@ -402,6 +402,12 @@ describe("types", () => {
     const formula: Outcome = { BanagerFailed: { FormulaChanged: { name: "wget" } } };
     expect(JSON.stringify(formula)).toBe('{"BanagerFailed":{"FormulaChanged":{"name":"wget"}}}');
     expect(roundTrip(formula)).toEqual(formula);
+    // Review of v1-brew's fixes (r6): an install or update found Homebrew
+    // would now delete more than its preview said (model.rs builds the same
+    // string).
+    const settings: Outcome = { BanagerFailed: "HomebrewSettingsChanged" };
+    expect(JSON.stringify(settings)).toBe('{"BanagerFailed":"HomebrewSettingsChanged"}');
+    expect(roundTrip(settings)).toEqual(settings);
   });
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {
