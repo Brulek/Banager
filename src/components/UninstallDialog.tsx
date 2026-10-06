@@ -18,6 +18,7 @@ import { deletesForGood, skipsTrash, warningLines, type WarningLine } from "../l
 import { neededBy, neededByItem, neededBySentence } from "../lib/neededBy";
 import { CommandPreview } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
+import { familyStaysAfter } from "../lib/keptData";
 import { twinUninstallLine } from "./TwinAdvice";
 import { formatBytes } from "../lib/format";
 import { twinsByArtifact } from "../lib/commands";
@@ -187,6 +188,11 @@ export function UninstallDialog({
     if (artifact === undefined || snapshot === undefined) return null;
     return twinUninstallLine(t, artifact, twinsByArtifact(snapshot.artifacts).get(artifactKeyId(artifact.key)), sourceOf);
   }, [t, artifact, snapshot, sourceOf]);
+  // Whether another tool of its family stays installed, which may still use
+  // the folders kept (`familyStaysAfter`); taken as so until the snapshot
+  // says what is installed.
+  const familyStays =
+    artifact === undefined || snapshot === undefined ? true : familyStaysAfter([artifact], snapshot.artifacts);
   // A model's own size, as Ollama reports it: about what removing it frees,
   // less the layers another model shares, which stay.
   const frees =
@@ -430,7 +436,7 @@ export function UninstallDialog({
           {/* What stays: a tool's own installer's list, a tool's settings
               and data, Ollama's models -- one group for every uninstall,
               and nothing here offers to remove any of it (`KeptDataGroup`). */}
-          <KeptDataGroup warnings={plan.warnings} />
+          <KeptDataGroup warnings={plan.warnings} familyStays={familyStays} />
 
           {trashPlan ? null : <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />}
         </>

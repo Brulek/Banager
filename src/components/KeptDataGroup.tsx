@@ -58,6 +58,12 @@ interface KeptLine {
  * not needed can be moved to the Trash in Finder, and to leave a Terminal
  * settings file where it is when one is listed too (the author's decision
  * U15 e: a sentence, no button -- in the Trash it can be dragged back).
+ * That line is not said where a tool installed on the Mac may still use
+ * what the list names: where a folder holds another copy's program
+ * (`left_out`: Codex's own install in `~/.codex`) or another tool's data
+ * (`others`: Antigravity CLI's in `~/.gemini`), or where a tool of the
+ * family stays installed (`familyStays`) -- the other copy of Codex runs
+ * from and signs in with the `~/.codex` the list names.
  * There is no button, menu or command here that deletes or moves one.
  * Nothing when the plan names none. A folder
  * two tools share says, under it, which other tool's data it does not count
@@ -66,8 +72,15 @@ interface KeptLine {
 export function KeptDataGroup({
   warnings,
   ownersOf,
+  familyStays,
 }: {
   warnings: readonly Warning[];
+  /**
+   * Whether a tool of the same family as one being uninstalled stays
+   * installed after (`familyStaysAfter`), or that is not known yet: then
+   * nothing says the list can go to the Trash.
+   */
+  familyStays: boolean;
   /**
    * Whose each path is, by the names the list shows, where the group is
    * about several tools' uninstalls at once (`BatchUninstallSheet`): said
@@ -82,9 +95,12 @@ export function KeptDataGroup({
   };
   const lines: KeptLine[] = [];
   // Whether the list holds the tool's settings or data, and a Terminal
-  // settings file: what the last line says (`keptTrash`).
+  // settings file: what the last line says (`keptTrash`); and whether a
+  // folder in it holds another copy's program or another tool's data,
+  // which no line may invite moving to the Trash.
   let settingsOrData = false;
   let shellFile = false;
+  let holdsAnother = false;
   for (const warning of warnings) {
     if (typeof warning !== "string" && "WillKeep" in warning) {
       const { path, what } = warning.WillKeep;
@@ -103,6 +119,7 @@ export function KeptDataGroup({
   }
   for (const item of keptDataOf(warnings)) {
     settingsOrData = true;
+    holdsAnother ||= item.leftOut.length > 0 || item.others.length > 0;
     // What the size does not count: another copy's program inside the
     // folder (Codex's own install in ~/.codex).
     const leftOut =
@@ -125,6 +142,7 @@ export function KeptDataGroup({
   }
   if (lines.length === 0) return null;
   const home = lines.some((line) => line.path.startsWith("~"));
+  const trash = settingsOrData && !holdsAnother && !familyStays;
   return (
     <SheetSection title={t("keepsData.title")}>
       <ul className="flex flex-col gap-1.5">
@@ -171,7 +189,7 @@ export function KeptDataGroup({
       <p data-kept-find="" className={`mt-1.5 break-words text-muted ${SMALL_WRAPPING}`}>
         {t(home ? "keepsData.findInFinderHome" : "keepsData.findInFinder")}
       </p>
-      {settingsOrData ? (
+      {trash ? (
         <p data-kept-trash="" className={`mt-1.5 break-words text-muted ${SMALL_WRAPPING}`}>
           {t(shellFile ? "keptTrash.dataButShellFile" : "keptTrash.data")}
         </p>

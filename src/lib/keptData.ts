@@ -1,4 +1,5 @@
-import type { KeptData, Measured, OthersData, Warning } from "./types";
+import { artifactKeyId } from "../store/ui";
+import type { InstalledArtifact, KeptData, Measured, OthersData, Warning } from "./types";
 
 /**
  * One folder or file an uninstall leaves behind, as its preview names it
@@ -29,4 +30,25 @@ export function keptDataOf(warnings: readonly Warning[]): KeptDataItem[] {
     }
   }
   return items;
+}
+
+/**
+ * Whether a tool of the same family (`facts.family`, the AI coding tools'
+ * table) as one of `going` stays installed once they are uninstalled:
+ * another copy of it -- npm's `@openai/codex` beside Codex's own install,
+ * either way round -- or another of the family's tools, Ollama's app
+ * beside Homebrew's `ollama`. The folders an uninstall keeps are the
+ * family's (`kept_data::data_paths`), so a tool that stays may still run
+ * from them or sign in with them: Codex's own install runs from
+ * `~/.codex/packages/standalone` and keeps its login in `~/.codex`. The
+ * confirmation then does not say they can go to the Trash
+ * (`KeptDataGroup`, the author's decision U15 e).
+ */
+export function familyStaysAfter(going: readonly InstalledArtifact[], artifacts: readonly InstalledArtifact[]): boolean {
+  const ids = new Set(going.map((artifact) => artifactKeyId(artifact.key)));
+  const families = new Set(going.flatMap((artifact) => (artifact.facts.family === null ? [] : [artifact.facts.family])));
+  return artifacts.some(
+    (artifact) =>
+      artifact.facts.family !== null && families.has(artifact.facts.family) && !ids.has(artifactKeyId(artifact.key)),
+  );
 }

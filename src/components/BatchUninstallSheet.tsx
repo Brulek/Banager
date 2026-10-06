@@ -37,6 +37,7 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import type { InstalledArtifact, ManagerInstance, OpRequest, PlanAction, Snapshot } from "../lib/types";
 import { commandTexts } from "./CommandPreview";
 import { KeptDataGroup } from "./KeptDataGroup";
+import { familyStaysAfter } from "../lib/keptData";
 import { installedBy, twinUninstallLine } from "./TwinAdvice";
 import { neededByReason } from "../lib/neededBy";
 import { TextWithInfo } from "./InfoDetail";
@@ -438,6 +439,10 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
     unknown,
   );
   const commands = terminalCommands(includedArtifacts, snapshot?.artifacts ?? []);
+  // Whether a tool of an included one's family stays, not ticked, and may
+  // still use the folders kept (`familyStaysAfter`); taken as so until the
+  // snapshot says what is installed.
+  const familyStays = snapshot ? familyStaysAfter(includedArtifacts, snapshot.artifacts) : true;
   // How many of them leave something where it is: every tool the 「卸载后会
   // 保留」 group below names after 「来自」, whether its own data
   // (`KeepsData`) or what its installer's uninstall keeps (`WillKeep`).
@@ -802,7 +807,11 @@ export function BatchUninstallSheet({ uninstall }: { uninstall: BatchUninstall }
           ) : null}
           {/* What stays: each path once, whose it is, Copy Path -- and no
               way here to delete any of it (`KeptDataGroup`). */}
-          <KeptDataGroup warnings={kept.warnings} ownersOf={included.length > 1 ? (path) => kept.owners.get(path) ?? [] : undefined} />
+          <KeptDataGroup
+            warnings={kept.warnings}
+            ownersOf={included.length > 1 ? (path) => kept.owners.get(path) ?? [] : undefined}
+            familyStays={familyStays}
+          />
           {included.length > 0 ? (
             <BatchPlanDetails
               plans={included.map(({ entry }) => ({ id: entry.id, name: entry.name, action: entry.plan!.action }))}

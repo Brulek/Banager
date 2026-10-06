@@ -288,8 +288,11 @@ Paths are under a generic home folder, `/Users/you`.
   Gemini CLI (Homebrew) `~/.gemini` with no size, as for a folder that
   leads into `~/Documents`; Homebrew's ollama `~/.ollama/models`, about
   6.6 GB; and, with `?state=many`, Claude Code from npm `~/.claude` and
-  `~/.claude.json`. Each has Copy Path and nothing that deletes; one line
-  under the list says what isn't needed can go to the Trash in Finder. The
+  `~/.claude.json`. Each has Copy Path and nothing that deletes. Under
+  Gemini CLI's and ollama's list one line says what isn't needed can go to
+  the Trash in Finder; not under npm's Codex's, nor under Claude Code's
+  with `?state=many`, nor under Codex's own install's: another copy of the
+  tool stays installed and still uses that folder. The
   native Claude Code's own list keeps those two under 「保留」 already, so
   its dialog does not repeat them.
 - The uninstall of a Homebrew package another source runs on lists that

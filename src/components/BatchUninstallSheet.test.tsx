@@ -611,6 +611,31 @@ describe("the batch uninstall's sheet", () => {
     }
   });
 
+  describe("says that what stays can go to the Trash in Finder only where no tool left installed may use it (U15 e)", () => {
+    const trashLine = (dialog: HTMLElement) => dialog.querySelector("[data-kept-trash]");
+
+    it("says it where nothing else of the family stays: npm's Codex alone", async () => {
+      expect(trashLine(await openSheet([codex]))).toHaveTextContent(
+        /^If you don't need these settings and data, you can move them to the Trash in Finder\.$/,
+      );
+    });
+
+    it("says it where every copy goes together", async () => {
+      expect(trashLine(await openSheet([claudeCode, npmClaude]))).not.toBeNull();
+    });
+
+    it("not while a copy that isn't ticked stays: npm's Claude Code without the native one", async () => {
+      const dialog = await openSheet([npmClaude]);
+      expect(within(dialog).getByRole("region", { name: "Stays after uninstalling" })).toBeInTheDocument();
+      expect(trashLine(dialog)).toBeNull();
+    });
+
+    it("not for any of the list where one tool's copy stays", async () => {
+      const dialog = await openSheet([codex, npmClaude]);
+      expect(trashLine(dialog)).toBeNull();
+    });
+  });
+
   describe("says how many of them leave files behind", () => {
     const line = (dialog: HTMLElement) =>
       within(dialog).queryByText(/leaves? some files behind/)?.textContent ?? null;
