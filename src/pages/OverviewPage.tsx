@@ -602,8 +602,9 @@ export function OverviewPage() {
       <button
         type="button"
         onClick={() => {
-          // Every row the Updates page would tick with Select all, and
-          // no other; any row selected earlier stays as it was.
+          // Every row the Updates page's Update All would tick
+          // (`countedUpdatesOf`: not a copy Terminal does not run), and no
+          // other; any row selected earlier stays as it was.
           selectUpdates(summary.actionable.map((candidate) => candidate.key));
           setPage("updates");
         }}
