@@ -37,11 +37,20 @@ use std::sync::LazyLock;
 /// What stands where a password or a token was.
 pub const MASK: &str = "****";
 
-/// A password (or token) this many characters long or longer is masked
-/// wherever it appears; a shorter one only where it stands as a login,
-/// before an `@` (`:abc@`, `//abc@`). Masking every `abc` in a build log
+/// A password this many characters long or longer is masked wherever it
+/// appears, unless it is letters alone or digits alone
+/// ([`worth_masking_anywhere`]); a shorter one only where it stands as a
+/// login, before an `@` (`:abc@`). Masking every `abc` in a build log
 /// would make the log unreadable for a secret that short.
 pub const SHORTEST_MASKED_ANYWHERE: usize = 4;
+
+/// A mirror's user name or token this many characters long or longer is
+/// masked wherever it appears when it looks like a token
+/// ([`looks_like_a_token`]); any other only where it stands in the
+/// address (`//name@`, `//name:`). An access token is far longer
+/// (GitHub's are 40 characters and up); a person's name, which may be the
+/// Mac account's and so in every path a tool prints, is not.
+pub const SHORTEST_TOKEN: usize = 16;
 
 /// How much of the word next to a cut [`before_cut`] and [`after_cut`]
 /// mask at most: far longer than any login, short enough that a runaway
@@ -75,7 +84,7 @@ impl Redactor {
             match Login::in_setting(name, value) {
                 Some(Login::Password { user, password }) => {
                     for form in forms_of(password) {
-                        redactor.mask_login(":", form);
+                        redactor.mask_password(form);
                     }
                     // How a tool that sends the login prints it: HTTP Basic,
                     // the pair decoded as it is sent, and as written.
@@ -88,7 +97,7 @@ impl Redactor {
                 }
                 Some(Login::Token(token)) => {
                     for form in forms_of(token) {
-                        redactor.mask_login("//", form);
+                        redactor.mask_name(form, '@');
                     }
                     let token = decoded(token).unwrap_or_else(|| token.to_string());
                     redactor.mask_anywhere(basic(&format!("{token}:")));
@@ -104,15 +113,29 @@ impl Redactor {
         redactor
     }
 
-    /// Masks `form` where it stands as a login (`{lead}{form}@`), and
-    /// anywhere at all when it is long enough to be worth it.
-    fn mask_login(&mut self, lead: &str, form: String) {
-        let login = (format!("{lead}{form}@"), format!("{lead}{MASK}@"));
+    /// Masks a password's `form` where it stands as one (`:{form}@`), and
+    /// anywhere at all when that is worth it ([`worth_masking_anywhere`]).
+    fn mask_password(&mut self, form: String) {
+        self.mask_in_login(format!(":{form}@"), format!(":{MASK}@"));
+        if worth_masking_anywhere(&form) {
+            self.mask_anywhere(form);
+        }
+    }
+
+    /// Masks a name's `form` where it stands in an address
+    /// (`//{form}{then}`), and anywhere at all when it looks like a token
+    /// ([`looks_like_a_token`]).
+    fn mask_name(&mut self, form: String, then: char) {
+        self.mask_in_login(format!("//{form}{then}"), format!("//{MASK}{then}"));
+        if looks_like_a_token(&form) {
+            self.mask_anywhere(form);
+        }
+    }
+
+    fn mask_in_login(&mut self, login: String, masked: String) {
+        let login = (login, masked);
         if !self.in_login.contains(&login) {
             self.in_login.push(login);
-        }
-        if form.chars().count() >= SHORTEST_MASKED_ANYWHERE {
-            self.mask_anywhere(form);
         }
     }
 
@@ -202,8 +225,33 @@ impl<'v> Login<'v> {
         let http = ["http", "https"]
             .iter()
             .any(|name| scheme == *name || scheme.ends_with(&format!("+{name}")));
-        (http && !user.is_empty()).then_some(Login::Token(user))
+        (http && !user.is_empty() && !is_proxy(name)).then_some(Login::Token(user))
     }
+}
+
+/// Whether a password's form is worth masking wherever it appears: long
+/// enough ([`SHORTEST_MASKED_ANYWHERE`]), and not letters alone or digits
+/// alone. A password that is a plain word or number (`password`,
+/// `required`, `2026`) stands in sudo's "a password is required", which
+/// Banager reads to say that an operation needs Terminal
+/// (`history::failure_cause`, src/lib/failureCause.ts), and in dates and
+/// sizes: masked there, the reading fails and the log loses its words.
+/// Such a password is masked where it stands as a login (`:password@`),
+/// which is where tools print it.
+fn worth_masking_anywhere(secret: &str) -> bool {
+    secret.chars().count() >= SHORTEST_MASKED_ANYWHERE
+        && !secret.chars().all(char::is_alphabetic)
+        && !secret.chars().all(char::is_numeric)
+}
+
+/// Whether a mirror's user name or token looks like a token, and so is
+/// masked wherever it appears: long ([`SHORTEST_TOKEN`]), worth masking
+/// as a password would be, and with no `.` or `@`, which a person's name
+/// or address has and a token does not.
+fn looks_like_a_token(name: &str) -> bool {
+    name.chars().count() >= SHORTEST_TOKEN
+        && worth_masking_anywhere(name)
+        && !name.contains(['.', '@'])
 }
 
 /// Whether the setting `name` is a proxy's address (`http_proxy`,
@@ -599,6 +647,67 @@ mod tests {
             r.redact("in 'u:abc@proxy.lan:8080' and abcdef"),
             "in 'u:****@proxy.lan:8080' and abcdef"
         );
+    }
+
+    #[test]
+    fn test_a_proxy_given_a_user_name_alone_masks_nothing() {
+        // NTLM or Kerberos style: the name is the account's, no secret.
+        // Taken for a token, it masked the account name in every path.
+        let r = redactor(&[("http_proxy", "http://brulek@proxy.lan:3128")]);
+        assert_eq!(r, Redactor::default());
+        let said = "==> Pouring /Users/brulek/Library/Caches/Homebrew/downloads/jq.tar.gz";
+        assert_eq!(r.redact(said), said);
+    }
+
+    /// What sudo 1.9 prints when it cannot ask for a password, as Homebrew
+    /// passes it on (`needsPassword` in src/lib/failureCause.ts).
+    const SUDO_SAID: &str = "sudo: a terminal is required to read the password; \
+        either use the -S option to read from standard input or configure an askpass helper\n\
+        sudo: a password is required";
+
+    #[test]
+    fn test_a_password_that_is_a_plain_word_or_number_is_masked_only_as_a_login() {
+        use crate::history::{failure_cause, FailureCause};
+        for password in ["password", "required", "terminal", "2026", "12345678"] {
+            let setting = format!("http://me:{password}@proxy.lan:3128");
+            let r = redactor(&[("https_proxy", &setting)]);
+            // sudo's words, a date: left as written, and still read as
+            // sudo needing a password.
+            assert_eq!(r.redact(SUDO_SAID), SUDO_SAID, "{password}");
+            assert_eq!(
+                failure_cause(&r.redact(SUDO_SAID)),
+                Some(FailureCause::NeedsPassword),
+                "{password}"
+            );
+            let dated = "==> jq 1.8.1 was released 2026-10-01 (12345678 bytes)";
+            assert_eq!(r.redact(dated), dated, "{password}");
+            // Where it stands as a login it is masked all the same.
+            assert_eq!(
+                r.redact(&curl_refuses(&setting)),
+                curl_refuses("http://me:****@proxy.lan:3128"),
+                "{password}"
+            );
+        }
+        // One that mixes letters with digits or signs is no word of a
+        // tool's, and is masked wherever it appears.
+        let r = redactor(&[("https_proxy", "http://me:passw0rd@proxy.lan:3128")]);
+        assert_eq!(r.redact("sent passw0rd"), "sent ****");
+    }
+
+    #[test]
+    fn test_a_mirror_name_is_masked_wherever_it_appears_only_when_it_looks_like_a_token() {
+        // A name that is a word or has a `.` may be the account's own.
+        for name in ["brulek", "john.doe"] {
+            let setting = format!("https://{name}@mirror.example/homebrew-bottles");
+            let r = redactor(&[("HOMEBREW_BOTTLE_DOMAIN", &setting)]);
+            let path = format!("==> Pouring /Users/{name}/Library/Caches/jq.tar.gz");
+            assert_eq!(r.redact(&path), path, "{name}");
+            assert_eq!(
+                r.redact(&format!("fatal: unable to access '{setting}/x'")),
+                "fatal: unable to access 'https://****@mirror.example/homebrew-bottles/x'",
+                "{name}"
+            );
+        }
     }
 
     #[test]
