@@ -405,24 +405,34 @@ mod tests {
 
     #[tokio::test]
     async fn test_unresolved_aliases_keep_dependents_unknown_in_the_uninstall_preview() {
-        // Neither launcher basename occurs in the formula's conventional bin.
-        // Resolve before refresh, then reroute through Documents or a refused
-        // loop before preview, as an install changing between rounds can do.
-        for (adapter, launcher, target) in [
-            ("pip", "python3", "bin/python3.13"),
-            ("uv", "uv", "libexec/vendor-launcher"),
+        // A launcher whose name is not what it leads to: pip's `python3`
+        // into python@3.13's `bin/python3.13` (a keg with no `python3`),
+        // uv's `uv` into its keg's `libexec`. Followed at the refresh,
+        // then rerouted through `~/Documents` or a link loop before the
+        // preview, as an install changing between rounds can do. The
+        // package it could lead into -- a Python for pip's, the formula
+        // named `uv` for uv's -- says it could not check; jq, which it
+        // could not lead into, says nothing of it.
+        for (adapter, launcher, package, target) in [
+            ("pip", "python3", "python@3.13", "3.13.9/bin/python3.13"),
+            ("uv", "uv", "uv", "0.9.2/libexec/vendor-launcher"),
         ] {
             for refused in [false, true] {
                 let root = Root::new("renamed-source");
                 let prefix = root.path("opt/homebrew");
-                let real = prefix.join("Cellar/python@3.13/3.13.9").join(target);
+                let real = prefix.join("Cellar").join(package).join(target);
                 std::fs::create_dir_all(real.parent().unwrap()).unwrap();
                 std::fs::write(&real, b"#!/bin/sh\n").unwrap();
                 std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).unwrap();
+                let keg = target.split('/').next().unwrap();
                 root.link(
-                    "opt/homebrew/opt/python@3.13",
-                    "../Cellar/python@3.13/3.13.9",
+                    &format!("opt/homebrew/opt/{package}"),
+                    &format!("../Cellar/{package}/{keg}"),
                 );
+                let jq = prefix.join("Cellar/jq/1.8.1/bin/jq");
+                std::fs::create_dir_all(jq.parent().unwrap()).unwrap();
+                std::fs::write(&jq, b"#!/bin/sh\n").unwrap();
+                root.link("opt/homebrew/opt/jq", "../Cellar/jq/1.8.1");
                 let relative = format!("home/bin/{launcher}");
                 root.link(&relative, real.to_str().unwrap());
                 let source_path = root.path(&relative);
@@ -432,7 +442,10 @@ mod tests {
                         BREW,
                         prefix.join("bin/brew"),
                         prefix.clone(),
-                        vec![(ArtifactKind::Formula, "python@3.13")],
+                        vec![
+                            (ArtifactKind::Formula, package),
+                            (ArtifactKind::Formula, "jq"),
+                        ],
                     ),
                     fake(
                         adapter,
@@ -454,7 +467,7 @@ mod tests {
                     ollama_host: None,
                 };
                 session.refresh(&env, &CheckOptions::default()).await;
-                let known = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
+                let known = session.issue_plan(&uninstall(package)).await.unwrap();
                 assert_eq!(needed(&known.plan).len(), 1);
                 assert!(!known.plan.warnings.contains(&Warning::DependentsUnknown));
                 std::fs::remove_file(&source_path).unwrap();
@@ -467,19 +480,27 @@ mod tests {
                         root.path("home/Documents/launcher").to_str().unwrap(),
                     );
                 }
-                let unknown = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
+                let unknown = session.issue_plan(&uninstall(package)).await.unwrap();
                 assert!(needed(&unknown.plan).is_empty());
                 assert!(
                     unknown.plan.warnings.contains(&Warning::DependentsUnknown),
                     "{adapter} refused={refused}"
                 );
+                let bystander = session.issue_plan(&uninstall("jq")).await.unwrap();
+                assert!(
+                    !bystander
+                        .plan
+                        .warnings
+                        .contains(&Warning::DependentsUnknown),
+                    "{adapter} refused={refused}: jq"
+                );
                 // A known missing launcher is not an unresolved one.
                 std::fs::remove_file(&source_path).unwrap();
-                let gone = session.issue_plan(&uninstall("python@3.13")).await.unwrap();
-                if adapter == "pip" {
-                    // uv's unknown tool environment remains uncertain.
-                    assert!(!gone.plan.warnings.contains(&Warning::DependentsUnknown));
-                }
+                let gone = session.issue_plan(&uninstall(package)).await.unwrap();
+                assert!(
+                    !gone.plan.warnings.contains(&Warning::DependentsUnknown),
+                    "{adapter}"
+                );
                 assert!(
                     session.operations().is_empty(),
                     "no uninstall was submitted"
