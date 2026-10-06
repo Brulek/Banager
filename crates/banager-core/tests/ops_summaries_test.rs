@@ -396,7 +396,11 @@ async fn test_summaries_preview_the_first_command_of_a_plan_of_two() {
         },
         action: PlanAction::CommandThen {
             program: PathBuf::from("/opt/homebrew/bin/brew"),
-            args: vec!["upgrade".to_string(), "--formula".to_string(), "wget".to_string()],
+            args: vec![
+                "upgrade".to_string(),
+                "--formula".to_string(),
+                "wget".to_string(),
+            ],
             env: env.clone(),
             then: vec!["cleanup".to_string(), "wget".to_string()],
         },

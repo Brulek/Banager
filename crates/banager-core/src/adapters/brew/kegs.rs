@@ -155,12 +155,28 @@ mod tests {
     #[test]
     fn orders_versions_as_people_read_them() {
         let mut versions = vec![
-            "1.10", "1.9", "2.0_1", "2.0", "1.9.10", "1.9.9", "HEAD-abc1234", "0.9",
+            "1.10",
+            "1.9",
+            "2.0_1",
+            "2.0",
+            "1.9.10",
+            "1.9.9",
+            "HEAD-abc1234",
+            "0.9",
         ];
         versions.sort_by(|a, b| version_order(a, b));
         assert_eq!(
             versions,
-            ["0.9", "1.9", "1.9.9", "1.9.10", "1.10", "2.0", "2.0_1", "HEAD-abc1234"]
+            [
+                "0.9",
+                "1.9",
+                "1.9.9",
+                "1.9.10",
+                "1.10",
+                "2.0",
+                "2.0_1",
+                "HEAD-abc1234"
+            ]
         );
         assert_eq!(version_order("1.08", "1.8"), "1.08".cmp("1.8"));
     }

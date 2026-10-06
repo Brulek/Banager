@@ -293,14 +293,17 @@ fn test_what_we_run_promises_the_three_brew_flags_are_never_passed_but_for_u9s_f
 }
 
 #[test]
-fn test_what_we_run_shows_the_cleanup_after_a_formulas_update_and_the_uninstall_of_every_version()
-{
+fn test_what_we_run_shows_the_cleanup_after_a_formulas_update_and_the_uninstall_of_every_version() {
     // U9 (r6): the two commands Banager runs on its own account besides
     // the plain verb, kind flag and name, each in the write-command table
     // with its time limit, and what keeps the cleanup from running.
     let doc = read_doc();
     let homebrew = section_body(&doc, "Homebrew").expect("a `## Homebrew` section");
-    let row = |argv: &str| homebrew.lines().find(|line| line.starts_with('|') && line.contains(argv));
+    let row = |argv: &str| {
+        homebrew
+            .lines()
+            .find(|line| line.starts_with('|') && line.contains(argv))
+    };
     let cleanup = row("`<brew> cleanup {name}`").unwrap_or_else(|| {
         panic!("Homebrew's write-command table has no row for `<brew> cleanup {{name}}`")
     });

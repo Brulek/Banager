@@ -742,7 +742,11 @@ impl BrewAdapter {
             return None;
         }
         let short = req.name.rsplit('/').next().unwrap_or(&req.name);
-        if switches.no_cleanup_formulae.iter().any(|name| name == short) {
+        if switches
+            .no_cleanup_formulae
+            .iter()
+            .any(|name| name == short)
+        {
             return None;
         }
         let kegs = (self.kegs_fn)(&inst.prefix, &req.name)?;
@@ -6846,7 +6850,10 @@ mod plan_execute_tests {
             let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
             let inst = test_instance();
             let plan = adapter
-                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
                 .await
                 .expect("plan");
             let (args, then) = upgrade_then_cleanup(&plan).expect("a cleanup follows");
@@ -6891,7 +6898,10 @@ mod plan_execute_tests {
             // Nothing read of the formula: no line to say which versions,
             // so no cleanup either.
             let plan = BrewAdapter::new(runner)
-                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
                 .await
                 .expect("plan");
             assert!(matches!(plan.action, PlanAction::Command { .. }));
@@ -6902,16 +6912,26 @@ mod plan_execute_tests {
         async fn an_update_keeps_every_cleanup_setting_the_person_made() {
             type Files = fn(&Path) -> brew_env::EnvFile;
             fn system(bytes: &'static [u8]) -> impl Fn(&Path) -> brew_env::EnvFile {
-                move |path| (path == Path::new(brew_env::SYSTEM_FILE)).then(|| bytes.to_vec()).into()
+                move |path| {
+                    (path == Path::new(brew_env::SYSTEM_FILE))
+                        .then(|| bytes.to_vec())
+                        .into()
+                }
             }
             let cases: [(&str, Files); 5] = [
                 // Their own HOMEBREW_NO_INSTALL_CLEANUP: no cleanup after
                 // an install or upgrade, Banager's included.
-                ("opted out", |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=1\n")(p)),
+                ("opted out", |p| {
+                    system(b"HOMEBREW_NO_INSTALL_CLEANUP=1\n")(p)
+                }),
                 // Taken back: Homebrew cleans up by itself, and says so.
-                ("Homebrew's own", |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p)),
+                ("Homebrew's own", |p| {
+                    system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p)
+                }),
                 // Kept out of every clean-up by name.
-                ("named", |p| system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq,wget\n")(p)),
+                ("named", |p| {
+                    system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq,wget\n")(p)
+                }),
                 // A brew.env Banager does not read: it may say either.
                 ("unknown", |p| {
                     if p == Path::new(brew_env::SYSTEM_FILE) {
@@ -6921,7 +6941,9 @@ mod plan_execute_tests {
                     }
                 }),
                 // Another formula named: wget is still cleaned up.
-                ("another", |p| system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq\n")(p)),
+                ("another", |p| {
+                    system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq\n")(p)
+                }),
             ];
             let inst = test_instance();
             for (case, files) in cases {
@@ -6930,7 +6952,10 @@ mod plan_execute_tests {
                     .with_brew_env_fn(files);
                 for name in ["wget", "someone/tap/wget"] {
                     let plan = adapter
-                        .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, name))
+                        .plan(
+                            &inst,
+                            &request(OpKind::Upgrade, ArtifactKind::Formula, name),
+                        )
                         .await
                         .expect("plan");
                     let cleans = plan
@@ -6953,7 +6978,10 @@ mod plan_execute_tests {
                     (name == "HOMEBREW_NO_INSTALL_CLEANUP").then(|| OsString::from("1"))
                 });
             let plan = adapter
-                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
                 .await
                 .expect("plan");
             assert!(upgrade_then_cleanup(&plan).is_none());
@@ -7008,7 +7036,10 @@ mod plan_execute_tests {
             for read in [one, pinned, none] {
                 let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(read);
                 let plan = adapter
-                    .plan(&inst, &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"))
+                    .plan(
+                        &inst,
+                        &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"),
+                    )
                     .await
                     .expect("plan");
                 assert_eq!(command_args(&plan), ["uninstall", "--formula", "wget"]);
@@ -7016,7 +7047,10 @@ mod plan_execute_tests {
             }
             let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
             let plan = adapter
-                .plan(&inst, &request(OpKind::Uninstall, ArtifactKind::Cask, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Uninstall, ArtifactKind::Cask, "wget"),
+                )
                 .await
                 .expect("plan");
             assert_eq!(command_args(&plan), ["uninstall", "--cask", "wget"]);
@@ -7044,7 +7078,11 @@ mod plan_execute_tests {
                     cleanup.clone(),
                     ok(
                         "Removing: /opt/homebrew/Cellar/wget/1.24.0... (52 files, 4.1MB)\n",
-                        if cleanup_exit == 0 { "" } else { "Error: Permission denied\n" },
+                        if cleanup_exit == 0 {
+                            ""
+                        } else {
+                            "Error: Permission denied\n"
+                        },
                         cleanup_exit,
                     ),
                 );
@@ -7096,14 +7134,23 @@ mod plan_execute_tests {
             let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
             let inst = test_instance();
             let plan = adapter
-                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
                 .await
                 .expect("plan");
             let outcome = adapter
                 .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
                 .await
                 .expect("execute");
-            assert!(matches!(outcome, Outcome::Failed { exit_code: Some(1), .. }));
+            assert!(matches!(
+                outcome,
+                Outcome::Failed {
+                    exit_code: Some(1),
+                    ..
+                }
+            ));
             assert_eq!(runner.calls().len(), 1, "{:?}", runner.calls());
         }
 
@@ -7116,7 +7163,10 @@ mod plan_execute_tests {
             let inst = test_instance();
             let plan = BrewAdapter::new(runner.clone())
                 .with_kegs_fn(two_versions)
-                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
                 .await
                 .expect("plan");
             assert!(upgrade_then_cleanup(&plan).is_some());
