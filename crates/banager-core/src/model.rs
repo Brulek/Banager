@@ -1114,7 +1114,8 @@ pub enum Warning {
 /// scripts), for uv while `UV_TOOL_DIR` is set (the plan is refused), or for
 /// the tools with their own installer that Banager can uninstall, whose
 /// uninstall confirmation already lists what goes to the Trash, what stays
-/// and what rustup deletes (Codex, listed only, has no uninstall).
+/// and what rustup deletes -- Codex's own install among them since the
+/// author's decision U8 (opencode's, listed only, has no uninstall).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UninstallScope {
     /// `brew uninstall --formula` with Homebrew's autoremove off: it removes

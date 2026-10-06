@@ -1428,7 +1428,7 @@ mod tests {
         for (adapter, prefix) in [
             ("standalone-agy", "/Users/someone/.gemini/antigravity-cli"),
             ("standalone-grok", "/Users/someone/.grok"),
-            // Codex, listed only: its package folder, not `~/.codex`.
+            // Codex's own install: its package folder, not `~/.codex`.
             (
                 "standalone-codex",
                 "/Users/someone/.codex/packages/standalone",

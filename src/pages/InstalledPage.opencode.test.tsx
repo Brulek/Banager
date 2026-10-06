@@ -8,10 +8,11 @@ import type { InstalledArtifact, ManagerInstance, Settings, Snapshot } from "../
 import { NO_FACTS } from "../lib/types";
 
 // opencode installed by its own script, listed only, as Codex's own
-// install is (InstalledPage.codex.test.tsx, whose harness this is): no
-// version is read, Banager checks nothing for it, so its row never says
-// "Up to date" -- it says opencode updates itself, by default, and why its
-// version is unknown -- and it cannot be uninstalled here.
+// install was before it could be uninstalled (InstalledPage.codex.test.tsx,
+// whose harness this is): no version is read, Banager checks nothing for
+// it, so its row never says "Up to date" -- it says opencode updates
+// itself, by default, and why its version is unknown -- and it cannot be
+// uninstalled here.
 
 const mockInvoke = vi.mocked(invoke);
 

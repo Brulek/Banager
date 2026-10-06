@@ -5,7 +5,7 @@
 //! recipes. `StandaloneAdapter::check_updates` gives "cannot read the
 //! installed version now" before it asks for a published version at all,
 //! so every checked recipe's row can show it (a `Latest::Unchecked` one,
-//! Codex, listed only, returns before it looks); it gives "cannot compare the
+//! Codex's or opencode's, returns before it looks); it gives "cannot compare the
 //! installed version ... with the published ..." only when
 //! `latest::compare_dotted` finds no order, and it asks that only of a
 //! `Published::Version` -- never of a `Latest::Command` recipe's answer
@@ -58,7 +58,7 @@ fn compares_versions(latest: &Latest) -> bool {
 }
 
 /// Whether `check_updates` gets as far as the installed version at all: it
-/// returns nothing for a `Latest::Unchecked` recipe (Codex, listed only)
+/// returns nothing for a `Latest::Unchecked` recipe (Codex, opencode)
 /// before it looks, so that row never says "cannot read the installed
 /// version now". No wildcard arm, as above.
 fn checks_updates(latest: &Latest) -> bool {

@@ -73,7 +73,7 @@ export const IDS = {
   grok: "standalone-grok",
   rustup: "standalone-rustup",
   uv: "uv",
-  /** Codex installed by its own script: listed only (`codexStandalone`). */
+  /** Codex installed by its own script (`codexStandalone`): no update check, and Uninstall moves it to the Trash. */
   codex: "standalone-codex",
 } as const;
 

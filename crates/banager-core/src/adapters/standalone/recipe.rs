@@ -10,7 +10,8 @@
 //! adds `Expect::File`, `Expect::SymlinkToProgram` (grok's links besides its
 //! launcher), the two `Latest` sources a manifest and a tool's own check
 //! need, and an optional `upgrade` (agy updates itself only). The
-//! advantages round adds, for Codex, listed only, `VersionSource::ReleaseLink`
+//! advantages round adds, for Codex, then listed only (its uninstall, a
+//! path list, came with the author's decision U8), `VersionSource::ReleaseLink`
 //! (a version read with no command) and `Latest::Unchecked`, and, for
 //! opencode, `VersionSource::NotRead` (no version read at all). A
 //! variant or field defined before anything produces it is this project's
@@ -303,9 +304,10 @@ pub enum Latest {
         error_field: Option<&'static str>,
     },
     /// Banager does not look for a newer version at all: no request, no
-    /// command. For a tool listed only (Codex, whose installer's own
-    /// version source is a host Banager has not been cleared to reach and
-    /// whose updater installs new releases itself). `check_updates` lists
+    /// command. For a tool whose updates Banager does not check (Codex,
+    /// whose installer's own version source is a host Banager has not been
+    /// cleared to reach and whose updater installs new releases itself; and
+    /// opencode, listed only). `check_updates` lists
     /// nothing for it -- neither a candidate nor a "could not check" row --
     /// and the front end, knowing the source by its id
     /// (`UNCHECKED_STANDALONE` in src/lib/uncheckedStandalone.ts), puts no

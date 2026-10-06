@@ -683,10 +683,13 @@ pub static CODEX: Recipe = Recipe {
 
 /// opencode (`opencode`), the terminal agent of the opencode project,
 /// installed by its own script (`curl -fsSL https://opencode.ai/install |
-/// bash`, run by the user; never by Banager). Listed only, like Codex:
-/// Banager reads what is on the disk and runs nothing for it -- no version
-/// command, no update check, no update, no uninstall (the author's
-/// decision).
+/// bash`, run by the user; never by Banager). Listed only: Banager reads
+/// what is on the disk and runs nothing for it -- no version command, no
+/// update check, no update, no uninstall (the author's decision; Codex's
+/// own install, listed only too until then, moves to the Trash on
+/// uninstall since the author's decision U8, and opencode's was left as it
+/// is: its root `~/.opencode` is a first-level folder of the home folder
+/// and holds a plugin package besides the program).
 ///
 /// Every value here is from that script, fetched as text on 2026-10-01 and
 /// read, never executed (`adapters/fixtures/standalone-opencode/
