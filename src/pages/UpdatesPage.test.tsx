@@ -4911,7 +4911,7 @@ describe("UpdatesPage", () => {
 
       await findByText("4 updates available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
-      const dialog = await findByRole("dialog", { name: "Update 4 tools?" });
+      const dialog = await findByRole("alertdialog", { name: "Update 4 tools?" });
       const names = () =>
         [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
 

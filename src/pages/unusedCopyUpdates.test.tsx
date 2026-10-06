@@ -196,7 +196,7 @@ describe("the update of a copy Terminal does not run", () => {
     renderUpdates();
     await screen.findByText("@openai/codex", { selector: "[data-tool-row] p" });
     fireEvent.click(screen.getByRole("button", { name: "Update All" }));
-    await screen.findByRole("dialog");
+    await screen.findByRole("alertdialog");
     await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
     expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey)]);
     // Behind the sheet, the list is hidden from the accessibility tree.
@@ -209,7 +209,7 @@ describe("the update of a copy Terminal does not run", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all items that can be updated here" }));
     expect(within(rowOf("@openai/codex")).getByRole("checkbox")).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Update Selected (2)" }));
-    await screen.findByRole("dialog");
+    await screen.findByRole("alertdialog");
     await waitFor(() => expect([...plannedNames()].sort()).toEqual(["@openai/codex", "glib"]));
   });
 
