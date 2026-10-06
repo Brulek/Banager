@@ -695,6 +695,11 @@
       "setupLine": "上次回應：{{when}}"
     }
   },
+  "sourceNoticeMore": {
+    "prefixProtected": {
+      "description": "npm安裝它們的檔案夾在受保護的位置或指向那裡。受保護的位置不讀取，無法確認能否修改它們，因此只能查看。"
+    }
+  },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",
     "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"

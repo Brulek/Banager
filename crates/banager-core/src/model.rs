@@ -55,6 +55,13 @@ pub enum ReadOnlyReason {
     /// is not writable by the current user (Node installed from the
     /// nodejs.org package, whose npm prefix is root-owned).
     PrefixNotWritable,
+    /// The tool can install and uninstall, but the directory it writes to
+    /// is in, or leads into, a protected place (`protected::look`:
+    /// Documents, Desktop, Downloads, iCloud Drive, another disk), which
+    /// Banager never looks into -- so whether the user could write there is
+    /// not known, and the source is listed only. Not "the account cannot
+    /// change it", which may well be untrue (decision I23).
+    PrefixProtected,
 }
 
 /// Why a source Banager knows about cannot answer right now. The state
@@ -1957,9 +1964,9 @@ mod tests {
     #[test]
     fn test_read_only_reason_is_a_bare_string_on_the_wire_and_drives_writable() {
         // The hand-written TypeScript mirror (`src/lib/types.ts`) spells
-        // these as `"ByDesign" | "PrefixNotWritable" | null`, so the wire
-        // shape is the contract, not an implementation detail: a bare
-        // string for a reason, `null` for a writable source.
+        // these as `"ByDesign" | "PrefixNotWritable" | "PrefixProtected" |
+        // null`, so the wire shape is the contract, not an implementation
+        // detail: a bare string for a reason, `null` for a writable source.
         let writable = ManagerInstance {
             id: "brew:/opt/homebrew".to_string(),
             adapter_id: "brew".to_string(),
@@ -1983,7 +1990,11 @@ mod tests {
             writable
         );
 
-        for reason in [ReadOnlyReason::ByDesign, ReadOnlyReason::PrefixNotWritable] {
+        for reason in [
+            ReadOnlyReason::ByDesign,
+            ReadOnlyReason::PrefixNotWritable,
+            ReadOnlyReason::PrefixProtected,
+        ] {
             let read_only = ManagerInstance {
                 read_only_reason: Some(reason),
                 ..writable.clone()

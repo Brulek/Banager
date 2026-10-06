@@ -39,33 +39,39 @@ fn validate_search_query(query: &str) -> Result<(), AdapterError> {
     Ok(())
 }
 
-/// The real check for `NpmAdapter::new`'s `prefix_writable_fn` default:
+/// The real check for `NpmAdapter::new`'s `prefix_read_only_fn` default:
 /// whether the current user can write where npm actually places global
 /// packages under `prefix` (the prefix *root* that `npm prefix -g` reports,
 /// e.g. `/opt/homebrew` — **not** the `node_modules` directory itself, despite
 /// what an earlier version of this comment claimed). npm writes into
-/// `{prefix}/lib/node_modules`.
+/// `{prefix}/lib/node_modules`. `None` where it can, and otherwise why not.
 ///
 /// When that directory doesn't exist yet (e.g. the first global install on
 /// this prefix), npm has to create it, which needs write permission on the
 /// nearest *existing* ancestor, not on the missing leaf. So this walks
 /// `{prefix}/lib/node_modules` → `{prefix}/lib` → `{prefix}` and tests
 /// whichever of those exists first. A prefix owned by another user (e.g. a
-/// system-wide npm) is read-only for this adapter — see the per-adapter
-/// contract table's Notes column.
+/// system-wide npm) is `PrefixNotWritable` for this adapter — see the
+/// per-adapter contract table's Notes column.
 ///
 /// Each is looked up one step at a time and never into or through a
 /// protected place (`protected::look`): one that is, or leads into, one --
 /// a prefix kept in `~/Documents` -- is not looked at, and the prefix is
-/// read-only here, as one Banager cannot write to is.
-fn real_prefix_is_writable(prefix: &Path) -> bool {
+/// read-only here as `PrefixProtected`: whether it could be written is not
+/// known, which is not the same as the account not being able to.
+fn real_prefix_read_only(prefix: &Path) -> Option<ReadOnlyReason> {
     let protected = Protected::of_this_process();
     let node_modules = prefix.join("lib").join("node_modules");
     let lib_dir = prefix.join("lib");
+    let not_writable = |candidate: &Path| {
+        (!look::writable_folder(candidate, &protected)).then_some(ReadOnlyReason::PrefixNotWritable)
+    };
     for candidate in [node_modules.as_path(), lib_dir.as_path(), prefix] {
         match look::target(candidate, &protected) {
-            Ok(_) => return look::writable_folder(candidate, &protected),
-            Err(error) if look::is_protected(&error) => return false,
+            Ok(_) => return not_writable(candidate),
+            Err(error) if look::is_protected(&error) => {
+                return Some(ReadOnlyReason::PrefixProtected)
+            }
             // Not there, or not to be looked up: the next one out.
             Err(_) => continue,
         }
@@ -73,7 +79,7 @@ fn real_prefix_is_writable(prefix: &Path) -> bool {
     // None of the three exist (npm prefix -g pointed at a prefix that isn't
     // on disk at all) — there is nothing nearer to test than the root itself,
     // and a missing path correctly reports "not writable".
-    look::writable_folder(prefix, &protected)
+    not_writable(prefix)
 }
 
 /// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
@@ -108,14 +114,15 @@ pub struct NpmAdapter {
     meta: AdapterMeta,
     /// How to decide whether `inst.prefix` is writable by the current user
     /// (in practice: whether npm can write into `{prefix}/lib/node_modules`,
-    /// creating it if needed — see `real_prefix_is_writable`), gating
-    /// install/uninstall/upgrade. Production always gets
-    /// `real_prefix_is_writable`; tests inject a fixed answer via the
-    /// `#[cfg(test)]`-only `with_prefix_writable_fn`, mirroring
-    /// `BrewAdapter::with_euid_fn`. `detect()` asks the same question to
-    /// fill `read_only_reason`, which is why this takes `&Path` (the
-    /// prefix) rather than a `&ManagerInstance` that does not exist yet.
-    prefix_writable_fn: fn(&Path) -> bool,
+    /// creating it if needed — see `real_prefix_read_only`), and if not,
+    /// why: `None` for writable, gating install/uninstall/upgrade
+    /// otherwise. Production always gets `real_prefix_read_only`; tests
+    /// inject a fixed answer via the `#[cfg(test)]`-only
+    /// `with_prefix_read_only_fn`, mirroring `BrewAdapter::with_euid_fn`.
+    /// `detect()` asks the same question to fill `read_only_reason`, which
+    /// is why this takes `&Path` (the prefix) rather than a
+    /// `&ManagerInstance` that does not exist yet.
+    prefix_read_only_fn: fn(&Path) -> Option<ReadOnlyReason>,
 }
 
 impl NpmAdapter {
@@ -131,13 +138,13 @@ impl NpmAdapter {
         NpmAdapter {
             runner,
             meta,
-            prefix_writable_fn: real_prefix_is_writable,
+            prefix_read_only_fn: real_prefix_read_only,
         }
     }
 
     #[cfg(test)]
-    fn with_prefix_writable_fn(mut self, f: fn(&Path) -> bool) -> NpmAdapter {
-        self.prefix_writable_fn = f;
+    fn with_prefix_read_only_fn(mut self, f: fn(&Path) -> Option<ReadOnlyReason>) -> NpmAdapter {
+        self.prefix_read_only_fn = f;
         self
     }
 
@@ -269,11 +276,7 @@ impl NpmAdapter {
         // this user cannot write, and the two pages need to say so
         // *before* the user clicks anything. `plan()` asks again at click
         // time: permissions can change in between, so that gate stays.
-        let read_only_reason = if (self.prefix_writable_fn)(&prefix) {
-            None
-        } else {
-            Some(ReadOnlyReason::PrefixNotWritable)
-        };
+        let read_only_reason = (self.prefix_read_only_fn)(&prefix);
         vec![ManagerInstance {
             id: self.instance_id_for(&prefix),
             adapter_id: self.meta.id.clone(),
@@ -405,11 +408,11 @@ impl NpmAdapter {
         // same fact found later: permissions can change between detect and
         // the click. Sent as `NotActionable` rather than a `Refused` string
         // so the front end words it with the very sentence the source's own
-        // notice uses (`sourceNotice.prefixNotWritable`), in the user's
-        // language, instead of this adapter's English.
-        if !(self.prefix_writable_fn)(&inst.prefix) {
+        // rows use (`READ_ONLY_DETAIL_KEYS` in src/lib/sources.ts), in the
+        // user's language, instead of this adapter's English.
+        if let Some(reason) = (self.prefix_read_only_fn)(&inst.prefix) {
             return Err(AdapterError::NotActionable {
-                read_only: Some(ReadOnlyReason::PrefixNotWritable),
+                read_only: Some(reason),
                 unavailable: None,
             });
         }
@@ -857,7 +860,7 @@ mod tests {
         // not a directory the machine running this is expected to have, and
         // asking the real filesystem about it would make the answer depend
         // on which Mac this is.
-        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
+        let adapter = NpmAdapter::new(runner).with_prefix_read_only_fn(|_| None);
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
@@ -908,7 +911,7 @@ mod tests {
                 cancelled: false,
             },
         );
-        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
+        let adapter = NpmAdapter::new(runner).with_prefix_read_only_fn(|_| None);
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
@@ -992,7 +995,8 @@ mod tests {
         // Updates page can say "install Node with Homebrew instead"
         // rather than pip's "use pipx or uv".
         let (dir, npm_path, env) = detect_fixture("readonly");
-        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(|_| false);
+        let adapter = NpmAdapter::new(detect_runner(&npm_path))
+            .with_prefix_read_only_fn(|_| Some(ReadOnlyReason::PrefixNotWritable));
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -1005,9 +1009,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_detect_reports_a_prefix_in_a_protected_place_as_not_looked_into() {
+        // `npm config set prefix ~/Documents/npm-global`: the folder may
+        // well be the user's to write, but Banager never looks into a
+        // protected place, so it cannot say. The reason says that, not
+        // that the account cannot change it (decision I23).
+        let (dir, npm_path, env) = detect_fixture("protected");
+        let adapter = NpmAdapter::new(detect_runner(&npm_path))
+            .with_prefix_read_only_fn(|_| Some(ReadOnlyReason::PrefixProtected));
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            instances[0].read_only_reason,
+            Some(ReadOnlyReason::PrefixProtected)
+        );
+        assert!(!instances[0].writable());
+    }
+
+    #[tokio::test]
     async fn test_detect_leaves_the_instance_writable_when_the_prefix_is_writable() {
         let (dir, npm_path, env) = detect_fixture("writable");
-        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(|_| true);
+        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_read_only_fn(|_| None);
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -1025,12 +1049,12 @@ mod tests {
         use std::sync::Mutex;
         static ASKED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
         ASKED.lock().unwrap().clear();
-        fn record(path: &Path) -> bool {
+        fn record(path: &Path) -> Option<ReadOnlyReason> {
             ASKED.lock().unwrap().push(path.to_path_buf());
-            true
+            None
         }
         let (dir, npm_path, env) = detect_fixture("prefix-arg");
-        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(record);
+        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_read_only_fn(record);
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -1272,7 +1296,7 @@ mod tests {
     #[tokio::test]
     async fn test_plan_install() {
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1290,7 +1314,7 @@ mod tests {
     #[tokio::test]
     async fn test_plan_uninstall() {
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Uninstall,
@@ -1305,7 +1329,7 @@ mod tests {
     #[tokio::test]
     async fn test_npm_itself_is_never_planned_for_uninstalling_but_is_updated_as_any_package() {
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let request = |kind: OpKind, name: &str| OpRequest {
             kind,
@@ -1336,8 +1360,8 @@ mod tests {
             assert_eq!(command_args(&plan), vec!["uninstall", "-g", name]);
         }
         // A prefix that cannot be written is the bigger news.
-        let read_only =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| false);
+        let read_only = NpmAdapter::new(Arc::new(MockRunner::new()))
+            .with_prefix_read_only_fn(|_| Some(ReadOnlyReason::PrefixNotWritable));
         assert!(matches!(
             read_only
                 .plan(&inst, &request(OpKind::Uninstall, "npm"))
@@ -1361,7 +1385,7 @@ mod tests {
         // so its settings and data outside its folder stay. The version is
         // the one `detect` read from `npm --version`.
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         for version in ["7.0.0", "10.9.9", "12.0.2", " 12.0.2\n"] {
             let inst = ManagerInstance {
                 version: Some(version.to_string()),
@@ -1387,7 +1411,7 @@ mod tests {
         // `postuninstall` scripts, which could do anything; a version
         // Banager could not read might be that.
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         for version in [
             Some("6.14.18"),
             Some("5.6.0"),
@@ -1410,7 +1434,7 @@ mod tests {
     #[tokio::test]
     async fn test_no_install_or_upgrade_plan_says_what_an_uninstall_would() {
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         for kind in [OpKind::Install, OpKind::Upgrade] {
             let req = OpRequest {
@@ -1425,7 +1449,7 @@ mod tests {
     #[tokio::test]
     async fn test_plan_upgrade_targets_latest() {
         let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Upgrade,
@@ -1439,8 +1463,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_plan_is_refused_when_the_prefix_is_not_writable() {
-        let adapter =
-            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| false);
+        let adapter = NpmAdapter::new(Arc::new(MockRunner::new()))
+            .with_prefix_read_only_fn(|_| Some(ReadOnlyReason::PrefixNotWritable));
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1459,6 +1483,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_plan_is_refused_with_the_protected_place_as_its_reason() {
+        let adapter = NpmAdapter::new(Arc::new(MockRunner::new()))
+            .with_prefix_read_only_fn(|_| Some(ReadOnlyReason::PrefixProtected));
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        match adapter.plan(&inst, &req).await {
+            Err(AdapterError::NotActionable {
+                read_only: Some(ReadOnlyReason::PrefixProtected),
+                unavailable: None,
+            }) => {}
+            other => panic!("expected NotActionable(PrefixProtected), got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_execute_streams_log_events_and_succeeds() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
@@ -1471,7 +1515,7 @@ mod tests {
                 cancelled: false,
             },
         );
-        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
+        let adapter = NpmAdapter::new(runner).with_prefix_read_only_fn(|_| None);
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1609,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    fn real_prefix_is_writable_tests_node_modules_itself_not_just_the_prefix_root() {
+    fn real_prefix_read_only_tests_node_modules_itself_not_just_the_prefix_root() {
         // `{prefix}/lib/node_modules` exists but is not writable, even though
         // the prefix root (which we just created and own) is. npm writes
         // into node_modules directly here, so this must report false — a
@@ -1619,8 +1663,9 @@ mod tests {
         std::fs::create_dir_all(&node_modules).expect("create node_modules");
         make_read_only(&node_modules);
 
-        assert!(
-            !real_prefix_is_writable(&prefix),
+        assert_eq!(
+            real_prefix_read_only(&prefix),
+            Some(ReadOnlyReason::PrefixNotWritable),
             "node_modules itself is read-only, so npm cannot write packages into it"
         );
 
@@ -1628,7 +1673,7 @@ mod tests {
     }
 
     #[test]
-    fn real_prefix_is_writable_walks_up_to_lib_when_node_modules_does_not_exist_yet() {
+    fn real_prefix_read_only_walks_up_to_lib_when_node_modules_does_not_exist_yet() {
         // First global install on this prefix: node_modules hasn't been
         // created yet, but its parent (`lib`) exists and is writable, so npm
         // can create node_modules when it needs to.
@@ -1636,13 +1681,13 @@ mod tests {
         let lib_dir = prefix.join("lib");
         std::fs::create_dir_all(&lib_dir).expect("create lib");
 
-        assert!(real_prefix_is_writable(&prefix));
+        assert_eq!(real_prefix_read_only(&prefix), None);
 
         let _ = std::fs::remove_dir_all(&prefix);
     }
 
     #[test]
-    fn real_prefix_is_writable_walks_up_to_lib_and_finds_it_unwritable() {
+    fn real_prefix_read_only_walks_up_to_lib_and_finds_it_unwritable() {
         // Same as above, but `lib` itself cannot be written to, so npm could
         // not create node_modules inside it even though the prefix root can
         // be written to.
@@ -1651,40 +1696,51 @@ mod tests {
         std::fs::create_dir_all(&lib_dir).expect("create lib");
         make_read_only(&lib_dir);
 
-        assert!(!real_prefix_is_writable(&prefix));
+        assert_eq!(
+            real_prefix_read_only(&prefix),
+            Some(ReadOnlyReason::PrefixNotWritable)
+        );
 
         let _ = std::fs::remove_dir_all(&prefix);
     }
 
     #[test]
-    fn real_prefix_is_writable_never_looks_into_a_protected_place() {
+    fn real_prefix_read_only_never_looks_into_a_protected_place_and_says_so() {
         // A prefix kept in `~/Documents`, by its own path or through a
         // link (`npm config set prefix ~/.npm-global`, that folder synced
-        // into Documents): never looked at, so read-only here -- as one
-        // Banager cannot write to is -- though it could be written.
+        // into Documents): never looked at, so read-only here, though it
+        // could be written -- and the reason is that it was not looked
+        // into, not that the account cannot change it (decision I23).
         let home = std::fs::canonicalize(scratch_dir("prefix-in-documents")).unwrap();
         let kept = home.join("Documents/npm-global");
         std::fs::create_dir_all(kept.join("lib/node_modules")).expect("create prefix");
         let linked = home.join(".npm-global");
         std::os::unix::fs::symlink(&kept, &linked).expect("link");
-        assert!(
-            real_prefix_is_writable(&linked),
+        assert_eq!(
+            real_prefix_read_only(&linked),
+            None,
             "writable where nothing is protected"
         );
         let as_if = crate::protected::as_if_home(&home);
-        assert!(!real_prefix_is_writable(&kept));
-        assert!(!real_prefix_is_writable(&linked));
+        assert_eq!(
+            real_prefix_read_only(&kept),
+            Some(ReadOnlyReason::PrefixProtected)
+        );
+        assert_eq!(
+            real_prefix_read_only(&linked),
+            Some(ReadOnlyReason::PrefixProtected)
+        );
         drop(as_if);
         let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
-    fn real_prefix_is_writable_falls_back_to_the_prefix_root_when_lib_is_also_missing() {
+    fn real_prefix_read_only_falls_back_to_the_prefix_root_when_lib_is_also_missing() {
         // Neither `lib` nor `lib/node_modules` exist yet; the nearest
         // existing ancestor is the prefix root itself.
         let prefix = scratch_dir("missing-lib-entirely");
 
-        assert!(real_prefix_is_writable(&prefix));
+        assert_eq!(real_prefix_read_only(&prefix), None);
 
         let _ = std::fs::remove_dir_all(&prefix);
     }

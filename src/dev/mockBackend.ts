@@ -27,7 +27,16 @@ import type {
 import { NO_SIZES } from "../lib/types";
 import { checkEvery } from "../lib/checkFrequency";
 import { adapterIdOf } from "../lib/sources";
-import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, withUnavailableCommands, type World } from "./mockData";
+import {
+  buildWorld,
+  initialSettings,
+  sameKey,
+  unknownScan,
+  unverifiedVersion,
+  withNpmPrefixProtected,
+  withUnavailableCommands,
+  type World,
+} from "./mockData";
 import { appIcon } from "./mockIcons";
 import { withFamilies } from "./mockFamilies";
 import { buildPlan, homebrewRefusal, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
@@ -200,6 +209,8 @@ function judgedFor(path: ScenarioPath, artifacts: InstalledArtifact[]): Installe
 
 export function createMockBackend(scenario: Scenario): MockBackend {
   const world: World = buildWorld(scenario.state);
+  // The protected places' Mac: npm's folder is in one too.
+  if (scenario.path === "unread") withNpmPrefixProtected(world);
   let settings: Settings = initialSettings(scenario);
   let committed: Snapshot | null = null;
   let generation = 0;

@@ -1080,6 +1080,27 @@ describe("the mock backend's facts for the diagnostic text (get_system_facts)", 
     );
   });
 
+  it("keeps npm's folder in ~/Documents with ?path=unread, so its rows are view only for that reason (decision I23)", async () => {
+    const plain = await answer<Snapshot>(backendFor().backend.invoke("refresh"));
+    const NPM = "npm:/opt/homebrew";
+    expect(plain.instances.find((instance) => instance.id === NPM)?.read_only_reason).toBeNull();
+
+    const { backend } = backendFor({ path: "unread" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const npm = snapshot.instances.find((instance) => instance.id === NPM);
+    expect(npm).toMatchObject({ prefix: "/Users/you/Documents/npm-global", read_only_reason: "PrefixProtected" });
+    // And a click on one of its rows is refused for it.
+    const tool = snapshot.artifacts.find((artifact) => artifact.key.instance_id === NPM && artifact.key.name !== "npm");
+    expect(tool).toBeDefined();
+    const refused = expect(
+      backend.invoke("plan_operation", {
+        request: { kind: "Uninstall", instance_id: NPM, artifact_kind: tool!.key.kind, name: tool!.key.name },
+      }),
+    ).rejects.toMatch(/"read_only":"PrefixProtected"/);
+    await vi.runOnlyPendingTimersAsync();
+    await refused;
+  });
+
   it("says what the last refresh made of the PATH folders, as ?path= asks (Check Tool Setup)", async () => {
     const read = backendFor().backend;
     expect((await answer<SystemFacts>(read.invoke("get_system_facts"))).path_folders).toBeNull();

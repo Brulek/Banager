@@ -1421,3 +1421,18 @@ function markSourcePrograms(world: World): void {
     if (npms.has(artifact.key.instance_id) && artifact.key.name === "npm") artifact.uninstall_blocked = "SourceProgram";
   }
 }
+
+/**
+ * `?path=unread`'s npm (decision I23): its global folder kept in
+ * `~/Documents`, as after `npm config set prefix ~/Documents/npm-global`,
+ * a protected place that is not looked into -- so its rows are view only,
+ * and their chip says why: not that the account can't change the folder,
+ * but that protected places aren't read. Only the Homebrew npm of the Mac
+ * above; `?state=notices` has its own.
+ */
+export function withNpmPrefixProtected(world: World): void {
+  const npm = world.instances.find((instance) => instance.id === IDS.npm);
+  if (npm === undefined) return;
+  npm.prefix = `${HOME}/Documents/npm-global`;
+  npm.read_only_reason = "PrefixProtected";
+}

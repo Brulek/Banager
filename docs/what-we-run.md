@@ -1240,9 +1240,13 @@ Verified against npm 12.0.2 (`adapters/meta/npm.toml`).
 prefix -g` (30 s) to learn the global prefix, which is the instance's
 identity, and `<npm> --version` (30 s), then asks `access(2)` whether the
 current user can write `{prefix}/lib/node_modules` — or, when that does
-not exist yet, `{prefix}/lib` or `{prefix}` (`real_prefix_is_writable`).
+not exist yet, `{prefix}/lib` or `{prefix}` (`real_prefix_read_only`).
 A prefix this user cannot write (a Node installed from nodejs.org's
-package leaves a root-owned one) makes the instance read-only. An npm that
+package leaves a root-owned one) makes the instance read-only
+(`PrefixNotWritable`). So does a prefix that is in, or leads into, a
+protected place, such as `~/Documents`: it is not looked into, so whether
+it could be written is not known, and the rows say that rather than that
+the account cannot change it (`PrefixProtected`). An npm that
 will not answer `prefix -g` is still listed, as not responding. When the
 last check this session found exactly one npm at the same executable, and
 that npm is not among this check's results, it stays that source, with what
@@ -1283,8 +1287,9 @@ search query passes `validate_search_query`.
 | Uninstall | `<npm> uninstall -g {name}` | 600 s | No |
 | Upgrade | `<npm> install -g {name}@latest` | 600 s | No |
 
-A plan is refused at click time if the prefix has stopped being writable
-since the refresh that listed it.
+A plan is refused at click time, with the same reason, if the prefix has
+stopped being writable, or is now in a protected place, since the refresh
+that listed it.
 
 npm's own package, `npm`, is never uninstalled: `<npm> uninstall -g npm`
 would remove the npm every other package is updated and uninstalled with.

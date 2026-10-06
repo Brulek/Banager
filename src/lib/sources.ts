@@ -901,11 +901,16 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
  * packages. The very sentences a refusal for that source says
  * (`notActionableMessage`), so the chip and the refusal cannot disagree:
  * npm's promises to manage only the npm packages installed with a Node
- * from Homebrew, since the ones in the old folder do not move over.
+ * from Homebrew, since the ones in the old folder do not move over. An npm
+ * whose folder is in a protected place says that, and that protected
+ * places are not read -- not that the account cannot change the folder,
+ * which may be untrue -- and offers no Node from Homebrew, whose npm would
+ * still use the folder npm's own settings name (decision I23).
  */
 export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
   ByDesign: "sourceNotice.pipReadOnly.description",
   PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
+  PrefixProtected: "sourceNoticeMore.prefixProtected.description",
 };
 
 /**

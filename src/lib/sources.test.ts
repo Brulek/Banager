@@ -44,6 +44,7 @@ import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, Sou
 import { NO_FACTS } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import zhHant from "../i18n/zh-Hant.json";
 import i18n from "../i18n";
 import { noticeValues } from "./answeredWhen";
 
@@ -845,6 +846,36 @@ describe("parseNotActionable", () => {
     expect(parseNotActionable('{"kind":"unknown"}')).toBeNull();
     expect(parseNotActionable('{"kind":"something_else"}')).toBeNull();
     expect(parseNotActionable("")).toBeNull();
+  });
+});
+
+describe("an npm folder in a protected place (decision I23)", () => {
+  it("says it is in a protected place that isn't read, not that the account can't change it, in all three languages", () => {
+    // The folder may well be the user's to change: Banager does not look
+    // into a protected place, so it cannot say -- and a Node from Homebrew
+    // is no way out, as npm's own prefix setting would still point there.
+    expect(en.sourceNoticeMore.prefixProtected.description).toBe(
+      "npm keeps these in a folder that's in, or points to, a protected location. Protected locations aren't read, so whether these can be changed isn't known, and you can only view them.",
+    );
+    expect(zhCN.sourceNoticeMore.prefixProtected.description).toBe(
+      "npm安装它们的文件夹在受保护的位置或指向那里。受保护的位置不读取，无法确认能否修改它们，因此只能查看。",
+    );
+    expect(zhHant.sourceNoticeMore.prefixProtected.description).toBe(
+      "npm安裝它們的檔案夾在受保護的位置或指向那裡。受保護的位置不讀取，無法確認能否修改它們，因此只能查看。",
+    );
+    for (const locale of [en, zhCN, zhHant]) {
+      const said = locale.sourceNoticeMore.prefixProtected.description;
+      expect(said).not.toMatch(/can't change|无法修改的|無法修改的|Homebrew/);
+    }
+  });
+
+  it("is what a row's chip and a refusal say for it", () => {
+    expect(notActionableMessage(fakeT, { read_only: "PrefixProtected", unavailable: null }, "npm")).toBe(
+      "sourceNoticeMore.prefixProtected.description",
+    );
+    expect(
+      parseNotActionable('{"kind":"not_actionable","read_only":"PrefixProtected","unavailable":null}'),
+    ).toEqual({ read_only: "PrefixProtected", unavailable: null });
   });
 });
 
@@ -1906,6 +1937,7 @@ describe("the Updates page's chip details", () => {
       pipReadOnly: { description: string };
       prefixNotWritable: { description: string };
     };
+    sourceNoticeMore: { prefixProtected: { description: string } };
   }
   const details = (locale: ChipCopy) => [
     locale.updates.blocked.Pinned.detail,
@@ -1915,6 +1947,7 @@ describe("the Updates page's chip details", () => {
     locale.updates.cannotCheckShort,
     locale.sourceNotice.pipReadOnly.description,
     locale.sourceNotice.prefixNotWritable.description,
+    locale.sourceNoticeMore.prefixProtected.description,
     ...Object.values(locale.updates.unavailableDetail),
   ];
 
@@ -1937,6 +1970,7 @@ describe("the Updates page's chip details", () => {
     expect(READ_ONLY_DETAIL_KEYS).toEqual({
       ByDesign: "sourceNotice.pipReadOnly.description",
       PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
+      PrefixProtected: "sourceNoticeMore.prefixProtected.description",
     });
     expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip")).toBe(
       READ_ONLY_DETAIL_KEYS.ByDesign,

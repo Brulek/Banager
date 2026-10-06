@@ -438,9 +438,11 @@ export interface UpdateCandidate {
  * `ReadOnlyReason` in crates/banager-core/src/model.rs: bare-string unit
  * variants, so a new Rust variant does *not* fail this union at compile
  * time -- it lands in whatever default branch reads it. `types.test.ts`
- * keeps a shape test over both spellings.
+ * keeps a shape test over every spelling. `PrefixProtected`: npm's folder
+ * is in, or leads into, a protected place, which is not looked into, so
+ * whether it could be changed is not known (decision I23).
  */
-export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
+export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable" | "PrefixProtected";
 /**
  * Why a source Banager knows about cannot answer right now. Mirrors
  * `Unavailable` in crates/banager-core/src/model.rs, same bare-string rule

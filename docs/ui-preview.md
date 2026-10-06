@@ -378,7 +378,10 @@ value falls back to the default and logs a warning in the console.
 | `sizes` | `measured` (default), `pending` | How measuring disk use goes after each refresh: the Installed page's details say 「正在计算…」 ("Calculating…") for about a second and a half, then each tool's size; with `pending` it never finishes. |
 | `accent` | `blue` (default), `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite` | The accent the user picked in System Settings, macOS 27's own value for each, in the light and the dark appearance, darkened by 15% under Increase Contrast (`src/dev/mockAccent.ts`). On `yellow`, `green`, `orange`, `graphite` and `pink` (and `red` in the dark appearance) the words on the accent -- Update All, a sheet's default button, a menu's highlighted item, the focused list's selected row -- are black; on the others, white (decision I21b, `src/lib/accentInk.ts`). |
 
-With `?path=unread`, pipx's Poetry also has its environment under
+With `?path=unread`, npm's global folder is `~/Documents/npm-global`, a
+protected place, so npm's rows are 「仅供查看」 ("View only"), and the ⓘ
+says protected places aren't read rather than that the account can't change
+the folder (decision I23). pipx's Poetry also has its environment under
 `~/Documents/venvs/poetry`. Its command claims were dropped, but the snapshot
 retains `commands_unavailable: true`, so it contributes to the couldn't-check
 count even with an empty command list. Open Help → Check Tool Setup to see it.

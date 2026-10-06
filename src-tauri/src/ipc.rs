@@ -2416,6 +2416,15 @@ mod tests {
         assert_eq!(parsed["kind"], "not_actionable");
         assert_eq!(parsed["read_only"], "PrefixNotWritable");
         assert_eq!(parsed["unavailable"], serde_json::Value::Null);
+
+        // A prefix in a protected place, by its own name, which
+        // `READ_ONLY_DETAIL_KEYS` in src/lib/sources.ts words (decision I23).
+        let protected: serde_json::Value = serde_json::from_str(&not_actionable_json(
+            Some(banager_core::model::ReadOnlyReason::PrefixProtected),
+            None,
+        ))
+        .expect("JSON");
+        assert_eq!(protected["read_only"], "PrefixProtected");
     }
 
     #[test]

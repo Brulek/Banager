@@ -695,6 +695,11 @@
       "setupLine": "上次响应：{{when}}"
     }
   },
+  "sourceNoticeMore": {
+    "prefixProtected": {
+      "description": "npm安装它们的文件夹在受保护的位置或指向那里。受保护的位置不读取，无法确认能否修改它们，因此只能查看。"
+    }
+  },
   "loginPathNotice": {
     "title": "无法读取终端的设置",
     "description": "终端里能找到的工具可能没有列在这里，例如用npm、pipx、uv或Cargo安装的。"

@@ -757,6 +757,11 @@
       "setupLine": "Last responded {{when}}"
     }
   },
+  "sourceNoticeMore": {
+    "prefixProtected": {
+      "description": "npm keeps these in a folder that's in, or points to, a protected location. Protected locations aren't read, so whether these can be changed isn't known, and you can only view them."
+    }
+  },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."

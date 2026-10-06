@@ -757,7 +757,11 @@ mod tests {
         // gate in `issue_plan` -- which is the point: the invariant holds
         // for every adapter, including the six whose own `plan()` has no
         // writability check of its own.
-        for reason in [ReadOnlyReason::ByDesign, ReadOnlyReason::PrefixNotWritable] {
+        for reason in [
+            ReadOnlyReason::ByDesign,
+            ReadOnlyReason::PrefixNotWritable,
+            ReadOnlyReason::PrefixProtected,
+        ] {
             let adapter = FakeAdapter::new(vec![test_support::make_read_only_instance(
                 "fake", "fake:1", reason,
             )]);

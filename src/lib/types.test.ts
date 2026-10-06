@@ -206,14 +206,14 @@ describe("types", () => {
     ]);
   });
 
-  it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
+  it("spells every ReadOnlyReason variant as a bare string, and writable as null", () => {
     // `Option<ReadOnlyReason>` on the Rust side: a unit variant serialises
     // to its bare name, `None` to `null`. Every spelling below has to match
     // `crates/banager-core/src/model.rs` exactly -- nothing checks this at
     // compile time, and a typo would silently land every npm row in the
     // wrong branch of the notice copy.
-    const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable"];
-    expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable"]);
+    const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable", "PrefixProtected"];
+    expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable", "PrefixProtected"]);
     const writable: ReadOnlyReason | null = null;
     expect(roundTrip(writable)).toBeNull();
   });
