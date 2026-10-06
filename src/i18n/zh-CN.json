@@ -168,6 +168,8 @@
     "upToDateHere": "能在这里更新的都已是最新",
     "notCheckedRest_other": "{{sources}}这次没检查，其余都是最新的",
     "notFinishedRest_other": "{{sources}}这次没检查完，其余都是最新的",
+    "notCheckedRestHere_other": "{{sources}}这次没检查，其余能在这里更新的都已是最新",
+    "notFinishedRestHere_other": "{{sources}}这次没检查完，其余能在这里更新的都已是最新",
     "notChecked_other": "{{sources}}这次没检查",
     "notFinished_other": "{{sources}}这次没检查完"
   },

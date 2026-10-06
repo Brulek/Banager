@@ -40,16 +40,29 @@ export function notCheckedNames(t: Translate, notChecked: NotChecked, instances:
  * The headline: 「uv这次没检查」 for a source that did not answer, or whose
  * list was still downloading; 「这次没检查完」 where one answered and was
  * checked in part (`partly`: a step that failed, a list that could not be
- * downloaded); and 「，其余都是最新的」 after it only where some other source
- * was checked in full (`rest`) -- never of nothing.
+ * downloaded); and after it, only where some other source was checked in
+ * full (`rest`) -- never of nothing -- 「，其余都是最新的」 where those
+ * others list nothing and are all ones Banager checks (`everythingElse`),
+ * else 「，其余能在这里更新的都已是最新」: no more than the all good says
+ * of the same rows (「能在这里更新的都已是最新」).
  */
-export function notCheckedHeadline(t: Translate, notChecked: NotChecked, instances: readonly ManagerInstance[]): string {
+export function notCheckedHeadline(
+  t: Translate,
+  notChecked: NotChecked,
+  everythingElse: boolean,
+  instances: readonly ManagerInstance[],
+): string {
   const names = notCheckedNames(t, notChecked, instances);
   const values = { sources: namesInSentence(t, names), count: names.length };
-  if (notChecked.rest) {
+  if (notChecked.rest && everythingElse) {
     return notChecked.partly
       ? t("overviewAllGood.notFinishedRest", values)
       : t("overviewAllGood.notCheckedRest", values);
+  }
+  if (notChecked.rest) {
+    return notChecked.partly
+      ? t("overviewAllGood.notFinishedRestHere", values)
+      : t("overviewAllGood.notCheckedRestHere", values);
   }
   return notChecked.partly ? t("overviewAllGood.notFinished", values) : t("overviewAllGood.notChecked", values);
 }

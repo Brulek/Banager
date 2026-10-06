@@ -19,7 +19,7 @@ import type {
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
-import { canWrite, isAvailable } from "./sources";
+import { adapterIdOf, canWrite, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 import { updatesUnchecked } from "./uncheckedStandalone";
 import { unusedCopies } from "./commands";
@@ -466,7 +466,14 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   full this time: `notChecked` names it, for the headline to say
  *   (「uv这次没检查，其余都是最新的」). Calling that up to date is the lie
  *   the Updates page stopped telling; the Overview does not start. Its
- *   group of problems says why, a row each.
+ *   group of problems says why, a row each. `everythingElse` is
+ *   `everything` of the sources it does not name: none of them has a row
+ *   listed -- hidden, can't be updated here, a copy Terminal does not run
+ *   -- and each is one Banager checks (not Codex's own install). Where it
+ *   is false the headline claims of the rest no more than the all good
+ *   would of the same rows: 「其余能在这里更新的都已是最新」. The rows of
+ *   a source it names (uv's, kept from its last answer) are its own, said
+ *   under the headline and not held against the rest.
  *
  * The last three carry what the Overview says under the headline, in the
  * Updates page's own numbers: `cantUpdateHere`, the updates under its
@@ -487,7 +494,14 @@ export type UpdatesSummary =
   | { kind: "updating"; count: number; password: number }
   | { kind: "needsPassword"; count: number; cantUpdateHere: number; hidden: number; notUsed: number }
   | { kind: "upToDate"; everything: boolean; cantUpdateHere: number; hidden: number; notUsed: number }
-  | { kind: "nothingToUpdate"; notChecked: NotChecked; cantUpdateHere: number; hidden: number; notUsed: number };
+  | {
+      kind: "nothingToUpdate";
+      notChecked: NotChecked;
+      everythingElse: boolean;
+      cantUpdateHere: number;
+      hidden: number;
+      notUsed: number;
+    };
 
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors"> & Partial<Pick<Snapshot, "artifacts">>,
@@ -513,7 +527,16 @@ export function updatesSummary(
   };
   if (password > 0) return { kind: "needsPassword", count: password, ...besides };
   const notChecked = notCheckedThisTime(snapshot.instances, snapshot.errors);
-  if (notChecked !== null) return { kind: "nothingToUpdate", notChecked, ...besides };
+  if (notChecked !== null) {
+    // A bare adapter id names every source of its kind: one only an error
+    // names (`notCheckedThisTime`).
+    const named = new Set(notChecked.ids);
+    const ofNamed = (instanceId: string) => named.has(instanceId) || named.has(adapterIdOf(instanceId));
+    const everythingElse =
+      snapshot.updates.every((candidate) => ofNamed(candidate.key.instance_id)) &&
+      snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance));
+    return { kind: "nothingToUpdate", notChecked, everythingElse, ...besides };
+  }
   const everything = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
   return { kind: "upToDate", everything, ...besides };
 }

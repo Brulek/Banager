@@ -37,7 +37,8 @@ import type { Page } from "../store/ui";
  *   Ollama whose `OLLAMA_HOST` is an `https://` address, and a second
  *   Python, with no pip.
  * - `unchecked`: nothing to update, and uv not answering: the Overview
- *   names it, 「uv这次没检查，其余都是最新的」 (decision I22).
+ *   names it, 「uv这次没检查，其余能在这里更新的都已是最新」 (decision I22;
+ *   Codex's own install, which Banager never checks, is there too).
  */
 export const SCENARIO_STATES = [
   "full",

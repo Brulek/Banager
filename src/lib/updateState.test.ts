@@ -475,6 +475,7 @@ describe("updatesSummary", () => {
     expect(updatesSummary({ instances: [stopped], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
       notChecked: { ids: [brew.id], partly: false, rest: false },
+      everythingElse: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -524,6 +525,8 @@ describe("updatesSummary", () => {
       kind: "nothingToUpdate",
       // Homebrew answered and failed a step; npm's detection failed.
       notChecked: { ids: [brew.id, "npm"], partly: true, rest: true },
+      // pip answered, and lists urllib3: not every other tool is up to date.
+      everythingElse: false,
       // jq, urllib3 and wget: what the Updates page lists, every row
       // under "Can't update here".
       cantUpdateHere: 3,
@@ -539,6 +542,7 @@ describe("updatesSummary", () => {
     expect(updatesSummary({ instances: [updating], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
       notChecked: { ids: [brew.id], partly: false, rest: false },
+      everythingElse: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -550,6 +554,7 @@ describe("updatesSummary", () => {
     expect(updatesSummary({ instances: [brew], updates: [], errors: [failed] }, hiding())).toEqual({
       kind: "nothingToUpdate",
       notChecked: { ids: [brew.id], partly: true, rest: false },
+      everythingElse: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,

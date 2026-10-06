@@ -7,7 +7,8 @@ import { DEFAULT_SCENARIO, parseScenario } from "./scenario";
 /**
  * `?state=unchecked` (decision I22): the preview's Mac with nothing to
  * update and uv not answering, so the Overview names it --
- * 「uv这次没检查，其余都是最新的」 -- in place of the green check.
+ * 「uv这次没检查，其余能在这里更新的都已是最新」, as Codex's own install is
+ * there too -- in place of the green check.
  */
 
 beforeEach(() => {
@@ -46,6 +47,9 @@ describe("?state=unchecked", () => {
     expect(updatesSummary(snapshot, settings)).toMatchObject({
       kind: "nothingToUpdate",
       notChecked: { ids: [snapshot.instances.find((i) => i.adapter_id === "uv")!.id], partly: false, rest: true },
+      // Codex's own install is there, whose updates Banager never checks:
+      // 「uv这次没检查，其余能在这里更新的都已是最新」.
+      everythingElse: false,
     });
   });
 });

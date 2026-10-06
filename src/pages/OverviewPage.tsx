@@ -72,7 +72,7 @@ function headlineText(
       return summary.everything ? t("overview.upToDate") : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
       if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
-      return notCheckedHeadline(t, summary.notChecked, instances);
+      return notCheckedHeadline(t, summary.notChecked, summary.everythingElse, instances);
   }
 }
 

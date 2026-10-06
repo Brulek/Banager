@@ -121,6 +121,7 @@ describe("the Overview's all good", () => {
     expect(summaryOf([brew, stopped(uv)])).toEqual({
       kind: "nothingToUpdate",
       notChecked: { ids: [uv.id], partly: false, rest: true },
+      everythingElse: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -129,6 +130,7 @@ describe("the Overview's all good", () => {
     expect(summaryOf([stopped(ollama)])).toEqual({
       kind: "nothingToUpdate",
       notChecked: { ids: [ollama.id], partly: false, rest: false },
+      everythingElse: true,
       cantUpdateHere: 0,
       hidden: 0,
       notUsed: 0,
@@ -168,6 +170,46 @@ describe("the Overview's all good", () => {
     });
   });
 
+  it("says whether the sources it does not name list anything, as the all good's `everything` does", () => {
+    // uv's rows from its last answer are its own, said under the headline:
+    // not held against the rest.
+    const carried = candidate(uv.id, "ruff");
+    expect(summaryOf([brew, stopped(uv)], [carried])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: true,
+      cantUpdateHere: 1,
+    });
+    // A pinned formula of a Homebrew that answered: not every other tool is up to date.
+    const pinned = candidate(brew.id, "jq", { blocked: "Pinned" });
+    expect(summaryOf([brew, stopped(uv)], [pinned])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: false,
+      cantUpdateHere: 1,
+    });
+    // pip, read-only, answered with an update.
+    expect(summaryOf([brew, pip, stopped(ollama)], [candidate(pip.id, "urllib3")])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: false,
+    });
+    // An update of Homebrew's the user hid.
+    const glib = candidate(brew.id, "glib");
+    expect(summaryOf([brew, stopped(uv)], [glib], [], hiding({ ignored_updates: [glib.key] }))).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: false,
+      hidden: 1,
+    });
+    // Codex's own install, whose updates Banager never checks.
+    expect(summaryOf([brew, stopped(uv), codex])).toMatchObject({ kind: "nothingToUpdate", everythingElse: false });
+    // A row of a source only an error names, by its kind: that source's own.
+    const typescript = candidate("npm:/opt/homebrew", "typescript");
+    const detection = { instance_id: "npm", message: "internal error detecting this source" };
+    expect(summaryOf([brew], [typescript], [detection])).toMatchObject({
+      kind: "nothingToUpdate",
+      everythingElse: true,
+      cantUpdateHere: 1,
+    });
+  });
+
   it("still counts what there is to install, update or type the password for first", () => {
     const glib = candidate(brew.id, "glib");
     expect(summaryOf([brew, stopped(uv)], [glib]).kind).toBe("updates");
@@ -195,17 +237,38 @@ describe("the names in the headline", () => {
 
   it("says 没检查 or 没检查完, with 其余 only where something else was checked", () => {
     const sources = [brew, ollama, uv];
-    expect(notCheckedHeadline(zh, { ids: [ollama.id], partly: false, rest: true }, sources)).toBe(
+    expect(notCheckedHeadline(zh, { ids: [ollama.id], partly: false, rest: true }, true, sources)).toBe(
       "Ollama这次没检查，其余都是最新的",
     );
-    expect(notCheckedHeadline(zh, { ids: [ollama.id, uv.id], partly: true, rest: true }, sources)).toBe(
+    expect(notCheckedHeadline(zh, { ids: [ollama.id, uv.id], partly: true, rest: true }, true, sources)).toBe(
       "Ollama和uv这次没检查完，其余都是最新的",
     );
-    expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, sources)).toBe(
+    expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, true, sources)).toBe(
       "Ollama wasn't checked this time",
     );
-    expect(notCheckedHeadline(en, { ids: [brew.id, ollama.id, uv.id], partly: true, rest: false }, sources)).toBe(
+    expect(notCheckedHeadline(en, { ids: [brew.id, ollama.id, uv.id], partly: true, rest: false }, true, sources)).toBe(
       "Homebrew, Ollama and uv weren't fully checked this time",
+    );
+  });
+
+  it("says of the rest only that what can be updated here is up to date, where the rest lists something", () => {
+    const sources = [brew, ollama, uv];
+    const hant = i18n.getFixedT("zh-Hant");
+    const ollamaOnly = { ids: [ollama.id], partly: false, rest: true };
+    expect(notCheckedHeadline(zh, ollamaOnly, false, sources)).toBe("Ollama这次没检查，其余能在这里更新的都已是最新");
+    expect(notCheckedHeadline(hant, ollamaOnly, false, sources)).toBe("Ollama這次沒檢查，其餘能在這裡更新的都已是最新");
+    expect(notCheckedHeadline(en, ollamaOnly, false, sources)).toBe(
+      "Ollama wasn't checked this time; everything else you can update here is up to date",
+    );
+    const both = { ids: [ollama.id, uv.id], partly: true, rest: true };
+    expect(notCheckedHeadline(en, both, false, sources)).toBe(
+      "Ollama and uv weren't fully checked this time; everything else you can update here is up to date",
+    );
+    expect(notCheckedHeadline(zh, both, false, sources)).toBe("Ollama和uv这次没检查完，其余能在这里更新的都已是最新");
+    expect(notCheckedHeadline(hant, both, false, sources)).toBe("Ollama和uv這次沒檢查完，其餘能在這裡更新的都已是最新");
+    // No rest to speak of: the same either way.
+    expect(notCheckedHeadline(en, { ids: [ollama.id], partly: false, rest: false }, false, sources)).toBe(
+      "Ollama wasn't checked this time",
     );
   });
 });

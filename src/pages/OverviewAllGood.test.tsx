@@ -279,14 +279,55 @@ describe("the Overview's all good", () => {
     await headlineIn("zh-CN", "Ollama这次没检查");
   });
 
-  it("says the hidden and the unchecked under the name, as under the green check", async () => {
+  it("says the hidden under the name, and of the rest only what can be updated here, as the green check does", async () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama], updates: [candidate(glib)] });
     settings.ignored_updates = [glib];
     renderOverview();
     const headline = await screen.findByRole("heading", {
       level: 2,
-      name: "Ollama wasn't checked this time; everything else is up to date",
+      name: "Ollama wasn't checked this time; everything else you can update here is up to date",
     });
     await waitFor(() => expect(headline.nextElementSibling?.textContent).toBe("1 hidden"));
+  });
+
+  it("does not call the rest up to date over an update of a source that answered, which can't be updated here", async () => {
+    // pip answered: its urllib3 has an update, under "Can't update here".
+    served = snapshotWith({ instances: [brew, pip, stoppedOllama], updates: [candidate(urllib3)] });
+    renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "Ollama wasn't checked this time; everything else you can update here is up to date",
+    });
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
+    const zh = await headlineIn("zh-CN", "Ollama这次没检查，其余能在这里更新的都已是最新");
+    expect(zh.nextElementSibling?.textContent).toBe("1个无法在这里更新");
+    await headlineIn("zh-Hant", "Ollama這次沒檢查，其餘能在這裡更新的都已是最新");
+  });
+
+  it("does not call the rest up to date beside Codex's own install, whose updates Banager never checks", async () => {
+    served = snapshotWith({
+      instances: [brew, pip, stoppedOllama, codexOwn],
+      artifacts: [artifact(glib), artifact(ownCodex)],
+    });
+    renderOverview();
+    await screen.findByRole("heading", {
+      level: 2,
+      name: "Ollama wasn't checked this time; everything else you can update here is up to date",
+    });
+  });
+
+  it("calls the rest up to date over the rows of the source it names, kept from its last answer", async () => {
+    const ruff = key(stoppedUv, "ruff", "Package");
+    served = snapshotWith({
+      instances: [brew, pip, stoppedUv],
+      artifacts: [artifact(glib), artifact(ruff)],
+      updates: [candidate(ruff)],
+    });
+    renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "uv wasn't checked this time; everything else is up to date",
+    });
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
   });
 });

@@ -933,10 +933,11 @@ describe("OverviewPage", () => {
         </>,
       );
 
-      // The stopped Ollama was not checked: the headline names it (I22).
+      // The stopped Ollama was not checked: the headline names it (I22),
+      // and of the rest, which lists rows, says only what can be updated here.
       const headline = await findByRole("heading", {
         level: 2,
-        name: "Ollama wasn't checked this time; everything else is up to date",
+        name: "Ollama wasn't checked this time; everything else you can update here is up to date",
       });
       expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
       // The same number the Updates page gives its folded rows.
