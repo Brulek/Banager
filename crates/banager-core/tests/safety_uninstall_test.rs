@@ -307,11 +307,13 @@ async fn test_a_homebrew_formula_with_two_versions_is_uninstalled_whole_and_only
     }
     let runner = Arc::new(MockRunner::new());
     let adapter = BrewAdapter::new(runner.clone());
-    let inst = instance("brew", "/opt/homebrew/bin/brew", prefix.to_str().unwrap());
-    runner.respond(
-        vec!["/opt/homebrew/bin/brew", "uses", "--installed", "wget"],
-        exited_0(),
-    );
+    // Its `brew` under the same prefix, as detection finds it
+    // (`<prefix>/bin/brew`): the uninstall looks at the pin again there,
+    // right before it runs.
+    let brew = prefix.join("bin/brew");
+    let brew = brew.to_str().unwrap();
+    let inst = instance("brew", brew, prefix.to_str().unwrap());
+    runner.respond(vec![brew, "uses", "--installed", "wget"], exited_0());
     let request = OpRequest {
         kind: OpKind::Uninstall,
         instance_id: inst.id.clone(),

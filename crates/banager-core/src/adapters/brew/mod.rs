@@ -928,6 +928,33 @@ impl BrewAdapter {
         Ok(())
     }
 
+    /// For the uninstall of every version of a formula (U9's `--force`),
+    /// the pin looked at again right before it runs: `--force` skips
+    /// Homebrew's own refusal of a pinned formula (`uninstall.rb:45-53`),
+    /// which the preview left standing by passing it only where there was
+    /// no pin. A formula pinned in Terminal since then -- or whose pin
+    /// record, or Cellar, cannot be looked at now -- is refused, not
+    /// uninstalled with a command the preview did not mean for it. Any
+    /// other plan passes.
+    fn require_still_unpinned(&self, plan: &Plan) -> Result<(), AdapterError> {
+        let PlanAction::Command { program, args, .. } = &plan.action else {
+            return Ok(());
+        };
+        if plan.request.kind != OpKind::Uninstall
+            || plan.request.artifact_kind != ArtifactKind::Formula
+            || !args.iter().any(|arg| arg == "--force")
+        {
+            return Ok(());
+        }
+        match (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name) {
+            Some(kegs) if !kegs.pinned => Ok(()),
+            _ => Err(AdapterError::Refused(format!(
+                "{} is pinned, or its pin could not be looked at, since the preview; uninstalling every version would override the pin",
+                plan.request.name
+            ))),
+        }
+    }
+
     fn update_lock_for(&self, inst_id: &InstanceId) -> Arc<tokio::sync::Mutex<()>> {
         let mut locks = self.update_locks.lock().unwrap();
         locks
@@ -2086,6 +2113,7 @@ impl BrewAdapter {
                 self.require_no_auto_update(&Self::prefix_for(program), env)?;
             }
         }
+        self.require_still_unpinned(plan)?;
         let PlanAction::CommandThen {
             program,
             args,
@@ -7180,6 +7208,68 @@ mod plan_execute_tests {
                 .await;
             assert!(result.is_err(), "{result:?}");
             assert!(runner.calls().is_empty(), "{:?}", runner.calls());
+        }
+
+        #[tokio::test]
+        async fn an_uninstall_of_every_version_is_refused_when_the_formula_is_pinned_since_the_preview(
+        ) {
+            // `--force` skips Homebrew's own refusal of a pinned formula, so
+            // the pin is looked at again at the click, as brew.env is: one
+            // pinned in Terminal since the preview -- or a pin record that
+            // cannot be looked at now -- stops it before anything runs.
+            let runner = Arc::new(MockRunner::new());
+            nothing_uses(&runner, "wget");
+            let inst = test_instance();
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .plan(
+                    &inst,
+                    &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            assert_eq!(
+                command_args(&plan),
+                ["uninstall", "--formula", "--force", "wget"]
+            );
+            let planned = runner.calls().len();
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            let pinned: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    pinned: true,
+                })
+            };
+            let unread: Read = |_, _| None;
+            for read in [pinned, unread] {
+                let result = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(read)
+                    .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                    .await;
+                assert!(
+                    matches!(result, Err(AdapterError::Refused(_))),
+                    "{result:?}"
+                );
+                assert_eq!(runner.calls().len(), planned, "{:?}", runner.calls());
+            }
+            // Still not pinned: it runs as the preview showed it.
+            runner.respond(
+                vec![
+                    "/opt/homebrew/bin/brew",
+                    "uninstall",
+                    "--formula",
+                    "--force",
+                    "wget",
+                ],
+                ok("", "", 0),
+            );
+            let outcome = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                .await
+                .expect("execute");
+            assert_eq!(outcome, Outcome::Succeeded);
+            assert_eq!(runner.calls().len(), planned + 1);
         }
     }
 }

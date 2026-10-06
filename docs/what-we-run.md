@@ -792,7 +792,11 @@ came back on the Installed page, still installed. So:
   depends on the formula (`uninstall.rb:25-28`, over every version) and
   the autoremove switch as they are. It skips Homebrew's refusal of a
   pinned formula, so it is never passed when
-  `<prefix>/var/homebrew/pinned/<name>` is there or cannot be looked at;
+  `<prefix>/var/homebrew/pinned/<name>` is there or cannot be looked at,
+  and the pin is looked at again right before the command runs: an
+  uninstall of a formula pinned since its preview, or whose pin or Cellar
+  cannot be looked at then, is refused and runs nothing
+  (`BrewAdapter::require_still_unpinned`);
   its refusal of a name with nothing installed (`cmd/uninstall.rb:138`),
   which the reading after the uninstall answers anyway; and the lock
   Homebrew takes on each version while it deletes it (`uninstall.rb:56`),
@@ -801,10 +805,11 @@ came back on the Installed page, still installed. So:
   Homebrew never overlap. With one version installed, or a pin, the
   uninstall is the plain `brew uninstall --formula {name}`.
 
-Both read, during the upgrade and the uninstall preview of a formula, the
-names in `<prefix>/Cellar/<name>` -- its versions, the folders there -- and
-whether `<prefix>/var/homebrew/pinned/<name>` is there (`brew::kegs`,
-`lstat` only); `<name>` is the last part of a tap's `user/tap/name`.
+Both read, during the upgrade and the uninstall preview of a formula, and
+again right before an uninstall with `--force` runs, the names in
+`<prefix>/Cellar/<name>` -- its versions, the folders there -- and whether
+`<prefix>/var/homebrew/pinned/<name>` is there (`brew::kegs`, `lstat`
+only); `<name>` is the last part of a tap's `user/tap/name`.
 
 **`brew.env`.** Homebrew's launcher, `bin/brew`, exports every
 `HOMEBREW_*` line of up to three `brew.env` files over the environment it
