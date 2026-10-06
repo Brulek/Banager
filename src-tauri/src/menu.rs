@@ -1161,11 +1161,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .replace("{{name}}", "Banager");
-            let expected = if welcome_exact {
-                title
-            } else {
-                spaced(&title)
-            };
+            let expected = if welcome_exact { title } else { spaced(&title) };
             assert_eq!(words.welcome.replace("{app}", "Banager"), expected);
             // Common Questions as the sheet's title names it.
             assert_eq!(
