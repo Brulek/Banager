@@ -3672,12 +3672,17 @@ over https isn't supported" (its section says exactly how). Recorded in
 **Through a proxy, as Terminal's or this Mac's settings say.** When the login shell's
 settings name a proxy (How Banager runs anything), Banager's own requests
 go through it, looked up at each request (`http::proxy::proxy_for`, which
-`RealHttpClient` asks), by curl's rules: `https_proxy` for an https
+`RealHttpClient` asks), by rules like curl's: `https_proxy` for an https
 address and `http_proxy` for an http one, each read in lowercase first and
 then in uppercase, then `all_proxy` / `ALL_PROXY`; a setting with nothing
 in it counts as not set; and `no_proxy` / `NO_PROXY` -- names (each with
-every name under it), addresses, address ranges such as `192.168.0.0/16`,
-or `*` for everything -- sends what it names straight. A setting the
+every name under it, written with or without a leading `.`), addresses,
+address ranges such as `192.168.0.0/16`, or `*` for everything -- sends
+what it names straight. They differ from curl's in two things: for an
+http address `HTTP_PROXY` in uppercase is read too, as Go programs such as
+`ollama` read it, where curl reads only the lowercase one; and a
+`no_proxy` entry starting `*.` names what the rest of it names, where curl
+takes no wildcard but a lone `*`. A setting the
 login shell did not set is taken from Banager's own environment, which the
 commands it runs inherit too. When neither names a proxy for a request,
 it goes through the one this Mac's own network settings name (System

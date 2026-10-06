@@ -1512,10 +1512,18 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
         "`socks5://`",
         "System Settings → Network",
         "\"system proxy\" mode",
+        // Where `proxy_for` parts from curl (the U12 review).
+        "rules like curl's",
+        "`HTTP_PROXY`",
+        "`*.`",
     ] {
         assert!(
             folded.contains(phrase),
             "the `## Network` section of docs/what-we-run.md does not say {phrase:?} about the proxy Banager's own requests go through"
         );
     }
+    assert!(
+        !folded.contains("by curl's rules"),
+        "the `## Network` section says Banager's own requests pick a proxy by curl's rules, but `proxy_for` also reads `HTTP_PROXY` and a `*.` in `no_proxy`, which curl does not"
+    );
 }

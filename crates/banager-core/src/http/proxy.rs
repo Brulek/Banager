@@ -7,12 +7,17 @@
 //! proxy on another machine cannot reach the Ollama on this one, and one
 //! on this Mac has no reason to be asked.
 //!
-//! The rules are curl's, which Homebrew and pip follow: `https_proxy` for
-//! an https address and `http_proxy` for an http one, each read in
+//! The rules are like curl's, which Homebrew downloads with: `https_proxy`
+//! for an https address and `http_proxy` for an http one, each read in
 //! lowercase first and then in uppercase, then `all_proxy` / `ALL_PROXY`;
 //! a setting with nothing in it counts as not set; and `no_proxy` /
 //! `NO_PROXY`, a comma-separated list of names, addresses and address
-//! ranges, sends what it names straight. This decides only the way, never
+//! ranges, sends what it names straight. Two things differ from curl's:
+//! `HTTP_PROXY` in uppercase is read for an http address too, as Go
+//! programs such as `ollama` read it (curl reads only the lowercase one
+//! there, against "httpoxy", which a desktop app does not meet); and a
+//! `no_proxy` entry starting `*.` names what the rest of it names (curl
+//! takes no wildcard but a lone `*`). This decides only the way, never
 //! the destination: the hosts a request may go to are still the ones
 //! `real::host_allowed` lets through.
 
@@ -106,10 +111,11 @@ fn ipv4_is_this_mac(ip: Ipv4Addr) -> bool {
     ip.is_loopback() || ip.is_unspecified()
 }
 
-/// Whether `no_proxy`, as curl reads it, names `host`: `*` names every
-/// host; a name names itself and every name under it, with or without a
-/// leading `.` (or `*.`); an address names itself, and an address with a
-/// `/` and a prefix length the range it starts.
+/// Whether `no_proxy`, read as curl reads it, names `host`: `*` names
+/// every host; a name names itself and every name under it, with or
+/// without a leading `.` -- or `*.`, which curl does not take; an address
+/// names itself, and an address with a `/` and a prefix length the range
+/// it starts.
 fn listed(host: &Host<&str>, no_proxy: &str) -> bool {
     no_proxy
         .split(',')
