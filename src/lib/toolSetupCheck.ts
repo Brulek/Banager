@@ -280,7 +280,7 @@ function sourceLines(t: Translate, input: ToolSetupInput): SetupLine[] {
  * can't find some tool. Read by `setupAttention`;
  * src/lib/setupAttention.test.ts holds the two together.
  */
-function notOnPathWarns(artifacts: readonly InstalledArtifact[], pending: boolean): boolean {
+function notOnPathWarns(artifacts: InstalledArtifact[], pending: boolean): boolean {
   return !pending && commandsKnown(artifacts, false, "verdicts") === "known" && discoverCounts(artifacts).notOnPath > 0;
 }
 
