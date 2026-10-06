@@ -187,6 +187,34 @@ describe("JustUpdated", () => {
     expect(within(lines[1]).getByText("npm")).toHaveClass("sr-only");
   });
 
+  it("shows in sight which source a tool with no logo came from: the mark on its tile's corner (I8)", () => {
+    // tokei, with no logo of its own, updated from Cargo and from
+    // Homebrew: the two tiles alike but for the source's mark on each.
+    const cargo = {
+      ...entry,
+      id: "op:6",
+      opId: 6,
+      key: { instance_id: "cargo:/Users/you/.cargo", kind: "Binary" as const, name: "tokei" },
+      adapterId: "cargo",
+      sourceLabel: "Cargo",
+      name: "tokei",
+    };
+    const brew = { ...entry, key: { ...entry.key, name: "tokei" }, name: "tokei" };
+    renderWithProviders(<JustUpdated entries={[cargo, brew]} onClear={() => {}} />);
+
+    const marks = screen.getAllByRole("listitem").map((line) => {
+      const tile = line.querySelector("[data-program-tile]");
+      expect(tile).not.toBeNull();
+      const badge = line.querySelector("[data-source-badge]") as HTMLElement;
+      expect(badge).not.toBeNull();
+      // Drawn, not said: the source is the line's sr-only text.
+      expect(badge.closest("[aria-hidden='true']")).not.toBeNull();
+      return badge.textContent;
+    });
+    // This test's empty pack: each source's initial.
+    expect(marks).toEqual(["C", "H"]);
+  });
+
   it("says Today and the time for one that finished today, and Updated, as the row says it, with what Banager read in its tooltip (walk-3 W3-19)", () => {
     renderWithProviders(<JustUpdated entries={[{ ...entry, verified: true }]} onClear={() => {}} />);
 

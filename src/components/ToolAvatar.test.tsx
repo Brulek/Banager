@@ -189,7 +189,7 @@ describe("ToolAvatar", () => {
     expect(badge?.firstElementChild?.className).toContain("h-3.5");
   });
 
-  it("sizes the tile as an icon of each size: 24 and 48 with the badge, 20 without", () => {
+  it("sizes the tile as an icon of each size, with the badge at each: 14 at 24, 16 at 48, 10 at 20", () => {
     const glyphOf = (avatar: HTMLElement) => programTile(avatar)?.querySelector("svg")?.getAttribute("width");
     const sm = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "sm" }).avatar();
     expect(programTile(sm)?.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "w-6", "rounded-[5px]"]));
@@ -203,11 +203,21 @@ describe("ToolAvatar", () => {
 
     const compact = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size: "compact" }).avatar();
     expect(programTile(compact)?.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5", "rounded-[4px]"]));
-    expect(glyphOf(compact)).toBe("12");
+    expect(glyphOf(compact)).toBe("11");
+    // The one place an Update History line shows the source: the tile is
+    // the same for every tool with no logo, wherever it came from.
+    const mark = compact.querySelector("[data-source-badge] [data-logo]");
+    expect(mark?.querySelector("path")).toHaveAttribute("d", "M3 3h18v18H3z");
+    expect(mark?.className.split(" ")).toEqual(expect.arrayContaining(["h-2.5", "w-2.5"]));
+  });
+
+  it("puts no mark on a 20 logo or app icon, which it would hide a good part of", () => {
+    const compact = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: jq, size: "compact" }).avatar();
+    expect(ownLogo(compact)?.className).toContain("h-5");
     expect(compact.querySelector("[data-source-badge]")).toBeNull();
   });
 
-  it("sets the prompt a little up and to the left, clear of the badge, as Terminal's icon has it, and centres it with none", () => {
+  it("sets the prompt a little up and to the left, clear of the badge, as Terminal's icon has it", () => {
     // At 32 a centred prompt's cursor ran under the 14 badge on the corner.
     const promptOf = (size: "sm" | "md" | "lg" | "compact") =>
       programTile(renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: wget, size }).avatar())
@@ -217,7 +227,7 @@ describe("ToolAvatar", () => {
     expect(promptOf("md")).toEqual(expect.arrayContaining(["-translate-x-px", "-translate-y-0.5"]));
     expect(promptOf("sm")).toEqual(expect.arrayContaining(["-translate-x-px", "-translate-y-0.5"]));
     expect(promptOf("lg")).toEqual(expect.arrayContaining(["-translate-x-0.5", "-translate-y-0.75"]));
-    expect(promptOf("compact").filter((c) => c.includes("translate"))).toEqual([]);
+    expect(promptOf("compact")).toEqual(expect.arrayContaining(["-translate-x-0.5", "-translate-y-0.5"]));
   });
 
   it("shows a tool whose logo is its source's own as the source, with nothing on its corner", () => {

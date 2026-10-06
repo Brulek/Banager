@@ -39,6 +39,8 @@ const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
  * `lg`, 48px: the icon over a dialog's question about one tool, where
  * NSAlert puts an app's, and the top of the Installed page's inspector.
  * `compact`, 20px: a line of the Updates page's "Update History".
+ * `mini`, 10px: the source's mark on the corner of the neutral tile on
+ * such a line, a tool with no logo of its own (`ToolAvatar`).
  * The square and its corners (22% of its side), whatever is drawn on it.
  * Whole class names, for Tailwind.
  */
@@ -49,6 +51,7 @@ const SIZE_CLASSES = {
   md: "h-8 w-8 rounded-[7px]",
   lg: "h-12 w-12 rounded-[11px]",
   compact: "h-5 w-5 rounded-[4px]",
+  mini: "h-2.5 w-2.5 rounded-[2px]",
 } as const;
 
 export type SourceAvatarSize = keyof typeof SIZE_CLASSES;
@@ -61,6 +64,7 @@ const LETTER_CLASSES: Record<SourceAvatarSize, string> = {
   md: "text-body",
   lg: "text-section",
   compact: "text-small leading-none",
+  mini: "text-[7px] leading-none",
 };
 
 /**
@@ -76,6 +80,7 @@ const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
   md: "h-[18px] w-[18px]",
   lg: "h-[27px] w-[27px]",
   compact: "h-3 w-3",
+  mini: "h-[7px] w-[7px]",
 };
 
 /**

@@ -13,8 +13,8 @@ const NO_KEY: ArtifactKey = { instance_id: "", kind: "Formula", name: "" };
  * An app icon's size, as `SourceAvatar`'s of the same name: `md`, 32px, a
  * row's and a sheet line's; `sm`, 24px, a quiet line's, such as a
  * dialog's list of tools; `compact`, 20px, a line of the Updates page's
- * "Update History", which wears no source mark (at 20 a 14 mark would hide
- * the icon); `lg`, 48px, over a dialog's question about one tool, as
+ * "Update History", where only the neutral tile wears a source mark (a
+ * mark would hide a good part of a logo or app icon at 20); `lg`, 48px, over a dialog's question about one tool, as
  * NSAlert puts an app's icon, and atop the Installed page's inspector.
  * Rounded as an app icon is at that size; the icon's own shape and margin
  * do the rest. Whole class names, for Tailwind.
@@ -62,7 +62,10 @@ export interface ToolAvatarProps {
  *
  * Each wears the source's mark, 14px (16 on a dialog's 48), on its corner:
  * at the window's default 800px a row's source chip gives way to the
- * name, and the avatar is left to say where the tool comes from. A tool
+ * name, and the avatar is left to say where the tool comes from. On an
+ * Update History line's 20 only the tile does, 10px: it has nothing of
+ * its own for the mark to hide, and is otherwise the same whatever the
+ * tool's source; a logo or app icon there wears none. A tool
  * whose logo is its source's -- one with its own installer, its own
  * source, such as rustup or Claude Code -- is its logo alone.
  *
@@ -91,7 +94,7 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
     return <SourceAvatar adapterId={adapterId} label={sourceLabel} size={size} />;
   }
   return (
-    <WithSourceBadge adapterId={adapterId} sourceLabel={sourceLabel} size={size}>
+    <WithSourceBadge adapterId={adapterId} sourceLabel={sourceLabel} size={size} markAtCompact={logo === null}>
       {logo !== null ? (
         <PackLogo icon={logo} size={size} />
       ) : (
@@ -106,16 +109,16 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
  * page draws its tile's at 32 (`ProgramAvatar` in
  * src/pages/UnknownPage.tsx), and about as much room around it at the
  * others -- a little less at 24, where the 14 badge takes over half the
- * tile. Where a badge sits on the corner the prompt is set a little up
- * and to the left, as Terminal's own icon has its prompt top left: at 32
- * a centred prompt's cursor ran under the badge. At 20, with no badge,
- * it is centred. Whole class names, for Tailwind.
+ * tile, and at 20, where the 10 one does. The badge sits on the corner
+ * at every size, so the prompt is set a little up and to the left, as
+ * Terminal's own icon has its prompt top left: at 32 a centred prompt's
+ * cursor ran under the badge. Whole class names, for Tailwind.
  */
 const PROMPTS = {
   sm: { size: 12, shift: "-translate-x-px -translate-y-0.5" },
   md: { size: 18, shift: "-translate-x-px -translate-y-0.5" },
   lg: { size: 27, shift: "-translate-x-0.5 -translate-y-0.75" },
-  compact: { size: 12, shift: undefined },
+  compact: { size: 11, shift: "-translate-x-0.5 -translate-y-0.5" },
 } as const;
 
 /**
@@ -155,38 +158,47 @@ function ProgramTile({ size, prompt }: { size: keyof typeof ICON_CLASSES; prompt
 }
 
 /**
- * How far over the avatar's corner its badge sits: 2px on a row's 32px;
- * 4px on a quiet line's 24px, where it would otherwise hide a good part of
- * the logo, and on a 48px one, a dialog's or the inspector's. Whole class
- * names, for Tailwind.
+ * How far over the avatar's corner its badge sits, and the corners of
+ * the ring that cuts it out: 2px on a row's 32px; 4px on a quiet line's
+ * 24px, where it would otherwise hide a good part of the logo, and on a
+ * 48px one, a dialog's or the inspector's; 2px on an Update History
+ * line's 20, its 10 badge's ring a little rounder than the badge, as the
+ * 14's is. Whole class names, for Tailwind.
  */
-const BADGE_OFFSET_CLASSES = {
-  sm: "-bottom-1 -right-1",
-  md: "-bottom-0.5 -right-0.5",
-  lg: "-bottom-1 -right-1",
+const BADGE_CLASSES = {
+  sm: "-bottom-1 -right-1 rounded-[4px] ring-[1.5px]",
+  md: "-bottom-0.5 -right-0.5 rounded-[4px] ring-[1.5px]",
+  lg: "-bottom-1 -right-1 rounded-[4px] ring-[1.5px]",
+  compact: "-bottom-0.5 -right-0.5 rounded-[3px] ring-1",
 } as const;
 
-/** The badge's own size: 14px, or 16px on a dialog's 48px icon. */
-const BADGE_SIZES = { sm: "badge", md: "badge", lg: "xs" } as const;
+/** The badge's own size: 14px, 16px on a dialog's 48px icon, 10px on a 20px tile. */
+const BADGE_SIZES = { sm: "badge", md: "badge", lg: "xs", compact: "mini" } as const;
 
 interface WithSourceBadgeProps {
   adapterId: string;
   sourceLabel: string;
   size: keyof typeof ICON_CLASSES;
-  /** The tool's own icon or logo, or the program tile. */
+  /**
+   * Whether the badge goes on at 20 (`compact`) too: on the neutral tile,
+   * which it hides nothing of, and not on a logo or an app icon.
+   */
+  markAtCompact?: boolean;
+  /** The tool's own icon or logo, or the neutral tile. */
   children: ReactNode;
 }
 
 /**
- * A tool's own icon or logo, or the program tile, with its source's
+ * A tool's own icon or logo, or the neutral tile, with its source's
  * avatar, 14px, on its bottom-right corner, a little over the edge
  * (`data-source-badge`). A ring in the surface's colour cuts the badge out
  * of what is under it, so that a Homebrew badge on an amber logo still
  * reads as a mark of its own.
- * At 20 (`compact`) there is no room for one: the icon alone.
+ * At 20 (`compact`) a logo or an app icon has no room for one, and is
+ * drawn alone; the tile has a 10px one (`markAtCompact`).
  */
-function WithSourceBadge({ adapterId, sourceLabel, size, children }: WithSourceBadgeProps) {
-  if (size === "compact") {
+function WithSourceBadge({ adapterId, sourceLabel, size, markAtCompact = false, children }: WithSourceBadgeProps) {
+  if (size === "compact" && !markAtCompact) {
     return (
       <span aria-hidden="true" className="relative inline-flex shrink-0">
         {children}
@@ -196,10 +208,7 @@ function WithSourceBadge({ adapterId, sourceLabel, size, children }: WithSourceB
   return (
     <span aria-hidden="true" className="relative inline-flex shrink-0">
       {children}
-      <span
-        data-source-badge=""
-        className={`absolute flex rounded-[4px] ring-[1.5px] ring-surface ${BADGE_OFFSET_CLASSES[size]}`}
-      >
+      <span data-source-badge="" className={`absolute flex ring-surface ${BADGE_CLASSES[size]}`}>
         <SourceAvatar adapterId={adapterId} label={sourceLabel} size={BADGE_SIZES[size]} />
       </span>
     </span>

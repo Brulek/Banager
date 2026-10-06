@@ -290,9 +290,11 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span title={entry.name} className="min-w-0 flex-1 truncate text-body text-foreground">
                 {entry.name}
               </span>
-              {/* The source, which the avatar's mark is all the line shows
-                  of, for a screen reader: two copies of one tool, updated
-                  from two sources, are otherwise two lines alike. */}
+              {/* The source, for a screen reader: in sight the line shows
+                  it only as the 10 mark on the corner of a tool's neutral
+                  tile, and not at all beside a tool's own logo or app
+                  icon, so two copies of one tool, updated from two
+                  sources, are otherwise two lines alike. */}
               <span data-just-updated-source="" className="sr-only">
                 {entry.sourceLabel}
               </span>
