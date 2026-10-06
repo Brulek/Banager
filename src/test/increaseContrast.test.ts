@@ -57,6 +57,38 @@ describe("Increase contrast", () => {
     expect(ratio("#0068d9", "#1e1e1e")).toBeGreaterThanOrEqual(3);
   });
 
+  it("draws the neutral tile -- a tool with no logo of its own, a program no source accounts for -- in Apple's higher-contrast greys", () => {
+    // systemGray's and systemGray3's Increase Contrast values: #6C6C70 in
+    // the light, #545456 in the dark, under the white prompt (I8).
+    const light = block("@media (prefers-contrast: more) and (prefers-color-scheme: light)");
+    expect(light).toContain("--color-neutral-avatar: #6c6c70;");
+    const dark = block("@media (prefers-contrast: more) and (prefers-color-scheme: dark)");
+    expect(dark).toContain("--color-neutral-avatar: #545456;");
+    // WCAG's relative luminance and contrast ratio.
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((at) => {
+        const v = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    // The default's white prompt on systemGray passes a symbol's 3:1, and
+    // no more; Increase Contrast takes it past 4.5:1 in both appearances,
+    // and the dark tile further off the dark window (#1E1E1E).
+    expect(ratio("#ffffff", "#8e8e93")).toBeGreaterThanOrEqual(3);
+    expect(ratio("#ffffff", "#8e8e93")).toBeLessThan(4.5);
+    expect(ratio("#ffffff", "#6c6c70")).toBeGreaterThanOrEqual(4.5);
+    expect(ratio("#ffffff", "#545456")).toBeGreaterThanOrEqual(4.5);
+    expect(ratio("#545456", "#1e1e1e")).toBeGreaterThan(ratio("#48484a", "#1e1e1e"));
+    // The default appearance keeps Apple's own.
+    expect(CSS).toContain("--color-neutral-avatar: #8e8e93;");
+    expect(CSS).toContain("--color-neutral-avatar: #48484a;");
+  });
+
   it("comes after the user's accent, so that it wins over it", () => {
     const accent = CSS.indexOf("@supports (color: AccentColor) { :root { --color-accent: AccentColor; } }");
     expect(accent).toBeGreaterThan(-1);

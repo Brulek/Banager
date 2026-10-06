@@ -251,7 +251,10 @@
    pink and red only just pass; which way to go is the author's call
    (docs/superpowers/backlog.md). After the user's accent (above), which
    this darkens rather than replaces; nothing here applies without the
-   setting. */
+   setting. The neutral tile -- a tool with no logo of its own, a program
+   no source accounts for -- takes Apple's Increase Contrast greys:
+   systemGray's #6C6C70 in the light (its white prompt 5.2:1, from 3.3:1),
+   systemGray3's #545456 in the dark (7.5:1, and further off the window). */
 @media (prefers-contrast: more) {
   :root {
     --color-muted: rgb(0 0 0 / 0.7);
@@ -261,6 +264,9 @@
 @media (prefers-contrast: more) and (prefers-color-scheme: light) {
   :root {
     --color-accent: #0060df;
+  }
+  :root {
+    --color-neutral-avatar: #6c6c70;
   }
   @supports (color: AccentColor) {
     :root {
@@ -273,6 +279,7 @@
     --color-muted: rgb(255 255 255 / 0.7);
     --color-focus: rgb(26 169 255);
     --color-accent: #0068d9;
+    --color-neutral-avatar: #545456;
   }
   @supports (color: AccentColor) {
     :root {
