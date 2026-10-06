@@ -139,7 +139,7 @@ function NoEntries({ text }: { text: string }) {
 }
 
 /**
- * Settings, a grouped form as System Settings' own (spec §3.7), in five
+ * Settings, a grouped form as System Settings' own (spec §3.7), in seven
  * groups: 「通用」 -- the language, and whether to show technical details
  * -- 「更新」 -- how often to check (「检查更新」: 不自动检查, 每天 or
  * 每周), 「有更新时通知我」 under it, and
@@ -147,12 +147,13 @@ function NoEntries({ text }: { text: string }) {
  * of hidden update, 「已跳过的版本」, 「30天内不提醒的工具」 (with the day each
  * comes back) and 「不再提醒的工具」, each entry with the button that
  * takes it back, where the Overview's count of
- * hidden updates opens the page -- and 「关于」: the app's 「版本」, then
- * the 「图标来源」 row that opens the credits for the logos built into
- * the app (`IconCreditsDrawer`), 「工具环境」, whose 「检查…」 opens the
- * sheet Help's 「检查工具环境…」 opens (`ToolSetupSheet`), and 「拷贝诊断信息」 with the checkbox
- * that adds the list of tools (`DiagnosticsRows`). Every change is saved at once; one that cannot
- * be saved is undone on screen and said at the top.
+ * hidden updates opens the page -- then 「诊断」 (decision I4): 「工具环境」,
+ * whose 「查看…」 opens the sheet Help's 「检查工具环境…」 opens
+ * (`ToolSetupSheet`), and 「拷贝诊断信息」 with the checkbox that adds the
+ * list of tools (`DiagnosticsRows`) -- and last 「关于」: the app's
+ * 「版本」, then the 「图标来源」 row that opens the credits for the logos
+ * built into the app (`IconCreditsDrawer`). Every change is saved at
+ * once; one that cannot be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
   const { t, i18n } = useTranslation();
@@ -670,8 +671,11 @@ export function SettingsPage() {
         </SettingsGroup>
       </div>
 
+      {/* How this Mac is set up, for the user and for whoever helps them
+          (decision I4): Tool setup, the same facts said in sentences, then
+          the diagnostic info that is copied for a helper. */}
       <SettingsGroup
-        title={t("settings.groups.about")}
+        title={t("settingsDiagnostics.title")}
         footnote={
           <p className={GROUP_FOOTNOTE}>
             {/* What the text holds, item by item, behind the ⓘ. */}
@@ -681,6 +685,24 @@ export function SettingsPage() {
           </p>
         }
       >
+        <SettingRow
+          label={<span className={ROW_LABEL}>{t("setupCheck.label")}</span>}
+          control={
+            <button
+              type="button"
+              aria-label={t("setupCheck.menu")}
+              onClick={openToolSetupSheet}
+              data-open-tool-setup=""
+              className={ROW_BUTTON}
+            >
+              {t("setupCheck.open")}
+            </button>
+          }
+        />
+        <DiagnosticsRows />
+      </SettingsGroup>
+
+      <SettingsGroup title={t("settings.groups.about")}>
         {/* The version as System Settings' About shows one: a plain row,
             the value on the right in the muted colour, and text a user
             can select to copy into a report (`select-text`). */}
@@ -701,23 +723,6 @@ export function SettingsPage() {
             </button>
           }
         />
-        {/* Beside the diagnostic info: the same facts, said in sentences
-            for the user rather than copied for a helper. */}
-        <SettingRow
-          label={<span className={ROW_LABEL}>{t("setupCheck.label")}</span>}
-          control={
-            <button
-              type="button"
-              aria-label={t("setupCheck.menu")}
-              onClick={openToolSetupSheet}
-              data-open-tool-setup=""
-              className={ROW_BUTTON}
-            >
-              {t("setupCheck.open")}
-            </button>
-          }
-        />
-        <DiagnosticsRows />
       </SettingsGroup>
       <IconCreditsDrawer open={creditsOpen} onOpenChange={setCreditsOpen} />
     </div>

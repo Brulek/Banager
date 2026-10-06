@@ -5,7 +5,7 @@ import { CopyButton } from "./CopyButton";
 import { GROUP_ROW } from "./ui/group";
 
 /**
- * Settings' 「拷贝诊断信息」, in its About group (`SettingsPage`): one row
+ * Settings' 「拷贝诊断信息」, in its 「诊断」 group (`SettingsPage`): one row
  * named 「诊断信息」, and on its right first the checkbox that adds each
  * source's tools to the text -- before the button it changes, and off
  * whenever Settings opens: a private tap's or scope's name can say where

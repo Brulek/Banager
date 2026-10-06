@@ -5,8 +5,8 @@
  * looks in for commands; each source's state; how many tools Terminal
  * cannot find, and how many are installed more than once; what Homebrew
  * disabled, deprecated or keeps other versions of; and the disk measured.
- * Help's 「检查工具环境…」 and a button in Settings' About open it
- * (`ToolSetupSheet`).
+ * Help's 「检查工具环境…」, the Overview's row and a button in Settings'
+ * 「诊断」 open it (`ToolSetupSheet`).
  *
  * Built only from what the window already holds -- the snapshot, the sizes
  * and `get_system_facts` -- with the rules the lists and the diagnostic

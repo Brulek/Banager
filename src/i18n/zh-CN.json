@@ -1063,6 +1063,9 @@
     "readOnly": "设置所在的磁盘是只读的",
     "other": "{{detail}}"
   },
+  "settingsDiagnostics": {
+    "title": "诊断"
+  },
   "diagnostics": {
     "label": "诊断信息",
     "copy": "拷贝诊断信息",

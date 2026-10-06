@@ -3360,7 +3360,7 @@ not to run on any package.
 
 ## Diagnostic info: read-only, no command runs
 
-Settings' About has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's
+Settings' Diagnostics group (「诊断」) has Copy Diagnostic Info (「拷贝诊断信息」); the Help menu's
 Copy Diagnostic Info… (「拷贝诊断信息…」) only opens Settings on that button,
 focused, so the copy is always the button's click. It puts a short plain text on the clipboard, in the window's
 language, for the user to paste to whoever helps them: Banager's version,
@@ -3388,8 +3388,8 @@ so; it never holds any other environment variable's value (a proxy setting
 can hold a password) -- not even those of the proxy and mirror settings
 read from the login shell -- anything from a shell file, or a token.
 
-Check Tool Setup (「检查工具环境」), in the Help menu and beside Copy
-Diagnostic Info in Settings' About, opens a sheet that says the same facts
+Check Tool Setup (「检查工具环境」), in the Help menu, on the Overview and beside Copy
+Diagnostic Info in Settings' Diagnostics group, opens a sheet that says the same facts
 in sentences: whether the login shell's `PATH` was read, how many of its
 folders the last check read and how many it could not, each source's
 status, how many tools Terminal cannot find or has twice, what Homebrew

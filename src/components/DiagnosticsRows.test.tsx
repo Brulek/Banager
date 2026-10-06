@@ -173,11 +173,11 @@ describe("DiagnosticsRows", () => {
   });
 });
 
-describe("Settings' About group", () => {
+describe("Settings' Diagnostics group", () => {
   it("ends with one row: Diagnostic info, its checkbox before Copy Diagnostic Info, and what the text holds under the group", async () => {
     renderWithProviders(<SettingsPage />);
-    const about = await screen.findByRole("region", { name: "About" });
-    const group = about.querySelector("h2 + div") as HTMLElement;
+    const diagnostics = await screen.findByRole("region", { name: "Diagnostics" });
+    const group = diagnostics.querySelector("h2 + div") as HTMLElement;
     const copyRow = group.lastElementChild as HTMLElement;
     expect(copyRow).toHaveTextContent("Diagnostic info");
     const controls = [...copyRow.querySelectorAll("input, button")];

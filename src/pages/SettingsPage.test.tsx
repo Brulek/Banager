@@ -1057,7 +1057,7 @@ describe("SettingsPage", () => {
     expect(unskip.className).toBe(remind.className);
   });
 
-  it("groups the settings in six groups: General, Updates, the three kinds of hidden update, and About", async () => {
+  it("groups the settings in seven groups: General, Updates, the three kinds of hidden update, Diagnostics and About", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {
         return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
@@ -1077,6 +1077,7 @@ describe("SettingsPage", () => {
       "Skipped versions",
       "Tools with reminders paused",
       "Tools with reminders off",
+      "Diagnostics",
       "About",
     ]);
     expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
@@ -1321,14 +1322,14 @@ describe("SettingsPage's version", () => {
     expect(value.className.split(" ")).toEqual(
       expect.arrayContaining(["text-body", "text-muted", "select-text"]),
     );
-    // Nothing to press in it: the group's buttons are the credits', Check
-    // Tool Setup's and Copy Diagnostic Info's.
+    // Nothing to press in it: the group's one button is the credits'. Check
+    // Tool Setup and Copy Diagnostic Info are in Diagnostics (I4).
     expect(within(row).queryByRole("button")).toBeNull();
     expect(
       within(about)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent),
-    ).toEqual(["View icon credits", "Check Tool Setup…", "Copy Diagnostic Info", "Details: Diagnostic info"]);
+    ).toEqual(["View icon credits"]);
   });
 
   it("is called 「版本」 in Chinese, with the same version beside it", async () => {
@@ -1404,18 +1405,8 @@ describe("SettingsPage's icon credits", () => {
       "Icon credits",
       // Named for what it opens, never a bare "View…" (walk-3 review 3.5).
       "View Icon Credits…",
-      // Then Tool setup, whose button opens the sheet (ToolSetupSheet.test.tsx),
-      // named as the Help menu's item is.
-      "Tool setup",
-      "Check Tool Setup…",
-      // Then Diagnostic info, its checkbox and Copy Diagnostic Info, and
-      // what the text holds (DiagnosticsRows.test.tsx).
-      "Diagnostic info",
-      "Include the list of tools",
-      "Copy Diagnostic Info",
-      // The footnote, its last word held with its ⓘ (`TextWithInfo`).
-      "Paste it to whoever is helping you. It holds no file contents, and lists your tools only when the checkbox is selected. ",
-      "selected. ",
+      // Tool setup and the diagnostic info are in Diagnostics, before it
+      // (I4: SettingsDiagnostics.test.tsx).
     ]);
     await user.click(open);
 

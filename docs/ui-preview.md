@@ -322,7 +322,7 @@ Paths are under a generic home folder, `/Users/you`.
   on 「终端里找不到」, 「装了不止一份」 or sorted by size, the Updates page, Other Programs or Settings.
   The password question and 「此App会改动我的Mac吗？」 have none. Done, Escape or a click beside it closes it.
 - Help's 「检查工具环境…」 ("Check Tool Setup…"): `window.mockMenu("check-tool-setup")`
-  in the console, or 「检查…」 beside 「工具环境」 on the Overview or in Settings' 关于, opens the
+  in the console, or 「查看…」 beside 「工具环境」 on the Overview or in Settings' 诊断, opens the
   sheet over any page. On the pretend Mac it says pip is 仅供查看 and uv 没有响应
   (each with 查看 to its page), 1 tool Terminal can't find and 1 installed twice
   (查看 opens Installed on that 「显示」 choice), 2 that Homebrew disabled or

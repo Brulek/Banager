@@ -1166,6 +1166,9 @@
     "readOnly": "the settings disk is read-only",
     "other": "{{detail}}"
   },
+  "settingsDiagnostics": {
+    "title": "Diagnostics"
+  },
   "diagnostics": {
     "label": "Diagnostic info",
     "copy": "Copy Diagnostic Info",

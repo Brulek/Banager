@@ -1063,6 +1063,9 @@
     "readOnly": "設定所在的磁碟是唯讀的",
     "other": "{{detail}}"
   },
+  "settingsDiagnostics": {
+    "title": "診斷"
+  },
   "diagnostics": {
     "label": "診斷資訊",
     "copy": "拷貝診斷資訊",
