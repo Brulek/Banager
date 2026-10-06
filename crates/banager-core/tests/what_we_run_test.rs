@@ -27,7 +27,8 @@
 //! Grok Build do not publish, that pip's section shows the
 //! `xcode-select -p` it asks before running an interpreter in `/usr/bin`
 //! and says one with no developer tools behind it is skipped, that the
-//! document names each permission of the opener plugin the window is
+//! document says whether the opener plugin is built in
+//! (`src-tauri/Cargo.toml`) and names each permission of it the window is
 //! given (`src-tauri/capabilities/default.json`) and the one call Show in Finder
 //! makes, saying it runs nothing else, that the daily check's section
 //! says it is off by default, states its tick, how long after a check it
@@ -885,7 +886,7 @@ fn test_what_we_run_names_the_opener_permission_the_window_has_and_what_show_in_
     // The window's permissions (`src-tauri/capabilities/default.json`),
     // read from the repository as the document is: the plugin that opens a
     // URL or a path in another application is the one the Network section
-    // says the window may call, and how far.
+    // says whether the window may call, and how far.
     let path = Path::new("../../src-tauri/capabilities/default.json");
     let text =
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
@@ -909,6 +910,29 @@ fn test_what_we_run_names_the_opener_permission_the_window_has_and_what_show_in_
     assert!(
         opener.contains(&"opener:default") || !folded.contains("`opener:default`"),
         "docs/what-we-run.md names `opener:default`, which src-tauri/capabilities/default.json no longer gives the window"
+    );
+    // Whether the plugin is in the app at all (`src-tauri/Cargo.toml`), as
+    // the Network section says: it may not call a plugin registered that
+    // is not, or leave out one that is.
+    let path = Path::new("../../src-tauri/Cargo.toml");
+    let cargo =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let built_in = cargo
+        .lines()
+        .any(|line| line.trim_start().starts_with("tauri-plugin-opener"));
+    let network = section_body(&doc, "Network").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Network` section for the hosts Banager connects to")
+    });
+    let network = network.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert_eq!(
+        network.contains("The Tauri opener plugin — the one that opens a URL or a path in another application — is not built into Banager"),
+        !built_in,
+        "the `## Network` section of docs/what-we-run.md does not say whether the opener plugin is built in, as src-tauri/Cargo.toml has it"
+    );
+    assert_eq!(
+        network.contains("is registered (`run()` in `src-tauri/src/lib.rs`)"),
+        built_in,
+        "the `## Network` section of docs/what-we-run.md says the opener plugin is registered, which src-tauri/Cargo.toml does not build in"
     );
     // What Show in Finder, the one caller, asks of macOS, and that it asks
     // nothing more.

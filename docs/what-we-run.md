@@ -27,9 +27,10 @@ path of settings or state they keep, that Grok Build's section shows the
 update check it runs on every refresh and says it installs nothing, that
 the Trash section names the call and states the pause after each move,
 that the app icons section names the call, the size an icon is drawn at,
-and that no command runs for it, that this file names each permission of
-the opener plugin the window has and the unknown-source scan's section
-the call Show in Finder makes, saying it runs nothing else, that the
+and that no command runs for it, that this file says whether the opener
+plugin is built in and names each permission of it the window has, and
+the unknown-source scan's section the call Show in Finder makes, saying
+it runs nothing else, that the
 daily check's section says it is off by default, states how often it
 looks, how long after a check it checks again and how long it waits
 after checks in which every source failed, says Banager itself runs no
@@ -2666,8 +2667,7 @@ is off, as it is on the row of a link into a protected place, which the
 scan did not follow. The Tauri opener plugin, whose `reveal_item_in_dir`
 the command used to call, followed every link of the path again
 (`std::fs::canonicalize`) before asking Finder, into any place; it is no
-longer called. The window may call none of the plugin's commands itself
-(Network, below). Copy Path puts the path the row
+longer built into Banager (Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
 
@@ -3643,12 +3643,14 @@ to another address, which that policy does not stop, is refused
 `tauri://localhost`, and in a development build the Vite server on
 `localhost`, and no other address). The Tauri opener
 plugin — the one that opens a URL or a path in another application — is
-registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
-call none of its commands: `src-tauri/capabilities/default.json` gives it
-no `opener:` permission, and nothing in Banager calls it: Banager's own
-`reveal_in_finder`, the Other Programs page's Show in Finder, asks
-Finder through AppKit to show a file the newest scan found, and connects
-to nothing (Unknown-source scan, above). The
+not built into Banager: `src-tauri/Cargo.toml` does not depend on it,
+`run()` in `src-tauri/src/lib.rs` registers no such plugin, and
+`package.json` does not install its script, so
+`src-tauri/capabilities/default.json` could give the window no `opener:`
+permission to call. Nothing in Banager called it once Banager's own
+`reveal_in_finder`, the Other Programs page's Show in Finder, asked
+Finder through AppKit to show a file the newest scan found, which
+connects to nothing (Unknown-source scan, above). The
 window cannot have it open a URL: there is no homepage link; when one
 ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint

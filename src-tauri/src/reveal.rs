@@ -452,4 +452,32 @@ mod tests {
             .collect();
         assert_eq!(opener, Vec::<&str>::new());
     }
+
+    #[test]
+    fn test_the_opener_plugin_is_not_built_in() {
+        // Nothing in Banager calls the opener plugin since Show in Finder
+        // went through AppKit (`show_in_finder`), so it is not compiled in,
+        // not registered, and not installed for the page either: one way
+        // less to open a URL or a path in another application that a later
+        // permission could switch on by mistake.
+        let cargo = include_str!("../Cargo.toml");
+        assert!(
+            !cargo
+                .lines()
+                .any(|line| line.trim_start().starts_with("tauri-plugin-opener")),
+            "src-tauri/Cargo.toml depends on tauri-plugin-opener"
+        );
+        assert!(
+            !include_str!("lib.rs").contains("tauri_plugin_opener"),
+            "src-tauri/src/lib.rs registers the opener plugin"
+        );
+        let package: serde_json::Value =
+            serde_json::from_str(include_str!("../../package.json")).unwrap();
+        for list in ["dependencies", "devDependencies"] {
+            assert!(
+                package[list].get("@tauri-apps/plugin-opener").is_none(),
+                "package.json's {list} install @tauri-apps/plugin-opener"
+            );
+        }
+    }
 }

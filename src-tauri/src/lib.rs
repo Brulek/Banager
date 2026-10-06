@@ -28,7 +28,6 @@ pub fn run() {
     tauri::Builder::default()
         // The window never leaves Banager's own page (navigation.rs).
         .plugin(navigation::stay_on_the_page())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // The update notification's plugin (notify.rs): asked for
         // permission to post, and, off a Mac, posting through. The page is

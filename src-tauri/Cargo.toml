@@ -19,7 +19,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2.11.1", features = [] }
-tauri-plugin-opener = "2"
 tauri-plugin-updater = "2.11.0"
 # 2.4.1 is the newest release that runs on tauri 2.11, which Cargo.lock is
 # on; 2.5.0 needs 2.12.
@@ -48,8 +47,8 @@ tokio = { version = "1", features = ["time"] }
 # `reveal::show_in_finder` makes the file URL it hands Finder
 # (`NSURL fileURLWithPath:isDirectory:`) in an `NSArray`: `NSURL` is
 # already on in this build -- banager-core switches it on (the Trash call,
-# `trash::real`), and so do tao, wry and tauri-plugin-opener -- so no new
-# feature enters the build.
+# `trash::real`), and so do tao and wry -- so no new feature enters the
+# build.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
@@ -74,9 +73,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # `reveal::show_in_finder` asks Finder to show a file
 # (`NSWorkspace activateFileViewerSelectingURLs:`), the one call the opener
 # plugin's `reveal_item_in_dir` made, without the plugin resolving the path
-# again first; `NSWorkspace` is already on in this build -- banager-core
-# switches it on (the app icons, `icon::real`), and so does
-# tauri-plugin-opener -- so no new feature enters the build either.
+# again first (the plugin is no longer built in); `NSWorkspace` is already
+# on in this build -- banager-core switches it on (the app icons,
+# `icon::real`) -- so no new feature enters the build either.
 # macOS only, as the calls are.
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
