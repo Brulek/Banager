@@ -32,7 +32,7 @@ describe("Homebrew's catalogue, in plain words", () => {
 
   it("says that Homebrew could not be reached, and what that leaves out", () => {
     expect(zhCN.sourceNotice.indexMayBeStale.title).toBe("无法连上Homebrew，用它安装的工具的更新这次没能查全");
-    expect(zhHant.sourceNotice.indexMayBeStale.title).toBe("無法連上Homebrew，用它安裝的工具的更新這次沒能查全");
+    expect(zhHant.sourceNotice.indexMayBeStale.title).toBe("無法連上Homebrew，用它安裝的工具的更新這次未能完整檢查");
     expect(en.sourceNotice.indexMayBeStale.title).toBe(
       "Couldn't reach Homebrew, so updates for its tools weren't fully checked",
     );
@@ -40,7 +40,15 @@ describe("Homebrew's catalogue, in plain words", () => {
 
   it("says a download still going is Homebrew checking for new versions", () => {
     expect(zhCN.sourceNotice.indexUpdating.title).toBe("Homebrew正在联网查找新版本");
-    expect(zhHant.sourceNotice.indexUpdating.title).toBe("Homebrew正在連線查找新版本");
+    expect(zhHant.sourceNotice.indexUpdating.title).toBe("Homebrew正在連線檢查新版本");
     expect(en.sourceNotice.indexUpdating.title).toBe("Homebrew is checking online for new versions");
+  });
+
+  it("says it in Taiwan's words in zh-Hant: 檢查／尋找 and 未能, not the mainland's 查找 and 沒能", () => {
+    // The file's own way: Terminal 「尋找」 a command (`notOnPathMore`).
+    const offenders = entries(zhHant).filter(([, text]) => /查找|沒能/.test(text));
+    expect(offenders).toEqual([]);
+    expect(zhHant.sourceNotice.indexUpdating.description).toBe("「更新」頁顯示的是上次的結果。檢查完成後會自動重新檢查。");
+    expect(zhHant.operations.status.waitingForBrewUpdate).toBe("正在等待Homebrew檢查新版本…");
   });
 });

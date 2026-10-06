@@ -228,7 +228,7 @@
     "uninstallHold": {
       "label": "暫時無法移除",
       "ariaLabel": "暫時無法解除安裝{{name}}",
-      "IndexUpdating": "Homebrew正在連線查找新版本，完成後才能解除安裝。"
+      "IndexUpdating": "Homebrew正在連線檢查新版本，完成後才能解除安裝。"
     },
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
@@ -495,7 +495,7 @@
     "shellConfigUnreadDetail": "解除安裝後，如果終端機啟動時顯示錯誤訊息，請刪除{{path}}中載入Cargo的那一行。"
   },
   "unreadBrewEnv": {
-    "homebrewMayAutoUpdate": "開始前，Homebrew可能會先更新它自己，並連線查找新版本。",
+    "homebrewMayAutoUpdate": "開始前，Homebrew可能會先更新它自己，並連線檢查新版本。",
     "homebrewMayAutoUpdateDetail": "執行Homebrew時設定了HOMEBREW_NO_AUTO_UPDATE=1，但它的某個brew.env檔案在受保護的位置或指向那裡，沒有讀取，無法得知它是否把這個值設成了空值。"
   },
   "brewVersions": {
@@ -628,12 +628,12 @@
       "other": "無法開啟Ollama。請在「應用程式」中手動開啟。"
     },
     "indexMayBeStale": {
-      "title": "無法連上Homebrew，用它安裝的工具的更新這次沒能查全",
+      "title": "無法連上Homebrew，用它安裝的工具的更新這次未能完整檢查",
       "description": "這次是按上次連上時的資訊檢查的。請檢查網路連線，然後重新檢查。"
     },
     "indexUpdating": {
-      "title": "Homebrew正在連線查找新版本",
-      "description": "「更新」頁顯示的是上次的結果。查找完成後會自動重新檢查。"
+      "title": "Homebrew正在連線檢查新版本",
+      "description": "「更新」頁顯示的是上次的結果。檢查完成後會自動重新檢查。"
     },
     "notOnPath": {
       "title": "{{source}}已安裝，但在終端機輸入「{{command}}」打不開它",
@@ -691,7 +691,7 @@
     "spawnFailed": "{{source}}無法啟動。系統提示：{{detail}}",
     "spawnFailedPlain": "{{source}}無法啟動。",
     "outputTooLarge": "{{source}}傳回的內容過多，無法繼續。",
-    "indexUpdating": "Homebrew正在連線查找新版本，現在無法準確檢查相依關係。請過一兩分鐘再試。",
+    "indexUpdating": "Homebrew正在連線檢查新版本，現在無法準確檢查相依關係。請過一兩分鐘再試。",
     "refused": "發生內部錯誤，無法繼續。",
     "notListed": "無法開始，因為它已不在清單中。請點按「重新檢查」。",
     "uninstallUnsafe": {
@@ -730,7 +730,7 @@
       "Upgrade": "取消更新"
     },
     "logNote": {
-      "waitingForBrewUpdate": "Homebrew正在連線查找新版本，完成後開始，最多等待{{minutes}}分鐘。現在取消不會有任何改動。",
+      "waitingForBrewUpdate": "Homebrew正在連線檢查新版本，完成後開始，最多等待{{minutes}}分鐘。現在取消不會有任何改動。",
       "readFailedStdout": "無法讀取後續輸出：{{error}}",
       "readFailedStderr": "無法讀取後續錯誤訊息：{{error}}",
       "movedToTrash": "{{path}}已移到垃圾桶：{{trashedTo}}",
@@ -760,7 +760,7 @@
       "CancelRequested": "正在取消…",
       "Cancelling": "正在取消…",
       "Verifying": "正在核對結果…",
-      "waitingForBrewUpdate": "正在等待Homebrew查找新版本…"
+      "waitingForBrewUpdate": "正在等待Homebrew檢查新版本…"
     },
     "outcome": {
       "Cancelled": "已取消",
@@ -784,7 +784,7 @@
         "ProgramMissing": "未能開始：找不到{{program}}，沒有改動",
         "SpawnFailed": "未能開始：程式無法啟動，沒有改動。系統提示：{{detail}}",
         "SpawnFailedShort": "未能開始：程式無法啟動，沒有改動",
-        "HomebrewStillUpdating": "未能開始：Homebrew連線查找新版本超過了{{minutes}}分鐘",
+        "HomebrewStillUpdating": "未能開始：Homebrew連線檢查新版本超過了{{minutes}}分鐘",
         "HomebrewStillUpdatingDetail": "沒有改動。請檢查網路連線，稍後再試。",
         "PathChanged": "已停止：確認視窗開啟後，{{path}}發生了變化",
         "PathChangedDetail": "如有已移到垃圾桶的項目，記錄中都已列出。請重新開啟確認視窗。",
@@ -1227,7 +1227,7 @@
       },
       "changesMac": {
         "question": "此App會更動我的Mac嗎？",
-        "answer": "更新或解除安裝之前，確認視窗裡可以查看要執行的指令或要移走的檔案，確認後才會開始。此App自己只寫入三個檔案：設定、更新和解除安裝記錄、視窗的大小和位置，都在它自己的檔案夾裡；它不修改終端機的設定檔。尋找指令、計算佔用空間和掃描「其他程式」時，不讀取「文件」「桌面」「下載項目」、iCloud雲碟和其他磁碟等受保護的位置。它執行的工具會更動自己的檔案，有時不止於此：例如檢查更新時，Homebrew可能會先更新它自己，並連線查找新版本；解除安裝rustup時，它會從終端機的設定檔中刪除自己加入的那一行，確認視窗會事先說明。"
+        "answer": "更新或解除安裝之前，確認視窗裡可以查看要執行的指令或要移走的檔案，確認後才會開始。此App自己只寫入三個檔案：設定、更新和解除安裝記錄、視窗的大小和位置，都在它自己的檔案夾裡；它不修改終端機的設定檔。尋找指令、計算佔用空間和掃描「其他程式」時，不讀取「文件」「桌面」「下載項目」、iCloud雲碟和其他磁碟等受保護的位置。它執行的工具會更動自己的檔案，有時不止於此：例如檢查更新時，Homebrew可能會先更新它自己，並連線檢查新版本；解除安裝rustup時，它會從終端機的設定檔中刪除自己加入的那一行，確認視窗會事先說明。"
       },
       "otherPrograms": {
         "question": "「其他程式」裡的是什麼？",
@@ -1365,7 +1365,7 @@
       "diskFull": "磁碟空間不足",
       "permission": "沒有權限",
       "busy": "另一個操作正在進行",
-      "homebrewUpdating": "Homebrew正在連線查找新版本",
+      "homebrewUpdating": "Homebrew正在連線檢查新版本",
       "needsPassword": "需要輸入密碼",
       "passwordNotAccepted": "密碼未被接受"
     },
@@ -1383,7 +1383,7 @@
       "diskFull": "磁碟空間不足，請清理出一些磁碟空間後再試一次。",
       "permission": "沒有權限修改它的檔案，請確認權限後再試一次。",
       "busy": "另一個操作正在進行，請等它完成後再試一次。",
-      "homebrewUpdating": "Homebrew正在連線查找新版本，請稍後再試。",
+      "homebrewUpdating": "Homebrew正在連線檢查新版本，請稍後再試。",
       "needsPassword": "需要輸入Mac的登入密碼，無法在這裡輸入。",
       "passwordNotAccepted": "密碼未被接受，請在密碼視窗輸入Mac的登入密碼後再試一次。"
     },
