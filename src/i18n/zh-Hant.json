@@ -540,6 +540,11 @@
     "twinRunsCopyFrom": "在終端機裡輸入「{{command}}」，執行的是{{source}}裝的那一份。",
     "twinNotFound": "在終端機裡輸入「{{command}}」，找不到這一份。"
   },
+  "pathLine": {
+    "sentence": "若要讓終端機找到它，可以把這一行加到~/.zshrc等終端機設定檔的結尾，再新開一個終端機視窗。",
+    "copy": "拷貝這一行",
+    "copyLabel": "拷貝這一行：{{dir}}"
+  },
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic的AI程式設計助手",

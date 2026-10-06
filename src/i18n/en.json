@@ -590,6 +590,11 @@
     "twinRunsCopyFrom": "Typing {{command}} in Terminal runs the copy from {{source}}.",
     "twinNotFound": "Typing {{command}} in Terminal doesn't find this copy."
   },
+  "pathLine": {
+    "sentence": "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window.",
+    "copy": "Copy Line",
+    "copyLabel": "Copy line for {{dir}}"
+  },
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic's AI coding assistant",

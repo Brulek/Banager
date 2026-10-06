@@ -220,6 +220,7 @@ describe("the polish-3 copy rules, in English", () => {
       "unknown.scanAgain",
       "brewStatus.copyLink",
       "commands.copyPath",
+      "pathLine.copy",
       "keepsData.copyPath",
       "welcome.start",
       "shortcuts.title",
@@ -317,6 +318,10 @@ describe("Taiwan's words, in Traditional Chinese", () => {
     "warnings.leavesShellConfigLineMaybeDetail": ["檢查這一行"],
     "unreadInProtectedPlace.shellConfigUnreadDetail": ["Cargo的那一行"],
     "faq.questions.changesMac.answer": ["加入的那一行"],
+    // The line for a shell startup file the details give to copy (U15 a).
+    "pathLine.sentence": ["把這一行加到"],
+    "pathLine.copy": ["拷貝這一行"],
+    "pathLine.copyLabel": ["拷貝這一行"],
   };
   const rowsAs行 = (locale: unknown) => sayingOutside(locale, /[這那每]一行/, linesOfAFile);
 

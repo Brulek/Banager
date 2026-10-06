@@ -2947,7 +2947,12 @@ dependency, and a keg-only one is never said to be missing from Terminal
 them as of any formula's. The folder of a
 command Terminal cannot find can be copied (*Copy Path*, in
 `CommandsGroup` in `src/components/CommandFacts.tsx`, through
-`useCopyCommand`), `~` and all; nothing edits a shell file.
+`useCopyCommand`), `~` and all, and so can the line that puts it on the
+search path, `export PATH="$HOME/<folder>:$PATH"`, which the row under it
+says to add to a shell startup file such as `~/.zshrc` (*Copy Line*,
+`PathLineRow` in `src/components/PathLine.tsx`; the author's decision
+U15 a). Banager only shows and copies that line: nothing edits a shell
+file.
 
 ## App icons: read through macOS, no command runs
 

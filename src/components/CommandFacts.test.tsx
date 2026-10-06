@@ -136,7 +136,7 @@ describe("CommandsGroup", () => {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     });
 
-    it("names the folder and copies it as shown, with nothing else to press", async () => {
+    it("names the folder and copies it as shown", async () => {
       const { container, getByRole } = group(
         artifact(nativeKey, "claude-code", [{ name: "claude", state: { NotOnPath: { dir: "~/.local/bin" } } }]),
       );
@@ -146,14 +146,52 @@ describe("CommandsGroup", () => {
       const copy = getByRole("button", { name: "Copy path: ~/.local/bin" });
       expect(copy).toHaveTextContent(/^Copy Path$/);
       expect(copy.className).toBe(BUTTON.small.grey);
-      // The heading's ⓘ, the line's ⓘ -- what to try -- and Copy Path.
-      expect(container.querySelectorAll("button")).toHaveLength(3);
+      // The heading's ⓘ, the line's ⓘ -- what to try -- Copy Path, and
+      // Copy Line on the row under it (U15 a).
+      expect(container.querySelectorAll("button")).toHaveLength(4);
       expect(getByRole("button", { name: "Details: claude" })).toBeInTheDocument();
       fireEvent.click(copy);
       expect(writeText).toHaveBeenCalledWith("~/.local/bin");
-      await waitFor(() => expect(getByRole("status")).toHaveTextContent(/^Copied$/));
+      const line = container.querySelector("[data-command-line]") as HTMLElement;
+      await waitFor(() => expect(within(line).getByRole("status")).toHaveTextContent(/^Copied$/));
       // Beside the button it is about, as the homepage's Copy Link says it.
-      expect(getByRole("status").parentElement).toBe(copy.parentElement);
+      expect(within(line).getByRole("status").parentElement).toBe(copy.parentElement);
+    });
+
+    it("gives the line to add to a shell startup file under it, and copies it whole (U15 a)", async () => {
+      const { container } = group(
+        artifact(formulaKey, null, [
+          { name: "grok", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+          { name: "agent", state: { NotOnPath: { dir: "~/.grok/bin" } } },
+        ]),
+      );
+      const rows = container.querySelectorAll("[data-path-line]");
+      expect(rows).toHaveLength(1);
+      const row = rows[0] as HTMLElement;
+      // A row of its own, right under the folder's.
+      expect(row.previousElementSibling?.hasAttribute("data-command-line")).toBe(true);
+      expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
+        "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window.",
+      );
+      expect(row.querySelector("code")).toHaveTextContent('export PATH="$HOME/.grok/bin:$PATH"');
+      const copy = within(row).getByRole("button", { name: "Copy line for ~/.grok/bin" });
+      expect(copy).toHaveTextContent(/^Copy Line$/);
+      expect(copy.className).toBe(BUTTON.small.grey);
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenCalledWith('export PATH="$HOME/.grok/bin:$PATH"');
+      await waitFor(() => expect(within(row).getByRole("status")).toHaveTextContent(/^Copied$/));
+      // Nothing edits the file: the one button copies.
+      expect(within(row).getAllByRole("button")).toEqual([copy]);
+    });
+
+    it("gives no line where every command runs, or where the folder cannot go on the search path", () => {
+      const runs = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: "Runs" }]));
+      expect(runs.container.querySelector("[data-path-line]")).toBeNull();
+      runs.unmount();
+      const colon = group(artifact(nativeKey, "claude-code", [{ name: "claude", state: { NotOnPath: { dir: "~/a:b" } } }]));
+      expect(colon.container.querySelector("[data-path-line]")).toBeNull();
+      // Copy Path is still there.
+      expect(colon.getByRole("button", { name: "Copy path: ~/a:b" })).toBeInTheDocument();
     });
 
     it("says it in Chinese as Apple's strings do", async () => {
@@ -171,6 +209,11 @@ describe("CommandsGroup", () => {
           ["claude-helper", "运行的是这一份"],
         ]);
         expect(getByRole("button", { name: "拷贝路径：~/.local/bin" })).toHaveTextContent(/^拷贝路径$/);
+        const row = container.querySelector("[data-path-line]") as HTMLElement;
+        expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
+          "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。",
+        );
+        expect(within(row).getByRole("button", { name: "拷贝这一行：~/.local/bin" })).toHaveTextContent(/^拷贝这一行$/);
       } finally {
         await i18n.changeLanguage("en");
       }

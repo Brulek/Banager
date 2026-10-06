@@ -14,6 +14,12 @@ import type { ReactNode } from "react";
 export const COMMAND_SLOT = "";
 
 /**
+ * How a command or a line to copy is set as code, here and in the details'
+ * line for a shell startup file (`PathLineRow`): one click selects it all.
+ */
+export const COMMAND_CODE = "select-all rounded bg-[var(--color-hover)] px-1 font-mono text-[var(--color-foreground)]";
+
+/**
  * A translated sentence with `command` set into it as code rather than as
  * a word of the sentence, so a reader who does not use Terminal can see
  * where the command starts and stops -- inline, "run brew unpin glib in
@@ -30,9 +36,7 @@ export function withCommand(sentence: string, command: string): ReactNode {
   return (
     <>
       {parts[0]}
-      <code className="select-all rounded bg-[var(--color-hover)] px-1 font-mono text-[var(--color-foreground)]">
-        {command}
-      </code>
+      <code className={COMMAND_CODE}>{command}</code>
       {parts[1]}
     </>
   );

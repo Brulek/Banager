@@ -540,6 +540,11 @@
     "twinRunsCopyFrom": "在终端里输入“{{command}}”，运行的是{{source}}装的那一份。",
     "twinNotFound": "在终端里输入“{{command}}”，找不到这一份。"
   },
+  "pathLine": {
+    "sentence": "要让终端找到它，可以把这一行加到~/.zshrc等终端配置文件的末尾，再新开一个终端窗口。",
+    "copy": "拷贝这一行",
+    "copyLabel": "拷贝这一行：{{dir}}"
+  },
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic的AI编程助手",

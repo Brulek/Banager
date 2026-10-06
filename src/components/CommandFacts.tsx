@@ -1,4 +1,4 @@
-import { useId, useMemo, type ReactNode } from "react";
+import { Fragment, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "./CopyButton";
 import { commandGroups, stateId, twinsByArtifact, type CommandGroup, type Twin } from "../lib/commands";
@@ -10,13 +10,15 @@ import { GROUP, GROUP_ROW_TWO_LINES, GROUP_TITLE, SMALL_WRAPPING } from "./ui/gr
 import { installedBy } from "./TwinAdvice";
 import { detailLines } from "./updateDetails";
 import { hasCommandNotOnPath } from "../lib/families";
+import { PathLineRow } from "./PathLine";
 
 /**
  * What typing a tool's commands in Terminal runs, for the Installed page
  * (`ArtifactFacts.commands`): the inspector's group, and the row's word
  * for a tool installed more than once. Nothing here fixes anything -- no
- * button edits a shell file or changes the order of `PATH`; the one action
- * is Copy Path, for the folder Terminal does not search.
+ * button edits a shell file or changes the order of `PATH`; for the folder
+ * Terminal does not search there is Copy Path, and, on a row under it, the
+ * line to add to a shell startup file, with Copy Line (`PathLineRow`).
  */
 
 /** A source's name in the user's language, by instance id (`InstalledPage`'s `sourceLabelFor`). */
@@ -122,7 +124,9 @@ function verdictOf(
  * under the facts: a line per verdict -- the commands it is about, and
  * under them, in the secondary colour, what typing them runs -- with
  * Copy Path beside a folder Terminal does not search, which copies the
- * folder as the line shows it, `~` and all. The ⓘ by the title says what
+ * folder as the line shows it, `~` and all, and under that line a row with
+ * the line to add to a shell startup file and Copy Line (`PathLineRow`,
+ * the author's decision U15 a). The ⓘ by the title says what
  * the verdicts are judged against, and what that does not see: an alias,
  * a terminal opened later or an editor's. Nothing when Banager said
  * nothing about any of the tool's commands.
@@ -158,27 +162,31 @@ export function CommandsGroup({
           const names = namesOf(t, ordered);
           const verdict = verdictOf(t, artifact, group.state, artifacts, sourceLabelFor);
           return (
-            <li key={`${group.names[0]}`} data-command-line="" className={GROUP_ROW_TWO_LINES}>
-              <div className="min-w-0 flex-1">
-                <p className="break-words text-body text-foreground">{names}</p>
-                <p data-command-verdict="" className={`mt-0.5 break-words ${SMALL_WRAPPING} text-muted`}>
-                  {verdict.detail === null ? (
-                    verdict.text
-                  ) : (
-                    <TextWithInfo text={verdict.text} label={t("common.detailsLabel", { title: namesText(t, ordered) })}>
-                      {verdict.detail}
-                    </TextWithInfo>
-                  )}
-                </p>
-              </div>
-              {verdict.dir !== null ? (
-                <CopyButton
-                  text={verdict.dir}
-                  label={t("commands.copyPath")}
-                  ariaLabel={t("commands.copyPathLabel", { dir: verdict.dir })}
-                />
-              ) : null}
-            </li>
+            <Fragment key={`${group.names[0]}`}>
+              <li data-command-line="" className={GROUP_ROW_TWO_LINES}>
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-body text-foreground">{names}</p>
+                  <p data-command-verdict="" className={`mt-0.5 break-words ${SMALL_WRAPPING} text-muted`}>
+                    {verdict.detail === null ? (
+                      verdict.text
+                    ) : (
+                      <TextWithInfo text={verdict.text} label={t("common.detailsLabel", { title: namesText(t, ordered) })}>
+                        {verdict.detail}
+                      </TextWithInfo>
+                    )}
+                  </p>
+                </div>
+                {verdict.dir !== null ? (
+                  <CopyButton
+                    text={verdict.dir}
+                    label={t("commands.copyPath")}
+                    ariaLabel={t("commands.copyPathLabel", { dir: verdict.dir })}
+                  />
+                ) : null}
+              </li>
+              {/* The line for a shell startup file, on a row of its own (U15 a). */}
+              {verdict.dir !== null ? <PathLineRow dir={verdict.dir} /> : null}
+            </Fragment>
           );
         })}
       </ul>
