@@ -122,7 +122,10 @@ nor adds to them: a command gets them as Terminal would give them,
 installed is taken -- `CARGO_HOME`, `RUSTUP_HOME`, `UV_TOOL_DIR`,
 `PIPX_HOME`, an npm or Homebrew prefix -- because that would change which
 folders an uninstall and its preview act on; nor any token, nor
-`OLLAMA_HOST`. The values are never written
+`OLLAMA_HOST`. Banager's own requests go through the proxy these settings
+name, but never for this Mac itself, and still only to the hosts listed
+under Network: a mirror changes where the tools download from, not where
+Banager's own checks ask (Network, below). The values are never written
 to a log and never in the diagnostic info, since a proxy setting can hold
 a password; the app's own output at launch names the settings read, not
 their values.
@@ -244,7 +247,9 @@ checks.
 The only thing it does with one is pass `SUDO_ASKPASS` through, unchanged,
 to Homebrew cask installs and upgrades when the variable is already set
 in Banager's environment (Homebrew's section); it never sets it on its
-own behalf. Its commands run with no terminal (stdin is `/dev/null`), so
+own behalf. A proxy setting read from the login shell may hold a login;
+Banager hands it on unchanged to the commands it runs and gives it to that
+proxy alone (Network), and never shows or records it. Its commands run with no terminal (stdin is `/dev/null`), so
 when a cask's own step runs `sudo`, sudo cannot ask and the operation
 fails. Banager recognises sudo's own words for this
 (`needsPassword` in `src/lib/failureCause.ts`), and for a password window
@@ -3657,11 +3662,37 @@ build the request — and that Ollama's notice says "Connecting to Ollama
 over https isn't supported" (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
+**Through a proxy, as Terminal's settings say.** When the login shell's
+settings name a proxy (How Banager runs anything), Banager's own requests
+go through it, looked up at each request (`http::proxy::proxy_for`, which
+`RealHttpClient` asks), by curl's rules: `https_proxy` for an https
+address and `http_proxy` for an http one, each read in lowercase first and
+then in uppercase, then `all_proxy` / `ALL_PROXY`; a setting with nothing
+in it counts as not set; and `no_proxy` / `NO_PROXY` -- names (each with
+every name under it), addresses, address ranges such as `192.168.0.0/16`,
+or `*` for everything -- sends what it names straight. A setting the
+login shell did not set is taken from Banager's own environment, which the
+commands it runs inherit too. An https request then goes as a `CONNECT`
+tunnel through the proxy to the same host, and the certificate is checked
+against that host as before; a `socks5://` or `socks5h://` proxy -- as
+Clash and Surge print `all_proxy` -- is spoken to as SOCKS. This Mac itself
+is reached never through a proxy, whatever the settings say: `localhost`
+and any name under it, `127.0.0.1` and the rest of `127.0.0.0/8`, `::1`,
+and `0.0.0.0` or `::` (an `OLLAMA_HOST` of `0.0.0.0` is common) -- so the
+request to an Ollama daemon on this Mac always goes straight to it. The
+proxy is then the one host Banager connects to that is not in the table
+above, and only because the user's own settings name it; the host a
+request is for is still checked against the table first, and a refused
+one never reaches the proxy. A proxy setting that holds a login
+(`http://name:password@host:port`) gives that login to that proxy alone.
+The mirror settings change nothing here: Banager's own checks still ask
+the hosts in the table.
+
 Every request: TLS through rustls; the header `User-Agent:
 banager/<version>`; no other header of Banager's own, except `Accept` on
 the Ollama registry request — the HTTP library adds what the protocol
 needs, `Host` and `Accept: */*`, and nothing else; no cookies, no
-credentials, nothing about this Mac in the request; a timeout per request
+credentials, nothing about this Mac in the request (a proxy's login, above, goes to the proxy only); a timeout per request
 (listed in each source's table: 30 s unless stated, and the daemon check
 in Ollama's detect is 10 s); a response body limit of 8 MiB
 (`MAX_RESPONSE_BYTES`); and no redirect is ever followed — a 3xx is an
@@ -3745,7 +3776,9 @@ The tools Banager runs make their own connections — `brew`, `npm`, `pip`,
 `rustup self update`, `grok update --check --json` and `grok update` each
 reach whatever index, registry or release server they are configured to
 use. Those are the tools' connections, under the tools' configuration;
-Banager neither chooses nor sees them. One flag narrows them: Cargo's
+Banager neither chooses nor sees them. The proxy and mirror settings it
+hands them are the user's own, read from the login shell as they are (How
+Banager runs anything). One flag narrows them: Cargo's
 install and upgrade commands name crates.io's index, so that a
 `registry.default` naming another registry cannot swap the crate for a
 namesake. Each is given the index it reads when nothing else is

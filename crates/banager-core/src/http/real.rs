@@ -124,6 +124,15 @@ impl RealHttpClient {
             // redirect, so the policy is `none` and `send` below turns a
             // 3xx into an error instead of handing it back as a response.
             .redirect(reqwest::redirect::Policy::none())
+            // The proxy the login shell's settings name, read at each
+            // request, so a read that ends after this client is built
+            // still counts -- and never for this Mac itself, as the
+            // Ollama daemon usually is (`super::proxy`, U12). A custom
+            // proxy also turns off reqwest's own reading of the process
+            // environment, which had no such exception.
+            .proxy(reqwest::Proxy::custom(|url| {
+                super::proxy::proxy_for(url, crate::runner::login_path::command_var)
+            }))
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("reqwest client with the rustls TLS backend must build");

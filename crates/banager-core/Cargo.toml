@@ -22,7 +22,11 @@ thiserror = "2"
 # under [dev-dependencies].
 tokio = { version = "1", features = ["macros", "process", "io-util", "time", "sync", "net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# `socks`: a proxy the login shell names may be `socks5://` (`all_proxy`, as
+# Clash and Surge print it), which Banager's own requests then go through
+# (`http::proxy`, U12). In reqwest 0.13 the feature adds no crate: the SOCKS
+# client is hyper-util's, already built for reqwest's proxy support.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "socks"] }
 # Already in Cargo.lock as a transitive dependency of reqwest/url, so this
 # adds no crate and no version to the build graph; it is declared directly
 # because `adapters::url_path_segment` encodes untrusted names into registry

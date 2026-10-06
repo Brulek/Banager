@@ -1480,3 +1480,31 @@ fn test_what_we_run_names_every_setting_taken_from_the_login_shell() {
         );
     }
 }
+
+/// U12: the Network section, which names every host Banager connects to,
+/// says that its own requests go through the proxy the login shell names,
+/// that this Mac -- the Ollama daemon -- never does, and that `no_proxy`
+/// is followed (`http::proxy::proxy_for`).
+#[test]
+fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_for_this_mac() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Network").expect("a `## Network` section");
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "`https_proxy`",
+        "`http_proxy`",
+        "`all_proxy`",
+        "`no_proxy`",
+        "`localhost`",
+        "`127.0.0.1`",
+        "`::1`",
+        "`0.0.0.0`",
+        "never through a proxy",
+        "`socks5://`",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## Network` section of docs/what-we-run.md does not say {phrase:?} about the proxy Banager's own requests go through"
+        );
+    }
+}

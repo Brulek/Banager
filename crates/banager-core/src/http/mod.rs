@@ -8,6 +8,7 @@ use async_trait::async_trait;
 
 pub mod mock;
 pub use mock::MockHttpClient;
+pub mod proxy;
 pub mod real;
 pub use real::RealHttpClient;
 

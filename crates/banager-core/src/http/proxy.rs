@@ -1,0 +1,294 @@
+//! Which proxy Banager's own requests go through (U12 of the decisions
+//! round): the one the proxy settings its commands get name
+//! (`runner::login_path::command_var`), so a check Banager makes itself
+//! goes the way a `brew` it runs does -- except to this Mac itself, which
+//! is never sent through a proxy: a proxy on another machine cannot reach
+//! the Ollama on this one, and one on this Mac has no reason to be asked.
+//!
+//! The rules are curl's, which Homebrew and pip follow: `https_proxy` for
+//! an https address and `http_proxy` for an http one, each read in
+//! lowercase first and then in uppercase, then `all_proxy` / `ALL_PROXY`;
+//! a setting with nothing in it counts as not set; and `no_proxy` /
+//! `NO_PROXY`, a comma-separated list of names, addresses and address
+//! ranges, sends what it names straight. This decides only the way, never
+//! the destination: the hosts a request may go to are still the ones
+//! `real::host_allowed` lets through.
+
+use std::net::{IpAddr, Ipv4Addr};
+use url::{Host, Url};
+
+/// The proxy Banager's own request to `url` goes through, as the setting
+/// names it, with `var` giving each setting's value; `None` to connect
+/// straight -- always so for this Mac itself (`is_this_mac`).
+pub fn proxy_for(url: &Url, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let host = url.host()?;
+    if is_this_mac(&host) {
+        return None;
+    }
+    let first = |names: &[&str]| {
+        names.iter().find_map(|name| {
+            var(name)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+    };
+    if first(&["no_proxy", "NO_PROXY"]).is_some_and(|list| listed(&host, &list)) {
+        return None;
+    }
+    match url.scheme() {
+        "https" => first(&["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]),
+        "http" => first(&["http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"]),
+        _ => None,
+    }
+}
+
+/// Whether `host` is this Mac: `localhost` and any name under it
+/// (RFC 6761), a loopback address (`127.0.0.0/8`, `::1`, and IPv4's
+/// written as IPv6), or the unspecified address (`0.0.0.0`, `::`), which
+/// reaches this Mac too -- an `OLLAMA_HOST` of `0.0.0.0` is common.
+pub fn is_this_mac(host: &Host<&str>) -> bool {
+    match host {
+        Host::Domain(name) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost" || name.ends_with(".localhost")
+        }
+        Host::Ipv4(ip) => ipv4_is_this_mac(*ip),
+        Host::Ipv6(ip) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || ip.to_ipv4_mapped().is_some_and(ipv4_is_this_mac)
+        }
+    }
+}
+
+fn ipv4_is_this_mac(ip: Ipv4Addr) -> bool {
+    ip.is_loopback() || ip.is_unspecified()
+}
+
+/// Whether `no_proxy`, as curl reads it, names `host`: `*` names every
+/// host; a name names itself and every name under it, with or without a
+/// leading `.` (or `*.`); an address names itself, and an address with a
+/// `/` and a prefix length the range it starts.
+fn listed(host: &Host<&str>, no_proxy: &str) -> bool {
+    no_proxy
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .any(|entry| {
+            if entry == "*" {
+                return true;
+            }
+            let bare = entry.trim_start_matches('[').trim_end_matches(']');
+            if let Some(range) = Range::parse(bare) {
+                return match host {
+                    Host::Ipv4(ip) => range.contains(IpAddr::V4(*ip)),
+                    Host::Ipv6(ip) => range.contains(IpAddr::V6(*ip)),
+                    Host::Domain(_) => false,
+                };
+            }
+            let Host::Domain(name) = host else {
+                return false;
+            };
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            let entry = entry
+                .trim_start_matches("*.")
+                .trim_start_matches('.')
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+            !entry.is_empty() && (name == entry || name.ends_with(&format!(".{entry}")))
+        })
+}
+
+/// An address, or a range of them: `192.168.0.0/16`, `fd00::/8`.
+struct Range {
+    start: IpAddr,
+    prefix: u32,
+}
+
+impl Range {
+    fn parse(entry: &str) -> Option<Range> {
+        let (address, prefix) = match entry.split_once('/') {
+            Some((address, prefix)) => (address, Some(prefix.parse::<u32>().ok()?)),
+            None => (entry, None),
+        };
+        let start: IpAddr = address.parse().ok()?;
+        let bits = if start.is_ipv4() { 32 } else { 128 };
+        let prefix = prefix.unwrap_or(bits);
+        (prefix <= bits).then_some(Range { start, prefix })
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        match (self.start, ip) {
+            (IpAddr::V4(start), IpAddr::V4(ip)) => {
+                let mask = u32::MAX.checked_shl(32 - self.prefix).unwrap_or(0);
+                u32::from(start) & mask == u32::from(ip) & mask
+            }
+            (IpAddr::V6(start), IpAddr::V6(ip)) => {
+                let mask = u128::MAX.checked_shl(128 - self.prefix).unwrap_or(0);
+                u128::from(start) & mask == u128::from(ip) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A lookup over `set`, as `command_var` answers.
+    fn vars(set: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let set: Vec<(String, String)> = set
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
+        move |name| {
+            set.iter()
+                .find(|(set, _)| set == name)
+                .map(|(_, value)| value.clone())
+        }
+    }
+
+    fn through(url: &str, set: &[(&str, &str)]) -> Option<String> {
+        proxy_for(&Url::parse(url).unwrap(), vars(set))
+    }
+
+    const EVERY_PROXY: &[(&str, &str)] = &[
+        ("http_proxy", "http://127.0.0.1:7890"),
+        ("HTTP_PROXY", "http://127.0.0.1:7890"),
+        ("https_proxy", "http://127.0.0.1:7890"),
+        ("HTTPS_PROXY", "http://127.0.0.1:7890"),
+        ("all_proxy", "socks5://127.0.0.1:7890"),
+        ("ALL_PROXY", "socks5://127.0.0.1:7890"),
+    ];
+
+    /// The decision's one condition: Banager's own request to the Ollama
+    /// on this Mac never goes through a proxy, however the address is
+    /// written, and with no `no_proxy` to say so.
+    #[test]
+    fn test_this_mac_is_never_reached_through_a_proxy() {
+        for url in [
+            "http://127.0.0.1:11434/api/tags",
+            "http://127.1.2.3:11434/",
+            "http://localhost:11434/api/tags",
+            "http://LOCALHOST:11434/",
+            "http://localhost.:11434/",
+            "http://ollama.localhost:11434/",
+            "http://[::1]:11434/api/tags",
+            "http://[::ffff:127.0.0.1]:11434/",
+            "http://0.0.0.0:11434/api/tags",
+            "http://[::]:11434/",
+            "https://127.0.0.1/",
+        ] {
+            assert_eq!(through(url, EVERY_PROXY), None, "{url}");
+        }
+    }
+
+    #[test]
+    fn test_a_request_goes_through_the_proxy_set_for_its_scheme_lowercase_first() {
+        let crates = "https://crates.io/api/v1/crates/ripgrep";
+        assert_eq!(
+            through(
+                crates,
+                &[("https_proxy", "http://a:1"), ("HTTPS_PROXY", "http://b:2")]
+            ),
+            Some("http://a:1".into())
+        );
+        assert_eq!(
+            through(crates, &[("HTTPS_PROXY", "http://b:2")]),
+            Some("http://b:2".into())
+        );
+        // An http proxy is not one for https.
+        assert_eq!(through(crates, &[("http_proxy", "http://a:1")]), None);
+        // all_proxy stands in for either; an empty setting is not set.
+        assert_eq!(
+            through(
+                crates,
+                &[
+                    ("https_proxy", "  "),
+                    ("all_proxy", "socks5://127.0.0.1:7891")
+                ]
+            ),
+            Some("socks5://127.0.0.1:7891".into())
+        );
+        assert_eq!(
+            through(crates, &[("ALL_PROXY", "socks5h://proxy.lan:1080")]),
+            Some("socks5h://proxy.lan:1080".into())
+        );
+        // An Ollama on another machine, over http.
+        let remote = "http://192.168.1.20:11434/api/tags";
+        assert_eq!(
+            through(
+                remote,
+                &[("http_proxy", "http://a:1"), ("https_proxy", "http://b:2")]
+            ),
+            Some("http://a:1".into())
+        );
+        assert_eq!(through(remote, &[("https_proxy", "http://b:2")]), None);
+        // Nothing set: straight.
+        assert_eq!(through(crates, &[]), None);
+    }
+
+    #[test]
+    fn test_no_proxy_sends_what_it_names_straight() {
+        let with = |no_proxy: &str, url: &str| {
+            through(
+                url,
+                &[
+                    ("https_proxy", "http://p:1"),
+                    ("http_proxy", "http://p:1"),
+                    ("no_proxy", no_proxy),
+                ],
+            )
+        };
+        let crates = "https://crates.io/api/v1/crates/ripgrep";
+        let ollama = "https://registry.ollama.ai/v2/library/llama3/manifests/latest";
+        for no_proxy in [
+            "crates.io",
+            ".crates.io",
+            "*.crates.io",
+            " foo , crates.io ",
+            "CRATES.IO",
+            "*",
+        ] {
+            assert_eq!(with(no_proxy, crates), None, "{no_proxy}");
+        }
+        // A name names the names under it, not one that merely ends alike.
+        assert_eq!(with("ollama.ai", ollama), None);
+        assert_eq!(with("llama.ai", ollama), Some("http://p:1".into()));
+        assert_eq!(with("rates.io", crates), Some("http://p:1".into()));
+        // Addresses and ranges.
+        let remote = "http://192.168.1.20:11434/";
+        for no_proxy in [
+            "192.168.1.20",
+            "192.168.0.0/16",
+            "10.0.0.0/8,192.168.1.0/24",
+        ] {
+            assert_eq!(with(no_proxy, remote), None, "{no_proxy}");
+        }
+        for no_proxy in [
+            "192.168.2.0/24",
+            "192.168.1.2",
+            "192.168.1.20/40",
+            "192.168.1.200",
+        ] {
+            assert_eq!(
+                with(no_proxy, remote),
+                Some("http://p:1".into()),
+                "{no_proxy}"
+            );
+        }
+        let v6 = "http://[fd00::20]:11434/";
+        assert_eq!(with("fd00::/8", v6), None);
+        assert_eq!(with("[fd00::20]", v6), None);
+        assert_eq!(with("fe80::/10", v6), Some("http://p:1".into()));
+        // NO_PROXY when no_proxy is not set.
+        assert_eq!(
+            through(
+                crates,
+                &[("https_proxy", "http://p:1"), ("NO_PROXY", "crates.io")]
+            ),
+            None
+        );
+    }
+}
