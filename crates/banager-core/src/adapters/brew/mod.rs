@@ -717,8 +717,13 @@ impl BrewAdapter {
     ///   name Homebrew checks (`Cleanup.skip_clean_formula?`,
     ///   `cleanup.rb:409-415`) -- and an alias it names Banager cannot see
     ///   is refused by Homebrew's own `brew cleanup` (`cleanup.rb:511-514`);
+    /// - not for a pinned formula, or one whose pin record cannot be looked
+    ///   at: a pin says to keep a version;
     /// - not when the Cellar could not be read, so there are no versions
     ///   to name (`kegs_fn`).
+    ///
+    /// The same answer is asked for again right before the cleanup runs
+    /// (`cleanup_allowed`, from `execute`).
     fn cleanup_after_upgrade(
         &self,
         inst: &ManagerInstance,
@@ -728,29 +733,44 @@ impl BrewAdapter {
         if req.kind != OpKind::Upgrade || req.artifact_kind != ArtifactKind::Formula {
             return None;
         }
-        let switches = self.homebrew_switches(inst, env);
+        let kegs = self.cleanup_allowed(&inst.prefix, &req.name, env)?;
+        (!kegs.versions.is_empty()).then_some(kegs.versions)
+    }
+
+    /// Whether the person's settings let Banager's `brew cleanup` of the
+    /// formula `name` under `prefix` run, with a plan's environment `env`
+    /// (`cleanup_after_upgrade` says each condition): its kegs as read
+    /// now when they do, `None` when they do not or cannot be told. Asked
+    /// at the preview, and again right before the cleanup runs
+    /// (review F4, r6): a `brew.env`, a pin or a Cellar can change while
+    /// the confirmation is open or the update runs, and `brew cleanup` with
+    /// a name checks neither `HOMEBREW_NO_INSTALL_CLEANUP` nor a pin before
+    /// it deletes (`cleanup.rb:497-519`) -- so setting the switch for it
+    /// would not be enough.
+    fn cleanup_allowed(&self, prefix: &Path, name: &str, env: &[(String, String)]) -> Option<Kegs> {
+        let switches = self.switches_at(prefix, env);
         if !switches.no_install_cleanup || switches.install_cleanup_unknown {
             return None;
         }
         let theirs: Vec<(String, String)> = env
             .iter()
-            .filter(|(name, _)| name != brew_env::NO_INSTALL_CLEANUP)
+            .filter(|(variable, _)| variable != brew_env::NO_INSTALL_CLEANUP)
             .cloned()
             .collect();
-        let own = self.homebrew_switches(inst, &theirs);
+        let own = self.switches_at(prefix, &theirs);
         if own.no_install_cleanup || own.install_cleanup_unknown {
             return None;
         }
-        let short = req.name.rsplit('/').next().unwrap_or(&req.name);
+        let short = name.rsplit('/').next().unwrap_or(name);
         if switches
             .no_cleanup_formulae
             .iter()
-            .any(|name| name == short)
+            .any(|named| named == short)
         {
             return None;
         }
-        let kegs = (self.kegs_fn)(&inst.prefix, &req.name)?;
-        (!kegs.versions.is_empty()).then_some(kegs.versions)
+        let kegs = (self.kegs_fn)(prefix, name)?;
+        (!kegs.pinned).then_some(kegs)
     }
 
     /// What Homebrew makes of a plan's environment `env` on `inst` once
@@ -760,7 +780,12 @@ impl BrewAdapter {
         inst: &ManagerInstance,
         env: &[(String, String)],
     ) -> HomebrewSwitches {
-        brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn)
+        self.switches_at(&inst.prefix, env)
+    }
+
+    /// `homebrew_switches` for the Homebrew under `prefix`.
+    fn switches_at(&self, prefix: &Path, env: &[(String, String)]) -> HomebrewSwitches {
+        brew_env::after_brew_env(env, prefix, &self.env_var_fn, &self.brew_env_fn)
     }
 
     /// `brew_env_warnings` for switches already read.
@@ -2172,6 +2197,15 @@ impl BrewAdapter {
                 name,
                 exit_code: None,
             });
+            return Ok(outcome);
+        }
+        // Asked again at its turn (review F4, r6): settings changed since
+        // the preview, or that can no longer be read, stop it here.
+        if self
+            .cleanup_allowed(&Self::prefix_for(program), &name, env)
+            .is_none()
+        {
+            note(LogNote::OldVersionsCleanupSkipped { name });
             return Ok(outcome);
         }
         note(LogNote::CleaningUpOldVersions { name: name.clone() });
@@ -7115,6 +7149,24 @@ mod plan_execute_tests {
                 .await
                 .expect("plan");
             assert!(upgrade_then_cleanup(&plan).is_none());
+            // A pin -- or a pin record that cannot be looked at -- keeps a
+            // version: no cleanup either (the same question execute asks
+            // again at the cleanup's turn, `cleanup_allowed`).
+            let adapter = BrewAdapter::new(Arc::new(MockRunner::new())).with_kegs_fn(|_, _| {
+                Some(Kegs {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    pinned: true,
+                })
+            });
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            assert!(upgrade_then_cleanup(&plan).is_none());
+            assert_eq!(plan.warnings, vec![]);
         }
 
         #[tokio::test]
@@ -7317,7 +7369,19 @@ mod plan_execute_tests {
                     pinned: false,
                 })
             };
-            let unread: Read = |_, _| None;
+            // Readable when the cleanup's turn comes (its settings are asked
+            // again then, and a Cellar that cannot be read stops it), not
+            // once it has run: this execute reads it twice, before and
+            // after, and no other test uses this reader.
+            fn unread_after(_: &Path, _: &str) -> Option<Kegs> {
+                use std::sync::atomic::{AtomicUsize, Ordering};
+                static READS: AtomicUsize = AtomicUsize::new(0);
+                (READS.fetch_add(1, Ordering::SeqCst) % 2 == 0).then(|| Kegs {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    pinned: false,
+                })
+            }
+            let unread: Read = unread_after;
             let kept = |versions: &[&str]| {
                 Some(LogNote::OldVersionsKept {
                     name: "wget".to_string(),
@@ -7458,6 +7522,119 @@ mod plan_execute_tests {
                     ),
                 ]
             );
+        }
+
+        #[tokio::test]
+        async fn the_cleanup_does_not_run_when_the_settings_no_longer_allow_it_at_its_turn() {
+            // Review F4 (r6): the preview found cleanup allowed and planned
+            // `brew cleanup wget` after the update. Before the click, or
+            // while the update runs, the person turns it off, names wget,
+            // pins it, or a brew.env becomes one Banager cannot read (or
+            // takes Banager's `1` back, so Homebrew's own update cleaned up
+            // already). `brew cleanup wget` checks none of the first
+            // (`cleanup.rb:497-519`), so Banager asks again right before it
+            // and, when the answer is no longer yes, runs nothing more and
+            // says so in the log. The update stands.
+            type Files = fn(&Path) -> brew_env::EnvFile;
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            fn system(bytes: &'static [u8]) -> impl Fn(&Path) -> brew_env::EnvFile {
+                move |path| {
+                    (path == Path::new(brew_env::SYSTEM_FILE))
+                        .then(|| bytes.to_vec())
+                        .into()
+                }
+            }
+            let none: Files = |_| brew_env::EnvFile::Skipped;
+            let pinned: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    pinned: true,
+                })
+            };
+            let unread: Read = |_, _| None;
+            let cases: [(&str, Files, Read); 6] = [
+                (
+                    "opted out",
+                    |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=1\n")(p),
+                    two_versions,
+                ),
+                (
+                    "named",
+                    |p| system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq,wget\n")(p),
+                    two_versions,
+                ),
+                (
+                    "taken back",
+                    |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p),
+                    two_versions,
+                ),
+                (
+                    "unknown",
+                    |p| {
+                        if p == Path::new(brew_env::SYSTEM_FILE) {
+                            brew_env::EnvFile::Unknown
+                        } else {
+                            brew_env::EnvFile::Skipped
+                        }
+                    },
+                    two_versions,
+                ),
+                ("pinned", none, pinned),
+                ("unread", none, unread),
+            ];
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let inst = test_instance();
+            let req = request(OpKind::Upgrade, ArtifactKind::Formula, "wget");
+            let skipped = format!(
+                "{:?}",
+                LogNote::OldVersionsCleanupSkipped {
+                    name: "wget".to_string()
+                }
+            );
+            for (case, files, read) in cases {
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(upgrade.clone(), ok("==> Upgrading wget\n", "", 0));
+                let plan = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(two_versions)
+                    .plan(&inst, &req)
+                    .await
+                    .expect("plan");
+                assert!(upgrade_then_cleanup(&plan).is_some(), "{case}");
+                let sink = Arc::new(VecSink::new());
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_brew_env_fn(files)
+                    .with_kegs_fn(read)
+                    .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded, "{case}");
+                assert_eq!(runner.calls(), vec![upgrade.clone()], "{case}");
+                assert_eq!(
+                    log_lines(&sink),
+                    vec!["==> Upgrading wget".to_string(), skipped.clone()],
+                    "{case}"
+                );
+            }
+            // Their own variable in Banager's environment, as at the preview.
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(upgrade.clone(), ok("", "", 0));
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .plan(&inst, &req)
+                .await
+                .expect("plan");
+            let sink = Arc::new(VecSink::new());
+            let outcome = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .with_env_var_fn(|name| {
+                    (name == "HOMEBREW_NO_INSTALL_CLEANUP").then(|| OsString::from("1"))
+                })
+                .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                .await
+                .expect("execute");
+            assert_eq!(outcome, Outcome::Succeeded);
+            assert_eq!(runner.calls(), vec![upgrade.clone()]);
+            assert_eq!(log_lines(&sink), vec![skipped]);
         }
 
         #[tokio::test]

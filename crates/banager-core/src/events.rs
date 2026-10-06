@@ -103,6 +103,17 @@ pub enum LogNote {
     /// The update stands; they are still listed as the tool's other
     /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     OldVersionsKept { name: String, versions: Vec<String> },
+    /// The upgrade of the formula `name` exited 0, and its follow-up
+    /// `brew cleanup <name>` was not run: asked again right before it
+    /// (`BrewAdapter::cleanup_allowed`, review F4, r6), the person's
+    /// settings no longer let Banager run it, or could not be read -- a
+    /// `HOMEBREW_NO_INSTALL_CLEANUP` of their own, a
+    /// `HOMEBREW_NO_CLEANUP_FORMULAE` that names it, a `brew.env` that
+    /// takes Banager's `1` back or that cannot be read, a pin, or a Cellar
+    /// that cannot be read, set since the preview. The update stands; what
+    /// is left of its old versions is still listed as the tool's other
+    /// versions. From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
+    OldVersionsCleanupSkipped { name: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,6 +323,20 @@ mod tests {
         let json = r#"{"Note":{"op_id":7,"note":{"OldVersionsKept":{"name":"wget","versions":["1.24.0","1.25.0"]}}}}"#;
         assert_eq!(serde_json::to_string(&kept).unwrap(), json);
         assert_eq!(serde_json::from_str::<OperationEvent>(json).unwrap(), kept);
+        // Review F4 (r6): asked again right before it, the settings no
+        // longer let the cleanup run, so it did not.
+        let skipped = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::OldVersionsCleanupSkipped {
+                name: "wget".to_string(),
+            },
+        };
+        let json = r#"{"Note":{"op_id":7,"note":{"OldVersionsCleanupSkipped":{"name":"wget"}}}}"#;
+        assert_eq!(serde_json::to_string(&skipped).unwrap(), json);
+        assert_eq!(
+            serde_json::from_str::<OperationEvent>(json).unwrap(),
+            skipped
+        );
     }
 
     #[test]

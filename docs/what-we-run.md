@@ -837,8 +837,21 @@ came back on the Installed page, still installed. So:
   Banager's `1`; `HOMEBREW_NO_CLEANUP_FORMULAE` does not name the formula,
   by the name Homebrew checks (one it names by an alias Banager cannot see
   is refused by `brew cleanup` itself, `cleanup.rb:511-514`, which still
-  exits 0: the log then says which versions are left, below); and the
-  names of its versions were read (below). The update's preview says
+  exits 0: the log then says which versions are left, below); the
+  formula is not pinned and its pin record could be looked at (a pin
+  keeps a version); and the names of its versions were read (below).
+  Each of these is asked again right before the cleanup runs, once the
+  upgrade has exited 0 (`BrewAdapter::cleanup_allowed`): a `brew.env`,
+  a pin or the Cellar can change while the confirmation is open or the
+  update runs, and `brew cleanup` with a name checks neither
+  `HOMEBREW_NO_INSTALL_CLEANUP` nor a pin before it deletes
+  (`cleanup.rb:497-519`). When the answer is no longer yes -- the person
+  turned the cleanup off or named the formula since the preview, pinned
+  it, a `brew.env` took Banager's `1` back or can no longer be read, or
+  the Cellar cannot -- the cleanup does not run, and the log says so
+  (`LogNote::OldVersionsCleanupSkipped`, 「没有运行brew cleanup：确认窗口
+  打开后，Homebrew的设置有了变化，或无法读取。……」); the update's
+  outcome is unchanged. The update's preview says
   first which versions go -- every version installed when it looked, the
   one the update replaces among them (`Warning::HomebrewCleansUpOldVersions`,
   「更新后会删除旧版本1.25.0。」, the command behind its ⓘ) -- and shows

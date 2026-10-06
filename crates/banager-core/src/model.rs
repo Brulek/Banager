@@ -1582,7 +1582,10 @@ pub enum PlanAction {
         env: Vec<(String, String)>,
     },
     /// Two commands with one program and one environment: `program args`,
-    /// and only once that has exited 0, `program then`, a follow-up whose
+    /// and only once that has exited 0 -- and, asked again then, the
+    /// person's settings still allow it (`LogNote::
+    /// OldVersionsCleanupSkipped` when they do not) -- `program then`, a
+    /// follow-up whose
     /// own end decides nothing about the operation -- the first command's
     /// work is done whatever becomes of it -- and is said in the log
     /// instead (`LogNote::CleaningUpOldVersions`,
