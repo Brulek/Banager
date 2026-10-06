@@ -173,7 +173,12 @@ describe("CommandsGroup", () => {
       expect(row.querySelector("[data-path-line-text]")).toHaveTextContent(
         "To let Terminal find it, add this line to the end of a shell startup file such as ~/.zshrc, then open a new Terminal window.",
       );
-      expect(row.querySelector("code")).toHaveTextContent('export PATH="$HOME/.grok/bin:$PATH"');
+      const code = row.querySelector("code") as HTMLElement;
+      expect(code.textContent).toBe('export PATH="$HOME/.grok/bin:$PATH"');
+      // In a narrow pane it breaks only after a "/", never at the space
+      // after export, which would read as two lines to type.
+      expect(code.querySelector(".whitespace-nowrap")?.textContent).toBe('export PATH="');
+      expect(code.querySelectorAll("wbr")).toHaveLength(2);
       const copy = within(row).getByRole("button", { name: "Copy line for ~/.grok/bin" });
       expect(copy).toHaveTextContent(/^Copy Line$/);
       expect(copy.className).toBe(BUTTON.small.grey);
