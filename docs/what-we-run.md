@@ -139,49 +139,80 @@ their values.
 
 **What a tool prints about a login.** A proxy or mirror setting can hold a
 login -- `http://user:password@proxy:8080`, or a mirror's
-`https://token@mirror…` -- and tools print a setting back, whole, when
-something about it is wrong: curl, and so Homebrew, says `Unsupported
-proxy syntax in 'http://user:password@…'`, and pip ends its traceback with
-`Failed to parse: http://user:password@…`. So before a line a command
+`https://token@mirror…` -- and tools print a setting back, whole or in
+part, when something about it is wrong: curl, and so Homebrew, says
+`Unsupported proxy syntax in 'http://user:password@…'`; pip ends its
+traceback with `Failed to parse: http://user:password@…`; git, refused,
+says it `could not read Password for 'https://user@github.com'`, naming
+the user alone (git 2.54); npm says ``Invalid protocol `user:` `` of a
+proxy written with no scheme (npm 10.9.9). So before a line a command
 prints reaches the operation's log, and before its stderr becomes a
 failure's summary or a source's error, Banager masks the login in it
 (`runner::redact`, which `RealRunner::run` applies to everything it hands
-on), putting `****` where the secret was and leaving the rest of the line,
-a proxy's user name included, as the tool wrote it:
+on), putting `****` where a secret was and leaving the rest of the line as
+the tool wrote it.
 
-- for each setting the command was handed -- those read from the login
-  shell, and the same names in Banager's own environment, which a command
-  inherits when the shell did not set them -- the password in every form
-  a tool is known to print it: as written, percent-decoded, percent-encoded
-  (with upper- or lowercase hex digits), and the `user:password` pair as
-  the HTTP Basic credential `curl -v` shows for a proxy
-  (`> Proxy-Authorization: Basic …`, curl 8.7.1). A proxy's login is all
-  before the last `@` of its value, as a proxy's address has no path, and
-  a mirror's all before the last `@` that a host follows, so a password
-  with a `/`, `?` or `#` written into it, not percent-encoded, is masked
-  whole: curl cannot read such a setting and prints it back as written
-  (`Unsupported proxy syntax in 'http://user:pass/word@…'`, curl 8.7.1).
-  On a mirror's or a remote's http(s) address the name before the
-  password, or alone, is masked too, in the same forms, since it may be a
-  token: GitHub's `https://TOKEN:x-oauth-basic@github.com/…`, a mirror's
-  `https://token@…`. A proxy's user name is not: it is the account's, and
-  a proxy given a user name alone (NTLM or Kerberos style) has nothing
-  masked. Nor is a name alone before the `@` of anything but an http(s)
-  address (`git@github.com:…`), which names an ssh user;
-- a password is masked wherever it appears only when it is four
-  characters or longer and not letters alone or digits alone. One of
-  fewer than four characters, or a plain word or number (`password`,
-  `2026`), is masked only where it stands as a login (`:abc@`), which is
-  where tools print it: masked everywhere, it would turn sudo's "a
-  password is required", which Banager reads to say an operation needs
-  Terminal (`needsPassword` in `src/lib/failureCause.ts`), and the dates
-  in a log into `****`. A mirror's name is masked wherever it appears
-  only when it looks like a token -- 16 characters or more, not letters
-  alone or digits alone, with no `.` or `@` -- and otherwise only where
-  it stands in the address (`//name@`, `//name:`): it may be the Mac
-  account's name, which is in every path a tool prints;
-- besides, the password of any `scheme://user:password@` in the output,
-  whatever setting or file it came from.
+It knows the logins of the settings the command was handed -- those read
+from the login shell, and the same names in Banager's own environment,
+which a command inherits when the shell did not set them. Each value is
+read by fixed rules, never by what its parts look like:
+
+- a scheme counts only where the value starts with one (a letter, then
+  letters, digits, `+`, `.` or `-`, then `://`): in a proxy written with
+  no scheme, `user:rev://secret@host:port`, a later `://` is part of the
+  password;
+- a proxy's login (`http_proxy`, `https_proxy`, `all_proxy`, in either
+  case) is all before the last `@` of its value, as a proxy's address has
+  no path, so a `/`, `?`, `#` or `@` written into its password, not
+  percent-encoded, is part of it: curl cannot read such a setting and
+  prints it back as written (`Unsupported proxy syntax in
+  'http://user:pass/word@…'`, curl 8.7.1);
+- a mirror's or a remote's login is all before the last `@` of its
+  authority -- up to the first `/`, `?` or `#` -- so an `@` in its path is
+  the path's: `https://mirror.example:8443/x/user@example.com/simple` has
+  no login, and nothing of it is masked. When what follows that `@`, or
+  the authority with no `@` in it, is no host and port -- a domain name of
+  two labels or more, an IPv4 or bracketed IPv6 address, or `localhost`,
+  with or without a port of digits -- the rules cannot read the value: a
+  `/`, `?` or `#` written into a password cut the authority short. Then
+  its login is all before the last `@` of the value, as a proxy's is,
+  which masks too much rather than too little;
+- a value with no `@` where these rules look for one holds no login.
+
+In a login, the user name and the password are both secrets, whatever
+they look like: a user name can itself be a token -- GitHub's
+`https://TOKEN:x-oauth-basic@github.com/…`, a mirror's `https://token@…`,
+a proxy's in npm's "Invalid protocol" -- and nothing in it says whether it
+is one. Each is masked wherever it appears, as written, percent-decoded
+and percent-encoded (with upper- or lowercase hex digits); so are the
+whole login and the whole value (shown as `scheme://****:****@host…`, so
+the host stays readable), and the `user:password` pair as the HTTP Basic
+credential `curl -v` shows for a proxy (`> Proxy-Authorization: Basic …`,
+curl 8.7.1). Two kinds of part are masked only where they stand in their
+login (`:ab@`, the whole login before its `@`, the whole value):
+
+- a user name or password of fewer than three characters: masked
+  everywhere, it would turn every `ab` in a build log into `****`;
+- a user name or password that is one of these words, ignoring case --
+  names a host has everyone write with a token, or after one:
+  `x-oauth-basic`, `x-access-token`, `x-token-auth`, `oauth2`, `oauth`,
+  `gitlab-ci-token`, `__token__`, `token`; account names that are words
+  tools print (`git@github.com:…` names an ssh user): `git`, `user`,
+  `username`, `admin`, `root`, `guest`, `anonymous`, `proxy`, `login`,
+  `test`, `default`; and sudo's words in "sudo: a password is required",
+  which Banager reads to say an operation needs Terminal (`needsPassword`
+  in `src/lib/failureCause.ts`): `password`, `required`, `terminal`,
+  `sudo` (`COMMON_WORDS` in `runner/redact.rs`).
+
+A user name alone that is that short or one of those words
+(`git@github.com:…`) holds no secret, and nothing is masked for it.
+Anything else is masked wherever it appears, more than needed rather than
+less: a password of digits masks a date's year that matches it, and a
+user name that is the Mac account's masks it in every path a tool prints
+(`/Users/****/…`). Besides, the password of any `scheme://user:password@`
+in the output is masked, whatever setting or file it came from; its user
+name is left, since without the setting there is no telling a token from
+a person's name.
 
 A line is masked once it has ended, so a login split across two reads is
 masked whole. A transcript for a person keeps at most its first and its

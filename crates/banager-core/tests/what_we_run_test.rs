@@ -1672,26 +1672,31 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
     );
 }
 
-/// F2 of the decisions-round review: the section that lists the proxy and
-/// mirror settings taken from the login shell says that a login in them
-/// is masked in what tools print (`runner::redact`), in which forms, with
-/// which mark, and what is not masked -- and the Passwords paragraph no
-/// longer promises Banager never shows one without saying how.
+/// F2 of the decisions-round review, and R1-R3 of its re-check: the
+/// section that lists the proxy and mirror settings taken from the login
+/// shell says that a login in them is masked in what tools print
+/// (`runner::redact`), by which rules a value is read, in which forms, with
+/// which mark, which words are masked only in their login, and what is not
+/// masked -- and the Passwords paragraph no longer promises Banager never
+/// shows one without saying how.
 #[test]
 fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
-    use banager_core::runner::redact::{MASK, SHORTEST_MASKED_ANYWHERE, SHORTEST_TOKEN};
+    use banager_core::runner::redact::{COMMON_WORDS, MASK, SHORTEST_MASKED_ANYWHERE};
     let doc = read_doc();
     let body = section_body(&doc, "How Banager runs anything")
         .expect("docs/what-we-run.md has a `## How Banager runs anything` section");
     let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
     assert_eq!(
-        SHORTEST_MASKED_ANYWHERE, 4,
-        "the document says a password of fewer than four characters is masked only as a login"
+        SHORTEST_MASKED_ANYWHERE, 3,
+        "the document says a user name or password of fewer than three characters is masked only in its login"
     );
-    assert_eq!(
-        SHORTEST_TOKEN, 16,
-        "the document says a mirror's name is masked wherever it appears from 16 characters"
-    );
+    // Every word masked only in its login is listed, word for word.
+    for word in COMMON_WORDS {
+        assert!(
+            folded.contains(&format!("`{word}`")),
+            "the `## How Banager runs anything` section of docs/what-we-run.md does not list `{word}`, one of `COMMON_WORDS` in runner/redact.rs"
+        );
+    }
     for phrase in [
         "**What a tool prints about a login.**",
         "`runner::redact`",
@@ -1701,26 +1706,50 @@ fn test_what_we_run_says_a_login_in_a_setting_is_masked_in_what_tools_print() {
         "percent-decoded",
         "percent-encoded",
         "HTTP Basic",
-        "fewer than four characters",
+        "fewer than three characters",
         "any `scheme://user:password@`",
         "split across two reads",
         "the word on each side of the cut",
         "What a parser reads",
         "handed to the commands unchanged",
         // The F2 review's fixes: a password with a `/`, `?` or `#`, a
-        // token in the name slot, a proxy's name and plain words left be,
-        // and a quoted reason masked.
+        // token in the name slot, and a quoted reason masked.
         "all before the last `@` of its value",
-        "`/`, `?` or `#` written into it",
+        "`/`, `?`, `#` or `@` written into its password",
         "x-oauth-basic",
-        "A proxy's user name is not",
-        "not letters alone or digits alone",
-        "16 characters or more",
         "the quote is masked first",
+        // The re-check's (R1-R3): fixed rules, both parts whatever they
+        // look like, git's and npm's lines, an `@` in a path.
+        "could not read Password for",
+        "Invalid protocol",
+        "never by what its parts look like",
+        "a scheme counts only where the value starts with one",
+        "all before the last `@` of its authority",
+        "an `@` in its path is the path's",
+        "is no host and port",
+        "the user name and the password are both secrets, whatever they look like",
+        "the whole login and the whole value",
+        "more than needed rather than less",
+        "`/Users/****/…`",
+        "`COMMON_WORDS` in `runner/redact.rs`",
     ] {
         assert!(
             folded.contains(phrase),
             "the `## How Banager runs anything` section of docs/what-we-run.md does not say {phrase:?} about masking a login in what tools print"
+        );
+    }
+    // The rules the re-check found leaking: a name kept for not looking
+    // like a token, and a proxy's name never masked.
+    for gone in [
+        "A proxy's user name is not",
+        "not letters alone or digits alone",
+        "16 characters or more",
+        "only when it looks like a token",
+        "a proxy's user name included",
+    ] {
+        assert!(
+            !folded.contains(gone),
+            "the section still says {gone:?}, a rule the re-check found leaking a token (R1)"
         );
     }
     assert!(
