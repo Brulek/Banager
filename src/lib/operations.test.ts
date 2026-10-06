@@ -244,6 +244,7 @@ describe("operationWords", () => {
     { BanagerFailed: { SpawnFailed: { detail: "Permission denied" } } },
     { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
     { BanagerFailed: { PathChanged: { path: "/opt/homebrew/bin/jq" } } },
+    { BanagerFailed: { FormulaChanged: { name: "wget" } } },
   ];
   const waiting: LogLine = { opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } }, seq: 1 };
   const kinds: OpKind[] = ["Install", "Uninstall", "Upgrade"];

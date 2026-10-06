@@ -119,6 +119,7 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
     }
     if ("HomebrewStillUpdating" in fault) return "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail";
     if ("PathChanged" in fault) return "operations.outcome.BanagerFailed.PathChangedDetail";
+    if ("FormulaChanged" in fault) return "operations.outcome.BanagerFailed.FormulaChangedDetail";
     if ("ProgramMissing" in fault || "SpawnFailed" in fault) return null;
     const unhandled: never = fault;
     return unhandled;
@@ -159,6 +160,7 @@ function faultKey(fault: Fault): string {
   if ("SpawnFailed" in fault) return "SpawnFailed";
   if ("HomebrewStillUpdating" in fault) return "HomebrewStillUpdating";
   if ("PathChanged" in fault) return "PathChanged";
+  if ("FormulaChanged" in fault) return "FormulaChanged";
   const unhandled: never = fault;
   return unhandled;
 }
@@ -171,6 +173,7 @@ function faultArgs(fault: Fault): Record<string, unknown> {
   if ("SpawnFailed" in fault) return { detail: fault.SpawnFailed.detail };
   if ("HomebrewStillUpdating" in fault) return { minutes: fault.HomebrewStillUpdating.minutes };
   if ("PathChanged" in fault) return { path: fault.PathChanged.path };
+  if ("FormulaChanged" in fault) return { name: fault.FormulaChanged.name };
   const unhandled: never = fault;
   return unhandled;
 }

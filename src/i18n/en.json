@@ -875,6 +875,8 @@
         "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
         "PathChanged": "Stopped: {{path}} changed after the confirmation opened",
         "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
+        "FormulaChanged": "Couldn't start: {{name}} changed in Homebrew after the confirmation opened",
+        "FormulaChangedDetail": "Nothing changed. Open the confirmation again to see which versions it removes.",
         "Internal": "Couldn't finish because of an internal error. Nothing changed"
       }
     },

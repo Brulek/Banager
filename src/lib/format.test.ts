@@ -213,6 +213,7 @@ describe("outcomeKey", () => {
       { BanagerFailed: { SpawnFailed: { detail: "EACCES" } } },
       { BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
       { BanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
+      { BanagerFailed: { FormulaChanged: { name: "wget" } } },
       { BanagerFailed: "Internal" },
     ];
     const lookup = (locale: unknown, key: string): unknown =>
@@ -231,6 +232,7 @@ describe("outcomeKey", () => {
       ["BanagerFailed.Panicked", "operations.outcome.BanagerFailed.PanickedDetail"],
       ["BanagerFailed.HomebrewStillUpdating", "operations.outcome.BanagerFailed.HomebrewStillUpdatingDetail"],
       ["BanagerFailed.PathChanged", "operations.outcome.BanagerFailed.PathChangedDetail"],
+      ["BanagerFailed.FormulaChanged", "operations.outcome.BanagerFailed.FormulaChangedDetail"],
     ]);
     for (const [, detail] of withStep) {
       expect(typeof lookup(en, detail as string), detail as string).toBe("string");
@@ -248,6 +250,7 @@ describe("outcomeKey for Banager's own failures", () => {
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },
     { HomebrewStillUpdating: { minutes: 10 } },
     { PathChanged: { path: "~/.local/bin/claude" } },
+    { FormulaChanged: { name: "wget" } },
     "Internal",
   ];
 
@@ -310,6 +313,16 @@ describe("outcomeKey for Banager's own failures", () => {
     });
     expect(en.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
     expect(zhCN.operations.outcome.BanagerFailed.PathChanged).toContain("{{path}}");
+    // Review F3 (r6): an uninstall of every version of a formula whose
+    // Cellar or pin changed since the preview ran nothing; it names the
+    // formula and asks for a new look.
+    expect(outcomeKey({ BanagerFailed: { FormulaChanged: { name: "wget" } } })).toBe(
+      "BanagerFailed.FormulaChanged",
+    );
+    expect(outcomeArgs({ BanagerFailed: { FormulaChanged: { name: "wget" } } })).toEqual({ name: "wget" });
+    expect(outcomeDetailKey({ BanagerFailed: { FormulaChanged: { name: "wget" } } })).toBe(
+      "operations.outcome.BanagerFailed.FormulaChangedDetail",
+    );
     expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
     expect(en.operations.logNote.trashFailed).toContain("{{error}}");

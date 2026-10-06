@@ -396,6 +396,12 @@ describe("types", () => {
       '{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
     );
     expect(roundTrip(changed)).toEqual(changed);
+    // Review F3 (r6): an uninstall of every version of a formula found its
+    // versions or its pin changed since the preview (model.rs builds the
+    // same string).
+    const formula: Outcome = { BanagerFailed: { FormulaChanged: { name: "wget" } } };
+    expect(JSON.stringify(formula)).toBe('{"BanagerFailed":{"FormulaChanged":{"name":"wget"}}}');
+    expect(roundTrip(formula)).toEqual(formula);
   });
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {

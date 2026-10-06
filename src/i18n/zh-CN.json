@@ -810,6 +810,8 @@
         "HomebrewStillUpdatingDetail": "没有改动。请检查网络连接，稍后再试。",
         "PathChanged": "已停止：确认窗口打开后，{{path}}发生了变化",
         "PathChangedDetail": "如有已移到废纸篓的项目，日志中都已列出。请重新打开确认窗口。",
+        "FormulaChanged": "未能开始：确认窗口打开后，Homebrew里的{{name}}有了变化",
+        "FormulaChangedDetail": "没有改动。请重新打开确认窗口，查看会删除哪些版本。",
         "Internal": "未能完成：发生内部错误，没有改动"
       }
     },

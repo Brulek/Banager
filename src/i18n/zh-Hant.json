@@ -810,6 +810,8 @@
         "HomebrewStillUpdatingDetail": "沒有改動。請檢查網路連線，稍後再試。",
         "PathChanged": "已停止：確認視窗開啟後，{{path}}發生了變化",
         "PathChangedDetail": "如有已移到垃圾桶的項目，記錄中都已列出。請重新開啟確認視窗。",
+        "FormulaChanged": "未能開始：確認視窗開啟後，Homebrew裡的{{name}}有了變化",
+        "FormulaChangedDetail": "沒有改動。請重新開啟確認視窗，查看會刪除哪些版本。",
         "Internal": "未能完成：發生內部錯誤，沒有改動"
       }
     },
