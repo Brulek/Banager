@@ -11,6 +11,7 @@ import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import type { OpStatus, OpSummary, Outcome, Snapshot } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -158,7 +159,7 @@ describe("OperationBar", () => {
   });
 
   it("says what it acts on, then what it does, never a bare verb in front: htop: Uninstalling…, then Uninstalled (walk-3 W3-3)", async () => {
-    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong" } };
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong", cause: failureCause("Error: something went wrong") } };
     const cases: [OpSummary, string, string][] = [
       [op(1, "htop", "Running", null, { kind: "Uninstall" }), "htop: Uninstalling…", "htop：正在卸载…"],
       [op(1, "htop", "Done", "Succeeded", { kind: "Uninstall" }), "htop: Uninstalled", "htop：已卸载"],
@@ -187,8 +188,8 @@ describe("OperationBar", () => {
   });
 
   it("says what it does in front wherever the words don't, in every other state (walk-3 review 1.1)", async () => {
-    const network: Outcome = { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } };
-    const plain: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong" } };
+    const network: Outcome = { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } };
+    const plain: Outcome = { Failed: { exit_code: 1, summary: "Error: something went wrong", cause: failureCause("Error: something went wrong") } };
     const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
     const cases: [OpSummary, boolean, string, string][] = [
       [op(1, "htop", "Queued", null, { kind: "Uninstall" }), false, "htop: Uninstall · Queued", "htop：卸载 · 排队中"],
@@ -253,7 +254,7 @@ describe("OperationBar", () => {
 
   it("keeps a finished operation visible with its outcome in place of its status, and no Cancel button", async () => {
     operations = [
-      op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"" } }, {
+      op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"", cause: failureCause("No available formula with the name \"jqq\"") } }, {
         kind: "Install",
       }),
     ];
@@ -303,7 +304,7 @@ describe("OperationBar", () => {
 
   it("says why an update failed where the tool's own words say, and not the words themselves", async () => {
     const failed = op(9, "git", "Done", {
-      Failed: { exit_code: 1, summary: 'curl: (6) Could not resolve host: ghcr.io\nError: git: Failed to download resource "git (2.55.1)"' },
+      Failed: { exit_code: 1, summary: 'curl: (6) Could not resolve host: ghcr.io\nError: git: Failed to download resource "git (2.55.1)"', cause: failureCause('curl: (6) Could not resolve host: ghcr.io\nError: git: Failed to download resource "git (2.55.1)"') },
     });
     operations = [failed];
     const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
@@ -316,7 +317,7 @@ describe("OperationBar", () => {
   it("shows a program's own words only with Show technical details on", async () => {
     technical = true;
     operations = [
-      op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: 'No available formula with the name "jqq"' } }, { kind: "Install" }),
+      op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: 'No available formula with the name "jqq"', cause: failureCause('No available formula with the name "jqq"') } }, { kind: "Install" }),
     ];
     const tech = renderWithProviders(<OperationBar />);
     await tech.findByText('jqq: Install · Couldn\'t finish: No available formula with the name "jqq"');
@@ -340,7 +341,7 @@ describe("OperationBar", () => {
     await listNow(queryClient, [op(2, "jq", "Queued"), op(1, "git", "Running")]);
     await listNow(queryClient, [
       op(2, "jq", "Done", { NeedsAttention: "UnchangedAfterUpgrade" }),
-      op(1, "git", "Done", { Failed: { exit_code: 1, summary: "Error: git is pinned" } }),
+      op(1, "git", "Done", { Failed: { exit_code: 1, summary: "Error: git is pinned", cause: failureCause("Error: git is pinned") } }),
     ]);
     await findByText("1 update failed, 1 needs attention");
     await act(async () => {
@@ -383,9 +384,9 @@ describe("OperationBar", () => {
       op(1, "git", "Running"),
     ]);
     await listNow(queryClient, [
-      op(4, "ripgrep", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } }, { kind: "Install" }),
+      op(4, "ripgrep", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } }, { kind: "Install" }),
       op(3, "wget", "Done", "Cancelled"),
-      op(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned", cause: failureCause("Error: jq is pinned") } }),
       op(1, "git", "Done", "Succeeded"),
     ]);
     await findByText("2 failed, 1 succeeded, 1 cancelled");
@@ -454,7 +455,7 @@ describe("OperationBar", () => {
     await findByText("git: Updating…");
     const viewLog = getByRole("button", { name: "View Log" });
 
-    await listNow(queryClient, [op(9, "git", "Done", { Failed: { exit_code: 1, summary: "" } })]);
+    await listNow(queryClient, [op(9, "git", "Done", { Failed: { exit_code: 1, summary: "", cause: failureCause("") } })]);
     const close = await findByRole("button", { name: "Close" });
 
     expect(viewLog).toBeInTheDocument();
@@ -527,7 +528,7 @@ describe("OperationBar", () => {
 
     await listNow(queryClient, [
       op(13, "wget", "Done", "Succeeded"),
-      op(12, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(12, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned", cause: failureCause("Error: jq is pinned") } }),
       op(11, "git", "Done", "Succeeded"),
     ]);
     // The failure said as one, with the ones that worked beside it.
@@ -702,7 +703,7 @@ describe("OperationBar", () => {
     const { findByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
     const password: Outcome = {
-      Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password\nsudo: a password is required" },
+      Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password\nsudo: a password is required", cause: failureCause("sudo: a terminal is required to read the password\nsudo: a password is required") },
     };
     await listNow(queryClient, [op(21, "android-platform-tools", "Done", password)]);
     await findByText("android-platform-tools: Update · Needs your password");
@@ -723,9 +724,9 @@ describe("OperationBar", () => {
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
     await listNow(queryClient, [
       op(34, "wget", "Done", "Succeeded"),
-      op(33, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(33, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned", cause: failureCause("Error: jq is pinned") } }),
       op(32, "git", "Done", { NeedsAttention: "UnchangedAfterUpgrade" }),
-      op(31, "gh", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host" } }),
+      op(31, "gh", "Done", { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host", cause: failureCause("curl: (6) Could not resolve host") } }),
     ]);
     await findByText("2 updates failed, 1 succeeded, 1 needs attention");
     fireEvent.click(getByRole("button", { name: "View 3 Logs" }));
@@ -898,7 +899,7 @@ describe("OperationBar, after a batch uninstall", () => {
       uninstall(1, "git", "Done", "Succeeded"),
     ]);
     await findByText("Working on 1 of 3");
-    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall" } };
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall", cause: failureCause("Error: Refusing to uninstall") } };
     await listNow(queryClient, [
       uninstall(6, "python@3.13", "Done", failed),
       uninstall(5, "pipx", "Done", failed),
@@ -946,7 +947,7 @@ describe("OperationBar, after a batch uninstall", () => {
     await listNow(queryClient, [uninstall(3, "wget", "Queued"), uninstall(2, "jq", "Queued"), uninstall(1, "git", "Running")]);
     await listNow(queryClient, [
       uninstall(3, "wget", "Done", "Cancelled"),
-      uninstall(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall" } }),
+      uninstall(2, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall", cause: failureCause("Error: Refusing to uninstall") } }),
       uninstall(1, "git", "Done", "Succeeded"),
     ]);
     // The cancelled one is not counted as uninstalled, and the bar and the

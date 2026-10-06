@@ -18,6 +18,7 @@ import {
 } from "./operations";
 import type { LogLine } from "../store/ui";
 import type { OpKind, OpStatus, OpSummary, Outcome } from "./types";
+import { failureCause } from "./failureCause";
 
 function op(id: number, status: OpStatus, extra: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -175,11 +176,11 @@ describe("outcomeWords", () => {
       ["Upgrade", "Couldn't update"],
     ] as const) {
       const summary = "Error: something odd happened";
-      const failed: Outcome = { Failed: { exit_code: 1, summary } };
+      const failed: Outcome = { Failed: { exit_code: 1, summary, cause: failureCause(summary) } };
       expect(outcomeWords(en, failed, kind, false)).toBe(plain);
       expect(outcomeWords(en, failed, kind, true)).toBe(`Couldn't finish: ${summary}`);
       const network = "curl: (6) Could not resolve host: ghcr.io";
-      const unreachable: Outcome = { Failed: { exit_code: 1, summary: network } };
+      const unreachable: Outcome = { Failed: { exit_code: 1, summary: network, cause: failureCause(network) } };
       expect(outcomeWords(en, unreachable, kind, false)).toBe("Connection failed");
       expect(outcomeWords(en, unreachable, kind, true)).toBe(`Couldn't finish: ${network}`);
     }
@@ -188,7 +189,7 @@ describe("outcomeWords", () => {
   it("says the program gave no reason when its failure summary contains only whitespace", () => {
     for (const summary of ["", " \t\n "]) {
       for (const technical of [false, true]) {
-        expect(outcomeWords(en, { Failed: { exit_code: 1, summary } }, "Upgrade", technical)).toBe(
+        expect(outcomeWords(en, { Failed: { exit_code: 1, summary, cause: failureCause(summary) } }, "Upgrade", technical)).toBe(
           "Couldn't finish, and the program didn't say why",
         );
       }
@@ -202,7 +203,7 @@ describe("outcomeTone", () => {
     expect(outcomeTone("Cancelled")).toBe("cancelled");
     expect(outcomeTone("Unconfirmed")).toBe("attention");
     expect(outcomeTone({ NeedsAttention: "GoneAfterUpgrade" })).toBe("attention");
-    expect(outcomeTone({ Failed: { exit_code: 1, summary: "" } })).toBe("failure");
+    expect(outcomeTone({ Failed: { exit_code: 1, summary: "", cause: failureCause("") } })).toBe("failure");
     expect(outcomeTone({ BanagerFailed: "Internal" })).toBe("failure");
     // Never sent, and so claims nothing either way.
     expect(outcomeTone(null)).toBe("attention");
@@ -232,12 +233,12 @@ describe("operationWords", () => {
     { NeedsAttention: "GoneAfterUpgrade" },
     { NeedsAttention: "UnchangedAfterUpgrade" },
     { NeedsAttention: "BackAfterUninstall" },
-    { Failed: { exit_code: 1, summary: "" } },
-    { Failed: { exit_code: 1, summary: "   " } },
-    { Failed: { exit_code: 1, summary: "Error: something odd happened" } },
-    { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } },
-    { Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password" } },
-    { Failed: { exit_code: null, summary: "Operation not permitted" } },
+    { Failed: { exit_code: 1, summary: "", cause: failureCause("") } },
+    { Failed: { exit_code: 1, summary: "   ", cause: failureCause("   ") } },
+    { Failed: { exit_code: 1, summary: "Error: something odd happened", cause: failureCause("Error: something odd happened") } },
+    { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } },
+    { Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password", cause: failureCause("sudo: a terminal is required to read the password") } },
+    { Failed: { exit_code: null, summary: "Operation not permitted", cause: failureCause("Operation not permitted") } },
     { BanagerFailed: "Panicked" },
     { BanagerFailed: "Internal" },
     { BanagerFailed: { ProgramMissing: { program: "brew" } } },

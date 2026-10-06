@@ -1,7 +1,11 @@
 /**
  * Why something failed, in a word a person knows, read off the words of
  * the program that failed (spec R10): the last lines a tool wrote to
- * stderr (`Outcome.Failed.summary`), or a message a check failed with.
+ * stderr, or a message a check failed with. For an operation the core
+ * reads them, as the tool wrote them, before a login is masked out of
+ * them, and hands over only the cause (`Outcome.Failed.cause`,
+ * `outcomeCause`; `history::failure_cause` in crates/banager-core, the
+ * same rule).
  * Tools say the same few things when the network, the disk or a lock is in
  * the way -- Homebrew through curl, npm through Node, pip and pipx through
  * urllib3, cargo and uv through their HTTP clients, Ollama through Go's --
@@ -186,9 +190,10 @@ const PATTERNS: Array<[FailureCause, RegExp[]]> = [
  * no password the command stopped there, and whatever the tool said after
  * it -- a cask's rollback refused a file, "Permission denied" -- follows
  * from that, and would send a person to fix the wrong thing. For a failed
- * operation `text` is `Failed.summary`, only the last five lines the tool
- * wrote to stderr (`run_plan` in crates/banager-core/src/adapters/mod.rs):
- * a rollback that says more than that after sudo's lines pushes them out,
+ * operation the core reads the same lines `Failed.summary` holds, only the
+ * last five the tool wrote to stderr (`run_plan` in
+ * crates/banager-core/src/adapters/mod.rs), as the tool wrote them: a
+ * rollback that says more than that after sudo's lines pushes them out,
  * and then the cause is whatever those last lines say, or none.
  */
 export function failureCause(text: string): FailureCause | null {
@@ -218,14 +223,15 @@ export function lookupFailureCause(text: string): FailureCause | null {
 
 /**
  * The cause of an operation's failure, from its outcome: a tool's own
- * words (`Failed.summary`), classified; Banager's own `HomebrewStillUpdating`,
- * which is the Homebrew list by definition. Every other outcome -- one
- * that worked, was cancelled, or failed for a reason Banager words itself
- * -- has none.
+ * words, classified by the core before a login was masked out of them
+ * (`Failed.cause`; never read off `Failed.summary`, which the mask may have
+ * changed); Banager's own `HomebrewStillUpdating`, which is the Homebrew
+ * list by definition. Every other outcome -- one that worked, was
+ * cancelled, or failed for a reason Banager words itself -- has none.
  */
 export function outcomeCause(outcome: Outcome | null): FailureCause | null {
   if (outcome === null || typeof outcome === "string") return null;
-  if ("Failed" in outcome) return failureCause(outcome.Failed.summary);
+  if ("Failed" in outcome) return outcome.Failed.cause ?? null;
   if ("BanagerFailed" in outcome) {
     const fault = outcome.BanagerFailed;
     return typeof fault !== "string" && "HomebrewStillUpdating" in fault ? "homebrewUpdating" : null;

@@ -45,13 +45,18 @@ export type Fault =
 // `Failed.summary` is another program's own words, never Banager's: the
 // last lines of a tool's stderr, or macOS's own reason for refusing to move
 // a path to the Trash (`exit_code` is then `null`: no command ran).
-// Banager's own failures are `BanagerFailed`.
+// Banager's own failures are `BanagerFailed`. `Failed.cause` is why it
+// failed, read by the core off those lines as the tool wrote them, before a
+// proxy's or mirror's login was masked out of `summary` -- the mask can take
+// the words that say it, a password `pass` in sudo's "password" (re-check
+// 2's N1). The window takes the cause from here (`outcomeCause`), never
+// from `summary`.
 export type Outcome =
   | "Succeeded"
   | "Cancelled"
   | "Unconfirmed"
   | { NeedsAttention: Attention }
-  | { Failed: { exit_code: number | null; summary: string } }
+  | { Failed: { exit_code: number | null; summary: string; cause: FailureCause | null } }
   | { BanagerFailed: Fault };
 export interface ArtifactKey {
   instance_id: string;

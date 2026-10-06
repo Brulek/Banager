@@ -7,6 +7,7 @@ import { PasswordCommand, terminalCommand } from "./PasswordCommand";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import type { OpSummary } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -25,7 +26,7 @@ const passwordOp: OpSummary = {
   artifact_kind: "Cask",
   name: "example",
   status: "Done",
-  outcome: { Failed: { exit_code: 1, summary: SUDO_LINES.join("\n") } },
+  outcome: { Failed: { exit_code: 1, summary: SUDO_LINES.join("\n"), cause: failureCause(SUDO_LINES.join("\n")) } },
   argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "example"],
   env_preview: [
     ["HOMEBREW_NO_AUTO_UPDATE", "1"],
@@ -77,7 +78,7 @@ describe("PasswordCommand", () => {
   it("shows nothing for a failure with another cause, one still running, one that ran no command, or one not Homebrew's", () => {
     const network = renderWithProviders(
       <PasswordCommand
-        op={{ ...passwordOp, outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } } }}
+        op={{ ...passwordOp, outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } } }}
       />,
     );
     expect(network.container).toBeEmptyDOMElement();
@@ -177,7 +178,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
     operations = [
       {
         ...passwordOp,
-        outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required" } },
+        outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required", cause: failureCause("sudo: no password was provided\nsudo: a password is required") } },
       },
     ];
     const { findByText, getByRole, queryByText } = renderWithProviders(<LogDrawer />);
@@ -191,7 +192,7 @@ describe("LogDrawer, where sudo wanted a password", () => {
 
   it("shows no command for a failure with another cause", async () => {
     operations = [
-      { ...passwordOp, outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "example"' } } },
+      { ...passwordOp, outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "example"', cause: failureCause('Error: Failed to download resource "example"') } } },
     ];
     const { findByText, getByRole, queryByRole } = renderWithProviders(<LogDrawer />);
     await findByText("Update · Connection failed");

@@ -13,6 +13,7 @@ import {
   type JustUpdatedEntry,
 } from "./JustUpdated";
 import type { OpSummary } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -50,7 +51,7 @@ describe("justUpdatedOps", () => {
       upgrade(5, "jq"),
       upgrade(2, "wget"),
       upgrade(6, "wget", { kind: "Uninstall" }),
-      upgrade(3, "glib", { outcome: { Failed: { exit_code: 1, summary: "no bottle" } } }),
+      upgrade(3, "glib", { outcome: { Failed: { exit_code: 1, summary: "no bottle", cause: failureCause("no bottle") } } }),
       upgrade(4, "gh", { status: "Running", outcome: null }),
       upgrade(7, "fd", { outcome: "Unconfirmed" }),
       upgrade(8, "bat", { outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
@@ -61,7 +62,7 @@ describe("justUpdatedOps", () => {
   });
 
   it("lists an update that failed and then worked as the one that worked, and one that worked and then failed as failed", () => {
-    const failed = { outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host" } } } as const;
+    const failed = { outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host", cause: failureCause("curl: (6) Could not resolve host") } } } as const;
     const operations = [upgrade(1, "jq", failed), upgrade(2, "jq"), upgrade(3, "wget"), upgrade(4, "wget", failed)];
     expect(justUpdatedOps(operations, none).map((op) => [op.name, op.id])).toEqual([
       ["wget", 4],
@@ -85,11 +86,11 @@ describe("justUpdatedOps", () => {
 describe("endingOfOutcome and endingOfRecord", () => {
   it("say how an update ended, with a failure's cause, and nothing for one cancelled or not finished", () => {
     expect(endingOfOutcome("Succeeded")).toEqual({ kind: "succeeded" });
-    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password" } })).toEqual({
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "sudo: a terminal is required to read the password", cause: failureCause("sudo: a terminal is required to read the password") } })).toEqual({
       kind: "failed",
       cause: "needsPassword",
     });
-    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle" } })).toEqual({ kind: "failed", cause: null });
+    expect(endingOfOutcome({ Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } })).toEqual({ kind: "failed", cause: null });
     expect(endingOfOutcome({ BanagerFailed: "Panicked" })).toEqual({ kind: "failed", cause: null });
     expect(endingOfOutcome("Unconfirmed")).toEqual({ kind: "attention", outcome: "Unconfirmed" });
     expect(endingOfOutcome({ NeedsAttention: "UnchangedAfterUpgrade" })).toEqual({

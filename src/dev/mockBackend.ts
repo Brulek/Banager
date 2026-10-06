@@ -47,6 +47,7 @@ import { mockSizes } from "./mockSizes";
 import { mockSystemFacts } from "./mockDiagnostics";
 import { mockHistory, mockRecord } from "./mockHistory";
 import type { Scenario, ScenarioPath } from "./scenario";
+import { failureCause } from "../lib/failureCause";
 
 /** Every command the backend registers (`generate_handler!` in src-tauri/src/lib.rs). */
 export const MOCK_COMMANDS = [
@@ -521,7 +522,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
         ? playOutcome(op.plan, subject, scripted)
         : {
             lines: refused.map((line): LogLine => ({ stream: "Stderr", line })),
-            outcome: { Failed: { exit_code: 1, summary: refused.join("\n") } } satisfies Outcome,
+            outcome: { Failed: { exit_code: 1, summary: refused.join("\n"), cause: failureCause(refused.join("\n")) } } satisfies Outcome,
           };
     const { outcome } = played;
     // An update a `brew cleanup` follows (U9) goes on to it once it succeeded.

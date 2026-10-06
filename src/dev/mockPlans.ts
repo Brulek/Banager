@@ -20,6 +20,7 @@ import type {
 } from "../lib/types";
 import { IDS, inHome, mockHomeAsTilde, type World } from "./mockData";
 import type { ScenarioOutcome } from "./scenario";
+import { failureCause } from "../lib/failureCause";
 
 /**
  * A refusal, as the string the real IPC rejects with: always a small
@@ -577,12 +578,12 @@ export function playOutcome(
             ...lines.slice(0, Math.min(1, trashPaths.length - 1)),
             { note: { TrashFailed: { path: mockHomeAsTilde(failedAt), error: trashRefusal(failedAt) } } },
           ],
-          outcome: { Failed: { exit_code: null, summary: trashRefusal(failedAt) } },
+          outcome: { Failed: { exit_code: null, summary: trashRefusal(failedAt), cause: failureCause(trashRefusal(failedAt)) } },
         };
       }
       return {
         lines: [...firstHalf, err(failureLine(plan, subject))],
-        outcome: { Failed: { exit_code: 1, summary: failureLine(plan, subject) } },
+        outcome: { Failed: { exit_code: 1, summary: failureLine(plan, subject), cause: failureCause(failureLine(plan, subject)) } },
       };
     case "cancelled":
       return { lines: firstHalf, outcome: "Cancelled" };
@@ -613,7 +614,7 @@ export function playOutcome(
       const said = sudoNeedsPassword(plan.request.name);
       return {
         lines: [...firstHalf, ...said.map(err)],
-        outcome: { Failed: { exit_code: 1, summary: said.join("\n") } },
+        outcome: { Failed: { exit_code: 1, summary: said.join("\n"), cause: failureCause(said.join("\n")) } },
       };
     }
   }

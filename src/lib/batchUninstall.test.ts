@@ -31,6 +31,7 @@ import type {
   Warning,
 } from "./types";
 import { NO_FACTS, NO_SIZES } from "./types";
+import { failureCause } from "./failureCause";
 
 const brew: ManagerInstance = {
   id: "brew:/opt/homebrew",
@@ -211,7 +212,7 @@ describe("a row a batch has already uninstalled while its source is busy", () =>
     // Busy with another source's operation: not this one's.
     expect(uninstalledWhileBusy([op(1, {}), { ...running, instance_id: npm.id }])).toEqual(new Set());
     // Its newest uninstall did not succeed.
-    const failed = op(3, { outcome: { Failed: { exit_code: 1, summary: "" } } });
+    const failed = op(3, { outcome: { Failed: { exit_code: 1, summary: "", cause: failureCause("") } } });
     expect(uninstalledWhileBusy([op(1, {}), failed, running])).toEqual(new Set());
     // The one running is no row that has gone.
     expect(uninstalledWhileBusy([running])).toEqual(new Set());

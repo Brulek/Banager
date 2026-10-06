@@ -5,7 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "../lib/queryKeys";
 import { actionableUpdatesOf } from "../lib/updateState";
 import type { OpStatus, OpSummary, Settings, Snapshot, UpdateCandidate } from "../lib/types";
-import { isRetryable, passwordStepsOpId, useStartableUpdates, type RowProgress } from "./UpdateProgress";
+import {
+  isRetryable,
+  passwordStepsOpId,
+  progressOf,
+  useStartableUpdates,
+  waitsForPassword,
+  type RowProgress,
+} from "./UpdateProgress";
 
 // The real rule, watched: how often the hook works out what the page offers.
 vi.mock("../lib/updateState", async (importOriginal) => {
@@ -109,6 +116,25 @@ describe("useStartableUpdates", () => {
     });
     await waitFor(() => expect(names()).toEqual([]));
     expect(vi.mocked(actionableUpdatesOf).mock.calls.length).toBe(workedOut + 1);
+  });
+});
+
+describe("waitsForPassword", () => {
+  it("offers the password steps for an update whose summary lost sudo's words to a masked login (re-check 2's N1)", () => {
+    // A proxy password `pass`: the core masked it inside sudo's
+    // "password", and read the cause before it did.
+    const masked = "sudo: a ****word is required";
+    const stopped: OpSummary = {
+      ...upgradeOf("glib", "Done"),
+      id: 9,
+      outcome: { Failed: { exit_code: 1, summary: masked, cause: "needsPassword" } },
+    };
+    expect(progressOf(stopped)).toEqual({ kind: "failed", opId: 9, cause: "needsPassword" });
+    expect(waitsForPassword(stopped)).toBe(true);
+    expect(isRetryable(progressOf(stopped))).toBe(false);
+    // The summary alone says nothing: the row reads the cause.
+    const unread: OpSummary = { ...stopped, outcome: { Failed: { exit_code: 1, summary: "sudo: a password is required", cause: null } } };
+    expect(waitsForPassword(unread)).toBe(false);
   });
 });
 

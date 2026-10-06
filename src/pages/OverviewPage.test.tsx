@@ -22,6 +22,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -413,7 +414,7 @@ describe("OverviewPage", () => {
       artifact_kind: "Formula",
       name,
       status: "Done",
-      outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } },
+      outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL, cause: failureCause(SUDO_NO_TERMINAL) } },
       argv_preview: [],
       cancel_policy: "KillThenReconcile",
     });

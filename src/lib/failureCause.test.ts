@@ -277,30 +277,29 @@ describe("failureCause", () => {
 });
 
 describe("outcomeCause", () => {
-  it("classifies a tool's own words, and only those", () => {
-    expect(
-      outcomeCause({ Failed: { exit_code: 1, summary: 'Error: git: Failed to download resource "git (2.55.1)"' } }),
-    ).toBe("network");
-    expect(outcomeCause({ Failed: { exit_code: 1, summary: "" } })).toBeNull();
-    expect(outcomeCause({ Failed: { exit_code: 1, summary: "Error: ffmpeg: SHA256 mismatch" } })).toBeNull();
+  it("takes a tool's failure's cause from the outcome, where the core read it", () => {
+    expect(outcomeCause({ Failed: { exit_code: 1, summary: 'Error: git: Failed to download resource "git (2.55.1)"', cause: "network" } })).toBe(
+      "network",
+    );
+    expect(outcomeCause({ Failed: { exit_code: 1, summary: "", cause: null } })).toBeNull();
+  });
+
+  it("never reads the cause off the summary, which a masked login may have changed (re-check 2's N1)", () => {
+    // A proxy password `pass`, masked inside sudo's "password": the words
+    // are gone from the summary, and the cause, read before the mask, says
+    // it all the same.
+    const masked =
+      "sudo: a terminal is required to read the ****word; either use the -S option to read from standard input or configure an ask**** helper\nsudo: a ****word is required";
+    expect(failureCause(masked)).toBeNull();
+    expect(outcomeCause({ Failed: { exit_code: 1, summary: masked, cause: "needsPassword" } })).toBe("needsPassword");
+    // And words in the summary the core did not find there say nothing.
+    expect(outcomeCause({ Failed: { exit_code: 1, summary: "sudo: a password is required", cause: null } })).toBeNull();
   });
 
   it("knows Banager's own wait for brew update, and no other fault", () => {
     expect(outcomeCause({ BanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe("homebrewUpdating");
     expect(outcomeCause({ BanagerFailed: "Internal" })).toBeNull();
     expect(outcomeCause({ BanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } })).toBeNull();
-  });
-
-  it("reads sudo's password lines in a failed operation's summary", () => {
-    expect(
-      outcomeCause({
-        Failed: {
-          exit_code: 1,
-          summary:
-            "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
-        },
-      }),
-    ).toBe("needsPassword");
   });
 
   it("gives nothing for an outcome that is not a failure", () => {

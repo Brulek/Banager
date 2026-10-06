@@ -12,7 +12,6 @@
  * back from when the preview opened; today's two never reach back past
  * midnight, so they are today's at any hour.
  */
-import { failureCause } from "../lib/failureCause";
 import type { ArtifactKey, HistoryRecord, HistoryResult, HistoryView, OpRequest, Outcome } from "../lib/types";
 import { IDS, key } from "./mockData";
 
@@ -99,7 +98,7 @@ export function mockHistory(now: number): HistoryView {
 function resultOf(outcome: Outcome): HistoryResult {
   if (outcome === "Succeeded" || outcome === "Unconfirmed" || outcome === "Cancelled") return outcome;
   if ("NeedsAttention" in outcome) return { NeedsAttention: outcome.NeedsAttention };
-  if ("Failed" in outcome) return { Failed: { cause: failureCause(outcome.Failed.summary) } };
+  if ("Failed" in outcome) return { Failed: { cause: outcome.Failed.cause } };
   const fault = outcome.BanagerFailed;
   return {
     Failed: { cause: typeof fault !== "string" && "HomebrewStillUpdating" in fault ? "homebrewUpdating" : null },

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import i18n from "../i18n";
 import type { OpKind, OpSummary, Outcome } from "./types";
 import { failedRunWords, runTally } from "./runResult";
+import { failureCause } from "./failureCause";
 
 function op(id: number, outcome: Outcome, kind: OpKind = "Upgrade"): OpSummary {
   return {
@@ -17,7 +18,7 @@ function op(id: number, outcome: Outcome, kind: OpKind = "Upgrade"): OpSummary {
   };
 }
 
-const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: something" } };
+const failed: Outcome = { Failed: { exit_code: 1, summary: "Error: something", cause: failureCause("Error: something") } };
 const t = (key: string, options?: Record<string, unknown>) => i18n.t(key, options);
 
 afterEach(async () => {
@@ -70,7 +71,7 @@ describe("failedRunWords", () => {
     Failed: {
       exit_code: 1,
       summary:
-        "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+        "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required", cause: failureCause("sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required"),
     },
   };
 

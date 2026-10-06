@@ -9,6 +9,7 @@ import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import type { OpSummary, Outcome } from "../lib/types";
 import { BUTTON } from "./ui/controls";
+import { failureCause } from "../lib/failureCause";
 
 /// The drawer as it actually appears: something opened it, and there is
 /// page behind it. Both matter for the keyboard, which is why the focus
@@ -66,7 +67,7 @@ describe("LogDrawer", () => {
       kind: "Upgrade",
       name,
       status: "Done",
-      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong" } },
+      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong", cause: failureCause("Error: something went wrong") } },
     });
     operations = [failed(3, "wget"), failed(2, "jq"), failed(1, "git")];
     act(() => useUiStore.getState().openLogRun([1, 2, 3], 1));
@@ -112,7 +113,7 @@ describe("LogDrawer", () => {
       kind: "Upgrade",
       name,
       status: "Done",
-      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong" } },
+      outcome: { Failed: { exit_code: 1, summary: "Error: something went wrong", cause: failureCause("Error: something went wrong") } },
     });
     operations = [failed(2, "jq"), failed(1, "git")];
     act(() => useUiStore.getState().openLogRun([1, 2], 1));
@@ -428,7 +429,7 @@ describe("LogDrawer", () => {
 
   it("says what the operation does under its name wherever the words don't, in both languages (walk-3 review 1.1)", async () => {
     const network: Outcome = {
-      Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' },
+      Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"', cause: failureCause('Error: jq: Failed to download resource "jq (1.8.1)"') },
     };
     const cases: [OpSummary, string, string][] = [
       [{ ...runningOp, status: "Queued" }, "Install · Queued", "安装 · 排队中"],
@@ -605,7 +606,7 @@ describe("LogDrawer", () => {
         ...runningOp,
         kind: "Upgrade",
         status: "Done",
-        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' } },
+        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"', cause: failureCause('Error: jq: Failed to download resource "jq (1.8.1)"') } },
       },
     ];
     const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
@@ -638,7 +639,7 @@ describe("LogDrawer", () => {
           kind: "Upgrade",
           name: "git",
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "git (2.55.1)"' } },
+          outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "git (2.55.1)"', cause: failureCause('Error: Failed to download resource "git (2.55.1)"') } },
         },
       ];
       const network = renderWithProviders(<LogDrawer />);
@@ -654,7 +655,7 @@ describe("LogDrawer", () => {
           kind: "Upgrade",
           name: "git",
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "Error: git: something went wrong" } },
+          outcome: { Failed: { exit_code: 1, summary: "Error: git: something went wrong", cause: failureCause("Error: git: something went wrong") } },
         },
       ];
       const unknown = renderWithProviders(<LogDrawer />);
@@ -671,7 +672,7 @@ describe("LogDrawer", () => {
         ...runningOp,
         kind: "Upgrade",
         status: "Done",
-        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' } },
+        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"', cause: failureCause('Error: jq: Failed to download resource "jq (1.8.1)"') } },
       },
     ];
     mockInvoke.mockImplementation((cmd: string) => {
@@ -766,7 +767,7 @@ describe("LogDrawer, under a tool's own words", () => {
     kind: "Upgrade",
     name: "wget",
     status: "Done",
-    outcome: { Failed: { exit_code: 1, summary } },
+    outcome: { Failed: { exit_code: 1, summary, cause: failureCause(summary) } },
     ...extra,
   });
   const said = (line: string) =>
@@ -933,7 +934,7 @@ describe("LogDrawer, a tool's own words left only in the subtitle", () => {
     kind: "Upgrade",
     name: "wget",
     status: "Done",
-    outcome: { Failed: { exit_code: exitCode, summary } },
+    outcome: { Failed: { exit_code: exitCode, summary, cause: failureCause(summary) } },
   });
   const sentence = {
     en: "The words above are the error message from Homebrew itself. You can click Retry later. If it still fails, show these words to someone who can help.",

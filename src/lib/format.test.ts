@@ -3,6 +3,7 @@ import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey,
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import { failureCause } from "./failureCause";
 
 describe("displayToken", () => {
   it("leaves a plain token alone", () => {
@@ -206,8 +207,8 @@ describe("outcomeKey", () => {
       { NeedsAttention: "GoneAfterUpgrade" },
       { NeedsAttention: "UnchangedAfterUpgrade" },
       { NeedsAttention: "BackAfterUninstall" },
-      { Failed: { exit_code: 1, summary: "Error: No such keg" } },
-      { Failed: { exit_code: 1, summary: " " } },
+      { Failed: { exit_code: 1, summary: "Error: No such keg", cause: failureCause("Error: No such keg") } },
+      { Failed: { exit_code: 1, summary: " ", cause: failureCause(" ") } },
       { BanagerFailed: "Panicked" },
       { BanagerFailed: { ProgramMissing: { program: "/x/brew" } } },
       { BanagerFailed: { SpawnFailed: { detail: "EACCES" } } },
@@ -364,13 +365,13 @@ describe("outcomeKey for Banager's own failures", () => {
   });
 
   it("keeps a tool's own stderr as Failed, and words a silent failure instead of a blank", () => {
-    expect(outcomeKey({ Failed: { exit_code: 1, summary: "Error: No such keg\n" } })).toBe(
+    expect(outcomeKey({ Failed: { exit_code: 1, summary: "Error: No such keg\n", cause: failureCause("Error: No such keg\n") } })).toBe(
       "Failed",
     );
-    expect(outcomeArgs({ Failed: { exit_code: 1, summary: "Error: No such keg\n" } })).toEqual({
+    expect(outcomeArgs({ Failed: { exit_code: 1, summary: "Error: No such keg\n", cause: failureCause("Error: No such keg\n") } })).toEqual({
       summary: "Error: No such keg",
     });
-    expect(outcomeKey({ Failed: { exit_code: 1, summary: "  \n" } })).toBe("FailedSilent");
+    expect(outcomeKey({ Failed: { exit_code: 1, summary: "  \n", cause: failureCause("  \n") } })).toBe("FailedSilent");
     expect(zhCN.operations.outcome.FailedSilent).not.toContain("{{");
   });
 });

@@ -359,7 +359,7 @@ describe("types", () => {
   it("keeps Outcome's externally tagged variants intact on the wire", () => {
     const succeeded: Outcome = "Succeeded";
     const needsAttention: Outcome = { NeedsAttention: "GoneAfterUpgrade" };
-    const failed: Outcome = { Failed: { exit_code: 1, summary: "boom" } };
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "boom", cause: null } };
 
     expect(roundTrip(succeeded)).toBe("Succeeded");
     // What `model.rs`'s `test_needs_attention_is_a_bare_variant_name_on_the_wire`
@@ -369,8 +369,18 @@ describe("types", () => {
     const backAfter: Outcome = { NeedsAttention: "BackAfterUninstall" };
     expect(JSON.stringify(backAfter)).toBe('{"NeedsAttention":"BackAfterUninstall"}');
     expect(roundTrip(backAfter)).toEqual(backAfter);
-    expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
-    expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
+    expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom", cause: null } });
+    expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom","cause":null}}');
+    // What `model.rs`'s `test_outcome_failed_carries_its_cause_on_the_wire`
+    // asserts serde emits: the cause read before a login was masked out of
+    // the summary (re-check 2's N1).
+    const stopped: Outcome = {
+      Failed: { exit_code: 1, summary: "sudo: a ****word is required", cause: "needsPassword" },
+    };
+    expect(JSON.stringify(stopped)).toBe(
+      '{"Failed":{"exit_code":1,"summary":"sudo: a ****word is required","cause":"needsPassword"}}',
+    );
+    expect(roundTrip(stopped)).toEqual(stopped);
 
     // What `model.rs`'s `test_banager_failed_is_externally_tagged_on_the_wire`
     // asserts serde emits: a unit `Fault` is a bare string, a data one a

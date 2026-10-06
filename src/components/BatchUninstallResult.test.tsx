@@ -8,6 +8,7 @@ import { BatchUninstallResult } from "./BatchUninstallResult";
 import { artifactKeyId, useUiStore, type UninstallBatchRecord } from "../store/ui";
 import { queryKeys } from "../lib/queryKeys";
 import type { ArtifactKey, OpStatus, OpSummary, Outcome } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -27,7 +28,7 @@ function op(id: number, name: string, status: OpStatus, outcome: Outcome | null 
   };
 }
 
-const refused: Outcome = { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall /opt/homebrew/Cellar/python@3.13/3.13.8" } };
+const refused: Outcome = { Failed: { exit_code: 1, summary: "Error: Refusing to uninstall /opt/homebrew/Cellar/python@3.13/3.13.8", cause: failureCause("Error: Refusing to uninstall /opt/homebrew/Cellar/python@3.13/3.13.8") } };
 
 // pipx first, then python@3.13, which ran after it; then wget, and htop,
 // which never started.
@@ -206,7 +207,7 @@ describe("what a batch uninstall did not uninstall", () => {
   it("says a known cause as what to do, in the label colour with a ⚠︎, and ticks the ones left to try again", async () => {
     useUiStore.getState().setUninstallBatch(record);
     useUiStore.getState().deselectUninstalls(record.items.map((item) => item.key));
-    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget" } };
+    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget", cause: failureCause("Error: Permission denied @ apply2files - /opt/homebrew/bin/wget") } };
     operations = [op(13, "wget", "Done", denied), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
     renderWithProviders(<BatchUninstallResult />);
     const heading = await screen.findByRole("alert");
@@ -221,17 +222,17 @@ describe("what a batch uninstall did not uninstall", () => {
 
   it("with technical details on, says under each tool's own words whose they are and what to do next", async () => {
     technical = true;
-    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong" } };
-    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget" } };
+    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong", cause: failureCause("Error: wget: something went wrong") } };
+    const denied: Outcome = { Failed: { exit_code: 1, summary: "Error: Permission denied @ apply2files - /opt/homebrew/bin/wget", cause: failureCause("Error: Permission denied @ apply2files - /opt/homebrew/bin/wget") } };
     const password: Outcome = {
       Failed: {
         exit_code: 1,
         summary:
-          "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper",
+          "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper", cause: failureCause("sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper"),
       },
     };
     // macOS's words for a path it would not move to the Trash: no command ran.
-    const trash: Outcome = { Failed: { exit_code: null, summary: "Operation not permitted" } };
+    const trash: Outcome = { Failed: { exit_code: null, summary: "Operation not permitted", cause: failureCause("Operation not permitted") } };
     const sentences = {
       en: {
         generic:
@@ -281,7 +282,7 @@ describe("what a batch uninstall did not uninstall", () => {
 
   it("says no such sentence with technical details off: the row says the cause, or 「未能卸载」", async () => {
     useUiStore.getState().setUninstallBatch(record);
-    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong" } };
+    const unknown: Outcome = { Failed: { exit_code: 1, summary: "Error: wget: something went wrong", cause: failureCause("Error: wget: something went wrong") } };
     operations = [op(13, "wget", "Done", unknown), op(12, "python@3.13", "Done", "Succeeded"), op(11, "pipx", "Done", "Succeeded")];
     renderWithProviders(<BatchUninstallResult />);
     await screen.findByRole("alert");

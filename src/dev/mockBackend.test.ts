@@ -20,7 +20,7 @@ import type {
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
 import { toolsNotJudged } from "../lib/commandsKnown";
-import { outcomeCause } from "../lib/failureCause";
+import { outcomeCause, failureCause } from "../lib/failureCause";
 import { resolveToolIcon } from "../lib/toolIcons";
 import { everySourceChecked, hidingRule, updateStateOf } from "../lib/updateState";
 import { artifactKeyId } from "../store/ui";
@@ -523,7 +523,7 @@ describe("the browser preview's mock backend", () => {
       "You can override this and force removal with:",
       "  brew uninstall --ignore-dependencies x264",
     ];
-    expect(outcomeOf(x264)).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
+    expect(outcomeOf(x264)).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n"), cause: failureCause(refusal.join("\n")) } });
     expect(outcomeOf(ffmpeg)).toBe("Succeeded");
     const logged = operationEvents(refusedFirst.events, x264).flatMap((e) => ("Log" in e ? [e.Log.line] : []));
     expect(logged).toEqual(refusal);
@@ -535,7 +535,7 @@ describe("the browser preview's mock backend", () => {
     const [first] = await submitUninstalls(failing.backend, "x264");
     await vi.runAllTimersAsync();
     const failed = ((await failing.backend.invoke("list_operations")) as OpSummary[]).find((o) => o.id === first);
-    expect(failed?.outcome).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n") } });
+    expect(failed?.outcome).toEqual({ Failed: { exit_code: 1, summary: refusal.join("\n"), cause: failureCause(refusal.join("\n")) } });
 
     const batch = backendFor();
     await answer(batch.backend.invoke("refresh"));

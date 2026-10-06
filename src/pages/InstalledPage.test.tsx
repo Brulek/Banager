@@ -22,6 +22,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -2902,7 +2903,7 @@ describe("InstalledPage", () => {
           artifact_kind: "Formula",
           name: "glib",
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } },
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } },
           argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "glib"],
           cancel_policy: "KillThenReconcile",
         },

@@ -25,6 +25,7 @@ import type {
   Warning,
 } from "../lib/types";
 import { NO_FACTS } from "../lib/types";
+import { failureCause } from "../lib/failureCause";
 
 /** The confirm sheet's Update for several tools, counted: "Update 2 Tools" (walk-3 W3-18). */
 const UPDATE_SEVERAL = /^Update \d+ Tools$/;
@@ -3266,7 +3267,7 @@ describe("UpdatesPage", () => {
 
     it("keeps the checkbox of a row whose update failed, for Retry", async () => {
       operations = [
-        operation(glibKey, { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle" } } }),
+        operation(glibKey, { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
       ];
       started(7, "2.90.0");
       const { findByText, getByRole } = renderPage();
@@ -3293,7 +3294,7 @@ describe("UpdatesPage", () => {
             Failed: {
               exit_code: 1,
               summary:
-                "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+                "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required", cause: failureCause("sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required"),
             },
           },
         }),
@@ -3332,8 +3333,8 @@ describe("UpdatesPage", () => {
       "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required";
     function everyUpdateStoppedAtThePassword() {
       operations = [
-        operation(onyxKey, { id: 10, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } } }),
-        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL } } }),
+        operation(onyxKey, { id: 10, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL, cause: failureCause(SUDO_NO_TERMINAL) } } }),
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: SUDO_NO_TERMINAL, cause: failureCause(SUDO_NO_TERMINAL) } } }),
       ];
       started(9, "2.90.0");
       started(10, "5.1.0");
@@ -3369,7 +3370,7 @@ describe("UpdatesPage", () => {
         operation(glibKey, {
           id: 9,
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required" } },
+          outcome: { Failed: { exit_code: 1, summary: "sudo: no password was provided\nsudo: a password is required", cause: failureCause("sudo: no password was provided\nsudo: a password is required") } },
         }),
       ];
       started(9, "2.90.0");
@@ -3427,7 +3428,7 @@ describe("UpdatesPage", () => {
         operation(glibKey, {
           id: 9,
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } },
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } },
         }),
       ];
       started(9, "2.90.0");
@@ -3448,7 +3449,7 @@ describe("UpdatesPage", () => {
           outcome: {
             Failed: {
               exit_code: 1,
-              summary: 'curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"',
+              summary: 'curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"', cause: failureCause('curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"'),
             },
           },
         }),
@@ -3516,7 +3517,7 @@ describe("UpdatesPage", () => {
     });
 
     const endings: Array<[string, OpSummary["outcome"], string]> = [
-      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Couldn't update"],
+      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } }, "Couldn't update"],
       ["was cancelled", "Cancelled", "Cancelled"],
       ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result"],
     ];
@@ -3545,7 +3546,7 @@ describe("UpdatesPage", () => {
         operation(glibKey, {
           id: 9,
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } },
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle", cause: failureCause("Error: glib: no bottle") } },
         }),
       ];
       started(9, "2.90.0");
@@ -3580,7 +3581,7 @@ describe("UpdatesPage", () => {
         operation(glibKey, {
           id: 9,
           status: "Done",
-          outcome: { Failed: { exit_code: 1, summary: "Error: glib is pinned" } },
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib is pinned", cause: failureCause("Error: glib is pinned") } },
         }),
       ];
       started(9, "2.90.0");
@@ -3768,14 +3769,14 @@ describe("UpdatesPage", () => {
     it("lists an update that failed or asks to be checked once its row has gone, and never one cancelled", async () => {
       operations = [
         // Their rows still show how they ended, with the log and Retry: not listed.
-        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle" } } }),
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle", cause: failureCause("Error: no bottle") } } }),
         operation(onyxKey, { id: 10, status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
         // Three whose rows are gone: the two that did not update are listed.
         operation({ ...glibKey, name: "wget" }, { id: 11, status: "Done", outcome: "Cancelled" }),
         operation({ ...glibKey, name: "jq" }, { id: 12, status: "Done", outcome: "Unconfirmed" }),
         operation(
           { ...glibKey, name: "gh" },
-          { id: 13, status: "Done", outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io" } } },
+          { id: 13, status: "Done", outcome: { Failed: { exit_code: 1, summary: "curl: (6) Could not resolve host: ghcr.io", cause: failureCause("curl: (6) Could not resolve host: ghcr.io") } } },
         ),
       ];
       started(9, "2.90.0");
@@ -5423,7 +5424,7 @@ describe("UpdatesPage", () => {
   });
 
   const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
-    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Couldn't update", true],
+    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed", cause: failureCause("Error: download failed") } }, "Couldn't update", true],
     ["was cancelled", "Cancelled", "Cancelled", false],
     ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result", true],
   ];
@@ -5466,7 +5467,7 @@ describe("UpdatesPage", () => {
       operation(claudeKey, {
         id: 9,
         status: "Done",
-        outcome: { Failed: { exit_code: 1, summary: "Error: download failed" } },
+        outcome: { Failed: { exit_code: 1, summary: "Error: download failed", cause: failureCause("Error: download failed") } },
       }),
     ];
     useUiStore.setState({ updateTargets: { 9: claudeUpdate.target } });

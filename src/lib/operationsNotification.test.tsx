@@ -6,6 +6,7 @@ import { renderWithProviders } from "../test/setup";
 import { finishedRunOf, runEnded, useOperationsNotification } from "./operationsNotification";
 import { queryKeys } from "./queryKeys";
 import type { FinishedRun, OpKind, OpStatus, OpSummary, Outcome } from "./types";
+import { failureCause } from "./failureCause";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -26,7 +27,7 @@ function op(id: number, status: OpStatus, outcome: Outcome | null = null, kind: 
   };
 }
 
-const failed: Outcome = { Failed: { exit_code: 1, summary: "no network" } };
+const failed: Outcome = { Failed: { exit_code: 1, summary: "no network", cause: failureCause("no network") } };
 
 /** A short wait for a run to settle, so the tests need no fake clock. */
 const SETTLE_MS = 50;
