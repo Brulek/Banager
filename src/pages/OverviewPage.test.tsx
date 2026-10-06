@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders, type RenderOptions } from "../test/setup";
 import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
@@ -1095,13 +1095,20 @@ describe("OverviewPage", () => {
     }
   });
 
-  it("offers Check Tool Setup under the automatic check, as Settings' 关于 does", async () => {
+  it("offers Check Tool Setup under the automatic check, as Settings' 诊断 does", async () => {
+    // Terminal's settings read: nothing in the sheet to look at, the plain row (I4).
+    const answer = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "get_system_facts"
+        ? Promise.resolve({ macos_version: "27.0", chip: "Apple M2", arch: "aarch64", login_path: true, path_dirs: [], sources: [] })
+        : answer(cmd, args),
+    );
     const { findByRole } = renderOverview();
     const open = await findByRole("button", { name: "Check Tool Setup…" });
     expect(open).toHaveTextContent(/^Check Tool Setup…$/);
     const row = open.closest("[data-overview-tool-setup]") as HTMLElement;
     expect(row).toHaveTextContent("Tool setup");
-    expect(row).toHaveTextContent("Whether Terminal finds your tools, and how each source is doing.");
+    await waitFor(() => expect(row).toHaveTextContent("Whether Terminal finds your tools, and how each source is doing."));
     // In the automatic check's group.
     expect(row.parentElement).toContainElement(await findByRole("button", { name: /^Check for updates: / }));
     expect(useToolSetupSheet.getState().open).toBe(false);
