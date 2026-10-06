@@ -861,15 +861,22 @@ came back on the Installed page, still installed. So:
   pin passes `--force`, Homebrew's own way to delete every version
   (`cmd/uninstall.rb:45`, `uninstall.rb:32-44`), and its preview names
   each (`Warning::HomebrewRemovesEveryVersion`, 「已安装的所有版本都会删除：
-  1.24.0、1.25.0。」). `--force` leaves Homebrew's check of what still
-  depends on the formula (`uninstall.rb:25-28`, over every version) and
-  the autoremove switch as they are. It skips Homebrew's refusal of a
-  pinned formula, so it is never passed when
-  `<prefix>/var/homebrew/pinned/<name>` is there or cannot be looked at,
-  and the pin is looked at again right before the command runs: an
-  uninstall of a formula pinned since its preview, or whose pin or Cellar
-  cannot be looked at then, is refused and runs nothing
-  (`BrewAdapter::require_still_unpinned`);
+  1.24.0、1.25.0。」). `--force` deletes every version Homebrew finds when
+  it runs (`uninstall.rb:31-43`), not the ones the preview named, so the
+  Cellar and the pin record are looked at again right before the command
+  runs: an uninstall of a formula with a version installed that the
+  preview did not name -- an update run in Terminal since then, with its
+  cleanup off, say -- or pinned since its preview, or whose Cellar or pin
+  record cannot be looked at then, runs nothing and ends as
+  「未能开始：确认窗口打开后，Homebrew里的{name}有了变化」, asking for the
+  confirmation to be opened again (`Fault::FormulaChanged`,
+  `BrewAdapter::require_kegs_as_previewed`); fewer versions than the
+  preview named deletes nothing it did not name, and runs. `--force`
+  leaves Homebrew's check of what still depends on the formula
+  (`uninstall.rb:25-28`, over every version) and the autoremove switch as
+  they are. It skips Homebrew's refusal of a pinned formula, so it is
+  never passed when `<prefix>/var/homebrew/pinned/<name>` is there or
+  cannot be looked at, and the pin is looked at again as above;
   its refusal of a name with nothing installed (`cmd/uninstall.rb:138`),
   which the reading after the uninstall answers anyway; and the lock
   Homebrew takes on each version while it deletes it (`uninstall.rb:56`),

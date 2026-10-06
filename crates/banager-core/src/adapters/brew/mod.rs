@@ -929,14 +929,20 @@ impl BrewAdapter {
     }
 
     /// For the uninstall of every version of a formula (U9's `--force`),
-    /// the pin looked at again right before it runs: `--force` skips
-    /// Homebrew's own refusal of a pinned formula (`uninstall.rb:45-53`),
-    /// which the preview left standing by passing it only where there was
-    /// no pin. A formula pinned in Terminal since then -- or whose pin
-    /// record, or Cellar, cannot be looked at now -- is refused, not
-    /// uninstalled with a command the preview did not mean for it. Any
-    /// other plan passes.
-    fn require_still_unpinned(&self, plan: &Plan) -> Result<(), AdapterError> {
+    /// its Cellar and pin record looked at again right before it runs.
+    /// `--force` deletes every version Homebrew finds then
+    /// (`uninstall.rb:31-43`), and skips Homebrew's own refusal of a pinned
+    /// formula (`uninstall.rb:45-53`), which the preview left standing by
+    /// passing it only where there was no pin. So it runs only where both
+    /// are still as the preview showed them: no pin, and no version the
+    /// preview did not name (`Warning::HomebrewRemovesEveryVersion`) -- one
+    /// an update in Terminal put in since then, with its cleanup off, say
+    /// (review F3, r6). Fewer versions than it named is no reason to stop:
+    /// nothing it did not name is deleted. A formula pinned since then, one
+    /// with a version more, or whose Cellar or pin record cannot be looked
+    /// at now is `Fault::FormulaChanged`, and nothing runs. Any other plan
+    /// passes.
+    fn require_kegs_as_previewed(&self, plan: &Plan) -> Result<(), Fault> {
         let PlanAction::Command { program, args, .. } = &plan.action else {
             return Ok(());
         };
@@ -946,12 +952,20 @@ impl BrewAdapter {
         {
             return Ok(());
         }
-        match (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name) {
-            Some(kegs) if !kegs.pinned => Ok(()),
-            _ => Err(AdapterError::Refused(format!(
-                "{} is pinned, or its pin could not be looked at, since the preview; uninstalling every version would override the pin",
-                plan.request.name
-            ))),
+        let named = plan.warnings.iter().find_map(|warning| match warning {
+            Warning::HomebrewRemovesEveryVersion { versions } => Some(versions),
+            _ => None,
+        });
+        let now = (self.kegs_fn)(&Self::prefix_for(program), &plan.request.name);
+        match (named, now) {
+            (Some(named), Some(now))
+                if !now.pinned && now.versions.iter().all(|version| named.contains(version)) =>
+            {
+                Ok(())
+            }
+            _ => Err(Fault::FormulaChanged {
+                name: plan.request.name.clone(),
+            }),
         }
     }
 
@@ -2113,7 +2127,9 @@ impl BrewAdapter {
                 self.require_no_auto_update(&Self::prefix_for(program), env)?;
             }
         }
-        self.require_still_unpinned(plan)?;
+        if let Err(fault) = self.require_kegs_as_previewed(plan) {
+            return Ok(Outcome::BanagerFailed(fault));
+        }
         let PlanAction::CommandThen {
             program,
             args,
@@ -7504,13 +7520,19 @@ mod plan_execute_tests {
             };
             let unread: Read = |_, _| None;
             for read in [pinned, unread] {
-                let result = BrewAdapter::new(runner.clone())
+                let outcome = BrewAdapter::new(runner.clone())
                     .with_kegs_fn(read)
                     .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
-                    .await;
-                assert!(
-                    matches!(result, Err(AdapterError::Refused(_))),
-                    "{result:?}"
+                    .await
+                    .expect("execute");
+                // Said as what it is, a change since the preview -- not as
+                // an internal error (`AdapterError::Refused` became
+                // `Fault::Internal`).
+                assert_eq!(
+                    outcome,
+                    Outcome::BanagerFailed(Fault::FormulaChanged {
+                        name: "wget".to_string()
+                    })
                 );
                 assert_eq!(runner.calls().len(), planned, "{:?}", runner.calls());
             }
@@ -7532,6 +7554,90 @@ mod plan_execute_tests {
                 .expect("execute");
             assert_eq!(outcome, Outcome::Succeeded);
             assert_eq!(runner.calls().len(), planned + 1);
+        }
+
+        #[tokio::test]
+        async fn an_uninstall_of_every_version_runs_nothing_when_a_version_the_preview_did_not_name_is_installed(
+        ) {
+            // Review F3 (r6): the preview named 1.24.0 and 1.25.0. An update
+            // in Terminal with its cleanup off then installs 1.26.0 while the
+            // confirmation is open, or the operation waits in the queue.
+            // `brew uninstall --force` deletes every version it finds, 1.26.0
+            // too, which the person never saw named: so the Cellar is read
+            // again right before the command, and a version the preview did
+            // not name stops it -- nothing runs, and the outcome asks for a
+            // new look. Fewer versions than the preview named, or the same
+            // ones, delete nothing it did not name, and run.
+            let uninstall = vec![
+                "/opt/homebrew/bin/brew",
+                "uninstall",
+                "--formula",
+                "--force",
+                "wget",
+            ];
+            let runner = Arc::new(MockRunner::new());
+            nothing_uses(&runner, "wget");
+            runner.respond(uninstall.clone(), ok("", "", 0));
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .plan(
+                    &test_instance(),
+                    &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            assert_eq!(
+                command_args(&plan),
+                ["uninstall", "--formula", "--force", "wget"]
+            );
+            let planned = runner.calls().len();
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            let one_more: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec![
+                        "1.24.0".to_string(),
+                        "1.25.0".to_string(),
+                        "1.26.0".to_string(),
+                    ],
+                    pinned: false,
+                })
+            };
+            let another: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string(), "1.26.0".to_string()],
+                    pinned: false,
+                })
+            };
+            for read in [one_more, another] {
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(read)
+                    .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(
+                    outcome,
+                    Outcome::BanagerFailed(Fault::FormulaChanged {
+                        name: "wget".to_string()
+                    })
+                );
+                assert_eq!(runner.calls().len(), planned, "{:?}", runner.calls());
+            }
+            let fewer: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string()],
+                    pinned: false,
+                })
+            };
+            for (read, ran) in [(fewer, 1), (two_versions as Read, 2)] {
+                let outcome = BrewAdapter::new(runner.clone())
+                    .with_kegs_fn(read)
+                    .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded);
+                assert_eq!(runner.calls().len(), planned + ran);
+                assert_eq!(runner.calls().last().expect("a call"), &uninstall);
+            }
         }
     }
 }

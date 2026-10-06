@@ -1784,6 +1784,18 @@ pub enum Fault {
     /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.
     PathChanged { path: String },
+    /// The uninstall of every version of the Homebrew formula `name` (the
+    /// author's decision U9, r6: `brew uninstall --formula --force`) was
+    /// not started, because what the Cellar and the pin record hold of it,
+    /// looked at again right before the command, is not what the preview
+    /// showed: a version is installed that the preview did not name -- an
+    /// update in Terminal since then, say, which `--force` would delete
+    /// too -- or the formula is pinned now, or its Cellar or pin record
+    /// can no longer be looked at. Nothing was started; a new preview
+    /// names what is there now. Built by `BrewAdapter::execute`
+    /// (`BrewAdapter::require_kegs_as_previewed`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts.
+    FormulaChanged { name: String },
     /// Something on Banager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Banager, not a state of the Mac.
@@ -2835,9 +2847,21 @@ mod tests {
             .unwrap(),
             r#"{"BanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
         );
+        // U9 (r6): an uninstall of every version of a formula found its
+        // versions or its pin changed since the preview, and ran nothing.
+        assert_eq!(
+            serde_json::to_string(&Outcome::BanagerFailed(Fault::FormulaChanged {
+                name: "wget".to_string()
+            }))
+            .unwrap(),
+            r#"{"BanagerFailed":{"FormulaChanged":{"name":"wget"}}}"#
+        );
         for fault in [
             Fault::Panicked,
             Fault::HomebrewStillUpdating { minutes: 10 },
+            Fault::FormulaChanged {
+                name: "wget".to_string(),
+            },
             Fault::Internal,
         ] {
             let json = serde_json::to_string(&Outcome::BanagerFailed(fault.clone())).unwrap();
