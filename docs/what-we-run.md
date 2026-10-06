@@ -3084,10 +3084,11 @@ What it looks at, during the uninstall preview of a formula or cask only:
   own (the folder pipx's `app_paths` -- or, for a package whose only apps
   are its dependencies', `app_paths_of_dependencies` -- and uv's
   `--show-paths` name), every link followed;
-- only when one of those could not be followed (below), whether the
-  package has a program of the name it would have to end at: for a
-  formula `<prefix>/opt/<name>/bin/<program>`, for a cask
-  `<prefix>/bin/<program>`, every link followed.
+- only when one of those could not be followed (below), and the package
+  is not named for what it would have to end at, whether the package has
+  a program of that name: for a formula `<prefix>/opt/<name>/bin/<program>`,
+  for a cask `<prefix>/bin/<program>`, every link followed -- one look a
+  name.
 
 A source runs on the package when its program, or npm's `node`, leads
 into the package's folder: then every tool it lists needs the package,
@@ -3124,20 +3125,34 @@ stopped answering), then goes on without it; a look that did not finish
 says so (「无法确定还有哪些软件要用它。卸载前请自行确认。」, "Couldn't check what
 else needs this. Check yourself before you uninstall.",
 `Warning::DependentsUnknown`), never that nothing runs on it. Nor did a
-look that met a path it may not or cannot follow --
+look that met a path it may not or cannot follow (`needed_by::Doubt`) --
 a source's program, a pipx or uv tool's environment (a venv kept in
 `~/Documents`, say, whose `bin/python` may be a Homebrew Python's) or a
 `PATH` folder passed over on the way to `node` that is, or leads into,
 one of those places; one on the way to which a folder could not be
-searched; and a pipx or uv tool with no environment Banager knows of.
-A link can change the program's name and point anywhere inside a keg:
-`python3` may lead to `bin/python3.13`, or a launcher to a file in
-`libexec`. Absence of a same-named program in `opt/<name>/bin` does not
-prove the source is unrelated. Such unresolved paths keep the check
-incomplete, including for packages that may in fact be unrelated.
-The preview still names any dependencies actually found; uncertainty
-alone never invents a dependency or blocks uninstall. A path known not
-to be there does not introduce this uncertainty.
+searched; and a pipx or uv tool with no environment Banager knows of --
+when the package could be what that path leads to (`Look::could_be`).
+What the path would have to lead to is judged by what it is for, not
+only by its name, for a link can change both a program's name and where
+in a keg it is: `~/bin/python3` may lead to python@3.13's
+`bin/python3.13`, npm's `npm` to `lib/node_modules/npm/bin/npm-cli.js`.
+So pip's program is a Python whatever it is called, and so is a tool's
+environment; npm's is an `npm` in a Node.js, with its `node`; the `PATH`
+folder may hold a `node`; any other source's program is a program of its
+own name. The package could be that when it is named for it -- `uv` for
+uv's program, `node` or `node@22` for a `node`, any `python@3.N` for a
+Python -- or when it has, of its own, a program of that name (for a
+Python, `python3`, or `python3.N` for `python@3.N`, whose keg has no
+`python3` unless it is Homebrew's default Python) in its
+`opt/<name>/bin` for a formula, linked or keg-only, or in `<prefix>/bin`,
+where its `binary` links go, for a cask. What is there may run on such a
+package, so its preview says it could not check, and still names
+whatever it did find running on it; uncertainty alone never invents a
+dependency or blocks uninstall. jq, a font, or any other package that is
+none of these cannot be what it leads to, and its preview says nothing
+of it. A cask's own app that cannot be followed leaves that cask's look
+unfinished, whatever met it. A path that is not there at all is known
+not to run on any package.
 
 ## Diagnostic info: read-only, no command runs
 
