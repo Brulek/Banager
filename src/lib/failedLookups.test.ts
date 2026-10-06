@@ -5,7 +5,9 @@ import {
   failedLookupsOf,
   failedLookupsProblem,
   isFailedLookup,
+  isUnsuccessfulLookup,
   saysWhyInToolWords,
+  unsuccessfulLookupsOf,
 } from "./failedLookups";
 import type { ArtifactKey, UpdateCandidate } from "./types";
 
@@ -104,6 +106,58 @@ describe("failedLookupsOf", () => {
     ];
     const failed = failedLookupsOf(rows, { ...noHiding, ignored_updates: [key("hidden")] });
     expect(failed.map((each) => each.key.name)).toEqual(["a", "b"]);
+  });
+});
+
+// Independent review r6, F5: what keeps the Overview's all good away is
+// every lookup that did not succeed, not only one a later check can mend
+// (`failedLookupsOf`, which offers Check Again).
+describe("unsuccessfulLookupsOf", () => {
+  it("counts every lookup that did not succeed, whether or not checking again can mend it", () => {
+    const rows = [
+      // No answer: transient.
+      row("offline"),
+      // A certificate rustls would not accept (crates.io behind a proxy).
+      row("ripgrep", {
+        warnings: [
+          {
+            Message:
+              "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer",
+          },
+          { SecureConnectionFailed: { host: "crates.io" } },
+        ],
+      }),
+      // An answer that would not parse.
+      row("malformed", { warnings: [{ Message: "could not parse registry manifest" }] }),
+      // A redirect the client will not follow.
+      row("redirect", { warnings: [{ Message: "PyPI request failed: refused: refusing to follow a redirect" }] }),
+      // The registry has no such thing.
+      row("gone", { warnings: [{ Message: "registry returned status 404" }] }),
+    ];
+    expect(rows.map(isUnsuccessfulLookup)).toEqual([true, true, true, true, true]);
+    expect(unsuccessfulLookupsOf(rows, noHiding).map((each) => each.key.name)).toEqual([
+      "offline",
+      "ripgrep",
+      "malformed",
+      "redirect",
+      "gone",
+    ]);
+    // Of them, only the one checking again can mend offers Check Again.
+    expect(failedLookupsOf(rows, noHiding).map((each) => each.key.name)).toEqual(["offline"]);
+  });
+
+  it("leaves out a crate Banager never looks up, a row that was checked, and one the user hid", () => {
+    const rows = [
+      row("from-git", { warnings: ["NonRegistrySource"] }),
+      row("fine", { checkable: true, target: "1.1.0", warnings: [] }),
+      row("hidden", { warnings: [{ Message: "could not parse registry manifest" }] }),
+      row("counted", { warnings: [{ Message: "could not parse registry manifest" }] }),
+    ];
+    expect(isUnsuccessfulLookup(rows[0])).toBe(false);
+    expect(isUnsuccessfulLookup(rows[1])).toBe(false);
+    expect(
+      unsuccessfulLookupsOf(rows, { ...noHiding, ignored_updates: [key("hidden")] }).map((each) => each.key.name),
+    ).toEqual(["counted"]);
   });
 });
 

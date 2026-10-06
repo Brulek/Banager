@@ -15,6 +15,10 @@
  * a row no check will ever mend -- a model the registry answers 404 for,
  * Antigravity CLI on an Intel Mac, an answer that would not parse -- would
  * otherwise keep a warning and its Check Again on every page for good.
+ *
+ * Whether the Overview may say all is well is another question, with its
+ * own answer (`unsuccessfulLookupsOf`): any lookup that did not succeed,
+ * mendable or not, keeps that away (independent review r6, F5).
  */
 import type { UpdateCandidate } from "./types";
 import { notHidden, type HidingSettings } from "./updateState";
@@ -77,6 +81,54 @@ export function failedLookupsOf(
   nowMs: number = Date.now(),
 ): UpdateCandidate[] {
   return notHidden(updates, settings, nowMs).filter(isFailedLookup);
+}
+
+/**
+ * The warnings that mark a "could not check" row (`checkable: false`) as
+ * one Banager never looks up, by design, rather than one whose lookup did
+ * not succeed: a crate installed from a git repository or a local path
+ * (`NonRegistrySource`, `CargoAdapter::check_updates` in
+ * crates/banager-core/src/adapters/cargo.rs), which has no crates.io
+ * version to compare with. The other tools and sources Banager never
+ * checks list no row at all, so there is nothing of theirs to leave out
+ * here: Codex's and opencode's own installs (`Latest::Unchecked`,
+ * `UNCHECKED_STANDALONE` in src/lib/uncheckedStandalone.ts), a launcher
+ * left without its program (`LauncherOnly`), a Python with no pip
+ * (`NoPip`), an Ollama at an `https://` address (`HttpsHostRefused`), and
+ * the Homebrew apps that update themselves while Settings leaves them out
+ * (`leftOutOfUpdateCheck`).
+ */
+const NEVER_LOOKED_UP: readonly UpdateCandidate["warnings"][number][] = ["NonRegistrySource"];
+
+/**
+ * Whether Banager tried to find `candidate`'s newest version and did not
+ * (`checkable: false`), whatever the reason -- no answer, which checking
+ * again can mend (`isFailedLookup`), or a certificate rustls would not
+ * accept, an answer that would not parse, a redirect or host the client
+ * refuses, a registry that has no such thing, which it cannot. Not a row
+ * Banager never looks up (`NEVER_LOOKED_UP`). Any such row keeps the
+ * Overview from its all good (independent review r6, F5): that tool's
+ * version is not known, whatever the others' are.
+ */
+export function isUnsuccessfulLookup(candidate: UpdateCandidate): boolean {
+  return (
+    isFailedLookup(candidate) ||
+    (!candidate.checkable && !candidate.warnings.some((warning) => NEVER_LOOKED_UP.includes(warning)))
+  );
+}
+
+/**
+ * The rows the Updates page lists (`notHidden`) whose lookup did not
+ * succeed (`isUnsuccessfulLookup`): what decides whether the Overview may
+ * claim all good -- where `failedLookupsOf`, of them only those checking
+ * again can mend, decides whether it offers Check Again.
+ */
+export function unsuccessfulLookupsOf(
+  updates: UpdateCandidate[],
+  settings: HidingSettings,
+  nowMs: number = Date.now(),
+): UpdateCandidate[] {
+  return notHidden(updates, settings, nowMs).filter(isUnsuccessfulLookup);
 }
 
 /**

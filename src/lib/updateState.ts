@@ -539,9 +539,15 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  * because the user hid them (`hidingRule`; a skip or a never-remind that
  * hides no update this check found is not counted); and `notUsed`, the
  * rows of a copy Terminal does not run that have a checkbox and that no
- * number counts (decision U4). A check that could not look a tool up
- * (`failedLookupsOf`) is the Overview's to weigh: such a row is among
- * `cantUpdateHere`.
+ * number counts (decision U4). A tool whose lookup did not succeed is the
+ * Overview's to weigh: such a row is among `cantUpdateHere`, and `upToDate`
+ * says only that nothing is left to install and every source answered in
+ * full -- not that every tool was looked up. Any such row
+ * (`unsuccessfulLookupsOf` in src/lib/failedLookups.ts: no answer, or one
+ * checking again will not mend, as a certificate Banager does not trust)
+ * keeps the Overview's all good and its green check away, though the
+ * others checked fine (independent review r6, F5); of them, only those
+ * checking again can mend (`failedLookupsOf`) offer Check Again.
  *
  * `updates` and `updating` carry how many wait for the password too
  * (`password`), which the Overview says under its headline.
@@ -594,6 +600,8 @@ export function updatesSummary(
       snapshot.instances.every((instance) => ofNamed(instance.id) || checkedInFull(instance));
     return { kind: "nothingToUpdate", notChecked, everythingElse, ...besides };
   }
+  // Not yet the all good: a row whose lookup did not succeed is among
+  // `cantUpdateHere`, and the Overview weighs it (`unsuccessfulLookupsOf`).
   const everything = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
   return { kind: "upToDate", everything, ...besides };
 }

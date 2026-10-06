@@ -20,7 +20,7 @@ import {
 import type { SourceNoticeAction, SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
 import { notCheckedHeadline } from "../lib/allGood";
-import { failedLookupsOf, failedLookupsProblem } from "../lib/failedLookups";
+import { failedLookupsOf, failedLookupsProblem, unsuccessfulLookupsOf } from "../lib/failedLookups";
 import { useSystemFacts } from "../lib/diagnostics";
 import { loginPathNotice } from "../lib/loginPathNotice";
 import type { UpdatesSummary } from "../lib/updateState";
@@ -52,14 +52,17 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * lookup that failed this time, or one that fails the same way every
  * time, as behind a proxy whose certificate Banager does not trust), it
  * claims nothing was: 「所有工具都没有检查成功」 (walk-2 review 1.2). Else,
- * where tools could not be looked up this time (`lookupsFailed`), no
- * update listed is no news, and nothing is called up to date: 「已检查的
- * 来源中没有可更新的工具」.
+ * where any tool's lookup did not succeed (`unsuccessful`,
+ * `unsuccessfulLookupsOf`: no answer, or one checking again will not mend
+ * -- a certificate Banager does not trust, an answer that would not parse,
+ * a redirect it will not follow), though the others checked fine, no
+ * update listed is no news, and nothing is called up to date, the rest
+ * included: 「已检查的来源中没有可更新的工具」 (independent review r6, F5).
  */
 function headlineText(
   t: Translate,
   summary: UpdatesSummary,
-  lookupsFailed: number,
+  unsuccessful: number,
   nothingChecked: boolean,
   instances: readonly ManagerInstance[],
 ): string {
@@ -72,27 +75,28 @@ function headlineText(
       return t("overviewPassword.title", { count: summary.count });
     case "upToDate":
       if (nothingChecked) return t("overview.nothingChecked");
-      if (lookupsFailed > 0) return t("overview.nothingToUpdateChecked");
+      if (unsuccessful > 0) return t("overview.nothingToUpdateChecked");
       return summary.everything ? t("overview.upToDate") : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
       if (nothingChecked) return t("overview.nothingChecked");
-      if (lookupsFailed > 0) return t("overview.nothingToUpdateChecked");
+      if (unsuccessful > 0) return t("overview.nothingToUpdateChecked");
       return notCheckedHeadline(t, summary.notChecked, summary.everythingElse, instances);
   }
 }
 
 /**
  * The status's symbol for a verdict. A `switch` with no default, as
- * `headlineText`. The green check only for the all good: not over tools
- * that could not be looked up this time, nor where no tool could be
+ * `headlineText`. The green check only for the all good: not over a tool
+ * whose lookup did not succeed (`unsuccessful`), whether or not checking
+ * again can mend it, nor where no tool could be looked up
  * (`nothingChecked`).
  */
-function symbolOf(summary: UpdatesSummary, lookupsFailed: number, nothingChecked: boolean): StatusSymbolKind {
+function symbolOf(summary: UpdatesSummary, unsuccessful: number, nothingChecked: boolean): StatusSymbolKind {
   switch (summary.kind) {
     case "updates":
       return "updates";
     case "upToDate":
-      return lookupsFailed > 0 || nothingChecked ? "quiet" : "upToDate";
+      return unsuccessful > 0 || nothingChecked ? "quiet" : "upToDate";
     case "updating":
       return "busy";
     // The warning glyph: updates are waiting on the user, in Terminal.
@@ -117,13 +121,15 @@ function symbolOf(summary: UpdatesSummary, lookupsFailed: number, nothingChecked
  * under 「已跳过的版本」 and 「不再提醒的工具」: their count is the way
  * there (`showHidden`), a link in the line -- the one link on the page.
  * The rest of it is text: of those it can't update here, how many it
- * could not look up (`lookupsFailed`), as that page's fold says them.
+ * could not look up (`unsuccessful`: every lookup that did not succeed,
+ * whether or not checking again can mend it) -- what keeps the all good
+ * away, said plainly (independent review r6, F5).
  */
 function nothingToUpdateLine(
   t: Translate,
   summary: Extract<UpdatesSummary, { kind: "upToDate" | "nothingToUpdate" | "needsPassword" }>,
   showHidden: () => void,
-  lookupsFailed: number,
+  unsuccessful: number,
 ): ReactNode {
   const parts: ReactNode[] = [];
   if (summary.hidden > 0) {
@@ -135,8 +141,8 @@ function nothingToUpdateLine(
   }
   if (summary.cantUpdateHere > 0) {
     parts.push(
-      lookupsFailed > 0
-        ? t("overview.cantUpdateHereUncheckedCount", { number: summary.cantUpdateHere, unchecked: lookupsFailed })
+      unsuccessful > 0
+        ? t("overview.cantUpdateHereUncheckedCount", { number: summary.cantUpdateHere, unchecked: unsuccessful })
         : t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }),
     );
   }
@@ -506,6 +512,10 @@ export function OverviewPage() {
   // them: never in the headline's number, which is what can be updated.
   const lookupsFailed = failedLookupsOf(snapshot.updates, settings);
   const lookups = failedLookupsProblem(t, lookupsFailed);
+  // Every tool whose lookup did not succeed, whether or not checking again
+  // can mend it: what keeps the all good away (independent review r6, F5).
+  // Only those checking again can mend (`lookupsFailed`) offer Check Again.
+  const unsuccessful = unsuccessfulLookupsOf(snapshot.updates, settings).length;
   // Whether no installed tool was checked at all: each is a row that could
   // not be (`checkable: false`), whatever the reason.
   const unchecked = new Set(
@@ -567,7 +577,7 @@ export function OverviewPage() {
       </>
     );
   } else if (summary.kind === "upToDate" || summary.kind === "nothingToUpdate" || summary.kind === "needsPassword") {
-    line = nothingToUpdateLine(t, summary, showHiddenUpdates, lookupsFailed.length) ?? lastChecked;
+    line = nothingToUpdateLine(t, summary, showHiddenUpdates, unsuccessful) ?? lastChecked;
   } else if (summary.kind === "updating") {
     // How many wait for the password, as the Updates page's headline goes
     // on after its "Updating N tools": 「13个需要输入密码」.
@@ -646,13 +656,13 @@ export function OverviewPage() {
   return (
     <div className={FORM_COLUMN}>
       <StatusRow
-        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary, lookupsFailed.length, nothingChecked)}
+        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary, unsuccessful, nothingChecked)}
         title={
           failed
             ? t("header.checkFailed")
             : found !== null
               ? t(NOTHING_FOUND_KEYS[found].title)
-              : headlineText(t, summary, lookupsFailed.length, nothingChecked, snapshot.instances)
+              : headlineText(t, summary, unsuccessful, nothingChecked, snapshot.instances)
         }
         line={line}
         button={button}

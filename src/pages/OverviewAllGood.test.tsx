@@ -378,3 +378,94 @@ describe("the Overview's all good", () => {
     expect(statusRow(again.container).getAttribute("data-status")).toBe("quiet");
   });
 });
+
+/**
+ * Independent review r6, F5: the all good is a claim that every tool
+ * Banager looks up was looked up. A lookup that did not succeed in a way
+ * checking again will not mend -- a certificate rustls would not accept
+ * (behind a proxy that reads https traffic), an answer that would not
+ * parse, a redirect the client will not follow -- keeps it away as one
+ * that got no answer does, though another tool checked fine; only the
+ * Check Again stays with those checking again can mend.
+ */
+describe("the Overview's all good, over a lookup that did not succeed", () => {
+  const cargo = instance("cargo:/Users/you/.cargo", "cargo");
+  const ripgrep = key(cargo, "ripgrep", "Binary");
+  const notLookedUp = (warnings: UpdateCandidate["warnings"]) =>
+    candidate(ripgrep, { checkable: false, target: "1.0.0", channel: "Registry", warnings });
+  const untrusted: UpdateCandidate["warnings"] = [
+    {
+      Message:
+        "crates.io request failed: secure connection to crates.io failed: invalid peer certificate: UnknownIssuer",
+    },
+    { SecureConnectionFailed: { host: "crates.io" } },
+  ];
+
+  it("says no update was found in what was checked, with no green check, where crates.io's certificate was not trusted", async () => {
+    // The reviewer's case: Homebrew checked jq, up to date; ripgrep's
+    // lookup met a certificate Banager does not trust.
+    served = snapshotWith({
+      instances: [brew, cargo],
+      artifacts: [artifact(jq), artifact(ripgrep)],
+      updates: [notLookedUp(untrusted)],
+    });
+    const { container } = renderOverview();
+
+    const headline = await screen.findByRole("heading", { level: 2, name: "No updates in the sources checked" });
+    expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+    // How many could not be checked, plainly.
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here, including 1 that couldn't be checked");
+    // No Check Again for it: the next check meets the same certificate.
+    expect(screen.queryByRole("list", { name: "Needs attention" })).toBeNull();
+    expect(buttonOf(container)).toHaveAccessibleName("Review Updates");
+
+    const zh = await headlineIn("zh-CN", "已检查的来源中没有可更新的工具");
+    expect(zh.nextElementSibling?.textContent).toBe("1个无法在这里更新，其中1个没有检查成功");
+    const hant = await headlineIn("zh-Hant", "已檢查的來源中沒有可更新的工具");
+    expect(hant.nextElementSibling?.textContent).toBe("1個無法在這裡更新，其中1個沒有檢查成功");
+  });
+
+  it.each([
+    ["an answer that would not parse", [{ Message: "could not parse registry manifest" }]],
+    ["a redirect the client will not follow", [{ Message: "crates.io request failed: refused: refusing to follow a redirect" }]],
+    ["a crate the registry does not have", [{ Message: "crates.io returned status 404" }]],
+  ] as [string, UpdateCandidate["warnings"]][])("gives no green check over %s", async (_what, warnings) => {
+    served = snapshotWith({
+      instances: [brew, cargo],
+      artifacts: [artifact(jq), artifact(ripgrep)],
+      updates: [notLookedUp(warnings)],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", { level: 2, name: "No updates in the sources checked" });
+    expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here, including 1 that couldn't be checked");
+  });
+
+  it("keeps the green check beside a crate installed from git, which Banager never looks up", async () => {
+    served = snapshotWith({
+      instances: [brew, cargo],
+      artifacts: [artifact(jq), artifact(ripgrep)],
+      updates: [notLookedUp(["NonRegistrySource"])],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", {
+      level: 2,
+      name: "Everything you can update here is up to date",
+    });
+    expect(statusRow(container).getAttribute("data-status")).toBe("upToDate");
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
+  });
+
+  it("does not call the rest up to date where a source that answered had a lookup fail", async () => {
+    served = snapshotWith({
+      instances: [brew, cargo, stoppedOllama],
+      artifacts: [artifact(jq), artifact(ripgrep)],
+      updates: [notLookedUp(untrusted)],
+    });
+    const { container } = renderOverview();
+    const headline = await screen.findByRole("heading", { level: 2, name: "No updates in the sources checked" });
+    expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+    expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here, including 1 that couldn't be checked");
+    await headlineIn("zh-CN", "已检查的来源中没有可更新的工具");
+  });
+});
