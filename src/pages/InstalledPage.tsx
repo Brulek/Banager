@@ -1962,7 +1962,14 @@ export function InstalledPage() {
                     </span>
                   </h2>
                   {sourceTotalOf(item.instance.id) === null ? null : (
-                    <InfoDetail label={t("common.detailsLabel", { title: sourceTotalOf(item.instance.id) ?? "" })}>
+                    // Named with the source, 「详情：Homebrew · 约2.6 GB」:
+                    // tabbing down the list, each says whose total it
+                    // explains, as two may round to the same size.
+                    <InfoDetail
+                      label={t("common.detailsLabel", {
+                        title: `${item.label} · ${sourceTotalOf(item.instance.id) ?? ""}`,
+                      })}
+                    >
                       {t("sizeTotals.note")}
                     </InfoDetail>
                   )}

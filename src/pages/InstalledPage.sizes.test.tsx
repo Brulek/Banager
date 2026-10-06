@@ -395,8 +395,12 @@ describe("the Installed page's source headings, on disk use", () => {
     // not a tooltip; beside the heading, not in its name.
     expect(heading).not.toHaveAttribute("title");
     const slot = heading.parentElement as HTMLElement;
-    const info = within(slot).getByRole("button", { name: /^Details: / });
+    // Named with its source, so tabbing down the list says whose total
+    // each one explains, as two sources may round to the same words.
+    // (「about」 is joined to the number by a no-break space.)
+    const info = within(slot).getByRole("button", { name: /^Details: Homebrew · about\s616\.4 MB$/ });
     expect(heading).not.toContainElement(info);
+    expect(screen.getByRole("button", { name: /^Details: Ollama · about\s6\.6 GB$/ })).toBeInTheDocument();
     fireEvent.click(info);
     expect(document.getElementById(info.getAttribute("aria-controls") ?? "")).toHaveTextContent(
       /including other versions but not caches/,
@@ -414,6 +418,7 @@ describe("the Installed page's source headings, on disk use", () => {
     served = measuredAll;
     await bySource();
     expect(await screen.findByRole("heading", { level: 2, name: "Homebrew · 3个 · 约616.4 MB" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^详情：Homebrew · 约\s?616\.4 MB$/ })).toBeInTheDocument();
   });
 });
 
