@@ -9,7 +9,7 @@ use crate::adapters::{
     AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::dirfd::Stat;
-use crate::events::{EventSink, OpId};
+use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
     InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
@@ -21,6 +21,7 @@ use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUs
 use async_trait::async_trait;
 use brew_env::HomebrewSwitches;
 use cask_receipt::{Classified, Recorded};
+use kegs::Kegs;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -166,6 +167,13 @@ pub struct BrewAdapter {
     /// list unless a test installs a reader (`with_trust_list_fn`), so that
     /// no test answers differently for the trust list of the Mac running it.
     trust_list_fn: fn(&Path) -> Option<TrustList>,
+    /// How to read which versions of a formula are installed under a
+    /// prefix, and whether it is pinned, for the upgrade and uninstall
+    /// previews (`kegs::read_kegs`, U9): the real Cellar outside this
+    /// crate's unit tests; inside them nothing is read unless a test
+    /// installs a reader (`with_kegs_fn`), so that no test answers
+    /// differently for the formulae installed on the Mac running it.
+    kegs_fn: fn(&Path, &str) -> Option<Kegs>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -218,6 +226,13 @@ const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = |_| None;
 const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = trust::read_trust_list;
 #[cfg(test)]
 const DEFAULT_TRUST_LIST_FN: fn(&Path) -> Option<TrustList> = |_| Some(TrustList::default());
+
+/// `BrewAdapter::kegs_fn` as `BrewAdapter::new` sets it: the real Cellar in
+/// every build but this crate's unit tests, where nothing is read.
+#[cfg(not(test))]
+const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = kegs::read_kegs;
+#[cfg(test)]
+const DEFAULT_KEGS_FN: fn(&Path, &str) -> Option<Kegs> = |_, _| None;
 
 /// `BrewAdapter::wall_clock_fn` as `BrewAdapter::new` sets it: the real
 /// clock in every build but this crate's unit tests, where it stands still
@@ -296,6 +311,11 @@ impl BrewAdapter {
     /// to keep in sync by hand when it changes.
     const OP_UPDATE_WAIT: Duration = Duration::from_secs(10 * 60);
 
+    /// How long the `brew cleanup <name>` after an upgrade may run (U9):
+    /// it deletes one formula's old versions and downloads, which takes
+    /// seconds; ten minutes is for a slow disk, not for a network.
+    const CLEANUP_TIMEOUT_SECS: u64 = 10 * 60;
+
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
         "/usr/local/bin/brew",
@@ -324,6 +344,7 @@ impl BrewAdapter {
             recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
             app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
             trust_list_fn: DEFAULT_TRUST_LIST_FN,
+            kegs_fn: DEFAULT_KEGS_FN,
         }
     }
 
@@ -437,6 +458,14 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_trust_list_fn(mut self, trust_list_fn: fn(&Path) -> Option<TrustList>) -> BrewAdapter {
         self.trust_list_fn = trust_list_fn;
+        self
+    }
+
+    /// Test-only hook to put a formula's versions on the disk the
+    /// previews read (see `kegs_fn`).
+    #[cfg(test)]
+    fn with_kegs_fn(mut self, kegs_fn: fn(&Path, &str) -> Option<Kegs>) -> BrewAdapter {
+        self.kegs_fn = kegs_fn;
         self
     }
 
@@ -663,6 +692,60 @@ impl BrewAdapter {
         env: &[(String, String)],
     ) -> Vec<Warning> {
         Self::switch_warnings(&self.homebrew_switches(inst, env), kind)
+    }
+
+    /// The versions of the formula `req` names that a `brew cleanup` of it
+    /// deletes once its upgrade has succeeded -- every version installed
+    /// now, oldest first, the one the upgrade replaces among them -- or
+    /// `None` when Banager runs no such cleanup (the author's decision U9,
+    /// r6). Homebrew itself deletes them after every upgrade unless
+    /// `HOMEBREW_NO_INSTALL_CLEANUP` is set (`Cleanup.install_formula_clean!`,
+    /// `cleanup.rb:348-358`), which Banager sets to keep its periodic
+    /// clean-up of every formula from running (`ENV`); this gives that one
+    /// formula back what Homebrew would have done for it, and only where
+    /// the person has said nothing against it:
+    ///
+    /// - not when Homebrew cleans up by itself, or may: a `brew.env` that
+    ///   takes `HOMEBREW_NO_INSTALL_CLEANUP` back, or one Banager cannot
+    ///   read (the plan's own lines say what Homebrew does then);
+    /// - not when the person turned that cleanup off: their own
+    ///   `HOMEBREW_NO_INSTALL_CLEANUP`, in a `brew.env` or in Banager's
+    ///   environment, which is what Homebrew would make of the switch
+    ///   without Banager's `1`;
+    /// - not for a formula `HOMEBREW_NO_CLEANUP_FORMULAE` names, by the
+    ///   name Homebrew checks (`Cleanup.skip_clean_formula?`,
+    ///   `cleanup.rb:409-415`) -- and an alias it names Banager cannot see
+    ///   is refused by Homebrew's own `brew cleanup` (`cleanup.rb:511-514`);
+    /// - not when the Cellar could not be read, so there are no versions
+    ///   to name (`kegs_fn`).
+    fn cleanup_after_upgrade(
+        &self,
+        inst: &ManagerInstance,
+        req: &OpRequest,
+        env: &[(String, String)],
+    ) -> Option<Vec<String>> {
+        if req.kind != OpKind::Upgrade || req.artifact_kind != ArtifactKind::Formula {
+            return None;
+        }
+        let switches = self.homebrew_switches(inst, env);
+        if !switches.no_install_cleanup || switches.install_cleanup_unknown {
+            return None;
+        }
+        let theirs: Vec<(String, String)> = env
+            .iter()
+            .filter(|(name, _)| name != brew_env::NO_INSTALL_CLEANUP)
+            .cloned()
+            .collect();
+        let own = self.homebrew_switches(inst, &theirs);
+        if own.no_install_cleanup || own.install_cleanup_unknown {
+            return None;
+        }
+        let short = req.name.rsplit('/').next().unwrap_or(&req.name);
+        if switches.no_cleanup_formulae.iter().any(|name| name == short) {
+            return None;
+        }
+        let kegs = (self.kegs_fn)(&inst.prefix, &req.name)?;
+        (!kegs.versions.is_empty()).then_some(kegs.versions)
     }
 
     /// What Homebrew makes of a plan's environment `env` on `inst` once
@@ -1874,6 +1957,23 @@ impl BrewAdapter {
                     .and_then(|trust| Self::forgets_trust(trust, req))
                     .into_iter();
                 let mut warnings = vec![scope];
+                // U9: every installed version goes, so none is left to be
+                // listed again once this one has: `--force`, Homebrew's own
+                // way to that (`cmd/uninstall.rb:43`, `uninstall.rb:31-44`),
+                // passed only where there is more than one version and no
+                // pin -- a pinned formula is refused by Homebrew as it is
+                // without it (`uninstall.rb:45-53`).
+                let every_version = (req.artifact_kind == ArtifactKind::Formula)
+                    .then(|| (self.kegs_fn)(&inst.prefix, &req.name))
+                    .flatten()
+                    .filter(|kegs| kegs.versions.len() > 1 && !kegs.pinned)
+                    .map(|kegs| kegs.versions);
+                let mut args = vec!["uninstall".to_string(), flag.to_string()];
+                if let Some(versions) = every_version {
+                    args.push("--force".to_string());
+                    warnings.push(Warning::HomebrewRemovesEveryVersion { versions });
+                }
+                args.push(req.name.clone());
                 let affected = if uses_output.exit_code == Some(0) {
                     parse_uses(&uses_output.stdout)
                 } else {
@@ -1895,7 +1995,7 @@ impl BrewAdapter {
                     request: req.clone(),
                     action: PlanAction::Command {
                         program: inst.exe_path.clone(),
-                        args: vec!["uninstall".to_string(), flag.to_string(), req.name.clone()],
+                        args,
                         env,
                     },
                     needs_password: matches!(req.artifact_kind, ArtifactKind::Cask),
@@ -1916,14 +2016,26 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
-                let warnings = self.brew_env_warnings(inst, req.kind, &env);
+                let mut warnings = self.brew_env_warnings(inst, req.kind, &env);
+                let program = inst.exe_path.clone();
+                let args = vec!["upgrade".to_string(), flag.to_string(), req.name.clone()];
+                // U9: a formula's old versions go once it is updated, said
+                // first, as the one thing this preview adds to the update.
+                let action = match self.cleanup_after_upgrade(inst, req, &env) {
+                    Some(versions) => {
+                        warnings.insert(0, Warning::HomebrewCleansUpOldVersions { versions });
+                        PlanAction::CommandThen {
+                            program,
+                            args,
+                            env,
+                            then: vec!["cleanup".to_string(), req.name.clone()],
+                        }
+                    }
+                    None => PlanAction::Command { program, args, env },
+                };
                 Ok(Plan {
                     request: req.clone(),
-                    action: PlanAction::Command {
-                        program: inst.exe_path.clone(),
-                        args: vec!["upgrade".to_string(), flag.to_string(), req.name.clone()],
-                        env,
-                    },
+                    action,
                     needs_password,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
@@ -1963,11 +2075,71 @@ impl BrewAdapter {
         };
         // Recheck immediately before execution: brew.env can change since preview.
         if matches!(plan.request.kind, OpKind::Install | OpKind::Upgrade) {
-            if let PlanAction::Command { program, env, .. } = &plan.action {
+            if let PlanAction::Command { program, env, .. }
+            | PlanAction::CommandThen { program, env, .. } = &plan.action
+            {
                 self.require_no_auto_update(&Self::prefix_for(program), env)?;
             }
         }
-        run_plan(&self.runner, plan, sink, op_id, cancel).await
+        let PlanAction::CommandThen {
+            program,
+            args,
+            env,
+            then,
+        } = &plan.action
+        else {
+            return run_plan(&self.runner, plan, sink, op_id, cancel).await;
+        };
+        // An upgrade, then the `brew cleanup` of the formula's old
+        // versions (U9): each through `run_plan`, which streams its lines
+        // into this operation's log. The upgrade's end is the operation's;
+        // the cleanup runs only after it succeeded, and how it ends is said
+        // in the log, never in the outcome -- the update is done either way.
+        let step = |args: &[String], timeout_secs| Plan {
+            action: PlanAction::Command {
+                program: program.clone(),
+                args: args.to_vec(),
+                env: env.clone(),
+            },
+            timeout_secs,
+            ..plan.clone()
+        };
+        let outcome = run_plan(
+            &self.runner,
+            &step(args, plan.timeout_secs),
+            sink.clone(),
+            op_id,
+            cancel.clone(),
+        )
+        .await?;
+        if outcome != Outcome::Succeeded {
+            return Ok(outcome);
+        }
+        let name = plan.request.name.clone();
+        let note = |note| sink.emit(OperationEvent::Note { op_id, note });
+        let exit_code = if cancel.is_cancelled() {
+            // Stopped before it started: nothing of it ran.
+            Some(None)
+        } else {
+            note(LogNote::CleaningUpOldVersions { name: name.clone() });
+            match run_plan(
+                &self.runner,
+                &step(then, Self::CLEANUP_TIMEOUT_SECS),
+                sink.clone(),
+                op_id,
+                cancel,
+            )
+            .await
+            {
+                Ok(Outcome::Succeeded) => None,
+                Ok(Outcome::Failed { exit_code, .. }) => Some(exit_code),
+                Ok(_) | Err(_) => Some(None),
+            }
+        };
+        if let Some(exit_code) = exit_code {
+            note(LogNote::OldVersionsNotCleanedUp { name, exit_code });
+        }
+        Ok(outcome)
     }
 
     pub async fn reconcile(
@@ -3593,11 +3765,15 @@ mod plan_execute_tests {
     /// for `claude-code` that is the *native* install's `~/.local/bin/claude`
     /// and `~/.local/share/claude`, and the shared `~/.claude` -- and
     /// `--force` and `--ignore-dependencies` override refusals Homebrew makes
-    /// on the user's behalf. None of the three has ever been passed here, but
-    /// until now that was an absence, not a promise: `docs/what-we-run.md`
-    /// says Banager never passes them, and this is what keeps that sentence
-    /// true when `plan` is next edited. Every plan brew builds, for both
-    /// artifact kinds, is exactly the verb, the kind flag and the name.
+    /// on the user's behalf. `docs/what-we-run.md` says Banager never passes
+    /// them, but for the one `--force` the author's decision U9 (r6) asks
+    /// for -- an uninstall of a formula with more than one version
+    /// installed and no pin, to delete every version
+    /// (`old_versions::an_uninstall_of_a_formula_deletes_every_installed_version`,
+    /// `an_uninstall_passes_no_force_for_one_version_a_pinned_formula_or_a_cask`)
+    /// -- and this is what keeps that sentence true when `plan` is next
+    /// edited. Where no second version is read, every plan brew builds, for
+    /// both artifact kinds, is exactly the verb, the kind flag and the name.
     #[tokio::test]
     async fn test_plan_never_passes_zap_force_or_ignore_dependencies() {
         let runner = Arc::new(MockRunner::new());
@@ -6611,6 +6787,348 @@ mod plan_execute_tests {
                 calls.iter().any(|call| call[1..] == wanted[..]),
                 "{wanted:?} ran: {calls:?}"
             );
+        }
+    }
+
+    /// U9 (r6): an update deletes the old versions of the formula it
+    /// updated, and an uninstall deletes every version installed.
+    mod old_versions {
+        use super::*;
+        use crate::adapters::brew::kegs::Kegs;
+        use crate::events::LogNote;
+
+        /// A Cellar with wget's 1.24.0 and 1.25.0 in it, and no pin.
+        fn two_versions(_prefix: &Path, name: &str) -> Option<Kegs> {
+            (name.rsplit('/').next() == Some("wget")).then(|| Kegs {
+                versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                pinned: false,
+            })
+        }
+
+        fn request(kind: OpKind, artifact_kind: ArtifactKind, name: &str) -> OpRequest {
+            OpRequest {
+                kind,
+                instance_id: test_instance().id,
+                artifact_kind,
+                name: name.to_string(),
+            }
+        }
+
+        fn ok(stdout: &str, stderr: &str, exit_code: i32) -> CommandOutput {
+            CommandOutput {
+                exit_code: Some(exit_code),
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+                timed_out: false,
+                cancelled: false,
+            }
+        }
+
+        /// `brew uses --installed {name}` answering that nothing needs it.
+        fn nothing_uses(runner: &MockRunner, name: &str) {
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+                ok("", "", 0),
+            );
+        }
+
+        fn upgrade_then_cleanup(plan: &Plan) -> Option<(&[String], &[String])> {
+            match &plan.action {
+                PlanAction::CommandThen { args, then, .. } => Some((args, then)),
+                _ => None,
+            }
+        }
+
+        #[tokio::test]
+        async fn an_update_of_a_formula_cleans_up_its_old_versions_once_it_succeeds() {
+            let runner = Arc::new(MockRunner::new());
+            let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
+            let inst = test_instance();
+            let plan = adapter
+                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .await
+                .expect("plan");
+            let (args, then) = upgrade_then_cleanup(&plan).expect("a cleanup follows");
+            assert_eq!(args, ["upgrade", "--formula", "wget"]);
+            assert_eq!(then, ["cleanup", "wget"]);
+            // Under the same environment: Banager's switches all stand.
+            assert!(command_env(&plan)
+                .contains(&("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())));
+            assert_eq!(
+                plan.warnings,
+                vec![Warning::HomebrewCleansUpOldVersions {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                }]
+            );
+            // A tap's formula is cleaned up by the name it is updated by.
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &request(OpKind::Upgrade, ArtifactKind::Formula, "someone/tap/wget"),
+                )
+                .await
+                .expect("plan");
+            assert_eq!(
+                upgrade_then_cleanup(&plan).map(|(_, then)| then),
+                Some(&["cleanup".to_string(), "someone/tap/wget".to_string()][..])
+            );
+        }
+
+        #[tokio::test]
+        async fn an_update_cleans_up_nothing_for_a_cask_an_install_or_where_no_version_was_read() {
+            let runner = Arc::new(MockRunner::new());
+            let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
+            let inst = test_instance();
+            for req in [
+                request(OpKind::Upgrade, ArtifactKind::Cask, "wget"),
+                request(OpKind::Install, ArtifactKind::Formula, "wget"),
+            ] {
+                let plan = adapter.plan(&inst, &req).await.expect("plan");
+                assert!(matches!(plan.action, PlanAction::Command { .. }), "{req:?}");
+                assert_eq!(plan.warnings, vec![], "{req:?}");
+            }
+            // Nothing read of the formula: no line to say which versions,
+            // so no cleanup either.
+            let plan = BrewAdapter::new(runner)
+                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .await
+                .expect("plan");
+            assert!(matches!(plan.action, PlanAction::Command { .. }));
+            assert_eq!(plan.warnings, vec![]);
+        }
+
+        #[tokio::test]
+        async fn an_update_keeps_every_cleanup_setting_the_person_made() {
+            type Files = fn(&Path) -> brew_env::EnvFile;
+            fn system(bytes: &'static [u8]) -> impl Fn(&Path) -> brew_env::EnvFile {
+                move |path| (path == Path::new(brew_env::SYSTEM_FILE)).then(|| bytes.to_vec()).into()
+            }
+            let cases: [(&str, Files); 5] = [
+                // Their own HOMEBREW_NO_INSTALL_CLEANUP: no cleanup after
+                // an install or upgrade, Banager's included.
+                ("opted out", |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=1\n")(p)),
+                // Taken back: Homebrew cleans up by itself, and says so.
+                ("Homebrew's own", |p| system(b"HOMEBREW_NO_INSTALL_CLEANUP=\n")(p)),
+                // Kept out of every clean-up by name.
+                ("named", |p| system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq,wget\n")(p)),
+                // A brew.env Banager does not read: it may say either.
+                ("unknown", |p| {
+                    if p == Path::new(brew_env::SYSTEM_FILE) {
+                        brew_env::EnvFile::Unknown
+                    } else {
+                        brew_env::EnvFile::Skipped
+                    }
+                }),
+                // Another formula named: wget is still cleaned up.
+                ("another", |p| system(b"HOMEBREW_NO_CLEANUP_FORMULAE=jq\n")(p)),
+            ];
+            let inst = test_instance();
+            for (case, files) in cases {
+                let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
+                    .with_kegs_fn(two_versions)
+                    .with_brew_env_fn(files);
+                for name in ["wget", "someone/tap/wget"] {
+                    let plan = adapter
+                        .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, name))
+                        .await
+                        .expect("plan");
+                    let cleans = plan
+                        .warnings
+                        .iter()
+                        .any(|w| matches!(w, Warning::HomebrewCleansUpOldVersions { .. }));
+                    assert_eq!(
+                        upgrade_then_cleanup(&plan).is_some(),
+                        case == "another",
+                        "{case} {name}"
+                    );
+                    assert_eq!(cleans, case == "another", "{case} {name}");
+                }
+            }
+            // Their own variable in Banager's environment, which every brew
+            // command inherits under the plan's own.
+            let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
+                .with_kegs_fn(two_versions)
+                .with_env_var_fn(|name| {
+                    (name == "HOMEBREW_NO_INSTALL_CLEANUP").then(|| OsString::from("1"))
+                });
+            let plan = adapter
+                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .await
+                .expect("plan");
+            assert!(upgrade_then_cleanup(&plan).is_none());
+        }
+
+        #[tokio::test]
+        async fn an_uninstall_of_a_formula_deletes_every_installed_version() {
+            let runner = Arc::new(MockRunner::new());
+            nothing_uses(&runner, "wget");
+            let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
+            let plan = adapter
+                .plan(
+                    &test_instance(),
+                    &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"),
+                )
+                .await
+                .expect("plan");
+            assert_eq!(
+                command_args(&plan),
+                ["uninstall", "--formula", "--force", "wget"]
+            );
+            assert_eq!(
+                plan.warnings,
+                vec![
+                    scope_of(ArtifactKind::Formula, false),
+                    Warning::HomebrewRemovesEveryVersion {
+                        versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    },
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn an_uninstall_passes_no_force_for_one_version_a_pinned_formula_or_a_cask() {
+            let runner = Arc::new(MockRunner::new());
+            nothing_uses(&runner, "wget");
+            let inst = test_instance();
+            type Read = fn(&Path, &str) -> Option<Kegs>;
+            let one: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.25.0".to_string()],
+                    pinned: false,
+                })
+            };
+            let pinned: Read = |_, _| {
+                Some(Kegs {
+                    versions: vec!["1.24.0".to_string(), "1.25.0".to_string()],
+                    pinned: true,
+                })
+            };
+            let none: Read = |_, _| None;
+            for read in [one, pinned, none] {
+                let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(read);
+                let plan = adapter
+                    .plan(&inst, &request(OpKind::Uninstall, ArtifactKind::Formula, "wget"))
+                    .await
+                    .expect("plan");
+                assert_eq!(command_args(&plan), ["uninstall", "--formula", "wget"]);
+                assert_eq!(plan.warnings, vec![scope_of(ArtifactKind::Formula, false)]);
+            }
+            let adapter = BrewAdapter::new(runner).with_kegs_fn(two_versions);
+            let plan = adapter
+                .plan(&inst, &request(OpKind::Uninstall, ArtifactKind::Cask, "wget"))
+                .await
+                .expect("plan");
+            assert_eq!(command_args(&plan), ["uninstall", "--cask", "wget"]);
+        }
+
+        #[tokio::test]
+        async fn the_cleanup_runs_once_the_update_succeeds_and_its_end_decides_nothing() {
+            let upgrade = vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"];
+            let cleanup = vec!["/opt/homebrew/bin/brew", "cleanup", "wget"];
+            let inst = test_instance();
+            let req = request(OpKind::Upgrade, ArtifactKind::Formula, "wget");
+            for (cleanup_exit, note) in [
+                (0, None),
+                (
+                    1,
+                    Some(LogNote::OldVersionsNotCleanedUp {
+                        name: "wget".to_string(),
+                        exit_code: Some(1),
+                    }),
+                ),
+            ] {
+                let runner = Arc::new(MockRunner::new());
+                runner.respond(upgrade.clone(), ok("==> Upgrading wget\n", "", 0));
+                runner.respond(
+                    cleanup.clone(),
+                    ok(
+                        "Removing: /opt/homebrew/Cellar/wget/1.24.0... (52 files, 4.1MB)\n",
+                        if cleanup_exit == 0 { "" } else { "Error: Permission denied\n" },
+                        cleanup_exit,
+                    ),
+                );
+                let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
+                let plan = adapter.plan(&inst, &req).await.expect("plan");
+                let sink = Arc::new(VecSink::new());
+                let outcome = adapter
+                    .execute(&plan, sink.clone(), 7, CancellationToken::new())
+                    .await
+                    .expect("execute");
+                assert_eq!(outcome, Outcome::Succeeded, "cleanup exited {cleanup_exit}");
+                assert_eq!(runner.calls(), vec![upgrade.clone(), cleanup.clone()]);
+                // The log: the update's lines, where the cleanup starts, its
+                // own lines, and how it ended when it did not finish.
+                let lines: Vec<String> = sink
+                    .snapshot()
+                    .into_iter()
+                    .map(|event| match event {
+                        crate::events::OperationEvent::Log { line, .. } => line,
+                        crate::events::OperationEvent::Note { note, .. } => format!("{note:?}"),
+                        other => format!("{other:?}"),
+                    })
+                    .collect();
+                let mut expected = vec![
+                    "==> Upgrading wget".to_string(),
+                    format!(
+                        "{:?}",
+                        LogNote::CleaningUpOldVersions {
+                            name: "wget".to_string()
+                        }
+                    ),
+                    "Removing: /opt/homebrew/Cellar/wget/1.24.0... (52 files, 4.1MB)".to_string(),
+                ];
+                if let Some(note) = note {
+                    expected.push("Error: Permission denied".to_string());
+                    expected.push(format!("{note:?}"));
+                }
+                assert_eq!(lines, expected);
+            }
+        }
+
+        #[tokio::test]
+        async fn no_cleanup_runs_after_an_update_that_did_not_succeed() {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "upgrade", "--formula", "wget"],
+                ok("", "Error: wget 1.26.0 did not build\n", 1),
+            );
+            let adapter = BrewAdapter::new(runner.clone()).with_kegs_fn(two_versions);
+            let inst = test_instance();
+            let plan = adapter
+                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .await
+                .expect("plan");
+            let outcome = adapter
+                .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                .await
+                .expect("execute");
+            assert!(matches!(outcome, Outcome::Failed { exit_code: Some(1), .. }));
+            assert_eq!(runner.calls().len(), 1, "{:?}", runner.calls());
+        }
+
+        #[tokio::test]
+        async fn an_update_a_cleanup_follows_is_refused_when_brew_env_turns_auto_update_back_on() {
+            // The same check as every install and upgrade, at the click:
+            // a brew.env that sets HOMEBREW_NO_AUTO_UPDATE to nothing since
+            // the preview stops it before anything runs.
+            let runner = Arc::new(MockRunner::new());
+            let inst = test_instance();
+            let plan = BrewAdapter::new(runner.clone())
+                .with_kegs_fn(two_versions)
+                .plan(&inst, &request(OpKind::Upgrade, ArtifactKind::Formula, "wget"))
+                .await
+                .expect("plan");
+            assert!(upgrade_then_cleanup(&plan).is_some());
+            let changed = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
+                (path == Path::new(brew_env::SYSTEM_FILE))
+                    .then(|| b"HOMEBREW_NO_AUTO_UPDATE=\n".to_vec())
+                    .into()
+            });
+            let result = changed
+                .execute(&plan, Arc::new(VecSink::new()), 7, CancellationToken::new())
+                .await;
+            assert!(result.is_err(), "{result:?}");
+            assert!(runner.calls().is_empty(), "{:?}", runner.calls());
         }
     }
 }
