@@ -47,11 +47,14 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  * nothing else is listed and every source is one Banager checks, else
  * 「能在这里更新的都已是最新」, what is listed besides said under it. A source
  * not checked this time is named (`notCheckedHeadline`): 「uv这次没检查，其余
- * 都是最新的」. Where tools could not be looked up (`lookupsFailed`), no
+ * 都是最新的」. Where no tool was checked at all (`nothingChecked`: every
+ * one installed is a row that could not be, whatever the reason -- a
+ * lookup that failed this time, or one that fails the same way every
+ * time, as behind a proxy whose certificate Banager does not trust), it
+ * claims nothing was: 「所有工具都没有检查成功」 (walk-2 review 1.2). Else,
+ * where tools could not be looked up this time (`lookupsFailed`), no
  * update listed is no news, and nothing is called up to date: 「已检查的
- * 来源中没有可更新的工具」; where no tool was checked at all
- * (`nothingChecked`: every one installed is a row that could not be), it
- * claims nothing was: 「所有工具都没有检查成功」 (walk-2 review 1.2).
+ * 来源中没有可更新的工具」.
  */
 function headlineText(
   t: Translate,
@@ -68,10 +71,12 @@ function headlineText(
     case "needsPassword":
       return t("overviewPassword.title", { count: summary.count });
     case "upToDate":
-      if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
+      if (nothingChecked) return t("overview.nothingChecked");
+      if (lookupsFailed > 0) return t("overview.nothingToUpdateChecked");
       return summary.everything ? t("overview.upToDate") : t("overviewAllGood.upToDateHere");
     case "nothingToUpdate":
-      if (lookupsFailed > 0) return t(nothingChecked ? "overview.nothingChecked" : "overview.nothingToUpdateChecked");
+      if (nothingChecked) return t("overview.nothingChecked");
+      if (lookupsFailed > 0) return t("overview.nothingToUpdateChecked");
       return notCheckedHeadline(t, summary.notChecked, summary.everythingElse, instances);
   }
 }
@@ -79,14 +84,15 @@ function headlineText(
 /**
  * The status's symbol for a verdict. A `switch` with no default, as
  * `headlineText`. The green check only for the all good: not over tools
- * that could not be looked up.
+ * that could not be looked up this time, nor where no tool could be
+ * (`nothingChecked`).
  */
-function symbolOf(summary: UpdatesSummary, lookupsFailed: number): StatusSymbolKind {
+function symbolOf(summary: UpdatesSummary, lookupsFailed: number, nothingChecked: boolean): StatusSymbolKind {
   switch (summary.kind) {
     case "updates":
       return "updates";
     case "upToDate":
-      return lookupsFailed > 0 ? "quiet" : "upToDate";
+      return lookupsFailed > 0 || nothingChecked ? "quiet" : "upToDate";
     case "updating":
       return "busy";
     // The warning glyph: updates are waiting on the user, in Terminal.
@@ -639,7 +645,7 @@ export function OverviewPage() {
   return (
     <div className={FORM_COLUMN}>
       <StatusRow
-        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary, lookupsFailed.length)}
+        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary, lookupsFailed.length, nothingChecked)}
         title={
           failed
             ? t("header.checkFailed")

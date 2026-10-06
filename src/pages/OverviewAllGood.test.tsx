@@ -330,4 +330,33 @@ describe("the Overview's all good", () => {
     });
     expect(headline.nextElementSibling?.textContent).toBe("1 can't be updated here");
   });
+
+  // Walk-2 review 1.2, whatever the reason each could not be: a lookup a
+  // later check will not fix either (a proxy whose certificate Banager does
+  // not trust, a registry that answered 404) is no green check.
+  it("claims nothing was checked, with no green check, where every installed tool could not be looked up", async () => {
+    const untrusted: UpdateCandidate["warnings"] = [{ SecureConnectionFailed: { host: "formulae.brew.sh" } }];
+    const uncheckable = (artifactKey: ArtifactKey, warnings: UpdateCandidate["warnings"]) =>
+      candidate(artifactKey, { checkable: false, target: "1.0.0", warnings });
+    served = snapshotWith({
+      updates: [
+        uncheckable(glib, untrusted),
+        uncheckable(jq, untrusted),
+        uncheckable(urllib3, [{ Message: "PyPI returned status 404" }]),
+      ],
+    });
+    const { container, unmount } = renderOverview();
+    await screen.findByRole("heading", { level: 2, name: "No tools could be checked" });
+    expect(statusRow(container).getAttribute("data-status")).toBe("quiet");
+    await headlineIn("zh-CN", "所有工具都没有检查成功");
+    await headlineIn("zh-Hant", "所有工具都沒有檢查成功");
+    unmount();
+
+    // And none named as the one not checked: no tool was.
+    await i18n.changeLanguage("en");
+    served = { ...served, instances: [brew, pip, stoppedOllama] };
+    const again = renderOverview();
+    await screen.findByRole("heading", { level: 2, name: "No tools could be checked" });
+    expect(statusRow(again.container).getAttribute("data-status")).toBe("quiet");
+  });
 });
