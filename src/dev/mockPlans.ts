@@ -346,9 +346,10 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       const major = Number.parseInt((inst.version ?? "").split(".")[0] ?? "", 10);
       return {
         ...plan,
+        // At the prefix the row came from, as every global npm command is.
         action: command(
           inst.exe_path,
-          upgrade ? ["install", "-g", `${name}@latest`] : ["uninstall", "-g", name],
+          [...(upgrade ? ["install", "-g", `${name}@latest`] : ["uninstall", "-g", name]), "--prefix", inst.prefix],
           NPM_ENV,
         ),
         warnings: !upgrade && major >= 7 ? [scope("Npm")] : [],

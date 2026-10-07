@@ -244,10 +244,17 @@ async fn test_an_uninstall_runs_exactly_the_command_its_preview_showed_and_nothi
                 "{what}: {argv:?} carries {word}"
             );
         }
+        let package_args = if program.ends_with("npm") {
+            assert_eq!(args[args.len() - 2], "--prefix");
+            assert_eq!(args.last().unwrap(), &instance.prefix.to_string_lossy());
+            &args[..args.len() - 2]
+        } else {
+            args.as_slice()
+        };
         assert_eq!(
-            args.last().map(String::as_str),
+            package_args.last().map(String::as_str),
             Some(name),
-            "{what}: the tool's own name ends the command"
+            "{what}: the tool's own name ends the package arguments"
         );
         if program.ends_with("brew") {
             for switch in ["HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_INSTALL_CLEANUP"] {

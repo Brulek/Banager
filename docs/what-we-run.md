@@ -1722,8 +1722,8 @@ prefix is unknown. No other command runs.
 |---|---|---|
 | Global prefix | `<npm> prefix -g` | 30 s |
 | Version | `<npm> --version` | 30 s |
-| List global packages (`inventory`) | `<npm> ls -g --depth=0 --json` | 60 s |
-| List outdated global packages (`check_updates`) | `<npm> outdated -g --json` | 60 s |
+| List global packages (`inventory`) | `<npm> ls -g --depth=0 --json --prefix {prefix}` | 60 s |
+| List outdated global packages (`check_updates`) | `<npm> outdated -g --json --prefix {prefix}` | 60 s |
 | Search | `<npm> search --json --searchlimit 20 {query}` | 30 s |
 
 `npm ls` exits 1 for non-fatal reasons (a peer dependency mismatch), so
@@ -1731,7 +1731,8 @@ exit 0 and 1 are both read. `npm outdated` exits 1 whenever it finds
 something outdated, so a non-zero exit with findings is a result, and a
 non-zero exit with nothing to show is reported as "could not check" for
 every package rather than as "everything is up to date" — listing every
-package that way takes one more run of `<npm> ls -g --depth=0 --json`, so
+package that way takes one more run of
+`<npm> ls -g --depth=0 --json --prefix {prefix}`, so
 a refresh whose `outdated` failed runs the inventory command twice. The
 search query passes `validate_search_query`.
 
@@ -1739,9 +1740,26 @@ search query passes `validate_search_query`.
 
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
-| Install | `<npm> install -g {name}` | 600 s | No |
-| Uninstall | `<npm> uninstall -g {name}` | 600 s | No |
-| Upgrade | `<npm> install -g {name}@latest` | 600 s | No |
+| Install | `<npm> install -g {name} --prefix {prefix}` | 600 s | No |
+| Uninstall | `<npm> uninstall -g {name} --prefix {prefix}` | 600 s | No |
+| Upgrade | `<npm> install -g {name}@latest --prefix {prefix}` | 600 s | No |
+
+All global reads and saved write commands carry `--prefix {prefix}`, the
+answer `<npm> prefix -g` gave when the source was found (`NpmAdapter::run_npm`
+and `NpmAdapter::plan`). npm ranks a setting given on the command line above
+the environment and every `npmrc` (`@npmcli/config` 9.0.0, `lib/index.js:42-48`,
+`:260`), so changing npm's configuration while a confirmation is open cannot
+move the operation away from the prefix its permission check and locks were
+taken for. Search and `<npm> prefix -g` itself run without it.
+
+Naming the prefix has two side effects. npm then reads its global settings
+file from `{prefix}/etc/npmrc` (`lib/index.js:286-293`): the same file it read
+before, unless the prefix was itself set in a global `npmrc` somewhere else,
+whose other settings these commands then do not read. And Volta's `npm`
+passes a global command that names a prefix straight to npm instead of moving
+it into Volta's own package folder (`has_global_without_prefix`, Volta 2.0.2
+`crates/volta-core/src/run/parser.rs:466-488`), so an update or removal lands
+in the folder its row was listed from.
 
 A plan is refused at click time, with the same reason, if the prefix has
 stopped being writable, or is now in a protected place, since the refresh

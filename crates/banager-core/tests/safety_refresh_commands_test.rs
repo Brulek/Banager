@@ -270,13 +270,13 @@ async fn test_a_refresh_runs_only_the_read_only_commands_each_sources_section_sh
     recorder.answer("npm", "prefix -g", 0, format!("{prefix}\n"));
     recorder.answer(
         "npm",
-        "ls -g --depth=0 --json",
+        &format!("ls -g --depth=0 --json --prefix {prefix}"),
         0,
         fixture("npm/12.0.2/ls-global.json"),
     );
     recorder.answer(
         "npm",
-        "outdated -g --json",
+        &format!("outdated -g --json --prefix {prefix}"),
         1,
         fixture("npm/12.0.2/outdated-global.json"),
     );

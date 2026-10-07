@@ -380,6 +380,23 @@ describe("the browser preview's mock backend", () => {
     expect(snapshot.updates.filter((u) => u.warnings.includes("TransientLookupFailure"))).toEqual([]);
   });
 
+  it("plans an npm update at the prefix its row came from, as the npm adapter does", async () => {
+    // Every global npm command carries `--prefix <npm prefix -g>` (review
+    // r7 F2), so the preview's command is the one the real window shows.
+    const { backend } = backendFor();
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const [issued] = await planUpgrades(backend, "typescript");
+    const npm = snapshot.instances.find((i) => i.id === issued?.plan.request.instance_id);
+    expect(npm?.adapter_id).toBe("npm");
+    expect(issued?.plan.action).toEqual({
+      Command: {
+        program: npm?.exe_path,
+        args: ["install", "-g", "typescript@latest", "--prefix", npm?.prefix],
+        env: expect.any(Array) as unknown as [string, string][],
+      },
+    });
+  });
+
   it("has npm unable to start for want of node with ?state=nonode, and a link that puts it back", async () => {
     // The author's Mac on 2026-10-07 (finding 1): npm says why, and offers
     // node@22 and node@20, newest first; node@22's link has npm's own npm

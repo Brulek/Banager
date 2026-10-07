@@ -228,6 +228,13 @@ impl NpmAdapter {
         args: Vec<String>,
         timeout: Duration,
     ) -> Result<CommandOutput, AdapterError> {
+        let mut args = args;
+        if args.iter().any(|arg| arg == "-g") {
+            args.extend([
+                "--prefix".into(),
+                inst.prefix.to_string_lossy().into_owned(),
+            ]);
+        }
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
             args,
@@ -531,7 +538,7 @@ impl NpmAdapter {
             OpKind::Install | OpKind::Upgrade => Vec::new(),
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
-        let args = match req.kind {
+        let mut args = match req.kind {
             OpKind::Install => vec!["install".to_string(), "-g".to_string(), req.name.clone()],
             OpKind::Uninstall => vec!["uninstall".to_string(), "-g".to_string(), req.name.clone()],
             OpKind::Upgrade => vec![
@@ -541,6 +548,10 @@ impl NpmAdapter {
             ],
             OpKind::Link => return Err(super::links_nothing(&self.meta.id)),
         };
+        args.extend([
+            "--prefix".into(),
+            inst.prefix.to_string_lossy().into_owned(),
+        ]);
         Ok(Plan {
             request: req.clone(),
             action: PlanAction::Command {
@@ -792,6 +803,67 @@ mod tests {
 
     use super::*;
 
+    #[tokio::test]
+    async fn regression_f01_npm_global_commands_pin_the_confirmed_prefix() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = NpmAdapter::new(runner.clone()).with_prefix_read_only_fn(|_| None);
+        let mut inst = test_instance();
+        inst.prefix = PathBuf::from("/tmp/confirmed prefix");
+        let _ = adapter.inventory(&inst).await;
+        let _ = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        for call in runner.calls() {
+            assert!(
+                call.windows(2)
+                    .any(|w| w == ["--prefix", "/tmp/confirmed prefix"]),
+                "{call:?}"
+            );
+        }
+        for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &OpRequest {
+                        kind,
+                        instance_id: inst.id.clone(),
+                        artifact_kind: ArtifactKind::Package,
+                        name: "demo".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            assert!(command_args(&plan)
+                .windows(2)
+                .any(|w| w == ["--prefix", "/tmp/confirmed prefix"]));
+            let mut argv = vec![inst.exe_path.to_str().unwrap()];
+            let args = command_args(&plan);
+            argv.extend(args.iter().map(String::as_str));
+            runner.respond(
+                argv,
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    stderr_cause: Default::default(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            assert_eq!(
+                adapter
+                    .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                    .await
+                    .unwrap(),
+                Outcome::Succeeded
+            );
+            assert!(runner
+                .calls()
+                .last()
+                .unwrap()
+                .windows(2)
+                .any(|w| w == ["--prefix", "/tmp/confirmed prefix"]));
+        }
+    }
+
     // Regressions found by `adapters/robustness.rs`.
 
     #[test]
@@ -828,7 +900,7 @@ mod tests {
     fn parse_ls_global_matches_the_recorded_fixture() {
         let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
             .expect("read adapters/fixtures/npm/12.0.2/ls-global.json");
-        let artifacts = parse_ls_global(&json, "npm:/opt/homebrew/lib").expect("parse");
+        let artifacts = parse_ls_global(&json, "npm:/opt/homebrew").expect("parse");
         assert_eq!(artifacts.len(), 6);
         let names: Vec<&str> = artifacts.iter().map(|a| a.key.name.as_str()).collect();
         assert_eq!(
@@ -867,7 +939,7 @@ mod tests {
         let json =
             std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/outdated-global.json")
                 .expect("read adapters/fixtures/npm/12.0.2/outdated-global.json");
-        let candidates = parse_outdated_global(&json, "npm:/opt/homebrew/lib").expect("parse");
+        let candidates = parse_outdated_global(&json, "npm:/opt/homebrew").expect("parse");
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "@alisaitteke/photoshop-mcp");
         assert_eq!(candidates[0].current, "1.7.15");
@@ -881,9 +953,9 @@ mod tests {
         // depending on version; both mean "no updates". Neither is committed
         // as a fixture, since there is nothing to record — but the parser
         // must not choke on either.
-        let candidates = parse_outdated_global("", "npm:/opt/homebrew/lib").expect("parse");
+        let candidates = parse_outdated_global("", "npm:/opt/homebrew").expect("parse");
         assert!(candidates.is_empty());
-        assert!(parse_outdated_global("{}", "npm:/opt/homebrew/lib")
+        assert!(parse_outdated_global("{}", "npm:/opt/homebrew")
             .expect("parse")
             .is_empty());
     }
@@ -915,9 +987,9 @@ mod tests {
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
             exe_path: PathBuf::from("/opt/homebrew/bin/npm"),
-            prefix: PathBuf::from("/opt/homebrew/lib"),
+            prefix: PathBuf::from("/opt/homebrew"),
             version: Some("12.0.2".to_string()),
-            ..crate::testing::manager_instance("npm", "npm:/opt/homebrew/lib")
+            ..crate::testing::manager_instance("npm", "npm:/opt/homebrew")
         }
     }
 
@@ -1313,7 +1385,15 @@ mod tests {
         let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
             .expect("read fixture");
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(1),
@@ -1338,7 +1418,14 @@ mod tests {
             std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/outdated-global.json")
                 .expect("read fixture");
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(1),
@@ -1411,7 +1498,14 @@ mod tests {
             "prettier": {"current": "3.8.1", "wanted": "3.8.2", "latest": "3.8.2", "dependent": "global", "location": "/opt/homebrew/lib/node_modules/prettier"}
         }"#;
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "outdated",
+                "-g",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(1),
@@ -1481,7 +1575,7 @@ mod tests {
         // indistinguishable from good news.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json", "--prefix", "/opt/homebrew"],
             CommandOutput { stderr_cause: Default::default(),
                 exit_code: Some(1),
                 stdout: String::new(),
@@ -1493,7 +1587,15 @@ mod tests {
         let ls = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
             .expect("read fixture");
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -1591,7 +1693,10 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(command_args(&plan), vec!["install", "-g", "jq"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["install", "-g", "jq", "--prefix", "/opt/homebrew"]
+        );
         assert!(!plan.needs_password);
         assert_eq!(plan.locks[0], ResourceLock(inst.id.clone()));
         assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
@@ -1641,7 +1746,10 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(command_args(&plan), vec!["uninstall", "-g", "jq"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["uninstall", "-g", "jq", "--prefix", "/opt/homebrew"]
+        );
     }
 
     #[tokio::test]
@@ -1668,14 +1776,20 @@ mod tests {
             .plan(&inst, &request(OpKind::Upgrade, "npm"))
             .await
             .expect("an update of npm is planned");
-        assert_eq!(command_args(&upgrade), vec!["install", "-g", "npm@latest"]);
+        assert_eq!(
+            command_args(&upgrade),
+            vec!["install", "-g", "npm@latest", "--prefix", "/opt/homebrew"]
+        );
         // Nor is a package merely named like it, or npm's other bundled one.
         for name in ["npm-check-updates", "@scope/npm", "corepack"] {
             let plan = adapter
                 .plan(&inst, &request(OpKind::Uninstall, name))
                 .await
                 .expect("planned");
-            assert_eq!(command_args(&plan), vec!["uninstall", "-g", name]);
+            assert_eq!(
+                command_args(&plan),
+                vec!["uninstall", "-g", name, "--prefix", "/opt/homebrew"]
+            );
         }
         // A prefix that cannot be written is the bigger news.
         let read_only = NpmAdapter::new(Arc::new(MockRunner::new()))
@@ -1776,7 +1890,10 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(command_args(&plan), vec!["install", "-g", "jq@latest"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["install", "-g", "jq@latest", "--prefix", "/opt/homebrew"]
+        );
     }
 
     #[tokio::test]
@@ -1824,7 +1941,14 @@ mod tests {
     async fn test_execute_streams_log_events_and_succeeds() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "install", "-g", "jq"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "install",
+                "-g",
+                "jq",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -1858,7 +1982,15 @@ mod tests {
         let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
             .expect("read fixture");
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
@@ -1907,7 +2039,15 @@ mod tests {
         let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
             .expect("read fixture");
         runner.respond(
-            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            vec![
+                "/opt/homebrew/bin/npm",
+                "ls",
+                "-g",
+                "--depth=0",
+                "--json",
+                "--prefix",
+                "/opt/homebrew",
+            ],
             CommandOutput {
                 stderr_cause: Default::default(),
                 exit_code: Some(0),
