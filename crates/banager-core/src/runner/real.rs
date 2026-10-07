@@ -3052,9 +3052,13 @@ mod tests {
         assert_eq!(output.exit_code, Some(5));
         let seen = lines.lock().unwrap().clone();
         assert_eq!(seen.len(), 4, "{seen:?}");
+        // Stderr's first line, not the first line of all: each stream has
+        // its own reader, and the stdout line written right after the
+        // stderr ones can reach `on_line` first on a busy machine.
         assert_eq!(
-            seen[0],
-            (Stream::Stderr, CURL_MASKED_BY_PATTERN.to_string())
+            seen.iter().find(|(stream, _)| *stream == Stream::Stderr),
+            Some(&(Stream::Stderr, CURL_MASKED_BY_PATTERN.to_string())),
+            "{seen:?}"
         );
         for (_, line) in &seen {
             assert!(!line.contains("review-secret"), "{line}");
