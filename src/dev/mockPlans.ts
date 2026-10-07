@@ -603,7 +603,8 @@ function trashRefusal(path: string): string {
 
 /**
  * The run as it plays out under `?outcome=`: the lines the log shows and
- * how the operation ends. Only `succeeded` changes anything on the
+ * how the operation ends. Only an operation that ends `Succeeded` --
+ * under `succeeded`, `follow-up` and `already` -- changes anything on the
  * machine (the backend applies it); `banager` means nothing started, so
  * nothing was written.
  */
