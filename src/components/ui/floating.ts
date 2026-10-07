@@ -62,16 +62,22 @@ function scrollingAncestor(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** The box a panel opened from `element` must stay inside: the list it is in, or else the window. */
+/**
+ * The box a panel opened from `element` must stay inside: the list it is
+ * in, or else the window. Of the list, the part that shows its rows -- its
+ * client box, inside any border and any scroll bar it draws: a Mac set to
+ * show scroll bars always, or with a mouse plugged in, draws a long list's
+ * down its right side, 15 wide, and a panel moved only inside the list's
+ * outer edge would sit under it, partly hidden, and make the list scroll
+ * sideways (r30 Z2's skeptic).
+ */
 export function panelBounds(element: HTMLElement): { top: number; bottom: number; left: number; right: number } {
-  return (
-    scrollingAncestor(element)?.getBoundingClientRect() ?? {
-      top: 0,
-      bottom: window.innerHeight,
-      left: 0,
-      right: window.innerWidth,
-    }
-  );
+  const list = scrollingAncestor(element);
+  if (list === null) return { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+  const box = list.getBoundingClientRect();
+  const left = box.left + list.clientLeft;
+  const top = box.top + list.clientTop;
+  return { top, bottom: top + list.clientHeight, left, right: left + list.clientWidth };
 }
 
 /** Which side of its button a panel opens on, and which of the button's edges it lines up with. */

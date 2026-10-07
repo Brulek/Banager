@@ -251,6 +251,15 @@ describe("Menu", () => {
       if (this.dataset.list !== undefined) return new DOMRect(208, 0, 332, 560);
       return new DOMRect(0, 0, 0, 0);
     });
+    // All of the list shows rows: it draws no scroll bar.
+    const inside = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.list !== undefined ? 332 : 0;
+    });
+    const insideHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.dataset.list !== undefined ? 560 : 0;
+    });
     const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(200);
     const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(90);
     try {
@@ -261,6 +270,8 @@ describe("Menu", () => {
       expect(menu.style.transform).toBe("translateX(24px)");
     } finally {
       rects.mockRestore();
+      inside.mockRestore();
+      insideHeight.mockRestore();
       width.mockRestore();
       height.mockRestore();
     }

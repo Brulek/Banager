@@ -145,20 +145,45 @@ describe("Popover placement", () => {
   // narrowed to 332 (208..540) at an 800-wide window: the ⓘ at 365..385,
   // the panel 260 wide. From the ⓘ's middle it would run to 611, and lined
   // up from its right it would start at 139 -- past the column either way
-  // (r30 Z2, measured in the mock).
-  function inNarrowList(left: number, right: number, list = { left: 208, right: 540 }, align: "start" | "end" = "start") {
+  // (r30 Z2, measured in the mock). The list is 560 high; it shows its rows
+  // in all of that unless it draws a scroll bar: `scrollBar` wide down its
+  // right side, `scrollBarBelow` high along its foot, as a Mac set to show
+  // scroll bars always does. `room` can be changed while the panel is open.
+  interface ListRoom {
+    left: number;
+    right: number;
+    scrollBar?: number;
+    scrollBarBelow?: number;
+  }
+  function inNarrowList(
+    left: number,
+    right: number,
+    {
+      list = { left: 208, right: 540 },
+      align = "start",
+      top = 100,
+    }: { list?: ListRoom; align?: "start" | "end"; top?: number } = {},
+  ) {
+    const room: ListRoom = { ...list };
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       if (this.tagName === "BUTTON") {
-        return { left, right, top: 100, bottom: 120, width: right - left, height: 20 } as DOMRect;
+        return { left, right, top, bottom: top + 20, width: right - left, height: 20 } as DOMRect;
       }
       if (this.dataset.list !== undefined) {
-        return { ...list, top: 0, bottom: 560, width: list.right - list.left, height: 560 } as DOMRect;
+        const width = room.right - room.left;
+        return { left: room.left, right: room.right, top: 0, bottom: 560, width, height: 560 } as DOMRect;
       }
       return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
     });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.list !== undefined ? room.right - room.left - (room.scrollBar ?? 0) : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.list !== undefined ? 560 - (room.scrollBarBelow ?? 0) : 0;
+    });
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(260);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(120);
-    const { getByRole } = render(
+    const { getByRole, container } = render(
       <div data-list="" style={{ overflowY: "auto" }}>
         <p>
           npm couldn't run.{" "}
@@ -172,7 +197,14 @@ describe("Popover placement", () => {
     const button = getByRole("button", { name: "Details: npm" });
     fireEvent.click(button);
     const panel = document.getElementById(button.getAttribute("aria-controls") ?? "") as HTMLElement;
-    return { panel, arrow: panel.querySelector("[data-popover-arrow]") as SVGElement, getByRole };
+    return {
+      panel,
+      arrow: panel.querySelector("[data-popover-arrow]") as unknown as HTMLElement,
+      getByRole,
+      button,
+      room,
+      list: container.querySelector("[data-list]") as HTMLElement,
+    };
   }
 
   it("is moved inside a list too narrow for either edge, so nothing in it is cut off (r30 Z2)", () => {
@@ -186,24 +218,43 @@ describe("Popover placement", () => {
     expect(panel).toContainElement(getByRole("button", { name: "Copy Error Details" }));
     // The arrow moved the other way: its middle 24 + 71 in from the
     // panel's side, at 280 + 95 = 375, the ⓘ's middle.
-    expect((arrow as unknown as HTMLElement).style.left).toBe(`${17 + 71}px`);
-    expect((arrow as unknown as HTMLElement).style.right).toBe("");
+    expect(arrow.style.left).toBe(`${17 + 71}px`);
+    expect(arrow.style.right).toBe("");
   });
 
   it("is moved rightwards when lined up from the end and too wide for either edge", () => {
     // The same list, the ⓘ at 363..383 (middle 373): from its right the
     // panel would start at 397 - 260 = 137, 71 short of 208.
-    const { panel, arrow } = inNarrowList(363, 383, undefined, "end");
+    const { panel, arrow } = inNarrowList(363, 383, { align: "end" });
     expect(panel).toHaveAttribute("data-align", "end");
     expect(panel.style.transform).toBe("translateX(71px)");
-    expect((arrow as unknown as HTMLElement).style.right).toBe(`${17 + 71}px`);
+    expect(arrow.style.right).toBe(`${17 + 71}px`);
   });
 
   it("keeps its start inside a list narrower than itself, its arrow still at the ⓘ", () => {
     // 200 wide: the start, which is read first, wins: 186 - 86 = 100.
-    const { panel, arrow } = inNarrowList(200, 220, { left: 100, right: 300 });
+    const { panel, arrow } = inNarrowList(200, 220, { list: { left: 100, right: 300 } });
     expect(panel.style.transform).toBe("translateX(-86px)");
-    expect((arrow as unknown as HTMLElement).style.left).toBe(`${17 + 86}px`);
+    expect(arrow.style.left).toBe(`${17 + 86}px`);
+  });
+
+  // A Mac set to show scroll bars always (or with a mouse plugged in)
+  // draws a long list's scroll bar inside the list, 15 wide down its right
+  // side: the rows end at 525, not 540 (r30 Z2's skeptic, measured in the
+  // mock at 800 x 600 in English).
+  it("keeps clear of the scroll bar a list draws down its right side", () => {
+    const { panel, arrow } = inNarrowList(365, 385, { list: { left: 208, right: 540, scrollBar: 15 } });
+    // 351 + 260 = 611, 86 past 525: 351 - 86 = 265, and 265 + 260 = 525.
+    expect(panel.style.transform).toBe("translateX(-86px)");
+    expect(arrow.style.left).toBe(`${17 + 86}px`);
+  });
+
+  it("opens upwards where a scroll bar along the list's foot leaves too little room below", () => {
+    // The ⓘ at 410..430, the panel 120 high and 8 from it: below the ⓘ
+    // there are 130 to the list's foot at 560, but only 115 above its
+    // scroll bar at 545.
+    const { panel } = inNarrowList(365, 385, { list: { left: 208, right: 724, scrollBarBelow: 15 }, top: 410 });
+    expect(panel).toHaveAttribute("data-side", "above");
   });
 
   it("opens upwards at the foot of the window, and downwards where there is room", () => {
