@@ -1,6 +1,6 @@
 use crate::protected::{resolve, Protected, Resolution};
 use std::path::{Path, PathBuf};
-use url::Url;
+use url::{Position, Url};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostEnv {
@@ -68,11 +68,16 @@ pub struct HostEnv {
 /// quoted value -- each one Ollama, and the `ollama` Banager runs, reads
 /// as a daemon -- became the default daemon instead (r40 R40-2).
 ///
-/// Two things are Banager's own. A login in front of the host
+/// Three things are Banager's own. A login in front of the host
 /// (`user:password@host`) is kept for its requests, though Ollama's own
-/// command refuses one. And a value that still makes no http(s) url -- a
-/// `file://` or `ftp://` one, a host a url cannot carry -- becomes `None`:
-/// it could only name something stranger than the default.
+/// command refuses one. A value with an `@` after its host -- a login
+/// whose password has a raw `/`, `?`, `#` or `\` in it, which Ollama and
+/// the url both cut short, taking its start for the host -- becomes `None`:
+/// the host would be no daemon the user named, and the rest of the
+/// password would sit where neither the window's id nor the preview masks
+/// a login. And a value that still makes no http(s) url -- a `file://` or
+/// `ftp://` one, a host a url cannot carry -- becomes `None` too: it could
+/// only name something stranger than the default.
 fn normalize_ollama_host(raw: &str) -> Option<String> {
     // `envconfig.Var`: spaces off, then every `"` and `'` at either end;
     // `Host` takes spaces off once more.
@@ -122,6 +127,13 @@ fn normalize_ollama_host(raw: &str) -> Option<String> {
     let login = login.map(|login| format!("{login}@")).unwrap_or_default();
     let url = Url::parse(&format!("{scheme}://{login}{host}:{port}/{path}")).ok()?;
     url.host_str().filter(|h| !h.is_empty())?;
+    // An `@` after the host is the rest of a login that a raw `/`, `?`, `#`
+    // or `\` in its password cut short, the start of it taken for the host:
+    // no daemon the user named, and a part of the password where neither
+    // mask looks (`without_ollama_login`, `mask_ollama_host`).
+    if url[Position::BeforePath..].contains('@') {
+        return None;
+    }
     Some(url.as_str().trim_end_matches('/').to_string())
 }
 
@@ -644,6 +656,72 @@ mod login_host_tests {
                 Some(expected),
                 "{raw}"
             );
+        }
+    }
+
+    /// A password with a raw `/`, `?`, `#` or `\` in it: Ollama's reading
+    /// (`envconfig.Host` cuts the path off at the first `/`) and the url
+    /// crate's (a host ends at any of the four) both take the start of the
+    /// login for the host, and put the rest of the password, with the real
+    /// host, in the path, query or fragment. Kept, that rest reached the
+    /// window's id and the preview unmasked -- both masks stop at the first
+    /// `/` (`without_ollama_login`, `mask_ollama_host`) -- and the daemon
+    /// was asked at a host named `alice`. Such a value is `None`, Ollama's
+    /// default, as the first two were before r40 R40-2.
+    #[test]
+    fn a_login_cut_short_by_a_raw_slash_or_query_names_no_host() {
+        for raw in [
+            "http://alice:se/cret@nas.local:11434",
+            "alice:se/cret@nas.local",
+            "http://alice:12/cret@nas.local",
+            "alice:12/cret@nas.local:11434",
+            "https://alice:se/cret@nas.local/ollama",
+            "http://alice:12?cret@nas.local",
+            "http://alice:12#cret@nas.local",
+            "http://alice:12\\cret@nas.local",
+        ] {
+            assert_eq!(normalize_ollama_host(raw), None, "{raw}");
+        }
+        // Percent-encoded, as a url writes it, the same login is one.
+        assert_eq!(
+            normalize_ollama_host("http://alice:se%2Fcret@nas.local:11434").as_deref(),
+            Some("http://alice:se%2Fcret@nas.local:11434")
+        );
+    }
+
+    /// Whatever `normalize_ollama_host` keeps, the window's id and the
+    /// preview hold no part of its login: every `@` in it stands in front
+    /// of its host, where both masks look.
+    #[test]
+    fn no_part_of_a_kept_login_reaches_an_id_or_a_preview() {
+        use crate::runner::redact::{mask_ollama_host, without_ollama_login};
+        for raw in [
+            "alice:secret@server",
+            "http://alice:secret@server:11434",
+            "http://alice:s%40cret@server",
+            "http://alice:se%2Fcret@nas.local:11434/ollama",
+            "alice:p@ss@cret@server",
+            "http://alice:se/cret@nas.local:11434",
+            "alice:se/cret@nas.local",
+            "alice:12/cret@nas.local",
+            "http://alice:12?cret@nas.local",
+            "http://alice:12#cret@nas.local",
+            "http://alice:12\\cret@nas.local",
+            "http://nas.local:11434/alice@cret",
+        ] {
+            let Some(host) = normalize_ollama_host(raw) else {
+                continue;
+            };
+            let id = format!("ollama:{host}");
+            for shown in [
+                without_ollama_login(&id).into_owned(),
+                mask_ollama_host(&host).into_owned(),
+            ] {
+                assert!(
+                    !shown.contains("cret") && !shown.contains("alice"),
+                    "{raw:?} is kept as {host:?} and shown as {shown:?}"
+                );
+            }
         }
     }
 }

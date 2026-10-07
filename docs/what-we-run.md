@@ -2841,7 +2841,12 @@ Mac, `127.0.0.1`; an IPv6 address without brackets (`::1`) is one; a bare
 http/https schemes retain their 80/443 defaults; a port that is not a
 number from 0 to 65535 is replaced by the default, as Ollama does. A
 value that still does not make an http(s) URL is ignored and the default
-used. With no `OLLAMA_HOST`, it is
+used, and so is one with an `@` after its host: a login whose password
+has a raw `/`, `?`, `#` or `\` in it, which would otherwise be read with
+the start of the login as the host and the rest of the password in the
+path, where neither the window's id nor a preview masks it (written
+percent-encoded, `%2F`, such a password is kept as any login is). With
+no `OLLAMA_HOST`, it is
 Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Banager also
 checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
 is a directory: a daemon on this Mac that does not answer while the app
