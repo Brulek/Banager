@@ -88,6 +88,38 @@ fn get(url: &str) -> HttpRequest {
     }
 }
 
+/// Two responses on one accepted socket: a real HTTP/1.1 keep-alive
+/// connection with an Ollama-shaped body, not a mocked route selector.
+fn keep_alive_proxy() -> (u16, std::thread::JoinHandle<Vec<String>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut requests = Vec::new();
+        for _ in 0..2 {
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                stream.read_exact(&mut byte).expect("request head");
+                head.push(byte[0]);
+            }
+            requests.push(String::from_utf8(head).unwrap());
+            let body = r#"{"models":[]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        }
+        requests
+    });
+    (port, server)
+}
+
 #[tokio::test]
 async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_mac() {
     let (proxy_port, proxied, proxy_heads) = listener("through the proxy");
@@ -186,4 +218,49 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
         .await
         .is_err());
     assert_eq!(*greeted.lock().unwrap(), [5u8]);
+
+    // F19/F2: changing the synthetic settings does not replace an idle
+    // connection. A different destination needs a new connection and
+    // uses the new proxy. No system proxy settings or remote hosts are used.
+    let (old_port, old_server) = keep_alive_proxy();
+    let (new_port, new_requests, _) = listener(r#"{"models":[]}"#);
+    let set_proxy = |port| {
+        login_path::accept(&LoginEnv {
+            path: "/usr/bin:/bin".to_string(),
+            imported: vec![
+                ("http_proxy".to_string(), format!("http://127.0.0.1:{port}")),
+                ("no_proxy".to_string(), "straight.invalid".to_string()),
+            ],
+        });
+    };
+    set_proxy(old_port);
+    let client = RealHttpClient::new();
+    let url = "http://elsewhere.invalid:11434/api/tags";
+    assert_eq!(
+        client.send(get(url)).await.unwrap().body,
+        r#"{"models":[]}"#
+    );
+    set_proxy(new_port);
+    assert_eq!(
+        client.send(get(url)).await.unwrap().body,
+        r#"{"models":[]}"#
+    );
+    assert!(new_requests.lock().unwrap().is_empty());
+    let old_requests = old_server.join().expect("keep-alive server");
+    assert_eq!(old_requests.len(), 2);
+    for head in old_requests {
+        assert!(head.starts_with("GET http://elsewhere.invalid:11434/api/tags HTTP/1.1\r\n"));
+    }
+    assert_eq!(
+        client
+            .send(get("http://elsewhere.invalid:11435/api/tags"))
+            .await
+            .unwrap()
+            .body,
+        r#"{"models":[]}"#
+    );
+    assert_eq!(
+        *new_requests.lock().unwrap(),
+        ["GET http://elsewhere.invalid:11435/api/tags HTTP/1.1"]
+    );
 }

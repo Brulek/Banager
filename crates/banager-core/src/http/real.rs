@@ -127,11 +127,11 @@ impl RealHttpClient {
             // The proxy the login shell's settings name, else the
             // process environment's, else this Mac's own network settings
             // (System Settings > Network > Proxies, which a proxy app in
-            // its "system proxy" mode sets), looked up at each request, so
-            // a read that ends after this client is built, or a proxy app
-            // turned on or off, still counts -- and never for this Mac
-            // itself, as the Ollama daemon usually is, or for what
-            // `no_proxy` names (`super::proxy`, U12). Naming a proxy here
+            // its "system proxy" mode sets), selected for new connections.
+            // Existing pooled connections can keep their previous route
+            // after settings change. Never proxy this Mac itself, as the
+            // Ollama daemon usually is, or what `no_proxy` names
+            // (`super::proxy`, U12). Naming a proxy here
             // turns off reqwest's own reading of the environment and of
             // the network settings (`ClientBuilder::proxy`), which had no
             // exception for this Mac: `system_proxy` reads the network

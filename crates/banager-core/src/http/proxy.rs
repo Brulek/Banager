@@ -64,11 +64,12 @@ pub fn proxy_for(
 /// proxy" mode, with nothing exported in a shell. reqwest read these for
 /// Banager until it was given a proxy of its own (`ClientBuilder::proxy`
 /// turns its own reading off), with hyper-util's `Matcher::from_system`,
-/// which is read here too, at each request, so turning such an app on or
-/// off counts from the next check. That reads the process environment
-/// first, which `proxy_for` has already found nothing in when it asks.
-/// Neither the SOCKS proxy nor the list of hosts the settings bypass is
-/// read, as reqwest did not read them either.
+/// which is read here too when selecting a proxy for a new connection.
+/// That reads the process environment first, which `proxy_for` has
+/// already found nothing in when it asks. Existing pooled connections can
+/// keep their previous route after settings change. Neither the SOCKS
+/// proxy nor the list of hosts the settings bypass is read, as reqwest
+/// did not read them either.
 pub fn system_proxy(url: &Url) -> Option<String> {
     from_matcher(
         &hyper_util::client::proxy::matcher::Matcher::from_system(),

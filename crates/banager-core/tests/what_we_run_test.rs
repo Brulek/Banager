@@ -1930,6 +1930,9 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
         "`socks5://`",
         "System Settings → Network",
         "\"system proxy\" mode",
+        "when opening a new connection",
+        "Existing pooled connections can keep their previous route",
+        "not guaranteed to apply to the next check",
         // Where `proxy_for` parts from curl (the U12 review).
         "rules like curl's",
         "`HTTP_PROXY`",
@@ -1944,6 +1947,16 @@ fn test_what_we_run_says_own_requests_go_through_the_login_shells_proxy_but_not_
         !folded.contains("by curl's rules"),
         "the `## Network` section says Banager's own requests pick a proxy by curl's rules, but `proxy_for` also reads `HTTP_PROXY` and a `*.` in `no_proxy`, which curl does not"
     );
+    for stale in [
+        "looked up at each request",
+        "at each request, so",
+        "counts from the next check",
+    ] {
+        assert!(
+            !folded.contains(stale),
+            "stale proxy routing promise: {stale}"
+        );
+    }
 }
 
 /// F2 of the decisions-round review, and R1-R3 of its re-check: the

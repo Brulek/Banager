@@ -4755,10 +4755,11 @@ over https isn't supported" (its section says exactly how). Recorded in
 `docs/superpowers/backlog.md`.
 
 **Through a proxy, as Terminal's or this Mac's settings say.** When the login shell's
-settings name a proxy (How Banager runs anything), Banager's own requests
-go through it, looked up at each request (`http::proxy::proxy_for`, which
-`RealHttpClient` asks), by rules like curl's: `https_proxy` for an https
-address and `http_proxy` for an http one, each read in lowercase first and
+settings name a proxy (How Banager runs anything), Banager selects it for
+its own requests when opening a new connection (`http::proxy::proxy_for`,
+called by `RealHttpClient`'s custom proxy selector), by rules like curl's:
+`https_proxy` for an https address and `http_proxy` for an http one, each
+read in lowercase first and
 then in uppercase, then `all_proxy` / `ALL_PROXY`; a setting with nothing
 in it counts as not set; and `no_proxy` / `NO_PROXY` -- names (each with
 every name under it, written with or without a leading `.`), addresses,
@@ -4776,11 +4777,13 @@ for an http address, the secure web proxy (HTTPS) for an https one --
 what a proxy app such as Clash Verge, ClashX or Surge sets in its "system
 proxy" mode, with nothing exported in a shell. Those are the settings
 Banager's requests went by before it read the login shell's, read the same
-way (`http::proxy::system_proxy`) and at each request, so turning such an
-app on or off counts from the next check; as before, the SOCKS proxy and
-the list of hosts to bypass in those settings are not read, so a machine
-on the local network is reached through that proxy unless `no_proxy`
-names it. The commands Banager runs are handed no setting from there: they
+way (`http::proxy::system_proxy`) when opening a new connection.
+Existing pooled connections can keep their previous route after a proxy
+is enabled, disabled or changed, so a change is not guaranteed to apply
+to the next check. The SOCKS proxy and the list of hosts to bypass in
+those settings are not read, so a machine on the local network is reached
+through that proxy unless `no_proxy` names it. The commands Banager runs
+are handed no setting from there: they
 get the settings above, as in Terminal, and one that reads this Mac's
 network settings itself (pip does) reads them as it does there. An https
 request then goes as a `CONNECT`
