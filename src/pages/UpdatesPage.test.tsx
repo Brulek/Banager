@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { QueryClient } from "@tanstack/react-query";
@@ -3935,6 +3935,10 @@ describe("UpdatesPage", () => {
     describe("once the row the focus is on has gone", () => {
       const zstd = brewCandidate("zstd");
 
+      /** Thirty more rows: more than the list's 600 shows at once. */
+      const more = Array.from({ length: 30 }, (_, index) => brewCandidate(`tool-${String(index).padStart(2, "0")}`));
+      const moreInstalled = () => more.map((candidate) => installed(candidate.key, "1.0.0"));
+
       /** The check after onyx's update: onyx at 5.1.0, its row gone; `rest` still to install. */
       function checkAfterOnyx(queryClient: QueryClient, rest: Snapshot["updates"]) {
         act(() => {
@@ -3942,16 +3946,65 @@ describe("UpdatesPage", () => {
             ...snapshot,
             generation: snapshot.generation + 1,
             instances,
-            artifacts: [installed(glibKey, "2.88.3"), installed(onyxKey, "5.1.0"), installed(zstd.key, "1.0.0")],
+            artifacts: [
+              installed(glibKey, "2.88.3"),
+              installed(onyxKey, "5.1.0"),
+              installed(zstd.key, "1.0.0"),
+              ...moreInstalled(),
+            ],
             updates: rest,
           });
         });
       }
 
+      /**
+       * jsdom scrolls nothing: a scroll the list asks for moves its box as a
+       * browser would, and is noted.
+       */
+      function scrollLikeABrowser() {
+        const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+          const top = typeof options === "object" ? (options.top ?? 0) : 0;
+          Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+          fireEvent.scroll(this);
+        });
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
+        const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(40 * ROW_HEIGHT);
+        const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
+        onTestFinished(() => {
+          delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+          scrollHeight.mockRestore();
+          clientHeight.mockRestore();
+        });
+        return scrollTo;
+      }
+
+      /** The list's box, scrolled to `top` by the wheel or the trackpad. */
+      function wheelTo(top: number): HTMLElement {
+        const box = document.querySelector<HTMLElement>("[data-list]");
+        if (box === null) throw new Error("no list");
+        Object.defineProperty(box, "scrollTop", { configurable: true, value: top });
+        fireEvent.scroll(box);
+        return box;
+      }
+
+      /** Lets the check's draw, its effects and anything they queued run out. */
+      async function settle() {
+        for (let turn = 0; turn < 5; turn += 1) {
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          });
+        }
+      }
+
       beforeEach(() => {
         operations = [operation(onyxKey, { status: "Done", outcome: "Succeeded" })];
         started(7, "5.1.0");
-        artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2"), installed(zstd.key, "1.0.0")];
+        artifacts = [
+          installed(glibKey, "2.88.3"),
+          installed(onyxKey, "5.0.2"),
+          installed(zstd.key, "1.0.0"),
+          ...moreInstalled(),
+        ];
       });
 
       it("puts it on the row after it, as a Mac list's selection does", async () => {
@@ -4039,6 +4092,91 @@ describe("UpdatesPage", () => {
 
         await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
         expect(document.activeElement).toBe(selectAll);
+      });
+
+      // r24 W2's skeptic: a row's own Update, or Update All, puts the focus
+      // on a row by script, for the mouse as for the keyboard. Scrolled out
+      // of the DOM, the row took the focus to the body with it; once its
+      // update was done, the focus was sent on to its neighbour, and the
+      // list scrolled back to it from wherever the user had taken it.
+      it("leaves the list where the user has scrolled it once a row scrolled out of the DOM goes", async () => {
+        const scrollTo = scrollLikeABrowser();
+        updates = [...snapshot.updates, zstd, ...more];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+
+        // The wheel, far down the list: OnyX's row is drawn no more, and
+        // the focus is the body's.
+        const box = wheelTo(20 * ROW_HEIGHT);
+        await waitFor(() => expect(onyx.isConnected).toBe(false));
+        expect(document.activeElement).toBe(document.body);
+        // What the list asked for as it was laid out, its box at the top.
+        scrollTo.mockClear();
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd, ...more]);
+        await settle();
+
+        expect(scrollTo).not.toHaveBeenCalled();
+        expect(box.scrollTop).toBe(20 * ROW_HEIGHT);
+        expect(document.activeElement).toBe(document.body);
+      });
+
+      it("leaves the list where the user has scrolled it once a row out of sight goes, though still drawn", async () => {
+        const scrollTo = scrollLikeABrowser();
+        // Laid out as a browser would: the box 600 high, each slot where
+        // the list puts it, less how far the box is scrolled.
+        const layout = vi
+          .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+          .mockImplementation(function (this: HTMLElement) {
+            const rect = (top: number, height: number) =>
+              ({ top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top }) as DOMRect;
+            const box = this.closest<HTMLElement>("[data-list]");
+            if (this.hasAttribute("data-list")) return rect(0, 600);
+            if (this.hasAttribute("data-list-slot") && box !== null) {
+              const start = Number(/translateY\((-?[\d.]+)px\)/.exec(this.style.transform)?.[1] ?? 0);
+              return rect(start - box.scrollTop, ROW_HEIGHT);
+            }
+            return rect(0, 0);
+          });
+        onTestFinished(() => layout.mockRestore());
+        updates = [...snapshot.updates, zstd, ...more];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        expect(slotOf(onyx)).toBe(1);
+        act(() => onyx.focus());
+
+        // Two rows and a little down: OnyX's row is above the box, drawn
+        // still (the list keeps one either side), and the focus on it.
+        const box = wheelTo(2 * ROW_HEIGHT + 10);
+        await settle();
+        expect(onyx.isConnected).toBe(true);
+        expect(document.activeElement).toBe(onyx);
+        scrollTo.mockClear();
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd, ...more]);
+        await settle();
+
+        expect(onyx.isConnected).toBe(false);
+        expect(scrollTo).not.toHaveBeenCalled();
+        expect(box.scrollTop).toBe(2 * ROW_HEIGHT + 10);
+      });
+
+      it("moves no focus once a row goes that the focus had left for nothing, as a click on what takes none leaves it", async () => {
+        updates = [...snapshot.updates, zstd];
+        const { queryClient } = renderPage();
+        const onyx = await findRow("OnyX");
+        act(() => onyx.focus());
+        // WebKit focuses no button that is clicked: a click on one, or on
+        // the list's empty space, leaves the focus with the body.
+        act(() => onyx.blur());
+        expect(document.activeElement).toBe(document.body);
+
+        checkAfterOnyx(queryClient, [snapshot.updates[0], zstd]);
+        await waitFor(() => expect(rowNames()).toEqual(["glib", "zstd"]));
+        await settle();
+
+        expect(document.activeElement).toBe(document.body);
       });
     });
 

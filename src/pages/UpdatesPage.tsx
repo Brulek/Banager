@@ -1,6 +1,6 @@
 import { PasswordRecovery } from "../components/PasswordRecovery";
 import { usePasswordRecoveryKeys } from "../lib/passwordRecovery";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings, type SettingsEdit } from "../lib/queries";
 import { elapsedSince } from "../lib/format";
@@ -73,7 +73,7 @@ import { useTwins } from "../components/CommandFacts";
 import { notUsedWord } from "../components/TwinAdvice";
 import { DisclosureIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
-import { focusLost, focusOrFallback } from "../components/ui/focus";
+import { focusLost, focusOrFallback, inSightOfList } from "../components/ui/focus";
 import type {
   InstanceNote,
   InstalledArtifact,
@@ -464,11 +464,35 @@ export function UpdatesPage() {
   // gone (the next row, or the one before it at the list's end), and the
   // settings the save was made from.
   const refocusAfterHide = useRef<{ gone: string; next: string | null; base: Settings } | null>(null);
-  // The row the focus is on, by its key (`rowKeyOf`), kept as the focus
-  // moves; null once it is on anything else. With the list as last drawn,
-  // where that row stood once it has gone.
-  const focusedRow = useRef<string | null>(null);
+  // The list as last drawn: where a row stood once it has gone.
   const drawnItems = useRef<ListItem[] | null>(null);
+  // A row that has just left the page with the focus in it, in sight, and
+  // the list as drawn before it went (`followFocus`): what the focus moves
+  // on from, once this draw is done, if the row has gone from the list.
+  const wentWithFocus = useRef<{ gone: string; before: ListItem[] } | null>(null);
+  // A row's ref (each row's, and the line that discloses the rows that
+  // can't be updated here): React lets go of it while the row is still in
+  // the page, so it can tell whether the focus is in it, and whether the
+  // row is in sight (`inSightOfList`). If so, it is noted for the effect
+  // below, which this draw's end reaches before anything else can run; a
+  // row the list let go of because it was scrolled away from is in sight
+  // no more, and anyway still listed, and its note is forgotten as the
+  // draw ends.
+  const followFocus = useCallback((node: HTMLElement | null) => {
+    if (node === null) return undefined;
+    const slot = node.closest<HTMLElement>("[data-list-slot]");
+    const gone = slot?.dataset.key;
+    if (slot === null || gone === undefined) return undefined;
+    return () => {
+      const before = drawnItems.current;
+      if (before === null || !slot.contains(document.activeElement) || !inSightOfList(slot)) return;
+      const went = { gone, before };
+      wentWithFocus.current = went;
+      queueMicrotask(() => {
+        if (wentWithFocus.current === went) wentWithFocus.current = null;
+      });
+    };
+  }, []);
   const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
   const focusList = () => listHandle.current?.focusFirst();
 
@@ -772,22 +796,26 @@ export function UpdatesPage() {
     else focusOrFallback(null);
   });
 
-  // Once the row the focus is on has gone from the list -- its update
-  // done, and the check after it has moved it down to Update History; a
-  // row's own Update leaves the focus on its row (`focusRow`), Update all
-  // on the list's first -- the focus goes to the row after it, or the one
-  // before it at the list's end, as a Mac list's selection does, and with
-  // no row left to the page's title (`focusOrFallback`): not the window's
-  // body, where ↑ and ↓ move nothing and VoiceOver's cursor is lost (r24
-  // W2). Only while the focus is still lost: not once the user has moved
-  // it. ⋯'s hiding items have their own rule (below), which this leaves
-  // the row they hid to.
-  useEffect(() => {
-    const before = drawnItems.current ?? items;
+  // Once a row has gone from the list with the focus in it, in sight --
+  // its update done, and the check after it has moved it down to Update
+  // History; a row's own Update leaves the focus on its row (`focusRow`),
+  // Update all on the list's first -- the focus goes to the row after it,
+  // or the one before it at the list's end, as a Mac list's selection
+  // does, and with no row left to the page's title (`focusOrFallback`):
+  // not the window's body, where ↑ and ↓ move nothing and VoiceOver's
+  // cursor is lost (r24 W2). Only a row that went with the focus in it
+  // (`followFocus`): not one the focus had left already -- for a click on
+  // what takes none, or with the row as the list was scrolled away from it
+  // -- whose going moves neither the focus nor the list (r24 W2's
+  // skeptic). Nor once anything else has taken the focus. ⋯'s hiding items
+  // have their own rule (below), which this leaves the row they hid to.
+  // Before the window is drawn, so no frame shows the focus lost.
+  useLayoutEffect(() => {
+    const went = wentWithFocus.current;
+    wentWithFocus.current = null;
     drawnItems.current = items;
-    const gone = focusedRow.current;
-    if (gone === null || before === items || items.some((item) => listItemKey(item) === gone)) return;
-    focusedRow.current = null;
+    if (went === null || items.some((item) => listItemKey(item) === went.gone)) return;
+    const { gone, before } = went;
     if (refocusAfterHide.current?.gone === gone || !focusLost()) return;
     const listed = new Set(items.filter(keyboardRow).map(listItemKey));
     const stays = (item: ListItem) => listed.has(listItemKey(item));
@@ -1267,27 +1295,8 @@ export function UpdatesPage() {
     else selectUpdates(keys);
   };
 
-  // The row `target` is in, by its key -- a row ↑ and ↓ move between
-  // (`keyboardRow`) -- or null for anything else, the confirmation's
-  // sheet included: what the focus follows once that row has gone.
-  const rowKeyOf = (target: EventTarget | null): string | null => {
-    const key = target instanceof Element ? target.closest<HTMLElement>("[data-list-slot]")?.dataset.key : undefined;
-    return key !== undefined && items.some((item) => keyboardRow(item) && listItemKey(item) === key) ? key : null;
-  };
-
   return (
-    <div
-      className="flex h-full flex-col"
-      onFocus={(event) => {
-        focusedRow.current = rowKeyOf(event.target);
-      }}
-      // Out of the page altogether -- to the sidebar -- where no focus
-      // event of the page's says so. Into nothing (the window put away, a
-      // row gone), the row is kept.
-      onBlur={(event) => {
-        if (event.relatedTarget !== null) focusedRow.current = rowKeyOf(event.relatedTarget);
-      }}
-    >
+    <div className="flex h-full flex-col">
       {/* The page's one action, in the toolbar (spec §3.2, §3.5): the
           rows that are ticked, or else every row it can update -- one
           confirmation for either, the one a row's own Update opens, and
@@ -1409,11 +1418,16 @@ export function UpdatesPage() {
               <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
             </div>
           ) : item.type === "section" ? (
-            <CantUpdateHere
-              count={item.count}
-              expanded={item.expanded}
-              onToggle={() => setShowCantUpdate((shown) => !shown)}
-            />
+            // The rows ↑ and ↓ move between are each in a box of no box of
+            // its own (`contents`), there to tell where the focus was as
+            // the row goes (`followFocus`).
+            <div className="contents" ref={followFocus}>
+              <CantUpdateHere
+                count={item.count}
+                expanded={item.expanded}
+                onToggle={() => setShowCantUpdate((shown) => !shown)}
+              />
+            </div>
           ) : item.type === "showEmpty" ? (
             // As the Installed page says an empty list: one line, 13 in the
             // secondary colour, no symbol.
@@ -1448,7 +1462,9 @@ export function UpdatesPage() {
               </div>
             </div>
           ) : (
-            updateRow(item.candidate, item.updatable)
+            <div className="contents" ref={followFocus}>
+              {updateRow(item.candidate, item.updatable)}
+            </div>
           )
         }
       />
