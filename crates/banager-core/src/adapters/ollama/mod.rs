@@ -131,8 +131,15 @@ fn contained_manifest_path(
 /// leaves the config (and so its digest) as it was, has a new one too.
 /// Ollama writes the manifest it pulls as the registry sent it (0.40
 /// `server/images.go`, `WriteManifestData(n, manifestData)`), so once
-/// pulled the model's `/api/tags` digest is normally this same hex -- but
-/// nothing compares the two (`check_one_model`).
+/// pulled the model's `/api/tags` digest is normally this same hex. The
+/// up-to-date check never reads one for the other: it compares layers and
+/// configs (`compare_digests`). One place does compare a row's version
+/// with an update's target, for every source: the filter that keeps last
+/// round's update when this round's check did not answer
+/// (`session/refresh.rs`, `*version != u.target`). Bare hex against
+/// `sha256:` and hex, the two are never equal there, so that filter keeps
+/// such an Ollama row while the model is listed -- as it did when the
+/// target was the config's digest.
 fn manifest_digest(body: &str) -> String {
     use sha2::{Digest, Sha256};
     format!("sha256:{:x}", Sha256::digest(body.as_bytes()))
@@ -624,10 +631,12 @@ impl OllamaAdapter {
             .map_err(|e| format!("could not parse registry manifest: {e}"))?;
         // The config is as much the model as a layer is: `ollama pull`
         // fetches it with them and writes the new manifest (0.40
-        // `server/images.go` PullModel), and it alone carries the model's
-        // renderer, parser, capabilities and sampler defaults -- and, for a
-        // cloud model (`gpt-oss:120b-cloud`, `"layers":[]`), all there is.
-        // So the model is up to date only when both are the same.
+        // `server/images.go` PullModel). It alone names the model's
+        // renderer and parser, and it holds capabilities and sampler
+        // defaults of its own beside those a template or `params` layer
+        // gives (0.40 `types/model/config.go`, `ConfigV2`) -- and, for a
+        // cloud model (`gpt-oss:120b-cloud`, `"layers":[]`), it is all
+        // there is. So the model is up to date only when both are the same.
         if local_digests == registry_digests && local_config == registry_config {
             return Ok(None);
         }
@@ -679,7 +688,9 @@ impl OllamaAdapter {
             // change instead. Each names one whole manifest -- every layer
             // and the config -- so each republish of the tag has a `target`
             // of its own, and Skip This Version skips that one build. Still:
-            // never compare, diff or equality-check them, and never render
+            // never compare, diff or equality-check them (the one generic
+            // check that does, refresh's carried-row filter, is described
+            // at `manifest_digest`), and never render
             // them as a version jump the way npm's or cargo's version
             // strings can be. The up-to-date decision is made above by
             // `compare_digests` on the layer-digest sets and the config

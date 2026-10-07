@@ -2933,8 +2933,9 @@ copy when the local daemon uses another model folder or port, is "could
 not check" with no registry request or download estimate. Only a matching
 manifest is compared with the registry's, by its layer digests and its
 config digest: the model is up to date only when both are the same. The
-config is part of the model that `ollama pull` fetches too, and the only
-part that names its parser, renderer, capabilities and default settings;
+config is part of the model that `ollama pull` fetches too: the only
+part that names its parser and renderer, and one that holds capabilities
+and default settings of its own beside any a layer gives;
 a cloud model (`gpt-oss:120b-cloud`, say) has no layers at all, so its
 config is the whole of it. The file is looked up one
 step at a time and never in or through a place Banager never looks into

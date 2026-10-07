@@ -145,11 +145,14 @@ pub fn layer_digests(json: &str) -> Result<HashSet<String>, AdapterError> {
     Ok(manifest.layers.into_iter().map(|l| l.digest).collect())
 }
 
-/// The manifest's `config.digest`, the one short, stable string that names
-/// *this* build of the model. `UpdateCandidate`'s contract is that `current`
-/// and `target` differ, and a model's tag (`27b-mlx`) does not change when
-/// the model behind it is republished — so the tag cannot be the target.
-/// `None` when the manifest carries no config section.
+/// The manifest's `config.digest`: the blob that names the model's renderer
+/// and parser and holds capabilities and sampler defaults of its own, and
+/// all of a cloud model. Half of the up-to-date check (`compare_digests`
+/// compares it as well as the layers), but it does not name a build: a
+/// republish that changes only the weights leaves it as it was, so an
+/// update's target is the registry manifest's own digest
+/// (`manifest_digest`, r40 R40-4), not this. `None` when the manifest
+/// carries no config section.
 pub fn config_digest(json: &str) -> Result<Option<String>, AdapterError> {
     let manifest: Manifest =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
