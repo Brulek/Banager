@@ -528,6 +528,9 @@ describe("the browser preview's mock backend", () => {
     await vi.runAllTimersAsync();
     const own = operationEvents(events, opId);
     expect(own[own.length - 1]).toEqual({ Finished: { op_id: opId, outcome: { NeedsAttention: "NotLinkedAfterLink" } } });
+    // Its log is Homebrew's link's, not an uninstall's.
+    expect(JSON.stringify(own)).toContain("Linking /opt/homebrew/Cellar/node@20/20.19.5... 4 symlinks created.");
+    expect(JSON.stringify(own)).not.toContain("Uninstalling");
     const after = await answer<Snapshot>(backend.invoke("refresh"));
     const npm = after.instances.find((i) => i.adapter_id === "npm");
     expect(npm?.status.no_answer?.link_fixes.map((fix) => fix.key.name)).toEqual(["node@22", "node@20"]);

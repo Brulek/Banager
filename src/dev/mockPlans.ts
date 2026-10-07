@@ -469,6 +469,9 @@ function successLog(plan: Plan, { inst, artifact, candidate }: Subject): LogLine
   }
   switch (inst.adapter_id) {
     case "brew":
+      // `brew link --formula --force <name>`, Fix… (`?state=nonode`): what
+      // Homebrew prints for a link, not an uninstall's line.
+      if (kind === "Link") return [out(`Linking /opt/homebrew/Cellar/${name}/${from}... 4 symlinks created.`)];
       if (plan.request.artifact_kind === "Cask") {
         return upgrade
           ? [
