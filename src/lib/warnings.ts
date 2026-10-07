@@ -274,6 +274,8 @@ export function warningKey(warning: Warning): string | null {
     }
   }
   if ("WouldBreak" in warning) return "warnings.wouldBreak";
+  // Plural on `{{count}}`, the files it names.
+  if ("LinkConflicts" in warning) return "noAnswer.sheet.conflicts";
   if ("SecureConnectionFailed" in warning) return "secureConnection.failed";
   if ("ThirdPartyRegistry" in warning) return "warnings.thirdPartyRegistry";
   if ("WillTrash" in warning) return REMOVED_WHAT_KEYS[warning.WillTrash.what];
@@ -340,6 +342,10 @@ export function warningArgs(warning: Warning, separator = ", "): Record<string, 
   if ("WouldBreak" in warning) {
     const names = warning.WouldBreak.names;
     return { count: names.length, names: names.join(separator) };
+  }
+  if ("LinkConflicts" in warning) {
+    const paths = warning.LinkConflicts.paths;
+    return { count: paths.length, paths: paths.join(separator) };
   }
   if ("SecureConnectionFailed" in warning) return { host: warning.SecureConnectionFailed.host };
   if ("ThirdPartyRegistry" in warning) return { host: warning.ThirdPartyRegistry.host };
@@ -519,6 +525,7 @@ export function warningDetailKey(warning: Warning): string | null {
   if ("ShellConfigUnread" in warning) return "unreadInProtectedPlace.shellConfigUnreadDetail";
   if (
     "WouldBreak" in warning ||
+    "LinkConflicts" in warning ||
     "NeededBySource" in warning ||
     "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -564,6 +571,7 @@ export function warningGroup(warning: Warning): WarningGroup {
   if ("KeepsData" in warning) return "data";
   if (
     "WouldBreak" in warning ||
+    "LinkConflicts" in warning ||
     // No line (`warningKey`): the confirmation lists it with Homebrew's
     // dependents instead.
     "NeededBySource" in warning ||
@@ -645,6 +653,8 @@ export function deletesForGood(warning: Warning): boolean {
   }
   if (
     "WouldBreak" in warning ||
+    // A link that would stop deletes nothing: Homebrew refuses first.
+    "LinkConflicts" in warning ||
     "NeededBySource" in warning ||
     "SecureConnectionFailed" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -825,6 +835,8 @@ export function isCaution(warning: Warning): boolean {
   }
   if (
     "WouldBreak" in warning ||
+    // What stops the link: a caution, as what still needs a package is.
+    "LinkConflicts" in warning ||
     "NeededBySource" in warning ||
     "ThirdPartyRegistry" in warning ||
     "RemovesToolchains" in warning ||

@@ -791,6 +791,60 @@
       "description": "npm keeps these in a folder that's in, or points to, a protected location. Protected locations aren't read, so whether these can be changed isn't known, and you can only view them."
     }
   },
+  "noAnswer": {
+    "title": {
+      "CouldNotStart": "{{source}} can't run",
+      "ExitedWithError": "{{source}} ran into an error"
+    },
+    "description": {
+      "missing": "It can't find the {{program}} it needs, so what it has installed can't be shown.",
+      "missingWithRows_one": "It can't find the {{program}} it needs. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded.",
+      "missingWithRows_other": "It can't find the {{program}} it needs. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded.",
+      "missingFix": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks.",
+      "missingFixWithRows_one": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks. The one tool installed with {{source}} is shown as it was when {{source}} last responded.",
+      "missingFixWithRows_other": "It can't find the {{program}} it needs. {{formula}} from Homebrew has it, but it isn't linked where Terminal looks. The {{count}} tools installed with {{source}} are shown as they were when {{source}} last responded.",
+      "CouldNotStart": "Its program couldn't start, so what it has installed can't be shown.",
+      "CouldNotStartWithRows_one": "Its program couldn't start. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded.",
+      "CouldNotStartWithRows_other": "Its program couldn't start. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded.",
+      "ExitedWithError": "It ran into an error, so what it has installed can't be shown. Check again later.",
+      "ExitedWithErrorWithRows_one": "It ran into an error. One tool was installed with {{source}}, and it's shown as it was when {{source}} last responded. Check again later.",
+      "ExitedWithErrorWithRows_other": "It ran into an error. {{count}} tools were installed with {{source}}, and they're shown as they were when {{source}} last responded. Check again later."
+    },
+    "row": {
+      "missing": "{{source}} can't run: it can't find the {{program}} it needs.",
+      "CouldNotStart": "{{source}} can't run: its program couldn't start.",
+      "ExitedWithError": "{{source}} ran into an error. Click Check Again later."
+    },
+    "statusWord": {
+      "CouldNotStart": "Can't run",
+      "ExitedWithError": "Ran into an error"
+    },
+    "fix": "Fix…",
+    "sheet": {
+      "title": "Link “{{formula}}”?",
+      "text": "“{{formula}}” has the {{program}} that {{source}} needs, but it isn't linked where Terminal looks. Once it's linked, {{source}} can run.",
+      "version": "Version to link:",
+      "checking": "Checking whether it can be linked…",
+      "conflicts_one": "{{paths}} is already there, and Homebrew won't replace it, so nothing can be linked.",
+      "conflicts_other": "{{paths}} are already there, and Homebrew won't replace them, so nothing can be linked.",
+      "planError": "Couldn't check whether it can be linked: {{message}}",
+      "planErrorPlain": "Couldn't check whether it can be linked.",
+      "submitError": "Couldn't start the link: {{message}}",
+      "submitErrorPlain": "Couldn't start the link.",
+      "confirm": "Link"
+    },
+    "op": {
+      "kind": "Link",
+      "running": "Linking…",
+      "succeeded": "Linked",
+      "failed": "Couldn't link",
+      "cancel": "Cancel Link",
+      "again": "link it again",
+      "quitBody_one": "Quitting now stops it, and the tool it's linking can be left half-linked.",
+      "quitBody_other": "Quitting now stops them, and a tool that's being linked can be left half-linked.",
+      "quitNoCancel": "{{name}}'s link has started and can't be cancelled. Wait for it to finish before you quit."
+    }
+  },
   "loginPathNotice": {
     "title": "Couldn't read Terminal's settings",
     "description": "Tools that Terminal finds may be missing here, such as those installed with npm, pipx, uv or Cargo."

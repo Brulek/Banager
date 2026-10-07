@@ -33,6 +33,7 @@ import { useNoticeValues, useSearchCommand, useShowSourceTool } from "../compone
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { ToolSetupRow } from "../components/ToolSetupRow";
+import { useLinkFixSheet } from "../components/LinkFixSheet";
 import { Popover } from "../components/ui/Popover";
 import { BUTTON, LINK } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from "../components/ui/group";
@@ -182,6 +183,8 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const searchCommand = useSearchCommand();
   const openInstalled = useUiStore((s) => s.openInstalled);
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
+  // Fix… (`linkFix`): the preview of the link that puts a missing program back.
+  const { openLinkFix, linkFixSheet } = useLinkFixSheet();
   const action = notice.action;
   const opensOllama = action?.id === "openOllama";
   // The button's description is the row's title, as on the lists
@@ -203,6 +206,8 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
         return () => searchCommand(pressed.command);
       case "checkAgain":
         return checkAgain;
+      case "linkFix":
+        return () => openLinkFix(pressed.instanceId);
       case "showList":
         return () => {
           openInstalled(null);
@@ -274,6 +279,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           {t(action.labelKey, values)}
         </button>
       ) : null}
+      {linkFixSheet}
     </li>
   );
 }

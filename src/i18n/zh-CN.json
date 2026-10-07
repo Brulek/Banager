@@ -729,6 +729,54 @@
       "description": "npm安装它们的文件夹在受保护的位置或指向那里。受保护的位置不读取，无法确认能否修改它们，因此只能查看。"
     }
   },
+  "noAnswer": {
+    "title": {
+      "CouldNotStart": "{{source}}无法运行",
+      "ExitedWithError": "{{source}}运行时出错"
+    },
+    "description": {
+      "missing": "找不到它需要的{{program}}，无法列出它安装的内容。",
+      "missingWithRows_other": "找不到它需要的{{program}}。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果。",
+      "missingFix": "找不到它需要的{{program}}。Homebrew安装的{{formula}}中有它，但没有链接到终端能找到的地方。",
+      "missingFixWithRows_other": "找不到它需要的{{program}}。Homebrew安装的{{formula}}中有它，但没有链接到终端能找到的地方。用{{source}}安装的{{count}}个工具显示的是它上次响应时的结果。",
+      "CouldNotStart": "它的程序无法启动，无法列出它安装的内容。",
+      "CouldNotStartWithRows_other": "它的程序无法启动。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果。",
+      "ExitedWithError": "它运行时出错，无法列出它安装的内容。请稍后重新检查。",
+      "ExitedWithErrorWithRows_other": "它运行时出错。有{{count}}个工具是用{{source}}安装的，显示的是它上次响应时的结果，请稍后重新检查。"
+    },
+    "row": {
+      "missing": "{{source}}无法运行：找不到它需要的{{program}}。",
+      "CouldNotStart": "{{source}}无法运行：它的程序无法启动。",
+      "ExitedWithError": "{{source}}运行时出错。请稍后点按“重新检查”。"
+    },
+    "statusWord": {
+      "CouldNotStart": "无法运行",
+      "ExitedWithError": "运行时出错"
+    },
+    "fix": "修复…",
+    "sheet": {
+      "title": "要链接“{{formula}}”吗？",
+      "text": "“{{formula}}”中有{{source}}需要的{{program}}，但没有链接到终端能找到的地方。链接后，{{source}}就能运行。",
+      "version": "要链接的版本：",
+      "checking": "正在检查能否链接…",
+      "conflicts_other": "{{paths}}已存在，Homebrew不会替换，因此无法链接。",
+      "planError": "无法检查能否链接：{{message}}",
+      "planErrorPlain": "无法检查能否链接。",
+      "submitError": "无法开始链接：{{message}}",
+      "submitErrorPlain": "无法开始链接。",
+      "confirm": "链接"
+    },
+    "op": {
+      "kind": "链接",
+      "running": "正在链接…",
+      "succeeded": "已链接",
+      "failed": "未能链接",
+      "cancel": "取消链接",
+      "again": "重新链接",
+      "quitBody_other": "现在退出会中断操作，正在链接的工具有只链接一半的风险。",
+      "quitNoCancel": "“{{name}}”的链接已开始，无法取消。请等它完成后再退出。"
+    }
+  },
   "loginPathNotice": {
     "title": "无法读取终端的设置",
     "description": "终端里能找到的工具可能没有列在这里，例如用npm、pipx、uv或Cargo安装的。"

@@ -1,7 +1,14 @@
 import type { FailureCause } from "./failureCause";
 export type ArtifactKind = "Formula" | "Cask" | "Package" | "Tool" | "Model" | "Binary";
 export type InstallReason = "Requested" | "Dependency" | "Unknown";
-export type OpKind = "Install" | "Uninstall" | "Upgrade";
+/**
+ * Mirrors `OpKind` in crates/banager-core/src/model.rs. `Link` is
+ * `brew link --force <formula>`, the fix a source's notice offers when its
+ * launcher could not find a program a keg-only formula provides
+ * (`NoAnswer.link_fixes`): planned and confirmed like any operation, kept
+ * in no history.
+ */
+export type OpKind = "Install" | "Uninstall" | "Upgrade" | "Link";
 export type OpStatus =
   | "Queued"
   | "Running"
@@ -309,6 +316,12 @@ export type RemoveCheck =
  * `types.test.ts` keeps a shape test over all of them.
  */
 export type Warning =
+  /**
+   * `brew link --force` (`OpKind.Link`) would stop at these files, each
+   * already in the prefix's `bin` under one of the formula's command names:
+   * the link preview says so and offers no Link button.
+   */
+  | { LinkConflicts: { paths: string[] } }
   | "DependentsUnknown"
   | { WouldBreak: { names: string[] } }
   /**
@@ -524,6 +537,35 @@ export type InstanceNote =
 export interface InstanceStatus {
   unavailable: Unavailable | null;
   notes: InstanceNote[];
+  /**
+   * Mirrors `InstanceStatus::no_answer`: why a `NotResponding` source did
+   * not answer, where the command Banager asked it with says. Always sent
+   * by the core (`null` for none); absent in an older payload and in a
+   * fixture that predates it, which is the same news.
+   */
+  no_answer?: NoAnswer | null;
+}
+/**
+ * Mirrors `NoAnswerKind` in crates/banager-core/src/model.rs: what the
+ * command a source was asked with did -- ran out of time, never started,
+ * or ran and ended with an error. Bare strings.
+ */
+export type NoAnswerKind = "TimedOut" | "CouldNotStart" | "ExitedWithError";
+/**
+ * Mirrors `NoAnswer` in crates/banager-core/src/model.rs. `missing_program`
+ * is the program the source's launcher needed and did not find (`node`, for
+ * npm's `#!/usr/bin/env node`); `link_fixes` the Homebrew formulae that
+ * would put it back, newest first, each offered as `brew link --force`.
+ */
+export interface NoAnswer {
+  kind: NoAnswerKind;
+  missing_program: string | null;
+  link_fixes: LinkFix[];
+}
+/** Mirrors `LinkFix`: the formula's row key and the version the row shows. */
+export interface LinkFix {
+  key: ArtifactKey;
+  version: string;
 }
 export interface ManagerInstance {
   id: string;

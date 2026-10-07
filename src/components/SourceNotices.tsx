@@ -15,6 +15,7 @@ import { DisclosureIcon } from "./icons";
 import { useMinuteClock } from "./PageHeader";
 import { InfoDetail } from "./InfoDetail";
 import { useRowFit } from "./VirtualList";
+import { useLinkFixSheet } from "./LinkFixSheet";
 
 /**
  * The look of the fold's own buttons, 「还有N条提示」 and 「收起」: a
@@ -172,6 +173,9 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   const searchCommand = useSearchCommand();
   const setInstalledShow = useUiStore((s) => s.setInstalledShow);
   const setQuery = useUiStore((s) => s.setQuery);
+  // Fix… on a source that could not start for want of a program a
+  // formula has: the preview of its link (`LinkFixSheet`).
+  const { openLinkFix, linkFixSheet } = useLinkFixSheet();
   const linesId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   // Set by the fold's own button, and only by it: the lines folding up
@@ -225,6 +229,8 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
         return { label, onClick: () => searchCommand(action.command) };
       case "checkAgain":
         return { label, onClick: checkAgain, disabled: checking };
+      case "linkFix":
+        return { label, onClick: () => openLinkFix(action.instanceId) };
       case "showList":
         // The count over the list is search aside, so the search goes too,
         // as `openInstalled` lets it go: what 查看 lists is what it said.
@@ -263,7 +269,12 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   };
 
   if (layout !== "line") {
-    return <>{notices.map((notice) => noticeView(notice))}</>;
+    return (
+      <>
+        {notices.map((notice) => noticeView(notice))}
+        {linkFixSheet}
+      </>
+    );
   }
   const columns = NOTICE_GRID[grid];
   // The lines, over a hairline from where their words start to the
@@ -273,6 +284,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   const lines = (content: ReactNode) => (
     <div className="relative flex flex-col">
       {content}
+      {linkFixSheet}
       {separator ? (
         <span
           aria-hidden="true"

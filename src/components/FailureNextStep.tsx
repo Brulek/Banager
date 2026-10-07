@@ -36,6 +36,7 @@ export const TRY_AGAIN_KEYS: Record<OpKind, string> = {
   Upgrade: "failureSteps.again.Upgrade",
   Uninstall: "failureSteps.again.Uninstall",
   Install: "failureSteps.again.Install",
+  Link: "noAnswer.op.again",
 };
 
 /** Which sentence goes under the log of a failure with `cause`. */

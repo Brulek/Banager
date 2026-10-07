@@ -8,6 +8,7 @@
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { READ_ONLY_DETAIL_KEYS, UNAVAILABLE_DETAIL_KEYS, UPDATE_BLOCKED_KEYS } from "../lib/sources";
+import { noAnswerRow } from "../lib/noAnswer";
 import { FAILURE_CAUSE_KEYS, lookupFailureCause } from "../lib/failureCause";
 import type { InstalledArtifact, ManagerInstance, UpdateBlocked, UpdateCandidate } from "../lib/types";
 import { warningMessage, warningText } from "../lib/warnings";
@@ -152,8 +153,13 @@ export function unavailableDetail(
   instance: ManagerInstance | undefined,
   source: string,
 ): ReactNode {
+  // One that could not start, or ran and failed, says so: 「npm无法运行：
+  // 找不到它需要的node。」 (src/lib/noAnswer.ts).
+  const why = noAnswerRow(instance);
   return detailLines([
-    t(UNAVAILABLE_DETAIL_KEYS[instance?.status.unavailable ?? "NotResponding"], { source }),
+    why === null
+      ? t(UNAVAILABLE_DETAIL_KEYS[instance?.status.unavailable ?? "NotResponding"], { source })
+      : t(why.key, { ...why.values, source }),
   ]);
 }
 

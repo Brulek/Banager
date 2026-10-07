@@ -48,6 +48,8 @@ export const OP_KIND_KEYS: Record<OpKind, string> = {
   Install: "operations.kind.Install",
   Uninstall: "operations.kind.Uninstall",
   Upgrade: "operations.kind.Upgrade",
+  // `brew link --force`, a source notice's Fix… (src/lib/noAnswer.ts).
+  Link: "noAnswer.op.kind",
 };
 
 /**
@@ -63,6 +65,7 @@ export const OP_RUNNING_KEYS: Record<OpKind, string> = {
   Install: "operations.running.Install",
   Uninstall: "operations.running.Uninstall",
   Upgrade: "updates.progress.running",
+  Link: "noAnswer.op.running",
 };
 
 /** How an operation that worked ended, in the same words: 「已更新」, "Uninstalled". */
@@ -70,6 +73,7 @@ export const OP_SUCCEEDED_KEYS: Record<OpKind, string> = {
   Install: "operations.succeeded.Install",
   Uninstall: "operations.succeeded.Uninstall",
   Upgrade: "updates.progress.succeeded",
+  Link: "noAnswer.op.succeeded",
 };
 
 /**
@@ -81,6 +85,7 @@ export const OP_FAILED_KEYS: Record<OpKind, string> = {
   Install: "operations.failedShort.Install",
   Uninstall: "operations.failedShort.Uninstall",
   Upgrade: "updates.progress.failed",
+  Link: "noAnswer.op.failed",
 };
 
 /**
@@ -91,6 +96,7 @@ export const OP_CANCEL_KEYS: Record<OpKind, string> = {
   Install: "operations.cancelKind.Install",
   Uninstall: "operations.cancelKind.Uninstall",
   Upgrade: "operations.cancelKind.Upgrade",
+  Link: "noAnswer.op.cancel",
 };
 
 /**

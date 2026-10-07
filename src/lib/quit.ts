@@ -35,6 +35,7 @@ const HALF_DONE_KEYS: Record<OpKind, string> = {
   Install: "quit.body.Install",
   Uninstall: "quit.body.Uninstall",
   Upgrade: "quit.body.Upgrade",
+  Link: "noAnswer.op.quitBody",
 };
 
 /**
@@ -78,6 +79,8 @@ export const QUIT_NO_CANCEL_KEYS: Record<OpKind, string> = {
   Install: "quit.noCancel.Install",
   Uninstall: "quit.noCancel.Uninstall",
   Upgrade: "quit.noCancel.Upgrade",
+  // A link can always be cancelled; the `Record` asks for words anyway.
+  Link: "noAnswer.op.quitNoCancel",
 };
 
 /**

@@ -232,6 +232,9 @@ describe("the polish-3 copy rules, in English", () => {
       "history.more_one",
       "history.more_other",
       "faq.title",
+      "noAnswer.fix",
+      "noAnswer.sheet.confirm",
+      "noAnswer.op.cancel",
     ];
     // Words that stay lower case inside a title (Cancel the Rest, Show in
     // Finder), never as its first or last word.

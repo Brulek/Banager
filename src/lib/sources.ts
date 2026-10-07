@@ -21,6 +21,7 @@ import type { InstalledShow } from "./families";
 import { warningArgs, warningKey } from "./warnings";
 import { displayToken } from "./format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
+import { noAnswerNotice } from "./noAnswer";
 
 /** i18n key holding each adapter's human name. The `standalone-*` ids are
  *  the tools with their own installer (`standalone::all` in
@@ -275,7 +276,14 @@ export type SourceNoticeAction =
    * src/lib/families.ts), never a source's: the list under the 「显示」
    * popup's choice `show`.
    */
-  | { id: "showList"; labelKey: string; show: InstalledShow };
+  | { id: "showList"; labelKey: string; show: InstalledShow }
+  /**
+   * Fix… on a source whose launcher could not find a program a keg-only
+   * Homebrew formula has (`noAnswerNotice`, src/lib/noAnswer.ts): the
+   * preview of `brew link --force` for one of that source's
+   * `NoAnswer.link_fixes` (`LinkFixSheet`).
+   */
+  | { id: "linkFix"; labelKey: string; instanceId: string };
 
 /**
  * One notice a source needs rendered, as data: which i18n keys say it,
@@ -436,6 +444,7 @@ export function sourceNoticesFor(
   const notices: SourceNoticeSpec[] = [];
 
   const unavailable = instance.status.unavailable;
+  const said = noAnswerNotice(instance, sourceLabel, installedCount);
   if (unavailable === "NotRunning") {
     // One state, one sentence, named through `sourceLabel` so it reads in
     // the user's language. Ollama is the only source Banager can start --
@@ -457,6 +466,10 @@ export function sourceNoticesFor(
         ? { action: { id: "openOllama" as const, labelKey: "sourceNotice.openOllama" } }
         : {}),
     });
+  } else if (said !== null) {
+    // It could not start, or ran and failed: said as that, not as "not
+    // responding" (src/lib/noAnswer.ts).
+    notices.push(said);
   } else if (unavailable === "NotResponding") {
     const keys = UNREACHABLE_KEYS[silentSourceKind(instance)];
     // When it last answered, where this session heard it answer: never on

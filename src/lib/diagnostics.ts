@@ -28,6 +28,7 @@ import { useSizes, useSnapshot } from "./queries";
 import { sizeTotalsOf, sourceTotalText } from "./sizeTotals";
 import { adapterLabel, failedSourceAdapters, instanceLabels, namesInSentence } from "./sources";
 import { checkedInFull } from "./updateState";
+import { NO_ANSWER_WORDS, saidNoAnswer } from "./noAnswer";
 import type { InstalledArtifact, ManagerInstance, Sizes, Snapshot, SystemFacts, Unavailable } from "./types";
 
 /** Whatever `useTranslation()`'s `t` needs to look a key up. */
@@ -115,7 +116,9 @@ function notCheckedNames(t: Translate, instances: ManagerInstance[], errors: Sna
  */
 export function sourceStateWords(t: Translate, instance: ManagerInstance): string[] {
   const words: string[] = [];
-  if (instance.status.unavailable !== null) words.push(t(UNAVAILABLE_WORDS[instance.status.unavailable]));
+  const why = saidNoAnswer(instance);
+  if (why !== null) words.push(t(NO_ANSWER_WORDS[why.kind]));
+  else if (instance.status.unavailable !== null) words.push(t(UNAVAILABLE_WORDS[instance.status.unavailable]));
   if (instance.read_only_reason !== null) words.push(t("diagnostics.text.statusWord.readOnly"));
   if (instance.unverified_version !== null) words.push(t("diagnostics.text.statusWord.unverified"));
   return words;

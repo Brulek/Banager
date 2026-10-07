@@ -729,6 +729,54 @@
       "description": "npm安裝它們的檔案夾在受保護的位置或指向那裡。受保護的位置不讀取，無法確認能否修改它們，因此只能查看。"
     }
   },
+  "noAnswer": {
+    "title": {
+      "CouldNotStart": "{{source}}無法執行",
+      "ExitedWithError": "{{source}}執行時出錯"
+    },
+    "description": {
+      "missing": "找不到它需要的{{program}}，無法列出它安裝的內容。",
+      "missingWithRows_other": "找不到它需要的{{program}}。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。",
+      "missingFix": "找不到它需要的{{program}}。Homebrew安裝的{{formula}}中有它，但沒有連結到終端機找得到的地方。",
+      "missingFixWithRows_other": "找不到它需要的{{program}}。Homebrew安裝的{{formula}}中有它，但沒有連結到終端機找得到的地方。用{{source}}安裝的{{count}}個工具顯示的是它上次回應時的結果。",
+      "CouldNotStart": "它的程式無法啟動，無法列出它安裝的內容。",
+      "CouldNotStartWithRows_other": "它的程式無法啟動。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果。",
+      "ExitedWithError": "它執行時出錯，無法列出它安裝的內容。請稍後重新檢查。",
+      "ExitedWithErrorWithRows_other": "它執行時出錯。有{{count}}個工具是用{{source}}安裝的，顯示的是它上次回應時的結果，請稍後重新檢查。"
+    },
+    "row": {
+      "missing": "{{source}}無法執行：找不到它需要的{{program}}。",
+      "CouldNotStart": "{{source}}無法執行：它的程式無法啟動。",
+      "ExitedWithError": "{{source}}執行時出錯。請稍後點按「重新檢查」。"
+    },
+    "statusWord": {
+      "CouldNotStart": "無法執行",
+      "ExitedWithError": "執行時出錯"
+    },
+    "fix": "修復…",
+    "sheet": {
+      "title": "要連結「{{formula}}」嗎？",
+      "text": "「{{formula}}」中有{{source}}需要的{{program}}，但沒有連結到終端機找得到的地方。連結後，{{source}}就能執行。",
+      "version": "要連結的版本：",
+      "checking": "正在檢查能否連結…",
+      "conflicts_other": "{{paths}}已存在，Homebrew不會取代，因此無法連結。",
+      "planError": "無法檢查能否連結：{{message}}",
+      "planErrorPlain": "無法檢查能否連結。",
+      "submitError": "無法開始連結：{{message}}",
+      "submitErrorPlain": "無法開始連結。",
+      "confirm": "連結"
+    },
+    "op": {
+      "kind": "連結",
+      "running": "正在連結…",
+      "succeeded": "已連結",
+      "failed": "未能連結",
+      "cancel": "取消連結",
+      "again": "重新連結",
+      "quitBody_other": "現在結束會中斷操作，正在連結的工具有只連結一半的風險。",
+      "quitNoCancel": "「{{name}}」的連結已開始，無法取消。請等它完成後再結束。"
+    }
+  },
   "loginPathNotice": {
     "title": "無法讀取終端機的設定",
     "description": "終端機裡能找到的工具可能沒有列在這裡，例如用npm、pipx、uv或Cargo安裝的。"

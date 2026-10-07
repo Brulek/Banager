@@ -14,6 +14,9 @@ import type {
   OpSummary,
   ReadOnlyReason,
   InstanceStatus,
+  NoAnswer,
+  NoAnswerKind,
+  OpRequest,
   Settings,
   SkippedVersion,
   UninstallBlocked,
@@ -355,6 +358,47 @@ describe("types", () => {
       '{"unavailable":null,"notes":["NotOnPath","ShadowedByHomebrew","ShadowedByNpm","ShadowedByOther","LauncherOnly"]}',
     );
     expect(roundTrip(standalone)).toEqual(standalone);
+  });
+
+  it("spells why a source did not answer as model.rs's wire test does", () => {
+    // `test_why_a_source_did_not_answer_is_on_the_wire_as_the_mirror_spells_it`
+    // in crates/banager-core/src/model.rs writes exactly this string.
+    const status: InstanceStatus = {
+      unavailable: "NotResponding",
+      notes: [],
+      no_answer: {
+        kind: "CouldNotStart",
+        missing_program: "node",
+        link_fixes: [
+          {
+            key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "node@22" },
+            version: "22.23.3_1",
+          },
+        ],
+      },
+    };
+    expect(JSON.stringify(status)).toBe(
+      '{"unavailable":"NotResponding","notes":[],"no_answer":{"kind":"CouldNotStart","missing_program":"node","link_fixes":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"node@22"},"version":"22.23.3_1"}]}}',
+    );
+    expect(roundTrip(status)).toEqual(status);
+    const kinds: NoAnswerKind[] = ["TimedOut", "CouldNotStart", "ExitedWithError"];
+    expect(roundTrip(kinds)).toEqual(["TimedOut", "CouldNotStart", "ExitedWithError"]);
+    const timedOut: NoAnswer = { kind: "TimedOut", missing_program: null, link_fixes: [] };
+    expect(JSON.stringify(timedOut)).toBe('{"kind":"TimedOut","missing_program":null,"link_fixes":[]}');
+    // As the core sends none, and as an older payload has none.
+    const none: InstanceStatus = { unavailable: null, notes: [], no_answer: null };
+    expect(JSON.stringify(none)).toBe('{"unavailable":null,"notes":[],"no_answer":null}');
+    const older = JSON.parse('{"unavailable":"NotResponding","notes":[]}') as InstanceStatus;
+    expect(older.no_answer ?? null).toBeNull();
+    // The fix, as the window asks for its preview, and what the preview
+    // says is in the way.
+    const link: OpRequest = { kind: "Link", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "node@22" };
+    expect(JSON.stringify(link)).toBe(
+      '{"kind":"Link","instance_id":"brew:/opt/homebrew","artifact_kind":"Formula","name":"node@22"}',
+    );
+    const conflicts: Warning = { LinkConflicts: { paths: ["/opt/homebrew/bin/npm"] } };
+    expect(JSON.stringify(conflicts)).toBe('{"LinkConflicts":{"paths":["/opt/homebrew/bin/npm"]}}');
+    expect(roundTrip(conflicts)).toEqual(conflicts);
   });
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {
