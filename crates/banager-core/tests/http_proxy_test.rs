@@ -101,7 +101,10 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
             ("https_proxy".to_string(), proxy.clone()),
             // Set, so that one in the environment the tests run in cannot
             // send everything straight.
-            ("no_proxy".to_string(), "straight.invalid".to_string()),
+            (
+                "no_proxy".to_string(),
+                "straight.invalid,192.0.2.1".to_string(),
+            ),
         ],
     });
     let client = RealHttpClient::new();
@@ -155,35 +158,37 @@ async fn test_own_requests_go_through_the_login_shells_proxy_but_never_for_this_
         Some("CONNECT crates.io:443 HTTP/1.1")
     );
 
-    // What `no_proxy` names goes straight: here to a name that does not
-    // exist, so the request fails without the proxy hearing of it.
+    // What `no_proxy` names goes straight: here to an address no
+    // connection can be made to -- port 0, which this Mac's own network
+    // stack refuses before anything is sent, and no name to look up, so
+    // no DNS question leaves this Mac either -- so the request fails
+    // without the proxy hearing of it.
     let before = proxied.lock().unwrap().len();
-    assert!(client.send(get("http://straight.invalid/")).await.is_err());
+    assert!(client.send(get("http://192.0.2.1:0/")).await.is_err());
     assert_eq!(proxied.lock().unwrap().len(), before);
 
     // A SOCKS proxy, as Clash and Surge print `all_proxy`: spoken to as
-    // one, not sent an HTTP `CONNECT`. `https_proxy` is set to it as well:
-    // `all_proxy` comes after `https_proxy` and `HTTPS_PROXY`, and a name
-    // the login shell did not set is taken from the environment the tests
-    // run in, so a terminal that exports a proxy would otherwise send this
-    // request there (`http::proxy::proxy_for`, whose own tests cover the
-    // order).
+    // one, not sent an HTTP `CONNECT`. `http_proxy` and `https_proxy` are
+    // set to it as well: `all_proxy` comes after them and their capitals,
+    // and a name the login shell did not set is taken from the environment
+    // the tests run in, so a terminal that exports a proxy would otherwise
+    // send this request there (`http::proxy::proxy_for`, whose own tests
+    // cover the order). The request is to an address, not a name: through
+    // `socks5://` the client looks a name up itself before it greets the
+    // proxy, which would send a DNS question off this Mac, and fail the
+    // test on one with no DNS.
     let (socks_port, greeted) = first_bytes();
     let socks = format!("socks5://127.0.0.1:{socks_port}");
     login_path::accept(&LoginEnv {
         path: "/usr/bin:/bin".to_string(),
         imported: vec![
+            ("http_proxy".to_string(), socks.clone()),
             ("https_proxy".to_string(), socks.clone()),
             ("all_proxy".to_string(), socks),
             ("no_proxy".to_string(), "straight.invalid".to_string()),
         ],
     });
     let client = RealHttpClient::new();
-    assert!(client
-        .send(get(
-            "https://crates.io/api/v1/crates/banager-u12-proxy-test"
-        ))
-        .await
-        .is_err());
+    assert!(client.send(get("http://192.0.2.1:9/")).await.is_err());
     assert_eq!(*greeted.lock().unwrap(), [5u8]);
 }

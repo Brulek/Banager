@@ -128,7 +128,7 @@ fn tools_say() -> CommandSpec {
 #[tokio::test]
 async fn test_each_shape_is_masked_in_the_log_and_the_failure_summary() {
     accept_the_settings();
-    let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
+    let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::without_this_macs_settings());
     let spec = tools_say();
     let plan = Plan {
         request: OpRequest {
@@ -201,7 +201,7 @@ async fn test_the_lines_and_the_output_of_a_command_are_masked_alike() {
             seen_cb.lock().unwrap().push(line);
         }
     });
-    let output = RealRunner::new()
+    let output = RealRunner::without_this_macs_settings()
         .run(tools_say(), Some(on_line), CancellationToken::new())
         .await
         .expect("the command runs");
@@ -240,11 +240,12 @@ async fn test_curls_own_error_for_a_proxy_with_a_scheme_separator_in_its_passwor
             seen_cb.lock().unwrap().push(line);
         }
     });
-    let output = RealRunner::new()
+    let output = RealRunner::without_this_macs_settings()
         .run(
             CommandSpec {
                 program: curl,
-                args: ["--head", "--max-time", "1", "http://127.0.0.1:9"]
+                // `-q` first: no `.curlrc` of this Mac's home is read.
+                args: ["-q", "--head", "--max-time", "1", "http://127.0.0.1:9"]
                     .map(String::from)
                     .to_vec(),
                 env: vec![],

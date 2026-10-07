@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 #[tokio::test]
 #[ignore = "reads the real filesystem and runs `brew --version`; run with cargo test -p banager-core --test brew_live -- --ignored"]
 async fn live_detect_finds_the_homebrew_installed_on_this_machine() {
-    let adapter = BrewAdapter::new(Arc::new(RealRunner));
+    let adapter = BrewAdapter::new(Arc::new(RealRunner::new()));
     let env = HostEnv::discover();
     let instances = Adapter::detect(&adapter, &env).await;
 
@@ -81,7 +81,7 @@ async fn live_install_inventory_uninstall_hello() {
         return;
     }
 
-    let runner = Arc::new(RealRunner);
+    let runner = Arc::new(RealRunner::new());
     // A huge TTL means `brew update` is not run here; CI runners already ship
     // a fresh Homebrew and the install path does not need the newest index.
     let adapter = BrewAdapter::new(runner).with_update_ttl(Duration::from_secs(60 * 60 * 24 * 365));

@@ -56,7 +56,7 @@ fn accept_the_settings() {
 async fn run_sudo() -> (Outcome, Vec<String>) {
     accept_the_settings();
     let runner: Arc<dyn banager_core::runner::CommandRunner> =
-        Arc::new(banager_core::runner::RealRunner::new());
+        Arc::new(banager_core::runner::RealRunner::without_this_macs_settings());
     let plan = Plan {
         request: OpRequest {
             kind: OpKind::Upgrade,
@@ -185,7 +185,7 @@ async fn test_source_detection_keeps_only_real_runner_redacted_diagnostic_and_or
     use banager_core::runner::{no_answer, CommandRunner, CommandSpec, OutputUse, RealRunner};
     accept_the_settings();
     // A synthetic command only prints fixture stderr; no package manager runs.
-    let result = RealRunner::new()
+    let result = RealRunner::without_this_macs_settings()
         .run(
             CommandSpec {
                 program: PathBuf::from("/bin/sh"),

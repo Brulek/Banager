@@ -107,7 +107,7 @@ exit 5
 #[tokio::test]
 async fn test_a_failed_operation_logs_and_summarises_tool_output_with_the_logins_masked() {
     accept_settings_with_logins();
-    let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
+    let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::without_this_macs_settings());
     let plan = Plan {
         request: OpRequest {
             kind: OpKind::Upgrade,
@@ -216,11 +216,12 @@ async fn test_curls_own_error_for_a_proxy_with_a_login_is_masked() {
             seen_cb.lock().unwrap().push(line);
         }
     });
-    let output = RealRunner::new()
+    let output = RealRunner::without_this_macs_settings()
         .run(
             CommandSpec {
                 program: curl,
-                args: ["--head", "--max-time", "1", "https://127.0.0.1:9"]
+                // `-q` first: no `.curlrc` of this Mac's home is read.
+                args: ["-q", "--head", "--max-time", "1", "https://127.0.0.1:9"]
                     .map(String::from)
                     .to_vec(),
                 env: vec![],
@@ -269,7 +270,7 @@ async fn test_the_login_shell_read_still_gets_the_settings_as_written() {
     std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let found = login_path::read(
-        &RealRunner::new(),
+        &RealRunner::without_this_macs_settings(),
         shell,
         dir.clone(),
         Duration::from_secs(10),

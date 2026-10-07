@@ -279,15 +279,27 @@ impl Redactor {
 
     /// Include command overrides and inherited OLLAMA_HOST in output masking.
     pub fn for_command_env(accepted: Option<&LoginEnv>, env: &[(String, String)]) -> Redactor {
+        Self::for_command_env_inheriting(accepted, env, &|name| std::env::var(name).ok())
+    }
+
+    /// `for_command_env`, with what the command inherits of Banager's own
+    /// environment read by `inherited`: `std::env::var` but where a
+    /// `RealRunner` hands on none of it
+    /// (`RealRunner::without_this_macs_settings`).
+    pub(crate) fn for_command_env_inheriting(
+        accepted: Option<&LoginEnv>,
+        env: &[(String, String)],
+        inherited: &dyn Fn(&str) -> Option<String>,
+    ) -> Redactor {
         let mut settings: Vec<(String, String)> = accepted
             .map(|found| found.imported.clone())
             .unwrap_or_default();
         settings.extend(
             IMPORTED
                 .iter()
-                .filter_map(|name| Some((name.to_string(), std::env::var(name).ok()?))),
+                .filter_map(|name| Some((name.to_string(), inherited(name)?))),
         );
-        if let Ok(host) = std::env::var("OLLAMA_HOST") {
+        if let Some(host) = inherited("OLLAMA_HOST") {
             settings.push(("OLLAMA_HOST".to_string(), host));
         }
         settings.extend(

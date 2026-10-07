@@ -21,11 +21,34 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-pub struct RealRunner;
+pub struct RealRunner {
+    /// Whether a command inherits the proxy and mirror settings of
+    /// Banager's own environment (`login_path::IMPORTED`, and
+    /// `OLLAMA_HOST`) where the login shell's read set none, and so
+    /// whether its transcripts mask the logins in those: always, but in a
+    /// test that hands a command only the settings it sets itself
+    /// (`without_this_macs_settings`).
+    inherit_settings: bool,
+}
 
 impl RealRunner {
     pub fn new() -> RealRunner {
-        RealRunner
+        RealRunner {
+            inherit_settings: true,
+        }
+    }
+
+    /// Test support (the `test-support` feature, and this crate's unit
+    /// tests): a runner whose commands inherit none of the proxy and
+    /// mirror settings of the environment of the Mac running the test, and
+    /// whose transcripts mask only the logins in the settings the test set
+    /// (`login_path::accept`, the spec's own), so that what a test reads
+    /// back does not change with that environment.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn without_this_macs_settings() -> RealRunner {
+        RealRunner {
+            inherit_settings: false,
+        }
     }
 }
 
@@ -777,6 +800,11 @@ impl CommandRunner for RealRunner {
         // handed to each command here. A variable the spec sets itself
         // still wins, set after them.
         let accepted = super::login_path::accepted_env();
+        if !self.inherit_settings {
+            for name in super::login_path::IMPORTED.iter().chain(&["OLLAMA_HOST"]) {
+                cmd.env_remove(name);
+            }
+        }
         if let Some(found) = &accepted {
             cmd.env("PATH", &found.path);
             cmd.envs(found.imported.iter().map(|(name, value)| (name, value)));
@@ -785,7 +813,16 @@ impl CommandRunner for RealRunner {
         // whole (curl's "Unsupported proxy syntax in 'http://user:pw@…'"):
         // what this run hands on, and the transcripts a person reads, have
         // it masked (`runner::redact`, F2 of the decisions-round review).
-        let redactor = Arc::new(Redactor::for_command_env(accepted.as_ref(), &spec.env));
+        let inherited = |name: &str| {
+            self.inherit_settings
+                .then(|| std::env::var(name).ok())
+                .flatten()
+        };
+        let redactor = Arc::new(Redactor::for_command_env_inheriting(
+            accepted.as_ref(),
+            &spec.env,
+            &inherited,
+        ));
         cmd.envs(spec.env.iter().cloned());
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);
