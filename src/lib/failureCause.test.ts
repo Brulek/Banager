@@ -368,13 +368,26 @@ describe("operationFailureCause", () => {
   it("words the causes only a change meets in every language, each next step one sentence", () => {
     const lookup = (locale: unknown, key: string): unknown =>
       key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], locale);
-    const added: FailureCause[] = ["conflict", "notFound", "appMissing", "unsupported", "timedOut", "changed", "internal"];
+    const added: FailureCause[] = [
+      "conflict",
+      "notFound",
+      "appMissing",
+      "unsupported",
+      "timedOut",
+      "notLinked",
+      "changed",
+      "internal",
+    ];
     for (const cause of added) {
       for (const key of Object.values(FAILURE_CAUSE_KEYS[cause])) {
         for (const locale of [en, zhCN, zhHant]) expect(typeof lookup(locale, key), key).toBe("string");
       }
     }
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.word)).toBe("App已不在原来的位置");
+    // Homebrew's link step (review of r6 y3-batch, finding 2): said as
+    // y1-keg says a formula's commands are in Terminal.
+    expect(lookup(zhCN, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本没有接到终端里");
+    expect(lookup(zhHant, FAILURE_CAUSE_KEYS.notLinked.word)).toBe("新版本沒有接到終端機裡");
     expect(lookup(zhCN, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("废纸篓");
     expect(lookup(zhHant, FAILURE_CAUSE_KEYS.appMissing.next)).toContain("垃圾桶");
   });

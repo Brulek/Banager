@@ -55,8 +55,18 @@
     "cause": "conflict"
   },
   {
-    "name": "brew formula: a file already where it links",
-    "text": "Error: The `brew link` step did not complete successfully\nThe formula built, but is not symlinked into /opt/homebrew\nCould not symlink bin/node\nTarget /opt/homebrew/bin/node\nalready exists. You may want to remove it:",
+    "name": "brew formula: its link step stopped (node@22, 2026-10-07): only this line reaches stderr, the conflict goes to stdout",
+    "text": "Error: The `brew link` step did not complete successfully",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew formula: its link step failed another way",
+    "text": "Error: An unexpected error occurred during the `brew link` step",
+    "cause": "notLinked"
+  },
+  {
+    "name": "brew link: a file already where it links, as the brew link command says it",
+    "text": "Error: Could not symlink bin/npm\nTarget /opt/homebrew/bin/npm\nalready exists. You may want to remove it:\n  rm '/opt/homebrew/bin/npm'",
     "cause": "conflict"
   },
   {

@@ -26,7 +26,7 @@ use std::sync::OnceLock;
 /// union of strings and its words (`FAILURE_CAUSE_KEYS`) apply as they are.
 ///
 /// The first seven are read off any failure, a lookup's included
-/// (`failure_cause`); the next five only off an operation's
+/// (`failure_cause`); the next six only off an operation's
 /// (`operation_failure_cause`); the last two are never read off words but
 /// kept by the history for a failure of Banager's own (`record_for`).
 /// An older Banager reading a history record with one of the later ones
@@ -61,6 +61,14 @@ pub enum FailureCause {
     /// download, which is `Network`, and not Banager's own deadline, which
     /// ends an operation `Unconfirmed`.
     TimedOut,
+    /// Homebrew installed the new version of a formula but could not link
+    /// it into its prefix (`FormulaInstaller#link`, formula_installer.rb
+    /// in Homebrew 7.0.8): an upgrade unlinks the old version first, so
+    /// the formula's commands may be gone from Terminal. Only "The `brew
+    /// link` step did not complete successfully" reaches stderr; which
+    /// file was in the way goes to stdout (review of r6 y3-batch,
+    /// finding 2).
+    NotLinked,
     /// Banager stopped because what it was about to change was no longer
     /// what the confirmation showed (`Fault::PathChanged`,
     /// `FormulaChanged`, `HomebrewSettingsChanged`).
@@ -173,6 +181,13 @@ fn patterns() -> &'static Patterns {
         ],
         // `OPERATION_PATTERNS` in src/lib/failureCause.ts, in its order.
         by_operation_cause: vec![
+            (
+                FailureCause::NotLinked,
+                compile(&[
+                    r"(?i)\bThe `brew link` step did not complete successfully\b",
+                    r"(?i)\bAn unexpected error occurred during the `brew link` step\b",
+                ]),
+            ),
             (
                 FailureCause::AppMissing,
                 compile(&[
@@ -377,11 +392,12 @@ mod tests {
                 FailureCause::AppMissing,
                 FailureCause::Unsupported,
                 FailureCause::TimedOut,
+                FailureCause::NotLinked,
                 FailureCause::Changed,
                 FailureCause::Internal,
             ])
             .unwrap(),
-            r#"["network","diskFull","permission","busy","homebrewUpdating","needsPassword","passwordNotAccepted","conflict","notFound","appMissing","unsupported","timedOut","changed","internal"]"#
+            r#"["network","diskFull","permission","busy","homebrewUpdating","needsPassword","passwordNotAccepted","conflict","notFound","appMissing","unsupported","timedOut","notLinked","changed","internal"]"#
         );
     }
 }

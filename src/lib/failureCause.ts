@@ -58,6 +58,11 @@ import type { Outcome } from "./types";
  *   update it ("It seems the App source '/Applications/…' is not there").
  * - `unsupported`: the version does not run on this Mac's macOS or chip.
  * - `timedOut`: a step of the tool's ran past the tool's own time limit.
+ * - `notLinked`: Homebrew installed a formula's new version but could not
+ *   link it into its prefix ("The `brew link` step did not complete
+ *   successfully"): an upgrade unlinks the old version first, so its
+ *   commands may be gone from Terminal. Which file was in the way goes to
+ *   stdout, not to the stderr lines read here.
  *
  * Never read off words, only kept by the history for a failure of
  * Banager's own (Rust `record_for`): `changed` -- what it was about to
@@ -76,6 +81,7 @@ export type FailureCause =
   | "appMissing"
   | "unsupported"
   | "timedOut"
+  | "notLinked"
   | "changed"
   | "internal";
 
@@ -218,6 +224,13 @@ const PATTERNS: Array<[FailureCause, RegExp[]]> = [
  * (crates/banager-core/src/history/failure_cause.rs) is the same list.
  */
 const OPERATION_PATTERNS: Array<[FailureCause, RegExp[]]> = [
+  [
+    "notLinked",
+    [
+      /\bThe `brew link` step did not complete successfully\b/i,
+      /\bAn unexpected error occurred during the `brew link` step\b/i,
+    ],
+  ],
   ["appMissing", [/\bIt seems the App source '[^']*\/Applications\/[^']*' is not there\b/i]],
   [
     "unsupported",
@@ -453,6 +466,11 @@ export const FAILURE_CAUSE_KEYS: Record<FailureCause, { word: string; next: stri
     word: "failureMore.cause.timedOut",
     next: "failureMore.next.timedOut",
     line: "failureMore.line.timedOut",
+  },
+  notLinked: {
+    word: "failureMore.cause.notLinked",
+    next: "failureMore.next.notLinked",
+    line: "failureMore.line.notLinked",
   },
   changed: {
     word: "failureMore.cause.changed",

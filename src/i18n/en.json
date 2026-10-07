@@ -1568,6 +1568,7 @@
       "appMissing": "The app isn't where it was installed",
       "unsupported": "Doesn't support this Mac",
       "timedOut": "Took too long",
+      "notLinked": "The new version isn't linked",
       "changed": "Changed after you confirmed",
       "internal": "An internal error occurred"
     },
@@ -1577,6 +1578,7 @@
       "appMissing": "It may have been moved to the Trash or deleted; to keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
       "unsupported": "This version can't run on this Mac; the operation log shows what it needs.",
       "timedOut": "Try again later.",
+      "notLinked": "The new version is installed, but its commands may not be found in Terminal, usually because a file of the same name is in the way; deal with it, then try again.",
       "changed": "Open the confirmation again, then try again.",
       "internal": "Try again later."
     },
@@ -1586,6 +1588,7 @@
       "appMissing": "The app isn't where it was installed; it may have been moved to the Trash or deleted. To keep using it, put it back in Applications and try again, or uninstall it if you no longer need it.",
       "unsupported": "This version can't run on this Mac. The operation log shows what it needs.",
       "timedOut": "It took too long. Try again later.",
+      "notLinked": "The new version is installed but isn't linked, so its commands may not be found in Terminal, usually because a file of the same name is in the way. Deal with it, then try again.",
       "changed": "Something changed after you confirmed. Open the confirmation again, then try again.",
       "internal": "An internal error occurred. Try again later."
     }

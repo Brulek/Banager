@@ -102,3 +102,52 @@ async fn test_a_cask_that_needs_the_password_still_says_that_first() {
     .await;
     assert_eq!(cause(&outcome), Some(FailureCause::NeedsPassword));
 }
+
+#[tokio::test]
+async fn test_a_formula_whose_link_step_failed_says_it_is_not_linked() {
+    // Review of r6 y3-batch, finding 2: node@22's own upgrade on
+    // 2026-10-07. Homebrew writes only its `ofail` line to stderr; "Could
+    // not symlink bin/npm / Target /opt/homebrew/bin/npm already exists"
+    // goes to stdout with `puts` (`FormulaInstaller#link`,
+    // formula_installer.rb in Homebrew 7.0.8), where no cause is read.
+    let info = std::fs::read_to_string("../../adapters/fixtures/brew/7.0.3/info-installed.json")
+        .expect("fixture");
+    let runner = Arc::new(MockRunner::new());
+    runner.respond(
+        vec![BREW, "upgrade", "--formula", "jq"],
+        output(
+            1,
+            "==> Pouring jq--1.8.3.arm64_tahoe.bottle.tar.gz\n\
+             The formula built, but is not symlinked into /opt/homebrew\n\
+             Could not symlink bin/jq\n\
+             Target /opt/homebrew/bin/jq\n\
+             already exists. You may want to remove it:\n  rm '/opt/homebrew/bin/jq'\n",
+            "Error: The `brew link` step did not complete successfully\n",
+        ),
+    );
+    runner.respond(
+        vec![BREW, "info", "--installed", "--json=v2"],
+        output(0, &info, ""),
+    );
+    let adapter: Arc<dyn Adapter> = Arc::new(BrewAdapter::new(runner.clone()));
+    let inst = ManagerInstance {
+        exe_path: PathBuf::from(BREW),
+        prefix: PathBuf::from("/opt/homebrew"),
+        version: Some("7.0.3".to_string()),
+        ..banager_core::testing::manager_instance("brew", "brew:/opt/homebrew")
+    };
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Formula,
+        name: "jq".to_string(),
+    };
+    let plan = adapter.plan(&inst, &req).await.expect("plan");
+    let op_id = manager.submit(plan);
+    let outcome = manager.wait(op_id).await.expect("an outcome");
+    assert_eq!(cause(&outcome), Some(FailureCause::NotLinked));
+}
