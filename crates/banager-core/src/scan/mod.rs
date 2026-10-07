@@ -494,7 +494,7 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    cask's command to lead -- the file the stanza names, the cask's
 ///    folder in `Caskroom`, or its app (`commands::cask_places`) -- or its
 ///    own text names a place in that Caskroom folder, wherever that leads
-///    (`commands::names_staged`, Homebrew's own test). That
+///    (`commands::names_staged`). That
 ///    claims a command inside a second `.app` of the same cask, one
 ///    of a cask whose `app` entry carries no absolute `target`, and
 ///    Flutter's, which lead into the suite Homebrew moved to

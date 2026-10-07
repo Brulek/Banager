@@ -1463,10 +1463,14 @@ Homebrew's `Symlinked#unlink` removes whatever link is at such a place,
 except one into a formula's keg (`conflicting_formula`). A link whose own
 text (`readlink`, nothing it names followed) names a place inside the
 cask's Caskroom folder, `<prefix>/Caskroom/<token>/`, where Homebrew
-stages every file it links, is the cask's whatever that place leads to --
-Homebrew's own test (`Symlinked#target_links_to_source?`,
-`target.readlink == source`). Flutter's `dart` and `flutter` are such
-links: they name their staged paths, which lead, through the link Homebrew
+stages every file it links, is the cask's whatever that place leads to.
+That is broader than Homebrew's own test, which asks whether the text is
+exactly the source this version stages, or leads where that source leads
+(Homebrew 7.0.8, `Symlinked#target_links_to_source?`,
+`cask/artifact/symlinked.rb:71-72`; `Relocated#source`,
+`relocated.rb:59-66`): Banager takes any place in the cask's Caskroom
+folder, of any version, and does not work out each stanza's source.
+Flutter's `dart` and `flutter` are such links: they name their staged paths, which lead, through the link Homebrew
 left in the Caskroom when it moved the suite to `<prefix>/share/flutter`
 (`Moved#post_move`), out of the Caskroom (`commands::names_staged`). A
 text with a `..` after a name in it is not taken at its word, since that
@@ -3855,7 +3859,7 @@ links the cask's `binary` stanzas put on the disk (the absolute `target`
 that *is* one of those links, and resolves into the file the stanza
 names, the cask's folder in `Caskroom`, or that `.app` -- or whose own
 text names a place inside the cask's folder in `Caskroom`, wherever that
-place leads (Homebrew's own test; Homebrew's section, "A cask's links") --
+place leads (Homebrew's section, "A cask's links") --
 is the cask's (the same rule as "Which copy a command runs") — so a
 command inside a second `.app` of the same cask, or of a cask whose `app`
 entry carries no absolute `target`, is not listed, nor are Flutter's

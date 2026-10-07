@@ -959,14 +959,16 @@ pub(crate) fn link_names(folder: &Path, text: &Path) -> Option<PathBuf> {
     Some(lexically_joined(folder, text))
 }
 
-/// Whether a cask's link is the cask's by Homebrew's own test, made
-/// before the link is followed: `named`, the place its own text names
-/// (`link_names`), is inside the cask's folder in `Caskroom` -- one of
-/// `folders`, that folder as spelled and as it leads -- where Homebrew
-/// stages every source it links (`Relocated#source`, under the cask's
-/// `staged_path`; `Symlinked#target_links_to_source?`, `target.readlink ==
-/// source`, `cask/artifact/{relocated,symlinked}.rb`). Not where that
-/// place leads: Flutter's `bin/dart` names
+/// Whether a cask's link is the cask's, judged before the link is
+/// followed: `named`, the place its own text names (`link_names`), is
+/// inside the cask's folder in `Caskroom` -- one of `folders`, that folder
+/// as spelled and as it leads -- where Homebrew stages every source it
+/// links (`Relocated#source`, under the cask's `staged_path`; Homebrew
+/// 7.0.8 `cask/artifact/relocated.rb:59-66`). Broader than Homebrew's own
+/// test, `Symlinked#target_links_to_source?` (`symlinked.rb:71-72`: the
+/// text is this version's source exactly, or leads where it leads): any
+/// place in that folder, of any version, without working out each
+/// stanza's source. Not where that place leads: Flutter's `bin/dart` names
 /// `Caskroom/flutter/<version>/flutter/bin/dart`, which leads, through
 /// the `flutter` link its `suite` stanza left there when it moved the
 /// suite (`Moved#post_move`), to `<prefix>/share/flutter/bin/dart`, no

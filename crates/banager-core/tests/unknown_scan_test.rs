@@ -838,8 +838,8 @@ fn test_rule_2_claims_flutters_commands_through_the_suite_it_moved() {
     // staged path. Where the link leads is in no place of the cask's, so
     // both were listed as programs no source installed while Installed
     // listed Flutter under Homebrew. A link whose own text names a place
-    // in the cask's Caskroom folder is the cask's (Homebrew's own
-    // `target_links_to_source?`, `commands::names_staged`); one whose
+    // in the cask's Caskroom folder is the cask's
+    // (`commands::names_staged`); one whose
     // text climbs out of the suite with a `..` is followed, and npm's
     // file it leads to stays listed.
     let home = Home::new("rule-2-flutter");

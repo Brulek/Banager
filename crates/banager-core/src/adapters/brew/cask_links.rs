@@ -14,11 +14,11 @@ use std::path::{Component, Path, PathBuf};
 /// not the cask's, or that Banager cannot place or follow; `None` when
 /// every one is the cask's or is left alone. A link is the cask's when its
 /// own text names a place inside the cask's Caskroom folder, before
-/// anything is followed (`commands::names_staged`, Homebrew's own
-/// `target_links_to_source?`: Flutter's commands, through the suite it
-/// moved to `<prefix>/share/flutter`), or when it leads into the cask's
-/// Caskroom folder, an app it recorded, or the absolute source its stanza
-/// names. Left alone, and so no conflict: a
+/// anything is followed (`commands::names_staged`, broader than
+/// Homebrew's own `target_links_to_source?`: Flutter's commands, through
+/// the suite it moved to `<prefix>/share/flutter`), or when it leads into
+/// the cask's Caskroom folder, an app it recorded, or the absolute source
+/// its stanza names. Left alone, and so no conflict: a
 /// place with no link (nothing there, or a file Homebrew does not touch),
 /// a link to nothing (removing it stops nothing that works), and a link
 /// into `<prefix>/Cellar`, which Homebrew skips (`conflicting_formula`).
@@ -396,8 +396,8 @@ mod tests {
     }
 
     /// A link whose own text names a place in the cask's Caskroom folder
-    /// is the cask's, whatever that place leads to: Homebrew's own test
-    /// (`target_links_to_source?`, `target.readlink == source`). Flutter's
+    /// is the cask's, whatever that place leads to (`names_staged`, which
+    /// takes in more than Homebrew's `target_links_to_source?`). Flutter's
     /// `bin/dart` leads, through the staged `flutter` link, to
     /// `<prefix>/share/flutter/bin/dart`, no folder of the cask's.
     #[test]
