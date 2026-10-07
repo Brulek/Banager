@@ -162,6 +162,24 @@ describe("FaqSheet", () => {
     expect(useUiStore.getState()).toMatchObject(state);
   });
 
+  it.each([
+    ["en", en, "Update History", "View Log"],
+    ["zh-CN", zhCN, "最近的更新记录", "查看日志"],
+    ["zh-Hant", zhHant, "最近的更新記錄", "查看記錄"],
+  ] as const)(
+    "sends a password stop to the button by its own name, View Steps, and says an update keeps it after a restart, in %s (r26 D4)",
+    (_language, locale, history, viewLog) => {
+      const answer = locale.faq.questions.password.answer;
+      // The button every password stop offers: the operation bar's, an
+      // update's row, a batch uninstall's result row, and -- after a
+      // restart, when no log is left -- the row and Update History's line.
+      expect(answer).toContain(locale.needsPassword.viewSteps);
+      expect(answer).not.toContain(viewLog);
+      expect(answer).toContain(history);
+      expect(locale.updates.justUpdated.title).toBe(history);
+    },
+  );
+
   it("offers no 查看 where there is no one place to act: the password, and what the app changes", async () => {
     renderWithProviders(<FaqSheet />);
     act(() => openFaqSheet());

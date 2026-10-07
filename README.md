@@ -110,8 +110,10 @@ a protected place**, and the link is not followed.
   under **Show Commands** (**Show Commands and Paths** when an uninstall moves files to the Trash).
   Confirming queues each tool's own uninstall, the same one its row runs — a tool whose dependent in
   the batch could not be started is left for later; on one source they start in the order listed.
-- When a Homebrew update or uninstall stopped because it needed your Mac's password, its log shows the
-  command to copy and run in Terminal, where you can type it.
+- When a Homebrew update or uninstall stopped because it needed your Mac's password, its **View Steps**
+  shows the command to copy and run in Terminal, where you can type it. For an update, **View Steps** is
+  still on its row and in **Update History** after Banager is quit and reopened, and prepares that command
+  again: no log is kept across a restart.
 - With **Check for updates** set to Daily or Weekly, Settings says about when the next check is due,
   while Banager is running. Its **Copy
   Diagnostic Info** — Help's item of that name takes you there — copies a short text about Banager,
@@ -544,8 +546,9 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
   云盘和其他云盘、其他应用的数据——也不读 `/Volumes` 下的其他磁盘，经过链接也一样。要扫描的文件夹在这些位置里时
   不读取，列表下方有一行写出有几个没有读取（打开“显示技术细节”后，它的 ⓘ 里列出是哪些）；指向这些位置的程序
   链接按它自己的名字列出，标着“指向受保护的位置”，不跟进去。
-- Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，日志里会给出一条命令，拷贝到终端里运行，就能在那里
-  输入密码。
+- Homebrew 的更新或卸载因为要输入 Mac 密码而停下时，点「查看步骤」会给出一条命令，拷贝到终端里运行，就能在
+  那里输入密码。退出 Banager 再打开后，更新的「查看步骤」仍在它那一行和“最近的更新记录”里，会重新准备这条
+  命令：日志不会跨重启保留。
 - 把“检查更新”设为“每天”或“每周”后，Banager 运行时，设置里会写出下次检查大约在什么时候。设置里的“拷贝诊断信息”（菜单栏“帮助”里的同名项会
   带你到这里）会拷贝一段关于 Banager、这台 Mac 和各来源的简短文字，可以粘贴给帮你看问题的人；勾选后才包括
   工具清单，个人文件夹的路径写成 `~`。没有响应的来源会附上它的工具输出的错误详情，其中可能引用工具的设置文件；
