@@ -257,6 +257,62 @@ describe("Popover placement", () => {
     expect(panel).toHaveAttribute("data-side", "above");
   });
 
+  // Dragging the window's edge happens outside the page, so it does not
+  // close an open popover: the panel is measured again (r30 Z2's skeptic).
+  it("is moved again when the window is narrowed while it is open", () => {
+    // At 1024 the list runs to 724, and the panel fits from the ⓘ.
+    const { panel, arrow, room } = inNarrowList(365, 385, { list: { left: 208, right: 724 } });
+    expect(panel.style.transform).toBe("");
+    // Narrowed to 800: the list ends at 540, as in r30 Z2.
+    room.right = 540;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(panel.style.transform).toBe("translateX(-71px)");
+    expect(arrow.style.left).toBe(`${17 + 71}px`);
+    // Widened again: back where it opened, the arrow with it.
+    room.right = 724;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(panel.style.transform).toBe("");
+    expect(arrow.style.left).toBe("");
+  });
+
+  it("is moved again when the list it is in changes size while it is open, and stops watching once closed", () => {
+    const watching: { callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean }[] = [];
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly entry: (typeof watching)[number];
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [], disconnected: false };
+        watching.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {
+        this.entry.disconnected = true;
+      }
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { panel, room, list, button } = inNarrowList(365, 385, { list: { left: 208, right: 724 } });
+      expect(panel.style.transform).toBe("");
+      const lists = watching.filter((entry) => entry.targets.includes(list));
+      expect(lists).toHaveLength(1);
+      const [watcher] = lists;
+      // The list narrowed to 540 without the window changing.
+      room.right = 540;
+      act(() => watcher.callback([], watcher as unknown as ResizeObserver));
+      expect(panel.style.transform).toBe("translateX(-71px)");
+      fireEvent.click(button);
+      expect(watcher.disconnected).toBe(true);
+    } finally {
+      globalThis.ResizeObserver = Observer;
+    }
+  });
+
   it("opens upwards at the foot of the window, and downwards where there is room", () => {
     layOut(100, 160, 720);
     const panel = openPanel("start");

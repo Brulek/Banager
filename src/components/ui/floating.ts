@@ -105,8 +105,11 @@ export interface Placement {
  * it is cut off at the list's edge; a popover's arrow, `fromMiddle` from
  * its side, moves the other way and still points at the button, and it is
  * never moved so far that the arrow would come nearer its side than that.
- * Measured once each time the panel opens, from the button, so the answer
- * does not depend on where the panel happened to be drawn first.
+ * Measured each time the panel opens, and again while it is open whenever
+ * the window or the list it is in changes size -- dragging the window's
+ * edge happens outside the page, so it does not close the panel (r30 Z2's
+ * skeptic) -- always from the button, so the answer does not depend on
+ * where the panel happened to be drawn before.
  *
  * `fromMiddle`: where the panel's lined-up edge is -- that far to the
  * side of the button's middle, as a popover stands from its arrow
@@ -132,28 +135,46 @@ export function usePlacement(
       return;
     }
     const button = trigger.current;
-    const content = panel.current;
-    if (button === null || content === null) return;
-    const bounds = panelBounds(button);
-    const rect = button.getBoundingClientRect();
-    const needed = content.offsetHeight + 8;
-    const below = bounds.bottom - rect.bottom;
-    const above = rect.top - bounds.top;
-    const width = content.offsetWidth;
-    const middle = rect.left + rect.width / 2;
-    // The panel's left side lined up from the start, its right from the end.
-    const startLeft = fromMiddle === null ? rect.left : middle - fromMiddle;
-    const endRight = fromMiddle === null ? rect.right : middle + fromMiddle;
-    const fitsFromStart = startLeft + width <= bounds.right;
-    const fitsFromEnd = endRight - width >= bounds.left;
-    let align = preferred;
-    if (preferred === "start" && !fitsFromStart && fitsFromEnd) align = "end";
-    if (preferred === "end" && !fitsFromEnd && fitsFromStart) align = "start";
-    settle({
-      side: below < needed && above > below ? "above" : "below",
-      align,
-      shift: shiftInside(align === "start" ? startLeft : endRight - width, width, bounds, middle, fromMiddle),
-    });
+    if (button === null || panel.current === null) return;
+    const measure = () => {
+      const content = panel.current;
+      if (content === null) return;
+      const bounds = panelBounds(button);
+      const rect = button.getBoundingClientRect();
+      const needed = content.offsetHeight + 8;
+      const below = bounds.bottom - rect.bottom;
+      const above = rect.top - bounds.top;
+      const width = content.offsetWidth;
+      const middle = rect.left + rect.width / 2;
+      // The panel's left side lined up from the start, its right from the end.
+      const startLeft = fromMiddle === null ? rect.left : middle - fromMiddle;
+      const endRight = fromMiddle === null ? rect.right : middle + fromMiddle;
+      const fitsFromStart = startLeft + width <= bounds.right;
+      const fitsFromEnd = endRight - width >= bounds.left;
+      let align = preferred;
+      if (preferred === "start" && !fitsFromStart && fitsFromEnd) align = "end";
+      if (preferred === "end" && !fitsFromEnd && fitsFromStart) align = "start";
+      settle({
+        side: below < needed && above > below ? "above" : "below",
+        align,
+        shift: shiftInside(align === "start" ? startLeft : endRight - width, width, bounds, middle, fromMiddle),
+      });
+    };
+    measure();
+    // The window, for a panel kept inside it; the list, which can also be
+    // narrowed without the window changing. Each answer that is the same
+    // as the last is not set again (`settle`).
+    window.addEventListener("resize", measure);
+    const list = scrollingAncestor(button);
+    let watcher: ResizeObserver | null = null;
+    if (list !== null) {
+      watcher = new ResizeObserver(measure);
+      watcher.observe(list);
+    }
+    return () => {
+      window.removeEventListener("resize", measure);
+      watcher?.disconnect();
+    };
   }, [open, trigger, panel, preferred, fromMiddle]);
   return placement;
 }
