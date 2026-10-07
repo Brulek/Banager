@@ -44,8 +44,13 @@ export function linkedCommands(plan: Plan, program: string | null): string[] {
  * never runs it (docs/what-we-run.md, "Why a source did not answer").
  */
 export function overwriteCommand(plan: Plan, formula: string): string {
+  return overwriteTokens(plan, formula).join(" ");
+}
+
+/** `overwriteCommand`'s tokens, each as `displayToken` spells it. */
+function overwriteTokens(plan: Plan, formula: string): string[] {
   const program = "Command" in plan.action ? plan.action.Command.program : "brew";
-  return [program, "link", "--force", "--overwrite", formula].map(displayToken).join(" ");
+  return [program, "link", "--force", "--overwrite", formula].map(displayToken);
 }
 
 export interface LinkFixSheetProps {
@@ -274,8 +279,17 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
               {t("noAnswer.sheet.blockedText", { formula: fix.key.name })}
             </p>
             <div role="group" aria-label={t("noAnswer.sheet.commandLabel")}>
+              {/* A line breaks between tokens, never inside one: 「--」 /
+                  「overwrite」 reads as something else (as `PasswordCommand`). */}
               <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
-                {terminal}
+                {plan === undefined
+                  ? terminal
+                  : overwriteTokens(plan, fix.key.name).flatMap((token, index) => [
+                      ...(index === 0 ? [] : [" "]),
+                      <span key={index} className="whitespace-nowrap">
+                        {token}
+                      </span>,
+                    ])}
               </code>
             </div>
             <div className="flex items-center justify-start">
