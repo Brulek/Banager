@@ -1738,10 +1738,16 @@ impl BrewAdapter {
         // last `brew update` that succeeded: after `MayBeStale` this reads
         // the catalogue already on disk, like `brew outdated` above.
         let installed = self.inventory(inst).await.unwrap_or_default();
-        if !installed.is_empty() {
-            for candidate in &mut candidates {
-                candidate.key = qualified_key(&installed, &candidate.key);
-                if is_disabled(&installed, &candidate.key) {
+        let index = InventoryIndex::new(&installed);
+        for candidate in &mut candidates {
+            if let Some(artifact) = index.resolve(&candidate.key) {
+                candidate.key = artifact.key.clone();
+                if artifact
+                    .facts
+                    .homebrew
+                    .as_ref()
+                    .is_some_and(|facts| facts.disabled.is_some())
+                {
                     candidate.blocked = Some(UpdateBlocked::Disabled);
                 }
             }
@@ -2183,18 +2189,30 @@ fn qualified_key(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> Artifact
         .unwrap_or_else(|| key.clone())
 }
 
-/// Whether the inventory lists exactly this package (`key`, already
-/// qualified by `qualified_key`) with Homebrew's `disabled` mark. The key
-/// must match in full: a formula and a cask may share a name, and only
-/// the one Homebrew disabled is held back.
-fn is_disabled(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> bool {
-    artifacts.iter().any(|a| {
-        a.key == *key
-            && a.facts
-                .homebrew
-                .as_ref()
-                .is_some_and(|homebrew| homebrew.disabled.is_some())
-    })
+/// Round-local full and short names share a lookup. Insert in inventory
+/// order so a short name keeps the old first-match rule, even when an
+/// exact unqualified name occurs after a tapped package of that name.
+struct InventoryIndex<'a> {
+    names: HashMap<(ArtifactKind, &'a str), &'a InstalledArtifact>,
+}
+
+impl<'a> InventoryIndex<'a> {
+    fn new(artifacts: impl IntoIterator<Item = &'a InstalledArtifact>) -> Self {
+        let mut names = HashMap::new();
+        for artifact in artifacts {
+            names
+                .entry((artifact.key.kind, artifact.key.name.as_str()))
+                .or_insert(artifact);
+            if let Some(short) = artifact.key.name.rsplit('/').next() {
+                names.entry((artifact.key.kind, short)).or_insert(artifact);
+            }
+        }
+        Self { names }
+    }
+
+    fn resolve(&self, key: &ArtifactKey) -> Option<&'a InstalledArtifact> {
+        self.names.get(&(key.kind, key.name.as_str())).copied()
+    }
 }
 
 /// `brew link --formula --force <name>`: the one link Banager runs, after
@@ -2902,6 +2920,74 @@ mod tests {
     use crate::runner::MockRunner;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn test_inventory_index_preserves_first_match_and_kind() {
+        let mut artifacts = vec![
+            crate::testing::installed_artifact("brew:1", ArtifactKind::Formula, "team/tap/tool"),
+            crate::testing::installed_artifact("brew:1", ArtifactKind::Formula, "tool"),
+            crate::testing::installed_artifact("brew:1", ArtifactKind::Cask, "tool"),
+            crate::testing::installed_artifact("brew:1", ArtifactKind::Formula, "other/tap/tool"),
+        ];
+        artifacts.extend((0..5000).map(|i| {
+            crate::testing::installed_artifact(
+                "brew:1",
+                ArtifactKind::Formula,
+                &format!("team/tap/tool-{i}"),
+            )
+        }));
+        let mut visits = 0;
+        let index = InventoryIndex::new(artifacts.iter().inspect(|_| visits += 1));
+        assert_eq!(
+            visits,
+            artifacts.len(),
+            "build the lookup with one inventory pass"
+        );
+        let short = ArtifactKey {
+            instance_id: "brew:1".into(),
+            kind: ArtifactKind::Formula,
+            name: "tool".into(),
+        };
+        assert_eq!(index.resolve(&short).unwrap().key.name, "team/tap/tool");
+        assert_eq!(
+            index
+                .resolve(&ArtifactKey {
+                    kind: ArtifactKind::Cask,
+                    ..short.clone()
+                })
+                .unwrap()
+                .key
+                .kind,
+            ArtifactKind::Cask
+        );
+        assert_eq!(
+            index
+                .resolve(&ArtifactKey {
+                    name: "other/tap/tool".into(),
+                    ..short.clone()
+                })
+                .unwrap()
+                .key
+                .name,
+            "other/tap/tool"
+        );
+        assert!(index
+            .resolve(&ArtifactKey {
+                name: "absent".into(),
+                ..short.clone()
+            })
+            .is_none());
+        for i in 0..5000 {
+            let key = ArtifactKey {
+                name: format!("tool-{i}"),
+                ..short.clone()
+            };
+            assert_eq!(
+                index.resolve(&key).unwrap().key.name,
+                format!("team/tap/tool-{i}")
+            );
+        }
+    }
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
