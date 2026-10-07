@@ -600,14 +600,14 @@
     }
   },
   "kegLinks": {
-    "relinks": "Homebrew doesn't link {{name}} into Terminal, and you linked it yourself. The update unlinks it; Banager links it back afterwards.",
-    "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back after the update, Banager runs brew link --formula --force {{name}}, which replaces no other program's files.",
-    "relinksDetailNoCommands": "If it isn't linked back after the update, Banager runs brew link --formula --force {{name}}, which replaces no other program's files.",
+    "relinks": "{{name}} is linked into Terminal. The update unlinks it first and Homebrew links it back; Banager checks afterwards and links it if it isn't.",
+    "relinksDetail": "Its commands in Terminal: {{commands}}. If they aren't back, Banager runs brew link --formula --force {{name}}, which stops rather than overwrite another program's file.",
+    "relinksDetailNoCommands": "If it isn't back, Banager runs brew link --formula --force {{name}}, which stops rather than overwrite another program's file.",
     "logRelinking": "The update is done. Running brew link --formula --force {{name}} to link it back into Terminal.",
     "logStillLinked": "Homebrew linked {{name}} back into Terminal itself, so brew link wasn't needed.",
-    "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run brew link --force {{name}} in Terminal; if a file is in the way, it says which.",
+    "logNoLongerLinked": "{{name}} isn't linked back into Terminal, so typing {{commands}} no longer runs it. To link it back, run brew link --formula --force {{name}} in Terminal; if a file is in the way, it says which.",
     "blockedBadge": "Can't link back",
-    "blockedDetail": "You linked it into Terminal yourself, and another program now uses one of its commands' places. An update would unlink it with no way to link it back, so it can't be updated here.",
+    "blockedDetail": "It's linked into Terminal, but another file is now where one of its commands goes. An update would unlink it with no way to link it back, so it can't be updated here.",
     "held": "In the way: {{path}}",
     "heldMany": "In the way: {{path}} and {{others}} more",
     "blockedRefused": "Couldn't update it: it couldn't be linked back into Terminal afterwards."

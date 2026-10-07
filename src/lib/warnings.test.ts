@@ -1163,35 +1163,43 @@ describe("warningLines", () => {
   });
 });
 
-describe("y1-keg: a keg-only formula linked by hand is linked back after its update", () => {
+describe("y1-keg: a keg-only formula linked into Terminal is linked back after its update", () => {
   const zh = i18n.getFixedT("zh-CN");
   const enT = i18n.getFixedT("en");
   const zhHant = i18n.getFixedT("zh-Hant");
   const relinks: Warning = { HomebrewRelinksAfterUpdate: { name: "node@22", commands: ["node", "npm", "npx"] } };
   const noCommands: Warning = { HomebrewRelinksAfterUpdate: { name: "openssl@3", commands: [] } };
 
-  it("says the update unlinks it and that it is linked back, with the commands and the command behind the ⓘ", () => {
+  it("says, not who linked it, that Homebrew links it back and it is checked after, with the commands and the command behind the ⓘ", () => {
+    // Homebrew links some keg-only formulae itself (a versioned one
+    // installed on request, `formula_installer.rb:1923-1934`), and a
+    // formula can turn keg-only after it was linked: who linked it is not
+    // known, so it is not said (y1-keg review).
     expect(warningText(zh, relinks)).toBe(
-      "node@22是Homebrew不会自动接到终端里的工具，你之前手动接上了。更新会断开它，更新后会再把它接上。",
+      "node@22已接在终端里。更新会先断开它，再由Homebrew接回；更新后会检查，没接回就把它接上。",
     );
     expect(warningText(zhHant, relinks)).toBe(
-      "node@22是Homebrew不會自動接到終端機裡的工具，你之前手動接上了。更新會中斷它的連結，更新後會再把它接上。",
+      "node@22已接在終端機裡。更新會先中斷它的連結，再由Homebrew接回；更新後會檢查，沒接回就把它接上。",
     );
     expect(warningText(enT, relinks)).toBe(
-      "Homebrew doesn't link node@22 into Terminal, and you linked it yourself. The update unlinks it; Banager links it back afterwards.",
+      "node@22 is linked into Terminal. The update unlinks it first and Homebrew links it back; Banager checks afterwards and links it if it isn't.",
     );
+    // `brew link` without `--overwrite` stops at another program's file
+    // rather than overwrite it -- not "replaces nothing": it does replace
+    // a cask's link, and unlinks the formulae its formula names
+    // (`keg.rb:850-856`, `unlink.rb:8-17`), as docs/what-we-run.md says.
     expect(warningLine(zh, relinks)?.detail).toBe(
-      "它接在终端里的命令：node、npm、npx。更新后如果它们没有接回去，会运行brew link --formula --force node@22，不会替换其他程序的文件。",
+      "它接在终端里的命令：node、npm、npx。没接回时会运行brew link --formula --force node@22；遇到其他程序的文件，它会停下，不会覆盖。",
     );
     expect(warningLine(zhHant, relinks)?.detail).toBe(
-      "它接在終端機裡的指令：node、npm、npx。更新後如果它們沒有接回去，會執行brew link --formula --force node@22，不會取代其他程式的檔案。",
+      "它接在終端機裡的指令：node、npm、npx。沒接回時會執行brew link --formula --force node@22；遇到其他程式的檔案，它會停下，不會覆寫。",
     );
     expect(warningLine(enT, relinks)?.detail).toBe(
-      "Its commands in Terminal: node, npm, npx. If they aren't back after the update, Banager runs brew link --formula --force node@22, which replaces no other program's files.",
+      "Its commands in Terminal: node, npm, npx. If they aren't back, Banager runs brew link --formula --force node@22, which stops rather than overwrite another program's file.",
     );
     // Linked by its record alone, with no command of its own.
     expect(warningLine(zh, noCommands)?.detail).toBe(
-      "更新后如果它没有接回去，会运行brew link --formula --force openssl@3，不会替换其他程序的文件。",
+      "没接回时会运行brew link --formula --force openssl@3；遇到其他程序的文件，它会停下，不会覆盖。",
     );
     expect(warningDetailKey(noCommands)).toBe("kegLinks.relinksDetailNoCommands");
   });

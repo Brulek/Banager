@@ -544,14 +544,14 @@
     }
   },
   "kegLinks": {
-    "relinks": "{{name}}是Homebrew不會自動接到終端機裡的工具，你之前手動接上了。更新會中斷它的連結，更新後會再把它接上。",
-    "relinksDetail": "它接在終端機裡的指令：{{commands}}。更新後如果它們沒有接回去，會執行brew link --formula --force {{name}}，不會取代其他程式的檔案。",
-    "relinksDetailNoCommands": "更新後如果它沒有接回去，會執行brew link --formula --force {{name}}，不會取代其他程式的檔案。",
+    "relinks": "{{name}}已接在終端機裡。更新會先中斷它的連結，再由Homebrew接回；更新後會檢查，沒接回就把它接上。",
+    "relinksDetail": "它接在終端機裡的指令：{{commands}}。沒接回時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
+    "relinksDetailNoCommands": "沒接回時會執行brew link --formula --force {{name}}；遇到其他程式的檔案，它會停下，不會覆寫。",
     "logRelinking": "更新已完成，接著執行brew link --formula --force {{name}}，把它重新接到終端機裡。",
     "logStillLinked": "Homebrew已把{{name}}重新接到終端機裡，不需要執行brew link。",
-    "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
+    "logNoLongerLinked": "{{name}}沒有重新接到終端機裡，輸入{{commands}}不再執行它。要接回去，可以在終端機裡執行brew link --formula --force {{name}}；如果有檔案擋住，它會說出是哪一個。",
     "blockedBadge": "無法重新接上",
-    "blockedDetail": "它是你手動接到終端機裡的，現在另一個程式佔用了它的指令的位置。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
+    "blockedDetail": "它已接在終端機裡，但它的指令位置上現在有別的檔案。更新會中斷它的連結，之後接不回去，所以無法在這裡更新。",
     "held": "擋住它的檔案：{{path}}",
     "heldMany": "擋住它的檔案：{{path}}等{{number}}個",
     "blockedRefused": "無法更新：更新後它接不回終端機。"

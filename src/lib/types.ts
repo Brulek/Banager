@@ -411,9 +411,10 @@ export type Warning =
    */
   | { HomebrewRemovesEveryVersion: { versions: string[] } }
   /**
-   * y1-keg (r6): `name` is a keg-only formula linked into the prefix, so
-   * `commands` are in Terminal; its update unlinks it, and once the update
-   * exits 0 Banager links it back where Homebrew did not
+   * y1-keg (r6): `name` is a keg-only formula linked into the prefix with
+   * `brew link` (Homebrew's record), so `commands` are in Terminal; its
+   * update unlinks it and Homebrew links it back, and once the update
+   * exits 0 Banager links it where Homebrew did not
    * (`brew link --formula --force <name>`, a `CommandThen` follow-up).
    */
   | { HomebrewRelinksAfterUpdate: { name: string; commands: string[] } }

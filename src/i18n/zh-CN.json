@@ -544,14 +544,14 @@
     }
   },
   "kegLinks": {
-    "relinks": "{{name}}是Homebrew不会自动接到终端里的工具，你之前手动接上了。更新会断开它，更新后会再把它接上。",
-    "relinksDetail": "它接在终端里的命令：{{commands}}。更新后如果它们没有接回去，会运行brew link --formula --force {{name}}，不会替换其他程序的文件。",
-    "relinksDetailNoCommands": "更新后如果它没有接回去，会运行brew link --formula --force {{name}}，不会替换其他程序的文件。",
+    "relinks": "{{name}}已接在终端里。更新会先断开它，再由Homebrew接回；更新后会检查，没接回就把它接上。",
+    "relinksDetail": "它接在终端里的命令：{{commands}}。没接回时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
+    "relinksDetailNoCommands": "没接回时会运行brew link --formula --force {{name}}；遇到其他程序的文件，它会停下，不会覆盖。",
     "logRelinking": "更新已完成，接着运行brew link --formula --force {{name}}，把它重新接到终端里。",
     "logStillLinked": "Homebrew已把{{name}}重新接到终端里，不需要运行brew link。",
-    "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --force {{name}}；如果有文件挡住，它会说出是哪个。",
+    "logNoLongerLinked": "{{name}}没有重新接到终端里，输入{{commands}}不再运行它。要接回去，可以在终端里运行brew link --formula --force {{name}}；如果有文件挡住，它会说出是哪个。",
     "blockedBadge": "无法重新接上",
-    "blockedDetail": "它是你手动接到终端里的，现在另一个程序占用了它的命令的位置。更新会断开它，之后接不回去，所以无法在这里更新。",
+    "blockedDetail": "它已接在终端里，但它的命令位置上现在有别的文件。更新会断开它，之后接不回去，所以无法在这里更新。",
     "held": "挡住它的文件：{{path}}",
     "heldMany": "挡住它的文件：{{path}}等{{number}}个",
     "blockedRefused": "无法更新：更新后它接不回终端。"

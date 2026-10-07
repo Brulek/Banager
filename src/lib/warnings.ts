@@ -301,7 +301,7 @@ export function warningKey(warning: Warning): string | null {
   // U9: plural on `{{count}}`, the versions it names.
   if ("HomebrewCleansUpOldVersions" in warning) return "brewVersions.cleansUp";
   if ("HomebrewRemovesEveryVersion" in warning) return "brewVersions.removesEvery";
-  // y1-keg: a keg-only formula linked by hand is linked back after its update.
+  // y1-keg: a keg-only formula linked with `brew link` is linked back after its update.
   if ("HomebrewRelinksAfterUpdate" in warning) return "kegLinks.relinks";
   // The first file in the way, and how many there are.
   if ("LinkPlacesHeld" in warning) {
@@ -814,7 +814,7 @@ export function isCaution(warning: Warning): boolean {
     // What Homebrew does by default, each version named (U9).
     "HomebrewCleansUpOldVersions" in warning ||
     "HomebrewRemovesEveryVersion" in warning ||
-    // How Banager keeps what the person linked in Terminal (y1-keg).
+    // How a keg-only formula linked into Terminal stays there (y1-keg).
     "HomebrewRelinksAfterUpdate" in warning ||
     // Why a row has no Update button, said on that row.
     "LinkPlacesHeld" in warning ||

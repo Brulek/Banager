@@ -917,12 +917,13 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     refused: "updates.disabledBlocked.refused",
   },
   LinkTaken: {
-    // y1-keg: a keg-only formula the person linked into Terminal, where
-    // another program now holds one of its commands' places -- npm's own
-    // copy of itself, after an update of npm with npm. The update would
-    // unlink it, and nothing gets past that file to link it back, so its
-    // commands would be gone from Terminal. Nothing to run: Banager does
-    // not pass `--overwrite`, which would delete the other program's file.
+    // y1-keg: a keg-only formula linked into Terminal with `brew link`
+    // (its record), where another file is now at one of its commands'
+    // places -- npm's own copy of itself, after an update of npm with npm.
+    // The update would unlink it, and nothing gets past that file to link
+    // it back, so its commands would be gone from Terminal. Who linked it
+    // is not known, so the sentence does not say. Nothing to run: Banager
+    // does not pass `--overwrite`, which would delete the other file.
     badge: "kegLinks.blockedBadge",
     detail: "kegLinks.blockedDetail",
     commandInDetail: false,
