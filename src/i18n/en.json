@@ -822,16 +822,23 @@
     "fix": "Fix…",
     "sheet": {
       "title": "Link “{{formula}}”?",
-      "text": "“{{formula}}” has the {{program}} that {{source}} needs, but it isn't linked where Terminal looks. Once it's linked, {{source}} can run.",
+      "text": "“{{formula}}” has the {{program}} that {{source}} needs, but it isn't linked where Terminal looks.",
+      "puts": "Linking puts its {{commands}} there, so typing any of them in Terminal runs the one in “{{formula}}”, version {{version}}.",
+      "putsUnlisted": "Linking puts its commands there, so typing {{program}} in Terminal runs the one in “{{formula}}”, version {{version}}.",
+      "then": "{{first}} {{then}}",
       "version": "Version to link:",
       "checking": "Checking whether it can be linked…",
-      "conflicts_one": "{{paths}} is already there, and Homebrew won't replace it, so nothing can be linked.",
-      "conflicts_other": "{{paths}} are already there, and Homebrew won't replace them, so nothing can be linked.",
+      "conflicts_one": "{{paths}} is already there, and Homebrew won't replace it on its own, so it can't be linked.",
+      "conflicts_other": "{{paths}} are already there, and Homebrew won't replace them on its own, so it can't be linked.",
       "planError": "Couldn't check whether it can be linked: {{message}}",
       "planErrorPlain": "Couldn't check whether it can be linked.",
       "submitError": "Couldn't start the link: {{message}}",
       "submitErrorPlain": "Couldn't start the link.",
-      "confirm": "Link"
+      "confirm": "Link",
+      "blockedTitle": "Can't link “{{formula}}”",
+      "blockedText": "To link it, you can run this command in Terminal. It deletes the files in the way, the ones above among them, and links the ones in “{{formula}}” in their place.",
+      "commandLabel": "Command to run in Terminal",
+      "after": "When it's done, click Check Again."
     },
     "op": {
       "kind": "Link",

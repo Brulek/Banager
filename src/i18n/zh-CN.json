@@ -756,15 +756,22 @@
     "fix": "修复…",
     "sheet": {
       "title": "要链接“{{formula}}”吗？",
-      "text": "“{{formula}}”中有{{source}}需要的{{program}}，但没有链接到终端能找到的地方。链接后，{{source}}就能运行。",
+      "text": "“{{formula}}”中有{{source}}需要的{{program}}，但没有链接到终端能找到的地方。",
+      "puts": "链接会把它的{{commands}}放到那里，之后在终端里输入这些命令，运行的都是“{{formula}}”中的这一份，版本是{{version}}。",
+      "putsUnlisted": "链接会把它的命令放到那里，之后在终端里输入{{program}}，运行的是“{{formula}}”中的这一份，版本是{{version}}。",
+      "then": "{{first}}{{then}}",
       "version": "要链接的版本：",
       "checking": "正在检查能否链接…",
-      "conflicts_other": "{{paths}}已存在，Homebrew不会替换，因此无法链接。",
+      "conflicts_other": "{{paths}}已存在，Homebrew不会自行替换，因此无法链接。",
       "planError": "无法检查能否链接：{{message}}",
       "planErrorPlain": "无法检查能否链接。",
       "submitError": "无法开始链接：{{message}}",
       "submitErrorPlain": "无法开始链接。",
-      "confirm": "链接"
+      "confirm": "链接",
+      "blockedTitle": "无法链接“{{formula}}”",
+      "blockedText": "要链接它，可以在终端里运行下面的命令。它会删除挡住链接的文件，包括上面这些，换成“{{formula}}”中的。",
+      "commandLabel": "要在终端里运行的命令",
+      "after": "完成后，点按“重新检查”。"
     },
     "op": {
       "kind": "链接",

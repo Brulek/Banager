@@ -756,15 +756,22 @@
     "fix": "修復…",
     "sheet": {
       "title": "要連結「{{formula}}」嗎？",
-      "text": "「{{formula}}」中有{{source}}需要的{{program}}，但沒有連結到終端機找得到的地方。連結後，{{source}}就能執行。",
+      "text": "「{{formula}}」中有{{source}}需要的{{program}}，但沒有連結到終端機找得到的地方。",
+      "puts": "連結會把它的{{commands}}放到那裡，之後在終端機輸入這些指令，執行的都是「{{formula}}」中的這一份，版本是{{version}}。",
+      "putsUnlisted": "連結會把它的指令放到那裡，之後在終端機輸入{{program}}，執行的是「{{formula}}」中的這一份，版本是{{version}}。",
+      "then": "{{first}}{{then}}",
       "version": "要連結的版本：",
       "checking": "正在檢查能否連結…",
-      "conflicts_other": "{{paths}}已存在，Homebrew不會取代，因此無法連結。",
+      "conflicts_other": "{{paths}}已存在，Homebrew不會自行取代，因此無法連結。",
       "planError": "無法檢查能否連結：{{message}}",
       "planErrorPlain": "無法檢查能否連結。",
       "submitError": "無法開始連結：{{message}}",
       "submitErrorPlain": "無法開始連結。",
-      "confirm": "連結"
+      "confirm": "連結",
+      "blockedTitle": "無法連結「{{formula}}」",
+      "blockedText": "要連結它，可以在終端機執行下面的指令。它會刪除擋住連結的檔案，包括上面這些，換成「{{formula}}」中的。",
+      "commandLabel": "要在終端機執行的指令",
+      "after": "完成後，點按「重新檢查」。"
     },
     "op": {
       "kind": "連結",

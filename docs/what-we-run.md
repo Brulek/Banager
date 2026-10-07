@@ -1625,7 +1625,15 @@ formula's command names already -- npm's own `npm`, after npm was updated
 through itself -- Homebrew would link nothing and say so; the preview says
 it first and offers no Link button, `Session::submit` refuses such a plan
 whatever the window sends (`SubmitError::LinkBlocked`), and `--overwrite`,
-which would replace that file, is never passed.
+which would replace that file, is never passed. In its place the sheet
+shows, as text to copy, the command that would link it anyway --
+`<brew> link --force --overwrite {name}`, which deletes what is in the
+way -- for the person to run in Terminal if they choose, and Check Again
+for after; Banager never runs it. The preview also names the commands the
+link puts where Terminal looks (`Warning::LinkPutsCommands`), and the
+version they would run: linking a formula changes which `node`, `npm`,
+`npx` and `corepack` Terminal runs for everything, not only for the
+source that needed it.
 
 ## npm
 

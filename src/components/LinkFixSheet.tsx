@@ -1,11 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
-import { adapterLabel, instanceLabels, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { useCheckAgain, usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
+import { adapterLabel, instanceLabels, namesInSentence, planErrorDetail, planErrorMessage } from "../lib/sources";
 import { linkFixesOf, saidNoAnswer } from "../lib/noAnswer";
 import { warningText } from "../lib/warnings";
-import type { LinkFix, OpRequest, Warning } from "../lib/types";
+import { displayToken } from "../lib/format";
+import type { LinkFix, OpRequest, Plan, Warning } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
+import { CopyButton } from "./CopyButton";
 import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
@@ -21,6 +23,31 @@ function isLinkConflicts(warning: Warning): warning is { LinkConflicts: { paths:
   return typeof warning !== "string" && "LinkConflicts" in warning;
 }
 
+/**
+ * The commands a link's preview says it puts where Terminal looks
+ * (`Warning.LinkPutsCommands`), the program the source needed first --
+ * 「node、corepack、npm和npx」 -- or none when the preview did not list them.
+ */
+export function linkedCommands(plan: Plan, program: string | null): string[] {
+  const names = plan.warnings.flatMap((warning) =>
+    typeof warning !== "string" && "LinkPutsCommands" in warning ? warning.LinkPutsCommands.names : [],
+  );
+  return program !== null && names.includes(program)
+    ? [program, ...names.filter((name) => name !== program)]
+    : names;
+}
+
+/**
+ * What the person can run in Terminal where Homebrew would link nothing
+ * (`Warning.LinkConflicts`): the same `brew link --force` with
+ * `--overwrite`, which deletes what is in the way. Text only: Banager
+ * never runs it (docs/what-we-run.md, "Why a source did not answer").
+ */
+export function overwriteCommand(plan: Plan, formula: string): string {
+  const program = "Command" in plan.action ? plan.action.Command.program : "brew";
+  return [program, "link", "--force", "--overwrite", formula].map(displayToken).join(" ");
+}
+
 export interface LinkFixSheetProps {
   /** The source whose notice's Fix… opened it, or null while it is closed. */
   instanceId: string | null;
@@ -31,20 +58,29 @@ export interface LinkFixSheetProps {
  * Fix… on a source whose launcher could not find a program a keg-only
  * Homebrew formula has (src/lib/noAnswer.ts): the preview of `brew link
  * --force <formula>`, as an alert -- 「要链接“node@22”吗？」, the formula's
- * icon, Homebrew and its version under that; what linking it does, in a
- * sentence; with more than one formula that has the program, a popup to
- * choose, newest first and chosen to begin with; the command, one click
- * away (`CommandPreview`); and Cancel and Link, the default button.
+ * icon, Homebrew and its version under that; why, in a sentence, and once
+ * the preview has read them, what linking changes: the formula's commands
+ * (`Warning.LinkPutsCommands`) go where Terminal looks, so typing `node`
+ * runs that version -- no promise that the source will then run, which the
+ * check after the link says; with more than one formula that has the
+ * program, a popup to choose, newest first and chosen to begin with; the
+ * command, one click away (`CommandPreview`); and Cancel and Link, the
+ * default button.
  *
  * It plans the operation itself (`OpKind.Link`, through
  * `Session::issue_listed_plan`, which plans only a formula a source's
  * reason offers), so nothing runs without this preview, and Link submits
- * that plan and nothing else. Where the preview found files already in the
- * way (`Warning.LinkConflicts` -- npm's own `npm`, after npm was updated
- * through itself), it says so, with ⚠︎, and Link stays off: Homebrew would
- * link nothing. Once submitted, it closes, and the operation bar takes it
- * from there; the check that follows a finished operation says whether
- * the source answers now.
+ * that plan and nothing else. Once submitted, it closes, and the operation
+ * bar takes it from there; the check that follows a finished operation
+ * says whether the source answers now.
+ *
+ * Where the preview found files already in the way (`Warning.LinkConflicts`
+ * -- npm's own `npm`, after npm was updated through itself), Homebrew would
+ * link nothing, and the sheet becomes what to do instead: 「无法链接
+ * “node@22”」, what is in the way with ⚠︎, the Terminal command that
+ * deletes it and links (`overwriteCommand`) with Copy Command, and Close
+ * and Check Again, for after it ran. No Link, and nothing Banager runs:
+ * `--overwrite` deletes files, and is the person's to run.
  */
 export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const { t } = useTranslation();
@@ -52,6 +88,7 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const { data: settings } = useSettings();
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
+  const { checkAgain, checking } = useCheckAgain();
   const cancelRef = useRef<HTMLButtonElement>(null);
   const popupId = useId();
   const textId = useId();
@@ -91,6 +128,21 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
   const issued = planMutation.data;
   const plan = issued?.plan;
   const conflicts = plan?.warnings.filter(isLinkConflicts) ?? [];
+  // Homebrew would link nothing: the sheet says what would instead.
+  const blocked = conflicts.length > 0;
+  const program = why?.missing_program ?? null;
+  const commands = plan === undefined ? [] : linkedCommands(plan, program);
+  // What linking changes, once the preview has read the formula's commands.
+  const puts =
+    plan === undefined || fix === undefined
+      ? null
+      : commands.length > 0
+        ? t("noAnswer.sheet.puts", {
+            commands: namesInSentence(t, commands),
+            formula: fix.key.name,
+            version: fix.version,
+          })
+        : t("noAnswer.sheet.putsUnlisted", { program: program ?? "", formula: fix.key.name, version: fix.version });
   // In the confirmations' words for a caution: ⚠︎, then what is in the way.
   const conflictLines = conflicts.map((warning) => ({
     text: warningText(t, warning) ?? "",
@@ -126,7 +178,13 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
     });
   }
 
-  const title = fix === undefined ? t("noAnswer.fix") : t("noAnswer.sheet.title", { formula: fix.key.name });
+  const title =
+    fix === undefined
+      ? t("noAnswer.fix")
+      : t(blocked ? "noAnswer.sheet.blockedTitle" : "noAnswer.sheet.title", { formula: fix.key.name });
+  const terminal = plan === undefined || fix === undefined ? null : overwriteCommand(plan, fix.key.name);
+  const reason =
+    fix === undefined ? "" : t("noAnswer.sheet.text", { formula: fix.key.name, program: program ?? "", source });
   return (
     <Dialog
       open={open && fix !== undefined}
@@ -140,24 +198,43 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
       describedBy={textId}
       initialFocus={cancelRef}
       footer={
-        <>
-          <button ref={cancelRef} type="button" onClick={onClose} className={BUTTON.large.grey}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!plan || conflicts.length > 0 || submitMutation.isPending}
-            className={BUTTON.large.default}
-          >
-            {t("noAnswer.sheet.confirm")}
-          </button>
-        </>
+        blocked ? (
+          <>
+            <button ref={cancelRef} type="button" onClick={onClose} className={BUTTON.large.grey}>
+              {t("common.close")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                checkAgain();
+                onClose();
+              }}
+              disabled={checking}
+              className={BUTTON.large.default}
+            >
+              {t("header.checkAgain")}
+            </button>
+          </>
+        ) : (
+          <>
+            <button ref={cancelRef} type="button" onClick={onClose} className={BUTTON.large.grey}>
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={!plan || submitMutation.isPending}
+              className={BUTTON.large.default}
+            >
+              {t("noAnswer.sheet.confirm")}
+            </button>
+          </>
+        )
       }
     >
       {fix !== undefined && why !== null ? (
         <SheetText id={textId}>
-          {t("noAnswer.sheet.text", { formula: fix.key.name, program: why.missing_program ?? "", source })}
+          {puts === null ? reason : t("noAnswer.sheet.then", { first: reason, then: puts })}
         </SheetText>
       ) : null}
 
@@ -184,16 +261,31 @@ export function LinkFixSheet({ instanceId, onClose }: LinkFixSheetProps) {
         <div className="mt-3">{refusal(submitMutation.error.message, "noAnswer.sheet.submitError")}</div>
       ) : null}
 
-      {plan && issued ? (
+      {plan && issued && blocked && terminal !== null && fix !== undefined ? (
         <>
-          {conflictLines.length > 0 ? (
-            <SheetSection title={t("uninstall.warningsTitle")} titleHidden>
-              <SheetLines lines={conflictLines} />
-            </SheetSection>
-          ) : null}
-          <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />
+          <SheetSection title={t("uninstall.warningsTitle")} titleHidden>
+            <SheetLines lines={conflictLines} />
+          </SheetSection>
+          {/* What would link it instead, for the person to run: the
+              Terminal command, set as code that selects whole, Copy
+              Command, and what to do after (as `PasswordCommand`). */}
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="break-words text-body text-foreground">
+              {t("noAnswer.sheet.blockedText", { formula: fix.key.name })}
+            </p>
+            <div role="group" aria-label={t("noAnswer.sheet.commandLabel")}>
+              <code className="block select-all break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
+                {terminal}
+              </code>
+            </div>
+            <div className="flex items-center justify-start">
+              <CopyButton text={terminal} label={t("common.copyCommand")} size="regular" />
+            </div>
+            <p className="break-words text-small text-muted">{t("noAnswer.sheet.after")}</p>
+          </div>
         </>
       ) : null}
+      {plan && issued && !blocked ? <CommandPreview plans={[{ id: issued.id, action: plan.action }]} /> : null}
     </Dialog>
   );
 }
