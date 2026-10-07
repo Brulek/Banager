@@ -19,7 +19,7 @@ use crate::protected::{look, Protected};
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use parse::{
-    changed_blob_bytes, config_digest, layer_digests, parse_tags, parse_version,
+    changed_blob_bytes, config_digest, is_manifest_list, layer_digests, parse_tags, parse_version,
     split_model_reference,
 };
 use std::path::{Component, Path, PathBuf};
@@ -484,6 +484,15 @@ impl OllamaAdapter {
                 LookupFailure::from(reason)
             }
         })?;
+        // An Ollama 0.40 manifest list (one model per runner) has no layers
+        // of its own, and its /api/tags row carries the selected child's
+        // digest. Not compared, by design: the same at every check.
+        if is_manifest_list(&local_json) {
+            return Err(LookupFailure::not_looked_up(format!(
+                "local manifest {} is a manifest list (one model per runner), which is not compared",
+                local_path.display()
+            )));
+        }
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
 

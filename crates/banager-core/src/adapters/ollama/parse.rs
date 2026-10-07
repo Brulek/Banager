@@ -87,10 +87,24 @@ struct ManifestConfig {
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
+    #[serde(default, rename = "mediaType")]
+    media_type: Option<String>,
     #[serde(default)]
     layers: Vec<ManifestLayer>,
     #[serde(default)]
     config: Option<ManifestConfig>,
+}
+
+/// Ollama's own names for a manifest and for a manifest list (one child
+/// manifest per runner, Ollama 0.40; `manifest/manifest.go`).
+const MANIFEST_MEDIA_TYPE: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const MANIFEST_LIST_MEDIA_TYPE: &str = "application/vnd.ollama.manifest.list.v2+json";
+
+/// Whether `json` is an Ollama 0.40 manifest list (its top-level
+/// `mediaType`), which names one child manifest per runner and no layers.
+pub fn is_manifest_list(json: &str) -> bool {
+    serde_json::from_str::<Manifest>(json)
+        .is_ok_and(|m| m.media_type.as_deref() == Some(MANIFEST_LIST_MEDIA_TYPE))
 }
 
 /// Parses a v2 Docker-distribution manifest (the shape both the local
@@ -104,6 +118,13 @@ struct Manifest {
 pub fn layer_digests(json: &str) -> Result<HashSet<String>, AdapterError> {
     let manifest: Manifest =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    // A manifest list names its children, not layers: read as a manifest it
+    // would be an empty set, equal to another list's and unlike any model's.
+    if manifest.media_type.as_deref() == Some(MANIFEST_LIST_MEDIA_TYPE) {
+        return Err(AdapterError::Parse(
+            "a manifest list (one model per runner) is not compared".to_string(),
+        ));
+    }
     // Ollama 0.40's WriteLegacyAnchor adds manifest-blob descriptors as
     // layers solely to protect them from older daemons' garbage collectors.
     // These bytes are not the pulled manifest, even if a downgraded daemon
@@ -111,10 +132,7 @@ pub fn layer_digests(json: &str) -> Result<HashSet<String>, AdapterError> {
     if manifest.layers.iter().any(|layer| {
         matches!(
             layer.media_type.as_deref(),
-            Some(
-                "application/vnd.docker.distribution.manifest.v2+json"
-                    | "application/vnd.ollama.manifest.list.v2+json"
-            )
+            Some(MANIFEST_MEDIA_TYPE | MANIFEST_LIST_MEDIA_TYPE)
         )
     }) {
         return Err(AdapterError::Parse(
@@ -317,6 +335,27 @@ mod tests {
             local_digests, registry_digests,
             "the recorded fixture pair is the already-up-to-date case"
         );
+    }
+
+    #[test]
+    fn test_a_manifest_list_is_never_an_empty_layer_set() {
+        // Ollama 0.40's Manifest.MarshalJSON for a list: children, no layers.
+        // Read as a manifest it would be an empty set, equal to any other
+        // list's -- a model that never has an update.
+        let list = concat!(
+            r#"{"schemaVersion":2,"mediaType":"application/vnd.ollama.manifest.list.v2+json","#,
+            r#""manifests":[{"mediaType":"application/vnd.docker.distribution.manifest.v2+json","#,
+            r#""digest":"sha256:5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e","#,
+            r#""runner":"mlx","format":"safetensors"}]}"#
+        );
+        assert!(is_manifest_list(list));
+        assert!(layer_digests(list).is_err());
+        let recorded = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/registry-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read registry manifest fixture");
+        assert!(!is_manifest_list(&recorded));
+        assert!(!is_manifest_list("not json"));
     }
 
     /// A v2 manifest with `config` and `layers`, each `(digest, size)`; a

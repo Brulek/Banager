@@ -2355,8 +2355,13 @@ file, link or directory is created or changed by this check.
 Ollama 0.40 leaves a downgrade anchor at the old path with extra manifest-blob
 layers. Such a stand-in is rejected, even if it is the only file left and
 its digest matches an older daemon's answer; it is never compared as a real
-model manifest. For a real manifest, Banager first checks that the SHA-256
-of its original bytes matches the live
+model manifest. A manifest list -- what 0.40 stores for a tag the registry
+serves with one model per runner (`mediaType`
+`application/vnd.ollama.manifest.list.v2+json`, no layers of its own;
+its `/api/tags` row carries the selected child's digest) -- is not
+compared either: "could not check", with no registry request
+(`Warning::NotLookedUpHere`, below). For a real manifest, Banager first
+checks that the SHA-256 of its original bytes matches the live
 `/api/tags` manifest digest. A mismatch, including a leftover default-store
 copy when the local daemon uses another model folder or port, is "could
 not check" with no registry request or download estimate. Only a matching
@@ -4116,8 +4121,9 @@ not read (`protected::look`; How Banager runs anything, above):
   including its link target in `~/.ollama/models/blobs/sha256-<digest>`;
   `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}` only
   when that model's v2 entry or target is missing. Both reads use the same
-  protected-place, regular-file and 16 MiB limits; downgrade anchors are
-  refused, and nothing in the model store is written (Ollama's section).
+  protected-place, regular-file and 16 MiB limits; downgrade anchors and
+  manifest lists are not compared, and nothing in the model store is
+  written (Ollama's section).
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each

@@ -2,8 +2,8 @@
 //! Source: ollama/ollama v0.40.0 manifest/{paths,manifest}.go and server/images.go.
 //! The Mac had only a legacy manifest on 2026-10-07. REAL_MANIFEST is the recorded
 //! fixture, byte-identical to it (251725 bytes, 1209 layers); the 0.40 relative
-//! symlink and downgrade anchor below are reconstructed from upstream's
-//! writers, not claimed as a recording of a pull on this Mac.
+//! symlink, downgrade anchor and manifest list below are reconstructed from
+//! upstream's writers, not claimed as a recording of a pull on this Mac.
 
 use super::*;
 use crate::http::mock::MockHttpClient;
@@ -223,6 +223,71 @@ async fn v2_still_reports_real_registry_changes_and_download_bytes() {
     assert!(rows[0].checkable);
     assert_eq!(rows[0].download_bytes, Some(715_161_924));
     assert_eq!(calls, vec![TAGS, REGISTRY]);
+}
+
+/// A tag the registry serves as a manifest list (one child per runner), stored
+/// the way 0.40's PullModel leaves it: the list's own bytes in a blob that the
+/// v2 entry links to, the selected (mlx) child -- here the recorded manifest --
+/// in its blob, and at the legacy path the child plus the list and the child as
+/// extra layers (writePullDowngradeAnchor). Returns the list's digest.
+fn pulled_manifest_list(tree: &TempTree) -> String {
+    // writeManifestList / Manifest.MarshalJSON: a list carries no layers.
+    let list = format!(
+        concat!(
+            r#"{{"schemaVersion":2,"mediaType":"application/vnd.ollama.manifest.list.v2+json","#,
+            r#""manifests":[{{"mediaType":"application/vnd.docker.distribution.manifest.v2+json","#,
+            r#""digest":"sha256:{child}","runner":"mlx","format":"safetensors"}},"#,
+            r#"{{"mediaType":"application/vnd.docker.distribution.manifest.v2+json","#,
+            r#""digest":"sha256:{other}","runner":"ggml","format":"gguf"}}]}}"#
+        ),
+        child = LIVE_DIGEST,
+        other = "b".repeat(64),
+    );
+    let list_digest = format!("{:x}", Sha256::digest(&list));
+    write(tree, &format!("models/blobs/sha256-{list_digest}"), &list);
+    write(
+        tree,
+        &format!("models/blobs/sha256-{LIVE_DIGEST}"),
+        REAL_MANIFEST,
+    );
+    std::fs::create_dir_all(tree.at(V2).parent().unwrap()).unwrap();
+    symlink(
+        format!("../../../../blobs/sha256-{list_digest}"),
+        tree.at(V2),
+    )
+    .unwrap();
+    let mut anchor: serde_json::Value = serde_json::from_str(REAL_MANIFEST).unwrap();
+    let layers = anchor["layers"].as_array_mut().unwrap();
+    layers.push(serde_json::json!({
+        "mediaType": "application/vnd.ollama.manifest.list.v2+json",
+        "digest": format!("sha256:{list_digest}"),
+        "size": list.len(),
+    }));
+    layers.push(serde_json::json!({
+        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+        "digest": format!("sha256:{LIVE_DIGEST}"),
+        "size": REAL_MANIFEST.len(),
+    }));
+    write(tree, LEGACY, &anchor.to_string());
+    list_digest
+}
+
+#[tokio::test]
+async fn a_manifest_list_is_never_compared_as_a_model_with_no_layers() {
+    // 0.40's /api/tags row for a list carries the selected child's digest
+    // (describeModelRows); the list itself has no layers to compare, so
+    // this is "not looked up here", which does not hold the Overview back.
+    let tree = TempTree::new("ollama-v2-list");
+    let list_digest = pulled_manifest_list(&tree);
+    let (rows, calls) = check(&tree, LIVE_DIGEST, REAL_MANIFEST).await;
+    assert_uncheckable(&rows, &calls);
+    assert!(rows[0].warnings.contains(&Warning::NotLookedUpHere));
+
+    // A daemon that reported the list's own digest must not turn its
+    // missing layers into an empty set and a whole-model "update".
+    let (rows, calls) = check(&tree, &list_digest, REAL_MANIFEST).await;
+    assert_uncheckable(&rows, &calls);
+    assert!(rows[0].warnings.contains(&Warning::NotLookedUpHere));
 }
 
 // The recorded manifest of the model pulled on this Mac (byte-identical to
