@@ -266,14 +266,20 @@ pub const SYSTEM_BIN: &str = "/usr/local/bin";
 /// reads each distinct directory once, by canonical path, so a `PATH`
 /// that names `~/.local/bin` twice, or through a link, costs one read.
 ///
-/// `system_bin`, `/usr/local/bin`, last, after every folder of the
-/// user's own: on an Intel Mac it is Homebrew's link folder, a link for
-/// every command of every formula -- the scale test's big Mac has 3,600
-/// -- each one Homebrew's and each counting toward the scan's 2,000
-/// entries (`ScanBudget`). Read third, as it once was, it spent the
-/// budget and `~/.cargo/bin`, `~/go/bin`, `~/.bun/bin` and the `PATH`
-/// folders under home were never read; read last, a `/usr/local/bin` too
-/// big for what is left is the folder cut short, and the page says so.
+/// `system_bin`, `/usr/local/bin`, third, after `~/bin`, as the design
+/// spec has it -- but last, after every folder of the user's own, when it
+/// is a Homebrew's own link folder (`homebrews_bin`: an instance of it has
+/// `/usr/local` for its prefix, as on an Intel Mac). Then it holds a link
+/// for every command of every formula -- the scale test's big Mac has
+/// 3,600 -- each one Homebrew's and each counting toward the scan's 2,000
+/// entries (`ScanBudget`); read third, it spent the budget and
+/// `~/.cargo/bin`, `~/go/bin`, `~/.bun/bin` and the `PATH` folders under
+/// home were never read; read last, a `/usr/local/bin` too big for what
+/// is left is the folder cut short, and the page says so. Where Homebrew
+/// is in `/opt/homebrew`, as on an Apple Silicon Mac, `/usr/local/bin` is
+/// where installers run as an administrator put their programs (Docker's,
+/// the AWS CLI's), what this page is for, and it keeps its place, read
+/// before a big `PATH` folder under home can spend the budget.
 ///
 /// Only `PATH` entries under `home` are taken. The rest --
 /// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
@@ -287,16 +293,18 @@ pub const SYSTEM_BIN: &str = "/usr/local/bin";
 /// `system_bin` is `SYSTEM_BIN`, `/usr/local/bin`, but in tests, which give
 /// a folder of their own (`Session::set_unknown_scan_system_bin`) so that
 /// no test reads this Mac's.
-fn candidate_dirs(env: &HostEnv, system_bin: &Path) -> Vec<PathBuf> {
+fn candidate_dirs(env: &HostEnv, system_bin: &Path, homebrews_bin: bool) -> Vec<PathBuf> {
     let home = &env.home;
-    let mut dirs = vec![
-        home.join(".local/bin"),
-        home.join("bin"),
+    let mut dirs = vec![home.join(".local/bin"), home.join("bin")];
+    if !homebrews_bin {
+        dirs.push(system_bin.to_path_buf());
+    }
+    dirs.extend([
         home.join(".cargo/bin"),
         home.join("go/bin"),
         home.join(".bun/bin"),
         home.join(".deno/bin"),
-    ];
+    ]);
     if let Some(cargo_home) = &env.cargo_home {
         dirs.push(cargo_home.join("bin"));
     }
@@ -306,7 +314,9 @@ fn candidate_dirs(env: &HostEnv, system_bin: &Path) -> Vec<PathBuf> {
             .filter(|dir| dir.starts_with(home))
             .cloned(),
     );
-    dirs.push(system_bin.to_path_buf());
+    if homebrews_bin {
+        dirs.push(system_bin.to_path_buf());
+    }
     dirs
 }
 
@@ -479,13 +489,14 @@ pub fn uv_python_dir(home: &Path) -> PathBuf {
 ///    already): where an older rustup made its proxies, they are hard
 ///    links to `rustup` (`adapters/standalone/recipe.rs`, "links to rustup
 ///    on some Macs and hard links on others"), each a regular file of its
-///    own path that no path comparison places. Or, both leading nowhere, the entry would lead to the same missing
-///    file as an instance's `exe_path` would (`dead_end`): the launcher-only
-///    state again, where grok's `~/.grok/bin/agent` would lead to the
-///    download its launcher would, and so would a fallback link the
-///    installer made in `~/.local/bin`, whether its text names one of the
-///    two or the download itself -- links grok's uninstall takes for
-///    grok's too (`route::leads_to_program`) and moves with the launcher.
+///    own path that no path comparison places. Or, both leading nowhere,
+///    the entry would lead to the same missing file as an instance's
+///    `exe_path` would (`dead_end`): the launcher-only state again, where
+///    grok's `~/.grok/bin/agent` would lead to the download its launcher
+///    would, and so would a fallback link the installer made in
+///    `~/.local/bin`, whether its text names one of the two or the
+///    download itself -- links grok's uninstall takes for grok's too
+///    (`route::leads_to_program`) and moves with the launcher.
 /// 2. The entry resolves to a path *under* an artifact's
 ///    `InstalledArtifact.path` (equal, when that path is a file). uv is
 ///    the first real input: its `path` is the tool's venv directory
@@ -1205,7 +1216,9 @@ pub fn scan_dirs(
 }
 
 /// The unknown-source scan: `scan_dirs` over `candidate_dirs(env,
-/// system_bin)`. Pure over its arguments and the file system; synchronous,
+/// system_bin, ..)`, `system_bin` read last when it is the `bin` of a
+/// Homebrew `instances` has (its prefix `/usr/local`, an Intel Mac's).
+/// Pure over its arguments and the file system; synchronous,
 /// and blocking for up to `budget.max_duration` -- the Tauri shell runs it
 /// on the blocking pool (`ipc::scan_unknown`). `instances` and `artifacts`
 /// are the snapshot's, cloned by `Session::scan_unknown`. `globs` are the
@@ -1218,8 +1231,11 @@ pub fn scan_unknown(
     globs: &[(String, &'static [Glob])],
     budget: ScanBudget,
 ) -> UnknownScan {
+    let homebrews_bin = instances
+        .iter()
+        .any(|inst| inst.adapter_id.as_str() == "brew" && inst.prefix.join("bin") == system_bin);
     scan_dirs(
-        &candidate_dirs(env, system_bin),
+        &candidate_dirs(env, system_bin, homebrews_bin),
         env,
         instances,
         artifacts,
@@ -1391,22 +1407,22 @@ mod tests {
 
     #[test]
     fn test_candidate_dirs_are_the_fixed_ones_and_path_entries_under_home_then_usr_local_bin() {
-        let dirs = candidate_dirs(
-            &env(
-                "/Users/someone",
-                &[
-                    "/Users/someone/.opencode/bin",
-                    "/opt/homebrew/bin",
-                    "/usr/bin",
-                    "/Users/someone/.local/bin",
-                ],
-                None,
-            ),
-            Path::new(SYSTEM_BIN),
+        let host = env(
+            "/Users/someone",
+            &[
+                "/Users/someone/.opencode/bin",
+                "/opt/homebrew/bin",
+                "/usr/bin",
+                "/Users/someone/.local/bin",
+            ],
+            None,
         );
+        let dirs = candidate_dirs(&host, Path::new(SYSTEM_BIN), false);
         let expected: Vec<PathBuf> = [
             "/Users/someone/.local/bin",
             "/Users/someone/bin",
+            // Third, as the design spec has it: not Homebrew's here.
+            "/usr/local/bin",
             "/Users/someone/.cargo/bin",
             "/Users/someone/go/bin",
             "/Users/someone/.bun/bin",
@@ -1414,14 +1430,19 @@ mod tests {
             "/Users/someone/.opencode/bin",
             // Raw: the duplicate is `scan_dirs`'s to drop, by canonical path.
             "/Users/someone/.local/bin",
-            // Last, after every folder of the user's own: on an Intel Mac
-            // it holds Homebrew's links, enough to spend the whole budget.
-            "/usr/local/bin",
         ]
         .iter()
         .map(PathBuf::from)
         .collect();
         assert_eq!(dirs, expected);
+        // Last, after every folder of the user's own, when it is
+        // Homebrew's link folder (an Intel Mac's): enough of its links to
+        // spend the whole budget.
+        let intel = candidate_dirs(&host, Path::new(SYSTEM_BIN), true);
+        let mut expected = expected;
+        expected.retain(|dir| dir != Path::new(SYSTEM_BIN));
+        expected.push(PathBuf::from(SYSTEM_BIN));
+        assert_eq!(intel, expected);
     }
 
     #[test]
@@ -1429,6 +1450,7 @@ mod tests {
         let dirs = candidate_dirs(
             &env("/Users/someone", &[], Some("/Volumes/Data/cargo")),
             Path::new(SYSTEM_BIN),
+            true,
         );
         assert!(
             dirs.contains(&PathBuf::from("/Volumes/Data/cargo/bin")),
@@ -1438,7 +1460,15 @@ mod tests {
             dirs.contains(&PathBuf::from("/Users/someone/.cargo/bin")),
             "{dirs:?}"
         );
-        // Still before `/usr/local/bin`, which is always last.
+        // Right after `~/.deno/bin`, and before a Homebrew's
+        // `/usr/local/bin`, which is last.
+        let cargo_home = dirs
+            .iter()
+            .position(|dir| dir == Path::new("/Volumes/Data/cargo/bin"));
+        let deno = dirs
+            .iter()
+            .position(|dir| dir == Path::new("/Users/someone/.deno/bin"));
+        assert_eq!(cargo_home, deno.map(|deno| deno + 1), "{dirs:?}");
         assert_eq!(dirs.last(), Some(&PathBuf::from(SYSTEM_BIN)), "{dirs:?}");
     }
 

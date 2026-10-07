@@ -442,6 +442,62 @@ fn test_a_usr_local_bin_full_of_homebrews_links_is_read_last_and_is_the_folder_c
 }
 
 #[test]
+fn test_a_usr_local_bin_that_is_not_homebrews_is_read_before_the_path_folders_under_home() {
+    // An Apple Silicon Mac: Homebrew's prefix is `/opt/homebrew`, and
+    // `/usr/local/bin` is where installers run as an administrator put
+    // their programs -- Docker's `docker`, the AWS CLI's `aws` -- which is
+    // what this page is for. It keeps its old place, third, so a big
+    // `PATH` folder under home (a nix profile, shims for many versions)
+    // cannot spend the budget before it is read; that folder is the one cut
+    // short. A budget of 40 entries stands in for the 2,000, and the
+    // stand-in folders are the test's own, never this Mac's.
+    let home = Home::new("arm-usr-local");
+    let homebrew = home.dir("opt-homebrew");
+    let system_bin = home.dir("usr-local/bin");
+    let docker = exe(&system_bin, "docker", b"x");
+    let mine = exe(&home.dir(".local/bin"), "mine-local", b"x");
+    let profile = home.dir(".nix-profile/bin");
+    for index in 0..60 {
+        exe(&profile, &format!("n{index:02}"), b"x");
+    }
+    let brew = ManagerInstance {
+        exe_path: homebrew.join("bin/brew"),
+        prefix: homebrew.clone(),
+        ..manager_instance("brew", &format!("brew:{}", homebrew.display()))
+    };
+    let budget = ScanBudget {
+        max_entries: 40,
+        max_duration: Duration::from_secs(10),
+    };
+
+    let scan = banager_core::scan::scan_unknown(
+        &home.env(vec![profile.clone()]),
+        &system_bin,
+        &[brew],
+        &[],
+        &[],
+        budget,
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    for program in [&docker, &mine] {
+        let shown = tilde(program.strip_prefix(home.path()).unwrap().to_str().unwrap());
+        assert!(listed.contains(&shown), "{shown:?} in {:?}", scan.scanned);
+    }
+    assert_eq!(scan.stopped, Some(ScanStop::FileLimit { max_entries: 40 }));
+    let folders: Vec<&Path> = scan.scanned.iter().map(|dir| dir.path.as_path()).collect();
+    assert_eq!(
+        folders,
+        [
+            tilde(".local/bin").as_path(),
+            tilde("usr-local/bin").as_path(),
+            tilde(".nix-profile/bin").as_path(),
+        ]
+    );
+    assert_eq!(scan.scanned.last().unwrap().entries, 38);
+}
+
+#[test]
 fn test_stops_at_a_zero_time_budget_before_reading_anything() {
     let home = Home::new("time-limit");
     let bin = home.dir(".local/bin");

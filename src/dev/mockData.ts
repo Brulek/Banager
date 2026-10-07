@@ -1312,7 +1312,7 @@ export function initialSettings(scenario: Scenario): Settings {
 
 // ---------------------------------------------------------- Unknown page
 
-/** In the order a scan finds them (scan/mod.rs, `candidate_dirs`): the folders of the user's own first, `/usr/local/bin` last. */
+/** In the order a scan finds them (scan/mod.rs, `candidate_dirs`): `/usr/local/bin` third, as on this Apple silicon Mac, where it is not Homebrew's; last only where it is (an Intel Mac's). */
 const UNKNOWN_ENTRIES: UnknownEntry[] = [
   // A link into a project in Documents: listed by its own name, never
   // followed, so no size, no date and no path it leads to.
@@ -1334,17 +1334,6 @@ const UNKNOWN_ENTRIES: UnknownEntry[] = [
     link_target: null,
     size_bytes: 2_184,
     modified_at: daysAgo(64),
-    owned_by_me: true,
-    app_bundle: null,
-  },
-  // `go install` put this here.
-  {
-    path: "~/go/bin/golangci-lint",
-    kind: "File",
-    resolved: inHome("go/bin/golangci-lint"),
-    link_target: null,
-    size_bytes: 51_234_816,
-    modified_at: daysAgo(7),
     owned_by_me: true,
     app_bundle: null,
   },
@@ -1381,6 +1370,17 @@ const UNKNOWN_ENTRIES: UnknownEntry[] = [
     owned_by_me: true,
     app_bundle: "Sublime Text",
   },
+  // `go install` put this here.
+  {
+    path: "~/go/bin/golangci-lint",
+    kind: "File",
+    resolved: inHome("go/bin/golangci-lint"),
+    link_target: null,
+    size_bytes: 51_234_816,
+    modified_at: daysAgo(7),
+    owned_by_me: true,
+    app_bundle: null,
+  },
 ];
 
 /** The folders to scan that are in protected places (`protected_dirs`): two `PATH` entries, in Documents and on the Desktop. */
@@ -1407,10 +1407,11 @@ export function unknownScan(scan: Exclude<ScenarioScan, "error">): UnknownScan {
     scanned: [
       { path: "~/.local/bin", entries: 4 },
       { path: "~/bin", entries: 1 },
+      // Third, as scan/mod.rs's `candidate_dirs` reads it where Homebrew
+      // is in /opt/homebrew, as here.
+      { path: "/usr/local/bin", entries: 3 },
       { path: "~/.cargo/bin", entries: 16 },
       { path: "~/go/bin", entries: 1 },
-      // Last, as scan/mod.rs's `candidate_dirs` reads it.
-      { path: "/usr/local/bin", entries: 3 },
     ],
     protected_dirs: [...PROTECTED_DIRS],
     entries: UNKNOWN_ENTRIES.map((entry) => ({ ...entry })),

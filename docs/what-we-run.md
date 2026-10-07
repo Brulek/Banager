@@ -3943,7 +3943,7 @@ metadata and nothing else:
 
 | It looks at | How |
 |---|---|
-| `~/.local/bin`, `~/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, every `PATH` entry under your home folder, and last `/usr/local/bin` (`candidate_dirs`), in that order | where the folder leads, found one step at a time from `/` (`protected::resolve`), then the folder listing (`readdir`), one level deep, from a descriptor held open on that very folder (`dirfd`) — a subdirectory is never entered; a directory that does not exist, or that cannot be reached or listed, is skipped silently; two names for one directory are read once (`scan_dirs`) |
+| `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin`, `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, `$CARGO_HOME/bin` when that variable is set, and every `PATH` entry under your home folder, in that order, but with `/usr/local/bin` last when it is a Homebrew's own (`candidate_dirs`) | where the folder leads, found one step at a time from `/` (`protected::resolve`), then the folder listing (`readdir`), one level deep, from a descriptor held open on that very folder (`dirfd`) — a subdirectory is never entered; a directory that does not exist, or that cannot be reached or listed, is skipped silently; two names for one directory are read once (`scan_dirs`) |
 | each entry | `lstat` and `readlink` of the entry, asked of that held folder; where a link leads, found one step at a time as `realpath` would; and the size, date and permissions of what it leads to (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run. A broken link, while a source's own executable is a link that leads nowhere too, also gets `lstat` and `readlink` (each asked of the folder it is in, held open) of the folders and links its text leads through, to see where it would lead (`dead_end`) |
 
 Like the command check and the disk-use measurement, this scan never
@@ -4002,10 +4002,14 @@ replaced by a link while it is read is never followed.
 
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. Every entry it looks
-at counts, also one a source accounts for, so `/usr/local/bin` is read
-last: on an Intel Mac it is Homebrew's link folder, with a link for every
-command of every formula, enough to spend the 2000 entries before the
-folders of your own were reached; read last, it is the folder cut short. Directory names are read
+at counts, also one a source accounts for, so where `/usr/local/bin` is
+Homebrew's link folder — on an Intel Mac, whose Homebrew is in
+`/usr/local` — it is read last: with a link for every command of every
+formula, it could spend the 2000 entries before the folders of your own
+were reached; read last, it is the folder cut short. Where it is not, as
+on an Apple silicon Mac, it holds what installers run as an administrator
+put there, and it is read third, before a big folder of your own can
+spend the 2000 entries. Directory names are read
 one at a time under the deadline; at most one extra name, never statted,
 distinguishes an exactly full entry budget from an unfinished scan. Only
 retained results are sorted, so an oversized directory is never collected
