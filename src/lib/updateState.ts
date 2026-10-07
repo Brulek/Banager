@@ -158,7 +158,7 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  * whose installed keg is its current version, but neither linked nor
  * opt-linked, with the two alike (`Formula#outdated_kegs`), and its next
  * release has another number, so a skip of it ends as promised. An Ollama
- * model's two are digests from different hash spaces, never to be compared
+ * model's two are the digests of two manifests, never to be compared
  * (`check_one_model` in crates/banager-core/src/adapters/ollama/mod.rs).
  */
 export function canSkipVersion(candidate: UpdateCandidate): boolean {
@@ -185,11 +185,16 @@ export function canSkipVersion(candidate: UpdateCandidate): boolean {
  * A skip hides a candidate only while its `target` is the version that
  * was skipped; once the source offers another, the row is listed again.
  * An Ollama model's `target` is a digest, and so is what its skip stored:
- * both are the registry manifest's config digest, so they compare like
- * with like. A skip never hides a row whose `target` does not name one
- * release -- one Banager could not check, or a Homebrew cask declared
- * `version :latest` (`canSkipVersion`) -- and the Updates page offers no
- * Skip this version on such a row.
+ * both are the registry manifest's own (`manifest_digest` in
+ * crates/banager-core/src/adapters/ollama/mod.rs), one per republish, so
+ * they compare like with like. A skip saved before that -- of the
+ * manifest's config digest, which a republish of new weights alone kept --
+ * matches no `target` now: its row is listed again, and the old skip
+ * stays until the model's next version is skipped (`withSkippedVersion`)
+ * or it is removed in Settings. A skip never hides a row whose `target`
+ * does not name one release -- one Banager could not check, or a Homebrew
+ * cask declared `version :latest` (`canSkipVersion`) -- and the Updates
+ * page offers no Skip this version on such a row.
  */
 export function hidingRule(
   settings: HidingSettings,
@@ -661,7 +666,7 @@ export function withoutHiding(settings: Settings, by: HiddenBy, candidate: Updat
 
 /**
  * The version a skip may show the user, or null when it must not be
- * shown. An Ollama model's skipped version is a registry manifest's config
+ * shown. An Ollama model's skipped version is a registry manifest's
  * digest -- the `target` of the `UpdateChannel::Digest` candidate it was
  * skipped from (`check_one_model` in
  * crates/banager-core/src/adapters/ollama/mod.rs, the only producer of

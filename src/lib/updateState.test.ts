@@ -134,7 +134,7 @@ describe("canSkipVersion", () => {
       ),
     ).toBe(true);
     // An Ollama model's new version is offered by its registry manifest's
-    // config digest, one per build.
+    // digest, one per build.
     expect(
       canSkipVersion(
         candidate({
@@ -243,9 +243,9 @@ describe("hidingRule", () => {
   });
 
   it("matches a skipped Ollama build by the digest the row offered", () => {
-    // `target` is the registry manifest's config digest; the skip stored the
-    // same kind of digest, so this compares like with like (never `current`,
-    // a digest from another hash space).
+    // `target` is the registry manifest's digest; the skip stored the same
+    // kind of digest, so this compares like with like (never `current`, the
+    // local manifest's).
     const offered = candidate({
       key: qwenKey,
       current: "5642e97495e1",
@@ -257,6 +257,26 @@ describe("hidingRule", () => {
     );
     expect(hiddenBy(offered)).toBe("skipped");
     expect(hiddenBy({ ...offered, target: "sha256:0a1b2c3d4e5f" })).toBeNull();
+  });
+
+  it("lets a skip saved of a model's config digest hide none of its builds, until the next skip replaces it", () => {
+    // Before r40 R40-4 a model's `target` was its registry manifest's
+    // config digest, which a republish of new weights alone keeps; a skip
+    // saved then names that digest. Today's targets are manifest digests,
+    // so it matches none: the row is listed again, and skipping it stores
+    // the build it offers in place of the old skip.
+    const savedConfig = "sha256:25a98d24af806ec8c25c21df601953c6a42f154dfcd8637bc82ec581f1c849aa";
+    const offered = candidate({
+      key: qwenKey,
+      current: "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e",
+      target: "sha256:038eacb1e3d5f20c9a7b46e1d8f0c2b4a6e8d0f2c4b6a8e0d2f4c6b8a0e2d4f6",
+      channel: "Digest",
+    });
+    const old = [{ key: qwenKey, version: savedConfig }];
+    expect(hidingRule(hiding({ skipped_versions: old }))(offered)).toBeNull();
+    const skipped = withSkippedVersion(old, offered);
+    expect(skipped).toEqual([{ key: qwenKey, version: offered.target }]);
+    expect(hidingRule(hiding({ skipped_versions: skipped }))(offered)).toBe("skipped");
   });
 });
 

@@ -1,5 +1,5 @@
 //! What counts as a registry change of a model, and what the update offers
-//! (r40 R40-1). Each test has its own temporary `~/.ollama`, a mocked
+//! (r40 R40-1, R40-4). Each test has its own temporary `~/.ollama`, a mocked
 //! daemon and a mocked registry: nothing reads this Mac's models or asks a
 //! network. The shapes are recorded ones: the qwen3.8 manifests and the
 //! `/api/tags` row under `adapters/fixtures/ollama/0.34.1/`, and the cloud
@@ -161,4 +161,72 @@ async fn a_republish_that_changes_only_a_layer_is_still_an_update() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0].checkable);
     assert_eq!(rows[0].download_bytes, Some(715_161_924));
+}
+
+#[tokio::test]
+async fn each_republish_is_offered_as_a_build_of_its_own() {
+    // Two weights-only republishes of the recorded model -- one with a new
+    // lm_head.weight, one with a new embed_tokens.weight -- keep its config
+    // (`sha256:25a98d24...`, which names no layer). Offered by that config
+    // digest, both were one "version", and Skip This Version on the first
+    // hid the second for good. Each is now named by its own manifest.
+    let installed_config = parse::config_digest(QWEN).unwrap().unwrap();
+    let first = with_layer(QWEN_REGISTRY, 0, &format!("sha256:{}", "a".repeat(64)));
+    let second = with_layer(QWEN_REGISTRY, 1, &format!("sha256:{}", "b".repeat(64)));
+    let config_only = with_config(QWEN_REGISTRY, &format!("sha256:{}", "c".repeat(64)), 412);
+    let mut targets = Vec::new();
+    for (registry, download) in [
+        (&first, 715_161_924),
+        (&second, 2_542_796_928),
+        (&config_only, 412),
+    ] {
+        let (rows, _) = check(QWEN_NAME, QWEN, registry).await;
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(rows[0].checkable);
+        assert_eq!(rows[0].download_bytes, Some(download));
+        // `sha256:` and the SHA-256 of the manifest as the registry sent
+        // it: what its Docker-Content-Digest would say.
+        assert_eq!(rows[0].target, format!("sha256:{}", sha256_hex(registry)));
+        assert_ne!(rows[0].target, installed_config);
+        targets.push(rows[0].target.clone());
+    }
+    targets.sort();
+    targets.dedup();
+    assert_eq!(targets.len(), 3, "one target per build: {targets:?}");
+}
+
+#[tokio::test]
+async fn once_pulled_the_offered_build_is_up_to_date() {
+    // `ollama pull` writes the manifest as the registry sent it (0.40
+    // `WriteManifestData(n, manifestData)`), and `/api/tags` names it by
+    // its SHA-256: the hex of the `target` that was offered. The next
+    // check finds that model up to date.
+    let republished = with_layer(QWEN_REGISTRY, 0, &format!("sha256:{}", "a".repeat(64)));
+    let (rows, _) = check(QWEN_NAME, QWEN, &republished).await;
+    let target = rows[0].target.clone();
+    let (rows, _) = check(QWEN_NAME, &republished, &republished).await;
+    assert!(rows.is_empty(), "{rows:?}");
+    assert_eq!(target, format!("sha256:{}", sha256_hex(&republished)));
+
+    // The cloud model likewise.
+    let new_config = with_config(CLOUD, &format!("sha256:{}", "d".repeat(64)), 307);
+    let (rows, _) = check(CLOUD_NAME, CLOUD, &new_config).await;
+    assert_eq!(
+        rows[0].target,
+        format!("sha256:{}", sha256_hex(&new_config))
+    );
+    let (rows, _) = check(CLOUD_NAME, &new_config, &new_config).await;
+    assert!(rows.is_empty(), "{rows:?}");
+}
+
+#[tokio::test]
+async fn a_registry_answer_with_no_config_is_no_update_to_offer() {
+    // A 200 whose body parses but is no model -- here `{}`, read as a
+    // manifest with no layers and no config -- differs from every model,
+    // and must not be offered as one with nothing to download.
+    let (rows, _) = check(QWEN_NAME, QWEN, "{}").await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(!rows[0].checkable, "{rows:?}");
+    assert_eq!(rows[0].target, rows[0].current);
+    assert_eq!(rows[0].download_bytes, None);
 }

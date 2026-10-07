@@ -55,12 +55,12 @@ fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
 }
 
 /// What `OllamaAdapter::compare_digests` learned of a model the registry
-/// has republished: its new config digest, the update's `target`, and the
-/// most pulling it can download (`parse::changed_blob_bytes`), the
-/// candidate's `download_bytes`.
+/// has republished: the registry manifest's own digest, the update's
+/// `target` (`manifest_digest`), and the most pulling it can download
+/// (`parse::changed_blob_bytes`), the candidate's `download_bytes`.
 #[derive(Debug)]
 struct RegistryChange {
-    config: String,
+    manifest: String,
     download_bytes: Option<u64>,
 }
 
@@ -122,6 +122,20 @@ fn contained_manifest_path(
         ));
     }
     Ok(path)
+}
+
+/// The digest a registry manifest is known by, `sha256:<hex>` of its bytes
+/// as served -- what the registry's `Docker-Content-Digest` would say, and
+/// an available update's `target`. It names the whole manifest, so every
+/// republish of a tag has one of its own: a change of weights alone, which
+/// leaves the config (and so its digest) as it was, has a new one too.
+/// Ollama writes the manifest it pulls as the registry sent it (0.40
+/// `server/images.go`, `WriteManifestData(n, manifestData)`), so once
+/// pulled the model's `/api/tags` digest is normally this same hex -- but
+/// nothing compares the two (`check_one_model`).
+fn manifest_digest(body: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(body.as_bytes()))
 }
 
 /// Ollama's own registry: the one `check_updates` looks a model up in.
@@ -461,7 +475,8 @@ impl OllamaAdapter {
 
     /// Returns `Ok(None)` when the local and registry manifests' layer-digest
     /// sets are identical and so are their config digests (model up to
-    /// date), `Ok(Some(change))` when either differs — carrying the registry's config digest, which is what an
+    /// date), `Ok(Some(change))` when either differs — carrying the
+    /// registry manifest's own digest (`manifest_digest`), which is what an
     /// available update's `target` must be, since the tag (`27b-mlx`) is
     /// unchanged by a republish and `UpdateCandidate`'s contract is that
     /// current and target differ, and the most the pull can download, from
@@ -588,10 +603,13 @@ impl OllamaAdapter {
         if local_digests == registry_digests && local_config == registry_config {
             return Ok(None);
         }
-        let registry_config =
-            registry_config.ok_or_else(|| "registry manifest has no config digest".to_string())?;
+        // Every Ollama model's manifest has a config, a cloud model's too:
+        // a 200 answer without one is no model to offer.
+        if registry_config.is_none() {
+            return Err("registry manifest has no config digest".to_string().into());
+        }
         Ok(Some(RegistryChange {
-            config: registry_config,
+            manifest: manifest_digest(&response.body),
             download_bytes: changed_blob_bytes(&local_json, &response.body),
         }))
     }
@@ -625,24 +643,24 @@ impl OllamaAdapter {
             .await
         {
             Ok(None) => None,
-            // `current` is the local manifest digest that `parse_tags` stored
-            // as the artifact's version; `target` is the registry manifest's
-            // config digest. Reporting the tag on both sides (`27b-mlx ->
+            // `current` is the local manifest's digest as `/api/tags` gives
+            // it and `parse_tags` stored it, the artifact's version (bare
+            // hex); `target` is the registry manifest's (`manifest_digest`,
+            // `sha256:<hex>`). Reporting the tag on both sides (`27b-mlx ->
             // 27b-mlx`) would satisfy no reader, so these two carry the
-            // change instead — but they are **different hash spaces**, not
-            // two readings of one identifier. The local model's `/api/tags`
-            // digest appears nowhere in either manifest, and after a
-            // successful pull the fresh `/api/tags` digest still will not
-            // equal this `target`. So: never compare, diff or equality-check
-            // them, and never render them as a version jump the way npm's or
-            // cargo's homogeneous version strings can be. The up-to-date
-            // decision is made above by `compare_digests` on the layer-digest
-            // sets and the config digests, never by these fields; an `UpdateChannel::Digest` row is a
-            // "changed / not changed" marker. See docs/superpowers/backlog.md.
+            // change instead. Each names one whole manifest -- every layer
+            // and the config -- so each republish of the tag has a `target`
+            // of its own, and Skip This Version skips that one build. Still:
+            // never compare, diff or equality-check them, and never render
+            // them as a version jump the way npm's or cargo's version
+            // strings can be. The up-to-date decision is made above by
+            // `compare_digests` on the layer-digest sets and the config
+            // digests, never by these fields; an `UpdateChannel::Digest` row
+            // is a "changed / not changed" marker.
             Ok(Some(change)) => Some(UpdateCandidate {
                 key: artifact.key.clone(),
                 current: artifact.version.clone(),
-                target: change.config,
+                target: change.manifest,
                 channel: UpdateChannel::Digest,
                 checkable: true,
                 warnings: Vec::new(),
@@ -1416,7 +1434,7 @@ mod tests {
             "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
             HttpResponse {
                 status: 200,
-                body: republished_manifest,
+                body: republished_manifest.clone(),
             },
         );
         let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
@@ -1436,10 +1454,12 @@ mod tests {
         );
         assert!(candidate.warnings.is_empty());
         assert_eq!(candidate.channel, UpdateChannel::Digest);
-        // `target` is the registry's config digest, not the tag: the tag
-        // (`27b-mlx`) is unchanged by a republish, so it could never show a
-        // difference.
-        assert_eq!(candidate.target, REPUBLISHED_CONFIG_DIGEST);
+        // `target` is the registry manifest's own digest, not the tag: the
+        // tag (`27b-mlx`) is unchanged by a republish, so it could never
+        // show a difference. Nor the config digest: a republish of new
+        // weights alone keeps that (r40 R40-4).
+        assert_eq!(candidate.target, manifest_digest(&republished_manifest));
+        assert_ne!(candidate.target, REPUBLISHED_CONFIG_DIGEST);
         // `current` is the local digest `/api/tags` reported, so the two
         // sides of the candidate really differ.
         assert_eq!(
@@ -1515,7 +1535,13 @@ mod tests {
                 .candidates;
             assert_eq!(candidates.len(), 1);
             assert!(candidates[0].checkable, "still an offerable update");
-            assert_eq!(candidates[0].target, LOCAL_CONFIG);
+            // The config is the installed one; the update is still a build
+            // of its own, named by its manifest (r40 R40-4).
+            assert_eq!(
+                candidates[0].target,
+                manifest_digest(&registry_manifest(new_size))
+            );
+            assert_ne!(candidates[0].target, LOCAL_CONFIG);
             assert_eq!(candidates[0].download_bytes, expected, "size {new_size:?}");
             let _ = std::fs::remove_dir_all(&home);
         }

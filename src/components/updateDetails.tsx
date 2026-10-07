@@ -183,12 +183,11 @@ export interface UpdateVersionColumn {
  * an "Update available" word: "7.1 → 7.2", in tabular numerals.
  *
  * A `Digest` candidate is Ollama: `current` is the local manifest digest
- * that /api/tags reported and `target` is the registry manifest's config
- * digest -- **different hash spaces**, not two readings of one
- * identifier, and they will not be equal even after a successful pull.
- * The adapter's own comment (crates/banager-core/src/adapters/ollama/
- * mod.rs) says never to render them as a version jump, and a 64-hex
- * string is not something to put in front of this audience either way:
+ * that /api/tags reported and `target` the registry manifest's own --
+ * two manifests' hashes, not version numbers. The adapter's own comment
+ * (crates/banager-core/src/adapters/ollama/mod.rs) says never to render
+ * them as a version jump, and a 64-hex string is not something to put in
+ * front of this audience either way:
  * such a row says "New version" -- only when it was checked. A row
  * Banager could not check has no version to move to (its `target` is its
  * installed version, `uncheckable_candidate` in crates/banager-core/src/

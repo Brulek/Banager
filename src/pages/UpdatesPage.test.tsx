@@ -1971,8 +1971,8 @@ describe("UpdatesPage", () => {
 
   it("says an Ollama model has a new version instead of printing two digests", async () => {
     // `current` is the local manifest digest /api/tags reported; `target` is
-    // the registry manifest's config digest. They are different hash spaces,
-    // not two readings of one identifier -- the adapter's own comment
+    // the registry manifest's own. Hashes of two manifests, not versions --
+    // the adapter's own comment
     // (crates/banager-core/src/adapters/ollama/mod.rs) forbids rendering
     // them as a version jump, and neither is anything to show a person who
     // does not write code. `channel: "Digest"` is the discriminator, with
@@ -6071,9 +6071,8 @@ describe("UpdatesPage", () => {
 
   it("never shows an Ollama model's two digests as a version jump in the confirmation", async () => {
     // `current` is the local manifest digest and `target` is the registry
-    // manifest's config digest: different hash spaces, unequal even after a
-    // successful pull, and not something to put in front of this audience
-    // either way. The row already knows this; the dialog has to as well.
+    // manifest's: hashes, not versions, and not something to put in front
+    // of this audience either way. The row already knows this; the dialog has to as well.
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
     updates = [
       {

@@ -21,9 +21,11 @@ pub enum Language {
 /// target is its installed version, and not on a Homebrew cask declared
 /// `version :latest`, every release of which is offered as "latest", so
 /// that a skip of it would never end.
-/// For an Ollama model `version` is a registry manifest's config digest (an
-/// `UpdateChannel::Digest` candidate's target), which the front end never
-/// shows.
+/// For an Ollama model `version` is a registry manifest's digest (an
+/// `UpdateChannel::Digest` candidate's target, one per republish of the
+/// model), which the front end never shows. One saved before r40 R40-4
+/// names the manifest's config digest instead; it matches no target now
+/// and is kept, like any skip of a version the source has moved past.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkippedVersion {
     pub key: ArtifactKey,

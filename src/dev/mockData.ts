@@ -486,7 +486,7 @@ function everythingElse(): { artifacts: InstalledArtifact[]; updates: UpdateCand
     uncheckable(key(IDS.cargo, "Binary", "jj-cli"), "0.35.0", "Registry", "NonRegistrySource"),
     update(key(IDS.cargo, "Binary", "tokei"), "12.1.2", "13.0.1", "Registry"),
     update(key(IDS.npm, "Package", "typescript"), "6.0.2", "6.0.3", "Native"),
-    // Two digests from different hash spaces: a "new version" marker.
+    // Two manifests' digests, not versions: a "new version" marker.
     update(
       key(IDS.ollama, "Model", MODELS.coder),
       "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",

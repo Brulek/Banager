@@ -451,7 +451,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 /**
  * The version jump for the confirmation, or null when there is no honest
  * one to show: a `Digest` candidate says a new version of the model is
- * available, never two digests -- they are from different hash spaces
+ * available, never two digests -- hashes of two manifests, not versions
  * (crates/banager-core/src/adapters/ollama/mod.rs) -- and nothing,
  * rather than a dangling arrow, when a source could name only one side.
  * Not behind "Show technical details": spec §6 asks this screen to show

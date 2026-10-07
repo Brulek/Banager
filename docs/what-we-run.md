@@ -2957,6 +2957,17 @@ is left unknown — and the window says what it said before — when either
 manifest does not parse, a blob to download has no size or one that is
 not a whole number of bytes, one digest is given two different sizes, or
 the sum does not fit in 64 bits.
+Such an update is named by the registry manifest's own digest, `sha256:`
+and the SHA-256 of the manifest as the registry sent it
+(`manifest_digest`), never shown in the window. Each republish of a tag
+has its own, a change of the weights alone too, so **Skip This Version**
+skips that one build, and a later build is news to the update
+notification, as a later version of any tool is. A skip
+saved before this named the manifest's config digest, which a change of
+the weights alone kept; it matches no update now, so that model's update
+is listed again once, and the old skip stays in Settings until the
+model's next build is skipped or it is removed there. A registry answer
+with no config is no model: "could not check".
 
 **Write commands:**
 
