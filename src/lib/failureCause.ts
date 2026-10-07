@@ -352,7 +352,8 @@ const DETAIL_CHARS = 160;
  * mod.rs, which the history keeps): the first line that says it is an
  * error -- `Error:`, `error:`, `fatal:`, npm's `npm error` but for its
  * bookkeeping (`code`, `errno`, `path`, the log file) -- or, with none, the
- * last line, its label taken off. Masked as the history masks it: the
+ * last line, its label taken off; where it ends with a colon, with the line
+ * after it. Masked as the history masks it: the
  * escape codes that colour it, any home folder (`/Users/<name>` as `~`),
  * a login in an address, an address's query and fragment; cut to 160
  * characters. Null for words that are all blank. 「最近的更新记录」 says it
@@ -366,12 +367,17 @@ export function failureDetail(summary: string): string | null {
     .split(/\r?\n/)
     .map((line) => line.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").trim())
     .filter((line) => line !== "" && line !== "[…]");
-  const line =
-    lines.find((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each)) ??
-    lines[lines.length - 1];
+  const found = lines.findIndex((each) => /^(?:error|fatal|npm (?:err!|error))\b|^E:/i.test(each) && !bookkeeping.test(each));
+  const index = found === -1 ? lines.length - 1 : found;
+  const line = lines[index];
   if (line === undefined) return null;
   const unlabelled = line.replace(/^(?:(?:error|fatal)\b\s*(?:\[[^\]]*\])?\s*:?|npm (?:err!|error)\b|E:)\s*/i, "").trim();
-  const masked = (unlabelled === "" ? line : unlabelled)
+  let text = unlabelled === "" ? line : unlabelled;
+  // "An exception occurred within a child process:", and the reason on the
+  // next line: the two together (review of r6 y3-batch, finding 5).
+  const next = lines[index + 1];
+  if (text.endsWith(":") && next !== undefined) text = `${text} ${next}`;
+  const masked = text
     .replace(/\/Users\/[^/\s'"`]+/g, "~")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/\s@'"`]+@/g, "$1****@")
     .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s?#'"`]*)[?#][^\s'"`]*/g, "$1")

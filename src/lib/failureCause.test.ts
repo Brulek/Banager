@@ -395,6 +395,17 @@ describe("operationFailureCause", () => {
 });
 
 describe("failureDetail", () => {
+  it("reads every shared case as Rust's failure_detail does", () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const cases: Array<{ name: string; summary: string; detail: string | null }> = JSON.parse(
+      readFileSync(path.join(root, "crates/banager-core/src/history/failure_detail_cases.json"), "utf-8"),
+    );
+    expect(cases.length).toBeGreaterThanOrEqual(8);
+    for (const { name, summary, detail } of cases) {
+      expect(failureDetail(summary), name).toBe(detail);
+    }
+  });
+
   // The same lines as Rust's failure_detail tests
   // (test_every_failure_keeps_a_cause_and_one_no_cause_names_keeps_its_first_error_line,
   // test_a_kept_error_line_has_the_home_folder_logins_and_queries_masked_and_is_short),

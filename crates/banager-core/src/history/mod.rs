@@ -357,7 +357,8 @@ fn detail_patterns() -> &'static DetailPatterns {
 /// is named: the first line that says it is an error -- `Error:`,
 /// `error:`, `fatal:`, npm's `npm error` but for its bookkeeping (`code`,
 /// `errno`, `path`, the log file) -- or, with none, the last line, with
-/// its label taken off. Masked: the escape codes that colour it, any home
+/// its label taken off; and where it ends with a colon, the line after it
+/// too, which says what the colon announces. Masked: the escape codes that colour it, any home
 /// folder (`/Users/<name>` becomes `~`), any login in an address (one the
 /// runner did not already mask, `runner::redact`), and an address's query
 /// and fragment; then cut to `DETAIL_CHARS`. `None` for words that are
@@ -369,17 +370,25 @@ fn failure_detail(summary: &str) -> Option<String> {
         .map(|line| p.escape.replace_all(line, "").trim().to_string())
         .filter(|line| !line.is_empty() && line != "[…]")
         .collect();
-    let line = lines
+    let index = lines
         .iter()
-        .find(|line| p.error.is_match(line) && !p.bookkeeping.is_match(line))
-        .or_else(|| lines.last())?;
+        .position(|line| p.error.is_match(line) && !p.bookkeeping.is_match(line))
+        .or_else(|| lines.len().checked_sub(1))?;
+    let line = &lines[index];
     let unlabelled = p.label.replace(line, "");
-    let text = if unlabelled.trim().is_empty() {
-        line.as_str()
+    let mut text = if unlabelled.trim().is_empty() {
+        line.to_string()
     } else {
-        unlabelled.trim()
+        unlabelled.trim().to_string()
     };
-    let text = p.home.replace_all(text, "~");
+    // "An exception occurred within a child process:", and the reason on
+    // the next line: the two together (review of r6 y3-batch, finding 5).
+    if text.ends_with(':') {
+        if let Some(next) = lines.get(index + 1) {
+            text = format!("{text} {next}");
+        }
+    }
+    let text = p.home.replace_all(&text, "~");
     let text = p.login.replace_all(&text, "${1}****@");
     let text = p.query.replace_all(&text, "${1}");
     let text = text.trim();
@@ -1148,6 +1157,24 @@ mod tests {
                 detail: None
             }
         );
+    }
+
+    #[test]
+    fn test_the_kept_line_reads_every_shared_case_as_the_window_does() {
+        // `failure_detail_cases.json` is read by src/lib/failureCause.test.ts
+        // too, so a failure says the same before a restart and after it.
+        #[derive(serde::Deserialize)]
+        struct Case {
+            name: String,
+            summary: String,
+            detail: Option<String>,
+        }
+        let cases: Vec<Case> =
+            serde_json::from_str(include_str!("failure_detail_cases.json")).expect("cases parse");
+        assert!(cases.len() >= 8, "the shared cases are all there");
+        for case in cases {
+            assert_eq!(failure_detail(&case.summary), case.detail, "{}", case.name);
+        }
     }
 
     #[test]
