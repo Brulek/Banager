@@ -167,6 +167,30 @@ describe("the browser preview's mock backend", () => {
     }
   });
 
+  it("opens no browser, only for a homepage the committed snapshot lists, and says in the console what it was asked for", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const { backend } = backendFor();
+      // Before the first refresh commits, as `homepage::listed_homepage`
+      // over an empty snapshot: nothing.
+      await expect(backend.invoke("open_homepage", { address: "https://iterm2.com/" })).rejects.toBe(
+        '{"kind":"not_listed"}',
+      );
+      const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+      const homepage = snapshot.artifacts.find((a) => a.key.name === "iterm2")?.homepage;
+      expect(homepage).toBe("https://iterm2.com/");
+      await expect(backend.invoke("open_homepage", { address: homepage })).resolves.toBeUndefined();
+      const said = String(info.mock.lastCall?.[0]);
+      expect(said.startsWith("[banager-ui-preview-mock] ")).toBe(true);
+      expect(said.endsWith("https://iterm2.com/")).toBe(true);
+      for (const address of ["https://example.com/?paths=%2FUsers", "https://iterm2.com", "file:///etc/hosts", ""]) {
+        await expect(backend.invoke("open_homepage", { address })).rejects.toBe('{"kind":"not_listed"}');
+      }
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it("takes the page's word on the question before a quit as the real commands do, and quits nothing", async () => {
     // The preview never hears the question (./mockTauriEvent.ts listens to
     // nothing), and a page cannot quit the browser. Like the real commands,

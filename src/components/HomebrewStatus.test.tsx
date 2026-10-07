@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { SHOWN_FOR_MS } from "../lib/clipboard";
+import { LINK } from "./ui/controls";
 import i18n from "../i18n";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -129,23 +132,32 @@ describe("homepageFact", () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
-  it("shows the site's host, the whole address as its tooltip, and copies the whole address with Copy Link, opening nothing", async () => {
+  it("shows the site's host as a link that opens the whole address in the default browser, and still copies it with Copy Link", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
     const fact = homepageFact(enT, "https://code.claude.com/docs/en/setup");
     expect(fact?.term).toBe("Homepage");
     const { container } = renderWithProviders(<>{fact?.value}</>);
     const shown = container.querySelector("[data-homepage]") as HTMLElement;
     expect(shown.textContent).toBe("code.claude.com");
     expect(shown).toHaveAttribute("title", "https://code.claude.com/docs/en/setup");
-    expect(shown.tagName).toBe("SPAN");
-    expect(screen.queryByRole("link")).toBeNull();
+    // A link, in the accent as a link in a Mac window's text, that opens
+    // the page through Banager's own command -- never an <a href> the web
+    // view would follow, or offer to open in a window of its own.
+    const link = screen.getByRole("link", { name: "code.claude.com" });
+    expect(link).toBe(shown);
+    expect(link).not.toHaveAttribute("href");
+    expect(link.className.split(" ")).toEqual(expect.arrayContaining(LINK.split(" ")));
+    fireEvent.click(link);
+    expect(invoke).toHaveBeenCalledWith("open_homepage", { address: "https://code.claude.com/docs/en/setup" });
     const button = screen.getByRole("button", { name: "Copy Link" });
     fireEvent.click(button);
     expect(writeText).toHaveBeenCalledWith("https://code.claude.com/docs/en/setup");
     // Its word beside it, as every button in a pane says it -- not in the
     // window's toolbar, which speaks for a row's ⋯ menu.
-    const status = await screen.findByRole("status");
+    const status = button.parentElement?.querySelector('[role="status"]') as HTMLElement;
     await waitFor(() => expect(status).toHaveTextContent(/^Copied$/));
     expect(status.parentElement).toBe(button.parentElement);
   });
@@ -159,10 +171,41 @@ describe("homepageFact", () => {
     expect(homepageHost("not an address")).toBeNull();
   });
 
+  it("says when the browser could not open it, beside the link, for a moment", async () => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockRejectedValue('{"kind":"not_listed"}');
+    vi.useFakeTimers();
+    try {
+      renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
+      const link = screen.getByRole("link", { name: "jqlang.github.io" });
+      fireEvent.click(link);
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      const status = link.parentElement?.querySelector('[role="status"]') as HTMLElement;
+      expect(status).toHaveTextContent(/^Couldn't open$/);
+      await act(() => vi.advanceTimersByTimeAsync(SHOWN_FOR_MS));
+      expect(status).toHaveTextContent(/^$/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("offers no link for a homepage that is no web address: it is shown whole, to copy", () => {
+    vi.mocked(invoke).mockReset();
+    const { container } = renderWithProviders(<>{homepageFact(enT, "ftp://ftp.gnu.org/gnu/wget/")?.value}</>);
+    expect(screen.queryByRole("link")).toBeNull();
+    const shown = container.querySelector("[data-homepage]") as HTMLElement;
+    expect(shown.tagName).toBe("SPAN");
+    expect(shown.textContent).toBe("ftp://ftp.gnu.org/gnu/wget/");
+    expect(screen.getByRole("button", { name: "Copy Link" })).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("says when the clipboard refused, beside the button", async () => {
     renderWithProviders(<>{homepageFact(enT, "https://jqlang.github.io/jq/")?.value}</>);
-    fireEvent.click(screen.getByRole("button", { name: "Copy Link" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Couldn't copy$/));
+    const button = screen.getByRole("button", { name: "Copy Link" });
+    fireEvent.click(button);
+    const status = button.parentElement?.querySelector('[role="status"]') as HTMLElement;
+    await waitFor(() => expect(status).toHaveTextContent(/^Couldn't copy$/));
   });
 
   it("keeps a host on one line, dots and all, where a whole address is shown", () => {

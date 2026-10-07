@@ -246,6 +246,9 @@
     "copyLink": "Copy Link",
     "otherVersionsTerm": "Other versions"
   },
+  "homepageLink": {
+    "openFailed": "Couldn't open"
+  },
   "installed": {
     "filterLabel": "Search installed tools",
     "filterPlaceholder": "Search",

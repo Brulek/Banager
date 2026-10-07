@@ -6,6 +6,7 @@ import { otherVersionsSizeText, saysSize, sizeViewOf } from "../lib/sizes";
 import { detailLines } from "./updateDetails";
 import { DisclosureButton } from "./DisclosureButton";
 import { CopyButton } from "./CopyButton";
+import { HomepageLink } from "./HomepageLink";
 import { TextWithInfo } from "./InfoDetail";
 import { COMMAND_SLOT } from "./withCommand";
 
@@ -215,13 +216,14 @@ export function homepageHost(address: string): string | null {
 
 /**
  * The inspector's 「主页」 fact, for any source that reported one: the
- * site's host as text (`homepageHost`) -- a whole address wrapped into
- * ragged lines at a slash in a 260 pane -- with the whole address as its
- * tooltip, and 「拷贝链接」 under it, which copies the whole address, its
- * 「已拷贝」 beside it (`CopyButton`). Nothing opens it -- opening a page
- * from Banager is a decision not yet taken -- so the address is only read
- * and copied, by its button rather than by selecting it, as the inspector
- * selects only versions and a location.
+ * site's host (`homepageHost`) -- a whole address wrapped into ragged
+ * lines at a slash in a 260 pane -- as a link that opens the whole address
+ * in the default browser (`HomepageLink`), the whole address its tooltip;
+ * and 「拷贝链接」 under it, which copies the whole address, its 「已拷贝」
+ * beside it (`CopyButton`), by its button rather than by selecting it, as
+ * the inspector selects only versions and a location. An address that is
+ * not an http(s) one with a host is shown whole, as text, and only copied:
+ * Banager opens no other kind (src-tauri/src/homepage.rs).
  */
 export function homepageFact(
   t: TFunction,
@@ -234,9 +236,13 @@ export function homepageFact(
     term: t("brewStatus.homepage"),
     value: (
       <span className="flex flex-col items-end gap-1">
-        <span data-homepage="" title={address} className="break-words">
-          {host ?? addressWithBreaks(address)}
-        </span>
+        {host !== null ? (
+          <HomepageLink address={address} host={host} />
+        ) : (
+          <span data-homepage="" title={address} className="break-words">
+            {addressWithBreaks(address)}
+          </span>
+        )}
         <CopyButton text={address} label={t("brewStatus.copyLink")} />
       </span>
     ),

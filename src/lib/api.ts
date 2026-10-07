@@ -123,6 +123,20 @@ export function revealInFinder(path: string): Promise<void> {
 }
 
 /**
+ * Has the default browser open a tool's homepage, for the link in the
+ * Installed page's details, through Banager's own `open_homepage`
+ * (src-tauri/src/homepage.rs): only an address that is, exactly, the
+ * homepage -- trimmed -- of a tool in the current snapshot, refused
+ * otherwise as `not_listed`, and an `http` or `https` one, refused
+ * otherwise as `not_web`. Then it asks macOS to open that address and
+ * nothing else (`NSWorkspace openURL:`): no command runs, and the window
+ * never leaves Banager's page.
+ */
+export function openHomepage(address: string): Promise<void> {
+  return call<void>("open_homepage", { address });
+}
+
+/**
  * The icon Finder shows for the app a Homebrew cask installed, as a
  * `data:image/png;base64,...` URL an `<img>` can show (the window's CSP
  * allows `data:` images), or null: not a cask, no app, or no icon. Only

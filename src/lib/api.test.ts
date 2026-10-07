@@ -21,6 +21,7 @@ import {
   type MenuCommand,
   setDockBadge,
   revealInFinder,
+  openHomepage,
   reportUpdateSet,
   requestNotificationPermission,
   OPEN_UPDATES_EVENT,
@@ -457,6 +458,24 @@ describe("Show in Finder", () => {
     // `opener:default` would also let the page open a web address or a
     // mail link: src-tauri/src/reveal.rs shows only what the scan found.
     expect(capability.permissions.filter((p) => p.startsWith("opener:"))).toEqual([]);
+  });
+});
+
+describe("a tool's homepage", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  it("hands Banager's own command the address and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await openHomepage("https://jqlang.org");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("open_homepage", { address: "https://jqlang.org" });
+  });
+
+  it("reports a refusal as an Error carrying the backend's text", async () => {
+    mockInvoke.mockRejectedValueOnce('{"kind":"not_listed"}');
+    await expect(openHomepage("https://example.com")).rejects.toThrow('{"kind":"not_listed"}');
   });
 });
 

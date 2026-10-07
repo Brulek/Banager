@@ -219,6 +219,9 @@
     "copyLink": "拷贝链接",
     "otherVersionsTerm": "其他版本"
   },
+  "homepageLink": {
+    "openFailed": "无法打开"
+  },
   "installed": {
     "filterLabel": "搜索已安装的工具",
     "filterPlaceholder": "搜索",
