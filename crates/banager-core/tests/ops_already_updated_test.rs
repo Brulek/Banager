@@ -602,3 +602,102 @@ async fn test_a_cask_update_does_not_count_as_one_that_brought_a_formula_along()
         Some(AlreadyUpdated::BeforeItsTurn)
     );
 }
+
+#[tokio::test]
+async fn test_a_numeric_prerelease_an_update_left_as_it_was_is_below_its_release() {
+    // r11 F1: npm 1.2.3-1 is offered 1.2.3, its stable release (SemVer
+    // puts a prerelease before its release, digits only or not). With
+    // `dry-run=true` in the person's `.npmrc`, `npm install -g` exits 0 and
+    // installs nothing; both readings say 1.2.3-1. That is not an update
+    // already done: by its digits 1.2.3-1 would sort after 1.2.3.
+    use banager_core::adapters::npm::NpmAdapter;
+    let runner = Arc::new(ScriptedRunner::default());
+    let npm = "/opt/homebrew/bin/npm";
+    let prefix =
+        std::env::temp_dir().join(format!("banager-prerelease-npm-{}", std::process::id()));
+    std::fs::create_dir_all(&prefix).unwrap();
+    let prefix_text = prefix.to_str().unwrap();
+    let inst = ManagerInstance {
+        exe_path: npm.into(),
+        prefix: prefix.clone(),
+        ..banager_core::testing::manager_instance("npm", "npm:/opt/homebrew")
+    };
+    // `npm ls`'s shape, the same before and after the install.
+    runner.script(
+        &[
+            npm,
+            "ls",
+            "-g",
+            "--depth=0",
+            "--json",
+            "--prefix",
+            prefix_text,
+        ],
+        vec![exited(
+            0,
+            r#"{"name":"lib","dependencies":{"example-cli":{"version":"1.2.3-1"}}}"#,
+            "",
+        )],
+    );
+    runner.script(
+        &[
+            npm,
+            "install",
+            "-g",
+            "example-cli@latest",
+            "--prefix",
+            prefix_text,
+        ],
+        vec![exited(0, "", "")],
+    );
+    let adapter = Arc::new(NpmAdapter::new(runner));
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    manager.register_instance(inst.clone());
+    let manager = Arc::new(manager);
+    let plan = adapter
+        .plan(
+            &inst,
+            &OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Package,
+                name: "example-cli".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let told = Arc::new(Mutex::new(None));
+    let tell = told.clone();
+    let id = manager.submit_toward(
+        plan,
+        Some("1.2.3".into()),
+        Some(Box::new(move |ended| {
+            *tell.lock().unwrap() = Some((ended.outcome.clone(), ended.already_updated));
+        })),
+    );
+    let expected = Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade);
+    assert_eq!(manager.wait(id).await, Some(expected.clone()));
+    assert_eq!(already_updated(&manager, id), None);
+    assert_eq!(*told.lock().unwrap(), Some((expected, None)));
+    std::fs::remove_dir_all(prefix).unwrap();
+}
+
+#[tokio::test]
+async fn test_a_homebrew_version_with_a_hyphen_at_its_target_is_still_updated() {
+    // ImageMagick numbers its releases 7.1.1-47: Homebrew's version and
+    // `brew outdated`'s target are the same string, which is enough. Only
+    // ordering past the target is given up where there is a hyphen.
+    let (outcome, how) = libpng_alone("7.1.1-47", "7.1.1-47", Some("7.1.1-47")).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
+    let (outcome, how) = libpng_alone("7.1.1-47_1", "7.1.1-47_1", Some("7.1.1-47_1")).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(how, Some(AlreadyUpdated::BeforeItsTurn));
+    let (outcome, how) = libpng_alone("7.1.1-46", "7.1.1-46", Some("7.1.1-47")).await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+    assert_eq!(how, None);
+}

@@ -1632,6 +1632,17 @@ other source, where one update never updates another package, always
 the latter -- not as
 needing attention, which it is when the version is still below that
 target (`already_at_target` in `crates/banager-core/src/ops/mod.rs`).
+"At least" is the same string, or, where both versions are made only of
+digits, dots, underscores and commas, a later one by their numbers
+(`reached_target`). A version with a letter or a hyphen in it is at its
+target only when it is the target: a prerelease comes before its
+release, and npm's `1.2.3-1`, all numbers, would sort after `1.2.3` by
+them. So an npm `1.2.3-1` offered `1.2.3` that reads `1.2.3-1` again
+after an `npm install -g` that exited 0 -- with `dry-run=true` in the
+person's `.npmrc`, npm installs nothing -- needs attention, and the
+history keeps it so, not as updated (r11 F1). Homebrew's own hyphenated
+versions (ImageMagick's `7.1.1-47`) still count when equal, which is how
+`brew outdated` and `brew info` both spell them.
 
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,

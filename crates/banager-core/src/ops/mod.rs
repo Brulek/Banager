@@ -141,10 +141,13 @@ fn may_have_moved_others(outcome: &Outcome, already: Option<AlreadyUpdated>) -> 
 /// string, or -- where both are made only of numbers and the separators
 /// versions use (`1.6.59`, Homebrew's `1.11.1_6`, a cask's `5.0,123`) --
 /// a later one by the numbers, run by run (`1.6.60`, `1.6.59_1`). Anything
-/// with a letter in it is compared only for being the same: "1.7.0-rc1"
-/// sorts after "1.7.0" by its characters and comes before it as a release,
-/// and an order that can be wrong would call an update that did not happen
-/// done.
+/// with a letter or a hyphen in it is compared only for being the same:
+/// "1.7.0-rc1" and npm's "1.7.0-1" are prereleases, both before "1.7.0",
+/// though the one sorts after it by its characters and the other by its
+/// numbers (r11 F1), and an order that can be wrong would call an update
+/// that did not happen done. A hyphen that is no prerelease's
+/// (ImageMagick's `7.1.1-47`, a date) is not ordered either: such a
+/// version is at its target only when it is the target.
 fn reached_target(after: &str, target: &str) -> bool {
     if after == target {
         return true;
@@ -153,7 +156,7 @@ fn reached_target(after: &str, target: &str) -> bool {
         !v.is_empty()
             && v.chars().next().is_some_and(|c| c.is_ascii_digit())
             && v.chars()
-                .all(|c| c.is_ascii_digit() || matches!(c, '.' | '_' | ',' | '-'))
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | '_' | ','))
     };
     if !numeric(after) || !numeric(target) {
         return false;
@@ -1571,7 +1574,9 @@ mod already_updated_tests {
             reached_target("5.0,124", "5.0,123"),
             "a cask's build after a comma"
         );
-        assert!(reached_target("2026-08-14", "2026-08-13"));
+        assert!(!reached_target("2026-08-14", "2026-08-13"));
+        assert!(!reached_target("1.2.3-1", "1.2.3"));
+        assert!(reached_target("1.2.3-1", "1.2.3-1"));
         assert!(!reached_target("1.6.58", "1.6.59"));
         assert!(!reached_target("1.9.9", "1.10.0"));
         // A letter anywhere: only the same string is at least it.
