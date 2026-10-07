@@ -2351,9 +2351,9 @@ impl BrewAdapter {
                     warnings.insert(0, Warning::HomebrewCleansUpOldVersions { versions });
                     then.push(vec!["cleanup".to_string(), req.name.clone()]);
                 }
-                // y1-keg: a keg-only formula linked into the prefix is
-                // linked back once updated, before its cleanup, and that is
-                // said first of all.
+                // y1-keg: a keg-only formula whose link Homebrew recorded
+                // is checked once updated, and linked back if Homebrew did
+                // not, before its cleanup; that is said first of all.
                 if let Some(commands) = self.relink_after_upgrade(inst, req)? {
                     warnings.insert(
                         0,
@@ -2540,7 +2540,8 @@ impl BrewAdapter {
     }
 
     /// The `brew link --formula --force <name>` that follows the update of a keg-only
-    /// formula linked into `prefix`, once it has exited 0 (y1-keg): `link`,
+    /// formula whose link Homebrew recorded in `prefix`, once it has exited
+    /// 0 (y1-keg): `link`,
     /// the plan of that one command. Not run where Homebrew linked it back
     /// itself (`LogNote::StillLinkedAfterUpdate`), nor after a Cancel; how
     /// it ends -- what of the formula is no longer in Terminal -- is said in

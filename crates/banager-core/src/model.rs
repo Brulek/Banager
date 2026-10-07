@@ -1095,18 +1095,20 @@ pub enum Warning {
     /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
     HomebrewRemovesEveryVersion { versions: Vec<String> },
     /// The keg-only formula `name` -- one Homebrew leaves out of its `bin`
-    /// on purpose -- is linked into the prefix, by `brew link --force` or by
-    /// hand, so that `commands` (its commands whose places in the prefix
-    /// lead into it now, by name) are in Terminal. Its update unlinks the
-    /// version it replaces and links the new one back only where Homebrew
-    /// recorded a `brew link` (`brew::links`); so once the update has
-    /// exited 0 Banager reads the links again and, where the formula is not
-    /// linked as `brew link` leaves it, runs `brew link --formula --force <name>`
-    /// (`PlanAction::CommandThen`; no `--overwrite`: it replaces no other
-    /// program's file). y1-keg (r6), after `node@22`'s update took `node`
-    /// out of Terminal on 2026-10-07. Produced by `BrewAdapter::plan` for
-    /// such a formula's `Upgrade`, first; read by `warningKey`,
-    /// `warningArgs` and `warningDetailKey` in src/lib/warnings.ts.
+    /// on purpose -- is linked into the prefix with Homebrew's record of
+    /// the link (`brew link --force`, or Homebrew's own; who did it is not
+    /// known, and not said), so that `commands` (its commands whose places
+    /// hold Homebrew's link to it, by name) are in Terminal. Its update
+    /// unlinks the version it replaces and links the new one back
+    /// (`brew::links`); once the update has exited 0 Banager reads the
+    /// links again and, where the formula is not linked as `brew link`
+    /// leaves it, runs `brew link --formula --force <name>`
+    /// (`PlanAction::CommandThen`; no `--overwrite`: it stops rather than
+    /// overwrite another program's file). y1-keg (r6), after `node@22`'s
+    /// update took `node` out of Terminal on 2026-10-07. Produced by
+    /// `BrewAdapter::plan` for such a formula's `Upgrade`, first; read by
+    /// `warningKey`, `warningArgs` and `warningDetailKey` in
+    /// src/lib/warnings.ts.
     HomebrewRelinksAfterUpdate { name: String, commands: Vec<String> },
     /// What stops Homebrew linking the keg-only formula `name` back after
     /// its update: `paths`, the places of its commands in the prefix where
@@ -1511,15 +1513,17 @@ pub enum UpdateBlocked {
     /// (no button, no checkbox) and by `UPDATE_BLOCKED_KEYS.Disabled` in
     /// src/lib/sources.ts.
     Disabled,
-    /// A keg-only Homebrew formula linked into its prefix (`brew link
-    /// --force`, or by hand), where something else holds the place of one
-    /// of its commands now -- most often npm's own copy of itself, put in
+    /// A keg-only Homebrew formula linked into its prefix with Homebrew's
+    /// record of the link, where something else is at the place of one of
+    /// its commands now -- most often npm's own copy of itself, put in
     /// `<prefix>/bin/npm` by an update of npm with npm. The update would
     /// unlink the formula, and nothing gets past such a file to link it
     /// back (`Keg::ConflictError`), so its commands would be gone from
-    /// Terminal (y1-keg, r6). Produced by `BrewAdapter::check_updates` for
-    /// a candidate the inventory of the same check lists as keg-only
-    /// (`brew::links`), and by `BrewAdapter::plan`'s `Upgrade` arm inside
+    /// Terminal (y1-keg, r6). Without the record the update unlinks and
+    /// links nothing, and nothing is blocked. Produced by
+    /// `BrewAdapter::check_updates` for a candidate the inventory of the
+    /// same check lists as keg-only (`brew::links`), with the places as
+    /// `Warning::LinkPlacesHeld`, and by `BrewAdapter::plan`'s `Upgrade` arm inside
     /// `AdapterError::UpdateBlocked`, the gate's late twin. Loses to
     /// `Disabled` and `Pinned`, which Homebrew refuses before it unlinks
     /// anything. Read by the gate (`blocked_upgrade`), by `updateStateOf`
@@ -1654,8 +1658,9 @@ pub enum PlanAction {
     /// a formula's upgrade, and carried out only by `BrewAdapter::execute`;
     /// `run_plan` refuses it. Its follow-ups, in this order:
     ///
-    /// - `brew link --formula --force <name>`, for a keg-only formula linked into the
-    ///   prefix (`Warning::HomebrewRelinksAfterUpdate`, y1-keg, r6): run
+    /// - `brew link --formula --force <name>`, for a keg-only formula whose
+    ///   link Homebrew recorded (`Warning::HomebrewRelinksAfterUpdate`,
+    ///   y1-keg, r6): run
     ///   only when, read again after the update, the formula is not linked
     ///   as `brew link` leaves it (`LogNote::StillLinkedAfterUpdate` when it
     ///   is, `LogNote::RelinkingAfterUpdate` before it runs,
@@ -1901,11 +1906,12 @@ pub enum Fault {
     /// (`BrewAdapter::require_cleanup_as_previewed`); read by `faultKey`
     /// in src/lib/format.ts.
     HomebrewSettingsChanged,
-    /// The update of the keg-only formula `name`, linked into the prefix,
-    /// was not started, because something else holds the place of one of
-    /// its commands there now -- `paths`, each a full path such as
-    /// `/opt/homebrew/bin/npm`: a copy npm put there of itself, another
-    /// formula's link, a file. The update unlinks the version it replaces,
+    /// The update of the keg-only formula `name`, linked into the prefix
+    /// with Homebrew's record, was not started, because something else is
+    /// at the place of one of its commands there now -- `paths`, each a
+    /// full path such as `/opt/homebrew/bin/npm`: a copy npm put there of
+    /// itself, another formula's link, a file, a person's own link into the
+    /// formula. The update unlinks the version it replaces,
     /// and neither Homebrew's own link afterwards nor
     /// `brew link --force` gets past such a file (`Keg::ConflictError`):
     /// the formula's commands would be gone from Terminal, as `node` went
@@ -2230,8 +2236,8 @@ mod tests {
             serde_json::from_str::<UpdateBlocked>(r#""Disabled""#).unwrap(),
             UpdateBlocked::Disabled
         );
-        // A keg-only formula linked by hand whose command's place another
-        // program holds (y1-keg), read by `UPDATE_BLOCKED_KEYS.LinkTaken`.
+        // A keg-only formula Homebrew links back whose command's place
+        // something else holds (y1-keg), read by `UPDATE_BLOCKED_KEYS.LinkTaken`.
         assert_eq!(
             serde_json::to_string(&UpdateBlocked::LinkTaken).unwrap(),
             r#""LinkTaken""#

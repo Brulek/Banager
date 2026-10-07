@@ -14,7 +14,7 @@
 //! link` leaves (`Keg#linked?`, `keg.rb:274-278`):
 //!
 //! - With the record, the update first unlinks the version it replaces
-//!   (`Upgrade.outdated_kegs`, `upgrade.rb:268-272`; `install.rb:631-640`):
+//!   (`Upgrade.outdated_kegs`, `upgrade.rb:268-272`; `install.rb:632-641`):
 //!   every link whose one-level target -- the link's text joined to its
 //!   folder, nothing followed (`Utils::Path.resolved_path`,
 //!   `utils/path.rb:84-85`) -- is that version's own file goes

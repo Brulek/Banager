@@ -462,9 +462,9 @@ async fn a_check_marks_the_update_of_a_keg_only_formula_whose_place_is_taken() {
 enum Upgrade {
     /// As Homebrew 7.0.8's: installs 22.23.3_1 and points `opt` at it;
     /// where the link is recorded (`Keg#linked?`), first unlinks the
-    /// version it replaces (`install.rb:631-640`) and then links the new
+    /// version it replaces (`install.rb:632-641`) and then links the new
     /// one (`upgrade.rb:640-643`), exiting 1 where that link stops at a
-    /// place (`FormulaInstaller#link`, `formula_installer.rb:1302-1314`).
+    /// place (`FormulaInstaller#link`, `formula_installer.rb:1304-1314`).
     /// Without the record it unlinks and links nothing.
     AsHomebrew,
     /// The same, but fails after unlinking, linking nothing: a conflict

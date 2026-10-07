@@ -334,7 +334,15 @@ fn test_what_we_run_shows_the_link_after_a_keg_only_formulas_update_and_what_it_
         "`Fault::LinkTaken`",
         "`LogNote::NoLongerLinked`",
         "`upgrade.rb:635-643`",
-        "`install.rb:633-641`",
+        "`install.rb:632-641`",
+        // y1-keg review: only a recorded link is unlinked, and only the
+        // keg's own one; what blocks the update is named; what is not
+        // guarded is said.
+        "`upgrade.rb:268-272`",
+        "`keg.rb:376-377`",
+        "`Warning::LinkPlacesHeld`",
+        "`formula_installer.rb:891-931`",
+        "`unlink.rb:8-17`",
     ] {
         assert!(
             folded.contains(words),
@@ -349,6 +357,21 @@ fn test_what_we_run_shows_the_link_after_a_keg_only_formulas_update_and_what_it_
         assert!(
             reads.contains(words),
             "`## Files Banager reads` does not name {words:?}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_an_npm_operation_takes_the_lock_of_the_homebrew_at_its_prefix() {
+    // y1-keg review: `NpmAdapter::plan` takes `brew:{prefix}` besides
+    // npm's own lock (`test_every_plan_takes_the_lock_of_a_homebrew_at_its_prefix`).
+    let doc = read_doc();
+    let npm = section_body(&doc, "npm").expect("a `## npm` section");
+    let folded = npm.split_whitespace().collect::<Vec<_>>().join(" ");
+    for words in ["two locks", "`brew:{prefix}`"] {
+        assert!(
+            folded.contains(words),
+            "the `## npm` section does not say {words:?} of the lock it shares with Homebrew"
         );
     }
 }

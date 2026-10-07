@@ -127,12 +127,13 @@ pub enum LogNote {
     /// From `BrewAdapter::execute`; worded by `LogDrawer.tsx`.
     StillLinkedAfterUpdate { name: String },
     /// After the update of the keg-only formula `name` -- its
-    /// `brew link --force` not run (a Cancel), or run and the formula still
+    /// `brew link --formula --force` not run (a Cancel), or run and the formula still
     /// not linked after it, or the update itself failed -- `commands`, of
     /// those its preview said were in Terminal
     /// (`Warning::HomebrewRelinksAfterUpdate`), lead into it no longer:
     /// typed in Terminal, they are not found, or run another program. The
-    /// line says how to link it back. From `BrewAdapter::execute`; worded
+    /// line says how to link it back (`brew link --formula --force <name>`).
+    /// From `BrewAdapter::execute`; worded
     /// by `LogDrawer.tsx`.
     NoLongerLinked { name: String, commands: Vec<String> },
 }
