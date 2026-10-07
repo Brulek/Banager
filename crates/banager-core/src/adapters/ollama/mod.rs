@@ -2,6 +2,8 @@ pub mod parse;
 
 #[cfg(test)]
 mod manifest_layout_tests;
+#[cfg(test)]
+mod registry_change_tests;
 
 use crate::adapters::{
     ensure_instance_match, get_ok, reconcile_from, run_plan, uncheckable_candidate,
@@ -458,8 +460,8 @@ impl OllamaAdapter {
     }
 
     /// Returns `Ok(None)` when the local and registry manifests' layer-digest
-    /// sets are identical (model up to date), `Ok(Some(change))` when they
-    /// differ — carrying the registry's config digest, which is what an
+    /// sets are identical and so are their config digests (model up to
+    /// date), `Ok(Some(change))` when either differs — carrying the registry's config digest, which is what an
     /// available update's `target` must be, since the tag (`27b-mlx`) is
     /// unchanged by a republish and `UpdateCandidate`'s contract is that
     /// current and target differ, and the most the pull can download, from
@@ -537,6 +539,8 @@ impl OllamaAdapter {
         }
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
+        let local_config = config_digest(&local_json)
+            .map_err(|e| format!("could not parse local manifest: {e}"))?;
 
         // /api/tags identifies the manifest bytes, not its config or layer
         // digests. A loopback daemon may use a different OLLAMA_MODELS store.
@@ -573,12 +577,19 @@ impl OllamaAdapter {
         .await?;
         let registry_digests = layer_digests(&response.body)
             .map_err(|e| format!("could not parse registry manifest: {e}"))?;
-        if local_digests == registry_digests {
+        let registry_config = config_digest(&response.body)
+            .map_err(|e| format!("could not parse registry manifest: {e}"))?;
+        // The config is as much the model as a layer is: `ollama pull`
+        // fetches it with them and writes the new manifest (0.40
+        // `server/images.go` PullModel), and it alone carries the model's
+        // renderer, parser, capabilities and sampler defaults -- and, for a
+        // cloud model (`gpt-oss:120b-cloud`, `"layers":[]`), all there is.
+        // So the model is up to date only when both are the same.
+        if local_digests == registry_digests && local_config == registry_config {
             return Ok(None);
         }
-        let registry_config = config_digest(&response.body)
-            .map_err(|e| format!("could not parse registry manifest: {e}"))?
-            .ok_or_else(|| "registry manifest has no config digest".to_string())?;
+        let registry_config =
+            registry_config.ok_or_else(|| "registry manifest has no config digest".to_string())?;
         Ok(Some(RegistryChange {
             config: registry_config,
             download_bytes: changed_blob_bytes(&local_json, &response.body),
@@ -626,7 +637,7 @@ impl OllamaAdapter {
             // them, and never render them as a version jump the way npm's or
             // cargo's homogeneous version strings can be. The up-to-date
             // decision is made above by `compare_digests` on the layer-digest
-            // sets, never by these fields; an `UpdateChannel::Digest` row is a
+            // sets and the config digests, never by these fields; an `UpdateChannel::Digest` row is a
             // "changed / not changed" marker. See docs/superpowers/backlog.md.
             Ok(Some(change)) => Some(UpdateCandidate {
                 key: artifact.key.clone(),

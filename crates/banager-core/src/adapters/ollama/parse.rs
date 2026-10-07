@@ -111,10 +111,13 @@ pub fn is_manifest_list(json: &str) -> bool {
 /// `~/.ollama/models/manifests-v2/...` or legacy `manifests/...` file
 /// and the registry's `GET
 /// /v2/{ns}/{name}/manifests/{tag}` response use) into the set of its
-/// layer digests. Comparing this set — not the serialized manifest bytes —
-/// is what makes the up-to-date check correct: Ollama rewrites the local
-/// manifest file on disk, so a byte-for-byte comparison would report a
-/// false "outdated" for a model that has not actually changed.
+/// layer digests. This set, with the manifest's `config_digest`, is what
+/// the up-to-date check compares (`OllamaAdapter::compare_digests`) -- not
+/// the manifest's bytes: it asks whether the model is the same, not
+/// whether its file is spelled the same. The config counts as much as a
+/// layer: a change in it alone (a new parser or renderer, other
+/// capabilities or sampler defaults; for a cloud model, whose `layers` is
+/// empty, everything) is one `ollama pull` fetches.
 pub fn layer_digests(json: &str) -> Result<HashSet<String>, AdapterError> {
     let manifest: Manifest =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
@@ -295,9 +298,9 @@ mod tests {
 
     #[test]
     fn test_config_digest_of_the_recorded_local_and_registry_manifests_is_the_same_string() {
-        // The config digest is what check_updates reports as an available
-        // update's `target`; the recorded pair is the already-up-to-date
-        // case, so the two must agree here too.
+        // The up-to-date check compares the config digests as well as the
+        // layer sets; the recorded pair is the already-up-to-date case, so
+        // the two must agree here too.
         let local = std::fs::read_to_string(
             "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
         )

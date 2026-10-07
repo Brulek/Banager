@@ -2910,7 +2910,12 @@ checks that the SHA-256 of its original bytes matches the live
 `/api/tags` manifest digest. A mismatch, including a leftover default-store
 copy when the local daemon uses another model folder or port, is "could
 not check" with no registry request or download estimate. Only a matching
-manifest is compared by its layer digests with the registry's. The file is looked up one
+manifest is compared with the registry's, by its layer digests and its
+config digest: the model is up to date only when both are the same. The
+config is part of the model that `ollama pull` fetches too, and the only
+part that names its parser, renderer, capabilities and default settings;
+a cloud model (`gpt-oss:120b-cloud`, say) has no layers at all, so its
+config is the whole of it. The file is looked up one
 step at a time and never in or through a place Banager never looks into
 (How Banager runs anything, above): models kept on another disk through a
 link -- `~/.ollama/models`, or `~/.ollama`, linked to `/Volumes/<disk>/…`,
