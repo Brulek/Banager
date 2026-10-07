@@ -467,12 +467,19 @@ describe("App", () => {
     };
     const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
     let checks = 0;
+    let finish: (() => void) | undefined;
     mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
       if (cmd === "list_operations") return Promise.resolve([running]);
-      // The first check answers; the next one runs on.
-      if (cmd === "refresh" && ++checks > 1) return new Promise(() => {});
+      // The first check answers; the next one runs until `finish`.
+      if (cmd === "refresh" && ++checks > 1) {
+        return new Promise((resolve) => {
+          finish = () => resolve(answer(cmd, args));
+        });
+      }
       return answer(cmd, args);
     });
+    // Ended whatever happens here: a check left running would hold the next test's.
+    onTestFinished(() => finish?.());
     const { getByRole, findByRole } = renderWithProviders(<App />);
     fireEvent.click(await findByRole("button", { name: /^Updates/ }));
     await findByRole("heading", { level: 1, name: "Updates" });
@@ -485,6 +492,12 @@ describe("App", () => {
     fireEvent.click(checkAgain);
 
     await waitFor(() => expect(checkAgain).toHaveAttribute("title", "Check Again (⌘R) · Checking…"));
+    expect(status).toHaveTextContent(/^Updating…$/);
+
+    // The check ends, as every one does: none is left running for the next test.
+    await waitFor(() => expect(finish).toBeDefined());
+    await act(async () => finish?.());
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
     expect(status).toHaveTextContent(/^Updating…$/);
   });
 
