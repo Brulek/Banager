@@ -2453,10 +2453,17 @@ the launcher as changed since the preview. Cancel: allowed
 `<grok> --version` again, and the operation is reported as unconfirmed
 regardless of that reading. An update that exits 0 with the version
 unchanged is reported as needing attention, as for every source. **How
-`grok update` behaves when nothing can answer a prompt (Banager gives it
-no terminal and a closed stdin) has not been observed by this project**;
-the author records it on a CI runner before this step merges, and this
-paragraph then says what was seen.
+`grok update` behaves when nothing can answer a prompt** (Banager gives it
+no terminal and a closed stdin) was recorded on 2026-10-07 on a GitHub
+Actions `macos-latest` runner (image 20260907), in a throwaway HOME, by
+`.github/workflows/standalone-upgrade-probe.yml` (pull request #1, run
+37557838541): from 1.0.34 to 1.0.46 it asked nothing, exited 0 after about
+a second and printed to stderr only its progress and "Please restart
+Grok."; afterwards `grok --version` read 1.0.46, both links in
+`~/.grok/bin` pointed at the new `~/.grok/downloads/grok-1.0.46-macos-aarch64`,
+the previous program stayed in `~/.grok/downloads` (about 143 MB), and
+`~/.grok/config.toml` was unchanged. So the update runs unattended, and the
+recipe above stays as it is.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
 command runs): Banager moves to the Trash, in this order,

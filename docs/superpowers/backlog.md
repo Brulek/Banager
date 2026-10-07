@@ -405,7 +405,8 @@ brew 7.0.6 `receipts/` 里不是录制的 27 份收据（25 份按 cask 目录�
   安装器把它加进了 PATH，用户自己的脚本可能放在里面；清单列的是安装器放进去的两条链接（`agent`、最后 `grok`），文件夹本身
   留在被保留的 `~/.grok` 里（用户没往里放东西时是空的；安装器写进 shell 配置文件的 PATH 行照旧指向它，无害）。若日后要连
   文件夹一起移，形状是「文件夹里只剩清单上的条目才移」的检查，不是放宽启动器最后的不变量。
-- **`grok update` / `claude update` 无交互时的行为待 CI 录制**（2026-09-26，步骤 D，spec §五；本仓库的 GitHub Actions 额度
+- ~~**`grok update` 无交互时的行为待 CI 录制**~~ 已录制（2026-10-07，PR #1 的 run 37557838541：1.0.34→1.0.46 不提问、约 1 秒、退出码 0，配方不变，写进 `docs/what-we-run.md` 的 Grok Build 一节）。`claude update` 这次因为装的已是最新版只说"已是最新"，没测到会不会提问——要测需先装旧版本（本条不挡合并）。原条目：
+  **`grok update` / `claude update` 无交互时的行为待 CI 录制**（2026-09-26，步骤 D，spec §五；本仓库的 GitHub Actions 额度
   2026-10-01 恢复）。步骤 D 计划「The author's pre-merge verification」一节给了工作流、观察项与每种结果对应的配方改法；
   在录制到之前，`docs/what-we-run.md` 的 Grok Build 一节照实说还没观察过（「has not been observed by this project」）。
   **grok 的结果挡合并**（`GROK.upgrade` 是本步新加的）；**claude 的结果不挡本步合并**（B 已经交付了按钮，若会提示或挂起，
