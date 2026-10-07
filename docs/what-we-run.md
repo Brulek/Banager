@@ -2098,7 +2098,9 @@ in `/usr/bin` itself — `xcode-select -p` prints a folder `DEVELOPER_DIR`
 names whether it is there or not (`shim_has_tool`). Otherwise the
 interpreter is skipped as if it were not on `PATH`: no pip is listed for
 it, and nothing says so. The next refresh asks again, so once the tools
-are installed, its pip is listed.
+are installed, its pip is listed. Both the initial shim-parent check and
+the developer-tool exclusion compare paths with `protected::same_path`, so
+case variants such as `/USR/BIN` and links spelled that way are guarded too.
 
 **Read-only commands:**
 

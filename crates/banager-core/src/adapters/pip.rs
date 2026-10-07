@@ -413,10 +413,10 @@ impl PipAdapter {
             // By where it leads, so a link elsewhere on `PATH` to the shim
             // is caught too; by where it was found as well, for a path
             // that could not be resolved.
-            if let Some(shim) = [&canonical, &python_path]
-                .into_iter()
-                .find(|path| path.parent() == Some(self.shim_dir.as_path()))
-            {
+            if let Some(shim) = [&canonical, &python_path].into_iter().find(|path| {
+                path.parent()
+                    .is_some_and(|parent| protected::same_path(parent, &self.shim_dir))
+            }) {
                 if developer_dir.is_none() {
                     developer_dir = Some(self.active_developer_dir().await);
                 }
@@ -564,7 +564,11 @@ impl PipAdapter {
         let Ok((tool, meta)) = look::target(&dir.join("usr/bin").join(name), protected) else {
             return false;
         };
-        tool.parent() != Some(self.shim_dir.as_path()) && meta.is_file() && meta.mode() & 0o111 != 0
+        !tool
+            .parent()
+            .is_some_and(|parent| protected::same_path(parent, &self.shim_dir))
+            && meta.is_file()
+            && meta.mode() & 0o111 != 0
     }
 
     async fn run_pip_list(
@@ -1482,6 +1486,57 @@ mod tests {
             shim_dir: shim_dir.to_path_buf(),
             ..PipAdapter::new(runner)
         }
+    }
+
+    #[tokio::test]
+    async fn test_f12_case_variant_shims_never_run_without_tools() {
+        let root = temp_folder("f12-case-shims");
+        let shims = root.join("usr/bin");
+        let upper = root.join("USR/BIN");
+        file_at(&shims.join("python3"), 0o755);
+        // On case-sensitive test disks, create the second spelling too.
+        if !upper.exists() {
+            file_at(&upper.join("python3"), 0o755);
+        }
+        let linked = root.join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(upper.join("python3"), linked.join("python3")).unwrap();
+        for path in [&upper, &linked] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(PipAdapter::XCODE_SELECT_ARGV.to_vec(), exited(2, ""));
+            let instances = adapter_with_shims_in(runner.clone(), &shims)
+                .detect(&path_of(&[path]))
+                .await;
+            assert!(instances.is_empty(), "{instances:?}");
+            assert_eq!(runner.calls(), vec![argv(&PipAdapter::XCODE_SELECT_ARGV)]);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_f12_developer_tool_must_not_loop_to_case_variant_shim() {
+        let root = temp_folder("f12-loop-shim");
+        let shims = root.join("usr/bin");
+        let upper = root.join("USR/BIN");
+        file_at(&shims.join("python3"), 0o755);
+        if !upper.exists() {
+            file_at(&upper.join("python3"), 0o755);
+        }
+        let developer = root.join("Developer");
+        std::fs::create_dir_all(developer.join("usr/bin")).unwrap();
+        std::os::unix::fs::symlink(upper.join("python3"), developer.join("usr/bin/python3"))
+            .unwrap();
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+            exited(0, text(&developer)),
+        );
+        let instances = adapter_with_shims_in(runner.clone(), &shims)
+            .detect(&path_of(&[&shims]))
+            .await;
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(instances.is_empty(), "{instances:?}");
+        assert_eq!(runner.calls(), vec![argv(&PipAdapter::XCODE_SELECT_ARGV)]);
     }
 
     const PIP_VERSION: &str =
